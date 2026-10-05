@@ -8,6 +8,7 @@
 //! Each statement must touch exactly the rows it names; anything else is
 //! logged and returns `None`, and the caller rolls back.
 
+use cimmeria_entity::known_names;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::{Postgres, Transaction};
@@ -68,8 +69,11 @@ async fn exact(
             tracing::warn!(
                 target: "bank",
                 player_id = plan.player_id,
+                player_name = known_names::player_name(plan.player_id),
                 org_id = plan.org_id,
+                org_name = known_names::org_name(plan.org_id),
                 item_id = plan.item_id,
+                item_name = cimmeria_names::book().item(plan.source.type_id),
                 step = what,
                 rows_affected = r.rows_affected(),
                 expected,
@@ -81,8 +85,11 @@ async fn exact(
             tracing::error!(
                 target: "bank",
                 player_id = plan.player_id,
+                player_name = known_names::player_name(plan.player_id),
                 org_id = plan.org_id,
+                org_name = known_names::org_name(plan.org_id),
                 item_id = plan.item_id,
+                item_name = cimmeria_names::book().item(plan.source.type_id),
                 step = what,
                 "org vault move: a write failed; rolling back: {e}"
             );
@@ -203,8 +210,11 @@ fn inserted(
             tracing::warn!(
                 target: "bank",
                 player_id = plan.player_id,
+                player_name = known_names::player_name(plan.player_id),
                 org_id = plan.org_id,
+                org_name = known_names::org_name(plan.org_id),
                 item_id = plan.item_id,
+                item_name = cimmeria_names::book().item(plan.source.type_id),
                 step = what,
                 "org vault move: the row to copy was not there; rolling back"
             );
@@ -214,8 +224,11 @@ fn inserted(
             tracing::error!(
                 target: "bank",
                 player_id = plan.player_id,
+                player_name = known_names::player_name(plan.player_id),
                 org_id = plan.org_id,
+                org_name = known_names::org_name(plan.org_id),
                 item_id = plan.item_id,
+                item_name = cimmeria_names::book().item(plan.source.type_id),
                 step = what,
                 "org vault move: a copy failed; rolling back: {e}"
             );

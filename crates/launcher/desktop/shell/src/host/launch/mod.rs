@@ -49,16 +49,19 @@ impl NativeHost {
         {
             // Serialize admission and dispatch, including identical simultaneous retries.
             let mut worker = self.launch_worker.lock().map_err(|_| JobError::Io)?;
-            let resources = self
+            let bundled = self
                 .launch_resources
                 .clone()
                 .ok_or(JobError::PlatformUnavailable)?;
-            let admission = store.lock().map_err(|_| JobError::Io)?.admit_launch(
-                operation_id,
-                operation_revision,
-                installation_id,
-                resources,
-            )?;
+            let admission = {
+                // Dispatch and its failure path lock the store themselves, so this
+                // guard must not outlive admission.
+                let mut owner = store.lock().map_err(|_| JobError::Io)?;
+                let resources = owner
+                    .resolve_play_resources(bundled)?
+                    .ok_or(JobError::PlatformUnavailable)?;
+                owner.admit_launch(operation_id, operation_revision, installation_id, resources)?
+            };
             if admission.dispatch {
                 match launch::dispatch(store.clone(), operation_id) {
                     Ok(value) => *worker = Some(value),
@@ -76,10 +79,21 @@ impl NativeHost {
         let mut state = store.lock().map_err(|_| JobError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
         let observation = state.launch_observation()?;
-        let available = self
-            .launch_resources
-            .as_ref()
-            .is_some_and(|r| r.verify().is_ok());
+        // The build is at fault only when the patch policy needs an artifact it
+        // lacks, or a shipped artifact no longer verifies. A state that cannot
+        // answer (busy content, refused imported settings) withholds Play without
+        // failing Inspect or blaming the bundle.
+        let (available, playable) = match &self.launch_resources {
+            None => (false, false),
+            Some(bundled) => match state.resolve_play_resources(bundled.clone()) {
+                Ok(Some(resources)) => {
+                    let verified = resources.verify().is_ok();
+                    (verified, verified)
+                }
+                Ok(None) => (false, false),
+                Err(_) => (bundled.verify().is_ok(), false),
+            },
+        };
         let idle = !native.requires_reopen
             && native
                 .operation
@@ -90,7 +104,7 @@ impl NativeHost {
             && state
                 .installed_launcher_minimum()?
                 .is_some_and(|minimum| minimum.blocks());
-        let installation_id = if idle && available && !launcher_update_required {
+        let installation_id = if idle && playable && !launcher_update_required {
             state
                 .installed_content()?
                 .filter(|installed| {
@@ -118,5 +132,7 @@ impl NativeHost {
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(test, target_os = "macos"))]
+mod adopted_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod fixture;

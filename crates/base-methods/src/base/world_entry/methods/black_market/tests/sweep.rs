@@ -274,3 +274,30 @@ async fn live_db_sweep_phantom_bidder_zero_bid_settles_unsold() {
         .execute(&pool)
         .await;
 }
+
+/// Named-telemetry guard (Rule 6): the sweep's one-query seller lookup names a
+/// stored player and login, and for a player id with no row (the join finds
+/// nothing, so there is no account to read either) returns the id alone: no
+/// panic, no wrong name, no empty string.
+#[tokio::test]
+async fn live_db_sweep_who_is_names_the_seller_and_leaves_a_missing_one_bare() {
+    let pool = require_db_or_skip!();
+    let acc = TEST_BASE + 320;
+    let player = TEST_BASE + 321;
+    let missing = TEST_BASE + 322;
+    cleanup(&pool, &[acc], &[player, missing]).await;
+    insert_account_and_player(&pool, acc, player, 0).await;
+
+    let found = sweep::who_is(&pool, player).await;
+    assert_eq!(found.player_id, player);
+    assert_eq!(found.player_name, Some(format!("bmp-{player}").as_str()));
+    assert_eq!(found.account_name, Some(format!("bm-test-{acc}").as_str()));
+    assert_eq!(found.account_id, u32::try_from(acc).ok());
+
+    let bare = sweep::who_is(&pool, missing).await;
+    assert_eq!(bare.player_id, missing);
+    assert!(bare.player_name.is_none() && bare.account_name.is_none());
+    assert!(bare.account_id.is_none());
+
+    cleanup(&pool, &[acc], &[player, missing]).await;
+}

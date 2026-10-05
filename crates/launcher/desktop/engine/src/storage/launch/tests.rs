@@ -1,5 +1,5 @@
 use super::*;
-fn artifact(root: &Path, name: &str) -> Artifact {
+pub(super) fn artifact(root: &Path, name: &str) -> Artifact {
     let path = root.join(name);
     std::fs::write(&path, b"fixture").unwrap();
     Artifact::open(
@@ -16,6 +16,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, DesktopState, Plan) {
     let resources = Resources {
         helper: artifact(&root.path().canonicalize().unwrap(), "helper.exe"),
         client_patches: None,
+        client_telemetry: None,
         graphics: None,
     };
     // A persisted plan lets lifecycle tests run without claiming platform setup.
@@ -97,6 +98,25 @@ fn retry_never_dispatches_twice_and_restart_never_reports_live_guest() {
     );
 }
 #[test]
+fn patch_selection_adds_no_plan_field_so_earlier_plans_keep_their_digest() {
+    let (_root, state, plan) = fixture();
+    let value = serde_json::to_value(&plan).unwrap();
+    let keys = |value: &serde_json::Value| -> Vec<String> {
+        value.as_object().unwrap().keys().cloned().collect()
+    };
+    // The effective selection is the nullable artifact already in every plan. A
+    // new field, even a defaulted one, would change the bytes this digest covers.
+    assert_eq!(keys(&value), ["id", "installation", "resources", "runtime"]);
+    assert_eq!(
+        keys(&value["resources"]),
+        ["client_patches", "graphics", "helper"]
+    );
+    assert!(value["resources"]["client_patches"].is_null());
+    let stored: Plan = serde_json::from_value(value).unwrap();
+    assert_eq!(stored.digest().unwrap(), plan.digest().unwrap());
+    assert_eq!(state.launch_plan().unwrap(), Some(plan));
+}
+#[test]
 fn resource_replacement_and_plan_tampering_fail_closed() {
     let (_root, mut state, plan) = fixture();
     std::fs::write(plan.resources.helper.path(), b"replacement").unwrap();
@@ -152,6 +172,7 @@ fn admission_requires_prepared_runtime_and_graphics_and_preserves_consent() {
     let resources = Resources {
         helper: artifact(&directory, "helper.exe"),
         client_patches: None,
+        client_telemetry: None,
         graphics: Some(Graphics {
             d3d9: artifact(&directory, "d3d9.dll"),
             rosetta_x87: None,
@@ -263,4 +284,115 @@ async fn dropping_observer_retains_native_task_and_persists_preparation_failure(
             .state,
         OperationState::Failed
     );
+}
+
+#[test]
+fn a_plan_without_telemetry_serializes_as_it_did_before_the_field_existed() {
+    let (root, _state, plan) = fixture();
+    // Stored plans are digested from their JSON: an absent DLL must add no key,
+    // or every plan written by an earlier launcher would stop matching.
+    let text = serde_json::to_string(&plan.resources).unwrap();
+    assert!(!text.contains("client_telemetry"));
+    assert_eq!(
+        serde_json::from_str::<Resources>(&text).unwrap(),
+        plan.resources
+    );
+    let with = Resources {
+        client_telemetry: Some(artifact(
+            &root.path().canonicalize().unwrap(),
+            "telemetry.dll",
+        )),
+        ..plan.resources.clone()
+    };
+    let text = serde_json::to_string(&with).unwrap();
+    assert!(text.contains("client_telemetry"));
+    assert_eq!(serde_json::from_str::<Resources>(&text).unwrap(), with);
+    assert_ne!(
+        Plan {
+            resources: with,
+            ..plan.clone()
+        }
+        .digest()
+        .unwrap(),
+        plan.digest().unwrap()
+    );
+}
+
+#[test]
+fn the_telemetry_dll_is_resolved_only_for_a_player_who_opted_in() {
+    let (root, mut state, installed) = runtime_setup::tests::fixture_with_runtime([7; 32]);
+    let directory = root.path().canonicalize().unwrap();
+    let bundled = Resources {
+        helper: artifact(&directory, "helper.exe"),
+        client_patches: Some(artifact(&directory, "patches.dll")),
+        client_telemetry: Some(artifact(&directory, "telemetry.dll")),
+        graphics: None,
+    };
+    let resolve = |state: &DesktopState| {
+        state
+            .resolve_play_resources(bundled.clone())
+            .unwrap()
+            .expect("patches are bundled")
+    };
+    assert_eq!(resolve(&state).client_telemetry, None);
+    assert!(resolve(&state).client_patches.is_some());
+    // Launcher-summary consent is a different choice and changes nothing here.
+    let preferences = state.preferences().clone();
+    state
+        .save_preferences(preferences.install_directory, true, preferences.revision)
+        .unwrap();
+    assert_eq!(resolve(&state).client_telemetry, None);
+
+    // A host that skipped resolution cannot inject it either.
+    let revision = state.operations.snapshot().revision;
+    assert!(matches!(
+        state.admit_launch(
+            Uuid::new_v4(),
+            revision,
+            installed.operation_id,
+            bundled.clone()
+        ),
+        Err(IntentError::Operation(ContractError::IdentityConflict))
+    ));
+
+    state.set_game_telemetry(true).unwrap();
+    assert_eq!(resolve(&state).client_telemetry, bundled.client_telemetry);
+    state.set_game_telemetry(false).unwrap();
+    assert_eq!(resolve(&state).client_telemetry, None);
+}
+
+#[test]
+fn a_lab_build_of_the_telemetry_dll_is_refused_even_with_consent() {
+    let (root, mut state, installed) = runtime_setup::tests::fixture_with_runtime([7; 32]);
+    let directory = root.path().canonicalize().unwrap();
+    let bytes = b"MZ...cimmeria-client-telemetry build flavour: lab-bridge...";
+    std::fs::write(directory.join("lab.dll"), bytes).unwrap();
+    let lab = Artifact::open(
+        directory.join("lab.dll"),
+        &Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    assert!(lab.refuse_lab_build().is_err());
+    assert!(artifact(&directory, "player.dll")
+        .refuse_lab_build()
+        .is_ok());
+    state.set_game_telemetry(true).unwrap();
+    let revision = state.operations.snapshot().revision;
+    assert!(matches!(
+        state.admit_launch(
+            Uuid::new_v4(),
+            revision,
+            installed.operation_id,
+            Resources {
+                helper: artifact(&directory, "helper.exe"),
+                client_patches: None,
+                client_telemetry: Some(lab),
+                graphics: None,
+            }
+        ),
+        Err(IntentError::Storage(StorageError::UnsafeFile))
+    ));
 }

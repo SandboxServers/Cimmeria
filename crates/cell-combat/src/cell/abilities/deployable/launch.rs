@@ -115,14 +115,25 @@ async fn refuse(
         decision_outcome = "deploy_refused",
         stage,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         owner_id = entity_id,
+        owner_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         reason = refusal.reason(),
         ground = ?ground,
         caster_pos = ?caster_pos,
         "deployable cast refused; nothing charged"
+    );
+    crate::cell::abilities::metrics::refused_in(
+        space_mgr,
+        entity_id,
+        ability_id,
+        crate::cell::abilities::metrics::RefusalReason::DeployableRefused,
     );
     send_refusal(entity_id, id, ability_id, refusal, tx).await;
 }
@@ -184,11 +195,17 @@ pub(in crate::cell::abilities) async fn handle_deploy_on_ground(
             target: "deployables.lifecycle",
             event = "deploy_launched",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             owner_id = entity_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             template_id = spec.template_id,
+            template_name = cimmeria_names::book().template(spec.template_id),
             "deployable cast committed; the object is placed when it fires"
         );
     } else {

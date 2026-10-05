@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::org_text::{validate, TextField};
 
 use super::{minutes_left, MuteEntry, MuteTable, MAX_MUTE_MINUTES};
@@ -28,6 +29,7 @@ use crate::base::feedback::{
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::player_index::{NameLookup, OnlinePlayerIndex};
 use crate::base::rate_limit::limits::CHAT_EXEMPT_ACCESS_LEVEL;
+use crate::base::session_identity::{identity_for_entity, session_identity};
 use crate::mercury::method_idx;
 
 /// Longest prefix of a typed name echoed back to the GM.
@@ -65,6 +67,7 @@ struct Subject {
     account_id: u32,
     entity_id: Option<u32>,
     access_level: u32,
+    identity: PlayerIdentity,
 }
 
 fn shown(name: &str) -> String {
@@ -116,7 +119,14 @@ fn resolve(ctx: &GmMuteCtx<'_>, name: &str) -> Result<Subject, (&'static str, St
         account_id: c.account_id,
         entity_id: c.player_entity_id,
         access_level: c.access_level,
+        identity: session_identity(c),
     })
+}
+
+/// The GM's session identity for a log line, resolved by entity id. The
+/// ids on [`GmActor`] come from the cell; the names live on the session.
+fn gm_identity(ctx: &GmMuteCtx<'_>, actor: GmActor) -> PlayerIdentity {
+    identity_for_entity(ctx.feedback.connected, ctx.entity_to_addr, actor.entity_id)
 }
 
 /// Answer the GM. With a `player_id` the line goes to whatever entity the
@@ -132,11 +142,15 @@ async fn tell_gm(ctx: &GmMuteCtx<'_>, actor: GmActor, text: &str) {
             .get(&actor.entity_id)
             .copied();
         let Some(addr) = addr else {
+            // The GM's session is gone, so there is no name left to resolve.
             tracing::debug!(
                 target: "chat",
                 entity_id = actor.entity_id,
+                entity_name = None::<&str>,
                 player_id,
+                player_name = None::<&str>,
                 account_id = actor.account_id,
+                account_name = None::<&str>,
                 reason = "gm_gone",
                 "GM mute answer dropped: the GM's session is gone",
             );
@@ -173,14 +187,19 @@ pub async fn apply_gm_mute(
     reason: &str,
     now: Instant,
 ) -> MuteOutcome {
-    let refuse = |why: &'static str, subject_player_id: Option<i32>| {
+    let refuse = |why: &'static str, subject: Option<&Subject>| {
+        let gm = gm_identity(ctx, actor);
         tracing::warn!(
             target: "chat",
             event = "chat.gm_mute_refused",
             entity_id = actor.entity_id,
+            entity_name = gm.player_name,
             player_id = actor.player_id,
+            player_name = gm.player_name,
             account_id = actor.account_id,
-            subject_player_id,
+            account_name = gm.account_name,
+            subject_player_id = subject.map(|s| s.player_id),
+            subject_player_name = subject.and_then(|s| s.identity.player_name),
             duration_minutes = minutes,
             reason = why,
             "GM .mute refused, the GM was told why",
@@ -207,7 +226,7 @@ pub async fn apply_gm_mute(
     if subject.access_level >= CHAT_EXEMPT_ACCESS_LEVEL {
         // GameMaster and above are never refused by the mute gate (they run
         // the `.` console over chat), so a mute on one would do nothing.
-        let outcome = refuse("target_is_gm", Some(subject.player_id));
+        let outcome = refuse("target_is_gm", Some(&subject));
         let text = format!(".mute: {} is a GM and cannot be muted.", subject.name);
         tell_gm(ctx, actor, &text).await;
         return outcome;
@@ -219,15 +238,22 @@ pub async fn apply_gm_mute(
         by_account_id: actor.account_id,
     };
     let previous = table.mute(subject.player_id, entry, now);
+    let gm = gm_identity(ctx, actor);
     tracing::info!(
         target: "chat",
         event = "chat.gm_mute",
         entity_id = actor.entity_id,
+        entity_name = gm.player_name,
         player_id = actor.player_id,
+        player_name = gm.player_name,
         account_id = actor.account_id,
+        account_name = gm.account_name,
         subject_player_id = subject.player_id,
+        subject_player_name = subject.identity.player_name,
         subject_account_id = subject.account_id,
+        subject_account_name = subject.identity.account_name,
         subject_entity_id = subject.entity_id,
+        subject_entity_name = subject.identity.player_name,
         duration_minutes = minutes,
         reason,
         previous_remaining_secs = previous.map(|d| d.as_secs()),
@@ -261,14 +287,19 @@ pub async fn apply_gm_unmute(
     target_name: &str,
     now: Instant,
 ) -> MuteOutcome {
-    let refuse = |why: &'static str, subject_player_id: Option<i32>| {
+    let refuse = |why: &'static str, subject: Option<&Subject>| {
+        let gm = gm_identity(ctx, actor);
         tracing::warn!(
             target: "chat",
             event = "chat.gm_unmute_refused",
             entity_id = actor.entity_id,
+            entity_name = gm.player_name,
             player_id = actor.player_id,
+            player_name = gm.player_name,
             account_id = actor.account_id,
-            subject_player_id,
+            account_name = gm.account_name,
+            subject_player_id = subject.map(|s| s.player_id),
+            subject_player_name = subject.and_then(|s| s.identity.player_name),
             reason = why,
             "GM .unmute refused, the GM was told why",
         );
@@ -284,20 +315,27 @@ pub async fn apply_gm_unmute(
         }
     };
     let Some(remaining) = table.unmute(subject.player_id, now) else {
-        let outcome = refuse("not_muted", Some(subject.player_id));
+        let outcome = refuse("not_muted", Some(&subject));
         let text = format!(".unmute: {} is not muted.", subject.name);
         tell_gm(ctx, actor, &text).await;
         return outcome;
     };
+    let gm = gm_identity(ctx, actor);
     tracing::info!(
         target: "chat",
         event = "chat.gm_unmute",
         entity_id = actor.entity_id,
+        entity_name = gm.player_name,
         player_id = actor.player_id,
+        player_name = gm.player_name,
         account_id = actor.account_id,
+        account_name = gm.account_name,
         subject_player_id = subject.player_id,
+        subject_player_name = subject.identity.player_name,
         subject_account_id = subject.account_id,
+        subject_account_name = subject.identity.account_name,
         subject_entity_id = subject.entity_id,
+        subject_entity_name = subject.identity.player_name,
         previous_remaining_secs = remaining.as_secs(),
         previous_remaining_minutes = minutes_left(remaining),
         remaining_secs = 0u64,

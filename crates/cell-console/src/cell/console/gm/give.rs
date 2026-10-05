@@ -38,6 +38,7 @@ pub(super) async fn handle_give_xp(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveXp: truncated args (need INT32)"
             );
@@ -46,7 +47,12 @@ pub(super) async fn handle_give_xp(
         }
     };
     if amount <= 0 {
-        tracing::warn!(entity_id, amount, "gmGiveXp: non-positive amount rejected");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            amount,
+            "gmGiveXp: non-positive amount rejected"
+        );
         send_gm_feedback(entity_id, "gmGiveXp: amount must be positive", tx).await;
         return true;
     }
@@ -56,11 +62,20 @@ pub(super) async fn handle_give_xp(
         .and_then(|e| e.player_id)
         .is_none()
     {
-        tracing::warn!(entity_id, "gmGiveXp: caller has no player_id");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "gmGiveXp: caller has no player_id"
+        );
         send_gm_feedback(entity_id, "gmGiveXp: caller is not a player", tx).await;
         return true;
     }
-    tracing::info!(entity_id, amount, "gmGiveXp: granting XP to GM");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        amount,
+        "gmGiveXp: granting XP to GM"
+    );
     // `gm_feedback_to: Some(entity_id)` — the base sends the definitive
     // feedback line to the calling GM (here, the same entity as the
     // recipient) after the XP write commits. No optimistic "requested" line
@@ -95,7 +110,12 @@ pub(super) async fn handle_give_item(
     let (design_id_str, consumed) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, "gmGiveItem: malformed DesignId WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                "gmGiveItem: malformed DesignId WSTRING",
+            );
             send_gm_feedback(entity_id, "gmGiveItem: malformed DesignId", tx).await;
             return true;
         }
@@ -105,6 +125,7 @@ pub(super) async fn handle_give_item(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveItem: truncated args (missing INT32 Quantity)"
             );
@@ -121,9 +142,10 @@ pub(super) async fn handle_give_item(
         _ => {
             tracing::warn!(
                 entity_id,
-                design_id = %design_id_str,
+                entity_name = space_mgr.entity_label(entity_id),
+                design_arg = %design_id_str,
                 "gmGiveItem: DesignId is not a positive numeric design id — \
-                 internal-name resolution is not wired in the cell; rejecting"
+                 internal-name resolution is not wired in the cell; rejecting",
             );
             send_gm_feedback(
                 entity_id,
@@ -138,7 +160,12 @@ pub(super) async fn handle_give_item(
     // Clamp quantity. Reject < 1 outright (a zero/negative grant is a no-op
     // at best, a stack-underflow footgun at worst).
     if quantity < 1 {
-        tracing::warn!(entity_id, quantity, "gmGiveItem: quantity < 1 rejected");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            quantity,
+            "gmGiveItem: quantity < 1 rejected"
+        );
         send_gm_feedback(entity_id, "gmGiveItem: quantity must be >= 1", tx).await;
         return true;
     }
@@ -149,6 +176,7 @@ pub(super) async fn handle_give_item(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "gmGiveItem: caller has no player_id (not a player entity)"
             );
             send_gm_feedback(entity_id, "gmGiveItem: caller is not a player", tx).await;
@@ -158,8 +186,11 @@ pub(super) async fn handle_give_item(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
-        type_id,
+        player_name = space_mgr.entity_label(entity_id),
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         count,
         requested_qty = quantity,
         "gmGiveItem: granting item to GM"
@@ -205,6 +236,7 @@ pub(super) async fn handle_give_cash(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveCash: truncated args (need INT32)"
             );
@@ -215,6 +247,7 @@ pub(super) async fn handle_give_cash(
     if amount <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             amount,
             "gmGiveCash: non-positive amount rejected"
         );
@@ -224,14 +257,20 @@ pub(super) async fn handle_give_cash(
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
-            tracing::warn!(entity_id, "gmGiveCash: caller has no player_id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmGiveCash: caller has no player_id"
+            );
             send_gm_feedback(entity_id, "gmGiveCash: caller is not a player", tx).await;
             return true;
         }
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
+        player_name = space_mgr.entity_label(entity_id),
         amount,
         "gmGiveCash: granting cash to GM"
     );
@@ -272,6 +311,7 @@ pub(super) async fn handle_give_expertise(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveExpertise: truncated args (need INT32 disciplineId)"
             );
@@ -284,6 +324,7 @@ pub(super) async fn handle_give_expertise(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveExpertise: truncated args (missing INT32 expertise)"
             );
@@ -294,7 +335,8 @@ pub(super) async fn handle_give_expertise(
     if discipline_id <= 0 {
         tracing::warn!(
             entity_id,
-            discipline_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            discipline_id, // nt:id-only non-positive, so it names no discipline
             "gmGiveExpertise: non-positive discipline id rejected"
         );
         send_gm_feedback(
@@ -308,6 +350,7 @@ pub(super) async fn handle_give_expertise(
     if amount <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             amount,
             "gmGiveExpertise: non-positive amount rejected"
         );
@@ -317,15 +360,21 @@ pub(super) async fn handle_give_expertise(
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
-            tracing::warn!(entity_id, "gmGiveExpertise: caller has no player_id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmGiveExpertise: caller has no player_id"
+            );
             send_gm_feedback(entity_id, "gmGiveExpertise: caller is not a player", tx).await;
             return true;
         }
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
-        discipline_id,
+        player_name = space_mgr.entity_label(entity_id),
+        discipline_id, // nt:id-only no discipline name table in the NameBook yet
         amount,
         "gmGiveExpertise: granting expertise to GM"
     );
@@ -362,6 +411,7 @@ pub(super) async fn handle_give_applied_science(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveAppliedSciencePoints: truncated args (need INT32)"
             );
@@ -377,6 +427,7 @@ pub(super) async fn handle_give_applied_science(
     if amount <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             amount,
             "gmGiveAppliedSciencePoints: non-positive amount rejected"
         );
@@ -393,6 +444,7 @@ pub(super) async fn handle_give_applied_science(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "gmGiveAppliedSciencePoints: caller has no player_id"
             );
             send_gm_feedback(
@@ -406,7 +458,9 @@ pub(super) async fn handle_give_applied_science(
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
+        player_name = space_mgr.entity_label(entity_id),
         amount,
         "gmGiveAppliedSciencePoints: granting ASP to GM"
     );
@@ -443,6 +497,7 @@ pub(super) async fn handle_remove_item(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmRemoveItem: truncated args (need INT32 ItemID)"
             );
@@ -455,6 +510,7 @@ pub(super) async fn handle_remove_item(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmRemoveItem: truncated args (missing INT16 quantity)"
             );
@@ -465,7 +521,8 @@ pub(super) async fn handle_remove_item(
     if item_id <= 0 {
         tracing::warn!(
             entity_id,
-            item_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id, // nt:id-only non-positive, so it names no item
             "gmRemoveItem: non-positive item id rejected"
         );
         send_gm_feedback(entity_id, "gmRemoveItem: ItemID must be positive", tx).await;
@@ -474,6 +531,7 @@ pub(super) async fn handle_remove_item(
     if quantity <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             quantity,
             "gmRemoveItem: non-positive quantity rejected"
         );
@@ -483,15 +541,21 @@ pub(super) async fn handle_remove_item(
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
-            tracing::warn!(entity_id, "gmRemoveItem: caller has no player_id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmRemoveItem: caller has no player_id"
+            );
             send_gm_feedback(entity_id, "gmRemoveItem: caller is not a player", tx).await;
             return true;
         }
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
-        item_id,
+        player_name = space_mgr.entity_label(entity_id),
+        item_id, // nt:id-only an inventory instance; the cell holds no inventory to resolve its type
         quantity,
         "gmRemoveItem: removing item from GM"
     );

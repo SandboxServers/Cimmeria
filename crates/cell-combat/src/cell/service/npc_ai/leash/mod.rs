@@ -139,6 +139,7 @@ pub(super) async fn npc_ai_leash(
             target: "npc_ai.leash",
             event = "replan",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             had_route = route_end.is_some(),
             npc_to_spawn = horizontal_distance(&pos, &spawn),
             "NPC leashing without a route home: planned one"
@@ -241,7 +242,9 @@ async fn arrive(
             target: "npc_ai.leash",
             event = "follow_target_lost",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC leash reset: follow target no longer in the space -- follow cleared, the escort idles until a chain re-arms it"
         );
     }
@@ -263,8 +266,9 @@ async fn arrive(
         npc.leash.home_route_partial = false;
         npc.leash.reaggro_suppressed_until = Some(now + REAGGRO_SUPPRESSION);
 
-        // No state-flag unsetting: a leashing NPC is alive, so BSF_DEAD and
-        // BSF_MOVEMENT_LOCK were never set on it.
+        // No state-flag unsetting: a leashing NPC is alive, so BSF_DEAD was
+        // never set on it, and a stun's BSF_MOVEMENT_LOCK reference belongs
+        // to its timed-effect entry, which releases it on expiry.
         let stat_update = npc.stats.serialize_dirty();
         npc.stats.clear_dirty();
         (stat_update, npc.state_field)

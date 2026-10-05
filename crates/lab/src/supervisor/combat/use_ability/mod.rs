@@ -183,8 +183,12 @@ impl Supervisor {
             .map_err(|e| run.fail("baseline", e))?;
         let seq_before = pump.head;
         let t0 = Instant::now();
+        // Placing needs the empty buttons too: the bound-only read lists
+        // none of them, and on a fresh character's empty bar it lists
+        // nothing at all (the 2026-10-04 live run's "no visible empty
+        // hotbar button" on a bar of 100 empty buttons).
         let hotbar = self
-            .read_hotbar(false)
+            .read_hotbar(req.place)
             .await
             .map_err(|e| run.fail("read_hotbar", e))?;
         let probe = match &req.query {
@@ -211,7 +215,12 @@ impl Supervisor {
             let target = hotbar_now.first_empty_visible().cloned().ok_or_else(|| {
                 run.fail(
                     "place",
-                    "no visible empty hotbar button to place the ability on",
+                    format!(
+                        "no visible empty hotbar button to place the ability on \
+                         ({} buttons read, {} visible)",
+                        hotbar_now.buttons.len(),
+                        hotbar_now.buttons.iter().filter(|b| b.visible).count()
+                    ),
                 )
             })?;
             let tp = Instant::now();
@@ -345,6 +354,9 @@ impl Supervisor {
             "cooldown_after": cooldown_after,
             "player_after": after.map(|a| a.to_json()),
             "event_seq": { "before": seq_before, "after": last_head },
+            // Host epoch ms just before the key or click went out: the
+            // UAT runner centres its cast-id press window on it.
+            "press_ms": press_ms,
             "rings": pump.to_json(),
         })))
     }

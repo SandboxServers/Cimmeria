@@ -27,10 +27,14 @@ pub(super) async fn attached_sent(
         target: "mail",
         event = "mail.cash_debited",
         entity_id = caller.entity_id,
+        entity_name = session.player_name,
         player_id = caller.player_id,
+        player_name = session.player_name,
         account_id = session.account_id,
+        account_name = session.account_name,
         target_player_id = outcome.recipient_id,
-        mail_id = outcome.mail_id,
+        target_player_name = outcome.recipient_name.as_deref(),
+        mail_id = outcome.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         naquadah_before = outcome.debit.before,
         naquadah_after = outcome.debit.after,
         postage = attachment::POSTAGE,
@@ -39,17 +43,23 @@ pub(super) async fn attached_sent(
         "gate-mail postage and attached naquadah debited",
     );
     if let Some(item) = outcome.item {
+        let book = cimmeria_names::book();
         tracing::info!(
             target: "mail",
             event = "mail.item_escrowed",
             entity_id = caller.entity_id,
+            entity_name = session.player_name,
             player_id = caller.player_id,
+            player_name = session.player_name,
             account_id = session.account_id,
+            account_name = session.account_name,
             target_player_id = outcome.recipient_id,
-            mail_id = outcome.mail_id,
+            target_player_name = outcome.recipient_name.as_deref(),
+            mail_id = outcome.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
             item_id = item.source_item_id,
-            escrow_item_id = item.escrow_item_id,
-            type_id = item.type_id,
+            escrow_item_id = item.escrow_item_id, // nt:id-only escrow copy of the item already named by item_name on this line
+            item_type_id = item.type_id,
+            item_name = book.item(item.type_id),
             quantity = item.quantity,
             stack_before = item.stack_before,
             stack_after = item.stack_after,

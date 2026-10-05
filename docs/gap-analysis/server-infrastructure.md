@@ -113,6 +113,8 @@ Re-read 2026-09-25. Every vendor-priced sink and faucet depends on a store windo
 
 The GM command surface shipped in June via the client's **native `/` console**: the `SGWGmPlayer` class flip (PR #473, merged in #518 on 2026-06-17) makes a GM enter the world as entity class `0x03`, which unlocks the client's built-in GM command tail. Owner-confirmed working 2026-06-20. The **legacy dot-command parity campaign** has integrated 12 of 49 P packets (P01-P05, P08, P18, P26, P44-P47); P49 is implemented and awaiting UAT; P06, P07 and P48 are Ready; the other P packets wait on dependencies and all 14 G design groups (G01-G14) are BlockedDesign ([work-packets.md](../analysis/legacy-command-parity/work-packets.md)). None of the six milestone UATs (M1-M6) has run. A GM mute (`.mute` / `.unmute`) landed with the social-systems campaign (SS-C3); ban is still missing.
 
+- **Debug Area campaign (2026-10-05, [ledger](../analysis/debug-area/README.md))**: world 1300 is a GM test map with a copy of every debug-hub service; #1230 adds a GM ability granter and reset NPC
+
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Admin API (REST) | IM | -- | crates/admin-api/ | Loopback bind by default (#724); still **no authentication** (#439 open), so it must not be published |
@@ -128,6 +130,7 @@ The GM command surface shipped in June via the client's **native `/` console**: 
 | Item grant | CW | -- | cell/console/gm/give.rs | `gmGiveItem`, alongside give-xp / give-cash / remove-item / give-expertise / give-ASP; base-side confirmation. Owner-confirmed 2026-06-20. Dot `.giveitem` (P06) not yet built |
 | Action logging | NT | -- | cell/console/dispatch.rs:47-116, cell/playtest_friction.rs | **Promoted 2026-09-25 (was IM).** Accepted commands log with `account_id` / `player_id` / `access_level` (#644) and relay to the Discord GM channel; rejections (unknown command, argc, bad target) now log with a `reason` (#676), closing playtest gap G7. The accepted-command audit reconstructed the 2026-09-18 playtest; rejection logging not yet seen in a session |
 | Announcement broadcast | NT | -- | cell/console/gm/shout.rs | `/gmshout` and `.announce` (SS-C2); see §21 "GM broadcast" |
+| GM ability granter and reset NPCs | NT | -- | cell-content/content/executor/ability_granter.rs | **New 2026-10-05 (#1230).** Content action `gm_ability_bulk` (`grant_all`, `reset`) on two Debug Area NPCs: the same tree plan and cooldown clear as `/gmgiveallabilities` and `/gmresetabilities`, GM-gated on the account's access level, debounced to one firing per player per chain per second, audited with `source = npc_granter`. Unit tests; not yet clicked in a client (DA-U3, DA-U4) |
 
 ### Metrics / Telemetry --- CW
 

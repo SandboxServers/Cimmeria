@@ -67,12 +67,14 @@ pub(super) enum CodOutcome {
 }
 
 /// A committed COD payment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CodPaid {
     pub(super) price: i32,
     pub(super) balance: Balance,
     /// The COD's sender, who receives the payment mail.
     pub(super) sender_id: i32,
+    /// The sender's stored name, for the log line only.
+    pub(super) sender_name: String,
     pub(super) payment_mail_id: i32,
 }
 
@@ -171,6 +173,7 @@ pub(super) async fn pay_cod_tx(
         price,
         balance,
         sender_id,
+        sender_name: mail.sender_name,
         payment_mail_id,
     }))
 }
@@ -218,15 +221,20 @@ async fn clear_cod(
 pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
     match pay_cod_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
         Ok(CodOutcome::Paid(paid)) => {
+            let who = ctx.identity();
             tracing::info!(
                 target: "mail",
                 event = "mail.cod_paid",
                 entity_id = ctx.entity_id,
+                entity_name = who.player_name,
                 player_id = ctx.player_id,
+                player_name = who.player_name,
                 account_id = ctx.account_id(),
+                account_name = who.account_name,
                 target_player_id = paid.sender_id,
-                mail_id,
-                payment_mail_id = paid.payment_mail_id,
+                target_player_name = paid.sender_name.as_str(),
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
+                payment_mail_id = paid.payment_mail_id, // nt:id-only payment mail row, its subject is player text kept out of logs
                 price = paid.price,
                 naquadah_before = paid.balance.before,
                 naquadah_after = paid.balance.after,
@@ -252,13 +260,17 @@ pub(super) async fn pay_cod(ctx: &MailCtx<'_>, mail_id: i32) {
             .await;
         }
         Ok(CodOutcome::CancelledSenderGone { price, sender_name }) => {
+            let who = ctx.identity();
             tracing::info!(
                 target: "mail",
                 event = "mail.cod_cancelled",
                 entity_id = ctx.entity_id,
+                entity_name = who.player_name,
                 player_id = ctx.player_id,
+                player_name = who.player_name,
                 account_id = ctx.account_id(),
-                mail_id,
+                account_name = who.account_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = "sender_gone",
                 price,
                 sender_name = %sender_name,

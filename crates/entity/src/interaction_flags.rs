@@ -112,6 +112,59 @@ pub const INT_NORMAL_LOOT: i64 = 4611686018427387904;
 // Bit 63 (INT_MissionLoot = 9223372036854775808) is NOT expressible as i64.
 // See #97 for the widening discussion.
 
+/// Every `EInteractionNotificationType` token, in the client's declaration
+/// order, for log lines (`interaction_flags_names`, NT-31). Bit 63
+/// (`INT_MissionLoot`) is named here though no `i64` constant holds it:
+/// [`FlagSet::render`] reads an `i64` word's raw bits.
+///
+/// [`FlagSet::render`]: cimmeria_common::flag_names::FlagSet::render
+pub const INTERACTION_FLAGS: cimmeria_common::flag_names::FlagSet =
+    cimmeria_common::flag_names::FlagSet::new(&[
+        (2, "INT_Banker"),
+        (4, "INT_Auction"),
+        (8, "INT_Pvp"),
+        (16, "INT_Dhd"),
+        (32, "INT_RingNetwork"),
+        (64, "INT_Organization"),
+        (128, "INT_Trainer"),
+        (256, "INT_MinigameLivewire"),
+        (512, "INT_MinigameActivate"),
+        (1024, "INT_MinigameAnalyze"),
+        (2048, "INT_MinigameBypass"),
+        (4096, "INT_MinigameConverse"),
+        (8192, "INT_VendorArmor"),
+        (16384, "INT_VendorWeapons"),
+        (32768, "INT_VendorConsumables"),
+        (65536, "INT_VendorGeneral"),
+        (131072, "INT_VendorMission"),
+        (262144, "INT_VendorCraftBio"),
+        (524288, "INT_VendorCraftPower"),
+        (1048576, "INT_VendorCraftMaterials"),
+        (2097152, "INT_VendorCraftElectronics"),
+        (4194304, "INT_AStoryMissionPending"),
+        (8388608, "INT_AStoryMissionAvaliable"),
+        (16777216, "INT_AStoryMissionActive"),
+        (33554432, "INT_AStoryMissionTurnIn"),
+        (67108864, "INT_NonAStoryMissionPending"),
+        (134217728, "INT_NonAStoryMissionAvaliable"),
+        (268435456, "INT_NonAStoryMissionActive"),
+        (536870912, "INT_NonAStoryMissionTurnIn"),
+        (1073741824, "INT_MissionWorldObject"),
+        (2147483648, "INT_MissionWaypoint"),
+        (4294967296, "INT_DrossPile"),
+        (9223372036854775808, "INT_MissionLoot"),
+        (4611686018427387904, "INT_NormalLoot"),
+        (2305843009213693952, "INT_Attackable"),
+        (1152921504606846976, "INT_Machine_Electronics"),
+        (576460752303423488, "INT_Machine_Materials"),
+        (288230376151711744, "INT_Machine_Power"),
+        (144115188075855872, "INT_Machine_Biomedical"),
+        (72057594037927936, "INT_Machine_ReverseEng"),
+        (36028797018963968, "INT_Attackable_In_Good_Cover"),
+        (18014398509481984, "INT_Attackable_In_Normal_Cover"),
+        (9007199254740992, "INT_Attackable_In_Poor_Cover"),
+    ]);
+
 /// Resolve a symbolic name to its bit value, or `None` for unknown
 /// names. The content engine loader (`crates/content-engine/src/
 /// loader.rs::convert_action`) treats `None` as a soft authoring error:
@@ -214,5 +267,52 @@ mod tests {
         assert_eq!(INT_NORMAL_LOOT, 4_611_686_018_427_387_904);
         assert_eq!(INT_ATTACKABLE, 2_305_843_009_213_693_952);
         assert_eq!(INT_MACHINE_REVERSE_ENG, 72_057_594_037_927_936);
+    }
+
+    /// The table is the client's declaration, token for token (not a copy
+    /// of the constants above), and renders an `i64` word's bit 63.
+    #[test]
+    fn interaction_flags_match_enumerations_xml() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../entities/defs/enumerations.xml"
+        );
+        let xml = std::fs::read_to_string(path).expect("read enumerations.xml");
+        let start = xml
+            .find("<EInteractionNotificationType>")
+            .expect("EInteractionNotificationType");
+        let end = start
+            + xml[start..]
+                .find("</EInteractionNotificationType>")
+                .expect("closing tag");
+        let client: Vec<(u64, String)> = xml[start..end]
+            .split("<Token>")
+            .skip(1)
+            .map(|t| {
+                let field = |tag: &str| {
+                    let a = t.find(&format!("<{tag}>")).unwrap() + tag.len() + 2;
+                    let b = t.find(&format!("</{tag}>")).unwrap();
+                    t[a..b].trim().to_owned()
+                };
+                (field("Value").parse().expect("u64 value"), field("Name"))
+            })
+            .collect();
+        let ours: Vec<(u64, String)> = INTERACTION_FLAGS
+            .entries()
+            .iter()
+            .map(|&(m, n)| (m, n.to_owned()))
+            .collect();
+        assert_eq!(ours, client);
+        assert_eq!(
+            INTERACTION_FLAGS
+                .render(INT_TRAINER | INT_A_STORY_MISSION_ACTIVE)
+                .to_string(),
+            "INT_Trainer|INT_AStoryMissionActive"
+        );
+        assert_eq!(
+            INTERACTION_FLAGS.render(i64::MIN).to_string(),
+            "INT_MissionLoot"
+        );
+        assert_eq!(INTERACTION_FLAGS.render(1i64).to_string(), "0x1");
     }
 }

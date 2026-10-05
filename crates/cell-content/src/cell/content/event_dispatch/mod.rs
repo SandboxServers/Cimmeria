@@ -85,7 +85,9 @@ pub async fn fire_chain_by_id(
     if actions.is_empty() {
         tracing::warn!(
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "fire_chain_by_id: chain not found or has no actions"
         );
         return;
@@ -93,7 +95,9 @@ pub async fn fire_chain_by_id(
 
     tracing::info!(
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         action_count = actions.len(),
         "fire_chain_by_id: executing"
     );

@@ -53,6 +53,8 @@ pub enum Error {
     UnsupportedArchive,
     UnsupportedConfiguration,
     InvalidArtifact,
+    /// The signed blob could not be fetched; nothing was accepted.
+    Network,
     Cancelled,
     LauncherTooOld,
 }

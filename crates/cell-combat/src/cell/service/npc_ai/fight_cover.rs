@@ -131,9 +131,11 @@ pub(super) async fn route_via_cover(
                     event = "decision",
                     decision_outcome = "move_to_cover",
                     npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
                     target_id,
-                    chunk_id = slot.chunk_id,
-                    node_id = slot.node_id,
+                    target_name = space_mgr.entity_label(target_id),
+                    chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+                    node_id = slot.node_id, // nt:id-only cover nodes carry no names
                     in_range,
                     arrived,
                     "NPC AI: picked cover slot"
@@ -144,9 +146,11 @@ pub(super) async fn route_via_cover(
                     event = "decision",
                     decision_outcome = "stay_in_cover",
                     npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
                     target_id,
-                    chunk_id = slot.chunk_id,
-                    node_id = slot.node_id,
+                    target_name = space_mgr.entity_label(target_id),
+                    chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+                    node_id = slot.node_id, // nt:id-only cover nodes carry no names
                     arrived,
                     "NPC AI: holding cover slot"
                 );
@@ -254,9 +258,11 @@ pub fn blind_in_slot(
             event = "decision",
             decision_outcome = "cover_no_shot",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
-            chunk_id = slot.chunk_id,
-            node_id = slot.node_id,
+            target_name = space_mgr.entity_label(target_id),
+            chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+            node_id = slot.node_id, // nt:id-only cover nodes carry no names
             blind_ms = now.duration_since(since).as_millis() as u64,
             "NPC AI: in cover with no line of sight from the peek point, holding fire"
         );
@@ -314,9 +320,11 @@ fn report_release(
         event = "decision",
         decision_outcome = reason.outcome(),
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_id,
-        chunk_id = slot.chunk_id,
-        node_id = slot.node_id,
+        target_name = space_mgr.entity_label(target_id),
+        chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+        node_id = slot.node_id, // nt:id-only cover nodes carry no names
         world = %super::world_label(space_mgr, npc_id),
         "NPC AI: released cover slot, re-evaluating"
     );
@@ -374,7 +382,9 @@ fn report_no_cover(
         event = "decision",
         decision_outcome = "no_cover",
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         tag = space_mgr
             .get_entity(npc_id)
             .and_then(|e| e.tag.as_deref())
@@ -409,8 +419,9 @@ fn log_selection(space_mgr: &mut SpaceManager, npc_id: u32, pick: &PickTrace, no
             target: "cover.selection",
             event = "picked",
             npc_id,
-            chunk_id = best.chunk_id,
-            node_id = best.node_id,
+            npc_name = space_mgr.entity_label(npc_id),
+            chunk_id = best.chunk_id, // nt:id-only cover chunks carry no names
+            node_id = best.node_id, // nt:id-only cover nodes carry no names
             score = best.score,
             move_dist = best.move_dist,
             threat_dist = best.threat_dist,
@@ -425,9 +436,10 @@ fn log_selection(space_mgr: &mut SpaceManager, npc_id: u32, pick: &PickTrace, no
             target: "cover.selection",
             event = "rejected",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             rank = rank + 1,
-            chunk_id = c.chunk_id,
-            node_id = c.node_id,
+            chunk_id = c.chunk_id, // nt:id-only cover chunks carry no names
+            node_id = c.node_id, // nt:id-only cover nodes carry no names
             score = c.score,
             move_dist = c.move_dist,
             threat_dist = c.threat_dist,

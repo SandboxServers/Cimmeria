@@ -470,6 +470,18 @@ impl CellService {
                     );
                 }
             }
+            // NPC ability sets for `gmSetMobAbilitySet`. Not fatal: the GM
+            // command refuses with `no_ability_set_data` until a restart.
+            match spawner::load_ability_sets(pool).await {
+                Ok(sets) => {
+                    space_mgr.ability_sets = sets;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load NPC ability sets: {e} -- gmSetMobAbilitySet                          refuses for this process lifetime"
+                    );
+                }
+            }
             // Summon ability → pet template. Not fatal: with no catalog every
             // summon ability fails as a non-damage ability does today.
             match spawner::load_pet_summons(pool).await {
@@ -525,7 +537,7 @@ impl CellService {
                     for (rid, r) in &regions {
                         if let Some(existing) = point_set_to_region.insert(r.point_set_id, *rid) {
                             tracing::error!(
-                                point_set_id = r.point_set_id,
+                                point_set_id = r.point_set_id, // nt:id-only ring point sets have no name column
                                 first_region = existing, second_region = *rid,
                                 "duplicate point_set_id across ring regions — routing will be non-deterministic"
                             );
@@ -568,6 +580,12 @@ impl CellService {
             }
         }
 
+        // The process name book (NT-01). The base loads it too; whichever
+        // starts first reads the database and the other returns at once.
+        if let Some(pool) = self.db_pool.as_deref() {
+            cimmeria_names::load_at_boot(pool).await;
+        }
+
         // Build the content engine — load from DB if available, else fallback
         let engine = content::build_engine(self.db_pool.as_deref()).await;
         let db_pool = self.db_pool.clone();
@@ -575,6 +593,7 @@ impl CellService {
         // Take ownership of channels for the message processing loop
         let rx = self.base_to_cell_rx.take();
         let tx = self.cell_to_base_tx.clone();
+        let mut labels_rx = self.entity_labels_rx.take();
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             // Stash a shutdown signal so `stop()` can ask the loop to exit
@@ -584,6 +603,7 @@ impl CellService {
             let handle = tokio::spawn(async move {
                 super::message_loop::run_cell_loop(
                     &mut rx,
+                    &mut labels_rx,
                     &tx,
                     space_mgr,
                     engine,

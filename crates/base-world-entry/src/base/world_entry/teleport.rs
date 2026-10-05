@@ -18,7 +18,9 @@ use sqlx::PgPool;
 use crate::mercury::compose_forced_position_body;
 
 use super::super::helpers::send_bundle_to_witness_reliable;
+use super::super::session_identity;
 use super::super::ConnectedClientState;
+use super::space_registry::world_for_space;
 
 /// Authoritative same-world teleport: snap the player's avatar to `position`.
 ///
@@ -50,33 +52,51 @@ pub(super) async fn handle_teleport_player(
 ) {
     // The cell owns authoritative `space_id` and passes it through. We only
     // need the connection state for account_id/active_player_id (DB persist).
-    let (account_id, active_player_id) = {
+    let (account_id, active_player_id, id) = {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
-                tracing::warn!(entity_id, "TeleportPlayer: no client addr for entity");
+                tracing::warn!(
+                    entity_id, // nt:id-only no session maps to it, so there is no name
+                    space_id,
+                    world = world_for_space(space_id),
+                    "TeleportPlayer: no client addr for entity"
+                );
                 return;
             }
         };
         let clients = connected.lock().unwrap();
         match clients.get(&addr) {
-            Some(c) => (c.account_id, c.active_player_id),
+            Some(c) => (
+                c.account_id,
+                c.active_player_id,
+                session_identity::session_identity(c),
+            ),
             None => {
-                tracing::warn!(entity_id, %addr, "TeleportPlayer: client state not found");
+                tracing::warn!(
+                    entity_id, // nt:id-only the session is gone, so there is no name
+                    %addr,
+                    "TeleportPlayer: client state not found"
+                );
                 return;
             }
         }
     };
+    let world = world_for_space(space_id);
 
     // The identity pair is already resolved above for the DB persist; emitting
     // it here costs nothing and is what makes a snap-back attributable to an
     // account rather than to a recycled entity slot.
     tracing::info!(
         entity_id,
+        entity_name = id.player_name,
         account_id,
+        account_name = id.account_name,
         player_id = active_player_id,
+        player_name = id.player_name,
         ?position,
         space_id,
+        world,
         "TeleportPlayer: snapping avatar"
     );
 
@@ -103,8 +123,11 @@ pub(super) async fn handle_teleport_player(
     tracing::debug!(
         target: "wire.out.forced_position",
         entity_id,
+        entity_name = id.player_name,
         account_id,
+        account_name = id.account_name,
         space_id,
+        world,
         x = position[0],
         y = position[1],
         z = position[2],
@@ -130,7 +153,9 @@ pub(super) async fn handle_teleport_player(
             None => {
                 tracing::error!(
                     entity_id,
+                    entity_name = id.player_name,
                     account_id,
+                    account_name = id.account_name,
                     "TeleportPlayer: no active_player_id cached — refusing to persist"
                 );
                 return;
@@ -151,15 +176,26 @@ pub(super) async fn handle_teleport_player(
             Ok(r) if r.rows_affected() == 0 => {
                 tracing::warn!(
                     entity_id,
-                    pid,
+                    entity_name = id.player_name,
+                    player_id = pid,
+                    player_name = id.player_name,
                     account_id,
+                    account_name = id.account_name,
                     "TeleportPlayer: persistence UPDATE matched 0 rows"
                 );
             }
             Ok(_) => {}
             Err(e) => {
-                tracing::error!(entity_id, pid, account_id, error = %e,
-                    "TeleportPlayer: failed to persist position");
+                tracing::error!(
+                    entity_id,
+                    entity_name = id.player_name,
+                    player_id = pid,
+                    player_name = id.player_name,
+                    account_id,
+                    account_name = id.account_name,
+                    error = %e,
+                    "TeleportPlayer: failed to persist position"
+                );
             }
         }
     }
@@ -383,5 +419,52 @@ mod tests {
             "teleport handshake bundle must collapse to 1 reliable packet \
              (was 2 pre-bundle)"
         );
+    }
+
+    /// Rule 6 on the teleport line (NT-23): the snap names the character,
+    /// the login and the world, not only the entity slot and space id.
+    #[tokio::test]
+    async fn teleport_snap_line_names_the_player_and_the_world() {
+        let capture = crate::test_support::LogCapture::install();
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let entity_id = 0x2323u32;
+        // A space id no other test registers: the registry is process-wide.
+        let space_id = 0x7E57_0023u32;
+        super::super::space_registry::register_space("NT23_Teleport_World".into(), space_id);
+        let addr: SocketAddr = "127.0.0.1:40123".parse().unwrap();
+        let mut session = crate::test_support::test_default_connected_client_state();
+        session.account_id = 6;
+        session.account_name = Some("sgc_login".into());
+        session.active_player_id = Some(12);
+        session.player_name = Some("Teal'c".into());
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, session)])));
+
+        handle_teleport_player(
+            entity_id,
+            space_id,
+            [10.0, 20.0, 30.0],
+            [1.0, 2.0, 3.0],
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        let ev = capture
+            .find_message(tracing::Level::INFO, "TeleportPlayer: snapping avatar")
+            .expect("the snap line must fire");
+        for (key, want) in [
+            ("entity_name", "Teal'c"),
+            ("player_name", "Teal'c"),
+            ("account_name", "sgc_login"),
+            ("world", "NT23_Teleport_World"),
+        ] {
+            assert!(
+                ev.has_field(key, want),
+                "expected {key}={want}; got {ev:#?}"
+            );
+        }
     }
 }

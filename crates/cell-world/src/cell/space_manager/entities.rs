@@ -8,7 +8,7 @@ use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::super::messages::CellToBaseMsg;
-use super::SpaceManager;
+use super::{EntityNames, SpaceManager};
 
 /// Outcome of [`SpaceManager::despawn_npc`].
 ///
@@ -99,7 +99,13 @@ impl SpaceManager {
         // identity from `BaseToCellMsg::CreateEntity`. That handler emits the
         // identity-bearing "CreateEntity" line for this same event — this one
         // is the spatial-grid insert, keyed by entity/space only.
-        tracing::debug!(entity_id, space_id, ?position, "Cell entity created");
+        tracing::debug!(
+            entity_id, // nt:id-only not stamped yet, the CreateEntity line names it
+            space_id,
+            world = self.world_name_for_space(space_id),
+            ?position,
+            "Cell entity created"
+        );
         Ok(space_id)
     }
 
@@ -115,6 +121,16 @@ impl SpaceManager {
         // teardown to an account. `entity_id` alone is not enough here of all
         // places: the id is released for reuse the moment this returns.
         let id = self.player_identity(entity_id);
+        // The names and lifetime go into the departed ring once the entity
+        // is gone, so a late row can still name this occupant of the slot.
+        let departing = self.departure_snapshot(entity_id);
+        // AB-T6: a cast still in its warmup ends here with an `abandoned`
+        // outcome (a logout took it already, as `caster_disconnected`).
+        crate::cell::effects::ability_metrics::abandon_pending_cast(
+            self,
+            entity_id,
+            crate::cell::effects::ability_metrics::ABANDONED_DESTROYED,
+        );
         // GM-only session buffers are keyed by entity_id; drop them so a
         // destroyed (and possibly later reused) id can't inherit stale pending
         // authoring SQL or the autosave-spawn flag.
@@ -223,12 +239,24 @@ impl SpaceManager {
         // And for the NPC AI's zero-health invariant warning: a respawn on a
         // recycled id must be able to warn on its first bad tick.
         self.zero_health_npc_log.forget(entity_id);
+        // AB-N1 combat debug: a recycled id must not inherit a predecessor's
+        // toggles, budget or mob-debug entries.
+        self.combat_debug.forget_entity(entity_id);
         // And the NPC AI detectors (stale velocity, leash loop, ...).
         self.npc_detectors.forget(entity_id);
+        let names = departing.map(|d| d.names()).unwrap_or_default();
+        if let Some(departing) = departing {
+            self.record_departure(departing);
+        }
         tracing::debug!(
             entity_id,
+            entity_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             "Cell entity destroyed"
         );
     }
@@ -288,11 +316,15 @@ impl SpaceManager {
         // is the client-controller registry the AoI tick iterates. They are
         // set together by `connect_entity`, but reading both means a future
         // change that forgets one still cannot route a player in here.
+        // Snapshot before the teardown below removes the entity (Rule 6).
+        let names = EntityNames::of(entity);
         if entity.is_player || space.players.contains(&entity_id) {
             tracing::warn!(
                 target: "console.despawn",
                 entity_id,
+                entity_name = names.entity_name,
                 space_id,
+                world = %space.world_name,
                 is_player = entity.is_player,
                 in_players_set = space.players.contains(&entity_id),
                 "despawn refused: target is a player — despawn_npc is NPC/spawnable-only"
@@ -334,7 +366,13 @@ impl SpaceManager {
                     // feedback.
                     tracing::warn!(
                         target: "console.despawn",
-                        witness_id, entity_id, error = %e,
+                        witness_id,
+                        witness_name = self.entity_label(witness_id),
+                        entity_id,
+                        entity_name = names.entity_name,
+                        template_id = names.template_id,
+                        template_name = names.template_name,
+                        error = %e,
                         "LeftAoI send to base failed during despawn"
                     );
                 }
@@ -371,9 +409,13 @@ impl SpaceManager {
                 };
                 tracing::debug!(
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     space_id,
+                    world = %space.world_name,
                     "Entity connected (player)"
                 );
             }
@@ -389,6 +431,13 @@ impl SpaceManager {
         // Snapshot identity up front: `destroy_entity` below removes the
         // entity, so the closing log can no longer resolve it.
         let id = self.player_identity(entity_id);
+        // AB-T6: a logout mid-warmup abandons the cast, named as such before
+        // `destroy_entity` below would call it a plain destroy.
+        crate::cell::effects::ability_metrics::abandon_pending_cast(
+            self,
+            entity_id,
+            crate::cell::effects::ability_metrics::ABANDONED_DISCONNECTED,
+        );
         // Drop GM-only session buffers (keyed by entity_id) on disconnect so
         // pending authoring SQL / the autosave-spawn flag don't outlive the
         // session. Same rationale as `destroy_entity`.
@@ -471,9 +520,17 @@ impl SpaceManager {
                         .await
                     {
                         tracing::warn!(
-                            witness_id, entity_id,
+                            witness_id,
+                            witness_name = space
+                                .entities
+                                .get(&witness_id)
+                                .and_then(|w| w.identity().player_name),
+                            entity_id,
+                            entity_name = id.player_name,
                             account_id = id.account_id,
+                            account_name = id.account_name,
                             player_id = id.player_id,
+                            player_name = id.player_name,
                             error = %e,
                             "LeftAoI send to base failed during disconnect"
                         );
@@ -491,8 +548,11 @@ impl SpaceManager {
         self.destroy_entity(entity_id);
         tracing::debug!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             "Entity disconnected and destroyed"
         );
     }

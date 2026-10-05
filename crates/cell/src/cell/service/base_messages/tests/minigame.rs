@@ -156,3 +156,59 @@ async fn assert_non_victory_result_fires_no_chains(result_code: u8) {
         "result_code {result_code} is not victory (1), so it must not fire victory chains"
     );
 }
+
+/// Rule 5 + Rule 6: the cell's "Minigame result" row, the one a reader
+/// checks first when a hack or bypass "did nothing", names the player, not
+/// only the entity slot it happened to hold.
+#[tokio::test]
+async fn minigame_result_row_names_the_player() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.account_id = Some(6);
+        e.player_id = Some(100);
+        e.stamp_log_names(Some("Daniel"), Some("sgc_daniel"));
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    handle_base_message(
+        BaseToCellMsg::MinigameResult {
+            entity_id: 1,
+            result_code: 2, // defeat: no chains to fire
+            on_victory_chains: vec![],
+        },
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+        &[],
+    )
+    .await;
+
+    let event = capture
+        .find_message(Level::INFO, "Minigame result")
+        .expect("every minigame outcome logs one result row");
+    for (key, want) in [
+        ("entity_name", "Daniel"),
+        ("account_id", "6"),
+        ("account_name", "sgc_daniel"),
+        ("player_id", "100"),
+        ("player_name", "Daniel"),
+    ] {
+        assert!(
+            event.has_field(key, want),
+            "the minigame result row must name its player: expected \
+             {key}={want}; got {event:#?}"
+        );
+    }
+}

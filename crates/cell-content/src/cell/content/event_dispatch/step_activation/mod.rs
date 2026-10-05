@@ -100,8 +100,11 @@ pub fn fire_step_activation_regions<'a>(
         {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 step_id,
+                step_name = cimmeria_names::book().mission_step(step_id),
                 reason = refusal,
                 max_depth = MAX_REPLAY_DEPTH,
                 "step-activation region replay refused — a replayed chain advanced \
@@ -160,8 +163,11 @@ async fn replay_regions(
 
     tracing::debug!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         step_id,
+        step_name = cimmeria_names::book().mission_step(step_id),
         world = %world,
         candidates = tags.len(),
         reason = REPLAY_REASON,
@@ -177,8 +183,11 @@ async fn replay_regions(
         if !still_inside {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 step_id,
+                step_name = cimmeria_names::book().mission_step(step_id),
                 region_tag = %tag,
                 reason = "player_left_during_replay",
                 "step-activation region replay: skipping a volume the player no longer occupies"
@@ -260,8 +269,11 @@ async fn replay_one(
     if resolved.actions.is_empty() {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             step_id,
+            step_name = cimmeria_names::book().mission_step(step_id),
             region_tag,
             reason = REPLAY_REASON,
             "step-activation region replay: no mission-gated chain matched"
@@ -271,9 +283,13 @@ async fn replay_one(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         step_id,
+        step_name = cimmeria_names::book().mission_step(step_id),
         region_tag,
         actions = resolved.actions.len(),
         reason = REPLAY_REASON,

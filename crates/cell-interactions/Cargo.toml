@@ -33,6 +33,8 @@ cimmeria-wire = { workspace = true }
 # The chain engine the initial-response and dial paths fire events through.
 cimmeria-content-engine = { workspace = true }
 cimmeria-entity = { workspace = true }
+# `error_texts` names for logged `onErrorCode` values (NT-31).
+cimmeria-names = { workspace = true }
 # The trainer-offer counters.
 cimmeria-observability = { workspace = true }
 # The respawn notification.

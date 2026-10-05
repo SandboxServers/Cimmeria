@@ -28,8 +28,8 @@ pub(super) async fn observed<T>(
             OrgStoreError::Db(db) => tracing::warn!(
                 target: "org",
                 event,
-                org_id,
-                player_id,
+                org_id, // nt:id-only shared refusal helper receives ids only, the handler's outcome row names the org
+                player_id, // nt:id-only shared refusal helper receives ids only, the handler's outcome row names the member
                 reason = e.reason(),
                 error = %db,
                 "Organization write failed"
@@ -37,8 +37,8 @@ pub(super) async fn observed<T>(
             _ => tracing::warn!(
                 target: "org",
                 event,
-                org_id,
-                player_id,
+                org_id, // nt:id-only shared refusal helper receives ids only, the handler's outcome row names the org
+                player_id, // nt:id-only shared refusal helper receives ids only, the handler's outcome row names the member
                 reason = e.reason(),
                 "Organization write refused"
             ),

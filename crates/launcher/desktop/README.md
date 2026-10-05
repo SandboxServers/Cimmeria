@@ -15,7 +15,9 @@ that resource retain settings and patch notes but cannot install. Content prepar
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
-now observes native game lifecycle. Consented [launcher summaries](docs/launcher-summaries.md) are connected,
+now observes native game lifecycle and, for a player who opts in, injects the
+[game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
+Consented [launcher summaries](docs/launcher-summaries.md) are connected,
 but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
 
 ## Native operation and storage contracts
@@ -230,6 +232,16 @@ npm run uat:install --prefix crates/launcher/desktop/frontend
 bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml --example state_bridge --target-dir target/desktop
 npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/target/desktop/debug/examples/state_bridge"
 ```
+
+The native-backed UATs (`uat:adoption`, `uat:launch`, `uat:migration`,
+`uat:game-telemetry`, `uat:game-update`, `uat:game-update-apply`, `uat:updater`,
+`uat:updater-apply`)
+each spawn an ignored bridge test from a Cargo test binary named by an
+environment variable. The updater pair needs the engine test binary in
+`UPDATER_UAT_BINARY`; the others need the shell test binary
+(`GAME_TELEMETRY_UAT_BINARY` for the game-diagnostics toggle). The adoption
+bridge and its optional Wine backend are described in the
+[migration contract](docs/migration.md#verified-copy-adoption-in-settings).
 
 Build the development executable without opening it:
 
@@ -696,4 +708,4 @@ experimental Windows x86 module-load helper and remaining integration gates.
 
 See [legacy migration](docs/migration.md) for the native preview/confirmed import API,
 identity and consent preservation, historical ledger limits and crash recovery.
-Shell import controls and updater migration remain separate integration work.
+Current import controls and signed launcher Apply/restart are documented in [migration](docs/migration.md) and [updater](docs/updater.md); production updater configuration remains disabled.

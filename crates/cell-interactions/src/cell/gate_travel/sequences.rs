@@ -42,6 +42,16 @@ pub(crate) const EVENT_STARGATE_MAKE_GATE: i32 = 6100;
 /// `entities/defs/enumerations.xml:834`.
 pub(crate) const EVENT_STARGATE_CROSS_GATE: i32 = 6113;
 
+/// The `Atrea.enums` name of a gate event this module emits, for the log
+/// line (Rule 6). `None` for any other id.
+fn gate_event_name(event_id: i32) -> Option<&'static str> {
+    match event_id {
+        EVENT_STARGATE_MAKE_GATE => Some("Stargate_MakeGate"),
+        EVENT_STARGATE_CROSS_GATE => Some("Stargate_CrossGate"),
+        _ => None,
+    }
+}
+
 /// Resolve the event set of the gate the player is standing at.
 ///
 /// `SGWPlayer.onDialGate` does `self.dialingStargate = world.stargates[0]`
@@ -93,7 +103,9 @@ pub async fn send_gate_sequence(
     let Some(event_set_id) = event_set_id else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             event_id,
+            event_name = gate_event_name(event_id),
             reason = "gate_event_set_missing",
             "gate sequence: origin gate has no event_set_id — \
              stargates.event_set_id is NULL for this world's gate, so the \
@@ -104,8 +116,10 @@ pub async fn send_gate_sequence(
     let Some(&seq_id) = space_mgr.sequence_map.get(&(event_set_id, event_id)) else {
         tracing::warn!(
             entity_id,
-            event_set_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            event_set_id, // nt:id-only event sets have no name column to pair
             event_id,
+            event_name = gate_event_name(event_id),
             reason = "gate_sequence_unmapped",
             "gate sequence not in event_sets_sequences map — kismet \
              sequence will not play"
@@ -142,9 +156,12 @@ pub async fn send_gate_sequence(
         {
             tracing::warn!(
                 witness_id,
+                witness_name = space_mgr.entity_label(witness_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 event_id,
-                seq_id,
+                event_name = gate_event_name(event_id),
+                seq_id, // nt:id-only kismet sequence ids have no name column
                 "gate sequence: cell→base send failed — this witness will \
                  not see the gate animation: {e}"
             );
@@ -153,9 +170,11 @@ pub async fn send_gate_sequence(
 
     tracing::info!(
         entity_id,
-        event_set_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        event_set_id, // nt:id-only event sets have no name column to pair
         event_id,
-        seq_id,
+        event_name = gate_event_name(event_id),
+        seq_id, // nt:id-only kismet sequence ids have no name column
         witness_count,
         "Sent stargate onSequence"
     );
@@ -205,6 +224,7 @@ pub(crate) async fn set_crossing_movement_lock(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             set,
             error = %e,
             reason = "cell_to_base_send_failed",

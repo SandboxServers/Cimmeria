@@ -20,10 +20,12 @@
 //! client never changes its own tree or count on a click, so a refusal needs
 //! no correction push.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
 use cimmeria_cell_catalog::crafting::{
     racial_paradigm_name, shared_crafting_catalog, CraftingCatalog,
 };
 use cimmeria_entity::crafting::CraftingState;
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use super::feedback::{reject, CraftReject};
@@ -229,15 +231,20 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
     let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
     let unavailable = CraftReject::Unavailable { action: ACTION };
     let Some(pool) = ctx.db_pool else {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "persist_failed",
             verb = VERB,
             phase = "no_pool",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             entity_id,
+            entity_name = player_label,
             discipline_id,
+            discipline_name = crafting_telemetry::discipline_name(discipline_id),
             "spend: no database pool"
         );
         reject(VERB, entity_id, player_id, &unavailable, client).await;
@@ -246,15 +253,20 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
     let catalog = match shared_crafting_catalog(pool).await {
         Ok(catalog) => catalog,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "persist_failed",
                 verb = VERB,
                 phase = "catalog_load",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = player_label,
                 entity_id,
+                entity_name = player_label,
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 error_class = sql_error_class(&e),
                 error = %e,
                 "spend: crafting catalog load failed"
@@ -270,14 +282,19 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
             asp_before,
             asp_after,
         })) => {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 target: "crafting",
                 event = "learned",
                 verb = VERB,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = player_label,
                 entity_id,
+                entity_name = player_label,
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 expertise_before,
                 expertise_after = LEARNED_EXPERTISE,
                 asp_before,
@@ -298,33 +315,47 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
         Ok(Err(why)) => reject(VERB, entity_id, player_id, &why, client).await,
         Err(failure) => {
             match &failure.error {
-                Some(e) => tracing::warn!(
-                    target: "crafting",
-                    event = "persist_failed",
-                    verb = VERB,
-                    phase = failure.phase,
-                    account_id,
-                    player_id,
-                    entity_id,
-                    discipline_id,
-                    error_class = sql_error_class(e),
-                    error = %e,
-                    "spend: transaction failed, rolled back"
-                ),
-                None => tracing::warn!(
-                    target: "crafting",
-                    event = "persist_failed",
-                    verb = VERB,
-                    phase = failure.phase,
-                    reason = "rows_affected_short",
-                    rows_affected = failure.rows_affected,
-                    expected = 1u64,
-                    account_id,
-                    player_id,
-                    entity_id,
-                    discipline_id,
-                    "spend: a write touched fewer rows than it had to, rolled back"
-                ),
+                Some(e) => {
+                    let player_label = known_names::player_name(player_id);
+                    tracing::warn!(
+                        target: "crafting",
+                        event = "persist_failed",
+                        verb = VERB,
+                        phase = failure.phase,
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        player_id,
+                        player_name = player_label,
+                        entity_id,
+                        entity_name = player_label,
+                        discipline_id,
+                        discipline_name = crafting_telemetry::discipline_name(discipline_id),
+                        error_class = sql_error_class(e),
+                        error = %e,
+                        "spend: transaction failed, rolled back"
+                    );
+                }
+                None => {
+                    let player_label = known_names::player_name(player_id);
+                    tracing::warn!(
+                        target: "crafting",
+                        event = "persist_failed",
+                        verb = VERB,
+                        phase = failure.phase,
+                        reason = "rows_affected_short",
+                        rows_affected = failure.rows_affected,
+                        expected = 1u64,
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        player_id,
+                        player_name = player_label,
+                        entity_id,
+                        entity_name = player_label,
+                        discipline_id,
+                        discipline_name = crafting_telemetry::discipline_name(discipline_id),
+                        "spend: a write touched fewer rows than it had to, rolled back"
+                    );
+                }
             }
             reject(VERB, entity_id, player_id, &unavailable, client).await;
         }

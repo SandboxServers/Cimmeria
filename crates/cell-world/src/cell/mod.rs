@@ -9,6 +9,7 @@
 pub mod arrival;
 pub mod black_market;
 pub mod combat;
+pub mod combat_debug;
 pub mod content_events;
 pub mod cover;
 pub mod deployables;
@@ -25,6 +26,9 @@ pub mod service;
 pub mod space_manager;
 pub mod squad;
 
+/// Seed-vs-navmesh guards for the Debug Area gate (stargate 29, DA-07).
+#[cfg(test)]
+mod debug_area_gate_tests;
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only; in
 /// `cimmeria-services` until wave C6 of the services crate split.

@@ -5,7 +5,7 @@ pub mod cleanup;
 pub mod commit;
 pub mod preparation;
 pub mod recovery;
-mod tree_identity;
+pub(super) mod tree_identity;
 use crate::owner_lock::OwnerLock;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};
@@ -17,8 +17,14 @@ pub struct Plan {
     pub id: Uuid,
     pub installation: InstallIntent,
     pub original_present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_release: Option<ReleaseIdentity>,
 }
 impl Plan {
+    pub fn release_identity(&self) -> ReleaseIdentity {
+        self.current_release
+            .unwrap_or_else(|| self.installation.release_identity())
+    }
     pub fn work_directory(&self) -> PathBuf {
         self.installation
             .destination
@@ -93,6 +99,8 @@ impl DesktopState {
         let plan = Plan {
             schema_version: 1,
             id,
+            current_release: (installed.current_release != installed.intent.release_identity())
+                .then_some(installed.current_release),
             installation: installed.intent,
             original_present,
         };
@@ -136,7 +144,7 @@ impl DesktopState {
         Ok(Some(plan))
     }
 }
-fn directory_or_absent(path: &Path) -> Result<bool, StorageError> {
+pub(super) fn directory_or_absent(path: &Path) -> Result<bool, StorageError> {
     match std::fs::symlink_metadata(path) {
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
         Err(_) => Err(StorageError::Io),
@@ -149,7 +157,7 @@ fn directory_or_absent(path: &Path) -> Result<bool, StorageError> {
         }
     }
 }
-fn ordinary(metadata: &std::fs::Metadata) -> Result<(), StorageError> {
+pub(super) fn ordinary(metadata: &std::fs::Metadata) -> Result<(), StorageError> {
     if metadata.file_type().is_symlink() {
         return Err(StorageError::UnsafeFile);
     }
@@ -162,7 +170,7 @@ fn ordinary(metadata: &std::fs::Metadata) -> Result<(), StorageError> {
     }
     Ok(())
 }
-fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageError> {
+pub(super) fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageError> {
     let path = intent.destination.join(".cimmeria-install.json");
     let metadata = std::fs::symlink_metadata(&path).map_err(|_| StorageError::Corrupt)?;
     ordinary(&metadata)?;
@@ -186,3 +194,54 @@ mod tests;
 
 #[cfg(feature = "test-support")]
 pub mod test_support;
+
+/// Uninstall validates auxiliary content against the durable completed plan.
+pub(super) fn uninstall_artifact(
+    state_root: &Path,
+    path: &Path,
+    owner: &InstallIntent,
+    partial: bool,
+) -> Result<bool, StorageError> {
+    let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+        return Ok(false);
+    };
+    let work_prefix = ".cimmeria-repair-";
+    let backup_prefix = ".cimmeria-backup-";
+    let (id, backup) = if let Some(id) = filename.strip_prefix(backup_prefix) {
+        (id, true)
+    } else if let Some(id) = filename.strip_prefix(work_prefix) {
+        (id, false)
+    } else {
+        return Ok(false);
+    };
+    let id = Uuid::parse_str(id).map_err(|_| StorageError::Corrupt)?;
+    let plan: Plan = read(&state_root.join(name(id)))?.ok_or(StorageError::Corrupt)?;
+    let checkpoint: commit::Record =
+        read(&state_root.join(format!("repair-commit-{id}.json")))?.ok_or(StorageError::Corrupt)?;
+    if !plan.valid()
+        || plan.id != id
+        || plan.installation != *owner
+        || checkpoint.schema_version != 2
+        || checkpoint.plan != plan
+        || checkpoint.phase != commit::Phase::Published
+    {
+        return Err(StorageError::Corrupt);
+    }
+    if backup {
+        let marker = path.join(tree_identity::name(&plan));
+        if (!partial || marker.try_exists().map_err(|_| StorageError::Io)?)
+            && tree_identity::read_role(path, &plan)? != Some(tree_identity::Role::Original)
+        {
+            return Err(StorageError::Corrupt);
+        }
+    } else {
+        let marker = path.join("owner.json");
+        if (!partial || marker.try_exists().map_err(|_| StorageError::Io)?)
+            && read::<Plan>(&marker)?.as_ref() != Some(&plan)
+        {
+            return Err(StorageError::Corrupt);
+        }
+    }
+    failed_cleanup::validate_tree(path)?;
+    Ok(true)
+}

@@ -34,6 +34,8 @@ cimmeria-entity = { workspace = true }
 cimmeria-observability = { workspace = true }
 # The dialog and mission notifications.
 cimmeria-discord = { workspace = true }
+# Content names for the Discord pairs (Rule 6, NT-10).
+cimmeria-names = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }

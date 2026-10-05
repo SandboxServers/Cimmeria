@@ -313,3 +313,58 @@ async fn live_db_export_logs_before_the_stamp_can_commit() {
 
     teardown(&pool, &fx).await;
 }
+
+/// Named-telemetry guard (Rule 6): the debug row of a character delete carries
+/// the stored player and login names, read before the delete, and the delete
+/// still removes exactly one row. A delete scoped to the wrong account matches
+/// nothing, removes nothing and logs without names.
+#[tokio::test]
+async fn live_db_character_delete_logs_stored_names_and_deletes_one_row() {
+    let pool = require_db_or_skip!();
+    let fx = setup(&pool, 45, 2, &[]).await;
+    let (p0, p1) = (fx.player(0), fx.player(1));
+
+    let capture = LogCapture::install();
+    let wrong = delete_character(&pool, p0, fx.account_id + 1)
+        .await
+        .expect("foreign delete");
+    assert!(!wrong.deleted, "a foreign account owns nothing");
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| {
+            c.has_field("event", "delete_character") && c.has_field("player_id", &p0.to_string())
+        })
+        .expect("the no-match row");
+    assert!(!row.fields.contains_key("player_name"), "{row:?}");
+    assert!(!row.fields.contains_key("account_name"), "{row:?}");
+
+    let done = delete_character(&pool, p0, fx.account_id)
+        .await
+        .expect("character delete");
+    assert!(done.deleted);
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "delete_character") && c.has_field("rows_affected", "1"))
+        .expect("the deleted row");
+    assert!(
+        row.has_field("player_name", &format!("org02-{p0}")),
+        "{row:?}"
+    );
+    assert!(
+        row.has_field("account_name", &format!("org02-test-{}", fx.account_id)),
+        "{row:?}"
+    );
+    drop(capture);
+
+    let left: Vec<i32> =
+        sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE account_id = $1")
+            .bind(fx.account_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(left, vec![p1], "exactly the targeted character is gone");
+
+    teardown(&pool, &fx).await;
+}

@@ -35,9 +35,12 @@ pub(super) async fn send_loot_display(
     let args =
         cimmeria_wire::cell::loot::serialize_on_loot_display(npc_entity_id, &loot_items, initial);
 
+    // `player_id` here is the looter's entity id, not a character id.
     tracing::debug!(
-        player_id,
+        entity_id = player_id,
+        entity_name = space_mgr.entity_label(player_id),
         npc_entity_id,
+        npc_entity_name = space_mgr.entity_label(npc_entity_id as u32),
         count,
         initial,
         "Sending onLootDisplay"
@@ -91,7 +94,12 @@ pub async fn handle_loot_item(
             // sequence on lomiada's 2026-06-04 session without any
             // gameplay impact, and there is no defensive action we
             // could take here (no NPC id to address a close at).
-            tracing::debug!(entity_id, index, "lootItem: player not looting anything");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                index,
+                "lootItem: player not looting anything"
+            );
             return;
         }
     };
@@ -105,6 +113,7 @@ pub async fn handle_loot_item(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_eid,
                 "lootItem: looter has no player_id; aborting without removing the drop"
             );
@@ -134,6 +143,7 @@ pub async fn handle_loot_item(
             if dist > super::dispatch::MAX_INTERACT_DISTANCE {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     target_eid,
                     index,
                     dist,
@@ -153,6 +163,7 @@ pub async fn handle_loot_item(
         let Some(list) = space_mgr.loot_list_mut(target_eid, player_id) else {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 target_eid,
                 index,
                 "lootItem: target entity not found, or no loot rolled for this looter"
@@ -162,7 +173,13 @@ pub async fn handle_loot_item(
         let item = match list.iter().position(|li| li.index == index) {
             Some(i) => list.remove(i),
             None => {
-                tracing::warn!(entity_id, target_eid, index, "lootItem: invalid index");
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    target_eid,
+                    index,
+                    "lootItem: invalid index"
+                );
                 return;
             }
         };
@@ -178,28 +195,36 @@ pub async fn handle_loot_item(
         (item, source)
     };
 
-    // `design_id` is numeric and absent for cash, never a Debug-formatted
-    // `"Some(5224)"` / `"None"` string (2026-09-29 playtest): SigNoz types a
-    // field by its first values, and a string design id cannot be joined to
-    // the base's `inventory` `grant_container_chosen` row, which carries the
-    // same `design_id` plus the `item_name`.
+    // `item_id` (the design id) is numeric and absent for cash, never a
+    // Debug-formatted `"Some(5224)"` / `"None"` string (2026-09-29
+    // playtest): SigNoz types a field by its first values, and a string id
+    // cannot be joined to the base's `inventory` `grant_container_chosen`
+    // row for the same item.
     let identity = space_mgr.player_identity(entity_id);
-    tracing::info!(
-        account_id = identity.account_id,
-        player_id,
-        entity_id,
-        target_eid,
-        index,
-        design_id = removed_item.design_id,
-        loot_kind = if removed_item.design_id.is_some() {
-            "item"
-        } else {
-            "cash"
-        },
-        quantity = removed_item.quantity,
-        corpse_template_id = source.corpse_template_id,
-        "Player looted item"
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name = identity.player_name,
+            entity_id,
+            entity_name = identity.player_name,
+            target_eid,
+            index,
+            item_id = removed_item.design_id,
+            item_name = removed_item.design_id.and_then(|d| names.item(d)),
+            loot_kind = if removed_item.design_id.is_some() {
+                "item"
+            } else {
+                "cash"
+            },
+            quantity = removed_item.quantity,
+            corpse_template_id = source.corpse_template_id,
+            corpse_template_name = source.corpse_template_id.and_then(|t| names.template(t)),
+            "Player looted item"
+        );
+    }
 
     if let Some(design_id) = removed_item.design_id {
         // Item — grant via GrantItem to base for persistence + onUpdateItem.
@@ -265,7 +290,12 @@ pub async fn handle_loot_item(
         if let Some(player) = space_mgr.get_entity_mut(entity_id) {
             player.looting_entity = None;
         }
-        tracing::debug!(target_eid, player_id, "container loot taken -- roll spent");
+        tracing::debug!(
+            target_eid,
+            player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
+            "container loot taken -- roll spent"
+        );
     } else if loot_empty {
         // Clear ONLY the loot bit; preserve other interaction flags (quest tags,
         // mission interactions, etc.) so the corpse retains any content state set
@@ -325,23 +355,31 @@ fn log_ammo_loot(
     let Some(ammo_type) = space_mgr.ammo_catalog.ammo_type_for_item(design_id) else {
         return;
     };
-    let account_id = space_mgr.get_entity(entity_id).and_then(|e| e.account_id);
+    let id = space_mgr.player_identity(entity_id);
+    let names = cimmeria_names::book();
     let loot_table_id = space_mgr
         .get_entity(source.corpse_id)
         .and_then(|e| e.loot_table_id);
     tracing::debug!(
         target: "ammo",
         event = "ammo_loot_dropped",
-        account_id,
+        account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         item_id = design_id,
+        item_name = names.item(design_id),
         ammo_type,
-        ammo_label = cimmeria_entity::ammo_type::label(ammo_type).unwrap_or(""),
+        ammo_label = cimmeria_entity::ammo_type::label(ammo_type),
         quantity = item.quantity,
         corpse_id = source.corpse_id,
+        corpse_name = space_mgr.entity_label(source.corpse_id),
         corpse_template_id = source.corpse_template_id,
+        corpse_template_name = source.corpse_template_id.and_then(|t| names.template(t)),
         loot_table_id,
+        loot_table_name = loot_table_id.and_then(|t| names.loot_table(t)),
         "special ammo looted"
     );
 }

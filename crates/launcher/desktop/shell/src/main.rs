@@ -3,12 +3,55 @@ mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
-    InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
-    MigrationStatus, NativeHost, UpdaterCommand,
+    AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
+    GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+
+#[tauri::command]
+async fn game_update_command(
+    request: GameUpdateCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<GameUpdateStatus, JobError> {
+    request.validate()?;
+    let host = state.inner().clone();
+    match request {
+        GameUpdateCommand::Inspect { .. } => {
+            tauri::async_runtime::spawn_blocking(move || host.game_update_status())
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+        request @ (GameUpdateCommand::Maintain { .. } | GameUpdateCommand::Rollback { .. }) => {
+            tauri::async_runtime::spawn_blocking(move || host.maintain_game_update(request))
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+        request @ (GameUpdateCommand::Apply { .. } | GameUpdateCommand::Cancel { .. }) => {
+            tauri::async_runtime::spawn_blocking(move || host.apply_game_update(request))
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+        GameUpdateCommand::Check {
+            operation_revision, ..
+        } => {
+            let checking = host.clone();
+            let check = tauri::async_runtime::spawn_blocking(move || {
+                checking.begin_game_update_check(operation_revision)
+            })
+            .await
+            .map_err(|_| JobError::Io)??;
+            let release = cimmeria_launcher_engine::catalog::fetch_release().await?;
+            tauri::async_runtime::spawn_blocking(move || {
+                host.finish_game_update_check(check, release)
+            })
+            .await
+            .map_err(|_| JobError::Io)?
+        }
+    }
+}
 
 #[tauri::command]
 async fn updater_command(
@@ -180,6 +223,17 @@ async fn launch_command(
 }
 
 #[tauri::command]
+async fn game_telemetry_command(
+    request: GameTelemetryCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<GameTelemetryStatus, JobError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.game_telemetry_command(request))
+        .await
+        .map_err(|_| JobError::Io)?
+}
+
+#[tauri::command]
 async fn migration_command(
     request: MigrationCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
@@ -188,6 +242,59 @@ async fn migration_command(
     tauri::async_runtime::spawn_blocking(move || host.migration_command(request))
         .await
         .map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
+async fn adoption_command(
+    request: AdoptionCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<AdoptionStatus, AdoptionError> {
+    request.validate()?;
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.adoption_command(request))
+        .await
+        .map_err(|_| AdoptionError::Io)?
+}
+
+#[tauri::command]
+async fn choose_adoption_destination(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<AdoptionStatus, AdoptionError> {
+    let host = state.inner().clone();
+    // Refuse before a dialog or the network when no preview could be admitted.
+    let checking = host.clone();
+    tauri::async_runtime::spawn_blocking(move || checking.adoption_choice_allowed())
+        .await
+        .map_err(|_| AdoptionError::Io)??;
+    let Some(location) = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Choose where to create the verified Stargate Worlds copy")
+            .blocking_pick_folder()
+            .map(|folder| {
+                folder
+                    .into_path()
+                    .map_err(|_| AdoptionError::InvalidDirectory)
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|_| AdoptionError::Io)??
+    else {
+        return tauri::async_runtime::spawn_blocking(move || host.adoption_status())
+            .await
+            .map_err(|_| AdoptionError::Io)?;
+    };
+    // Only the fixed, signed catalog names the release; the webview cannot.
+    let release = cimmeria_launcher_engine::catalog::fetch_release()
+        .await
+        .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || host.begin_adoption_preview(location, release))
+        .await
+        .map_err(|_| AdoptionError::Io)?
 }
 
 #[tauri::command]
@@ -222,7 +329,10 @@ fn main() {
             );
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
-            let host = host.with_launch_resources(app.path().resource_dir()?);
+            let app_handle = app.handle().clone();
+            let host = host
+                .with_launch_resources(app.path().resource_dir()?)
+                .with_updater_shutdown(move || app_handle.exit(0));
             app.manage(Arc::new(host));
             Ok(())
         })
@@ -233,9 +343,13 @@ fn main() {
             fetch_patch_notes,
             install_command,
             launch_command,
+            game_telemetry_command,
             migration_command,
             updater_command,
-            choose_legacy_source
+            game_update_command,
+            choose_legacy_source,
+            adoption_command,
+            choose_adoption_destination
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

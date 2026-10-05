@@ -58,7 +58,9 @@ pub async fn on_organization_creation(
                 target: "org",
                 event = "org.cell_method_malformed",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index = 94u16,
+                method_name = cimmeria_wire::names::player_cell_method(94u16),
                 reason = e.reason(),
                 error = %e,
                 "organization cell method payload did not decode"
@@ -89,8 +91,10 @@ pub async fn on_organization_creation(
                 row.org_type = Some(p.org_type);
                 row.attempts_left = Some(p.attempts_left);
                 match miss {
-                    TakeMiss::Expired => telemetry::pending_expired(actor, p, "ttl"),
-                    TakeMiss::SpaceChanged => telemetry::pending_expired(actor, p, "space_changed"),
+                    TakeMiss::Expired => telemetry::pending_expired(space_mgr, actor, p, "ttl"),
+                    TakeMiss::SpaceChanged => {
+                        telemetry::pending_expired(space_mgr, actor, p, "space_changed")
+                    }
                     _ => {}
                 }
             }
@@ -133,8 +137,11 @@ pub async fn on_organization_creation(
             event = "org.create_forward_failed",
             reason = "cell_to_base_closed",
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id,
+            player_name = actor.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "organization creation could not reach the base"
         );
         let left = space_mgr
@@ -151,8 +158,11 @@ pub async fn on_organization_creation(
         target: "org",
         event = "org.create_forwarded",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id,
+        player_name = actor.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         org_type = org_type.name(),
         name_units = row.name_units,
         "organization name forwarded to the base"
@@ -166,6 +176,6 @@ pub fn on_disconnect(entity_id: u32, space_mgr: &mut SpaceManager) {
         return;
     };
     if let Some(p) = space_mgr.resources.org_creations_mut().clear(player_id) {
-        telemetry::pending_expired(actor, &p, "disconnect");
+        telemetry::pending_expired(space_mgr, actor, &p, "disconnect");
     }
 }

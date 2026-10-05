@@ -40,6 +40,8 @@ pub async fn send_gm_feedback_to_client(
     let Some(addr) = addr else {
         tracing::warn!(
             entity_id,
+            entity_name =
+                super::session_identity::entity_name_for(connected, entity_to_addr, entity_id),
             reason = "entity_to_addr_miss",
             "GM feedback: no client addr for entity -- line dropped"
         );

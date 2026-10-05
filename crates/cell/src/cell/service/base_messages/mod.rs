@@ -9,6 +9,8 @@
 //! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
 //! - [`ability_granted`] — `AbilityGranted` (hotbar refresh + trainer resend)
 //! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
+//! - [`gm_abilities`] — `GmAbilitiesChanged` (GM give-all / reset mirror +
+//!   burst, AB-N2)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
 //! - `ItemUseConsumed` goes straight to `cell::content::apply_consumed_item`
@@ -36,6 +38,7 @@ use super::super::{chat, dispatch, spawner};
 mod ability_granted;
 mod bandolier;
 mod bank;
+mod gm_abilities;
 mod gm_spawn;
 mod ignore;
 mod inventory_events;
@@ -45,6 +48,7 @@ pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
 mod org;
+mod passive_sync;
 pub(crate) mod player_init;
 mod request_entity_update;
 mod respec;
@@ -69,6 +73,8 @@ pub(super) async fn handle_base_message(
             destination_space_id,
             account_id,
             player_id,
+            account_name,
+            player_name,
             reply_tx,
         } => {
             lifecycle::handle_create_entity(
@@ -77,8 +83,12 @@ pub(super) async fn handle_base_message(
                 position,
                 rotation,
                 destination_space_id,
-                account_id,
-                player_id,
+                lifecycle::BirthIdentity {
+                    account_id,
+                    player_id,
+                    account_name,
+                    player_name,
+                },
                 reply_tx,
                 tx,
                 space_mgr,
@@ -131,9 +141,18 @@ pub(super) async fn handle_base_message(
             entity_id,
             method_index,
             args,
+            packet_seq,
         } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine)
-                .await;
+            dispatch::dispatch_cell_method(
+                entity_id,
+                method_index,
+                &args,
+                tx,
+                space_mgr,
+                engine,
+                packet_seq,
+            )
+            .await;
         }
 
         BaseToCellMsg::ChatMessage {
@@ -183,6 +202,10 @@ pub(super) async fn handle_base_message(
             // already exists (created by the prior `ConnectEntity`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.character_name = character_name;
+                // Re-assert the log name (Rule 6) from the same source; the
+                // login name, which this message lacks, is kept.
+                let name = entity.character_name.clone();
+                entity.stamp_log_names(name.as_deref(), None);
                 // Re-assert the account half of the stable log-correlation
                 // identity. `CreateEntity` already stamped it; this is the
                 // belt-and-braces path for any create route that didn't, so a
@@ -225,8 +248,10 @@ pub(super) async fn handle_base_message(
                 // `entity:<id>` — surface the ordering bug rather than hiding it.
                 tracing::warn!(
                     entity_id,
-                    account_id,
+                    entity_name = character_name.as_deref(),
+                    account_id, // nt:id-only InitPlayerState carries no login name to pair
                     player_id,
+                    player_name = character_name.as_deref(),
                     "InitPlayerState: entity absent when caching character_name -- \
                      ConnectEntity ordering bug; cell-side emits will fall back to entity id"
                 );
@@ -394,6 +419,7 @@ pub(super) async fn handle_base_message(
                 entity_id,
                 item_id,
                 source_container_id,
+                space_mgr,
             );
         }
 
@@ -476,6 +502,10 @@ pub(super) async fn handle_base_message(
             outcome,
         } => {
             respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::GmAbilitiesChanged(changed) => {
+            gm_abilities::handle_gm_abilities_changed(changed, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

@@ -28,9 +28,12 @@ fn refused(entity_id: u32, space_mgr: &SpaceManager, reason: &'static str) {
         outcome = "rejected",
         reason,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
-        "GM organization command rejected"
+        entity_name = id.player_name,
+        "GM organization command rejected",
     );
 }
 
@@ -60,10 +63,12 @@ pub(super) async fn handle_reload_organizations(
             target: "org",
             event = "org.forward_failed",
             player_id,
+            player_name = space_mgr.entity_label(entity_id),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             kind = "gm_reload",
             reason = "cell_to_base_closed",
-            "gmReloadOrganizations could not reach the base"
+            "gmReloadOrganizations could not reach the base",
         );
         refused(entity_id, space_mgr, "cell_to_base_closed");
     }

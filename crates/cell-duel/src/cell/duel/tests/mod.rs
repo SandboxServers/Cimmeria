@@ -17,6 +17,8 @@
 //!   and the withdrawn challenge or countdown (CAT-M-15, SS-D3).
 //! - [`end_table`]: every end path clears both flags, and every travel site
 //!   calls the duel hook (SS-D3).
+//! - [`named_rows`]: the `duel.ended` row names both duelists (Rule 6,
+//!   NT-28b).
 //!
 //! Every handler test drains through [`drain`], which keeps entity-method
 //! calls to a player's own client and witness routings apart.
@@ -28,6 +30,7 @@ mod engage;
 mod gm;
 mod hooks;
 mod interactable;
+mod named_rows;
 mod outbound;
 mod response;
 mod tick;

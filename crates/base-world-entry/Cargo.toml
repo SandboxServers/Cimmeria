@@ -30,6 +30,8 @@ cimmeria-minigame = { workspace = true }
 # Credential redaction for the minigame ticket log line.
 cimmeria-auth = { workspace = true }
 cimmeria-entity = { workspace = true }
+# `error_texts` names for logged `onErrorCode` values (NT-31).
+cimmeria-names = { workspace = true }
 cimmeria-mercury = { workspace = true }
 # The world-entry and world-exit notifications.
 cimmeria-discord = { workspace = true }

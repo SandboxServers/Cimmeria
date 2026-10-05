@@ -277,6 +277,7 @@ fn guard_record(x: f32, z: f32) -> SpawnRecord {
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     }
 }
 

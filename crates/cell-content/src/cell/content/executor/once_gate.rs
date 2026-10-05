@@ -117,7 +117,9 @@ pub(crate) fn gate_for_entity(
         tracing::debug!(
             target: "content.resolve",
             chain_id,
+            chain_name = cimmeria_names::book().chain(*chain_id),
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             reason = "once_spent",
             "chain skipped: fire-once chain already fired for this entity"
         );

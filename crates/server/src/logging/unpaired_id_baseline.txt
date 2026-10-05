@@ -1,0 +1,4 @@
+# Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
+# Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
+# See crates/server/src/logging/unpaired_id_tests/mod.rs.
+# total 0

@@ -204,3 +204,45 @@ async fn despawning_a_missing_pet_warns_with_reason() {
     assert!(c.has_field("path", "direct"));
     assert_owner_identity(&c);
 }
+
+/// Rule 6 (NT-25): the summon row names every ID it carries: the pet
+/// (`entity_name`, `pet_name` and its template, D-NT5), the owner, the
+/// summon ability and the world. The NameBook is process-global, so this
+/// stores one naming the fixture and puts an empty one back.
+#[tokio::test]
+async fn summon_names_the_pet_its_owner_the_ability_and_the_world() {
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(cimmeria_names::Table::Texts, 8087, "Test Pet");
+    book.insert(
+        cimmeria_names::Table::Templates,
+        PET_FIXTURE_TEMPLATE_ID.into(),
+        "NT25_Pet_Template",
+    );
+    book.insert(cimmeria_names::Table::Abilities, 1643, "Summon Test Pet");
+    cimmeria_names::global().store(book);
+    let logs = LogCapture::install();
+    tracing::callsite::rebuild_interest_cache();
+
+    let mut mgr = make_world();
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    mgr.get_entity_mut(OWNER)
+        .unwrap()
+        .stamp_log_names(Some("Tealc"), Some("tealc_login"));
+    mgr.spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 1643)
+        .expect("pet spawns");
+    cimmeria_names::global().store(cimmeria_names::NameBook::empty());
+
+    let c = event(&logs, "pets.lifecycle", "summoned").expect("summoned event");
+    for (key, value) in [
+        ("entity_name", "Test Pet"),
+        ("pet_name", "Test Pet"),
+        ("template_name", "NT25_Pet_Template"),
+        ("owner_name", "Tealc"),
+        ("player_name", "Tealc"),
+        ("account_name", "tealc_login"),
+        ("ability_name", "Summon Test Pet"),
+        ("world", "Agnos"),
+    ] {
+        assert!(c.has_field(key, value), "{key}={value} missing: {c:#?}");
+    }
+}

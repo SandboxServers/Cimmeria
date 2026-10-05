@@ -5,10 +5,15 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Open investigations
 
 - [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (12/min per address), public login-port mount approved, inert (no endpoint); production endpoint is a later rollout
+- [project_mac_client_cooked_version_zero.md](project_mac_client_cooked_version_zero.md) — under Wine the client sent cooked version 0 at every login: Wine's msvcp80 `strstreambuf::underflow` returns EOF after a write; repaired in-process by the patches DLL (verified live 2026-10-05), which also made character creation work
 - [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — 2026-09-29 stall on 1488-byte datagrams (client reads 1472); cause was uncapped piggybacked ACKs, capped 2026-10-03; send/recv fingerprint telemetry
 - [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
 - [project_enemy_combat_runtime_blockers.md](project_enemy_combat_runtime_blockers.md) — enemy-combat v3 handoff not imported; blockers: MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR, DoT death
+
+## Closed campaigns
+
+- [project_named_telemetry_campaign.md](project_named_telemetry_campaign.md) — Named telemetry closed 2026-10-05: IDs paired with names, unpaired 7,039 to 0, 795 nt:id-only marks; not yet read in a live SigNoz session
 
 ## External handoffs reviewed, not imported
 
@@ -19,6 +24,11 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
+- [reference_desktop_game_telemetry_2026_10_04.md](reference_desktop_game_telemetry_2026_10_04.md) — desktop launcher game telemetry (PR #1241) proven under Wine; plan-digest trap; rosettax87 breaks launch supervision; engine tests run on Linux
+- [Native updater handoff](../updater-handoff-fix/reference_native_handoff.md) — shutdown follows successful spawn even if later persistence fails; fixture regression and platform limits.
+
+- [reference_current_release_identity_2026_10_04.md](reference_current_release_identity_2026_10_04.md) — immutable owner with separate signed current-release reference; Update publication remains required.
 - [reference_loopback_exporter_test_seams_2026_10_04.md](reference_loopback_exporter_test_seams_2026_10_04.md) — WSL2 mirrored networking hangs on a closed 127.0.0.1 port (use `[::1]:9`); wiremock responder and pooled-server traps; engine reqwest has no `json`
 
 - [reference_desktop_engine_test_seams_2026_10_04.md](reference_desktop_engine_test_seams_2026_10_04.md) — desktop engine suite runs on Linux/WSL through the lane; launch, install-worker and uninstall test seams; `FileJournal::commit` sees every journal write
@@ -35,6 +45,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_macos_wgl_forward_compat.md](reference_macos_wgl_forward_compat.md) — 2026-10-03: WoWSilicon launcher WGL rejection is missing forward-compatible flag; CX_FWD_COMPAT_GL_CTX=1 opens launcher and manifest; game UAT pending
 
+- [reference_colo_docker_layout.md](reference_colo_docker_layout.md) — colo = two compose projects on signoz-net, mirrored in docker/ (2026-10-04); watchtower ignores compose edits; s6 cont-init can't gate the server; uid 1001; player telemetry via :8081
+- [reference_agent_board.md](reference_agent_board.md) — board.cimmeria.app (2026-10-04): per-agent accounts and keys, broker for campaigns; colo /24 is Spamhaus-SBL-listed so mail goes via Graph; some Azure storage clusters unreachable from the colo
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
 
 - [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)
@@ -50,6 +62,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_desktop_updater_parity_research.md](reference_desktop_updater_parity_research.md) — legacy checksum updater and Tauri signed-package ownership/recovery differences.
 
+- [reference_launcher_uat_integration_2026_10_04.md](reference_launcher_uat_integration_2026_10_04.md) — adoption UI + effective settings + Wine identity combined: checkpoint lifetime, helper eligibility, UAT bridge selection, hidden-ancestor regression and partial native evidence.
 - [reference_launcher_minimum_poll_2026_10_04.md](reference_launcher_minimum_poll_2026_10_04.md) — signed minimum state must survive automatic Play inspection.
 - [reference_launcher_updater_integration_2026_10_04.md](reference_launcher_updater_integration_2026_10_04.md) — early mutation gates and updater revision refresh across other operations.
 - [reference_adoption_contract_audit_2026_10_04.md](reference_adoption_contract_audit_2026_10_04.md) — verified separate-copy adoption and effective settings remain distinct from settings import.
+- [reference_launcher_game_update_review.md](reference_launcher_game_update_review.md) — native signed game offers, stale-review invalidation and actual store-reopen Effect UAT; Apply UI integration remains pending.

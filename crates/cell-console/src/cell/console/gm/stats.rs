@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64, resolve_self_or_target};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 use crate::mercury::method_idx::ON_STAT_UPDATE;
 
 /// `gmSetHealth(INT32 Amount, INT64 TargetId)` (`is_max == false`) or
@@ -50,6 +50,15 @@ pub(super) async fn handle_set_focus(
     set_stat(entity_id, args, FOCUS, is_max, "gmSetFocus", tx, space_mgr).await
 }
 
+/// The log name of the two stats these commands set.
+fn stat_label(stat_id: i32) -> Option<&'static str> {
+    match stat_id {
+        HEALTH => Some("health"),
+        FOCUS => Some("focus"),
+        _ => None,
+    }
+}
+
 /// Shared body for the four set-stat commands: parse `(INT32 Amount, INT64
 /// TargetId)`, resolve the target, mutate the stat, and broadcast `onStatUpdate`.
 async fn set_stat(
@@ -74,6 +83,7 @@ async fn set_stat(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 cmd,
                 "GM set-stat: truncated args (need INT32 Amount)"
@@ -87,6 +97,7 @@ async fn set_stat(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 cmd,
                 "GM set-stat: truncated args (missing INT64 TargetId)"
@@ -101,6 +112,7 @@ async fn set_stat(
     if amount < 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             amount,
             cmd,
             is_max,
@@ -118,11 +130,14 @@ async fn set_stat(
     // Mutate the stat in place; capture whether the target is a player so we
     // pick the right serialization (full for the owning HUD, public-only for
     // an NPC's witnesses).
+    // `'static`, so it outlives the mutable borrow of the target below.
+    let caller_name = space_mgr.entity_names(entity_id).entity_name;
     let (changed, is_player) = {
         let Some(target) = space_mgr.get_entity_mut(target_eid) else {
             tracing::warn!(
                 entity_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
                 cmd,
                 "GM set-stat: target vanished before mutate"
             );
@@ -142,8 +157,11 @@ async fn set_stat(
             None => {
                 tracing::warn!(
                     entity_id,
-                    target_eid,
+                    entity_name = caller_name,
+                    target_entity_id = target_eid,
+                    target_entity_name = EntityNames::of(target).entity_name,
                     stat_id,
+                    stat_name = stat_label(stat_id),
                     cmd,
                     "GM set-stat: target has no such stat"
                 );
@@ -172,8 +190,11 @@ async fn set_stat(
 
     tracing::info!(
         entity_id,
-        target_eid,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id = target_eid,
+        target_entity_name = space_mgr.entity_label(target_eid),
         stat_id,
+        stat_name = stat_label(stat_id),
         amount,
         is_max,
         "GM set-stat: applied"

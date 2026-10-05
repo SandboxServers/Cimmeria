@@ -16,6 +16,7 @@ pub(super) fn resolve_player_id(entity_id: u32, op: &str, space_mgr: &SpaceManag
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 op,
                 "inventory op dropped: entity has no player_id"
             );
@@ -33,7 +34,13 @@ pub(super) async fn handle_remove_item(
     if args.len() >= 6 {
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let quantity = i16::from_le_bytes([args[4], args[5]]) as i32;
-        tracing::debug!(entity_id, item_id, quantity, "removeItem");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id, // nt:id-only instance id; the cell holds no inventory to read its type
+            quantity,
+            "removeItem"
+        );
         if let Some(player_id) = resolve_player_id(entity_id, "removeItem", space_mgr) {
             if let Err(e) = tx
                 .send(CellToBaseMsg::RemoveInventoryItem {
@@ -49,7 +56,13 @@ pub(super) async fn handle_remove_item(
                 .await
             {
                 tracing::error!(
-                    entity_id, player_id, item_id, quantity, error = %e,
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    player_id,
+                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    item_id, // nt:id-only instance id; the cell holds no inventory to read its type
+                    quantity,
+                    error = %e,
                     "RemoveInventoryItem send to base failed"
                 );
             }
@@ -57,6 +70,7 @@ pub(super) async fn handle_remove_item(
     } else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             args_len = args.len(),
             "removeItem: truncated args"
         );
@@ -68,7 +82,11 @@ pub(super) async fn handle_list_items(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    tracing::debug!(entity_id, "listItems");
+    tracing::debug!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        "listItems"
+    );
     if let Some(player_id) = resolve_player_id(entity_id, "listItems", space_mgr) {
         if let Err(e) = tx
             .send(CellToBaseMsg::ListInventoryItems {
@@ -78,7 +96,11 @@ pub(super) async fn handle_list_items(
             .await
         {
             tracing::error!(
-                entity_id, player_id, error = %e,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
+                error = %e,
                 "ListInventoryItems send to base failed"
             );
         }
@@ -106,10 +128,12 @@ pub(super) async fn handle_move_item(
         let target_slot_id = wire_slot_id.saturating_sub(1);
         tracing::debug!(
             entity_id,
-            item_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             target_container_id,
-            wire_slot_id,
-            target_slot_id,
+            target_container_name = cimmeria_entity::inventory::bag_name(target_container_id),
+            wire_slot_id,   // nt:id-only slot index, unnamed
+            target_slot_id, // nt:id-only slot index, unnamed
             quantity,
             "moveItem"
         );
@@ -130,15 +154,27 @@ pub(super) async fn handle_move_item(
                 .await
             {
                 tracing::error!(
-                    entity_id, player_id, item_id,
-                    target_container_id, target_slot_id, quantity,
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    player_id,
+                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    item_id, // nt:id-only instance id; the cell holds no inventory to read its type
+                    target_container_id,
+                    target_container_name = cimmeria_entity::inventory::bag_name(target_container_id),
+                    target_slot_id, // nt:id-only slot index, unnamed
+                    quantity,
                     error = %e,
                     "MoveInventoryItem send to base failed"
                 );
             }
         }
     } else {
-        tracing::warn!(entity_id, args_len = args.len(), "moveItem: truncated args");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            args_len = args.len(),
+            "moveItem: truncated args"
+        );
     }
 }
 
@@ -158,7 +194,14 @@ pub(super) async fn handle_use_item(
         // mission progression on actual consumption.
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-        tracing::info!(entity_id, item_id, target_id, "useItem");
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id, // nt:id-only instance id; the cell holds no inventory to read its type
+            wire_target_id = target_id,
+            wire_target_name = space_mgr.entity_label(target_id as u32),
+            "useItem"
+        );
 
         if refuse_while_dead(entity_id, item_id, tx, space_mgr).await {
             return;
@@ -176,13 +219,25 @@ pub(super) async fn handle_use_item(
                 .await
             {
                 tracing::error!(
-                    entity_id, player_id, item_id, target_id, error = %e,
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    player_id,
+                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    item_id, // nt:id-only instance id; the cell holds no inventory to read its type
+                    wire_target_id = target_id,
+                    wire_target_name = space_mgr.entity_label(target_id as u32),
+                    error = %e,
                     "UseInventoryItem send to base failed -- item not consumed"
                 );
             }
         }
     } else {
-        tracing::warn!(entity_id, args_len = args.len(), "useItem: truncated args");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            args_len = args.len(),
+            "useItem: truncated args"
+        );
     }
 }
 
@@ -212,7 +267,8 @@ async fn refuse_while_dead(
     }
     tracing::info!(
         entity_id,
-        item_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        item_id, // nt:id-only instance id; the cell holds no inventory to read its type
         "useItem refused: player is dead (onErrorCode NotLiving)"
     );
     let mut err = Vec::with_capacity(7);
@@ -227,18 +283,28 @@ async fn refuse_while_dead(
         })
         .await
     {
-        tracing::warn!(entity_id, error = %e, "useItem: NotLiving feedback send failed");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            error = %e,
+            "useItem: NotLiving feedback send failed"
+        );
     }
     true
 }
 
-pub(super) async fn handle_repair_item_request(entity_id: u32, args: &[u8]) {
+pub(super) async fn handle_repair_item_request(
+    entity_id: u32,
+    args: &[u8],
+    space_mgr: &SpaceManager,
+) {
     if args.len() >= 8 {
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let repair_ratio = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
         tracing::info!(
             entity_id,
-            item_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             repair_ratio,
             "UNIMPLEMENTED: repairItemRequest"
         );

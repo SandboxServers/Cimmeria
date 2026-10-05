@@ -11,31 +11,37 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL, RC_MISS};
+use cimmeria_entity::abilities::{AbilityDef, DT_PHYSICAL, RC_MISS};
 use cimmeria_entity::stats::HEALTH;
 
 use super::super::combat;
+use super::super::combat::god_mode::{DamageSource, GodModeGuard};
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use cimmeria_cell_world::cell::duel;
 use cimmeria_cell_world::cell::effects::{ammo_damage, ammo_explosive};
 
-use super::messaging::{
-    flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
-};
+use super::messaging::{flush_attacker_ammo_stat, WireRoute};
 use super::rng::pseudo_random_seed;
+use super::wire_ledger::{self, WireCtx};
 use ammo_splash::HitKind;
 use duel_gate::{clamp_source, player_hit_refusal};
+pub(in crate::cell::abilities) use effect_scripts::is_damage_script;
+use hit_ids::HitIds;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///
 /// Performs:
 ///   - Snapshot attacker stats; bail if attacker missing.
-///   - Read damage NVPs from the ability's effect definitions.
 ///   - Compute QR + roll a hit result for this attacker/target pair, with
-///     the attacker's cover QR, and scale the damage by the defender's cover
-///     reduction (NA32).
-///   - Apply health/focus damage to the target.
+///     the attacker's cover QR (no roll when every effect carries
+///     `EF_DontUseQR`, [`qr_gate`]), and scale the damage by the
+///     defender's cover reduction (NA32).
+///   - Sort the effects into damage paths ([`effect_scripts`]): a damage
+///     script is its effect's only damage; NVP damage for the rest; a
+///     missed QR-rolled effect lands nothing (AB-06, D-AB07).
+///   - Apply each effect's health/focus damage to the target on its own,
+///     a `DontUseQR` effect at its base ([`nvp_damage`], AB-03).
 ///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
 ///     entity routing) and to the target if the target is a player.
@@ -114,11 +120,17 @@ async fn apply_hit(
             target: "duel",
             event = "duel.hit_refused",
             account_id = a.account_id,
+            account_name = a.account_name,
             player_id = a.player_id,
+            player_name = a.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_player_id = t.player_id,
+            target_player_name = t.player_name,
             target_entity_id = target_eid,
+            target_entity_name = space_mgr.entity_label(target_eid),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             reason,
             "player-on-player damage refused at apply time: not an engaged duel pair"
         );
@@ -135,6 +147,7 @@ async fn apply_hit(
         None => {
             // Defensive: entity vanished after the consume mutation. Flush
             // before exiting so the client still sees the ammo decrement.
+            silent_rows::hit_gone(space_mgr, entity_id, target_eid, ability_id, "caster_gone");
             if needs_ammo_stat_send {
                 flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
             }
@@ -146,7 +159,7 @@ async fn apply_hit(
     let target = match space_mgr.get_entity(target_eid) {
         Some(e) => e,
         None => {
-            tracing::debug!(target_eid, "apply_damage_to_target: target not found");
+            silent_rows::hit_gone(space_mgr, entity_id, target_eid, ability_id, "target_gone");
             // Flush ammo decrement even when target lookup fails — the shot
             // still left the chamber from the player's perspective.
             if needs_ammo_stat_send {
@@ -177,8 +190,23 @@ async fn apply_hit(
     // Per-(entity, ability, effect_seq) determinism — a fresh effect_seq per
     // AoE secondary target gives independent rolls without losing replay
     // reproducibility.
+    // An ability whose every effect carries `EF_DontUseQR` takes no roll
+    // (AB-06, `qr_gate`).
     let seed = pseudo_random_seed(entity_id, ability_id, effect_seq);
-    let qr_result = combat::calculate_result(qr, seed);
+    let ids = HitIds {
+        entity_id,
+        target_eid,
+        ability_id,
+        ability_name: cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
+        actor: space_mgr.player_identity(entity_id),
+        target: space_mgr.player_identity(target_eid),
+        entity_name: space_mgr.entity_names(entity_id).entity_name,
+        target_name: space_mgr.entity_names(target_eid).entity_name,
+        cast_id: space_mgr.current_cast_id(),
+        god_mode: space_mgr.get_entity(target_eid).is_some_and(|e| e.god_mode),
+        world: super::metrics::world_of(space_mgr, target_eid),
+    };
+    let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, cover, ids);
 
     // Special ammo (AM-04, D-AM07): a player's weapon shot with a modified
     // ammo type loaded scales its damage, divides the armour by its
@@ -213,53 +241,19 @@ async fn apply_hit(
     // a splash target's share.
     let damage_scale = cover_scale * ammo_scale * kind.damage_scale();
 
-    // Look up damage values from the ability's effect NVPs. When the
-    // ability is known but exposes no positive HealthDamage (e.g. focus
-    // drains, heals, buff-only abilities) we keep health_base_damage at 0
-    // so the ability doesn't accidentally read as a 15-HP physical hit.
-    // The 15-HP fallback is reserved for the unknown-ability case.
-    //
-    // Effects with a `script_name` are collected here and dispatched after
-    // the legacy NVP damage path completes (so heals/buffs see the
-    // post-hit state). See `cell::effects` for the dispatcher and the
-    // registered scripts.
-    let mut script_effect_ids: Vec<i32> = Vec::new();
-    let (health_base_damage, focus_base_damage) = if let Some(def) = ability_def {
-        let mut h_dmg = 0i32;
-        let mut f_dmg = 0i32;
-        for &eid in &def.effect_ids {
-            if let Some(effect) = space_mgr.effect_defs.get(&eid) {
-                let hd = effect.param_i32("HealthDamage");
-                let fd = effect.param_i32("FocusDamage");
-                if hd > 0 {
-                    h_dmg = hd;
-                }
-                if fd > 0 {
-                    f_dmg = fd;
-                }
-                if effect.script_name.is_some() {
-                    script_effect_ids.push(eid);
-                }
-            }
-        }
-        (h_dmg, f_dmg)
-    } else {
-        (15, 0)
-    };
-    if let Some(eid) = on_hit_effect_id {
-        if space_mgr
-            .effect_defs
-            .get(&eid)
-            .is_some_and(|e| e.script_name.is_some())
-        {
-            script_effect_ids.push(eid);
-        }
-    }
-    // A splash target takes blast damage only, not the shot's own scripts
-    // (a bleed, a stun) a second time.
-    if !kind.is_direct() {
-        script_effect_ids.clear();
-    }
+    // Sort the effects into the hit's damage paths (AB-06, D-AB07): NVP
+    // damage per effect for effects with no damage script (AB-03,
+    // `nvp_damage`; 15 HP for an unknown ability), damage scripts as the
+    // only damage of their effects, and every other script for after the
+    // hit. A missed QR-rolled effect lands in none of them.
+    let plan = effect_scripts::plan_hit_effects(
+        space_mgr,
+        ability_def.as_ref(),
+        on_hit_effect_id,
+        kind.is_direct(),
+        qr_result.result_code,
+        ids,
+    );
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes
@@ -274,6 +268,9 @@ async fn apply_hit(
     // Player targets only: the pools before the hit, for the `vitals`
     // `damage_taken` row logged once the hit (and any duel clamp) landed.
     let vitals_before = combat::vitals::player_snapshot(space_mgr, target_eid);
+    // GM god mode (142): snapshot the pools, put back any loss below.
+    let god_mode = GodModeGuard::arm(space_mgr, target_eid);
+    let mut debug = debug_notes::HitDebug::start(space_mgr, target_eid);
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -289,29 +286,39 @@ async fn apply_hit(
         }
     };
 
-    let (effect_results, _total_health_damage) = combat::calculate_damage_penetrating(
+    // Each effect's NVP damage on its own, at its own QR (AB-03).
+    let (mut effect_results, mut total_health_damage) = nvp_damage::apply_nvp_damage(
+        &plan.nvp,
         &qr_result,
-        health_base_damage,
         damage_scale,
         penetration_mult,
         damage_type,
-        HEALTH,
         &attacker_stats,
         &mut target.stats,
+        ids,
+        debug.nvp(),
     );
 
-    // Apply focus damage if present
-    if focus_base_damage > 0 {
-        let _ = combat::calculate_damage_penetrating(
-            &qr_result,
-            focus_base_damage,
-            damage_scale,
-            penetration_mult,
-            damage_type,
-            cimmeria_entity::stats::FOCUS,
-            &attacker_stats,
-            &mut target.stats,
-        );
+    // The damage scripts' damage, at the same point and the same scale as
+    // the NVP damage, so the death check, `onEffectResults` and the threat
+    // below all see it.
+    let (script_results, script_health_damage) = effect_scripts::apply_damage_scripts(
+        space_mgr,
+        ids,
+        &plan.damage_scripts,
+        damage_scale,
+        damage_type,
+    );
+    effect_results.extend(script_results);
+    total_health_damage += script_health_damage;
+    // AB-10: charge what the hit drained from the absorb stats to the
+    // shields on the ledger; an emptied one comes off (icon clear below).
+    space_mgr.settle_absorb_shields(target_eid);
+    if let Some(guard) = &god_mode {
+        let source = DamageSource::hit(entity_id, ability_id, "ability_hit");
+        if guard.restore_hit(space_mgr, source, &mut effect_results) {
+            total_health_damage = 0;
+        }
     }
 
     if let Some(shot) = &shot {
@@ -322,7 +329,7 @@ async fn apply_hit(
             target_eid,
             ability_id,
             damage_type,
-            _total_health_damage,
+            total_health_damage,
             on_hit_effect_id,
         );
     }
@@ -347,8 +354,22 @@ async fn apply_hit(
             ability_id,
             qr_result.result_code,
             before,
+            combat::vitals::HitNames {
+                attacker: ids.actor,
+                attacker_name: ids.entity_name,
+                ability_name: ids.ability_name,
+            },
         );
     }
+    let planned = &plan.planned;
+    debug.finish(
+        space_mgr,
+        ids,
+        qr,
+        &qr_result,
+        ability_def.as_ref(),
+        planned,
+    );
     let Some(target) = space_mgr.get_entity_mut(target_eid) else {
         // Cannot happen (the target was just written), but a held hit must
         // still end its duel.
@@ -370,65 +391,24 @@ async fn apply_hit(
     let _target_public_stat_update = target.stats.serialize_dirty_public();
     target.stats.clear_dirty();
 
-    // ── Send effect results ──
-
-    // onEffectResults — send to both attacker and target, but avoid double-sending.
-    // If attacker is a player and target is an NPC, the witness routing on the NPC
-    // already reaches the player. So only send to the attacker directly + NPC witnesses.
-    let effect_args = serialize_effect_results(
-        entity_id as i32, // source
-        ability_id,
-        effect_seq as i32, // effect ID (using sequence as stub)
-        target_eid as i32, // target
-        qr_result.result_code,
-        &effect_results,
-    );
-
     let attacker_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-    let target_is_player = space_mgr
-        .get_entity(target_eid)
-        .is_some_and(|e| e.is_player);
 
-    // Fan out the attacker's effect results to self + all AoI witnesses so a
-    // spectator sees the ability fire. For NPC attackers the self send is a
-    // no-op (NPCs have no client) and this collapses to witness-only.
-    send_entity_method_to_self_and_witnesses(
-        entity_id,
-        crate::mercury::method_idx::ON_EFFECT_RESULTS,
-        effect_args.clone(),
-        tx,
-        space_mgr,
-    )
-    .await;
-
-    // On-target effect results — fan out for any player target so witnesses
-    // see the hit land on them. For NPC targets the attacker's self+witness
-    // send above already carries the result (entity_id = attacker, target_eid
-    // in the payload). Player targets are tracked by a different entity_id, so
-    // they need a separate fanout keyed on target_eid.
-    if target_is_player {
-        send_entity_method_to_self_and_witnesses(
+    // ── Send effect results and the target's stats ──
+    hit_wire::send_hit_results(
+        hit_wire::HitWire {
+            entity_id,
             target_eid,
-            crate::mercury::method_idx::ON_EFFECT_RESULTS,
-            effect_args,
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
-
-    // ── Send stat updates ──
-
-    // onStatUpdate to target — health bar changes must reach witnesses so the
-    // spectator sees the health drain. Fan out to self+witnesses of the target.
-    send_entity_method_to_self_and_witnesses(
-        target_eid,
-        crate::mercury::method_idx::ON_STAT_UPDATE,
-        target_stat_update,
+            ability_id,
+            effect_seq,
+            result_code: qr_result.result_code,
+            effect_results: &effect_results,
+            target_stat_update,
+        },
         tx,
         space_mgr,
     )
     .await;
+    let ctx = WireCtx::new("damage_apply").ability(ability_id);
 
     // onStatUpdate to attacker — drains AmmoSlot{N} dirty bits set by
     // `set_slot_ammo` on the consume path so the bandolier UI updates on every
@@ -481,21 +461,24 @@ async fn apply_hit(
     // appearance first puts the mesh at the holster socket so the draw
     // animation has something real to act on.
     if !target_died {
+        let prev_state = space_mgr.get_entity(entity_id).map(|e| e.state_field);
         if let Some(new_state) = combat::generate_threat(
             space_mgr,
             entity_id,
             target_eid,
-            _total_health_damage as f32,
+            total_health_damage as f32,
             crate::cell::combat::AggroCause::Damage,
         ) {
             super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
             // BSF_InCombat flip — broadcast to self+witnesses so a spectator
             // sees the entity enter the combat stance. This is the primary
             // trigger site for the witness-fanout requirement.
-            send_entity_method_to_self_and_witnesses(
+            wire_ledger::send(
                 entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
+                WireRoute::SelfAndWitnesses,
+                ctx.reason("entered_combat").prev_state(prev_state),
                 tx,
                 space_mgr,
             )
@@ -503,33 +486,20 @@ async fn apply_hit(
         }
     }
 
-    // ── Effect scripts ──
+    // ── Effect scripts (after the hit) ──
     //
-    // Dispatch any effects on this ability that have a `script_name` set.
-    // Scripts run AFTER the legacy damage path so heals see the post-hit
-    // state. They mutate the target via the shared `space_mgr` borrow;
-    // any stat changes are flushed in a follow-up onStatUpdate so the
-    // client picks up the heal/buff/debuff alongside the damage packet.
-    //
-    // Scripts that need wire-side fan-out (effect anims, buff icons) own
-    // their own send calls — v1 only ships HealHealth / HealFocus /
-    // MeleeDamage which are stat-mutation-only.
-    if !script_effect_ids.is_empty() {
-        for eid in &script_effect_ids {
-            let effect_def = match space_mgr.effect_defs.get(eid) {
-                Some(e) => e.clone(),
-                None => continue,
-            };
-            let Some(script_name) = effect_def.script_name.clone() else {
-                continue;
-            };
-            let mut ctx = crate::cell::effects::EffectContext {
-                source_id: entity_id,
-                target_id: target_eid,
-                effect: &effect_def,
+    // Every landing script that is not a damage script (those ran with the
+    // direct damage above) runs here, so a heal sees the post-hit state.
+    // Their stat changes are flushed in a follow-up onStatUpdate. Scripts
+    // that need wire-side fan-out own their own sends.
+    if !plan.after_scripts.is_empty() {
+        effect_scripts::run_scripts(space_mgr, ids, &plan.after_scripts, damage_type);
+        space_mgr.settle_absorb_shields(target_eid);
+        if let Some(guard) = &god_mode {
+            guard.restore(
                 space_mgr,
-            };
-            crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
+                DamageSource::hit(entity_id, ability_id, "ability_script"),
+            );
         }
         // D-SS20 again: a script's own HEALTH write (a bleed) from the
         // partner is held at 1 too, before the flush below and before the
@@ -546,10 +516,12 @@ async fn apply_hit(
             let dirty = target.stats.serialize_dirty();
             target.stats.clear_dirty();
             if !dirty.is_empty() {
-                send_entity_method(
+                wire_ledger::send(
                     target_eid,
                     crate::mercury::method_idx::ON_STAT_UPDATE,
                     dirty,
+                    WireRoute::EntityDefault,
+                    ctx.reason("after_scripts"),
                     tx,
                     space_mgr,
                 )
@@ -560,11 +532,12 @@ async fn apply_hit(
 
     // ── Death resolution (effect-driven) ──
     //
-    // Effect scripts write HEALTH directly — `RangedPhysicalDamage`'s
-    // Focus-pierce bleed, `MeleePhysicalDamage`, `RangedEnergyDamage`,
-    // `Suppression` — so a shot whose *direct* damage left the target
-    // standing can still take it to zero down here, long after the
-    // `target_died` check above has run. Playtest 2026-09-19: pistol auto
+    // An after-hit script can write HEALTH directly (`Suppression`, a
+    // special round's on-hit burn), so a shot whose direct damage left the
+    // target standing can still take it to zero down here, after the
+    // `target_died` check above has run. Before AB-06 the damage scripts
+    // (`RangedPhysicalDamage`'s Focus-pierce bleed and its siblings) ran
+    // here too; they now run with the direct damage. Playtest 2026-09-19: pistol auto
     // attack (ability 579 / effect 641) bled MessHall_Guard1 to 0 HP, the
     // mission's `entity_dead_tag` trigger fired off the health probe in
     // `handle_use_ability_with_kill_credit`, and then nothing else
@@ -578,7 +551,7 @@ async fn apply_hit(
     // idempotent on `BSF_DEAD`, so the common case — direct damage already
     // killed — costs one entity lookup and returns.
     //
-    // Unconditional rather than gated on `!script_effect_ids.is_empty()`:
+    // Unconditional rather than gated on `!plan.after_scripts.is_empty()`:
     // any post-`calculate_damage` step that zeroes HEALTH should produce a
     // corpse, and a target that arrives here already at 0 HP without
     // `BSF_DEAD` is a bug we would rather fail safe on than propagate.
@@ -598,32 +571,23 @@ async fn apply_hit(
         .await;
     }
 
-    // ── Register pulsing effects ──
-    //
-    // Walk the ability's effects again — for any with `pulse_count > 1`
-    // and a positive `pulse_duration`, register an `ActiveEffectInstance`
-    // on the target. The initial pulse already fired (above, via NVP
-    // damage or script dispatch); registration carries the remaining
-    // pulses. See `cell::effects::pulsing::effect_pulse_tick` for the
-    // per-tick fire loop. Not on a splash target (blast damage only).
-    if let Some(def) = ability_def.as_ref().filter(|_| kind.is_direct()) {
-        let now = std::time::Instant::now();
-        for eid in def.effect_ids.iter().copied().chain(on_hit_effect_id) {
-            let effect_clone = match space_mgr.effect_defs.get(&eid) {
-                Some(e) if e.is_pulsing() => e.clone(),
-                _ => continue,
-            };
-            let _ = crate::cell::effects::register_active_effect(
-                space_mgr,
-                target_eid,
-                entity_id,
-                &effect_clone,
-                now,
-                tx,
-            )
-            .await;
-        }
+    // ── Register pulsing effects (`pulse_registration`) ──
+    if kind.is_direct() {
+        pulse_registration::register_hit_pulses(
+            entity_id,
+            target_eid,
+            ability_def.as_ref(),
+            on_hit_effect_id,
+            qr_result.result_code,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
+    // AB-04: a landed single-pulse debuff ran its ledger script (`TimedStat`)
+    // with the miss-gated after-hit scripts; its icon goes out with these.
+    let now = std::time::Instant::now();
+    crate::cell::effects::flush_stat_buff_timers(target_eid, now, tx, space_mgr).await;
 
     // ── Duel end (non-lethal, D-SS20) ──
     //
@@ -654,7 +618,15 @@ async fn apply_hit(
 
 mod ammo_splash;
 mod cover_roll;
+mod debug_notes;
 mod duel_gate;
+mod effect_scripts;
+mod hit_ids;
+mod hit_wire;
+mod nvp_damage;
+mod pulse_registration;
+mod qr_gate;
+mod silent_rows;
 
 #[cfg(test)]
 mod aggro_cause_tests;
@@ -677,6 +649,22 @@ mod bleed_death_tests;
 #[cfg(test)]
 mod cover_tests;
 #[cfg(test)]
+mod damage_seed_live_db_tests;
+#[cfg(test)]
+mod decision_rows_tests;
+#[cfg(test)]
+mod god_mode_tests;
+#[cfg(test)]
+mod per_effect_damage_tests;
+#[cfg(test)]
+mod shield_tests;
+#[cfg(test)]
+mod single_damage_path_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod timed_effect_tests;
+#[cfg(test)]
 mod vitals_tests;
+#[cfg(test)]
+mod wire_rows_tests;

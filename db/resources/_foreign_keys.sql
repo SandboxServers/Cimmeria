@@ -117,6 +117,20 @@ ALTER TABLE ONLY char_creation_choices
     ADD CONSTRAINT char_creation_choices_vis_group_id_fkey FOREIGN KEY (vis_group_id) REFERENCES char_creation_visgroups(vis_group_id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 --
+-- Name: char_creation_items_char_def_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY char_creation_items
+    ADD CONSTRAINT char_creation_items_char_def_id_fkey FOREIGN KEY (char_def_id) REFERENCES char_creation(char_def_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
+-- Name: char_creation_items_item_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY char_creation_items
+    ADD CONSTRAINT char_creation_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES items(item_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
 -- TOC entry 3084 (class 2606 OID 63427)
 -- Name: char_creation_visgroups_char_def_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --

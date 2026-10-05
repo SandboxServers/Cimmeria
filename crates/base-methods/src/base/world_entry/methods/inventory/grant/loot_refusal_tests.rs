@@ -107,7 +107,7 @@ async fn live_db_full_bag_hands_the_loot_back_to_the_cell() {
         ("account_id", account_id.to_string()),
         ("player_id", player_id.to_string()),
         ("entity_id", entity_id.to_string()),
-        ("type_id", type_id.to_string()),
+        ("item_type_id", type_id.to_string()),
         ("container_id", "15".to_string()),
     ] {
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
@@ -271,7 +271,7 @@ async fn refused_loot_with_no_cell_channel_logs_loot_restore_failed() {
         ("entity_id", 0x7000_C4E7_u32.to_string()),
         ("corpse_id", 0x7000_C4D0_u32.to_string()),
         ("index", "3".to_string()),
-        ("type_id", "4242".to_string()),
+        ("item_type_id", "4242".to_string()),
         ("qty", "2".to_string()),
         ("refusal", "no_database".to_string()),
     ] {

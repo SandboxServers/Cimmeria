@@ -200,7 +200,13 @@ pub(super) async fn handle_user_auth(
 
     tracing::Span::current().record("account_id", account_id);
     tracing::Span::current().record("result", "success");
-    tracing::info!(user = %req.account_name, account_id, access_level, ip = %client_ip, "Phase 1 success");
+    tracing::info!(
+        account_id,
+        account_name = %req.account_name,
+        access_level,
+        ip = %client_ip,
+        "Phase 1 success"
+    );
     audit!(LoginOutcome::Success, id = account_id);
 
     let xml = login_success_xml(account_id, &state.shards);
@@ -261,8 +267,8 @@ pub(super) async fn handle_server_selection(
     // gate hardens; single-use SID semantics are unchanged.
     if !crate::auth::client_ips_match(session.client_ip, addr.ip()) {
         tracing::warn!(
-            user = %session.account_name,
             account_id = session.account_id,
+            account_name = %session.account_name,
             sid_prefix = %CredentialPrefix(&sid),
             session_ip = %session.client_ip,
             client_ip = %addr.ip(),
@@ -287,7 +293,9 @@ pub(super) async fn handle_server_selection(
     // Protected shard access control (matches C++ AccessDenied behaviour).
     if shard.protected && session.access_level < 2 {
         tracing::info!(
-            user = %session.account_name, shard = %shard.name,
+            account_id = session.account_id,
+            account_name = %session.account_name,
+            shard = %shard.name,
             access_level = session.access_level,
             "Access denied to protected shard"
         );
@@ -318,7 +326,8 @@ pub(super) async fn handle_server_selection(
     tracing::Span::current().record("shard", shard.name.as_str());
     tracing::Span::current().record("result", "success");
     tracing::info!(
-        user = %session.account_name,
+        account_id = session.account_id,
+        account_name = %session.account_name,
         shard = %shard.name,
         ip = %client_ip,
         ticket_prefix = %CredentialPrefix(&ticket),

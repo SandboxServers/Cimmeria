@@ -68,9 +68,12 @@ pub(in crate::cell::organization) async fn ping_at(
                 target: "squad",
                 event = "squad.ping_location",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 account_id = out.actor.account_id,
+                account_name = out.actor.account_name,
                 player_id,
-                squad_id = org_id,
+                player_name = out.actor.player_name,
+                squad_id = org_id, // nt:id-only squads are unnamed ad hoc groups with no name column
                 x = location[0],
                 y = location[1],
                 z = location[2],

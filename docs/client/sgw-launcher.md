@@ -20,6 +20,9 @@ native resources and observes helper/game lifecycle; process start does not prov
 login or world entry. Platform validation remains open; see the
 [desktop contracts](../../crates/launcher/desktop/README.md) and
 [repair evidence](../../crates/launcher/desktop/docs/repair.md).
+The desktop [signed updater](../../crates/launcher/desktop/docs/updater.md) supports
+native Apply/restart with retained ownership and startup version acknowledgment;
+production configuration stays disabled and packaged upgrade validation is open.
 The remaining document describes the Windows egui launcher.
 
 ---
@@ -309,7 +312,11 @@ change to the checkbox applies from the next launch.
 A patch zip with a `cimmeria-patch.json` recipe rebuilds files from the
 player's own stock client instead of shipping them, so the project never
 hosts CME bytes. Each op names stock sources (with SHA-256), an optional
-transform, a bsdiff delta and the result's SHA-256. `upk_normalize`
+transform, a bsdiff delta and the result's SHA-256. A source that is an
+earlier patch's output rather than a stock file carries `output_of` (the
+patch id), so a mismatch reports `PatchOutputMismatch` naming that patch
+instead of telling the player to reinstall the seed; launchers that
+predate the field ignore it. `upk_normalize`
 decompresses a stock package and writes it back through `cimmeria-upk`'s
 append-only patcher, the starting point of every map our `upk_patch`
 tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all

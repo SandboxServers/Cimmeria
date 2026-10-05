@@ -29,6 +29,9 @@
 //! CEGUI logged it, is the `client.ui.cegui_log` error just before; an SEH
 //! fault is `client.os.exception`.
 //!
+//! An error from the ability UI (`ActionButtons.lua`, `Effect.lua`, the
+//! `SCT` scripts) carries `ui_area = ability` (AB-C5).
+//!
 //! Throttled per message text (or, for a row without a message, per status
 //! and function): an error that repeats every frame is reported once per
 //! burst with a `suppressed` count.
@@ -95,6 +98,12 @@ pub(crate) fn error_fields(
     if let Some((source, line)) = &top.function {
         f.push(("function_source", json!(source)));
         f.push(("function_line", json!(line)));
+    }
+    let source = top.function.as_ref().map_or("", |(s, _)| s.as_str());
+    if let Some(area) =
+        crate::hooks::ability_trace::shown::ui_area(&[message.unwrap_or(""), source])
+    {
+        f.push(("ui_area", json!(area)));
     }
     if top.message.as_ref().is_some_and(|(_, t)| *t) {
         f.push(("truncated", json!(true)));
@@ -250,6 +259,30 @@ mod tests {
             Some(json!("[string \"BlackMarket.lua\"]"))
         );
         assert_eq!(get(&f, "function_line"), Some(json!(212)));
+    }
+
+    /// An error in the ability UI's scripts carries `ui_area = ability`,
+    /// from its message or, for a foreign exception, the function's source.
+    #[test]
+    fn ability_ui_errors_are_tagged() {
+        let f = error_fields(
+            2,
+            0,
+            &with_message("[string \"ActionButtons.lua\"]:160: boom"),
+            0,
+        );
+        assert_eq!(get(&f, "ui_area"), Some(json!("ability")));
+        let foreign = TopOfStack {
+            message: None,
+            value_type: Some(lua_stack::LUA_TFUNCTION),
+            function: Some(("[string \"SCT.lua\"]".to_string(), 83)),
+        };
+        assert_eq!(
+            get(&error_fields(-1, 0, &foreign, 0), "ui_area"),
+            Some(json!("ability"))
+        );
+        let other = error_fields(2, 0, &with_message("[string \"BlackMarket.lua\"]:1: x"), 0);
+        assert_eq!(get(&other, "ui_area"), None);
     }
 
     /// A Lua error that repeats every frame is reported once per burst

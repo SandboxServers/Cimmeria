@@ -27,7 +27,7 @@ pub(super) async fn send_system_mail(
     player_id: i32,
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     let Action::SendSystemMail {
         sender_name,
@@ -49,27 +49,57 @@ pub(super) async fn send_system_mail(
             event = "content.send_system_mail",
             reason = "no_player",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = identity.player_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "send_system_mail: the chain's entity is not this player; no mail sent",
         );
         return;
     }
-    tracing::info!(
-        target: "content",
-        event = "content.send_system_mail",
-        outcome = "requested",
-        entity_id,
-        account_id = identity.account_id,
-        player_id,
-        chain_id,
-        sender_name = %sender_name,
-        cash,
-        type_id = item.map(|(t, _)| t),
-        quantity = item.map(|(_, q)| q),
-        cooldown_secs,
-        "send_system_mail: forwarded to the base",
-    );
+    // One firing per player per chain per second (DA-02 review F3): each
+    // one is a row-locked transaction on the base, even inside the mail's
+    // own cooldown window, and `interact` accepts any number of clicks.
+    if !space_mgr.chain_debounce(entity_id, chain_id, std::time::Instant::now()) {
+        // Module-path target: exported by `OTEL_FILTER`'s
+        // `cimmeria_cell_content=debug` row.
+        tracing::debug!(
+            event = "content.send_system_mail",
+            reason = "debounced",
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = identity.player_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "send_system_mail: a repeat inside the debounce window; nothing sent",
+        );
+        return;
+    }
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            target: "content",
+            event = "content.send_system_mail",
+            outcome = "requested",
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name = identity.player_name,
+            chain_id,
+            chain_name = names.chain(chain_id),
+            sender_name = %sender_name,
+            cash,
+            item_type_id = item.map(|(t, _)| t),
+            item_name = item.and_then(|(t, _)| names.item(t)),
+            quantity = item.map(|(_, q)| q),
+            cooldown_secs,
+            "send_system_mail: forwarded to the base",
+        );
+    }
     let msg = ContentSystemMail {
         entity_id,
         player_id,
@@ -91,9 +121,13 @@ pub(super) async fn send_system_mail(
             event = "content.send_system_mail",
             reason = "base_channel_closed",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = identity.account_id,
+            account_name = identity.account_name,
             player_id,
+            player_name = identity.player_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             error = %e,
             "send_system_mail: cell->base send failed; no mail sent",
         );

@@ -6,7 +6,9 @@
 //! `movement.movement_type`, `dialog.display`, `abilities` and a dozen more
 //! emitted DEBUG rows that went nowhere but the admin WebSocket. This test
 //! reads the source of every crate linked into `cimmeria-server`, finds each
-//! `<level>!(target: "…"` and `event!(target: "…", Level::…)` call, and routes
+//! `<level>!(target: "…"` and `event!(target: "…", Level::…)` call (an
+//! `event!` whose level is a wrapper's `$level` counts at each level the
+//! file passes the wrapper), and routes
 //! that (target, level) through the production OTLP filters.
 //!
 //! The only targets allowed to reach no index are the `off` entries of
@@ -54,6 +56,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "lab-mcp",
     "mercury",
     "minigame",
+    "names",
     "observability",
     "occluder",
     "resources",
@@ -121,7 +124,7 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
 /// emitted by tests. Each names its file.
 const TEST_FIXTURE_TARGETS: &[(&str, &str)] = &[];
 
-fn crates_dir() -> PathBuf {
+pub(super) fn crates_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("crates/ is the manifest's parent")
@@ -133,7 +136,7 @@ fn crates_dir() -> PathBuf {
 /// `examples` directory, and everything after a file's
 /// `#[cfg(test)] mod` (the repo keeps the test module last; clippy's
 /// `items_after_test_module` enforces it).
-fn is_test_path(rel: &Path) -> bool {
+pub(super) fn is_test_path(rel: &Path) -> bool {
     rel.components().any(|c| {
         let s = c.as_os_str().to_string_lossy();
         s == "tests"
@@ -147,7 +150,7 @@ fn is_test_path(rel: &Path) -> bool {
     })
 }
 
-fn strip_test_module(src: &str) -> &str {
+pub(super) fn strip_test_module(src: &str) -> &str {
     let mut from = 0;
     while let Some(i) = src[from..].find("#[cfg(test)]") {
         let at = from + i;
@@ -160,7 +163,7 @@ fn strip_test_module(src: &str) -> &str {
     src
 }
 
-fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(super) fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -177,7 +180,7 @@ fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn parse_level(s: &str) -> Option<Level> {
+pub(super) fn parse_level(s: &str) -> Option<Level> {
     Some(match s {
         "trace" | "TRACE" => Level::TRACE,
         "debug" | "DEBUG" => Level::DEBUG,
@@ -217,6 +220,16 @@ fn scan(src: &str) -> Vec<(String, Level, usize)> {
                 .trim_start()
                 .trim_start_matches(',')
                 .trim_start();
+            if after.starts_with('$') {
+                // A `macro_rules!` wrapper that takes its level as an
+                // argument: the target is emitted at every level the file
+                // passes a wrapper (`native_event!(tracing::Level::WARN)`).
+                let line = src[..bang].matches('\n').count() + 1;
+                for lv in wrapper_levels(src) {
+                    out.push((target.to_string(), lv, line));
+                }
+                continue;
+            }
             let after = after.strip_prefix("tracing::").unwrap_or(after);
             let Some(lv) = after
                 .strip_prefix("Level::")
@@ -232,8 +245,30 @@ fn scan(src: &str) -> Vec<(String, Level, usize)> {
     out
 }
 
+/// The levels a file passes to macro invocations as their whole argument,
+/// `name!(tracing::Level::X)` or `name!(Level::X)`, in file order without
+/// repeats.
+fn wrapper_levels(src: &str) -> Vec<Level> {
+    let mut out = Vec::new();
+    for (i, _) in src.match_indices("!(") {
+        let arg = &src[i + 2..];
+        let arg = arg.strip_prefix("tracing::").unwrap_or(arg);
+        let Some(arg) = arg.strip_prefix("Level::") else {
+            continue;
+        };
+        let name: String = arg.chars().take_while(char::is_ascii_alphabetic).collect();
+        if !arg[name.len()..].starts_with(')') {
+            continue;
+        }
+        if let Some(lv) = parse_level(&name).filter(|lv| !out.contains(lv)) {
+            out.push(lv);
+        }
+    }
+    out
+}
+
 /// Every `(target, level)` emitted in-process, with one `file:line` each.
-fn emitted_targets() -> BTreeMap<(String, Level), String> {
+pub(super) fn emitted_targets() -> BTreeMap<(String, Level), String> {
     let root = crates_dir();
     let mut sites = BTreeMap::new();
     for krate in IN_PROCESS_CRATES {
@@ -405,6 +440,32 @@ fn scan_parses_macro_and_event_forms() {
             ("a.b".to_string(), Level::DEBUG),
             ("c".to_string(), Level::WARN),
             ("d".to_string(), Level::TRACE),
+        ]
+    );
+}
+
+/// A wrapper that takes its level as an argument (the `client.native`
+/// replay) is scanned at every level the file passes it, and only those.
+#[test]
+fn scan_reads_the_levels_passed_to_a_level_wrapper() {
+    let src = r#"
+        macro_rules! wrapped {
+            ($level:expr) => {
+                tracing::event!(target: "w", $level, x = 1, "m")
+            };
+        }
+        match level {
+            "warn" => wrapped!(tracing::Level::WARN),
+            _ => wrapped!(Level::TRACE),
+        }
+        other(Level::ERROR);
+    "#;
+    let got: Vec<_> = scan(src).into_iter().map(|(t, l, _)| (t, l)).collect();
+    assert_eq!(
+        got,
+        [
+            ("w".to_string(), Level::WARN),
+            ("w".to_string(), Level::TRACE)
         ]
     );
 }

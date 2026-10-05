@@ -557,6 +557,8 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
     // Castle is the GM's world; the gate they dial leads elsewhere.
     fn mgr_with_destination() -> SpaceManager {
         let mut mgr = mgr_with_player(1, "Castle");
+        // The dial refuses a destination with no space on this cell.
+        enterable(&mut mgr, "Harset");
         mgr.stargates.insert(
             DEST_ADDR,
             StargateEntry {
@@ -568,6 +570,7 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
                 address_origin: 18,
                 arrival: None,
                 event_set_id: None,
+                debug_dial_hub: false,
             },
         );
         mgr
@@ -627,6 +630,102 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
     assert!(mgr.gate_dial(1).is_none(), "the fallback arms nothing");
 }
 
+/// Declare `world` instanced, so `SpaceManager::world_is_enterable` accepts
+/// it as a destination without building a second startup space.
+fn enterable(mgr: &mut SpaceManager, world: &str) {
+    mgr.parse_spaces_xml(&format!(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#
+    ))
+    .unwrap();
+}
+
+/// `gmDHD` to a gate whose world has no space on this server (Hebridan:
+/// a `resources.worlds` row, no map) is refused while the GM still stands in
+/// their world. Before the guard in `handle_dial_gate` it enqueued a
+/// `GateTravel` and destroyed the cell entity, and the base then failed to
+/// create a space for them. Deleting that guard fails all three asserts.
+#[tokio::test]
+async fn gm_dhd_to_a_world_with_no_space_is_refused_before_teardown() {
+    use crate::cell::spawner::StargateEntry;
+
+    const HEBRIDAN: i32 = 11;
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.stargates.insert(
+        HEBRIDAN,
+        StargateEntry {
+            world_name: "Hebridan".to_string(),
+            x: 79.56,
+            y: 10.6,
+            z: 56.24,
+            yaw: 3.0,
+            address_origin: 33,
+            arrival: None,
+            event_set_id: None,
+            debug_dial_hub: false,
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[HEBRIDAN as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "a world with no space must never get a GateTravel. Got {msgs:?}"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "the GM must still be in their world"
+    );
+    assert!(mgr.gate_dial(1).is_none(), "nothing may be armed toward it");
+}
+
+/// `gmDHD` must not open a way INTO the Debug Area: the outbound-only dial
+/// hub (`debug_dial_hub`, gate 29) is never granted, GMs included, and the
+/// dial is refused. Deleting the hub skip in `handle_dhd` puts 29 in the
+/// GM's book; deleting the hub arm of the address-book check makes the dial
+/// travel.
+#[tokio::test]
+async fn gm_dhd_never_grants_or_dials_the_debug_area_hub() {
+    use crate::cell::spawner::StargateEntry;
+
+    const HUB: i32 = 29;
+
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.stargates.insert(
+        HUB,
+        StargateEntry {
+            world_name: "Agnos".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.0,
+            address_origin: 2,
+            arrival: None,
+            event_set_id: None,
+            debug_dial_hub: true,
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[HUB as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "nobody may travel into the dial hub, a GM included. Got {msgs:?}"
+    );
+    assert!(
+        !mgr.get_entity(1).unwrap().known_stargates.contains(&HUB),
+        "the hub's address must never enter a book"
+    );
+    assert!(mgr.gate_dial(1).is_none());
+}
+
 /// `gmDHD` reaches `handle_dial_gate`, which enforces the caller's address
 /// book (CAT-O-01). A GM debugging a world they have never visited does not
 /// hold its address, so the arm grants it for the session first — without
@@ -644,6 +743,7 @@ async fn gm_dhd_grants_the_address_it_needs_and_dials() {
     // dial takes the CA10 immediate-travel fallback and the `GateTravel`
     // below is observable in one call.
     let mut mgr = mgr_with_player(1, "Castle");
+    enterable(&mut mgr, "Agnos");
     mgr.stargates.insert(
         DEST_ADDR,
         StargateEntry {
@@ -655,6 +755,7 @@ async fn gm_dhd_grants_the_address_it_needs_and_dials() {
             address_origin: 4,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     assert!(

@@ -71,7 +71,9 @@ fn note_meshless_space(space_mgr: &SpaceManager, npc_id: u32) {
             target: "movement.npc",
             event = "ground_clamp_unavailable",
             space_id,
+            world = space_mgr.world_name_for_space(space_id),
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             "NPC movement: space has no navmesh, walking NPCs keep the lerped Y"
         );
     }

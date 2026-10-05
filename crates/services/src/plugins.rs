@@ -213,10 +213,14 @@ mod tests {
                 "HealPetHealth",
                 "PetSummonSpeed",
                 "StatBuff",
+                "TimedStat",
+                "RemoveByMoniker",
                 "RadiationDamage",
                 "RemoveEffects",
                 "EmpDisrupt",
                 "MovementSlow",
+                "Knockdown",
+                "Interrupt",
             ]
         );
     }

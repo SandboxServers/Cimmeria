@@ -10,7 +10,7 @@ use crate::routes::dev_session::TokenClaims;
 
 use super::dto::{ClientNativeEvent, IngestError, TelemetryEvent};
 use super::handlers::verify_bearer;
-use super::replay::replay_client_native;
+use super::replay_native::replay_client_native;
 
 fn gzip_lines(lines: &[&str]) -> Vec<u8> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());

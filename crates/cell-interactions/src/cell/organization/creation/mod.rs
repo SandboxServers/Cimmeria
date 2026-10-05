@@ -76,8 +76,9 @@ pub async fn send(
             target: "org",
             event = "org.feedback_send_failed",
             reason = "cell_to_base_closed",
-            entity_id,
+            entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             "organization creation reply could not be queued"
         );
     }
@@ -103,7 +104,7 @@ pub async fn say(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
             target: "org",
             event = "org.feedback_send_failed",
             reason = "cell_to_base_closed",
-            entity_id,
+            entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
             "organization creation line could not be queued"
         );
     }
@@ -126,8 +127,13 @@ fn forwarded_actor(
         event = "org.actor_mismatch",
         reason = "actor_mismatch",
         player_id,
+        player_name = space_mgr
+            .player_entity_by_player_id(player_id)
+            .and_then(|eid| space_mgr.entity_label(eid)),
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         entity_player_id = identity.player_id,
+        entity_player_name = identity.player_name,
         kind,
         "organization message from the base names an entity that is no longer that character"
     );
@@ -153,14 +159,12 @@ pub async fn on_registrar_eligible(
     let identity = forwarded_actor(space_mgr, player_id, entity_id, "registrar_eligible");
     let mut row = Outcome::new(
         Action::RegistrarOpen,
-        identity.unwrap_or(PlayerIdentity {
-            account_id: None,
-            player_id: Some(player_id),
-        }),
+        identity.unwrap_or(PlayerIdentity::new(None, Some(player_id))),
         entity_id,
     );
     row.org_type = Some(org_type);
     row.npc_entity_id = Some(npc_entity_id);
+    row.npc_entity_name = space_mgr.entity_names(npc_entity_id).entity_name;
     let Some(actor) = identity else {
         // Whoever holds the entity now did not click the registrar.
         row.rejected("actor_mismatch");
@@ -192,7 +196,7 @@ pub async fn on_registrar_eligible(
         .org_creations()
         .get(player_id)
         .expect("open just recorded the offer");
-    telemetry::pending_created(actor, &pending, refreshed);
+    telemetry::pending_created(space_mgr, actor, &pending, refreshed);
     row.attempts_left = Some(pending.attempts_left);
     if !send(
         tx,
@@ -204,7 +208,7 @@ pub async fn on_registrar_eligible(
     {
         // The dialog never opened; do not leave an offer behind it.
         if let Some(p) = space_mgr.resources.org_creations_mut().clear(player_id) {
-            telemetry::pending_expired(actor, &p, "send_failed");
+            telemetry::pending_expired(space_mgr, actor, &p, "send_failed");
         }
         row.rejected("base_unreachable");
         return;
@@ -222,19 +226,27 @@ pub fn on_create_result(
 ) {
     // The offer is keyed by character, so it is settled even if the entity
     // has gone meanwhile; the identity is only for the log.
-    let actor = PlayerIdentity {
-        player_id: Some(player_id),
-        ..space_mgr.player_identity(entity_id)
+    let live = space_mgr.player_identity(entity_id);
+    // The entity may hold another character (on another account) by now.
+    // Its account and names are this player's only when the IDs agree;
+    // otherwise the line carries the player id alone.
+    let actor = if live.player_id == Some(player_id) {
+        live
+    } else {
+        PlayerIdentity::new(None, Some(player_id))
     };
     if created {
         match space_mgr.resources.org_creations_mut().consume(player_id) {
-            Some(p) => telemetry::pending_consumed(actor, &p),
+            Some(p) => telemetry::pending_consumed(space_mgr, actor, &p),
             None => tracing::debug!(
                 target: "org",
                 event = "pending_creation_missing",
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id,
+                player_name = actor.player_name,
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "created with no offer left to close (GM path, expiry or disconnect)"
             ),
         }

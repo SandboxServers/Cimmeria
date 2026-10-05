@@ -52,9 +52,12 @@ pub(super) async fn grant(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         item_id,
+        item_name = cimmeria_names::book().item(item_id),
         count,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: granting item"
     );
     let cid = container_id
@@ -105,7 +108,15 @@ pub(super) async fn grant(
                     entity.stats.clear_dirty();
                     ammo_stat_payload = Some(payload);
                 }
-                tracing::info!(entity_id, item_id, slot_id, clip, "Weapon granted unloaded");
+                tracing::info!(
+                    entity_id,
+                    entity_name = entity.identity().player_name,
+                    item_id,
+                    item_name = cimmeria_names::book().item(item_id),
+                    slot_id, // nt:id-only bandolier slot index, not a named object
+                    clip,
+                    "Weapon granted unloaded"
+                );
             }
         }
     }
@@ -123,9 +134,21 @@ pub(super) async fn grant(
         })
         .await
     {
+        let id = space_mgr.player_identity(entity_id);
+        let names = cimmeria_names::book();
         tracing::error!(
-            entity_id, player_id, item_id, container_id = cid,
-            count, chain_id, error = %e,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = id.player_name,
+            item_id,
+            item_name = names.item(item_id),
+            container_id = cid,
+            container_name = names.container(cid),
+            count,
+            chain_id,
+            chain_name = names.chain(chain_id),
+            error = %e,
             "GrantItem send to base failed -- item not persisted to inventory"
         );
     }
@@ -181,15 +204,22 @@ pub(super) async fn remove(
 
     let send_result = match instance_id {
         Some(instance) => {
-            tracing::info!(
-                entity_id,
-                player_id,
-                instance,
-                type_id = item_id,
-                count,
-                chain_id,
-                "Content: RemoveItem → RemoveInventoryItem (by instance from context)"
-            );
+            {
+                let names = cimmeria_names::book();
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    player_id,
+                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    instance,
+                    item_type_id = item_id,
+                    item_name = names.item(item_id),
+                    count,
+                    chain_id,
+                    chain_name = names.chain(chain_id),
+                    "Content: RemoveItem → RemoveInventoryItem (by instance from context)"
+                );
+            }
             tx.send(CellToBaseMsg::RemoveInventoryItem {
                 entity_id,
                 player_id,
@@ -205,14 +235,21 @@ pub(super) async fn remove(
             .await
         }
         None => {
-            tracing::info!(
-                entity_id,
-                player_id,
-                type_id = item_id,
-                count,
-                chain_id,
-                "Content: RemoveItem → RemoveInventoryItemByType"
-            );
+            {
+                let names = cimmeria_names::book();
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    player_id,
+                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    item_type_id = item_id,
+                    item_name = names.item(item_id),
+                    count,
+                    chain_id,
+                    chain_name = names.chain(chain_id),
+                    "Content: RemoveItem → RemoveInventoryItemByType"
+                );
+            }
             tx.send(CellToBaseMsg::RemoveInventoryItemByType {
                 entity_id,
                 player_id,
@@ -235,8 +272,17 @@ pub(super) async fn remove(
         // chain 1034 consumes the vial) don't silently
         // strand the player with the item still in their
         // bag while the chain reports completion.
+        let names = cimmeria_names::book();
         tracing::error!(
-            entity_id, player_id, type_id = item_id, count, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
+            item_type_id = item_id,
+            item_name = names.item(item_id),
+            count,
+            chain_id,
+            chain_name = names.chain(chain_id),
             error = %e,
             "Content: RemoveItem cell→base channel send failed — item NOT removed"
         );

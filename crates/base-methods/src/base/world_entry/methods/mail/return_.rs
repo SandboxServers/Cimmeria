@@ -39,16 +39,20 @@ pub(super) const SYSTEM_MAIL: Refusal = Refusal {
 };
 
 /// A committed return.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Returned {
     /// The stored `sender_id`, who now owns the mail.
     pub(super) to_player_id: i32,
+    /// The stored `sender_name`, for the log line only.
+    pub(super) to_player_name: String,
     /// Gift cash that went back with it.
     pub(super) cash: i64,
     /// The COD price cleared by the return (0 when it was no COD).
     pub(super) cod_cancelled: i64,
     /// The escrowed instance that went back with it, if any.
     pub(super) item_id: Option<i32>,
+    /// That instance's item type, for the log line's `item_name` only.
+    pub(super) item_type_id: Option<i32>,
 }
 
 /// CAT-G-06 / D-SS10: return `mail_id`, owned by `player_id`, to its stored
@@ -140,9 +144,11 @@ pub(super) async fn return_locked(
     }
     Ok(Returned {
         to_player_id: sender_id,
+        to_player_name: mail.sender_name.clone(),
         cash,
         cod_cancelled,
         item_id: item.map(|i| i.item_id),
+        item_type_id: item.map(|i| i.type_id),
     })
 }
 
@@ -151,17 +157,26 @@ pub(super) async fn return_locked(
 pub(super) async fn return_mail(ctx: &MailCtx<'_>, mail_id: i32) {
     match return_tx(ctx.pool, ctx.player_id, mail_id, unix_now()).await {
         Ok(returned) => {
+            let who = ctx.identity();
+            let book = cimmeria_names::book();
             tracing::info!(
                 target: "mail",
                 event = "mail.returned",
                 entity_id = ctx.entity_id,
+                entity_name = who.player_name,
                 player_id = ctx.player_id,
+                player_name = who.player_name,
                 account_id = ctx.account_id(),
+                account_name = who.account_name,
                 target_player_id = returned.to_player_id,
-                mail_id,
+                target_player_name = returned.to_player_name.as_str(),
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 cash = returned.cash,
                 cod_cancelled = returned.cod_cancelled,
                 item_id = returned.item_id,
+                item_name = returned
+                    .item_type_id
+                    .and_then(|t| book.item(t)),
                 "gate-mail returned to its sender with its attachments",
             );
             ctx.send_to_caller(

@@ -55,7 +55,9 @@ pub(crate) async fn try_open_dhd(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 reason = "entity_world_unknown",
                 "onDisplayDHD: interacting entity is in no space — DHD not opened"
             );
@@ -85,8 +87,10 @@ pub(crate) async fn try_open_dhd(
             // player sees nothing — log it so the seed gap is greppable.
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
-                world_name = %world_name,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
+                world = %world_name,
                 reason = "no_stargate_for_world",
                 "onDisplayDHD: a DHD prop is spawned on a world with no \
                  stargates row — the dialling UI cannot open; seed the gate \
@@ -112,11 +116,13 @@ pub(crate) async fn try_open_dhd(
         _ => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 stargate_id,
+                stargate_name = cimmeria_names::book().stargate(stargate_id),
                 address_origin,
                 min = *ADDRESS_ORIGIN_RANGE.start(),
                 max = *ADDRESS_ORIGIN_RANGE.end(),
-                world_name = %world_name,
+                world = %world_name,
                 reason = "address_origin_out_of_range",
                 "onDisplayDHD: stargates.address_origin is outside the 1-38 \
                  point-of-origin glyph range — refusing to emit rather than \
@@ -135,12 +141,23 @@ pub(crate) async fn try_open_dhd(
     // CA10 owns (`SpaceManager::pending_gate_dials`). H06 should add a
     // timestamped stamp there rather than a second store.
 
+    // At an outbound-only dial hub (the Debug Area gate), a GM's in-memory
+    // address book is topped up with every gate they can travel to and the
+    // client is told, BEFORE `onDisplayDHD` below so the window opens with
+    // the full list. A no-op on every other gate and for non-GMs. The dial
+    // itself is still judged by the one address-book check.
+    crate::cell::gate_travel::dial_hub::top_up_gm_dial_hub(entity_id, stargate_id, tx, space_mgr)
+        .await;
+
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         target_entity_id,
+        target_entity_name = space_mgr.entity_label(target_entity_id),
         stargate_id,
+        stargate_name = cimmeria_names::book().stargate(stargate_id),
         address_origin = origin_byte,
-        world_name = %world_name,
+        world = %world_name,
         "interact: DHD → onDisplayDHD"
     );
 
@@ -154,7 +171,9 @@ pub(crate) async fn try_open_dhd(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id),
             "onDisplayDHD: cell→base send failed -- the dialling UI will not \
              open for the player: {e}"
         );
@@ -179,6 +198,7 @@ mod tests {
             address_origin,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         }
     }
 
@@ -342,5 +362,37 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(16);
         assert!(!try_open_dhd(1, 100, &tx, &mut mgr).await);
         assert_eq!(drain_dhd(&mut rx), None);
+    }
+
+    /// At the Debug Area's dial hub a GM's DHD opens with every enterable
+    /// gate already listed: each `updateStargateAddress` (66) goes out
+    /// BEFORE `onDisplayDHD` (120) on the same channel. Moving the top-up
+    /// after the emit, or dropping it, fails this.
+    #[tokio::test]
+    async fn a_gm_at_the_hub_dhd_is_sent_the_addresses_before_the_dhd_opens() {
+        use crate::cell::client_methods::gate_travel::UPDATE_STARGATE_ADDRESS;
+
+        let mut mgr = mgr_with_dhd();
+        mgr.get_entity_mut(1).unwrap().access_level = 2;
+        let mut hub = gate("Agnos", 2);
+        hub.debug_dial_hub = true;
+        mgr.stargates.insert(29, hub);
+        // Agnos is the fixture's only world with a startup space, so make the
+        // offered gate an instanced world the fixture knows.
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="SGC_W1" Instanced="true" MinX="0" MaxX="1" MinY="0" MaxY="1" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.stargates.insert(27, gate("SGC_W1", 1));
+
+        let (tx, mut rx) = mpsc::channel(16);
+        assert!(try_open_dhd(1, 100, &tx, &mut mgr).await);
+
+        let mut order = Vec::new();
+        while let Ok(CellToBaseMsg::EntityMethodCall { method_index, .. }) = rx.try_recv() {
+            order.push(method_index);
+        }
+        assert_eq!(order, vec![UPDATE_STARGATE_ADDRESS, ON_DISPLAY_DHD]);
+        assert_eq!(mgr.get_entity(1).unwrap().known_stargates, vec![27]);
     }
 }

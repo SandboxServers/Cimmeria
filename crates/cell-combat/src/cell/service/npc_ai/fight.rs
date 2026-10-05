@@ -55,6 +55,29 @@ pub(super) async fn npc_ai_fight(
         return;
     };
 
+    // Stunned or knocked down (`BSF_MovementLock`, held by a timed-effect
+    // entry, ability mechanics AB-09a): no launch, no step, no leash walk
+    // until the lock clears. The target list above still prunes, so the
+    // fight resumes on a live target. The movement tick freezes any path
+    // already in progress.
+    if space_mgr
+        .get_entity(npc_id)
+        .is_some_and(|e| e.has_state_flag(crate::cell::combat::BSF_MOVEMENT_LOCK))
+    {
+        super::note_outcome("stunned");
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "stunned",
+            npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
+            target_id,
+            target_name = space_mgr.entity_label(target_id),
+            "NPC AI: movement locked (stun or knockdown), holding"
+        );
+        return;
+    }
+
     // Hard leash: the NPC itself is beyond the hysteresis band around its
     // spawn, or too far above or below it. Measured on the NPC, never on the
     // target (audit S3): a player 49.9 u from spawn no longer leashes an NPC
@@ -84,7 +107,9 @@ pub(super) async fn npc_ai_fight(
             event = "decision",
             decision_outcome = "casting",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC AI: ability warming up, holding"
         );
         return;
@@ -236,7 +261,9 @@ pub(super) async fn npc_ai_fight(
                 event = "decision",
                 decision_outcome = "stationary_holds",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 in_range,
                 has_los,
                 dist_to_target,
@@ -352,7 +379,9 @@ pub(super) async fn npc_ai_fight(
                 event = "decision",
                 decision_outcome = "no_ability",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 dist_to_target,
                 "NPC AI: no usable ability (all cooling or needs-ammo), holding fire"
             );
@@ -366,8 +395,11 @@ pub(super) async fn npc_ai_fight(
         event = "decision",
         decision_outcome = "attack_in_place",
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         ability_id = chosen_ability,
+        ability_name = cimmeria_names::book().ability(chosen_ability),
         dist_to_target,
         max_range,
         min_range,
@@ -407,8 +439,11 @@ pub(super) async fn npc_ai_fight(
         // standing still" can be diagnosed without attaching a profiler.
         tracing::warn!(
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target = target_id,
+            target_name = space_mgr.entity_label(target_id),
             ability_id = chosen_ability,
+            ability_name = cimmeria_names::book().ability(chosen_ability),
             distance = dist_to_target,
             reason = "handle_use_ability_returned_false",
             "NPC AI: attack tick produced no ability fire -- mob may appear stuck"

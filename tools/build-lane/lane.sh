@@ -124,7 +124,9 @@ sccache_wrapper() {
 if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
   use_sccache=1
   export SCCACHE_DIR="${CIMMERIA_SCCACHE_DIR:-$LANE_ROOT/sccache-cache}"
-  export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-40G}"
+  # 15G, not sccache's 10G or the old 40G: about ten worktrees share a 150 GB Dev Drive
+  # with their target dirs, and 40G filled it (docs/architecture/build-system.md).
+  export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-15G}"
   export SCCACHE_IDLE_TIMEOUT=0
   # Path prefixes sccache strips before hashing. sccache 0.18 reads them once, when the
   # server starts, and applies them to C/C++ compiles only; the Rust fix is the wrapper.
@@ -159,10 +161,21 @@ quiet=0
 if [ ! -t 1 ] && [ "${LANE_VERBOSE:-0}" != 1 ] && [ "${CI:-}" != true ]; then quiet=1; fi
 LOG_DIR="$LANE_ROOT/logs/$NAME"
 job_log=""; failures_file=""
+# (Re)create this job's log and its dir. Another lane's prune_logs deletes empty log dirs,
+# so an old empty dir can go between our mkdir and the write; a retry closes that window.
+ensure_job_log() {
+  local i
+  for i in 1 2 3; do
+    mkdir -p "$LOG_DIR" 2>/dev/null && : >> "$job_log" 2>/dev/null && return 0
+  done
+  mkdir -p "$LOG_DIR" && : >> "$job_log"
+}
 if [ $quiet -eq 1 ]; then
-  mkdir -p "$LOG_DIR"
   job_base="$LOG_DIR/$(date '+%Y%m%d-%H%M%S')-$$"
   job_log="$job_base.log"; failures_file="$job_base.failures.txt"
+  # Create the log now: this job may wait minutes for a slot before it writes anything,
+  # and a dir holding a file is never pruned.
+  ensure_job_log
   export NEXTEST_STATUS_LEVEL="${NEXTEST_STATUS_LEVEL:-fail}"
   export NEXTEST_SHOW_PROGRESS="${NEXTEST_SHOW_PROGRESS:-none}"
   export NEXTEST_FAILURE_OUTPUT="${NEXTEST_FAILURE_OUTPUT:-final}"
@@ -174,8 +187,13 @@ prune_logs() {
   local keep="${LANE_LOG_KEEP:-20}" days="${LANE_LOG_DAYS:-7}" old
   [ -d "$LANE_ROOT/logs" ] || return 0
   [ "$keep" -ge 1 ] 2>/dev/null || keep=1    # never the log of the job that just ran
-  find "$LANE_ROOT/logs" -mindepth 2 -maxdepth 2 -type f -mmin +"$((days * 1440))" -delete 2>/dev/null
-  find "$LANE_ROOT/logs" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+  # A dir this emptied goes now (rmdir refuses one a job has put a log in since); any
+  # other empty dir only after an hour, so a job that has just made its dir and not yet
+  # its log (see ensure_job_log) doesn't fail with "No such file" on the log.
+  while IFS= read -r old; do
+    rm -f "$old" && rmdir "${old%/*}" 2>/dev/null
+  done < <(find "$LANE_ROOT/logs" -mindepth 2 -maxdepth 2 -type f -mmin +"$((days * 1440))" 2>/dev/null)
+  find "$LANE_ROOT/logs" -mindepth 1 -maxdepth 1 -type d -empty -mmin +60 -delete 2>/dev/null
   [ -d "$LOG_DIR" ] || return 0
   while IFS= read -r old; do
     rm -f "$old" "${old%.log}.failures.txt"
@@ -313,6 +331,7 @@ disk_guard
 t_start="$(now_us)"
 acquired="[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*"
 if [ $quiet -eq 1 ]; then
+  ensure_job_log   # in case the log went anyway while we waited
   echo "$acquired" > "$job_log"
   # One line up front, so a caller whose tool times out mid-build still has the log.
   echo "[lane] running; log: $(win_path "$job_log")" >&2

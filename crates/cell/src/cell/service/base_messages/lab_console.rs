@@ -48,6 +48,7 @@ pub(super) async fn handle_lab_console_exec(
     if !console::is_gm(access_level) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             access_level,
             "LabConsoleExec rejected: acting entity is not a GameMaster"
         );
@@ -84,6 +85,7 @@ pub(super) async fn handle_lab_console_exec(
                 if tx.send(other).await.is_err() {
                     tracing::warn!(
                         entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
                         "LabConsoleExec: base channel closed while forwarding a side-effect message"
                     );
                     break;

@@ -4,7 +4,9 @@
 use serde_json::json;
 
 use super::dto::{ClientNativeEvent, DebugLogEvent, KeyDumpEvent, TelemetryEvent};
-use super::session_budget::{is_priority, replay_budgeted, SessionLedger, EVENTS_PER_WINDOW};
+use super::entity_labels::EntityLabels;
+use super::replay::{parse_ndjson, replay_events};
+use super::session_budget::{admit_budgeted, is_priority, SessionLedger, EVENTS_PER_WINDOW};
 use crate::routes::dev_session::TokenClaims;
 
 fn native(target: &str, level: &str) -> TelemetryEvent {
@@ -97,10 +99,13 @@ fn priority_is_level_and_the_must_keep_families() {
     assert!(is_priority(&native("client.telemetry.rollup", "info")));
     assert!(is_priority(&native("client.telemetry.health", "info")));
     assert!(is_priority(&native("client.dll.attached", "info")));
+    assert!(is_priority(&native("client.ability.recv", "info")));
     assert!(is_priority(&native("client.hooks.fingerprint", "info")));
     assert!(!is_priority(&native("client.lua.pcall", "debug")));
     assert!(is_priority(&native("client.entity.create", "info")));
     assert!(is_priority(&native("client.mercury.bundle", "debug")));
+    assert!(is_priority(&native("client.ability.press_dropped", "info")));
+    assert!(is_priority(&native("client.ability.sent_seq", "info")));
     assert!(is_priority(&native(
         "client.mercury.request_misparse",
         "info"
@@ -149,7 +154,9 @@ fn a_runaway_chunk_is_cut_at_the_budget_and_counted() {
         r#"{"type":"client_native","ts_ms":1,"seq":0,"target":"client.lua.error","level":"warn"}"#
             .to_string(),
     );
-    let (counts, totals) = replay_budgeted(&claims, &lines.join("\n"), 1_000).unwrap();
+    let events = parse_ndjson(&lines.join("\n")).unwrap();
+    let (admitted, totals) = admit_budgeted(&claims, &events, 1_000);
+    let counts = replay_events(&claims, events, &EntityLabels::none(), &admitted);
     assert_eq!(counts.parsed, EVENTS_PER_WINDOW + extra + 1);
     assert_eq!(
         counts.accepted,

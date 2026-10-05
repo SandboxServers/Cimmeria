@@ -16,6 +16,7 @@ mod consumable_use;
 mod consumable_use_live_db_tests;
 #[cfg(test)]
 mod consumable_use_tests;
+mod discord_labels;
 mod effect_apply;
 mod engine_events;
 mod engine_loader;
@@ -25,6 +26,8 @@ mod mission_context;
 
 #[cfg(test)]
 mod chain_replay_tests;
+#[cfg(test)]
+mod named_telemetry_tests;
 
 // Public surface — preserve the flat `crate::cell::content::<fn>` paths that
 // callers across the cell service already use.

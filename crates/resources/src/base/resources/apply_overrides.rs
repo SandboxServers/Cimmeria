@@ -12,11 +12,12 @@ use std::collections::HashMap;
 
 use super::metadata_bump::{
     compute_dialog_metadata_bump, compute_item_metadata_bump, compute_metadata_bump,
-    compute_sequence_metadata_bump, compute_world_info_metadata_bump,
+    compute_sequence_metadata_bump, compute_stargate_metadata_bump,
+    compute_world_info_metadata_bump,
 };
 use super::{
     CategoryData, ResourceCache, CATEGORY_DIALOGS, CATEGORY_ITEMS, CATEGORY_KISMET_SEQUENCES,
-    CATEGORY_MISSIONS, CATEGORY_WORLD_INFO,
+    CATEGORY_MISSIONS, CATEGORY_STARGATES, CATEGORY_WORLD_INFO,
 };
 
 impl ResourceCache {
@@ -53,6 +54,7 @@ impl ResourceCache {
             let Some(original) = items.elements.get(&ov.item_id) else {
                 tracing::warn!(
                     item_id = ov.item_id,
+                    item_name = cimmeria_names::book().item(ov.item_id),
                     "item override skipped: entry not present in PAK",
                 );
                 continue;
@@ -63,6 +65,7 @@ impl ResourceCache {
                     applied.push(ov.item_id);
                     tracing::info!(
                         item_id = ov.item_id,
+                        item_name = cimmeria_names::book().item(ov.item_id),
                         new_icon = ?ov.new_icon_location,
                         new_max_stack_size = ?ov.new_max_stack_size,
                         "Applied Cimmeria item override",
@@ -71,6 +74,7 @@ impl ResourceCache {
                 None => {
                     tracing::warn!(
                         item_id = ov.item_id,
+                        item_name = cimmeria_names::book().item(ov.item_id),
                         "item override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -81,6 +85,7 @@ impl ResourceCache {
             if items.elements.contains_key(&item.item_id) {
                 tracing::warn!(
                     item_id = item.item_id,
+                    item_name = item.name,
                     reason = "id_ships_in_pak",
                     "item addition skipped: the PAK already ships this id",
                 );
@@ -90,7 +95,7 @@ impl ResourceCache {
             applied.push(item.item_id);
             tracing::info!(
                 item_id = item.item_id,
-                name = item.name,
+                item_name = item.name,
                 icon = item.icon_location,
                 max_stack_size = item.max_stack_size,
                 "Added Cimmeria item definition",
@@ -166,6 +171,7 @@ impl ResourceCache {
             applied.push(ov.dialog_id);
             tracing::info!(
                 dialog_id = ov.dialog_id,
+                dialog_name = cimmeria_names::book().dialog(ov.dialog_id),
                 replaced_existing = was_present,
                 "Applied Cimmeria dialog override",
             );
@@ -231,6 +237,7 @@ impl ResourceCache {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
                     mission_id = ov.mission_id,
+                    mission_name = cimmeria_names::book().mission(ov.mission_id),
                     "mission override skipped: entry not present in PAK",
                 );
                 continue;
@@ -246,12 +253,14 @@ impl ResourceCache {
                     }
                     tracing::info!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         "Applied Cimmeria mission override",
                     );
                 }
                 None => {
                     tracing::warn!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         "mission override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -266,7 +275,9 @@ impl ResourceCache {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
                     mission_id = ov.mission_id,
+                    mission_name = cimmeria_names::book().mission(ov.mission_id),
                     step_id = ov.step_id,
+                    step_name = cimmeria_names::book().mission_step(ov.step_id),
                     "step text override skipped: mission entry not present in PAK",
                 );
                 continue;
@@ -279,14 +290,18 @@ impl ResourceCache {
                     }
                     tracing::info!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         step_id = ov.step_id,
+                        step_name = cimmeria_names::book().mission_step(ov.step_id),
                         "Applied Cimmeria step text override",
                     );
                 }
                 None => {
                     tracing::warn!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         step_id = ov.step_id,
+                        step_name = cimmeria_names::book().mission_step(ov.step_id),
                         "step text override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -345,7 +360,8 @@ impl ResourceCache {
             applied.push(ov.sequence_id);
             tracing::info!(
                 sequence_id = ov.sequence_id,
-                event_id = ov.event_id,
+                sequence_name = cimmeria_names::book().sequence(ov.sequence_id),
+                event_id = ov.event_id, // nt:id-only a Kismet event number, no name table for it
                 replaced_existing = was_present,
                 "Applied Cimmeria Kismet sequence override",
             );
@@ -419,6 +435,74 @@ impl ResourceCache {
             "Cimmeria world info overrides applied; metadata bumped",
         );
         overridden.insert(CATEGORY_WORLD_INFO, applied);
+
+        overridden
+    }
+
+    /// Add Cimmeria's gates (the Debug Area's, 29) to the freshly-loaded
+    /// `CookedDataStargates` category and bump its metadata so a client's
+    /// next `versionInfoRequest` takes the per-key handshake.
+    ///
+    /// Same shape as [`Self::apply_world_info_overrides`], with one guard
+    /// it does not need: an addition whose id the PAK already ships is
+    /// skipped with a warn, because generating it would replace a real gate
+    /// the client knows (the item additions' rule).
+    pub(super) fn apply_stargate_overrides(
+        categories: &mut HashMap<u32, CategoryData>,
+    ) -> HashMap<u32, Vec<u32>> {
+        use crate::base::stargate_overrides::{generate_stargate_xml, STARGATE_ADDITIONS};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+        if STARGATE_ADDITIONS.is_empty() {
+            return overridden;
+        }
+
+        let Some(stargates) = categories.get_mut(&CATEGORY_STARGATES) else {
+            tracing::warn!(
+                category = CATEGORY_STARGATES,
+                "CookedDataStargates not loaded; skipping stargate additions"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(STARGATE_ADDITIONS.len());
+        for gate in STARGATE_ADDITIONS {
+            if stargates.elements.contains_key(&gate.stargate_id) {
+                tracing::warn!(
+                    stargate_id = gate.stargate_id,
+                    stargate_name = gate.name,
+                    reason = "id_ships_in_pak",
+                    "stargate addition skipped: the PAK already ships this id",
+                );
+                continue;
+            }
+            stargates
+                .elements
+                .insert(gate.stargate_id, generate_stargate_xml(gate));
+            applied.push(gate.stargate_id);
+            tracing::info!(
+                stargate_id = gate.stargate_id,
+                world_id = gate.world_id, // nt:id-only the cooked addition carries no world name; the gate name says which
+                stargate_name = gate.name,
+                "Added Cimmeria stargate definition",
+            );
+        }
+
+        if applied.is_empty() {
+            return overridden;
+        }
+
+        let bump = compute_stargate_metadata_bump(STARGATE_ADDITIONS);
+        stargates.metadata = stargates.metadata.wrapping_add(bump);
+        applied.sort_unstable();
+        tracing::info!(
+            category = CATEGORY_STARGATES,
+            count = applied.len(),
+            bump,
+            bumped_metadata = stargates.metadata,
+            "Cimmeria stargate additions applied; metadata bumped",
+        );
+        overridden.insert(CATEGORY_STARGATES, applied);
 
         overridden
     }

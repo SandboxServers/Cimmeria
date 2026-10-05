@@ -11,7 +11,8 @@ use cimmeria_entity::abilities::{AbilityDef, EffectDef, AF_TOGGLED, TCM_SINGLE};
 
 use super::super::super::super::messages::CellToBaseMsg;
 use super::super::super::super::space_manager::SpaceManager;
-use super::super::super::messaging::send_entity_method_to_witnesses;
+use super::super::super::messaging::WireRoute;
+use super::super::super::wire_ledger::{self, WireCtx};
 use super::super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 use super::feedback::send_line;
 use super::launch::{dooms_pet, refuse, resolve};
@@ -124,11 +125,17 @@ pub(in crate::cell::abilities::use_ability) async fn fire_owner_pet(
         event = "owner_ability_applied",
         decision_outcome = "owner_ability_applied",
         entity_id = owner,
+        entity_name = space_mgr.entity_label(owner),
         owner_id = owner,
+        owner_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         pet_id = pets[0],
+        pet_name = space_mgr.entity_label(pets[0]),
         pet_ids = ?pets,
         effect_ids = ?effect_ids,
         "owner ability applied to the pet"
@@ -184,10 +191,12 @@ pub(super) async fn flush_pet_stats(
     let dirty = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
     if !dirty.is_empty() {
-        let _ = send_entity_method_to_witnesses(
+        wire_ledger::send(
             pet,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             dirty,
+            WireRoute::Witnesses,
+            WireCtx::new("owner_pet"),
             tx,
             space_mgr,
         )

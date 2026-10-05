@@ -110,6 +110,8 @@ A mismatch happens when a client first meets a build whose served version it doe
 | New Kismet sequences (category 1) | `crates/resources/src/base/sequence_overrides.rs` | `SequenceOverride`, `SEQUENCE_OVERRIDES`, `generate_sequence_xml` |
 | New worlds (category 12) | `crates/resources/src/base/world_info_overrides.rs` | `WorldInfoOverride`, `WORLD_INFO_OVERRIDES`, `generate_world_info_xml` |
 | Apply the world-info entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_world_info_overrides` |
+| New stargates (category 13) | `crates/resources/src/base/stargate_overrides.rs` | `StargateAddition`, `STARGATE_ADDITIONS`, `generate_stargate_xml` |
+| Apply the stargate entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_stargate_overrides` |
 
 ## The XML-index gotcha
 
@@ -246,13 +248,19 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one resyncs the dialogs category on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
 
+## Stargate additions (category 13)
+
+`CookedDataStargates.pak` (category 13, shipped `MetaData` 4568) is the client's gate table: one `COOKED_STARGATE` entry per stargate id, with its world, prefab sequence, transform and six-glyph address. `setupStargateInfo` and `updateStargateAddress` carry bare ids the client resolves here, so a gate the server adds needs an entry too. The shipped PAK holds ids 1-28.
+
+The only addition is gate 29, the Debug Area's ([gate-travel.md](../gameplay/gate-travel.md#debug-area-dial-out)): gate 20's entry with the id, world (1300), name and address changed. An addition whose id the PAK already ships is skipped with a warn, like an item addition. Tests pin the generator to the shipped `_20` entry attribute for attribute, check that the address collides with no shipped gate, and (live DB, `cimmeria-services`) that the entry agrees with `resources.stargates` row 29.
+
 ## World info overrides (category 12)
 
-`CookedWorldInfo.pak` (category 12, 91 worlds, shipped `MetaData` 5959) is the client's world table: one `COOKED_WORLD_INFO` entry per world id, naming the world, its client map and its day length. `onClientMapLoad` sends a `WorldID`, `areaName` and `mapPath`, and a world id the table has never seen is new to the client.
+`CookedWorldInfo.pak` (category 12, 91 worlds, shipped `MetaData` 5959) is the client's world table: one `COOKED_WORLD_INFO` entry per world id, naming the world, its client map and its day length. `setupWorldParameters` sends the `worldId` the client keeps as its current world (`getCurrentWorldID`, which the minimap and world map look up in this table), and `onClientMapLoad` sends the `mapPath` it loads; `onClientMapLoad` also carries a `WorldID`, which the client discards (SGW.exe `FUN_00df27f0`). A world id the table has never seen is new to the client.
 
-The historical CellBlock worlds (1201–1207, [Historical CellBlocks](../analysis/historical-cellblocks/README.md)) are the first new worlds. `WORLD_INFO_OVERRIDES` builds their seven entries from the wire crate's `HISTORICAL_CELLBLOCKS` table, so the ids, world names and client maps cannot drift from what `onClientMapLoad` sends. Every entry is a full regeneration, like a new Kismet sequence, so nothing can fail to apply.
+The historical CellBlock worlds (1201–1207, [Historical CellBlocks](../analysis/historical-cellblocks/README.md)) were the first new worlds; the Debug Area (1300, [Debug Area](../analysis/debug-area/README.md)) is the second kind, a new world id on a map the client already ships. `WORLD_INFO_OVERRIDES` builds one entry per world in the wire crate's `ADDED_WORLDS` table (`cimmeria_wire::mercury::world_data::added_worlds`), so the ids, world names and client maps cannot drift from what `onClientMapLoad` sends. Each entry's `Flags` is the shipped entry's of the map it plays on (1 for the CellBlock, 0 for Ihpet_Crater_Light); a test pins the Debug Area entry as the shipped `_73` entry with only `World` and `WorldID` changed. Every entry is a full regeneration, like a new Kismet sequence, so nothing can fail to apply.
 
-A client holding the shipped table (`MetaData` 5959) is resynced: it receives all 98 world entries, the seven historical worlds among them, then the served version. Every shipped world is served untouched. `world_info_resync_converges_on_the_server_table` in `cimmeria-base-session` (`base::cooked_sync::tests::resync`) pins that exchange on the wire against the committed PAKs.
+A client holding the shipped table (`MetaData` 5959) is resynced: it receives all 99 world entries, the eight added worlds among them, then the served version. Every shipped world is served untouched. `world_info_resync_converges_on_the_server_table` in `cimmeria-base-session` (`base::cooked_sync::tests::resync`) pins that exchange on the wire against the committed PAKs.
 
 The generator reproduces the shipped QA-build shape byte for byte: the five SOAP namespace declarations; attributes in the order `Flags`, `MinPerDay`, `MinToRealMin`, `ClientMap`, `World`, `WorldID`; and an explicit end tag. `generated_world_info_xml_matches_shipped_entries` checks it against the real `_12` (stock CellBlock) and `_1` (CombatSim, whose `ClientMap` differs from its `World`) entries.
 
@@ -263,7 +271,7 @@ Once a client takes a server's bumped version, it holds that version. If it then
 So:
 
 - Never remove an override list from a category once it has shipped while servers older than #840 are still in use. Changing its content is fine: the new bump resyncs the category.
-- Expect this when one client moves between servers on different builds and one of them predates #840. For category 12, a GM who tested the historical worlds against a newer local server and then logs in to an older server loses the world table. The fix is to copy the client's pristine `SourceCache.en-us\CookedWorldInfo.pak` over `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedWorldInfo.pak` with SGW.exe closed; the next login to a server with the overrides pushes 1201–1207 again. A login to any server from #840 on repairs it without the copy.
+- Expect this when one client moves between servers on different builds and one of them predates #840. For category 12, a GM who tested the historical worlds against a newer local server and then logs in to an older server loses the world table. The fix is to copy the client's pristine `SourceCache.en-us\CookedWorldInfo.pak` over `Documents\My Games\Firesky\SGWGame\Cache.en-US\CookedWorldInfo.pak` with SGW.exe closed; the next login to a server with the overrides pushes the added worlds (1201–1207, 1300) again. A login to any server from #840 on repairs it without the copy.
 
 The server-side fix shipped in #840: every mismatch is now a full resync (see [Why every mismatch is a full resync](#why-every-mismatch-is-a-full-resync)). It protects every build from then on; builds that predate it still wipe. The repair above is also in [Troubleshooting](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server).
 

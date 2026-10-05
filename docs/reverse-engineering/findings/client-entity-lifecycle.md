@@ -38,7 +38,7 @@ A VS2005/2008 `std::map` object is `{ proxy, _Myhead, _Mysize }`; the head node'
 
 ## The handlers
 
-All are `ServerMessageHandler` slots, run on a Mercury network thread, and are `thiscall`. The argument counts come from each function's `ret N`.
+All are `ServerMessageHandler` slots and are `thiscall`. They are not called by the Nub directly: `SGWMessageQueue` (the connection's handler on the network thread) copies each message into a `Detail::*Message` object (`EntityMethodMessage`, `EntityCreateMessage`, ...) whose `process` later calls the `EntityManager` slot, so a `stream` argument is a `MemoryOStream`'s `BinaryIStream` subobject, not the Nub's `MemoryIStream` (2026-10-04, [ability-client-hook-anchors.md](ability-client-hook-anchors.md) § AB-C3 Seam A). The argument counts come from each function's `ret N`.
 
 | Vtable slot | Function | Address | Args after `this` | Ghidra name today |
 |---|---|---|---|---|

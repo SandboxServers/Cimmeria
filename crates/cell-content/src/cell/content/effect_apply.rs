@@ -90,9 +90,13 @@ pub(super) async fn apply_ability_effects(
             target: "abilities",
             event = "content_launch_ability_unknown",
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
+            target_name = space_mgr.entity_names(target_id).entity_name,
             invoker_id,
+            invoker_name = space_mgr.entity_names(invoker_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content launch_ability names an ability with no server def -- \
              nothing applied; check the content_actions seed against \
              resources.abilities"
@@ -111,9 +115,13 @@ pub(super) async fn apply_ability_effects(
         target: "abilities",
         event = "content_launch_ability",
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_names(target_id).entity_name,
         invoker_id,
+        invoker_name = space_mgr.entity_names(invoker_id).entity_name,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         registered,
         "Content: launched ability (server-initiated, combat gates bypassed)"
     );
@@ -144,9 +152,13 @@ pub(super) async fn apply_effect(
             target: "abilities",
             event = "content_apply_effect_unknown",
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             target_id,
+            target_name = space_mgr.entity_names(target_id).entity_name,
             invoker_id,
+            invoker_name = space_mgr.entity_names(invoker_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content effect application names an effect with no server def -- \
              skipped; check the seed against resources.effects"
         );
@@ -158,8 +170,11 @@ pub(super) async fn apply_effect(
             target: "abilities",
             event = "content_apply_effect_no_target",
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             target_id,
+            target_name = space_mgr.entity_names(target_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content effect application target entity is gone -- skipped"
         );
         return false;

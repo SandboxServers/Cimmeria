@@ -151,6 +151,33 @@ pub(crate) fn flatten(entity: &str, section_kind: Section) -> Vec<String> {
     flatten_level(&def, section_kind)
 }
 
+/// Every client-visible entity type with its clientIndex (the wire typeID),
+/// in `entities/entities.xml` document order. The client hands the next
+/// index only to entries whose `.def` is not `<ServerOnly/>`
+/// (`EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520`, the second
+/// counter at `desc+0x1e`), so `Account` is 0x07, not its row 8.
+pub(crate) fn client_classes() -> Vec<(u8, String)> {
+    let xml_path = defs_dir().join("../entities.xml");
+    let xml =
+        read_def(xml_path.clone()).unwrap_or_else(|| panic!("{} is missing", xml_path.display()));
+    let mut out = Vec::new();
+    for tag in xml.split('<').skip(1) {
+        // Only self-closing `<Name/>` entries; skips `<root>` / `</root>`.
+        let Some((name, _)) = tag.split_once("/>") else {
+            continue;
+        };
+        let name = name.trim();
+        let def = read_def(defs_dir().join(format!("{name}.def")))
+            .unwrap_or_else(|| panic!("entities.xml lists {name}, which has no defs/{name}.def"));
+        if def.contains("<ServerOnly") {
+            continue;
+        }
+        let index = u8::try_from(out.len()).expect("fewer than 256 client entity types");
+        out.push((index, name.to_string()));
+    }
+    out
+}
+
 fn flatten_level(def: &str, section_kind: Section) -> Vec<String> {
     let mut out = match tag_texts(def, "Parent").first() {
         // A parent with no entity def is the chain root (`GamePawn`).

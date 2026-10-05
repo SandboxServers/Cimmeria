@@ -88,8 +88,10 @@ pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
             if !matches!(op, ComparisonOp::Eq | ComparisonOp::Neq) {
                 warn!(
                     chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
                     operator = %row.operator,
                     world_id,
+                    world = cimmeria_names::book().world(world_id),
                     "world condition only supports eq/neq — this row will never match",
                 );
             }
@@ -113,6 +115,7 @@ pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
             if !well_formed {
                 warn!(
                     chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
                     tag = %tag,
                     operator = %row.operator,
                     value = ?row.value,

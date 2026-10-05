@@ -21,6 +21,7 @@
 //! already consistent, so a lost answer costs the clip display until the
 //! next reload, never a round.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -80,20 +81,32 @@ async fn push_stack_changes(
 
 async fn answer(io: &ReserveIo<'_>, msg: AmmoReserveAnswer) {
     let kind = msg.kind();
-    let entity_id = match &msg {
-        AmmoReserveAnswer::ReloadDrawn { entity_id, .. }
-        | AmmoReserveAnswer::SwitchReturned { entity_id, .. } => *entity_id,
+    let (entity_id, player_id) = match &msg {
+        AmmoReserveAnswer::ReloadDrawn {
+            entity_id,
+            player_id,
+            ..
+        }
+        | AmmoReserveAnswer::SwitchReturned {
+            entity_id,
+            player_id,
+            ..
+        } => (*entity_id, *player_id),
     };
     let sent = match io.cell_tx {
         Some(tx) => tx.send(BaseToCellMsg::AmmoReserve(msg)).await.is_ok(),
         None => false,
     };
     if !sent {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "ammo",
             event = "reserve_answer_send_failed",
             reason = "cell_channel_closed",
             entity_id,
+            entity_name = player_label,
+            player_id,
+            player_name = player_label,
             kind,
             "ammo reserve: the answer could not reach the cell; the database is \
              already settled, the clip display catches up on the next reload"
@@ -180,11 +193,20 @@ async fn handle_reload_draw(
             {
                 Ok(o) => o,
                 Err(e) => {
+                    let player_label = known_names::player_name(player_id);
                     tracing::error!(
                         target: "ammo",
                         event = events::RELOAD_REFUSED,
                         reason = ReserveRefusal::DbError.reason(),
-                        account_id, player_id, entity_id, ammo_type, slot_id, instance_id,
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        player_id,
+                        player_name = player_label,
+                        entity_id,
+                        entity_name = player_label,
+                        ammo_type,
+                        slot_id, // nt:id-only slot index, unnamed
+                        instance_id, // nt:id-only weapon instance in slot_id
                         error = %e,
                         "reload draw: database error, nothing drawn"
                     );
@@ -200,12 +222,21 @@ async fn handle_reload_draw(
                 push_stack_changes(io, pool, entity_id, player_id, &c.draw.changes).await;
             }
             if c.requested > 0 {
+                let player_label = known_names::player_name(player_id);
                 tracing::debug!(
                     target: "ammo",
                     event = events::RELOAD_DRAW,
-                    account_id, player_id, entity_id,
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
                     item_id = c.draw.item_id,
-                    ammo_type, slot_id, instance_id,
+                    item_name = cimmeria_names::owned::item(c.draw.item_id),
+                    ammo_type,
+                    slot_id, // nt:id-only slot index, unnamed
+                    instance_id, // nt:id-only weapon instance in slot_id
                     requested = c.requested,
                     drawn = c.draw.drawn,
                     clip_before = c.clip_before,
@@ -219,11 +250,20 @@ async fn handle_reload_draw(
         }
         Err(refusal) => {
             if refusal != ReserveRefusal::DbError {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "ammo",
                     event = events::RELOAD_REFUSED,
                     reason = refusal.reason(),
-                    account_id, player_id, entity_id, ammo_type, slot_id, instance_id,
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
+                    ammo_type,
+                    slot_id, // nt:id-only slot index, unnamed
+                    instance_id, // nt:id-only weapon instance in slot_id
                     clip_before,
                     "reload refused: nothing drawn, the clip is unchanged"
                 );
@@ -279,11 +319,17 @@ async fn handle_switch_return(
         {
             Ok(o) => o,
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::error!(
                     target: "ammo",
                     event = events::AMMO_SWITCH_RETURN,
                     reason = ReserveRefusal::DbError.reason(),
-                    account_id, player_id, entity_id,
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
                     ammo_type = from_ammo_type,
                     to_ammo_type, rounds,
                     error = %e,
@@ -299,13 +345,22 @@ async fn handle_switch_return(
             if let Some(pool) = io.db_pool {
                 push_stack_changes(io, pool, entity_id, player_id, &c.ret.changes).await;
             }
+            let player_label = known_names::player_name(player_id);
             tracing::debug!(
                 target: "ammo",
                 event = events::AMMO_SWITCH_RETURN,
-                account_id, player_id, entity_id,
+                account_id,
+                account_name = known_names::account_name(account_id),
+                player_id,
+                player_name = player_label,
+                entity_id,
+                entity_name = player_label,
                 item_id = c.ret.item_id,
+                item_name = cimmeria_names::owned::item(c.ret.item_id),
                 ammo_type = from_ammo_type,
-                to_ammo_type, slot_id, instance_id,
+                to_ammo_type,
+                slot_id, // nt:id-only slot index, unnamed
+                instance_id, // nt:id-only weapon instance in slot_id
                 rounds = c.rounds,
                 returned = c.ret.returned,
                 remainder = c.ret.remainder,
@@ -318,13 +373,22 @@ async fn handle_switch_return(
         }
         Err(refusal) => {
             if refusal != ReserveRefusal::DbError {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "ammo",
                     event = events::AMMO_SWITCH_RETURN,
                     reason = refusal.reason(),
-                    account_id, player_id, entity_id,
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
                     ammo_type = from_ammo_type,
-                    to_ammo_type, slot_id, instance_id, rounds,
+                    to_ammo_type,
+                    slot_id, // nt:id-only slot index, unnamed
+                    instance_id, // nt:id-only weapon instance in slot_id
+                    rounds,
                     "switch return refused: nothing moved"
                 );
             }

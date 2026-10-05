@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 
 use rmcp::{
     handler::server::{tool::ToolCallContext, wrapper::Parameters},
@@ -18,11 +19,13 @@ use rmcp::{
 use serde_json::{json, Map, Value};
 
 use super::LabServer;
-use crate::supervisor::{instance, session_file};
+use crate::client::BridgeClient;
+use crate::lease::RunLease;
+use crate::supervisor::{instance, session_file, Supervisor, SupervisorConfig};
 use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{default_root, RunDir, Verdict};
-use crate::uat::invoke::{normalize_result, ServerTools, ToolInvoker, ToolOutcome};
-use crate::uat::runner::{client_fingerprint, RunRequest, Runner};
+use crate::uat::invoke::{normalize_result, ServerInvoker, ServerTools, ToolInvoker, ToolOutcome};
+use crate::uat::runner::{client_fingerprint, RunRequest, Runner, SecondPlayer};
 use crate::uat::{latest_run, ledger, load_sections, specs_dir};
 
 /// Args for `lab_uat_run`.
@@ -54,9 +57,15 @@ pub struct UatRunArgs {
     /// The lab character (default: lab-account.json's `character`).
     #[serde(default)]
     pub character: Option<String>,
-    /// Check specs and tool availability only; drive nothing.
+    /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
+    /// Your lab lease (lab_lease_acquire), to run under it; each step renews
+    /// it. Omit it and the run takes a lease of its own (owner
+    /// `lab_uat_run`), refused while someone else holds the lab, and
+    /// releases it when the run ends.
+    #[serde(default)]
+    pub lease_id: Option<String>,
 }
 
 /// Args for `lab_uat_report`.
@@ -111,6 +120,10 @@ struct RouterInvoker<'a> {
     server: &'a LabServer,
     ctx: RequestContext<RoleServer>,
     names: HashSet<String>,
+    /// The run's lease. These calls skip the `call_tool` gate, so each one
+    /// touches it here: a long run stays leased, and a takeover stops the
+    /// run at its next step. `None` only for `plan_only` (drives nothing).
+    lease: Option<&'a RunLease>,
 }
 
 /// Tools the runner must never call: itself, re-entrantly.
@@ -132,6 +145,11 @@ impl ToolInvoker for RouterInvoker<'_> {
     async fn call(&self, name: &str, args: Value) -> ToolOutcome {
         if !self.has_tool(name) {
             return ToolOutcome::err(format!("tool {name} is not routed"));
+        }
+        if let Some(lease) = self.lease {
+            if let Err(e) = lease.touch(name) {
+                return ToolOutcome::err(format!("the run lost the lab lease: {e}"));
+            }
         }
         let obj = match args {
             Value::Object(o) => o,
@@ -179,10 +197,97 @@ fn lab_account() -> (Option<String>, Option<String>) {
     }
 }
 
+/// Names the second lab instance two-player rows drive (default `p2`).
+const P2_ENV: &str = "CIMMERIA_LAB_UAT_P2";
+/// Its bridge port (default: this instance's port + 1).
+const P2_PORT_ENV: &str = "CIMMERIA_LAB_UAT_P2_BRIDGE_PORT";
+
+/// The second player's instance: `(instance, account, character)` from
+/// `lab-account.<instance>.json`, or why two-player rows cannot run.
+fn p2_account() -> Result<(String, Option<String>, String), String> {
+    let name = std::env::var(P2_ENV)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "p2".into());
+    let name = instance::validate_name(name.trim())?;
+    let dir = install_dir().ok_or("players = 2: CIMMERIA_LAB_INSTALL_DIR is unset")?;
+    if is_same_instance(instance::from_env().ok().flatten().as_deref(), &name) {
+        return Err(format!(
+            "players = 2: this lab is instance {name} itself; run two-player rows from the default instance"
+        ));
+    }
+    let path = instance::account_path(&dir, Some(&name));
+    let account = session_file::read_lab_account_at(&path).map_err(|e| {
+        format!(
+            "players = 2 needs a second lab instance: {} ({e}); write it with its own account (lab2) and character",
+            path.display()
+        )
+    })?;
+    if account.character.is_empty() {
+        return Err(format!(
+            "players = 2: {} names no character for p2 to play",
+            path.display()
+        ));
+    }
+    Ok((name, Some(account.username), account.character))
+}
+
+/// Whether this lab is itself the instance `p2` names. Instance names
+/// become directory names, and the Windows filesystem ignores case, so
+/// `P2` and `p2` are the same instance.
+fn is_same_instance(own: Option<&str>, p2: &str) -> bool {
+    own.is_some_and(|o| o.eq_ignore_ascii_case(p2))
+}
+
+/// An in-process supervisor for the second instance, made on first use
+/// and kept for this server's life so its client survives between runs.
+/// It has its own session file, credentials, logs and bridge port, like a
+/// separate `cimmeria-lab` started with `CIMMERIA_LAB_INSTANCE=p2`.
+static P2_LAB: OnceLock<LabServer> = OnceLock::new();
+
+fn p2_lab(name: &str) -> &'static LabServer {
+    P2_LAB.get_or_init(|| {
+        let mut config = SupervisorConfig::from_env();
+        let port = std::env::var(P2_PORT_ENV)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(config.port.wrapping_add(1));
+        config.instance = Some(name.to_string());
+        config.port = port;
+        let bridge = Arc::new(BridgeClient::new(
+            format!("127.0.0.1:{port}"),
+            String::new(),
+        ));
+        LabServer::new(Arc::new(Supervisor::new(bridge, config)))
+    })
+}
+
+fn router_names(server: &LabServer) -> HashSet<String> {
+    server
+        .tool_router
+        .list_all()
+        .into_iter()
+        .map(|t| t.name.to_string())
+        .collect()
+}
+
 fn text(v: &Value) -> CallToolResult {
     CallToolResult::success(vec![ContentBlock::text(
         serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string()),
     )])
+}
+
+/// The purpose an own run lease carries, so a refused session sees what
+/// the run is doing.
+fn run_purpose(a: &UatRunArgs) -> String {
+    let mut p = "UAT run".to_string();
+    if let Some(s) = a.sections.as_ref().filter(|s| !s.is_empty()) {
+        p.push_str(&format!(", sections {}", s.join(" ")));
+    }
+    if let Some(r) = a.rows.as_ref().filter(|r| !r.is_empty()) {
+        p.push_str(&format!(", rows {}", r.join(" ")));
+    }
+    p
 }
 
 fn run_dir_or_latest(arg: Option<&String>) -> Result<PathBuf, McpError> {
@@ -196,13 +301,27 @@ fn run_dir_or_latest(arg: Option<&String>) -> Result<PathBuf, McpError> {
 #[tool_router(router = uat_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool)."
+        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool). Runs under the lab lease: pass your lease_id, or the run takes one of its own (owner lab_uat_run, refused while someone else holds the lab) and releases it when it ends; a keep-alive renews it for the whole run, and a takeover or release stops the run at once (the current and every remaining row BLOCKED \"lease revoked\"). plan_only needs no lease."
     )]
     async fn lab_uat_run(
         &self,
         Parameters(a): Parameters<UatRunArgs>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        // The run's lease, held until this function returns (an own lease is
+        // released on drop, whatever the outcome). A plan drives nothing.
+        let run_lease = if a.plan_only {
+            None
+        } else {
+            let book = self.supervisor.leases().clone();
+            Some(match a.lease_id.clone() {
+                // The `call_tool` gate already checked it is current.
+                Some(id) => RunLease::caller(book, id),
+                None => RunLease::acquire_own(book, run_purpose(&a)).map_err(|e| {
+                    McpError::invalid_request(e, Some(self.supervisor.leases().status()))
+                })?,
+            })
+        };
         let dir = a
             .specs_dir
             .map(PathBuf::from)
@@ -242,24 +361,80 @@ impl LabServer {
             client,
             no_settle: false,
         };
-        let names: HashSet<String> = self
-            .tool_router
-            .list_all()
-            .into_iter()
-            .map(|t| t.name.to_string())
-            .collect();
         let inv = RouterInvoker {
             server: self,
-            ctx,
-            names,
+            ctx: ctx.clone(),
+            names: router_names(self),
+            lease: run_lease.as_ref(),
+        };
+        // The second player is set up only when a row needs it.
+        let wants_p2 = req
+            .sections
+            .iter()
+            .flat_map(|s| &s.spec.rows)
+            .any(|r| r.players == 2);
+        let p2 = if wants_p2 {
+            p2_account()
+        } else {
+            Err("no row in this run needs a second player".into())
+        };
+        let p2_inv = p2.as_ref().ok().map(|(name, _, _)| {
+            let server = p2_lab(name);
+            RouterInvoker {
+                server,
+                ctx,
+                names: router_names(server),
+                // One lease covers the lab: both players' steps touch it.
+                lease: run_lease.as_ref(),
+            }
+        });
+        let second = match (&p2, &p2_inv) {
+            (Ok((instance, account, character)), Some(inv)) => Ok(SecondPlayer {
+                inv,
+                instance: instance.clone(),
+                account: account.clone(),
+                character: character.clone(),
+            }),
+            (Err(e), _) => Err(e.clone()),
+            (Ok(_), None) => Err("p2 invoker missing".into()),
         };
         let server_tools = ServerTools::from_env();
-        let runner = Runner::new(&inv, server_tools.as_ref(), req)
-            .map_err(|e| McpError::internal_error(e, None))?;
-        let out = runner
-            .run_all()
-            .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+        let server = server_tools.as_ref().map(|s| s as &dyn ServerInvoker);
+        let mut runner = Runner::new(&inv, server, req)
+            .map_err(|e| McpError::internal_error(e, None))?
+            .with_p2(second);
+        // Renew on a timer for the whole run (wait_ms steps make no tool
+        // calls), and stop the run the moment the lease is lost. Declared
+        // after `run_lease`, so it stops before an own lease is released.
+        let keep = run_lease.as_ref().map(RunLease::keep_alive);
+        if let Some(k) = &keep {
+            runner = runner.with_revocation(k.revoked());
+        }
+        let out = match &run_lease {
+            // The run's own lease: its flows' actions re-check it (with a
+            // caller's lease, `call_tool` already set this scope).
+            Some(l) if l.is_own() => {
+                crate::lease::permit::scope(l.permit(), runner.run_all()).await
+            }
+            _ => runner.run_all().await,
+        }
+        .map_err(|e| McpError::internal_error(e, None))?;
+        if let Some(reason) = keep.as_ref().and_then(|k| k.revoked().borrow().clone()) {
+            // A row cut off mid-press may have left a key or button down;
+            // letting go is allowed without the lease.
+            tracing::warn!(target: "lab.lease", event = "uat_run_revoked", %reason,
+                "UAT run stopped: lease lost");
+            let _ = self
+                .supervisor
+                .bridge_call("input_release", json!({}))
+                .await;
+            if let Ok((name, _, _)) = &p2 {
+                let _ = p2_lab(name)
+                    .supervisor
+                    .bridge_call("input_release", json!({}))
+                    .await;
+            }
+        }
         let mut blocks = vec![ContentBlock::text(
             serde_json::to_string_pretty(&json!({ "run_dir": out.run_dir, "rows": out.rows }))
                 .unwrap_or_default(),
@@ -332,5 +507,19 @@ impl LabServer {
         attest(&req)
             .map(|v| text(&v))
             .map_err(|e| McpError::invalid_params(e, None))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_self_instance_check_ignores_case() {
+        assert!(is_same_instance(Some("p2"), "p2"));
+        assert!(is_same_instance(Some("P2"), "p2"));
+        assert!(is_same_instance(Some("p2"), "P2"));
+        assert!(!is_same_instance(None, "p2"));
+        assert!(!is_same_instance(Some("p3"), "p2"));
     }
 }

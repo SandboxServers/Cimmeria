@@ -43,6 +43,17 @@ harness is `cimmeria_client_patches-<hash>.exe`.
 
 ## What it does
 
+Before any of the Black Market steps, and only under Wine, the DLL repairs
+the C++ runtime's `strstreambuf` (`strstream_underflow/`). Wine's
+`msvcp80.dll` returns end of file for a read that follows a write, which is
+how the client reads its cooked-data cache, so without the repair a client
+under Wine reports version 0 for every cooked category and is resynced in
+full at every login. The DLL probes the runtime with a four-byte round trip
+and, if that fails in the expected way, points one vtable slot at a shim that
+raises the buffer's high-water mark before the runtime's own `underflow`
+runs. On Windows, and on a runtime that passes the probe, it changes nothing.
+See [the ADR](../../docs/architecture/client-patches.md#a-runtime-repair-strstream-under-wine).
+
 1. **Build fingerprint gate** (`fingerprint.rs`). Before any hook goes in, it
    compares the first bytes at every address it uses with this build's
    bytes. On any mismatch it installs nothing and logs which site differed.
@@ -233,6 +244,9 @@ and to `cimmeria-client-patches.log` next to `SGW.exe`. The file is rewritten
 at each launch, when the directory is writable. The log records:
 
 - the fingerprint result for each site;
+- one `strstream: …` line saying what the runtime probe found and whether
+  the shim was installed, and then the first, tenth, hundredth and further
+  powers-of-ten count of reads it repaired;
 - each hook installed;
 - the first, tenth, hundredth and further powers-of-ten occurrence of each
   outcome: claimed, delivered, dropped (queue full, no overlay, no handler),

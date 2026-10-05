@@ -28,7 +28,7 @@
 //! [`docs/architecture/instrumentation-discipline.md`](../../docs/architecture/instrumentation-discipline.md))
 //!
 //! Metric labels must be enumerated, low-cardinality strings (`outcome`,
-//! `reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+//! `reason`, `kind`, `world`, `decision_outcome`). High-cardinality
 //! correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 //! fields, NEVER on a metric. ClickHouse merge-tree storing a label per
 //! entity degrades query performance non-linearly.
@@ -280,8 +280,8 @@ macro_rules! histogram {
 /// Adjust a gauge (up-down counter) by `delta` (positive or negative).
 ///
 /// ```ignore
-/// gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
-/// gauge_add!("cover_slots_held", -1, "world_name" => "Castle");
+/// gauge_add!("cover_slots_held", 1, "world" => "Castle");
+/// gauge_add!("cover_slots_held", -1, "world" => "Castle");
 /// ```
 #[macro_export]
 macro_rules! gauge_add {
@@ -293,6 +293,54 @@ macro_rules! gauge_add {
             g.add($delta, &labels);
         }
     }};
+}
+
+/// Declare an enumerated metric label: a `Copy` enum whose variants are the
+/// only values the label can take (Rule 4), with `ALL` (every variant, in
+/// declaration order) and `label()` (the string sent to the exporter).
+///
+/// Call sites pass the enum, never a string, so a label set cannot grow
+/// without a new variant; a pinning test can compare `ALL` with the code's
+/// own list of reasons.
+///
+/// ```ignore
+/// cimmeria_observability::metric_label! {
+///     /// Why a trade ended.
+///     pub enum TradeOutcome {
+///         Completed => "completed",
+///         Cancelled => "cancelled",
+///     }
+/// }
+/// counter!("trade_swaps_total", "outcome" => TradeOutcome::Completed.label());
+/// ```
+#[macro_export]
+macro_rules! metric_label {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident => $label:literal ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis enum $name {
+            $( $(#[$vmeta])* $variant ),+
+        }
+
+        impl $name {
+            /// Every value of the label, in declaration order.
+            #[allow(dead_code)]
+            $vis const ALL: &'static [Self] = &[ $( Self::$variant ),+ ];
+
+            /// The label value the exporter receives.
+            #[allow(dead_code)]
+            $vis const fn label(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $label ),+
+                }
+            }
+        }
+    };
 }
 
 #[cfg(test)]
@@ -362,8 +410,8 @@ mod tests {
     /// gauge_add! macro emits +/- deltas without panicking.
     #[test]
     fn gauge_add_macro_is_safe_when_uninitialized() {
-        crate::gauge_add!("test_gauge", 1i64, "world_name" => "Castle");
-        crate::gauge_add!("test_gauge", -1i64, "world_name" => "Castle");
+        crate::gauge_add!("test_gauge", 1i64, "world" => "Castle");
+        crate::gauge_add!("test_gauge", -1i64, "world" => "Castle");
     }
 
     /// Concurrent emissions from two threads must not panic and must

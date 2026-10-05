@@ -324,7 +324,7 @@ async fn live_db_refusal_of_an_unknown_item_sends_nothing() {
             ("target_container_id", "17".into()),
         ],
         &[
-            "type_id",
+            "item_type_id",
             "stack_size",
             "source_container_id",
             "source_slot_id",

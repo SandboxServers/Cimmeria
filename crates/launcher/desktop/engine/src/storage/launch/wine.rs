@@ -5,6 +5,7 @@ use cimmeria_runtime_probe::game_launch::Request;
 pub(super) fn prepare(
     plan: &Plan,
     state_root: &Path,
+    session: Option<&crate::game_telemetry::Session>,
 ) -> Result<
     (
         HelperCommand,
@@ -22,7 +23,13 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or(StorageError::Corrupt)?;
     graphics.d3d9.stage(&binaries.join("d3d9.dll"))?;
-    let environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    let mut environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    let telemetry = telemetry::injected(plan, session);
+    if telemetry.is_some() {
+        for (key, value) in crate::game_telemetry::passthrough_environment() {
+            environment.insert(key.into(), value.into());
+        }
+    }
     let guest = |p: &Path| {
         mac_wine::paths::guest(p)
             .map(PathBuf::from)
@@ -33,21 +40,26 @@ pub(super) fn prepare(
         operation_id: plan.id,
         exe: guest(&binaries.join("SGW.exe"))?,
         directory: guest(&binaries)?,
+        // Patches first: the telemetry DLL shares their install lock.
         dlls: plan
             .resources
             .client_patches
             .iter()
+            .chain(telemetry)
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
     };
     let spec = HelperCommand {
-        executable: resources.runtime.join("bin/wine"),
+        executable: mac_wine::app_identity::loader(&resources.runtime, state_root),
         arguments: vec![guest(plan.resources.helper.path())?.into_os_string()],
         directory: binaries,
         environment,
     };
     Ok((spec, request, resources))
 }
+
+// DXVK's limiter; the client has no vsync setting and nothing else bounds its render loop.
+const FRAME_RATE_LIMIT: &str = "30";
 
 // Called only after Resources::reopen verifies and locks the pinned runtime.
 fn game_environment(
@@ -71,6 +83,7 @@ fn game_environment(
         "d3d9=n;winemenubuilder.exe,mscoree,mshtml=d".into(),
     );
     environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
+    environment.insert("DXVK_FRAME_RATE".into(), FRAME_RATE_LIMIT.into());
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(
             "ROSETTA_X87_PATH".into(),

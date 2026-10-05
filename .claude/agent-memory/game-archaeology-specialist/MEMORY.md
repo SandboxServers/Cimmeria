@@ -114,3 +114,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## NPC attack presentation (2026-09-29)
 
 - [NPC shots draw nothing on the client](npc-attack-presentation.md) — NPC BSF_InCombat never set; SequenceManager play path addresses, Kismet weapon-slot chain, per-shot telemetry method; cause MEDIUM until a client confirms
+
+## Ability client hook anchors (AB-C0 / AB-N0, 2026-10-04)
+
+- [Ability hook anchors and combat-debug premise fixes](ability-client-hook-anchors-ab-c0.md) — **[PROMOTED → findings/ability-client-hook-anchors.md + native-combat-debug.md]** — event bag, single outgoing seam, central dispatch `0x00a372f0`, silent `AbilitySet` drop `0x00d2afcf`, `onSendCombatDebug` is not a client method; new Probe tokens

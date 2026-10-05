@@ -52,7 +52,10 @@ pub async fn handle_initial_response(
         // (0 or otherwise) would open an empty dialog on the client, so bail.
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             interaction_set_map_id,
+            interaction_set_map_name =
+                cimmeria_names::book().dialog_set_map(interaction_set_map_id),
             "handle_initial_response: bound set map is interaction-only (NULL dialog) -- \
              nothing to display"
         );
@@ -69,8 +72,12 @@ pub async fn handle_initial_response(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     interaction_set_map_id,
+                    interaction_set_map_name =
+                        cimmeria_names::book().dialog_set_map(interaction_set_map_id),
                     dialog_id,
+                    dialog_name = cimmeria_names::book().dialog(dialog_id),
                     "handle_initial_response: missing player_id; aborting dialog open"
                 );
                 return;
@@ -93,8 +100,12 @@ pub async fn handle_initial_response(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     interaction_set_map_id,
+                    interaction_set_map_name =
+                        cimmeria_names::book().dialog_set_map(interaction_set_map_id),
                     dialog_id,
+                    dialog_name = cimmeria_names::book().dialog(dialog_id),
                     "handle_initial_response: no last_interaction_target on player; \
                      aborting dialog open -- portrait would render blank against the player"
                 );
@@ -103,9 +114,14 @@ pub async fn handle_initial_response(
         };
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             interaction_set_map_id,
+            interaction_set_map_name =
+                cimmeria_names::book().dialog_set_map(interaction_set_map_id),
             dialog_id,
+            dialog_name = cimmeria_names::book().dialog(dialog_id),
             npc_entity_id,
+            npc_entity_name = space_mgr.entity_label(npc_entity_id as u32),
             "handle_initial_response: found dialog, sending onDialogDisplay"
         );
         send_dialog_display(entity_id, npc_entity_id, dialog_id, tx, space_mgr).await;
@@ -116,7 +132,10 @@ pub async fn handle_initial_response(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             interaction_set_map_id,
+            interaction_set_map_name =
+                cimmeria_names::book().dialog_set_map(interaction_set_map_id),
             "handle_initial_response: no matching dialog_set_map_id in available_interactions"
         );
     }

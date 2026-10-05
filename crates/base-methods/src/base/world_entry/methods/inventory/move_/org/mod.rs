@@ -25,6 +25,7 @@
 //! transaction. Every refusal goes through [`refusal::refuse_org_move`].
 
 use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::vault::VaultAccess;
 use sqlx::{Postgres, Transaction};
 use tracing::Instrument;
@@ -131,7 +132,8 @@ pub(super) async fn route(req: &MoveRequest, ctx: &MoveCtx<'_>) -> Route {
             tracing::error!(
                 target: "bank",
                 player_id = req.player_id,
-                item_id = req.item_id,
+                player_name = known_names::player_name(req.player_id),
+                item_id = req.item_id, // nt:id-only instance id, type unread yet
                 "MoveInventoryItem: org vault routing read failed, dropping the move: {e}"
             );
             Route::Dropped
@@ -229,7 +231,12 @@ async fn run(
     let mut tx = match ctx.pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(target: "bank", player_id = req.player_id, "org vault move: begin failed: {e}");
+            tracing::error!(
+                target: "bank",
+                player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
+                "org vault move: begin failed: {e}"
+            );
             refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
             return;
         }
@@ -242,7 +249,14 @@ async fn run(
         Ok(carried) => carried,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: move locks failed: {e}");
+            tracing::error!(
+                target: "bank",
+                player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
+                org_id,
+                org_name = known_names::org_name(org_id),
+                "org vault move: move locks failed: {e}"
+            );
             refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
             return;
         }
@@ -256,7 +270,14 @@ async fn run(
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: lock failed: {e}");
+            tracing::error!(
+                target: "bank",
+                player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
+                org_id,
+                org_name = known_names::org_name(org_id),
+                "org vault move: lock failed: {e}"
+            );
             refuse(OrgMoveRefusal::MoveFailed, Some(org_id), None).await;
             return;
         }
@@ -294,7 +315,14 @@ async fn run(
         }
     };
     if let Err(e) = committed {
-        tracing::error!(target: "bank", player_id = req.player_id, org_id, "org vault move: log or commit failed, rolled back: {e}");
+        tracing::error!(
+            target: "bank",
+            player_id = req.player_id,
+            player_name = known_names::player_name(req.player_id),
+            org_id,
+            org_name = known_names::org_name(org_id),
+            "org vault move: log or commit failed, rolled back: {e}"
+        );
         refuse(OrgMoveRefusal::MoveFailed, Some(org_id), view).await;
         return;
     }
@@ -321,8 +349,10 @@ async fn locked(
         tracing::error!(
             target: "bank",
             player_id = req.player_id,
+            player_name = known_names::player_name(req.player_id),
             org_id,
-            item_id = req.item_id,
+            org_name = known_names::org_name(org_id),
+            item_id = req.item_id, // nt:id-only instance id, type unread yet
             "org vault move: {what} failed: {e}"
         );
     };
@@ -365,10 +395,14 @@ async fn locked(
         tracing::warn!(
             target: "bank",
             player_id = req.player_id,
+            player_name = known_names::player_name(req.player_id),
             org_id,
+            org_name = known_names::org_name(org_id),
             item_id = req.item_id,
+            item_name = cimmeria_names::book().item(source.type_id),
             locked_container = carried,
             source_container_id = source.container_id,
+            source_container_name = cimmeria_names::book().container(source.container_id),
             "org vault move: the carried row moved between the lock and the read"
         );
         return Err(OrgMoveRefusal::MoveFailed);

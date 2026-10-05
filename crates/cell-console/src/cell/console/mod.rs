@@ -46,6 +46,8 @@
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
 //! - [`give`] — selected-target player grants (`givecash`, `givexp`).
 //! - [`give_ability`] — `giveability`, persisted through the base.
+//! - [`abilities`] — the ability lab tools (`effects`, `cooldowns`, `dummy`,
+//!   `cleareffects`; AB-L2).
 //! - [`pet`] — pet UAT tools (`.pet summon|dismiss|stance|info|list`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
@@ -82,6 +84,7 @@
 //! `docs/architecture/dev-console-channel.md`; the player-facing command list is
 //! in `docs/commands.md`.
 
+pub mod abilities;
 mod aggro;
 mod bank;
 mod black_market;

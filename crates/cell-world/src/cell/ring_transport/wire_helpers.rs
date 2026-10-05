@@ -50,21 +50,74 @@ pub async fn send_play_sequence(
         Some(&id) => id,
         None => {
             tracing::warn!(
-                event_set_id,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                event_set_id, // nt:id-only event sets have no name column to pair
                 event_id,
+                event_name = ?region_event,
                 "ring sequence not in event_sets_sequences map — kismet sequence will not play"
             );
             return;
         }
     };
     let args = build_on_sequence_args(seq_id, entity_id);
+    // Every witness plays the rig's matinee too, not just the traveller. The
+    // rings are level actors in each client's own copy of the map, so a client
+    // that is never sent the sequence id sees the passenger fade out with the
+    // pad standing still. The 2009 server sent `self.client` only; gate
+    // travel already fans its sequences out the same way
+    // (`gate_travel::sequences`, "Stargate witness visibility").
+    //
+    // The traveller keeps its owner-method send (unchanged wire); everyone
+    // else gets the same frame addressed to the traveller's entity. Sorted so
+    // the emission order does not follow a HashMap walk.
+    let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    let mut witnesses = space_mgr.get_witnesses_of(entity_id);
+    witnesses.retain(|&w| w != entity_id);
+    witnesses.sort_unstable();
+    witnesses.dedup();
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_SEQUENCE,
-            args,
+            args: args.clone(),
         })
         .await;
+    for witness_id in &witnesses {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::WitnessEntityMethod {
+                witness_id: *witness_id,
+                entity_id,
+                method_index: ON_SEQUENCE,
+                args: args.clone(),
+                entity_is_player,
+            })
+            .await
+        {
+            tracing::warn!(
+                witness_id,
+                witness_name = space_mgr.entity_label(*witness_id),
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                event_set_id, // nt:id-only event sets have no name column to pair
+                event_id,
+                event_name = ?region_event,
+                seq_id, // nt:id-only kismet sequence ids have no name column
+                "ring sequence: cell→base send failed — this witness will not see the ring \
+                 animation: {e}"
+            );
+        }
+    }
+    tracing::debug!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        event_set_id, // nt:id-only event sets have no name column to pair
+        event_id,
+        event_name = ?region_event,
+        seq_id, // nt:id-only kismet sequence ids have no name column
+        witness_count = witnesses.len(),
+        "Sent ring onSequence"
+    );
 }
 
 /// Set or clear a ref-counted state flag on the entity and, when the bit
@@ -120,7 +173,9 @@ pub async fn update_state_flag(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             flag,
+            flag_names = %cimmeria_wire::state_field::STATE_FLAGS.render(flag),
             set,
             error = %e,
             reason = "cell_to_base_send_failed",
@@ -179,7 +234,9 @@ pub async fn send_visible(
             // refresh but the desync is visible.
             tracing::warn!(
                 witness_id,
+                witness_name = space_mgr.entity_label(witness_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 visible,
                 "ring send_visible: cell→base send failed -- witness will see desynced visibility: {e}"
             );
@@ -198,7 +255,9 @@ pub async fn send_destination_list(
         Some(r) => r,
         None => {
             tracing::warn!(
-                source_region_id,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                source_region_id, // nt:id-only the region is not loaded, so it has no name
                 "send_destination_list: source region not in cache"
             );
             return;
@@ -210,7 +269,7 @@ pub async fn send_destination_list(
             let r = space_mgr.ring_regions.get(id);
             if r.is_none() {
                 tracing::warn!(
-                    invalid_id = id,
+                    invalid_id = id, // nt:id-only the id is not a loaded region, nothing to name
                     "ring destination id not in cache — skipping"
                 );
             }
@@ -228,7 +287,9 @@ pub async fn send_destination_list(
         .await;
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         source_region_id,
+        source_region_name = Some(source.tag.as_str()).filter(|t| !t.is_empty()),
         destination_count = dests.len(),
         "Sent onRingTransporterList"
     );

@@ -10,6 +10,7 @@ pub use resource::{Artifact, Graphics, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
 mod supervisor;
+mod telemetry;
 #[cfg(target_os = "macos")]
 mod wine;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -104,15 +105,29 @@ impl DesktopState {
         {
             return Err(ContractError::Busy.into());
         }
-        resources.verify()?;
-        let installed = self
-            .installed_content_readonly()?
-            .ok_or(StorageError::Corrupt)?;
+        let (installed, adoption) = self.installed_for_launch()?.ok_or(StorageError::Corrupt)?;
         if installed.intent.operation_id != installation_id {
             return Err(ContractError::IdentityConflict.into());
         }
+        // The signed minimum is the owner's; it is reported whatever the state of
+        // an adopted copy's imported settings.
         if self.compatibility.for_release(&installed.release).blocks() {
             return Err(IntentError::LauncherTooOld);
+        }
+        // The DLL is admitted only for a player who is opted in right now, and a
+        // lab build is refused whatever digest the host was compiled with.
+        if let Some(telemetry) = &resources.client_telemetry {
+            if !self.game_telemetry()?.opted_in {
+                return Err(ContractError::IdentityConflict.into());
+            }
+            telemetry.refuse_lab_build()?;
+        }
+        match adoption {
+            Some(provenance) => super::effective_settings::verify_launch_resources(
+                super::effective_settings::launch_binding(self, &installed.intent, &provenance)?,
+                &resources,
+            )?,
+            None => resources.verify()?,
         }
         if !install_worker::content_valid(
             &installed.intent.destination.join("game"),

@@ -3,10 +3,9 @@ use chrono::Utc;
 
 fn world_entry(account_id: u32, account: &str, character: &str) -> Event {
     Event::PlayerWorldEntry {
-        account_id,
-        account_name: Some(account.into()),
-        character_name: character.into(),
-        world_name: "Castle_CellBlock".into(),
+        account: Named::new(account_id, Some(account.into())),
+        character: Named::name_only(character),
+        world: Named::name_only("Castle_CellBlock"),
         position: [0.0; 3],
         timestamp: Utc::now(),
     }
@@ -14,7 +13,7 @@ fn world_entry(account_id: u32, account: &str, character: &str) -> Event {
 
 fn level_up(character: &str) -> Event {
     Event::PlayerLevelUp {
-        character_name: character.into(),
+        character: Named::name_only(character),
         new_level: 2,
         timestamp: Utc::now(),
     }
@@ -52,4 +51,19 @@ fn accounts_can_be_muted_by_id() {
         timestamp: Utc::now(),
     };
     assert!(is_muted(&muted, &tracing));
+}
+
+/// A Mercury timeout is muted by account ID only, as before NT-10; the
+/// account name and character it now carries are for the embed.
+#[test]
+fn mercury_timeout_mutes_by_account_id_only() {
+    let timeout = Event::MercuryTimeout {
+        addr: "127.0.0.1:50000".parse().unwrap(),
+        account: Named::new(99, Some("labtimeout".into())),
+        character: Some(Named::name_only("Timeout Char")),
+        silence_secs: 30,
+        timestamp: Utc::now(),
+    };
+    assert!(!is_muted(&["labtimeout".to_string()], &timeout));
+    assert!(is_muted(&["99".to_string()], &timeout));
 }

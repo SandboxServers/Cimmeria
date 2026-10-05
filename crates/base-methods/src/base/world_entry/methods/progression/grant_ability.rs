@@ -11,6 +11,7 @@
 //! `UPDATE` (`respec.rs`) removes only `trained_abilities` from `abilities`,
 //! so a granted ability survives a respec and refunds nothing.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -160,8 +161,11 @@ pub async fn handle_gm_grant_ability(
                 decision_outcome = "feedback_dropped",
                 reason = "gm_session_gone",
                 entity_id = gm_entity_id,
+                entity_name = known_names::player_name(gm_player_id),
                 player_id = gm_player_id,
+                player_name = known_names::player_name(gm_player_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "GmGrantAbility: GM session gone or reused; feedback dropped"
             );
             return;
@@ -170,16 +174,23 @@ pub async fn handle_gm_grant_ability(
     };
 
     let Some(pool) = db_pool else {
+        let player_label = known_names::player_name(gm_player_id);
         tracing::warn!(
             decision_outcome = "refused",
             reason = "no_database",
             persisted = false,
             entity_id = gm_entity_id,
+            entity_name = player_label,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id = gm_player_id,
+            player_name = player_label,
             subject_entity_id = entity_id,
+            subject_entity_name = known_names::player_name(player_id),
             subject_player_id = player_id,
+            subject_player_name = known_names::player_name(player_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "GmGrantAbility: no DB pool, dropping grant"
         );
         tell_gm(format!(
@@ -194,17 +205,25 @@ pub async fn handle_gm_grant_ability(
     // ability onto another's cell entity.
     let active = active_player_of(entity_id, connected, entity_to_addr);
     if active != Some(player_id) {
+        let player_label = known_names::player_name(gm_player_id);
         tracing::warn!(
             decision_outcome = "refused",
             reason = "session_mismatch",
             persisted = false,
             entity_id = gm_entity_id,
+            entity_name = player_label,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id = gm_player_id,
+            player_name = player_label,
             subject_entity_id = entity_id,
+            subject_entity_name = known_names::player_name(player_id),
             subject_player_id = player_id,
+            subject_player_name = known_names::player_name(player_id),
             active_player_id = ?active,
+            active_player_name = known_names::player_name(active),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "GmGrantAbility: session is not playing the resolved character — rejecting"
         );
         tell_gm(format!(
@@ -219,16 +238,23 @@ pub async fn handle_gm_grant_ability(
         Ok(GrantWrite::PlayerRowMissing) => {
             // The session check passed, so the character was deleted in
             // between: a server-side race no client drives at will.
+            let player_label = known_names::player_name(gm_player_id);
             tracing::warn!(
                 decision_outcome = "refused",
                 reason = "player_row_missing",
                 persisted = false,
                 entity_id = gm_entity_id,
+                entity_name = player_label,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id = gm_player_id,
+                player_name = player_label,
                 subject_entity_id = entity_id,
+                subject_entity_name = known_names::player_name(player_id),
                 subject_player_id = player_id,
+                subject_player_name = known_names::player_name(player_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "GmGrantAbility: no sgw_player row for the character; nothing granted"
             );
             tell_gm(format!(
@@ -243,11 +269,17 @@ pub async fn handle_gm_grant_ability(
                 reason = "already_known",
                 persisted = false,
                 entity_id = gm_entity_id,
+                entity_name = known_names::player_name(gm_player_id),
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id = gm_player_id,
+                player_name = known_names::player_name(gm_player_id),
                 subject_entity_id = entity_id,
+                subject_entity_name = known_names::player_name(player_id),
                 subject_player_id = player_id,
+                subject_player_name = known_names::player_name(player_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "GmGrantAbility: the character already knows the ability; nothing changed"
             );
             tell_gm(format!(
@@ -257,16 +289,23 @@ pub async fn handle_gm_grant_ability(
             return;
         }
         Err(e) => {
+            let player_label = known_names::player_name(gm_player_id);
             tracing::error!(
                 decision_outcome = "refused",
                 reason = "db_error",
                 persisted = false,
                 entity_id = gm_entity_id,
+                entity_name = player_label,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id = gm_player_id,
+                player_name = player_label,
                 subject_entity_id = entity_id,
+                subject_entity_name = known_names::player_name(player_id),
                 subject_player_id = player_id,
+                subject_player_name = known_names::player_name(player_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 error = %e,
                 "GmGrantAbility: UPDATE failed"
             );
@@ -278,15 +317,22 @@ pub async fn handle_gm_grant_ability(
         }
     }
 
+    let player_label = known_names::player_name(gm_player_id);
     tracing::info!(
         decision_outcome = "granted",
         persisted = true,
         entity_id = gm_entity_id,
+        entity_name = player_label,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id = gm_player_id,
+        player_name = player_label,
         subject_entity_id = entity_id,
+        subject_entity_name = known_names::player_name(player_id),
         subject_player_id = player_id,
+        subject_player_name = known_names::player_name(player_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         "GmGrantAbility: persisted"
     );
 
@@ -300,31 +346,47 @@ pub async fn handle_gm_grant_ability(
                 })
                 .await
             {
+                let player_label = known_names::player_name(gm_player_id);
                 tracing::error!(
                     decision_outcome = "mirror_send_failed",
                     reason = "base_to_cell_closed",
                     entity_id = gm_entity_id,
+                    entity_name = player_label,
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id = gm_player_id,
+                    player_name = player_label,
                     subject_entity_id = entity_id,
+                    subject_entity_name = known_names::player_name(player_id),
                     subject_player_id = player_id,
+                    subject_player_name = known_names::player_name(player_id),
                     ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
                     error = %e,
                     "GmGrantAbility: base→cell send failed; the ability shows after relog"
                 );
             }
         }
-        None => tracing::warn!(
-            decision_outcome = "mirror_send_failed",
-            reason = "no_cell_channel",
-            entity_id = gm_entity_id,
-            account_id,
-            player_id = gm_player_id,
-            subject_entity_id = entity_id,
-            subject_player_id = player_id,
-            ability_id,
-            "GmGrantAbility: no cell channel; the ability shows after relog"
-        ),
+        None => {
+            let player_label = known_names::player_name(gm_player_id);
+            tracing::warn!(
+                decision_outcome = "mirror_send_failed",
+                reason = "no_cell_channel",
+                entity_id = gm_entity_id,
+                entity_name = player_label,
+                account_id,
+                account_name = known_names::account_name(account_id),
+                player_id = gm_player_id,
+                player_name = player_label,
+                subject_entity_id = entity_id,
+                subject_entity_name = known_names::player_name(player_id),
+                subject_player_id = player_id,
+                subject_player_name = known_names::player_name(player_id),
+                ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                "GmGrantAbility: no cell channel; the ability shows after relog"
+            );
+        }
     }
 
     tell_gm(format!(

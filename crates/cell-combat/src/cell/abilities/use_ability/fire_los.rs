@@ -52,6 +52,8 @@ use cimmeria_entity::abilities::{AbilityDef, TARGET_GROUND, TARGET_SELF};
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::navigation::{LineOfSight, LosProbe};
 
+use crate::cell::abilities::metrics::RefusalReason;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{occluder_probe, SpaceManager};
 
@@ -218,8 +220,9 @@ pub(crate) fn other_space_error_args(ability_id: i32) -> Vec<u8> {
 
 /// Run the fire-time check and, on a refusal, log it, count it and send the
 /// player the feedback: `onErrorCode` 0 for a target in another space
-/// (#906), 39 for no line of sight. Returns `true` when the use must stop
-/// here.
+/// (#906), 39 for no line of sight. Returns the refusal when the use must
+/// stop here: the launch counts it (`abilities_refused_total`), the warmup
+/// fire's re-check interrupts on it.
 pub(crate) async fn refuse_without_line_of_sight(
     shooter_id: u32,
     ability_id: i32,
@@ -227,7 +230,7 @@ pub(crate) async fn refuse_without_line_of_sight(
     ability: Option<&AbilityDef>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
-) -> bool {
+) -> Option<RefusalReason> {
     let r = match fire_line_of_sight(space_mgr, shooter_id, target_id, ability) {
         FireLos::Refused(r) => r,
         FireLos::OtherSpace {
@@ -243,9 +246,9 @@ pub(crate) async fn refuse_without_line_of_sight(
                 space_mgr,
             )
             .await;
-            return true;
+            return Some(RefusalReason::TargetOtherSpace);
         }
-        _ => return false,
+        _ => return None,
     };
     let world = crate::cell::service::npc_ai::world_label(space_mgr, shooter_id);
     let (from_xyz, to_xyz) = match (
@@ -258,12 +261,20 @@ pub(crate) async fn refuse_without_line_of_sight(
         ),
         _ => ([0.0; 3], [0.0; 3]),
     };
+    let who = space_mgr.player_identity(shooter_id);
     tracing::debug!(
         target: "abilities",
         event = "los_refused",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = shooter_id,
+        entity_name = space_mgr.entity_label(shooter_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         world = %world,
         source = "occluder",
         occluder_hash = space_mgr.occluder_of(shooter_id).map(|o| o.short_hash()),
@@ -276,30 +287,50 @@ pub(crate) async fn refuse_without_line_of_sight(
         hit_xyz = ?r.probe.hit,
         rays = r.rays,
         error_code = CONDITION_FEEDBACK_LOS,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_LOS),
         "useAbility refused: no line of sight to the target (onErrorCode 39)"
     );
     cimmeria_observability::counter!(
         "abilities_los_refused_total",
         "world" => world,
     );
+    let args = los_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: shooter_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: los_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            shooter_id,
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+        );
         tracing::warn!(
             target: "abilities",
             event = "los_refused_send_failed",
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = shooter_id,
+            entity_name = space_mgr.entity_label(shooter_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: the no-line-of-sight onErrorCode could not be queued (base channel closed)"
         );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            shooter_id,
+            WireCtx::new("fire_los").reason("no_line_of_sight"),
+        );
     }
-    true
+    Some(RefusalReason::NoLineOfSight)
 }
 
 /// Log and answer a cast at a target in another space (#906). DEBUG: only a
@@ -318,33 +349,58 @@ async fn refuse_other_space(
         event = "cast_refused",
         reason = "target_other_space",
         entity_id = shooter_id,
+        entity_name = space_mgr.entity_label(shooter_id),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         caster_space_id = shooter_space,
+        caster_world = shooter_space.and_then(|s| space_mgr.world_name_for_space(s)),
         target_space_id = target_space,
+        target_world = target_space.and_then(|s| space_mgr.world_name_for_space(s)),
         error_code = CONDITION_FEEDBACK_INVALID_ENTITY,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_INVALID_ENTITY),
         "useAbility refused: the target is not in the caster's space (onErrorCode 0)"
     );
+    let args = other_space_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: shooter_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: other_space_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            shooter_id,
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+        );
         tracing::warn!(
             target: "abilities",
             event = "cast_refused_send_failed",
             reason = "target_other_space",
             entity_id = shooter_id,
+            entity_name = space_mgr.entity_label(shooter_id),
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: the other-space onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            shooter_id,
+            WireCtx::new("fire_los").reason("target_other_space"),
         );
     }
 }

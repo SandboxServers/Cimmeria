@@ -7,6 +7,11 @@
 
 ## Native launcher implementation
 
+**Current stop point:** [MacBook testing checkpoint](worknotes/macbook-testing-checkpoint.md).
+MacBook testing is stopped; native adoption and SGW computer-use acceptance remain
+open. Preserve the interrupted preparation state.
+
+
 For the later Tauri work, use the [implementation plan](launcher-implementation-plan.md),
 [delivery ledger](launcher-implementation-ledger.md), and
 [delegation plan with Codex/Claude prompts](launcher-delegation-plan.md).
@@ -150,13 +155,14 @@ Implementation evidence: [runtime provisioning](runtime-provisioning.md) records
 the pinned Wine inventory, candidate launch environment, distribution gates and
 Windows-helper ownership requirements. It does not establish game compatibility.
 
-
 ## Launcher implementation references
 
 - [Requirements and delivery plan](launcher-implementation-plan.md)
 - [Dated implementation ledger](launcher-implementation-ledger.md)
 - [Migration audit](worknotes/migration-audit.md)
 - [Native-window UAT](worknotes/native-window-uat.md)
+- [Signed game Update execution](worknotes/game-update-native.md)
+- [Signed rollback and cleanup UAT](worknotes/game-update-rollback-uat.md)
 - [Repair handoff](worknotes/repair-ui.md)
 - [Acceptance checklist and current ownership](launcher-acceptance.md)
 - [Runtime provisioning evidence](runtime-provisioning.md)
@@ -174,6 +180,17 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Observability implementation handoff](worknotes/observability.md) (implemented, inert, activation gated)
 
 - [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
+- [Permanent owner and current release](worknotes/owner-current-release.md)
 - [Signed updater implementation and evidence](worknotes/signed-updater.md)
+- [Native updater Apply and restart](worknotes/updater-apply.md)
+- [Post-handoff persistence failure fix](worknotes/updater-handoff-fix.md)
 - [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
 - [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)
+- [Verified-copy adoption UI](worknotes/adoption-ui.md)
+- [Effective imported settings for adopted Play](worknotes/effective-settings.md)
+- [Opt-in Mac app identity for the Wine process](worknotes/wine-computer-use.md)
+- [Adoption, settings and Wine identity integration](worknotes/uat-integration.md)
+- [Opt-in game telemetry in the desktop launcher](worknotes/game-telemetry.md)
+
+- [MacBook testing checkpoint and remaining acceptance](worknotes/macbook-testing-checkpoint.md)
+- [Historical native launcher research (SwiftUI proposal, superseded)](native-launcher-research.md)

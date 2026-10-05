@@ -10,6 +10,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::load_ignore_snapshot;
+use crate::base::session_identity::session_identity;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
@@ -19,6 +20,19 @@ pub struct IgnoreSyncCtx<'a> {
     pub db_pool: &'a Option<Arc<PgPool>>,
     pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     pub cell_tx: &'a Option<mpsc::Sender<BaseToCellMsg>>,
+}
+
+/// The names that pair with the IDs on this module's log lines, read from
+/// the session at `addr` when it still exists.
+fn session_names(
+    ctx: &IgnoreSyncCtx<'_>,
+    addr: SocketAddr,
+) -> cimmeria_entity::cell_entity::PlayerIdentity {
+    ctx.connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(session_identity))
+        .unwrap_or(cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN)
 }
 
 /// Reload `player_id`'s Ignore list from the database, store it on the
@@ -41,13 +55,17 @@ pub async fn resync_ignore_cache(
         .get(&addr)
         .map(|c| c.account_id);
     let Some(pool) = ctx.db_pool else {
+        let who = session_names(&ctx, addr);
         tracing::warn!(
             target: "chat",
             event = "chat.ignore_sync_failed",
             %addr,
             player_id,
+            player_name = who.player_name,
             account_id = session_account_id,
+            account_name = who.account_name,
             entity_id,
+            entity_name = who.player_name,
             path,
             reason = "no_db_pool",
             "Ignore list not loaded: no DB pool; tells and spatial chat ignore nobody",
@@ -65,13 +83,17 @@ pub async fn resync_ignore_cache(
         }
     };
     let Some(version) = version else {
+        let who = session_names(&ctx, addr);
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_sync_failed",
             %addr,
             player_id,
+            player_name = who.player_name,
             account_id = session_account_id,
+            account_name = who.account_name,
             entity_id,
+            entity_name = who.player_name,
             path,
             reason = "session_changed",
             "Ignore resync for a session that no longer plays this character; skipped",
@@ -81,13 +103,17 @@ pub async fn resync_ignore_cache(
     let (names, ignored_ids) = match load_ignore_snapshot(pool, player_id).await {
         Ok(v) => v,
         Err(e) => {
+            let who = session_names(&ctx, addr);
             tracing::error!(
                 target: "chat",
                 event = "chat.ignore_sync_failed",
                 %addr,
                 player_id,
+                player_name = who.player_name,
                 account_id = session_account_id,
+                account_name = who.account_name,
                 entity_id,
+                entity_name = who.player_name,
                 path,
                 reason = "db_error",
                 error = %e,
@@ -118,13 +144,17 @@ pub async fn resync_ignore_cache(
     let (session_account_id, before) = match synced {
         Ok(v) => v,
         Err(reason) => {
+            let who = session_names(&ctx, addr);
             tracing::debug!(
                 target: "chat",
                 event = "chat.ignore_sync_failed",
                 %addr,
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 entity_id,
+                entity_name = who.player_name,
                 path,
                 version,
                 reason,
@@ -135,13 +165,17 @@ pub async fn resync_ignore_cache(
         }
     };
 
+    let who = session_names(&ctx, addr);
     tracing::debug!(
         target: "chat",
         event = "chat.ignore_synced",
         %addr,
         player_id,
+        player_name = who.player_name,
         account_id,
+        account_name = who.account_name,
         entity_id,
+        entity_name = who.player_name,
         path,
         version,
         before,
@@ -160,13 +194,17 @@ pub async fn resync_ignore_cache(
             })
             .await
         {
+            let who = session_names(&ctx, addr);
             tracing::warn!(
                 target: "chat",
                 event = "chat.ignore_sync_failed",
                 %addr,
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 entity_id,
+                entity_name = who.player_name,
                 path,
                 reason = "cell_send_failed",
                 error = %e,

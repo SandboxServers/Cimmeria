@@ -15,27 +15,44 @@ pub async fn dispatch(
     method_index: u16,
     args: &[u8],
     _tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) -> bool {
+    // Rare client calls: each arm resolves its names only when it logs.
+    let mgr = &*space_mgr;
     match method_index {
         DEBUG_START => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: debugStartMinigame");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: debugStartMinigame"
+                );
             }
             true
         }
         DEBUG_SPECTATE => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: debugSpectateMinigame");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: debugSpectateMinigame"
+                );
             }
             true
         }
         DEBUG_JOIN => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: debugJoinMinigame");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: debugJoinMinigame"
+                );
             }
             true
         }
@@ -44,7 +61,8 @@ pub async fn dispatch(
                 let instance_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(
                     entity_id,
-                    instance_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    instance_id, // nt:id-only unimplemented stub: a minigame instance has no name
                     "UNIMPLEMENTED: debugMinigameInstance"
                 );
             }
@@ -56,8 +74,10 @@ pub async fn dispatch(
                 let game_def_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(
                     entity_id,
+                    entity_name = mgr.entity_label(entity_id),
                     host_entity_id,
-                    game_def_id,
+                    host_entity_name = wire_label(mgr, host_entity_id),
+                    game_def_id, // nt:id-only unimplemented stub: minigame defs have no name table
                     "UNIMPLEMENTED: startMinigame"
                 );
             }
@@ -70,9 +90,12 @@ pub async fn dispatch(
                 let loser_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 tracing::info!(
                     entity_id,
-                    game_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
                     winner_id,
+                    winner_name = wire_label(mgr, winner_id),
                     loser_id,
+                    loser_name = wire_label(mgr, loser_id),
                     "UNIMPLEMENTED: endCurrentMinigame"
                 );
             }
@@ -81,14 +104,24 @@ pub async fn dispatch(
         REQUEST_SPECTATE_LIST => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: requestSpectateList");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: requestSpectateList"
+                );
             }
             true
         }
         SPECTATE => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: spectateMinigame");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: spectateMinigame"
+                );
             }
             true
         }
@@ -98,7 +131,8 @@ pub async fn dispatch(
                 let help_level = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(
                     entity_id,
-                    game_def_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_def_id, // nt:id-only unimplemented stub: minigame defs have no name table
                     help_level,
                     "UNIMPLEMENTED: registerToMinigameHelp"
                 );
@@ -111,7 +145,8 @@ pub async fn dispatch(
                 let help_level = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(
                     entity_id,
-                    game_def_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_def_id, // nt:id-only unimplemented stub: minigame defs have no name table
                     help_level,
                     "UNIMPLEMENTED: updateRegisterToMinigameHelp"
                 );
@@ -121,28 +156,48 @@ pub async fn dispatch(
         START_CANCEL => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: minigameStartCancel");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: minigameStartCancel"
+                );
             }
             true
         }
         CALL_ACCEPT => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: minigameCallAccept");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: minigameCallAccept"
+                );
             }
             true
         }
         CALL_DECLINE => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: minigameCallDecline");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: minigameCallDecline"
+                );
             }
             true
         }
         CALL_ABORT => {
             if args.len() >= 4 {
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, game_id, "UNIMPLEMENTED: minigameCallAbort");
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    game_id, // nt:id-only unimplemented stub: the minigame id has no name table
+                    "UNIMPLEMENTED: minigameCallAbort"
+                );
             }
             true
         }
@@ -152,8 +207,10 @@ pub async fn dispatch(
                 let game_def_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(
                     entity_id,
+                    entity_name = mgr.entity_label(entity_id),
                     target_entity_id,
-                    game_def_id,
+                    target_entity_name = wire_label(mgr, target_entity_id),
+                    game_def_id, // nt:id-only unimplemented stub: minigame defs have no name table
                     "UNIMPLEMENTED: minigameContactRequest"
                 );
             }
@@ -162,3 +219,14 @@ pub async fn dispatch(
         _ => false,
     }
 }
+
+/// The label of an entity ID the client sent as an `INT32`.
+fn wire_label(mgr: &SpaceManager, entity_id: i32) -> Option<&str> {
+    u32::try_from(entity_id)
+        .ok()
+        .and_then(|id| mgr.entity_label(id))
+}
+
+#[cfg(test)]
+#[path = "minigame_names_tests.rs"]
+mod names_tests;

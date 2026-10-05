@@ -111,3 +111,77 @@ They remain development-only artifacts and have not yet been injected. Windows
 desktop job `111478341598` in run `37216040220` also passed at `590050084`,
 including the previously corrected locked-owner launch path; it does not cover
 the subsequent updater/adoption integration.
+
+## Current development build and Documents access
+
+The combined development build was rebuilt from `a2025fb38` with the existing
+30 FPS launch-environment change, verified bundled helper/graphics resources and
+the production manifest verification key. The old bundle is not current-source
+UAT evidence. A native read probe verified the saved installation owner and
+Uninstall target without changing game content.
+
+macOS initially stalled the rebuilt app opening its Documents installation.
+A process sample showed the file-open call holding the state mutex; TCC logs
+confirmed that the changed development signature no longer matched the previous
+Documents authorization and was prompting again. After the human allowed access,
+the actual launcher enabled Play, Repair and Uninstall. No game launch or
+maintenance mutation was performed; the displayed exit code 3 was a saved earlier
+launch result. Stable release signing remains an outstanding packaging gate.
+
+Settings now occupies the content panel rather than stacking above Play/notes;
+diagnostics preferences reside in Settings. Extra setup marketing and the footer
+implementation disclaimer were removed. Native window inspection verified the
+Settings controls and the simplified Play panel. Frontend tests: 57 passed.
+Native-persistence JS UAT passed for consent, folder selection cancellation,
+reopen and Update journal observation. It does not cover actual game execution.
+
+A failed Play inspection now stops automatic polling until an explicit successful
+recheck, preventing repeated native reads from accumulating behind a blocked
+folder prompt. A regression verifies no timer redispatch and successful explicit
+recheck. Game and install primary actions are hidden when their native capabilities
+show that they are not the relevant action. Those final polling/visibility edits
+passed tests/build but require the next packaged-window check.
+
+### Play polling flicker follow-up
+
+The actual window reproduced a Play-button dimming cycle caused by treating every
+background inspection as a launch action. The view now keeps the last confirmed
+capability during a pending read, while a real Play click immediately enters its
+starting state and waits through the Effect gate. A held-read regression verifies
+steady label/enabled/busy state, accepted click and duplicate suppression.
+
+Frontend tests: 58 passed; native-persistence Play UAT and frontend build passed.
+The corrected development app was rebuilt and reopened. After macOS reauthorized
+Documents access for its new code signature, explicit recheck restored Play; the
+button remained enabled across subsequent observed refreshes. No game was started.
+The saved earlier code-3 exit remains visible and is not a new test result.
+
+### Game Update settings and development signing
+
+The next changed development bundle used the same existing Apple Development
+certificate. After the previous explicit Documents grant, the rebuilt app read
+its installation immediately without another prompt. This verifies one rebuild's
+grant continuity, not final Developer ID signing or notarization.
+
+In the actual webview, Settings exposed enabled game-update Check and Recheck
+controls. Check immediately showed progress, fetched the trusted signed catalog,
+and returned “The installed game matches the signed release.” Both controls then
+re-enabled. Play remained enabled and the app was left on its Play screen. No
+real game replacement, backup deletion or game launch was performed. Replacement
+and cleanup confirmation were exercised separately against an isolated native
+fixture by `uat:game-update-apply`; that JS pass is not visual confirmation UI UAT.
+
+### Production Play to login screen
+
+The certificate-signed combined build (game Update integration at `8436ed4e8`,
+with the separately owned 30 FPS cap preserved in the development bundle) was
+started through its primary Play action. The first click disabled Play and showed
+preparation; native observation then reported the game process started. The host
+helper and SGW processes remained present during inspection. The operator
+confirmed the SGW login screen was visible.
+
+This is actual launcher-to-rendered-login evidence, not only a fixture or PID.
+The computer-use tool rejected the Wine guest as `Invalid app`, so the visual
+confirmation came from the operator. Authentication, world entry, frame pacing,
+windowed mode/Alt-Tab behavior and game shutdown are not established by this check.
+No credentials were entered and no gameplay was attempted.

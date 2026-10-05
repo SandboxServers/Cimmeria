@@ -9,6 +9,8 @@
 //!   crossing gate.
 //! - [`address_book`] — the CAT-O-01 dial gate: refusing an address the
 //!   player does not hold.
+//! - [`dial_hub`] — the Debug Area dial hub (DA-07): the GM top-up and
+//!   the outbound-only refusal.
 //! - [`stargate_grant_dial`] — the content action that grants an address
 //!   turns that refusal into an accepted dial (Harset H55).
 
@@ -17,8 +19,11 @@ use super::*;
 
 mod address_book;
 mod arrival;
+mod debug_area_live_db;
 mod dial_feedback;
+mod dial_hub;
 mod dial_timer;
+mod named_logs;
 mod pets;
 mod sequences;
 mod stargate_grant_dial;
@@ -62,6 +67,7 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             address_origin: 15,
             arrival: None,
             event_set_id: Some(CASTLE_EVENT_SET),
+            debug_dial_hub: false,
         },
     );
     mgr.stargates.insert(
@@ -75,6 +81,7 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             address_origin: 18,
             arrival: None,
             event_set_id: Some(CASTLE_EVENT_SET),
+            debug_dial_hub: false,
         },
     );
     mgr.stargates.insert(
@@ -88,6 +95,7 @@ pub(super) fn make_manager_with_stargates() -> SpaceManager {
             address_origin: 15,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
 

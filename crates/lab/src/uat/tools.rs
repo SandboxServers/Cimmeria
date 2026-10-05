@@ -8,8 +8,14 @@
 //! spec that uses the alias follows. Until a tool is routed, a row that
 //! needs it is BLOCKED naming it.
 
+use super::lab_commands;
 use super::spec::{ActionSpec, SectionSpec};
 use super::tier::Tier;
+
+/// What `@target_player` resolves to. Not a router tool: the runner
+/// expands it into `client_target` naming the other lab client's
+/// character, on the client the action runs on (two-player rows).
+pub const TARGET_PLAYER_TOOL: &str = "uat_target_player";
 
 /// One capability.
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +68,9 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("target", "client_target", Tier::N1),
     drive("move_to", "client_move_to", Tier::N1),
     drive("camera", "client_camera", Tier::N1),
+    // Two-player rows (AB-L6): `client_target` on the other player's
+    // character by name, with real input. Expanded by the runner.
+    drive("target_player", TARGET_PLAYER_TOOL, Tier::N1),
     // UI and items (L1, L2, L3, L8, L9, L10).
     read("window_read", "client_window_read"),
     drive("window_click_row", "client_window_click_row", Tier::N1),
@@ -79,6 +88,18 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("die_and_respawn", "client_die_and_respawn", Tier::G),
     read("wait_event", "client_wait_event"),
     read("hotbar", "client_hotbar"),
+    // Ability lab (AB-L3). The three dot commands from AB-L2 are typed
+    // into chat by the runner (`super::lab_commands`), which waits for the
+    // command's own feedback line; `@ability_state` is the server read
+    // (AB-L1) for `source = "server"` clauses.
+    drive(
+        "cooldowns_reset",
+        lab_commands::COOLDOWNS_RESET_TOOL,
+        Tier::G,
+    ),
+    drive("dummy", lab_commands::DUMMY_TOOL, Tier::G),
+    drive("clear_effects", lab_commands::CLEAR_EFFECTS_TOOL, Tier::G),
+    read("ability_state", "server_ability_state"),
     // Not assigned yet (L11, L18).
     drive("chat_send", "client_chat_send", Tier::N1),
     drive("cache_files", "client_cache_files", Tier::N1),
@@ -170,5 +191,8 @@ mod tests {
         assert!(resolve("@nope").is_err());
         assert_eq!(lookup("client_item_action").unwrap().floor, Some(Tier::N1));
         assert_eq!(lookup("@inventory").unwrap().floor, None);
+        assert_eq!(resolve("@dummy").unwrap(), "uat_dummy");
+        assert_eq!(lookup("@cooldowns_reset").unwrap().floor, Some(Tier::G));
+        assert_eq!(resolve("@ability_state").unwrap(), "server_ability_state");
     }
 }

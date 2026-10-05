@@ -13,11 +13,11 @@
 //! | A `mercury::method_idx` | SGWPlayer (and SGWMob 27/28) ClientMethods | [`client_methods`] |
 //! | B `cell/client_methods/**` | SGWPlayer ClientMethods, 0..157 once each; SGWPet in `pet.rs` | [`client_methods`] |
 //! | C `cell-console` local copies | SGWPlayer ClientMethods | [`client_methods`] |
-//! | H `wire-log` `outbound_method_name` | SGWPlayer ClientMethods, all 157 arms | [`client_methods`] |
 //! | D `cell_method_name` (every `CM_*`) | SGWPlayer exposed CellMethods | [`cell_methods`] |
 //! | E `cell-console` `gm/mod.rs` | SGWGmPlayer exposed CellMethods (109+) | [`cell_methods`] |
 //! | F `base` `sgw_player_base`, `wire::base::*` | SGWPlayer exposed BaseMethods (`0xC0 + idx`) | [`base_methods`] |
 //! | G `BASEMSG_ON_*` | Account ClientMethods (`0x80 + idx`) | [`base_methods`] |
+//! | I `crate::names` tables (`wire-log` names through them) | every section of every client-visible entity type | [`names_codegen`] |
 //!
 //! A constant matches when its name, uppercased with `_` removed, equals
 //! the def method at its index, or when it is in that surface's short alias
@@ -29,6 +29,7 @@ mod base_methods;
 mod cell_methods;
 mod client_methods;
 pub(crate) mod flatten;
+mod names_codegen;
 mod source;
 
 use flatten::{flatten, Section};

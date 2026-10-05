@@ -15,14 +15,11 @@ use crate::supervisor::{LoginState, Supervisor};
 pub const DEFAULT_PLAY_TIMEOUT: Duration = Duration::from_secs(120);
 /// Dialog pages `lab_finish_dialog` will turn before giving up.
 pub const DEFAULT_MAX_PAGES: u32 = 12;
-/// Escape presses sent once the world is up under a new character's
-/// arrival cutscene (the prototype's verified count).
-const CUTSCENE_ESCAPES: u32 = 3;
-
 /// What one poll after Play saw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayProbe {
     pub char_select: bool,
+    /// The world HUD (`SelfStatusWin`) is visible.
     pub world_up: bool,
     pub dialog: bool,
     pub movie: bool,
@@ -60,9 +57,12 @@ pub enum PlayStep {
     Done,
 }
 
-/// The skip policy. Escape only while a movie plays or while the map is
-/// loading under a cutscene (character select gone, no HUD yet); once the
-/// HUD is up an Escape would open the game menu, so it stops.
+/// The skip policy. Escape while a movie plays, and every poll from
+/// character select going away until the HUD (`SelfStatusWin`) shows: the
+/// map load and a new character's arrival cutscene, which plays on under
+/// the intro dialog (an open dialog or a visible minimap is not the HUD;
+/// see [`widgets::world_up`]). Once the HUD is up an Escape would open the
+/// game menu, so it stops.
 pub fn plan_play_step(p: PlayProbe, skip_cutscene: bool) -> PlayStep {
     if p.movie && skip_cutscene {
         return PlayStep::Escape;
@@ -161,22 +161,15 @@ impl Supervisor {
                 return Err(run
                     .fail_with_state(
                         "enter_world",
-                        format!("the world HUD never came up ({escapes} Escapes sent)"),
+                        format!(
+                            "the world HUD (SelfStatusWin) never came up ({escapes} Escapes \
+                             sent; last poll: dialog {}, movie {})",
+                            p.dialog, p.movie
+                        ),
                     )
                     .await);
             }
         };
-        // A new character's intro dialog opens over the arrival cutscene,
-        // which keeps playing underneath; Escape skips it and does nothing
-        // to the dialog.
-        if skip_cutscene && probe.dialog {
-            for _ in 0..CUTSCENE_ESCAPES {
-                if self.input_key("Escape", "tap", None).await.is_ok() {
-                    escapes += 1;
-                }
-                settle(1000).await;
-            }
-        }
         run.record(
             "enter_world",
             t0,
@@ -186,6 +179,7 @@ impl Supervisor {
         let ui = self.ui_state(Some(0)).await.ok();
         Ok(run.finish(json!({
             "in_world": true,
+            "hud_visible": probe.world_up,
             "character": row,
             "dialog_open": probe.dialog,
             "dialog": ui.as_ref().map(|u| u["dialog"].clone()),
@@ -292,6 +286,32 @@ mod tests {
             plan_play_step(probe(false, true, false, true), true),
             PlayStep::Escape
         );
+    }
+
+    /// The first live run (colo, 2026-10-04): a new character's intro
+    /// dialog was up over the Bink arrival cutscene with no HUD, and the
+    /// flow called it in-world. The HUD test is `SelfStatusWin` alone, and
+    /// every poll without it presses Escape, dialog or not.
+    #[test]
+    fn in_world_needs_self_status_and_escapes_continue_under_the_dialog() {
+        let c = play_probe_chunk();
+        assert!(c.contains("SelfStatusWin"), "{c}");
+        assert!(!c.contains("MinimapWin"), "the minimap is not the HUD: {c}");
+        assert_eq!(widgets::world_up(), widgets::visible("SelfStatusWin"));
+
+        // Dialog open, cutscene still on, no HUD: Escape, poll after poll.
+        let under_cutscene = probe(false, false, true, false);
+        for _ in 0..5 {
+            assert_eq!(plan_play_step(under_cutscene, true), PlayStep::Escape);
+        }
+        // The Escape skipped the cutscene and the HUD showed: stop there,
+        // with the dialog still open.
+        assert_eq!(
+            plan_play_step(probe(false, true, true, false), true),
+            PlayStep::Done
+        );
+        // Without skip, wait for the cutscene to end on its own.
+        assert_eq!(plan_play_step(under_cutscene, false), PlayStep::Wait);
     }
 
     /// With skip_cutscene off, the flow never presses Escape.

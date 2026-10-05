@@ -1,6 +1,6 @@
 # Negative-Logging Convention
 
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-10-04
 > **Status**: Convention adopted in issue #304 PR1 (2026-05-24). Applies to
 > every new patch that touches an expectation seam.
 
@@ -104,12 +104,43 @@ A third, cheap: state is released on `destroy_entity`.
 |---|---|---|
 | `player_id` | when applicable | The affected player. No aliases (`pid`). Log it, and every other numeric id (`design_id`, `account_id`, `entity_id`), **as a number**: pass an `Option<i32>` as the value itself (`player_id = e.player_id`), which omits the field when `None`, never `?e.player_id` or `%`. SigNoz types an attribute by the values it receives, so one Debug-formatted `"Some(72)"` creates a second, string-typed `player_id` key that a `player_id = 72` filter silently misses (2026-09-29: the bandolier equip-display rows; `design_id: "Some(5224)"` on `Player looted item`). |
 | `entity_id` | when applicable | The affected entity. No aliases (`eid`). |
-| `mob_id` / `mission_id` / `chain_id` / `step_id` / `space_id` / `cell_id` / `world_name` | when applicable | Canonical names per the existing logging surface. |
+| `mob_id` / `mission_id` / `chain_id` / `step_id` / `space_id` / `cell_id` | when applicable | Canonical names per the existing logging surface. |
+| `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. Social sweep renames (NT-26): `type_id` on items is `item_type_id`, `item_def_id` is `item_type_id`, the chat `target` text is `chat_target`, and a Black Market `sequence_id` logged as an auction is `auction_id`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
+| `<key>_names` next to every bitflag word (`state_field_names`, `flags_names`, `interaction_flags_names`, `recipient_flags_names`, `from_mask_names`, …) | always, beside the raw word | The set bits' names joined `A\|B\|C` in the enum's order, from the flag set's one `FlagSet` table (`cimmeria_common::flag_names`): `STATE_FLAGS` (`cimmeria_wire::state_field`), `EFFECT_FLAGS` (cell-combat `cone_aoe`), `INTERACTION_FLAGS` (`cimmeria_entity::interaction_flags`), `MAIL_FLAGS` (`cimmeria_wire::cell::mail::codes::flags`), `ORG_PERMISSIONS` (`cimmeria_entity::organization`), `PACKET_FLAGS` (`cimmeria_mercury::packet`). Log it with `%`: `state_field, state_field_names = %STATE_FLAGS.render(state_field)`. Bits no token names render as one hex remainder (`BSF_Dead\|0x200`), and a zero word renders `0x0`. Each table is pinned to `entities/defs/enumerations.xml` by a test. A numeric enum code gets a name the same way: `error_code` pairs with `error_name` (`cimmeria_names::book().error_code`), and a code from another vocabulary logs its Rust enum with `?` under its domain's key (the Black Market's `bm_error = ?error`). Leave `_names` off rows exported per packet or per tick: the OTLP appender allocates a string per field per event. NT-31. |
+| `<domain>_arg` (`design_arg`, `mission_arg`, `template_arg`, `name_or_id_arg`), `target_raw` | GM console input that failed to parse | The raw text or out-of-range number a GM typed where an ID was expected. It is not an ID, so it has no name and never takes an `_id` key: a typed `DesignId` that isn't a number is logged as `mission_arg` / `template_arg` / `design_arg` (item), never `design_id`. A parsed one is logged under its domain key (`mission_id`, `template_id`, `item_type_id`) with its name (NT-27). |
+| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id` and keeps `user`: the name the client typed, which may name no account. Never a password, key or ticket (see [Credential fields](#credential-fields)). |
+| Names for closed enum IDs (`bag_name`, `stat_name`, `target_type_name`, `event_name`) | beside the ID | A small client enum logged as an ID is named from its `entities/defs/enumerations.xml` token, through one table each, pinned to the XML by a test: `cimmeria_entity::inventory::bag_name` (`EInventoryContainerId`, beside `bag_id`), `cimmeria_entity::stats::stat_name` (`EStats`, beside `stat_id`), `cimmeria_entity::abilities::target_type_name` (`ETargetType`, beside `target_type_id`) and `sequence_event_name` (`ESequenceEventType`, beside `event_id`). Content IDs that may be `None` resolve through `cimmeria_cell_world::cell::effects::content_names` (`ability_name`, `effect_name`, `template_name`, `item_name`). NT-20. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). An expected miss logs at DEBUG under its own reason: a witness-send miss for a witness whose session just ended is `"witness_session_ended"`, not a WARN. |
-| `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. |
+| `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. `world` is Rule 6's name key for `space_id` and `world_id`; don't use `world_name`. |
+| `chain_name` | beside every `chain_id` | `content_chains.description`, from `cimmeria_names::book().chain` or, inside the content engine, `Chain::label`. A chain with no description leaves the field off (the loader no longer invents `chain_<id>`). NT-21 |
 | `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
+
+Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved query on the old key finds nothing after the change:
+
+| Event | Old key | New key | Sweep |
+|---|---|---|---|
+| `navmesh_mode_summary` (target `movement.navmesh`, startup) | `world_name` | `world` | NT-23 |
+| `AoI: dynamicUpdate InteractionType (base→merged)` | `player_id` (held the witness's entity id) | `witness_id` + `witness_name` | NT-23 |
+| `TeleportPlayer: persistence UPDATE matched 0 rows` / `failed to persist position` | `pid` | `player_id` + `player_name` | NT-23 |
+| `Content: adding dialog set` / `removing dialog set` and the other `AddDialogSet` / `RemoveDialogSet` executor rows | `dialog_set_id` (always held a `dialog_set_maps` row) | `dialog_set_map_id` + `dialog_set_map_name` (the topic text) | NT-21 |
+| `consumable_*` cell rows, the `RemoveItem` executor rows, `content.send_system_mail`, `fire_item_equipped` | `type_id` | `item_type_id` + `item_name` | NT-21 |
+| Cell loot rows: `Player looted item`, `loot_restored`, `loot_restore_failed`, `loot_grant_send_failed` | `type_id`, `design_id` | `item_id` + `item_name` | NT-21 |
+| The interact dispatcher's target-resolved row | `tmpl_id` | `target_template_id` + `target_template_name` | NT-21 |
+| `send_loot_display`, the vendor open rows, `send_dialog_display` | `player_id` (held the player's entity id) | `entity_id` + `entity_name` | NT-21 |
+| The `spawn_entity` executor rows and the DHD rows | `world_name` | `world` | NT-21 |
+| The spawn rows in `space_manager/npc_population.rs` | `name` (held the template name) | `template_name` | NT-25 |
+| `npc_respawn_recreate` (`npc_respawn` tick) and the stargate loader (`spawner/stargates.rs`); also the `npc_respawns_total` metric label | `world_name` | `world` | NT-25 |
+| The ability loader (`spawner/abilities.rs`) | `type_id` (an `abilities.type_id` enum label) | `ability_type` | NT-25 |
+| `Loaded player data for mapLoaded` (`player_load/core/player_data.rs`) | `name` (held the character name) | `player_name` | NT-28c |
+| `Added Cimmeria item definition` (`resources/apply_overrides.rs`, boot) | `name` (held the item name) | `item_name` | NT-50a |
+| `triggerClientHintedGenericRegion` (accepted) | `tag` | `region_name` (left off when the tag is blank) | NT-28a |
+| `triggerClientHintedGenericRegion refused` | `region_tag` | `region_name` (left off when the region is unknown) | NT-28a |
+| `interact: no items_event_sets binding` (`event = weapon_unbound`) | `item_id` (held the weapon's design id) | `item_type_id` + `item_name` | NT-28a |
+| `setRingTransporterDestination` | `destination_id` | `destination_region_id` + `destination_region_name` | NT-28a |
+| `useItem` and `UseInventoryItem send to base failed` | `target_id` (the client's raw target) | `wire_target_id` + `wire_target_name` | NT-28a |
+| `friction: server sees the player inside a region…` (`signal = region_dwell_no_hint`) | `region_tag` | `region_name` | NT-28a |
 
 ### Credential fields
 
@@ -213,8 +244,8 @@ login). Both consumption seams log at `warn!`:
 
 | Seam | `reason` | Fields |
 |---|---|---|
-| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `user`, `account_id`, `sid_prefix`, `session_ip`, `client_ip` |
-| Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `ticket_ip`, `client_ip` |
+| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `account_id`, `account_name`, `sid_prefix`, `session_ip`, `client_ip` |
+| Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `account_name`, `ticket_ip`, `client_ip` |
 
 These are **warn-first** by design: NAT and IPv4/IPv6 dual-stack can
 surface a different IP for the same physical client, and the false
@@ -251,7 +282,7 @@ warmup ability is the warmup tick, not the launch (AT-10).
 | `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
 | `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
 | `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
-| `no_witnesses` | the Ability_End went out to zero AoI witnesses | same, plus `sequence_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter or the target within their AoI radius, or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id` |
 | `stance_not_announced` | the Ability_End reached a witness but the NPC's `BSF_InCombat` stance had not (the shot came from outside the Fighting pass, or the stance sync regressed): the client draws no muzzle flash, tracer or weapon sound | same, plus `sequence_id`, `witness_count` |
 
 This is a Pattern D seam with one deliberate difference: the throttle
@@ -289,8 +320,8 @@ source address end the session with one garbage datagram. The seam is
 
 | `reason` | Meaning | Fields |
 |---|---|---|
-| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len`, `reply_outstanding` |
-| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `account_name`, `raw_len`, `reply_outstanding` |
+| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `account_name`, `raw_len`, `error` |
 
 These rows carry `reason`, never `disconnect_reason`. That field is kept
 for rows that report a real teardown, such as `session.end` and
@@ -313,7 +344,7 @@ cap, the channel drops it from the TX window and
 
 | `event` | `reason` | Fields |
 |---|---|---|
-| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `seq`, `retransmit_count` |
+| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `account_name`, `seq`, `retransmit_count` |
 
 A row with `seq = 1` means the client never acked the login reply
 through seven sends. If the login also stalled, look for
@@ -347,13 +378,25 @@ Target `bank`, all WARN. Each refusal carries the player-activity pair
 (`account_id`, `player_id`) plus `entity_id`, so "player X tried to move Y
 at time T and it failed" is answerable from SigNoz alone.
 
+Every ID on these rows, and on the BV-03, BV-07 and grant rows below,
+carries its Rule 6 name when the server knows it: `account_name`,
+`player_name`, `entity_name` (the player's character), `item_name`,
+`org_name`, and `container_name` under each container key's prefix
+(`target_container_name`: `MAIN`, `BANK`, ...). The base names players,
+accounts and organizations from `cimmeria_entity::known_names`, filled at
+login, `playCharacter` and the organization row reads, so a helper deep in
+a transaction can name them without the session. An instance `item_id`
+whose type the line has not read yet, slot indexes, the banker and the
+corpse (NPC entities the base cannot name) are marked `// nt:id-only`.
+`type_id` became `item_type_id` on every base inventory row (NT-22).
+
 | `event` (also the message prefix) | `reason` | Fields |
 |---|---|---|
-| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable` (the vault reasons are in the BV-03 section) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
+| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable` (the vault reasons are in the BV-03 section) | `account_id`, `player_id`, `entity_id`, `item_id`, `item_type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
 | `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `lock_timeout` (the move lock or the item's row lock could not be taken; an unlocked resend could overtake a concurrent write, so the client keeps its optimistic position until the next update of that item), `resync_read_failed` | `account_id` (when it was read before the failure), `player_id`, `entity_id`, `item_id` |
 | `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed` (the move lock or the item's row lock), `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, `entity_id`, `item_id`; `account_id` only on `move_lock_release_failed`, the one failure after the account is read |
-| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `target_container_id` |
-| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
+| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `item_type_id`, `quantity`, `target_container_id` |
+| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `item_type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
 
 The item fields of `move_rejected` are read at refusal time under the
 per-player move lock and the item's row lock, so they are the item's
@@ -458,7 +501,7 @@ bank refusal also sends a `CHAN_FEEDBACK` line before the snap-back.
 | `event` | Level | `reason` | Fields |
 |---|---|---|---|
 | `move_rejected` | WARN | the verdict's label: `no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`; and `target_slot_beyond_bank_slots`, `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot` | the BV-01 fields, plus `vault_end` (`source` or `target`), `banker_id`, `distance`, `gm_override`, and `bank_slots` on the slot refusal |
-| `move_accepted` | DEBUG | none (success) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `kind`, source and target container and slot, `source_stack_before`/`after`, `target_stack_before`/`after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
+| `move_accepted` | DEBUG | none (success) | `account_id`, `player_id`, `entity_id`, `item_id`, `item_type_id`, `quantity`, `kind`, source and target container and slot, `source_stack_before`/`after`, `target_stack_before`/`after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
 | `use_rejected` | WARN | `container_not_accessible` (a use or removal of an item in buyback, the org vaults, or the personal vault without an open verdict) | `account_id`, `player_id`, `entity_id`, `item_id`, `container`, `op` (`use` or `remove`), `vault_reason`, `banker_id` |
 | `use_rejected` (infrastructure) | WARN | `account_lookup_failed` | `player_id`, `entity_id`, `item_id` (no `account_id`: that is what failed to load) |
 | `bank_feedback_send_failed` | WARN | `no_client_address` (a refusal line had no session address to go to) | `player_id`, `entity_id`, `item_id` |
@@ -481,13 +524,13 @@ is a seam: the item goes back on the corpse, or its loss is logged.
 
 | `event` (also the message prefix) | Level | `reason` | Fields |
 |---|---|---|---|
-| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `container_id` |
+| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `item_type_id`, `quantity`, `container_id` |
 | `grant_outcome_unknown` | WARN | `commit_outcome_unknown` | as `grant_refused` |
-| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `type_id`, `requested_container_id`, `error` |
-| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `container_id`, `reflagged` |
-| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal` |
-| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty` |
-| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `restored` |
+| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `item_type_id`, `requested_container_id`, `error` |
+| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (the item type; `type_id` before NT-21), `qty`, `container_id`, `reflagged` |
+| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal`; the base row's item key is `item_type_id` |
+| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `item_type_id`, `qty` |
+| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (`type_id` before NT-21), `qty`, `restored` |
 | `feedback_send_failed` | WARN | `send_error` | `account_id`, `player_id`, `entity_id` |
 
 Only a refusal raised before the commit is handed back. A `COMMIT` that
@@ -504,7 +547,7 @@ unit-tested (`persist::tests`).
 
 ## Native consumable seams (decision 28)
 
-A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`; the use rows also `type_id` and, when known, `instance_id` and `ability_id`.
+A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
 
 | `event` | Level | `reason` | Extra fields |
 |---|---|---|---|
@@ -520,7 +563,7 @@ A heal or buff item used from the bags ([consumables.md](../gameplay/consumables
 | `consumable_apply_skipped` | WARN | `entity_gone`, `no_native_plan`, `dead_at_apply` | a consumed unit whose effect was not applied |
 | `stat_buff_skipped` | WARN | `no_stat_nvps`, `no_duration`, `target_missing`, `stat_missing` | `effect_id`, `stat_id`: a seed defect |
 
-The success rows are `consumable_used` (INFO, before and after HEALTH and FOCUS), `consumable_consumed` (base, DEBUG), and `stat_buff_applied` / `stat_buff_removed` (INFO, `reason` = `expired`, `replaced`, `removed` or `died`, with `stat_before` / `stat_after`). `LogCapture` guards: `the_refusal_logs_reason_already_at_max`, `the_not_implemented_refusal_logs_its_reason` and `a_user_who_died_before_the_consume_landed_is_not_healed` in `cell/content/consumable_use_tests.rs`, and the `no_stat_nvps`, `no_duration` and `replaced` rows in `cell-world`'s `effects/stat_buff/tests.rs`.
+The success rows are `consumable_used` (INFO, before and after HEALTH and FOCUS), `consumable_consumed` (base, DEBUG), and `stat_buff_applied` / `stat_buff_removed` (INFO, `reason` = `expired`, `replaced`, `removed` or `died`, with `stat_before` / `stat_after`; since ability mechanics AB-04 also `toggled_off`, `removed_by_moniker`, `damage`, `revive`, `bandolier_swap` and `cleansed`, and an `effect_bar_overflow` INFO row when one side of the client's effect bar passes ten icons). `LogCapture` guards: `the_refusal_logs_reason_already_at_max`, `the_not_implemented_refusal_logs_its_reason` and `a_user_who_died_before_the_consume_landed_is_not_healed` in `cell/content/consumable_use_tests.rs`, and the `no_stat_nvps`, `no_duration` and `replaced` rows in `cell-world`'s `effects/stat_buff/tests.rs`.
 
 ## Disconnect-teardown `DisconnectEntity` seam (issue #999)
 
@@ -544,7 +587,8 @@ called from the base's single UDP receive loop (`client_disconnect`,
 (`inactivity_timeout`), so waiting on a cell round trip there would pause
 packet intake for every connected player whenever the cell is busy or the
 shared Base→Cell channel is backpressured. Either failure WARNs (no
-`target:` override) with `entity_id`, `account_id` and `disconnect_reason`:
+`target:` override) with `entity_id`, `entity_name`, `account_id`,
+`account_name` and `disconnect_reason`:
 
 | Level | Message | Meaning |
 |---|---|---|
@@ -576,6 +620,13 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 - **A hostile NPC the Idle scan passed over.** `npc_ai.aggro_scan` at `debug!`, `event = "npc_candidate_rejected"`, Pattern D: at most one row per `(npc, target, reason)` per 10 s, with `suppressed = N`. Fields: `npc_id`, `tag`, `npc_faction`, `target_id`, `target_tag`, `target_faction`, `target_ai_state`, `reason` (`dead`, `target_evading`, `target_unavailable`, `out_of_vertical_band`, `out_of_radius`, `no_los`), `npc_to_target`, `dy`, `aggro_radius`. DEBUG because it is the normal state of a standoff whose sides stand just out of range. Only HOSTILE pairs are candidates: a same-faction neighbour is not a refusal and writes nothing, or every guard post would log a row per neighbour per tick. Written by `detectors::aggro_scan::report_npc_rejects` (`cimmeria-cell-world`). Guard: `service::tests::npc_ai::npc_vs_npc::a_hostile_npc_out_of_radius_is_refused_with_a_row` pins the level, the reason and both factions, and `friendly_rows_never_engage_and_log_nothing` pins the silence for non-hostile pairs.
 - **An NPC-only kill.** `loot.drop` at `info!`, `event = "skipped"`, `reason = "npc_only_kill"`: `target_eid`, `target_tag`, `target_faction`, `loot_table_id`, `attacker_id`, `attacker_tag`, `attacker_faction`. INFO like the death itself (low frequency, and it explains a corpse with no loot cursor). Guard: `abilities::death::npc_only_kill_tests::an_npc_only_kill_says_why_nothing_dropped`.
+
+## Combat and effects key changes (NT-20)
+
+- `threat` `enter_combat` / `exit_combat` logged the player's **entity** id as `player_id`. It is now `entity_id` (with `entity_name`), and `player_id` / `account_id` carry the character's and account's ids per Rule 5.
+- The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. They now log `item_type_id` (a number; `item_id` is for instances) with `item_name`, and keep `design_id`, as a number, for the cell/base loot join.
+
+A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
 ## Related
 

@@ -47,7 +47,9 @@ pub async fn handle_interact(
         None => {
             tracing::warn!(
                 region_id,
+                region_name = space_mgr.ring_transporters.region_name(region_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "TriggerTransporter: no transporter loaded for region"
             );
             return;
@@ -64,8 +66,11 @@ pub async fn handle_interact(
         if !mission_gate_satisfied(space_mgr, entity_id, mission_id) {
             tracing::info!(
                 region_id,
+                region_name = space_mgr.ring_transporters.region_name(region_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "TriggerTransporter: mission gate not satisfied — destination list suppressed"
             );
             return;
@@ -110,7 +115,13 @@ pub async fn handle_select_destination(
         Some(src) => {
             if let Err(e) = src.validate_destination(destination_region_id) {
                 tracing::warn!(
-                    source_region_id, destination_region_id, entity_id, error = %e,
+                    source_region_id,
+                    source_region_name = space_mgr.ring_transporters.region_name(source_region_id),
+                    destination_region_id,
+                    destination_region_name = space_mgr.ring_transporters.region_name(destination_region_id),
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    error = %e,
                     "selectDestination: rejected"
                 );
                 return;
@@ -120,6 +131,7 @@ pub async fn handle_select_destination(
         None => {
             tracing::warn!(
                 source_region_id,
+                source_region_name = space_mgr.ring_transporters.region_name(source_region_id),
                 "selectDestination: source transporter not loaded"
             );
             return;
@@ -129,9 +141,15 @@ pub async fn handle_select_destination(
         if !mission_gate_satisfied(space_mgr, entity_id, mission_id) {
             tracing::info!(
                 source_region_id,
+                source_region_name = space_mgr.ring_transporters.region_name(source_region_id),
                 destination_region_id,
+                destination_region_name = space_mgr
+                    .ring_transporters
+                    .region_name(destination_region_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "selectDestination: mission gate not satisfied — rejecting"
             );
             return;
@@ -144,6 +162,9 @@ pub async fn handle_select_destination(
     {
         tracing::warn!(
             destination_region_id,
+            destination_region_name = space_mgr
+                .ring_transporters
+                .region_name(destination_region_id),
             "selectDestination: destination transporter not loaded"
         );
         return;
@@ -161,6 +182,9 @@ pub async fn handle_select_destination(
         if dst_state != Some(State::Idle) {
             tracing::warn!(
                 destination_region_id,
+                destination_region_name = space_mgr
+                    .ring_transporters
+                    .region_name(destination_region_id),
                 ?dst_state,
                 "selectDestination: destination busy — aborting"
             );
@@ -246,7 +270,9 @@ pub async fn handle_remote_player_loaded(
 
     tracing::warn!(
         region_id,
+        region_name = space_mgr.ring_transporters.region_name(region_id),
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         state = ?ring.map(|(s, _)| s),
         expected = ring.is_some_and(|(_, e)| e),
         reason = "late_ring_arrival",
@@ -367,7 +393,9 @@ async fn kick_off_warmup(
     // out instead.
     tracing::warn!(
         source_region_id,
+        source_region_name = space_mgr.ring_transporters.region_name(source_region_id),
         destination_region_id,
+        destination_region_name = space_mgr.ring_transporters.region_name(destination_region_id),
         destination_state = ?dst_link.map(|(s, _)| s),
         destination_back_pointer = ?dst_link.and_then(|(_, b)| b),
         reason = AbortReason::PeerNotPrepared.as_str(),

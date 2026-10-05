@@ -14,7 +14,10 @@
 //!   `handle_gate_travel`.
 //! - [`dial_refusal_persist`]: a refused dial never reaches the arrival
 //!   write, and the same dial accepted does (live DB).
+//! - [`debug_area_gate_seed`]: the Debug Area gate's seed row and its cooked
+//!   client entry agree (live DB, DA-07).
 
+mod debug_area_gate_seed;
 mod dial_refusal_persist;
 mod dial_to_gate_travel;
 mod stargate_fanout;

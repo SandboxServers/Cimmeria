@@ -28,6 +28,8 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `006-gate-sound-bank` | Copies the stock `audio/genprp/prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI/`, where the known-good client has them (byte-identical); the sources are the player's own stock files | 2 near-empty deltas | 1.5 KB |
 | `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
 | `008-dialog-portraits` | **Supersedes 001.** The same five dialog-portrait files, shipped whole instead of as deltas, so it applies to any client: stock, Project Giza, or one that already carries a hand-installed portrait fix | 5 whole files | 93 KB |
+| `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.7 KB |
+| `010-debug-area-rings` | Eight working ring transport rigs in the Debug Area (world 1300), on the Ihpet_Crater_Light map (see below). **Needs 007 applied first** | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -44,8 +46,128 @@ is LZO-compressed. A delta from 002's map back to the stock bytes is
 389 KB, and 383 KB of that is stock map bytes stored verbatim, which the
 no-CME-bytes rule forbids. Fresh installs never get the station.
 
-Applied to the stock client, the rebuilt files are byte-identical to a
-known-good QA client's.
+Applied to the stock client, the rebuilt files of 001-008 are
+byte-identical to a known-good QA client's.
+
+### 009-starter-hotbar
+
+The action bar is client state (`GActionProfiles`, saved per character in
+`ActionButtons - Saved Vars.lua`), so the server can grant abilities but
+cannot put them on the bar, and a new character starts with 100 empty
+buttons. 009 appends [StarterHotbar.lua](009-starter-hotbar/StarterHotbar.lua)
+to the stock `ActionProfileDefault1.lua`, byte for byte. The ActionButtons
+module loads that file after `ActionProfiles.lua`.
+
+- **What it does.** The client creates a profile when a character has no
+  saved UI variables: its first login on this machine (a new character, or
+  an existing one on a new machine or Windows profile), or after the stock
+  version-2 wipe. On that profile it binds each known starting ability
+  (Pistol Shot 592, Strike 594, Heal Focus 597, Health Heal 1646,
+  Recuperation 1218, in that order) to the next empty layer-bound button
+  from 11 to 20 (default keys Alt+1 to Alt+0), using the same calls as
+  dropping an ability from the Ability window. It reads the known abilities
+  with the zero-argument native `getAbilityList()` and, while there is
+  something to place, listens to `Events.AbilityUpdate` and (the player's
+  own updates, at most once a second) `Events.PropertyUpdated`.
+- **Only in the first session.** The profile stores the module load (login)
+  that created it. At any later login the profile is marked
+  `cimmeriaStarterHotbar = 'done'`, whatever was placed, and the patch
+  never touches it again, even if the starting abilities become known
+  later. It also stops listening as soon as it is done. A profile that
+  existed before the patch, or one made with the editor's New Profile
+  button, has no mark and is left alone.
+- **Compatible with UI packs.** It never creates, moves or resizes a
+  button, and it patches no file that the WQHD v26 UI pack replaces
+  (`ActionProfiles.lua`, `ActionButton.layout`). It wraps
+  `ActionProfileMod.refreshProfileTemplateCombo` (called once per module
+  load, from `onModLoaded`), `createProfile` and `loadProfile`, which the
+  stock file and the v26 replacement both define.
+- **Rebuilding.** Build a patched tree whose `ActionProfileDefault1.lua` is
+  the stock file (sha256 `a09eb055...`) followed by `StarterHotbar.lua`, then
+  run `cimmeria-patchset build` as below. `starter_hotbar_tests.rs` in
+  `crates/patchset` decodes the committed delta and fails when the bytes it
+  adds differ from `StarterHotbar.lua`.
+- **Logic UAT.** `lua5.1 data/client-patches/009-starter-hotbar/test/run.lua`,
+  or `python .../test/run_lupa.py` on Windows. CI runs it against a
+  clean-room model of the ActionButtons module. Set `SGW_UI_DIR` to a stock
+  client's `Working/SGWGame/Content/UI`, and `SGW_V26_ACTIONPROFILES` to
+  the v26 pack's `ActionProfiles.lua`, to also run it against the real
+  scripts. Its stub natives raise on a wrong argument count, as the client's
+  tolua shims do.
+
+### 010-debug-area-rings
+
+The ring stations of the GM-only Debug Area (DA-08,
+[debug-area.md § Ring transports](../../docs/content/debug-area.md#ring-transports)).
+One op rebuilds `Ihpet_Crater_Light-fff80002.umap`, the chunk in the
+middle of the crater, with eight copies of region 3's Castle CellBlock
+ring rig: base platform, five rings, the particle emitter and the whole
+Kismet sequence (rings rise, flash, sound, rings drop). Each copy's
+sequence took its own instance number, so the server plays one station
+at a time by object path. The console mesh is not cloned: the server's
+ring-switch entity (template 3) renders one.
+
+- **Depends on 007, and only on 007.** The rig's bytes come from
+  `Castle_CellBlock-fffeffff.umap`, which 007 rewrites, so the op's second
+  source is pinned to **007's result hash**, not the stock map's, and
+  marked `"output_of": "007-castle-armory-ring"` in the spec and recipe.
+  Publish the manifest entry with `"after": "007-castle-armory-ring"`,
+  never "the previous entry": the launcher's `blocked_by_failure` checks
+  only the one id named.
+  - If 007 failed or was skipped on an install, the launcher skips 010 too
+    (`skipped, it builds on 007-castle-armory-ring, which did not apply`)
+    and carries on with the rest.
+  - If 007 is recorded as applied but its map was replaced since, 010
+    fails with "... does not match patch 007-castle-armory-ring's output
+    ... it cannot apply until 007-castle-armory-ring has applied", leaves
+    the Ihpet map untouched, and the install reports the failure.
+  - Keep 010 terminal: chain no later entry `after` 010, so a failed 010
+    (a GM-only world most players never enter) skips nothing else.
+  - `debug_area_rings_tests.rs` in `crates/patchset` fails if the pin,
+    the `output_of` marker and 007's result ever disagree.
+  - **Superseding 007 means rebuilding 010.** 010 freezes 007's result
+    hash. A future patch that changes the Armory map (as 007 superseded
+    002) changes the donor, so 010 needs a new patch id rebuilt against
+    the new result and chained after the new patch.
+- **What the delta carries.** 17,057 bytes for a 2.26 MB map, rebuilt
+  from the player's own stock Ihpet chunk and 007's Armory map. Its extra
+  block, the only bytes that reach the map verbatim, is 487 bytes
+  compressed (4,163 raw). Most of it is binary glue we chose (coordinates,
+  export and name indices). About 463 bytes are ASCII: short CME
+  identifier strings that also exist in the donor (`ring5ring4ring3ring2ring1`
+  eight times, `Bool`, `ource`); the longest run is 138 bytes. 007's extra
+  block is 31 bytes. `committed_010_delta_ships_no_verbatim_map_bytes`
+  fails above 520 compressed bytes, so growth is noticed.
+- **World 73 sees it too.** The live Ihpet Crater (world 73) loads the
+  same map file, so it shows the eight platforms as scenery. Nothing is
+  seeded for world 73, so none of them does anything there.
+- **Without the patch** the Debug Area consoles and trips still work, with
+  no ring hardware on the pads and no animation.
+- **Rebuild.** `upk_patch` takes `--first-at` once per station (UE units:
+  `X = game z * 100`, `Y = game x * 100`, `Z = floor y * 100`), in the
+  station order the server's sequence ids assume:
+
+  ```bash
+  upk_patch clone-objects <stock>/.../Ihpet_Crater_Light-fff80002.umap \
+      <007-applied>/.../Castle_CellBlock-fffeffff.umap <patched>/.../Ihpet_Crater_Light-fff80002.umap \
+      --roots 772,1192,216,218,219,220,227,228 --map 764:104 \
+      --first-at -93800,22400,690   --first-at -73800,39400,-1113 \
+      --first-at -78200,8100,5      --first-at -70200,17600,-719 \
+      --first-at -72500,21000,-3328 --first-at -55900,12700,2306 \
+      --first-at -56600,43600,2309  --first-at -93700,43700,1130
+  ```
+
+  The output's SHA-256 is
+  `62ef4acdc08eb784816e4d9ca0cfd1e9790e8b24a421c0615b2711885eaa4946`.
+  Then run `cimmeria-patchset build` as below with a `--stock` tree whose
+  `Castle_CellBlock-fffeffff.umap` is 007's result (sha256 `2f41a7e1…`).
+- **Check on a real client.** With `SGW_PATCHED_CLIENT` set to a client
+  that has 007 applied:
+  `cargo test -p cimmeria-patchset real_client_debug_area_rings -- --ignored`.
+- **Publishing** (coordinator): add the printed manifest entry with
+  `"after": "007-castle-armory-ring"`, keep it the last link of its chain
+  (no entry `after` 010), re-check the `after` chain, sign the manifest
+  offline and upload it with the zip.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them

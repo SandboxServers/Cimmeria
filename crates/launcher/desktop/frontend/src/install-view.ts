@@ -46,8 +46,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     repairs.render(current,ready);
-    primary.hidden=operation?.kind==='launch';
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
+    primary.hidden=operation?.kind==='launch'||(!!status?.uninstall&&!canPrepare&&!active);
     primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
     const runtimeSetup=operation?.kind==='prepare_runtime';
@@ -77,7 +77,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       if(!status.progress.total)progress.removeAttribute('value');}
     let text='Checking installation…';
     if(current.error)text=operation?.kind==='repair'&&recovery&&['corrupt_state','recovery_required','io'].includes(current.error)?'Repair recovery remains blocked. Preserve the game, backup and stage. Recheck status; checkpoint recovery requires verified replacement evidence, and abandonment requires no commit checkpoint. An unknown helper outcome needs manual inspection.':errors[current.error];
-    else if(pending)text='Confirming operation…';
+    else if(pending)text='Checking installation status…';
     else if(status){
       if(operation?.kind==='launch')text='';
       else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?'Downloading repair content…':status.progress?.phase==='extraction'?'Reconstructing game content…':'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';

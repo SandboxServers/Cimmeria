@@ -22,6 +22,9 @@ use crate::cell::respawn;
 #[cfg(test)]
 mod tests;
 
+/// `packet_seq` is the Mercury seq of the client packet that carried the
+/// call (`None` from anywhere else); the receipt rows log it as
+/// `mercury_seq`, the join to the client's press (AB-T2).
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
@@ -29,6 +32,7 @@ pub async fn dispatch(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    packet_seq: Option<u32>,
 ) -> bool {
     match method_index {
         CALL_FOR_AID => {
@@ -40,7 +44,13 @@ pub async fn dispatch(
                 if respawn_refusal(entity_id, "callForAid", Some(respawner_id), space_mgr) {
                     return true;
                 }
-                tracing::info!(entity_id, respawner_id, "callForAid");
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    respawner_id,
+                    respawner_name = cimmeria_names::book().respawner(respawner_id),
+                    "callForAid"
+                );
                 crate::cell::playtest_friction::respawned(entity_id);
                 crate::cell::player_journal::note(
                     entity_id,
@@ -65,9 +75,13 @@ pub async fn dispatch(
                     tracing::info!(
                         target: "player.respawn",
                         entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
                         respawner_id,
+                        respawner_name = cimmeria_names::book().respawner(respawner_id),
                         state_flags_before = b.0,
+                        state_flags_before_names = %cimmeria_wire::state_field::STATE_FLAGS.render(b.0),
                         state_flags_after = a.0,
+                        state_flags_after_names = %cimmeria_wire::state_field::STATE_FLAGS.render(a.0),
                         was_dead = b.0 & dead != 0,
                         dead_flag_cleared = b.0 & dead != 0 && a.0 & dead == 0,
                         health_before = b.1,
@@ -83,10 +97,39 @@ pub async fn dispatch(
         }
 
         USE_ABILITY => {
-            if args.len() >= 8 {
+            if args.len() < 8 {
+                short_args_row(
+                    entity_id,
+                    "useAbility",
+                    args.len(),
+                    8,
+                    packet_seq,
+                    space_mgr,
+                );
+            } else {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::debug!(entity_id, ability_id, target_id, "useAbility");
+                // The receipt row (AB-T1, stage `recv`). `mercury_seq` is the
+                // inbound packet's sequence, the join to the client's press
+                // row (AB-T2); absent when the call came from no client packet.
+                let who = space_mgr.player_identity(entity_id);
+                tracing::debug!(
+                    target: "abilities",
+                    event = "use_ability_recv",
+                    stage = "recv",
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    entity_id,
+                    entity_name = who.player_name,
+                    ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
+                    wire_target_id = target_id,
+                    wire_target_name = space_mgr.entity_label(target_id as u32),
+                    mercury_seq = packet_seq,
+                    "useAbility"
+                );
 
                 // Single canonical kill-credit path — see
                 // `handle_use_ability_with_kill_credit` for the
@@ -106,12 +149,39 @@ pub async fn dispatch(
         }
 
         USE_ABILITY_ON_GROUND => {
-            if args.len() >= 16 {
+            if args.len() < 16 {
+                short_args_row(
+                    entity_id,
+                    "useAbilityOnGroundTarget",
+                    args.len(),
+                    16,
+                    packet_seq,
+                    space_mgr,
+                );
+            } else {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
+                let who = space_mgr.player_identity(entity_id);
+                tracing::debug!(
+                    target: "abilities",
+                    event = "use_ability_on_ground_recv",
+                    stage = "recv",
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    entity_id,
+                    entity_name = who.player_name,
+                    ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
+                    x,
+                    y,
+                    z,
+                    mercury_seq = packet_seq,
+                    "useAbilityOnGroundTarget"
+                );
 
                 // handle_use_ability_on_ground returns the entity IDs of every
                 // NPC that died during this cast (primary + AoE secondaries).
@@ -148,13 +218,21 @@ pub async fn dispatch(
             if respawn_refusal(entity_id, "respawn", None, space_mgr) {
                 return true;
             }
-            tracing::debug!(entity_id, "respawn (auto)");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "respawn (auto)"
+            );
             respawn::handle_respawn(entity_id, -1, tx, space_mgr).await;
             true
         }
 
         UNSTUCK => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: unstuck");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: unstuck"
+            );
             true
         }
 
@@ -167,6 +245,39 @@ pub async fn dispatch(
 
         _ => false,
     }
+}
+
+/// A cast press whose arguments are shorter than the method's fixed layout
+/// (AB-T2): the call is dropped before anything decodes it, so this row is
+/// the only trace of the press. DEBUG, because the client controls the
+/// bytes and could flood a WARN index.
+fn short_args_row(
+    entity_id: u32,
+    method: &'static str,
+    args_len: usize,
+    expected_len: usize,
+    packet_seq: Option<u32>,
+    space_mgr: &SpaceManager,
+) {
+    let who = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        target: "abilities",
+        event = "use_ability_args_short",
+        stage = "recv",
+        reason = "args_short",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
+        entity_id,
+        entity_name = who.player_name,
+        method,
+        args_len,
+        expected_len,
+        mercury_seq = packet_seq,
+        "{method} receipt: expected {expected_len} argument bytes, got {args_len}; \
+         the press is dropped, the player sees nothing and no cooldown starts"
+    );
 }
 
 /// The server-side gates on the two player respawn entry points,
@@ -210,14 +321,20 @@ fn respawn_refusal(
     };
     let id = e.identity();
     if !crate::cell::combat::is_dead_state(e.state_field) {
+        let book = cimmeria_names::book();
         tracing::debug!(
             target: "player.respawn",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             respawner_id = respawner_id.unwrap_or(-1),
+            respawner_name = respawner_id.and_then(|r| book.respawner(r)),
             method,
             state_field = e.state_field,
+            state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(e.state_field),
             reason = "respawn_not_dead",
             "respawn request from a living player -- refused (no heal, no move); \
              only a dead player's Defeat Window may call for aid or respawn"
@@ -236,9 +353,13 @@ fn respawn_refusal(
         tracing::debug!(
             target: "player.respawn",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             respawner_id,
+            respawner_name = cimmeria_names::book().respawner(respawner_id),
             method,
             world = ?world,
             reason = "respawner_not_offered",

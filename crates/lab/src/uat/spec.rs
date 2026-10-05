@@ -10,14 +10,15 @@
 //! non-programmers may edit.
 //!
 //! The format is documented for authors in
-//! `docs/guides/automated-uat.md`; this module is the schema.
-
-use std::collections::HashSet;
+//! `docs/guides/automated-uat.md`; this module is the schema and
+//! [`super::spec_validate`] the rules the types cannot express.
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::tier::Tier;
+
+pub use super::spec_validate::{validate, without_vars};
 
 /// Current spec schema version.
 pub const SCHEMA: u32 = 1;
@@ -95,8 +96,9 @@ pub struct RowSpec {
     /// `in_world` (default), `char_select`, `any` or `client_stopped`.
     #[serde(default = "default_state")]
     pub state: String,
-    /// Players the row needs. Above 1 the row is BLOCKED until a second
-    /// lab instance or a puppet can join it (matrix X1).
+    /// Players the row needs: 1, or 2 to drive the second lab instance
+    /// (`p2`) as well. A 2-player row is BLOCKED, with the reason, when no
+    /// second instance is configured; above 2 always is (matrix X1).
     #[serde(default = "default_players")]
     pub players: u32,
     /// K-numbers or step notes the guide attaches.
@@ -174,6 +176,10 @@ pub struct ActionSpec {
     /// An error here is recorded but does not fail or block the row.
     #[serde(default)]
     pub optional: bool,
+    /// Which lab client runs it: `p1` (default, the lab character) or
+    /// `p2` (the second instance; `players = 2` rows only).
+    #[serde(default)]
+    pub client: Option<String>,
 }
 
 impl ActionSpec {
@@ -227,7 +233,17 @@ pub enum Source {
     /// A SigNoz query: recorded PENDING until `lab_uat_attest` fills it.
     Signoz,
     /// A server lab-mcp tool over HTTP (UNVERIFIED when unreachable).
+    /// `server_ability_state` without an `entity_id` reads the lab
+    /// character's own entity.
     Server,
+    /// The client's own telemetry events (`client.ability.*` and the rest)
+    /// from the lab event store, since the row's anchor or a step label:
+    /// counted and field-checked like a packet clause.
+    ClientEvent,
+    /// Decoded Mercury messages from the server packet tap, captured for
+    /// the lab character's session from the anchor to teardown
+    /// (UNVERIFIED when the endpoint is unreachable).
+    Packet,
     /// A question for a person (NEEDS_HUMAN until answered).
     Human,
 }
@@ -250,6 +266,8 @@ pub enum Op {
     Truthy,
     Falsy,
     LenGte,
+    /// Numeric `value` within `tolerance` either way (`15 ± 1`).
+    Approx,
 }
 
 /// One expected clause. The fields used depend on `source`;
@@ -268,7 +286,8 @@ pub struct ExpectSpec {
     /// every step action).
     #[serde(default)]
     pub at: Option<String>,
-    /// Chat: only lines after the action with this label.
+    /// Chat and client_event: only lines (events) after the action with
+    /// this label started.
     #[serde(default)]
     pub since: Option<String>,
     // chat
@@ -281,7 +300,9 @@ pub struct ExpectSpec {
     pub count: Option<u32>,
     #[serde(default)]
     pub absent: bool,
-    /// Chat: store regex group 1 of the first match into this var.
+    /// Chat: store regex group 1 of the first match into this var. Tool,
+    /// server and lua: store the observed value (a baseline a later
+    /// clause compares with `value = "${var}"`).
     #[serde(default)]
     pub capture_var: Option<String>,
     // tool / server / lua
@@ -300,6 +321,9 @@ pub struct ExpectSpec {
     // wait
     #[serde(default)]
     pub lua_condition: Option<String>,
+    /// Wait: how long to wait for the condition. Client_event: how long
+    /// to wait for `min_rows` events (or, with `max_rows`, for one too
+    /// many) before grading; default 5000.
     #[serde(default)]
     pub timeout_ms: Option<u64>,
     // timing
@@ -314,9 +338,39 @@ pub struct ExpectSpec {
     pub min_rows: Option<u64>,
     #[serde(default)]
     pub max_rows: Option<u64>,
-    /// SigNoz: a field every attested row must satisfy with `op`/`value`.
+    /// SigNoz and packet: a field every matching row must satisfy with
+    /// `op`/`value`.
     #[serde(default)]
     pub field: Option<String>,
+    /// `op = "approx"`: how far either side of `value` still passes.
+    #[serde(default)]
+    pub tolerance: Option<f64>,
+    // packet
+    /// The message name as the tap decodes it (its `msg_name`).
+    #[serde(default)]
+    pub message: Option<String>,
+    /// `to_client` (server sends) or `to_server` (client sends).
+    #[serde(default)]
+    pub direction: Option<String>,
+    /// Only messages for this entity (an outbound row's
+    /// `target_entity_id`); a number or a `${var}`.
+    #[serde(default)]
+    pub entity: Option<Value>,
+    // client_event
+    /// The telemetry target (`client.ability.sent`); the lab ring stores it
+    /// without the `client.` prefix. A glob (`client.ability.*`) is fine.
+    #[serde(default)]
+    pub event: Option<String>,
+    /// Client_event and packet: only events (messages) whose fields equal
+    /// these: `{ method = "onEffectResults", ability_id = 597 }`. Client
+    /// events glob strings; packet fields compare loosely (numbers
+    /// numerically).
+    #[serde(default)]
+    pub match_fields: Option<serde_json::Map<String, Value>>,
+    /// Chat, tool, lua, wait and client_event clauses: read this client
+    /// (`p1` default, `p2` on a `players = 2` row).
+    #[serde(default)]
+    pub client: Option<String>,
     // human
     #[serde(default)]
     pub question: Option<String>,
@@ -338,6 +392,9 @@ pub struct EvidenceSpec {
     /// After the action with this label; default: after the steps.
     #[serde(default)]
     pub at: Option<String>,
+    /// Capture from this client (`p1` default, `p2`).
+    #[serde(default)]
+    pub client: Option<String>,
 }
 
 /// Parse and validate one section file.
@@ -349,225 +406,6 @@ pub fn parse(text: &str) -> Result<SectionSpec, String> {
     Ok(spec)
 }
 
-/// Structural checks the type system cannot express. Every problem is
-/// reported with its row id so an author can find it.
-pub fn validate(spec: &SectionSpec) -> Result<(), String> {
-    let mut errs = Vec::new();
-    if spec.schema != SCHEMA {
-        errs.push(format!(
-            "schema {} (this runner reads {SCHEMA})",
-            spec.schema
-        ));
-    }
-    if spec.section.character == "fresh" && spec.section.fresh.is_none() {
-        errs.push("character = \"fresh\" needs a [section.fresh] table".into());
-    }
-    if !matches!(spec.section.character.as_str(), "lab" | "fresh") {
-        errs.push(format!(
-            "character {:?}: lab or fresh",
-            spec.section.character
-        ));
-    }
-    if !matches!(spec.section.account.as_str(), "gm" | "non-gm") {
-        errs.push(format!("account {:?}: gm or non-gm", spec.section.account));
-    }
-    let mut ids = HashSet::new();
-    for row in &spec.rows {
-        let r = &row.id;
-        if !ids.insert(r.clone()) {
-            errs.push(format!("{r}: duplicate row id"));
-        }
-        if !matches!(
-            row.state.as_str(),
-            "in_world" | "char_select" | "any" | "client_stopped"
-        ) {
-            errs.push(format!("{r}: state {:?}", row.state));
-        }
-        let mut labels = HashSet::new();
-        for a in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
-            check_action(r, a, &mut errs);
-            if let Some(l) = &a.label {
-                if !labels.insert(l.clone()) {
-                    errs.push(format!("{r}: duplicate action label {l:?}"));
-                }
-            }
-        }
-        if row.steps.is_empty() && row.blocked.is_none() {
-            errs.push(format!("{r}: no steps (add `blocked` if it cannot run)"));
-        }
-        if row.expect.is_empty() && row.blocked.is_none() {
-            errs.push(format!("{r}: no expected clauses"));
-        }
-        let mut cids = HashSet::new();
-        for c in &row.expect {
-            if !cids.insert(c.id.clone()) {
-                errs.push(format!("{r}/{}: duplicate clause id", c.id));
-            }
-            for l in [&c.at, &c.since, &c.action].into_iter().flatten() {
-                if !labels.contains(l) {
-                    errs.push(format!("{r}/{}: no action labelled {l:?}", c.id));
-                }
-            }
-            if let Err(e) = check_clause(c) {
-                errs.push(format!("{r}/{}: {e}", c.id));
-            }
-        }
-        for e in &row.evidence {
-            if let Some(l) = &e.at {
-                if !labels.contains(l) {
-                    errs.push(format!("{r}/evidence {}: no action labelled {l:?}", e.name));
-                }
-            }
-        }
-    }
-    if errs.is_empty() {
-        Ok(())
-    } else {
-        Err(errs.join("; "))
-    }
-}
-
-fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
-    match a.kind() {
-        Err(e) => errs.push(format!("{row}: {e}")),
-        Ok(ActionKind::Capture) => {
-            if a.regex.is_none() || a.var.is_none() {
-                errs.push(format!("{row}: capture needs regex and var"));
-            }
-            if a.capture.as_deref() != Some("chat") {
-                errs.push(format!("{row}: capture source must be \"chat\""));
-            }
-        }
-        Ok(_) => {}
-    }
-    if let Some(re) = &a.regex {
-        if let Err(e) = regex::Regex::new(&without_vars(re)) {
-            errs.push(format!("{row}: bad regex {re:?}: {e}"));
-        }
-    }
-    for f in &a.fallback {
-        if f.tool.is_none() && f.chat.is_none() {
-            errs.push(format!("{row}: a fallback must be a tool or chat action"));
-        }
-        check_action(row, f, errs);
-    }
-}
-
-/// A pattern with its `${var}` placeholders replaced by a literal, so it
-/// can be compiled before the variables are known.
-pub fn without_vars(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find("${") {
-        out.push_str(&rest[..i]);
-        match rest[i..].find('}') {
-            Some(j) => {
-                out.push('X');
-                rest = &rest[i + j + 1..];
-            }
-            None => {
-                out.push_str(&rest[i..]);
-                rest = "";
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-fn check_clause(c: &ExpectSpec) -> Result<(), String> {
-    let need = |ok: bool, what: &str| if ok { Ok(()) } else { Err(what.to_string()) };
-    match c.source {
-        Source::Chat => need(
-            c.contains.is_some() || c.matches.is_some(),
-            "a chat clause needs contains or matches",
-        )?,
-        Source::Tool | Source::Server => need(c.tool.is_some(), "needs tool")?,
-        Source::Lua => need(c.chunk.is_some(), "a lua clause needs chunk")?,
-        Source::Wait => need(
-            c.lua_condition.is_some(),
-            "a wait clause needs lua_condition",
-        )?,
-        Source::Timing => need(
-            c.action.is_some() && c.max_ms.is_some(),
-            "a timing clause needs action and max_ms",
-        )?,
-        Source::Signoz => need(c.filter.is_some(), "a signoz clause needs filter")?,
-        Source::Human => need(c.question.is_some(), "a human clause needs question")?,
-    }
-    if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
-        && c.op.is_none()
-        && c.value.is_none()
-    {
-        return Err("needs op and/or value".into());
-    }
-    if c.field.is_some() && c.op.is_none() {
-        return Err("field needs op".into());
-    }
-    if let Some(re) = &c.matches {
-        regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const MINI: &str = r#"
-schema = 1
-[section]
-id = "gm-parity"
-system = "GM console command parity"
-guide = "unified-uat.md#gm-console-command-parity"
-ledger = "legacy-command-parity/README.md"
-
-[[row]]
-id = "M1-1"
-title = "help answers"
-expected = "Each answers in chat."
-step = [{ chat = ".help", label = "help" }]
-
-[[row.expect]]
-id = "help"
-text = ".help lists commands"
-source = "chat"
-since = "help"
-contains = "help"
-"#;
-
-    #[test]
-    fn a_minimal_section_parses_with_defaults() {
-        let s = parse(MINI).unwrap();
-        let row = &s.rows[0];
-        assert_eq!(row.required_native, Tier::N1);
-        assert_eq!(row.state, "in_world");
-        assert_eq!(row.players, 1);
-        assert_eq!(s.section.character, "lab");
-        assert_eq!(row.steps[0].kind().unwrap(), ActionKind::Chat);
-    }
-
-    #[test]
-    fn a_dangling_label_and_a_bare_clause_are_rejected() {
-        let bad = MINI.replace("since = \"help\"", "since = \"nope\"");
-        let e = parse(&bad).unwrap_err();
-        assert!(e.contains("M1-1/help: no action labelled \"nope\""), "{e}");
-        let bad = MINI.replace("contains = \"help\"", "");
-        assert!(parse(&bad).unwrap_err().contains("contains or matches"));
-    }
-
-    #[test]
-    fn an_action_with_two_kinds_is_rejected() {
-        let bad = MINI.replace(
-            "{ chat = \".help\", label = \"help\" }",
-            "{ chat = \".help\", wait_ms = 5, label = \"help\" }",
-        );
-        assert!(parse(&bad).unwrap_err().contains("more than one"));
-    }
-
-    #[test]
-    fn unknown_fields_are_errors_not_silently_ignored() {
-        let bad = MINI.replace("title = \"help answers\"", "title = \"x\"\ntypo = 1");
-        assert!(parse(&bad).is_err());
-    }
-}
+#[path = "spec_tests.rs"]
+mod tests;

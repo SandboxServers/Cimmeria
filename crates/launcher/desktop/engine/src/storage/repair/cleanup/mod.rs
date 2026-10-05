@@ -184,11 +184,11 @@ fn cleanup(
         return Err(StorageError::Corrupt.into());
     }
     let release = state
-        .release_for_intent(&plan.installation)
+        .verify_release_identity(plan.release_identity())
         .map_err(|_| StorageError::Corrupt)?;
-    let receipt: InstallIntent =
-        read(&root.join("content-ready.json"))?.ok_or(StorageError::Corrupt)?;
-    if receipt != plan.installation || !install_worker::content_valid(&game, &release) {
+    let receipt =
+        installed_content::read_ready(root, &plan.installation)?.ok_or(StorageError::Corrupt)?;
+    if receipt != plan.release_identity() || !install_worker::content_valid(&game, &release) {
         return Err(StorageError::Corrupt.into());
     }
     let saved: Option<Record> = read(&state.directory.root.join(name(id)))?;

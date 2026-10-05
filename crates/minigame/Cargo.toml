@@ -14,7 +14,8 @@ description = "The in-process SmartFoxServer 1.x host the Flash minigame SWFs co
 [dependencies]
 # `cell::messages::CellToBaseMsg`, the channel every outcome leaves through.
 cimmeria-wire = { workspace = true }
-# `emit_minigame_result`, the gameplay-channel notification for an outcome.
+# `minigame_result_event` + `emit`, the gameplay-channel notification for an
+# outcome.
 cimmeria-discord = { workspace = true }
 tokio = { workspace = true }
 # Ticket generation and the per-session Livewire layout seed.

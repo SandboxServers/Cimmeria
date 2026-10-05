@@ -61,6 +61,8 @@ pub(super) async fn holders_locked(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteSync {
     pub org_id: i32,
+    /// The organization's name for the log lines, when the caller read it.
+    pub org_name: Option<&'static str>,
     /// The members whose access changed, by `player_id`.
     pub recipients: Vec<i32>,
     /// `true` on a grant (send the text), `false` on a revoke (send "").
@@ -73,6 +75,7 @@ impl NoteSync {
     /// A sync for `recipients`, or `None` when there is nothing to send.
     fn build(
         org_id: i32,
+        org_name: Option<&'static str>,
         recipients: Vec<i32>,
         show: bool,
         roster: &[RosterMember],
@@ -84,6 +87,7 @@ impl NoteSync {
             .collect();
         (!recipients.is_empty() && !notes.is_empty()).then_some(NoteSync {
             org_id,
+            org_name,
             recipients,
             show,
             notes,
@@ -112,6 +116,7 @@ impl NoteSync {
         let sent = send_to_members(
             ctx,
             self.org_id,
+            self.org_name,
             &online,
             &self.messages(),
             "officer_note_sync",
@@ -121,6 +126,7 @@ impl NoteSync {
             target: "org",
             event = "org.officer_note_sync",
             org_id = self.org_id,
+            org_name = self.org_name,
             show = self.show,
             notes = self.notes.len(),
             members = self.recipients.len(),
@@ -137,6 +143,7 @@ impl NoteSync {
 pub(super) async fn sync_for_rank_locked(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
+    org_name: Option<&'static str>,
     rank: OrgRank,
     old: OrgPermission,
     new: OrgPermission,
@@ -153,6 +160,7 @@ pub(super) async fn sync_for_rank_locked(
         .collect();
     Ok(NoteSync::build(
         org_id,
+        org_name,
         recipients,
         new.contains(bit),
         &roster,
@@ -165,6 +173,7 @@ pub(super) async fn sync_for_rank_locked(
 pub(super) async fn sync_for_member_locked(
     tx: &mut Transaction<'_, Postgres>,
     org_id: i32,
+    org_name: Option<&'static str>,
     player_id: i32,
     from: OrgRank,
     to: OrgRank,
@@ -178,5 +187,11 @@ pub(super) async fn sync_for_member_locked(
         return Ok(None);
     }
     let roster = load_roster(&mut **tx, org_id).await?;
-    Ok(NoteSync::build(org_id, vec![player_id], now, &roster))
+    Ok(NoteSync::build(
+        org_id,
+        org_name,
+        vec![player_id],
+        now,
+        &roster,
+    ))
 }

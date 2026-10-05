@@ -78,7 +78,11 @@ async fn a_rate_limited_post_is_not_retried_and_the_rows_wait_for_the_next_trigg
             assert_eq!(rig.probe.sleeps(), [Duration::from_secs(3); 2], "{code}");
         } else {
             assert_eq!(rig.paths().await, [INGEST], "{code}: exactly one request");
-            assert_eq!(rig.probe.sleeps(), [], "{code}: no wait");
+            assert_eq!(
+                rig.probe.sleeps(),
+                Vec::<Duration>::new(),
+                "{code}: no wait"
+            );
         }
         assert_eq!(queued(&rig.owner()), rows, "{code}");
         assert_eq!(queue_bytes(&rig.owner()), before, "{code}");
@@ -103,7 +107,7 @@ async fn a_refused_connection_is_tried_three_times_and_the_rows_stay() {
     mount_ok(&live.server).await;
     live.fail(1);
     assert_eq!(live.cycle().await, DELIVERED_ONE);
-    assert_eq!(live.probe.sleeps(), []);
+    assert_eq!(live.probe.sleeps(), Vec::<Duration>::new());
 }
 
 #[tokio::test]
@@ -162,7 +166,7 @@ async fn a_server_without_the_summary_route_stops_the_exporter_for_the_run() {
         let rows = rig.fail(1);
         assert_eq!(rig.cycle().await, CycleOutcome::StoppedForRun, "{status}");
         assert_eq!(rig.paths().await, [INGEST], "{status}: no retry");
-        assert_eq!(rig.probe.sleeps(), []);
+        assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
         assert_eq!(queued(&rig.owner()), rows);
 
         // A second trigger makes no request, even though the route now exists.

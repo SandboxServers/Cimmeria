@@ -26,6 +26,7 @@ impl CellEntity {
             velocity: [0.0; 3],
             is_on_ground: true,
             movement_unrestricted: false,
+            god_mode: false,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
             // NPC perception radius. A player's is raised to
@@ -42,6 +43,8 @@ impl CellEntity {
             missions: MissionManager::new(),
             player_id: None,
             account_id: None,
+            log_names: super::LogNames::default(),
+            created_at: std::time::SystemTime::now(),
             archetype_id: None,
             access_level: 0,
             known_stargates: Vec::new(),

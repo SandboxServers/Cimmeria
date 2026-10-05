@@ -246,6 +246,38 @@ async fn create_result_charges_or_closes_the_offer() {
     assert_eq!(to(&calls, ALICE), refusal(5, NO_PENDING_TEXT));
 }
 
+/// The result arrives after the character logged out and another account's
+/// character took the entity slot. The row names the offer's player id and
+/// nothing of the slot's new occupant: no account, no login, no name.
+#[tokio::test]
+async fn create_result_for_a_recycled_slot_names_no_one_else() {
+    let capture = LogCapture::install();
+    let mut mgr = world(&["Alice"]);
+    // The slot now holds Bob (character 51, another account).
+    let e = mgr.get_entity_mut(ALICE).unwrap();
+    e.player_id = Some(51);
+    e.account_id = Some(account_of(51));
+    e.stamp_log_names(Some("Bob"), Some("bob_login"));
+
+    creation::on_create_result(ALICE_PID, ALICE, false, &mut mgr);
+
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "pending_creation_attempt_charged"))
+        .expect("the charge row fires");
+    assert!(
+        row.has_field("player_id", &ALICE_PID.to_string()),
+        "{row:#?}"
+    );
+    for key in ["account_id", "account_name", "player_name"] {
+        assert!(
+            !row.fields.contains_key(key),
+            "{key} would be Bob's, on Alice's row; got {row:#?}"
+        );
+    }
+}
+
 /// A change of space (gate travel) or the 5-minute expiry ends the offer:
 /// the name is refused as `pending_expired`, with a transition row naming
 /// the cause.

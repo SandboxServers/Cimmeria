@@ -234,8 +234,8 @@ fn now_ms() -> u64 {
 
 /// Record an inbound message against the tap for `peer`'s session, if one is
 /// active. Called from [`super::log_inbound`]. No-op (single atomic load) when
-/// no tap is active.
-pub(super) fn record_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
+/// no tap is active. `class_id` is the clientIndex of the client's entity.
+pub(super) fn record_inbound(peer: SocketAddr, class_id: u8, msg_id: u8, payload: &[u8]) {
     if !any_active() {
         return;
     }
@@ -257,7 +257,7 @@ pub(super) fn record_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
         dir: Dir::In,
         msg_id: Some(msg_id),
         method_index,
-        msg_name: super::client_names::inbound_msg_name_with_payload(msg_id, payload),
+        msg_name: super::client_names::inbound_label(class_id, msg_id, payload),
         target_entity_id: None,
         args_len: payload.len(),
         args_hex: super::hex_truncate(payload),
@@ -271,6 +271,7 @@ pub(super) fn record_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
 pub(super) fn record_outbound(
     witness_id: u32,
     target_entity_id: u32,
+    target_is_player: bool,
     method_index: u16,
     args: &[u8],
 ) {
@@ -286,7 +287,8 @@ pub(super) fn record_outbound(
         dir: Dir::Out,
         msg_id: None,
         method_index: i32::from(method_index),
-        msg_name: super::client_names::outbound_method_name(method_index),
+        msg_name: super::client_names::outbound_name(target_is_player, method_index)
+            .unwrap_or("unknown"),
         target_entity_id: Some(target_entity_id),
         args_len: args.len(),
         args_hex: super::hex_truncate(args),
@@ -297,6 +299,8 @@ pub(super) fn record_outbound(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const PLAYER: u8 = cimmeria_wire::names::SGWPLAYER_CLASS_ID;
 
     fn addr(port: u16) -> SocketAddr {
         SocketAddr::from(([127, 0, 0, 1], port))
@@ -314,7 +318,7 @@ mod tests {
 
         // Push 5 inbound; capacity 3 → 2 dropped, newest 3 retained.
         for i in 0..5u8 {
-            record_inbound(addr(40001), 0x80 + i, &[i]);
+            record_inbound(addr(40001), PLAYER, 0x80 + i, &[i]);
         }
 
         let r = read(eid).expect("tap must be active");
@@ -349,11 +353,11 @@ mod tests {
         start(b, addr(40011), Some(100));
 
         // Inbound from B's address, outbound to B's witness id.
-        record_inbound(addr(40011), 0x90, &[1, 2, 3]);
-        record_outbound(b, b, 5, &[9, 9]);
+        record_inbound(addr(40011), PLAYER, 0x90, &[1, 2, 3]);
+        record_outbound(b, b, true, 5, &[9, 9]);
         // One inbound + one outbound genuinely for A.
-        record_inbound(addr(40010), 0x91, &[4]);
-        record_outbound(a, 12345, 7, &[7]);
+        record_inbound(addr(40010), PLAYER, 0x91, &[4]);
+        record_outbound(a, 12345, false, 7, &[7]);
 
         let ra = read(a).expect("A active");
         assert_eq!(ra.messages.len(), 2, "A sees only its own two messages");
@@ -376,11 +380,11 @@ mod tests {
     fn stop_makes_session_inert() {
         let eid = 0xA688_0020;
         start(eid, addr(40020), None);
-        record_inbound(addr(40020), 0x80, &[0]);
+        record_inbound(addr(40020), PLAYER, 0x80, &[0]);
         assert!(stop(eid), "stop reports the tap existed");
         assert!(read(eid).is_none(), "no tap after stop");
         // A late packet for the stopped session must not resurrect a ring.
-        record_inbound(addr(40020), 0x80, &[0]);
+        record_inbound(addr(40020), PLAYER, 0x80, &[0]);
         assert!(read(eid).is_none(), "stopped session stays inert");
     }
 

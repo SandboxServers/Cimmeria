@@ -267,6 +267,20 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("castle_702_704_chains.sql", 1275) // Castle_PreRomneyChest: template 410 default INT_NormalLoot
         | ("castle_702_704_chains.sql", 1276) // Castle_PreRomneyChest: template 410 default INT_NormalLoot
         | ("debug_hub_chains.sql", 7010) // DebugHub_MailClerk: template 390 default INT_NonAStoryMissionAvaliable (SS-U3)
+        // debug_area_plaza_chains.sql (DA-02): the Debug Area plaza's
+        // reusable NPCs, no mission, so every cursor bit is a permanent
+        // template default, as in the stasis hub.
+        | ("debug_area_plaza_chains.sql", 13000) // DebugArea_AbilityGranter: template 1300 default INT_Trainer
+        | ("debug_area_plaza_chains.sql", 13001) // DebugArea_AbilityReset: template 1301 default INT_Trainer
+        | ("debug_area_plaza_chains.sql", 13002) // DebugArea_DialogNpc: template 302 default INT_NonAStoryMissionAvaliable
+        | ("debug_area_plaza_chains.sql", 13004) // DebugArea_LivewireTerminal: template 303 default INT_MinigameLivewire
+        | ("debug_area_plaza_chains.sql", 13006) // DebugArea_LootCrate: template 304 default INT_NormalLoot
+        | ("debug_area_plaza_chains.sql", 13007) // DebugArea_MailClerk: template 390 default INT_NonAStoryMissionAvaliable
+        | ("debug_area_plaza_chains.sql", 13008) // DebugArea_Auctioneer: template 305 default INT_Auction, the seeded auctioneer marker
+        // debug_area_ring_chains.sql — the eight Debug Area ring consoles
+        // (DA-08). Template 3 carries INT_RingNetwork (32) as a template
+        // default, exactly as for the Harset ring switches above.
+        | ("debug_area_ring_chains.sql", 13810..=13817)
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default

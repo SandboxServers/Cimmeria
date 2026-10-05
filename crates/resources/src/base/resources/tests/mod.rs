@@ -7,10 +7,12 @@
 //! - [`overrides`]: mission + item override application and metadata bumps.
 //! - [`dialog_overrides`]: dialog override application and metadata bumps.
 //! - [`world_info_overrides`]: the historical CellBlock worlds on category 12.
+//! - [`stargate_overrides`]: the Debug Area gate (29) on category 13.
 
 mod category_map;
 mod committed_paks;
 mod dialog_overrides;
 mod inventory_slots;
 mod overrides;
+mod stargate_overrides;
 mod world_info_overrides;

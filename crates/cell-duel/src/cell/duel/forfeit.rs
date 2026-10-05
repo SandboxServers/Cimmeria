@@ -16,6 +16,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::connected_player;
+use super::duelist_names as names;
 use super::end::{end_engaged, DefeatReason, EndReason};
 use super::outbound::{send_line, Recipient};
 use super::registry::DuelState;
@@ -43,7 +44,9 @@ async fn forfeit(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut Spa
             target: "duel",
             event = "duel.forfeit_refused",
             account_id = id.account_id,
+            account_name = id.account_name,
             entity_id,
+            entity_name = names::entity_name(mgr, Some(entity_id)),
             reason = "not_a_player",
             "duelForfeit from an entity that is not a connected player"
         );
@@ -65,10 +68,14 @@ async fn forfeit(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut Spa
             target: "duel",
             event = "duel.forfeit_refused",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = pid,
+            player_name = id.player_name,
             entity_id,
+            entity_name = names::entity_name(mgr, Some(entity_id)),
             target_player_id = duel.and_then(|d| d.opponent_of(pid)),
-            duel_id = duel.map(|d| d.duel_id),
+            target_player_name = duel.and_then(|d| d.opponent_of(pid)).and_then(|o| names::player_name_of(mgr, o)),
+            duel_id = duel.map(|d| d.duel_id), // nt:id-only duel row id with no name column; the duelists are named in the same event
             stage,
             reason = "not_engaged",
             "duelForfeit from a player who is not in an engaged duel"

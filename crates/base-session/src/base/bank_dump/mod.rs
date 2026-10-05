@@ -17,6 +17,7 @@
 //!
 //! [`BankCellToBase::GmDump`]: cimmeria_wire::cell::messages::BankCellToBase::GmDump
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -208,15 +209,20 @@ pub async fn run_gm_dump(
     };
     match result {
         Ok(dump) => {
+            let player_label = known_names::player_name(caller.player_id);
             tracing::info!(
                 target: "bank",
                 event = "gm_action",
                 action = "bankdump",
                 result = "ok",
                 account_id = caller.account_id,
+                account_name = known_names::account_name(caller.account_id),
                 player_id = caller.player_id,
+                player_name = player_label,
                 entity_id = caller.entity_id,
+                entity_name = player_label,
                 target_player_id = dump.player_id,
+                target_player_name = known_names::player_name(dump.player_id),
                 target_name,
                 item_count = dump.rows.len(),
                 bank_slots = dump.bank_slots,
@@ -231,24 +237,32 @@ pub async fn run_gm_dump(
             };
             let reason = refusal.reason();
             match &refusal {
-                DumpRefusal::TargetNotFound => tracing::info!(
-                    target: "bank",
-                    event = "gm_action",
-                    action = "bankdump",
-                    result = "refused",
-                    reason,
-                    account_id = caller.account_id,
-                    player_id = caller.player_id,
-                    entity_id = caller.entity_id,
-                    target_player_id,
-                    target_name,
-                    "gm_action: bankdump refused"
-                ),
+                DumpRefusal::TargetNotFound => {
+                    let player_label = known_names::player_name(caller.player_id);
+                    tracing::info!(
+                        target: "bank",
+                        event = "gm_action",
+                        action = "bankdump",
+                        result = "refused",
+                        reason,
+                        account_id = caller.account_id,
+                        account_name = known_names::account_name(caller.account_id),
+                        player_id = caller.player_id,
+                        player_name = player_label,
+                        entity_id = caller.entity_id,
+                        entity_name = player_label,
+                        target_player_id,
+                        target_player_name = known_names::player_name(target_player_id),
+                        target_name,
+                        "gm_action: bankdump refused"
+                    );
+                }
                 DumpRefusal::DbUnavailable | DumpRefusal::QueryFailed(_) => {
                     let error = match &refusal {
                         DumpRefusal::QueryFailed(e) => e.as_str(),
                         _ => "no database pool",
                     };
+                    let player_label = known_names::player_name(caller.player_id);
                     tracing::warn!(
                         target: "bank",
                         event = "gm_action",
@@ -256,9 +270,13 @@ pub async fn run_gm_dump(
                         result = "refused",
                         reason,
                         account_id = caller.account_id,
+                        account_name = known_names::account_name(caller.account_id),
                         player_id = caller.player_id,
+                        player_name = player_label,
                         entity_id = caller.entity_id,
+                        entity_name = player_label,
                         target_player_id,
+                        target_player_name = known_names::player_name(target_player_id),
                         target_name,
                         error,
                         "gm_action: bankdump could not read the vault"

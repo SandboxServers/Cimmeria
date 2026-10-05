@@ -9,7 +9,7 @@ use cimmeria_cell_world::cell::plugin::TickStage;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::content;
-use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
+use super::super::messages::{BaseToCellMsg, CellToBaseMsg, EntityLabelsRequest};
 use super::super::space_manager::SpaceManager;
 use super::super::spawner;
 
@@ -18,8 +18,14 @@ use super::super::spawner;
 /// Exits when `shutdown` is notified, the BaseToCell channel closes, or the
 /// task is dropped. `CellService::stop()` uses the `shutdown` arm to request
 /// a clean exit and then awaits the join handle.
+///
+/// `labels_rx` carries the telemetry ingest's entity-label questions
+/// (NT-40). Its arm runs only while the gameplay queue is empty, so a flood
+/// of uploads can delay a label answer but never a gameplay message.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
+    labels_rx: &mut Option<mpsc::Receiver<EntityLabelsRequest>>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     mut space_mgr: SpaceManager,
     mut engine: ChainEngine,
@@ -42,6 +48,13 @@ pub(super) async fn run_cell_loop(
                 match msg {
                     Some(BaseToCellMsg::ReloadContentEngine) => {
                         tracing::info!("Hot-reloading content engine from database");
+                        // The name book reloads with the content, so a seed
+                        // rename shows in log lines without a restart. It
+                        // goes first: the chain loader's warnings name their
+                        // chains and templates from the book.
+                        if let Some(pool) = db_pool.as_deref() {
+                            cimmeria_names::reload(pool).await;
+                        }
                         engine = content::build_engine(db_pool.as_deref()).await;
                         tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
@@ -50,6 +63,16 @@ pub(super) async fn run_cell_loop(
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
                     }
+                }
+            }
+            // Gameplay first: the precondition is checked each time round
+            // the loop, so a label question is taken only when no gameplay
+            // message is queued. The arm is never polled otherwise. Each
+            // answer is bounded (ENTITY_LABEL_QUERY_CAP hash lookups) and is
+            // skipped when the ingest already gave up.
+            req = next_label_request(labels_rx), if rx.is_empty() => {
+                if let Some(req) = req {
+                    space_mgr.answer_entity_labels(req);
                 }
             }
             _ = tick_interval.tick() => {
@@ -234,6 +257,13 @@ pub(super) async fn run_cell_loop(
                     // See `ticks::npc_respawn` for the full state +
                     // wire-burst sequence.
                     super::ticks::npc_respawn_tick(tx, &mut space_mgr).await;
+                    // Lab dummies (AB-L2, D-AU6) whose 10 minutes are up.
+                    // Returns at once when none is standing.
+                    crate::cell::console::abilities::lab_dummy_tick(tx, &mut space_mgr).await;
+                    // Training dummies (D-DA7) get no AI turn and so no
+                    // leash: one whose fight went quiet lets its attackers
+                    // out of combat here.
+                    crate::cell::combat::training_dummy_combat_tick(tx, &mut space_mgr).await;
                     // Cover-detection — also 1 Hz. Scans every player for
                     // proximity to loaded cover sets; fires
                     // OnPlayerEnteredCover / OnPlayerLeftCover /
@@ -297,4 +327,19 @@ pub(super) async fn run_cell_loop(
     }
 
     tracing::debug!("Cell service message loop exited");
+}
+
+/// The next label question, or `None` once the ingest's sender is gone,
+/// after which the arm never fires again. With no channel, never ready.
+async fn next_label_request(
+    rx: &mut Option<mpsc::Receiver<EntityLabelsRequest>>,
+) -> Option<EntityLabelsRequest> {
+    let Some(r) = rx.as_mut() else {
+        return std::future::pending().await;
+    };
+    let req = r.recv().await;
+    if req.is_none() {
+        *rx = None;
+    }
+    req
 }

@@ -79,5 +79,5 @@ async fn an_answer_at_the_size_limit_is_accepted() {
     rig.fail(2);
     assert_eq!(rig.cycle().await, two_accepted());
     assert_eq!(rig.paths().await, [INGEST]);
-    assert_eq!(rig.probe.sleeps(), []);
+    assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
 }

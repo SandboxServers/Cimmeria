@@ -26,7 +26,11 @@ pub(super) async fn broadcast_to_witnesses(
     let entity = match space_mgr.get_entity(sender_id) {
         Some(e) => e,
         None => {
-            tracing::warn!(target: CHAT_LOG_TARGET, sender_id, "Chat: sender entity not found");
+            tracing::warn!(
+                target: CHAT_LOG_TARGET,
+                sender_id, // nt:id-only the sender's entity is gone, so it has no name
+                "Chat: sender entity not found"
+            );
             return;
         }
     };
@@ -54,7 +58,13 @@ pub(super) async fn broadcast_to_witnesses(
     // A lone `say` speaker gets nothing from here -- see the echo comment
     // below -- which matches the legacy server exactly.
     if witnesses.is_empty() {
-        tracing::trace!(target: CHAT_LOG_TARGET, sender_id, channel, "Chat: no witnesses");
+        tracing::trace!(
+            target: CHAT_LOG_TARGET,
+            sender_id,
+            sender_name = entity.identity().player_name,
+            channel,
+            "Chat: no witnesses"
+        );
     }
 
     // D-SS15: a witness who ignores the speaker does not hear them. One
@@ -73,15 +83,23 @@ pub(super) async fn broadcast_to_witnesses(
     });
     // One row per withheld witness, so SigNoz names both players (rule 5).
     for &wid in &ignored_by {
+        let id = entity.identity();
+        let witness = space_mgr.player_identity(wid);
         tracing::debug!(
             target: CHAT_LOG_TARGET,
             event = "chat.spatial_ignored",
             entity_id = sender_id,
-            player_id = entity.player_id,
-            account_id = entity.account_id,
+            entity_name = id.player_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
             target_entity_id = wid,
-            target_player_id = space_mgr.get_entity(wid).and_then(|w| w.player_id),
-            target_account_id = space_mgr.get_entity(wid).and_then(|w| w.account_id),
+            target_entity_name = witness.player_name,
+            target_player_id = witness.player_id,
+            target_player_name = witness.player_name,
+            target_account_id = witness.account_id,
+            target_account_name = witness.account_name,
             channel,
             reason = "witness_ignores_speaker",
             "spatial chat line withheld from a witness who ignores the speaker"
@@ -94,10 +112,11 @@ pub(super) async fn broadcast_to_witnesses(
     tracing::debug!(
         target: CHAT_LOG_TARGET,
         sender_id,
+        sender_name = entity.identity().player_name,
         channel,
         witness_count = witnesses.len(),
         speaker = speaker_name,
-        "Broadcasting chat to witnesses"
+        "Broadcasting chat to witnesses",
     );
 
     // Send to each witness

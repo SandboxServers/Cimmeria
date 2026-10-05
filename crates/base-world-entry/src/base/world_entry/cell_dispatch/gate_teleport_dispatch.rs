@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 
+use super::super::super::session_identity::identity_for_entity;
 use super::super::super::ConnectedClientState;
 use super::super::gate_travel::{handle_gate_travel, handle_grant_stargate_address};
 use super::super::reanchor_player::handle_reanchor_player;
@@ -132,7 +133,17 @@ pub(super) async fn gate_travel(
     )
     .await
     {
-        tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
+        let id = identity_for_entity(connected, entity_to_addr, entity_id);
+        tracing::error!(
+            entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            world = %target_world_name,
+            "Gate travel failed: {e}"
+        );
     }
 }
 
@@ -157,7 +168,18 @@ pub(super) async fn reanchor_player(
     )
     .await
     {
-        tracing::error!(entity_id, "Reanchor player failed: {e}");
+        let id = identity_for_entity(connected, entity_to_addr, entity_id);
+        tracing::error!(
+            entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            space_id,
+            world = super::super::space_registry::world_for_space(space_id),
+            "Reanchor player failed: {e}"
+        );
     }
 }
 

@@ -148,6 +148,8 @@ pub async fn despawn_deployable(
             }
         }
     }
+    // Named before `despawn_npc` removes the entity (Rule 6).
+    let deployable_name = space_mgr.entity_names(deployable).entity_name;
     let outcome = space_mgr.despawn_npc(deployable, tx).await;
     space_mgr.deployables.forget(deployable);
 
@@ -169,18 +171,28 @@ pub async fn despawn_deployable(
             None,
         ),
     };
+    let book = cimmeria_names::book();
+    let ability_name = ability_id.and_then(|a| book.ability(a));
+    let template_name = template_id.and_then(|t| book.template(t));
     match outcome {
         DespawnOutcome::Despawned { witnesses_notified } => tracing::info!(
             target: "deployables.lifecycle",
             decision_outcome = "despawned",
             event = "despawned",
             entity_id = deployable,
+            entity_name = deployable_name,
             deployable_id = deployable,
+            deployable_name,
             owner_id = owner,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name,
             template_id,
+            template_name,
             reason = reason.reason(),
             path,
             witnesses_notified,
@@ -199,12 +211,19 @@ pub async fn despawn_deployable(
             decision_outcome = "despawn_failed",
             event = "despawn_failed",
             entity_id = deployable,
+            entity_name = deployable_name,
             deployable_id = deployable,
+            deployable_name,
             owner_id = owner,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name,
             template_id,
+            template_name,
             reason = reason.reason(),
             path,
             outcome = ?other,
@@ -226,12 +245,16 @@ pub fn scrub_orphan(space_mgr: &mut SpaceManager, deployable: u32) {
         target: "deployables.lifecycle",
         decision_outcome = "registry_scrubbed",
         event = "registry_scrubbed",
-        entity_id = deployable,
-        deployable_id = deployable,
+        entity_id = deployable, // nt:id-only the entity is already gone, nothing to name
+        deployable_id = deployable, // nt:id-only same entity, already gone
         owner_id = state.owner,
+        owner_name = state.owner_identity.player_name,
         account_id = state.owner_identity.account_id,
+        account_name = state.owner_identity.account_name,
         player_id = state.owner_identity.player_id,
+        player_name = state.owner_identity.player_name,
         ability_id = state.ability_id,
+        ability_name = cimmeria_names::book().ability(state.ability_id),
         reason = "entity_gone",
         path = "sweep",
         "deployable registry entry without an entity dropped"

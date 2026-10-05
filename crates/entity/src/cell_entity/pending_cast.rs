@@ -19,12 +19,21 @@ pub struct PendingCast {
     pub ability_id: i32,
     /// The `useAbility` target id; `0` for a target-less cast.
     pub target_id: i32,
+    /// The target id the client sent. Equal to `target_id` except for a
+    /// beneficial cast, whose launch resolved `target_id` to the caster or an
+    /// ally (AB-01); the fire re-resolves from this one.
+    pub wire_target_id: i32,
     /// The ground point of a `useAbilityOnGroundTarget` cast, used to
     /// collect the AoE secondaries when the cast fires.
     pub ground: Option<[f32; 3]>,
     /// `InstanceId` minted at launch. `Ability_Begin`, `Ability_End` and
-    /// `Ability_Interrupt` of one cast share it.
+    /// `Ability_Interrupt` of one cast share it. It is also the cast's
+    /// telemetry `cast_id` ([`PendingCast::cast_id`], AB-T1).
     pub effect_seq: i32,
+    /// When the cell received the press that launched the cast: the start
+    /// of `abilities_press_to_fire_ms` (AB-T6), so a launch slowed by
+    /// backpressure before the warmup started still counts that delay.
+    pub received_at: std::time::Instant,
     /// When the warmup expires.
     pub fire_at: std::time::Instant,
     /// Warmup length after the speed-stat modifiers, in seconds.
@@ -37,4 +46,14 @@ pub struct PendingCast {
     /// launch, if any. A different weapon at fire time interrupts the cast,
     /// so a swapped-in weapon never pays for the old one's shot.
     pub weapon_instance: Option<i32>,
+}
+
+impl PendingCast {
+    /// The cast's telemetry correlator (ability-mechanics AB-T1): the
+    /// `effect_seq` the launch minted, which the launch row, the warmup and
+    /// fire rows and every effect the cast lands all log as `cast_id`. It is
+    /// the effect id the client receives too, so no wire change is needed.
+    pub fn cast_id(&self) -> i32 {
+        self.effect_seq
+    }
 }

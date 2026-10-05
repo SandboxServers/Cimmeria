@@ -55,8 +55,11 @@ async fn live_db_a_named_instance_of_another_design_is_refused() {
         )
         .expect("rejected component_mismatch");
     assert!(e.has_field("item_id", &unrelated.to_string()), "{e:#?}");
-    assert!(e.has_field("design_id", &COMPONENT.to_string()), "{e:#?}");
-    assert!(e.has_field("type_id", &FILLER.to_string()), "{e:#?}");
+    assert!(
+        e.has_field("design_item_type_id", &COMPONENT.to_string()),
+        "{e:#?}"
+    );
+    assert!(e.has_field("item_type_id", &FILLER.to_string()), "{e:#?}");
     f.cleanup().await;
 }
 

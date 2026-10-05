@@ -299,6 +299,23 @@ mod tests {
     use super::*;
     use crate::telemetry::events::{ClientLogEvent, TelemetryEvent};
 
+    /// Fresh-install defaults work together: the default auth URL is on a
+    /// default login server. It lives here, not in `endpoint.rs`, because the
+    /// desktop launcher's engine compiles that file too and has no `config`.
+    #[test]
+    fn the_default_auth_url_passes_with_the_default_login_servers() {
+        let servers = crate::client_setup::login_servers::default_servers();
+        let policy =
+            endpoint::EndpointPolicy::from_login_servers(servers.iter().map(|s| s.url.as_str()));
+        let auth_url = crate::config::TelemetrySettings::default().auth_url;
+        assert_eq!(policy.check(&auth_url), Ok(()));
+        // Without the login servers the same URL is refused: the login
+        // server list is what vouches for it.
+        assert!(endpoint::EndpointPolicy::default()
+            .check(&auth_url)
+            .is_err());
+    }
+
     #[test]
     fn recover_pending_returns_zero_on_empty_queue() {
         let dir = tempfile::tempdir().unwrap();

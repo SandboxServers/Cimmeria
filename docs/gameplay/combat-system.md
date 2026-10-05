@@ -211,6 +211,19 @@ baseDamage
   = final damage
 ```
 
+### Damage sources
+
+`baseDamage` comes from the effect, in one of two ways ([`damage_apply/`](../../crates/cell-combat/src/cell/abilities/damage_apply/)):
+
+- **A damage script** (`RangedPhysicalDamage`, `MeleePhysicalDamage`, `RangedEnergyDamage`, `MeleeDamage`) is its effect's only damage (AB-06, D-AB07). It reads `FocusDamage` and `HealthDamage` itself, raw: no QR roll, resist or armour.
+- **Otherwise the NVP path** runs the pipeline above on the effect's `HealthDamage` and `FocusDamage` NVPs. Since AB-03 (B-21) each `TCM_Single` effect resolves on its own, so a direct hit and its DoT both land, with one HEALTH entry each in `onEffectResults` ([`nvp_damage.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/nvp_damage.rs)). Before, only the last positive value of any effect counted.
+- **Cone and radius effects** are their fan-outs' damage (the cone fan-out and the ground cast). On a hit they still collapse to one value, the last positive one per pool, which lands only when no direct (non-pulsing) `TCM_Single` damage effect does. So a pure cone ability hurts its primary, and "Target -100F" plus "Medium Cone -100F" deals the primary 100, not 200.
+- **`EF_DontUseQR` (16)** is read per effect: a flagged effect resolves at the unrolled QR (`qrRand` 0.5, `qr` 0), so it deals its base whatever the hit rolled, a miss included. Every other effect takes the hit's roll, and a missed rolled effect deals nothing.
+- **DoT ticks** re-read the same NVPs at a neutral QR ([`pulsing/tick.rs`](../../crates/cell-combat/src/cell/effects/pulsing/tick.rs)), so a DoT's row is its per-tick amount.
+- **Absorb shields** stand in front of Focus (AB-10): a shield of the hit's damage type takes Focus and Health damage first, point for point, on every path above, damage scripts and DoT ticks included. The hit then charges what the `absorb*` stats lost to the shields on the target's timed effect ledger and takes an empty one off ([`combat/damage/absorb.rs`](../../crates/cell-combat/src/cell/combat/damage/absorb.rs)).
+
+The numbers are seed rows. The ability-mechanics generator ([`tools/ability_mechanics/`](../../tools/ability_mechanics/README.md)) writes the `damage` family from each effect's designer text ("-200F / -20H", "F-200 H-20", "-150F -30H (8 Ticks)"), labelled RECONSTRUCTION. Conditional variants (vs mechanical targets, vs low Focus, flank and rear, stance bonuses) and sequenced follow-ups get no row, because nothing evaluates their condition and every hit would apply them; [its report](../../tools/ability_mechanics/reports/damage.txt) lists them.
+
 ### QR Result Codes (EResultCode)
 
 | Code | Constant | Threshold |
@@ -303,15 +316,22 @@ server-authority guard against forged `useAbility` packets that would
 otherwise grief vendors, quest NPCs, party members, or other players
 (#444 / CAT-C-03). The check is scoped to player attackers because NPC AI
 fight calls the same entry point to attack a *player*, which is
-legitimate. Single-target abilities resolve as damage unconditionally,
-with one exception: a weapon shot with beneficial ammo loaded (a support
-dart, `ammo_modifiers.beneficial`, AM-11d) reverses the gate. It lands on
-an ally player or the shooter, runs only the ammo's heal or cleanse with no
-damage, threat or combat state, and is refused with a feedback line at a
-hostile target. Supportive single-target *abilities* (heal/buff an ally)
-still need the inverse gate once an offensive/supportive ability field
-exists. See [abilities-and-effects-system.md
-§ 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
+legitimate. Single-target abilities resolve as damage, with two
+exceptions that reverse the gate. A weapon shot with beneficial ammo loaded
+(a support dart, `ammo_modifiers.beneficial`, AM-11d) lands on an ally
+player or the shooter, runs only the ammo's heal or cleanse with no damage,
+threat or combat state, and is refused with a feedback line at a hostile
+target. A player's beneficial ability (a heal or buff, AB-01) is resolved
+before the gate: a Self ability lands on the caster whatever the client
+sent, and a Target one on the caster or an ally it names, or else falls back
+to the caster (D-AB02's proposed default). It never reaches a hostile and
+never enters the damage pipeline. The gate, both reversals and the resolver
+live in
+[`use_ability/beneficial.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/beneficial.rs).
+See [abilities-and-effects-system.md
+§ 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07)
+and [§ 34](../architecture/abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01),
+and [ability-system.md, beneficial casts](ability-system.md#beneficial-casts-ab-01).
 
 `handle_use_ability_with_kill_credit` wraps `handle_use_ability` with
 an alive→dead transition detector that fires the content-engine

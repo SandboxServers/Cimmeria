@@ -1,6 +1,6 @@
 # Development Workflow for AI-Assisted Work
 
-> **Last updated**: 2026-10-03
+> **Last updated**: 2026-10-04
 > **Audience**: Contributors doing AI-assisted work, and their agents
 > **Type**: How-to
 
@@ -10,7 +10,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 
 - [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, file organization.
 - [`doc-update-map.md`](doc-update-map.md): which docs a change has to update. [`pre-pr-checks.md`](pre-pr-checks.md): what each CI check gates, and how to fix a red one.
-- [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots.
+- [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots. Copilot code review also reads the path-specific rules in [`.github/instructions/`](../../.github/instructions/) and the review skill in [`.github/skills/code-review/`](../../.github/skills/code-review/SKILL.md), which routes each area of a diff to the matching advisor brief below. Copilot reads all of these from the PR's head branch, so a PR that changes them is reviewed under its own rules.
 - [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
 - [`TESTING.md`](../../TESTING.md): the test-type picker and the review gotchas.
@@ -22,7 +22,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 2. **Consult the domain advisor** for the area (roster below). Advisors know the failure modes of their system and what the client expects. Ask before designing, not after.
 3. **Classify client impact.** "Free" (server-authoritative, reuses messages the client already speaks) or "needs a client patch". Do not scope a client-patch change casually. See [`rules-and-gotchas.md`](rules-and-gotchas.md).
 4. **Pick the test type first**, using the picker in `TESTING.md`. Write the guard so it reproduces the bug shape.
-5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>` on the crate you changed, through the build lane (see [Builds, worktrees and test databases](#builds-worktrees-and-test-databases)). The review rules for code under `crates/services/` are in [`.github/instructions/rust-services.instructions.md`](../../.github/instructions/rust-services.instructions.md); content chains have their own in [`content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md).
+5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>` on the crate you changed, through the build lane (see [Builds, worktrees and test databases](#builds-worktrees-and-test-databases)). The review rules for code under `crates/services/` are in [`.github/instructions/rust-services.instructions.md`](../../.github/instructions/rust-services.instructions.md); content chains have their own in [`content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md), the launcher in [`launcher.instructions.md`](../../.github/instructions/launcher.instructions.md), and CI workflows in [`workflows.instructions.md`](../../.github/instructions/workflows.instructions.md).
 6. **Ask "what if the client lies?"** Run `server-authority-enforcer` over any handler that takes client-supplied data into server state.
 7. **Prove the guard.** First commit your work (a WIP commit is fine). Then undo only the fix by editing it out of the one file, run the test, and confirm it fails. Restore with `git checkout HEAD -- <that one file>`. Never restore with `git checkout .`, `git reset --hard`, or `git stash`: other sessions may share the checkout and the stash. `testing-validation-engineer` does this review.
 8. **Update the docs** named by the [doc-update map](doc-update-map.md), preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
@@ -132,6 +132,8 @@ Parallel PRs used to conflict mostly in docs, not code: each one bumped the same
 - **Append-only lists merge by union.** [`.gitattributes`](../../.gitattributes) marks the `.claude/agent-memory/*/MEMORY.md` indexes, `docs/reverse-engineering/findings/README.md` and `docs/readme.md` with `merge=union`, so two PRs that append rows at the same spot both keep their rows instead of conflicting. Union applies only to local merges and rebases: GitHub's own conflict check ignores it, so rebase locally when GitHub reports a conflict. When both sides edit the same line, union keeps both versions, so read the result. Files whose rows are edited in place, such as the gap analysis, the test inventory tables and `crates/README.md`, are left on the normal merge driver.
 
 Tip: `git config rerere.enabled true` makes git remember how you resolved a conflict and replay it on the next rebase.
+
+**Rebase onto a fixed commit.** Worktrees share their refs with the main checkout, so another session's `git fetch` moves `origin/main` while you rebase. Fetch, then rebase onto that exact commit: `git rebase $(git rev-parse origin/main)`, not `git rebase origin/main` (which a later fetch can move under a `--continue`). Before a force-push, check `git diff --stat origin/main...HEAD` lists only your PR's files. On 2026-10-04 a squash onto a moved `origin/main` briefly reverted a merged PR on a branch this way.
 
 ## Builds, worktrees and test databases
 

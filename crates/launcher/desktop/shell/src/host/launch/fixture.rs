@@ -16,6 +16,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
     host.launch_resources = Some(launch::Resources {
         helper: artifact.clone(),
         client_patches: Some(artifact.clone()),
+        client_telemetry: None,
         graphics: Some(launch::Graphics {
             d3d9: artifact,
             rosetta_x87: None,

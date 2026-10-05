@@ -1,8 +1,10 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 pub mod adoption;
 mod atomic;
+pub mod effective_settings;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
+pub mod game_telemetry;
 mod helper_journal;
 pub mod launch;
 pub mod launcher_summary;
@@ -10,10 +12,11 @@ pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;
+pub mod update;
 pub mod updater;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;
-pub use release_evidence::EvidenceError;
+pub use release_evidence::{EvidenceError, ReleaseIdentity};
 mod install_intent;
 pub mod install_recovery;
 mod install_result;

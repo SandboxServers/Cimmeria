@@ -36,7 +36,8 @@ use cimmeria_wire::base::contact_list::wire::EVENT_DEATH;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
-use super::messaging::{send_entity_method, send_entity_method_to_self_and_witnesses};
+use super::messaging::WireRoute;
+use super::wire_ledger::{self, WireCtx};
 
 /// Apply the death-transition message sequence for a target that just died.
 ///
@@ -74,40 +75,72 @@ pub(super) async fn apply_death_transition(
     // the event makes no sense for mobs and would flood the channel during
     // combat.
     {
-        let killer = space_mgr.get_entity(attacker_id).and_then(|e| {
-            if attacker_is_player {
-                e.character_name.clone()
-            } else {
-                e.npc_name.clone()
-            }
-        });
+        // A player killer pairs with its `player_id`, an NPC with its
+        // `entity_id`. No attacker entity (environment) means no killer.
+        let killer = space_mgr
+            .get_entity(attacker_id)
+            .map(|_| space_mgr.discord_entity(attacker_id));
+        let world = space_mgr.discord_world_of(target_eid);
         if target_is_player {
             let character_name = space_mgr
                 .get_entity(target_eid)
                 .and_then(|e| e.character_name.clone())
                 .unwrap_or_else(|| format!("entity:{target_eid}"));
             let cause = if attacker_is_player { "pvp" } else { "pve" };
-            cimmeria_discord::emit_player_death(character_name.clone(), killer, cause);
+            cimmeria_discord::emit_player_death(
+                space_mgr.discord_character(target_eid),
+                killer,
+                cause,
+                world,
+            );
 
             // Contact-list Death fanout — cell→base hop. The base handler calls
             // `fanout_contact_event` with the player's name and EVENT_DEATH.
             // data_value=0 per spec (client ignores it; shows "{Name} has died").
-            let _ = tx
+            if tx
                 .send(CellToBaseMsg::ContactListPresenceEvent {
                     player_name: character_name,
                     event_id: EVENT_DEATH,
                     data_value: 0,
                 })
-                .await;
+                .await
+                .is_err()
+            {
+                let who = space_mgr.player_identity(target_eid);
+                crate::cell::abilities::metrics::wire_send_failed_in(
+                    space_mgr,
+                    target_eid,
+                    crate::cell::abilities::metrics::WireMessage::ContactListPresenceEvent,
+                );
+                tracing::warn!(
+                    target: "abilities.wire",
+                    event = "wire_send_failed",
+                    method = "ContactListPresenceEvent",
+                    entity_id = target_eid,
+                    entity_name = space_mgr.entity_label(target_eid),
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    reason = "cell_to_base_closed",
+                    "death presence event not queued: the cell-to-base channel is closed, so                      contacts never see \"has died\""
+                );
+            }
         } else {
             // NPC / mob death (off by default — high volume during combat).
-            let npc_name = space_mgr
-                .get_entity(target_eid)
-                .and_then(|e| e.npc_name.clone())
-                .unwrap_or_else(|| format!("entity:{target_eid}"));
+            // The NPC pairs its `entity_id` with its display name; the
+            // template pairs `template_id` with the template's designer name.
+            let npc = space_mgr.get_entity(target_eid);
+            let template = npc.and_then(|e| e.template_id).map(|t| {
+                cimmeria_discord::Named::new(
+                    t,
+                    cimmeria_names::book().template(t).map(str::to_string),
+                )
+            });
+            let npc =
+                cimmeria_discord::Named::new(target_eid, npc.and_then(|e| e.npc_name.clone()));
             let cause = if attacker_is_player { "player" } else { "npc" };
-            let world_name = space_mgr.get_entity_world_name(target_eid);
-            cimmeria_discord::emit_npc_death(npc_name, killer, cause, world_name);
+            cimmeria_discord::emit_npc_death(npc, template, killer, cause, world);
         }
     }
 
@@ -137,10 +170,12 @@ pub(super) async fn apply_death_transition(
     // 1. Attacker side: clear targeting reticle. The server's stored copy
     //    is dropped at 2b', after the auto-cycle sweep that matches on it.
     if attacker_is_player {
-        send_entity_method(
+        wire_ledger::send(
             attacker_id,
             crate::mercury::method_idx::ON_TARGET_UPDATE,
             0i32.to_le_bytes().to_vec(),
+            WireRoute::EntityDefault,
+            WireCtx::new("death").reason("target_cleared"),
             tx,
             space_mgr,
         )
@@ -168,15 +203,21 @@ pub(super) async fn apply_death_transition(
             crate::cell::combat::clear_dead_npc_from_all_player_threat(space_mgr, target_eid);
         for (player_entity_id, new_state) in to_broadcast {
             tracing::debug!(
+                target: "abilities",
+                event = "death_in_combat_cleared",
                 player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
                 dying_npc = target_eid,
                 new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
                 "death: clearing player BSF_InCombat (last threatened mob died)"
             );
-            send_entity_method(
+            wire_ledger::send(
                 player_entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
+                WireRoute::EntityDefault,
+                WireCtx::new("death").reason("left_combat"),
                 tx,
                 space_mgr,
             )
@@ -200,9 +241,13 @@ pub(super) async fn apply_death_transition(
         crate::cell::combat::clear_auto_cycle_for_target(space_mgr, target_eid);
     for (player_entity_id, new_state) in auto_cycle_broadcasts {
         tracing::info!(
+            target: "abilities",
+            event = "death_auto_cycle_cleared",
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             dying_target = target_eid,
             new_state,
+            new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "death: clearing player auto-cycle loop (target died)"
         );
         crate::cell::abilities::send_auto_cycle_state(player_entity_id, new_state, tx, space_mgr)
@@ -236,8 +281,12 @@ pub(super) async fn apply_death_transition(
     if target_is_player {
         if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, target_eid) {
             tracing::info!(
+                target: "abilities",
+                event = "death_own_auto_cycle_cleared",
                 player_entity_id = target_eid,
+                player_entity_name = space_mgr.entity_label(target_eid),
                 new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
                 "death: clearing dying player's own auto-cycle loop"
             );
             crate::cell::abilities::send_auto_cycle_state(target_eid, new_state, tx, space_mgr)
@@ -259,10 +308,12 @@ pub(super) async fn apply_death_transition(
         let interaction_flags = space_mgr
             .get_entity(target_eid)
             .map_or(0i64, |e| e.interaction_type_flags);
-        send_entity_method(
+        wire_ledger::send(
             target_eid,
             crate::mercury::method_idx::INTERACTION_TYPE,
             (interaction_flags as u64).to_le_bytes().to_vec(),
+            WireRoute::EntityDefault,
+            WireCtx::new("death").reason("corpse_interaction"),
             tx,
             space_mgr,
         )
@@ -273,10 +324,12 @@ pub(super) async fn apply_death_transition(
     // Fan to self+witnesses so a spectator sees the entity become a corpse.
     // For NPC targets the self send is a no-op; for player targets it notifies
     // the dying player and all observers simultaneously.
-    send_entity_method_to_self_and_witnesses(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
         target_state.to_le_bytes().to_vec(),
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("death").reason("dead"),
         tx,
         space_mgr,
     )
@@ -396,12 +449,27 @@ pub(super) async fn resolve_death(
     };
 
     tracing::info!(
+        target: "abilities",
+        event = "target_killed",
         attacker = attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         target = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         ability_id = ability_id.unwrap_or(-1),
+        ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
         is_npc = !target_is_player,
         "Target killed!"
     );
+    // AB-T5: what the player died with, before the clear-on-death strip
+    // below takes it off. Players only: see `effects::ability_snapshot`.
+    if target_is_player {
+        cimmeria_cell_world::cell::effects::ability_snapshot::log_ability_snapshot(
+            space_mgr,
+            target_eid,
+            cimmeria_cell_world::cell::effects::ability_snapshot::SnapshotTrigger::Death,
+            None,
+        );
+    }
 
     apply_death_transition(
         target_eid,
@@ -542,5 +610,7 @@ mod pet_credit_log_tests;
 mod pet_credit_tests;
 #[cfg(test)]
 mod pet_tests;
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod tests;

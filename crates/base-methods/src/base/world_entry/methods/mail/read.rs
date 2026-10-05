@@ -16,12 +16,16 @@ use crate::mercury::method_idx;
 /// A-10, CAT-G-08), not whatever name the reader's session holds.
 pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    let who = ctx.identity();
     tracing::debug!(
         target: "mail",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
-        mail_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         "Mail: querying body"
     );
 
@@ -51,9 +55,12 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
             tracing::warn!(
                 target: "mail",
                 entity_id,
-                mail_id,
+                entity_name = who.player_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 reason = "not_found_for_owner",
                 "Mail body not found for this character_id"
             );
@@ -63,9 +70,12 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
             tracing::error!(
                 target: "mail",
                 entity_id,
-                mail_id,
+                entity_name = who.player_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 reason = "db_error",
                 error = %e,
                 "Mail body query failed"
@@ -82,9 +92,12 @@ pub(super) async fn request_body(ctx: &MailCtx<'_>, mail_id: i32) {
         tracing::warn!(
             target: "mail",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             account_id,
-            mail_id,
+            account_name = who.account_name,
+            mail_id, // nt:id-only mail row, its subject is player text kept out of logs
             reason = "db_error",
             error = %e,
             "Mail: read_time UPDATE failed"
@@ -163,12 +176,16 @@ struct Held {
 /// first. Mail with nothing attached deletes as before.
 pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    let who = ctx.identity();
     tracing::debug!(
         target: "mail",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
-        mail_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         "Mail: deleting"
     );
     match delete_if_empty(ctx.pool, mail_id, player_id).await {
@@ -190,9 +207,12 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
                     tracing::warn!(
                         target: "mail",
                         entity_id,
+                        entity_name = who.player_name,
                         player_id,
-                        mail_id,
+                        player_name = who.player_name,
+                        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                         account_id,
+                        account_name = who.account_name,
                         reason = "not_found_for_owner",
                         "Mail: Delete affected 0 rows"
                     );
@@ -201,9 +221,12 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
                     tracing::error!(
                         target: "mail",
                         entity_id,
+                        entity_name = who.player_name,
                         player_id,
+                        player_name = who.player_name,
                         account_id,
-                        mail_id,
+                        account_name = who.account_name,
+                        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                         reason = "db_error",
                         error = %e,
                         "Mail: Delete follow-up query failed"
@@ -217,9 +240,12 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
                 target: "mail",
                 event = "mail.deleted",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
-                mail_id,
+                account_name = who.account_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 "Mail: deleted"
             );
         }
@@ -227,9 +253,12 @@ pub(super) async fn delete(ctx: &MailCtx<'_>, mail_id: i32) {
             tracing::error!(
                 target: "mail",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
-                mail_id,
+                account_name = who.account_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = "db_error",
                 error = %e,
                 "Mail: Delete failed"
@@ -265,13 +294,17 @@ async fn refuse_delete(ctx: &MailCtx<'_>, mail_id: i32, held: Held) {
             "This gate-mail still holds naquadah. Take it before deleting the message.",
         )
     };
+    let who = ctx.identity();
     tracing::warn!(
         target: "mail",
         event = "mail.delete_refused",
         entity_id = ctx.entity_id,
+        entity_name = who.player_name,
         player_id = ctx.player_id,
+        player_name = who.player_name,
         account_id = ctx.account_id(),
-        mail_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         reason,
         has_item = held.has_item,
         cash = held.cash,
@@ -319,13 +352,17 @@ pub(super) async fn archive_unless_cod(
 /// Refuse to archive an unpaid COD: log it and tell the player on the first
 /// press. No `onMailHeaderRemove`, so the mail stays in the inbox list.
 async fn refuse_archive_cod(ctx: &MailCtx<'_>, mail_id: i32) {
+    let who = ctx.identity();
     tracing::warn!(
         target: "mail",
         event = "mail.archive_refused",
         entity_id = ctx.entity_id,
+        entity_name = who.player_name,
         player_id = ctx.player_id,
+        player_name = who.player_name,
         account_id = ctx.account_id(),
-        mail_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         reason = "cod_unpaid",
         "Mail: archive refused, the mail is an unpaid COD"
     );
@@ -346,12 +383,16 @@ pub(super) const ARCHIVE_COD_TEXT: &str =
 /// the open list. Refused for an unpaid COD ([`archive_unless_cod`]).
 pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    let who = ctx.identity();
     tracing::debug!(
         target: "mail",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
-        mail_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         "Mail: archiving"
     );
     match archive_unless_cod(ctx.pool, mail_id, player_id).await {
@@ -371,9 +412,12 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
             tracing::warn!(
                 target: "mail",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                mail_id,
+                player_name = who.player_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 account_id,
+                account_name = who.account_name,
                 reason = "not_found_for_owner",
                 "Mail: Archive affected 0 rows"
             );
@@ -383,9 +427,12 @@ pub(super) async fn archive(ctx: &MailCtx<'_>, mail_id: i32) {
             tracing::error!(
                 target: "mail",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
-                mail_id,
+                account_name = who.account_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = "db_error",
                 error = %e,
                 "Mail: Archive failed"

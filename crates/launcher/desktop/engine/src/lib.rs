@@ -35,6 +35,13 @@ pub mod unpack;
 #[path = "../../../src/install_progress.rs"]
 pub mod install_progress;
 
+// Game telemetry reuses the Windows launcher's session marker and its rule for
+// which server addresses may be sent to; the mint itself is bounded here.
+#[path = "../../../src/telemetry/endpoint.rs"]
+pub mod telemetry_endpoint;
+#[path = "../../../src/telemetry/session.rs"]
+pub mod telemetry_session;
+
 pub mod archive_worker;
 
 pub mod helper_supervisor;
@@ -44,7 +51,7 @@ pub use storage::install_worker;
 pub use storage::repair;
 pub use storage::runtime_setup;
 pub use storage::uninstall;
-pub use storage::EvidenceError;
+pub use storage::{EvidenceError, ReleaseIdentity};
 
 #[cfg(target_os = "macos")]
 pub mod mac_runtime;
@@ -62,5 +69,8 @@ pub mod launcher_compatibility;
 pub use storage::migration;
 
 pub use storage::adoption;
+pub use storage::effective_settings;
+pub use storage::game_telemetry;
+pub use storage::update;
 pub use storage::updater;
 mod owner_lock;

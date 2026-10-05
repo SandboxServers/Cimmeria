@@ -186,8 +186,10 @@ async fn respec_interrupts_a_warming_cast_of_a_refunded_ability_first() {
     mgr.get_entity_mut(PLAYER).unwrap().pending_cast = Some(PendingCast {
         ability_id: NODE,
         target_id: 0,
+        wire_target_id: 0,
         ground: None,
         effect_seq: 1,
+        received_at: std::time::Instant::now(),
         fire_at: Instant::now() + Duration::from_secs(5),
         warmup_secs: 5.0,
         anchor,
@@ -225,8 +227,10 @@ async fn respec_leaves_a_warming_cast_of_a_kept_ability_alone() {
     mgr.get_entity_mut(PLAYER).unwrap().pending_cast = Some(PendingCast {
         ability_id: STARTER,
         target_id: 0,
+        wire_target_id: 0,
         ground: None,
         effect_seq: 1,
+        received_at: std::time::Instant::now(),
         fire_at: Instant::now() + Duration::from_secs(5),
         warmup_secs: 5.0,
         anchor,

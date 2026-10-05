@@ -44,7 +44,8 @@ pub(super) fn convert_npc_bark(row: &DbActionRow) -> Option<Action> {
             Err(_) => {
                 warn!(
                     chain_id = row.chain_id,
-                    screen_id = v,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
+                    screen_id = v, // nt:id-only dialog_screens has no name column; the bark executor logs its text
                     "npc_bark: screen_id is out of i32 range \
                      (resources.dialog_screens.screen_id is an integer column); \
                      dropping the action row"
@@ -55,6 +56,7 @@ pub(super) fn convert_npc_bark(row: &DbActionRow) -> Option<Action> {
         None => {
             warn!(
                 chain_id = row.chain_id,
+                chain_name = cimmeria_names::book().chain(row.chain_id),
                 ?params,
                 "npc_bark: missing integer `screen_id` param -- the line text is \
                  resolved server-side from resources.dialog_screens, so there is \
@@ -74,7 +76,8 @@ pub(super) fn convert_npc_bark(row: &DbActionRow) -> Option<Action> {
         None => {
             warn!(
                 chain_id = row.chain_id,
-                screen_id,
+                chain_name = cimmeria_names::book().chain(row.chain_id),
+                screen_id, // nt:id-only dialog_screens has no name column; the bark executor logs its text
                 "npc_bark: missing or empty `speaker` param -- the bark screens \
                  carry speaker_id 0, so the name cannot be recovered server-side; \
                  dropping the action row"
@@ -94,7 +97,8 @@ pub(super) fn convert_npc_bark(row: &DbActionRow) -> Option<Action> {
         Some(other) => {
             warn!(
                 chain_id = row.chain_id,
-                screen_id,
+                chain_name = cimmeria_names::book().chain(row.chain_id),
+                screen_id, // nt:id-only dialog_screens has no name column; the bark executor logs its text
                 channel = %other,
                 "npc_bark: `channel` must be \"say\" -- it is the only non-modal \
                  client route verified today; dropping the action row"

@@ -1,10 +1,9 @@
 //! Real host dispatch with a signed inert ZIP and loopback transport only.
 use super::*;
+use crate::host::held_download;
 use cimmeria_launcher_engine::{install_worker::fixtures, repair::cleanup::BackupStatus};
 use std::time::Duration;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
-#[path = "held_download.rs"]
-mod held_download;
 
 async fn fixture(
     missing: bool,

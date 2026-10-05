@@ -18,7 +18,7 @@ use crate::cell::messages::{CellToBaseMsg, NpcAoIData, PlayerAoIData};
 use super::super::super::deferred_aoi;
 use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
-use super::{aoi, DispatchCtx};
+use super::{aoi, method_delivery, DispatchCtx};
 
 /// Route the AoI / space-lifecycle family of `CellToBaseMsg` variants.
 ///
@@ -182,9 +182,13 @@ pub(super) fn entity_created(
     let id = session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         space_id,
+        world = super::super::space_registry::world_for_space(space_id),
         ?position,
         "CellService: entity created"
     );
@@ -214,6 +218,11 @@ pub(super) async fn entered_aoi(
         .lock()
         .ok()
         .and_then(|m| m.get(&witness_id).copied());
+    let names = aoi::AoiNames {
+        connected,
+        entity_to_addr,
+        npc_name_id: npc_data.as_ref().and_then(|n| n.name_id),
+    };
     if let Some(addr) = witness_addr {
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             // NA34 observability: the introduction lifecycle has a "sent"
@@ -226,8 +235,9 @@ pub(super) async fn entered_aoi(
             // its later `flushed_on_ready` row by (witness_id, entity_id).
             tracing::debug!(
                 target: "aoi.introduce",
-                witness_id,
+                witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
                 entity_id,
+                entity_name = names.npc(),
                 is_player = player_data.is_some(),
                 outcome = "deferred_not_ready",
                 "AoI introduce: witness pre-onClientReady, buffering entity introduction"
@@ -266,10 +276,15 @@ pub(super) async fn entered_aoi(
         tracing::warn!(
             target: "aoi.entered_no_witness_addr",
             witness_id,
+            witness_name = witness.player_name,
             account_id = witness.account_id,
+            account_name = witness.account_name,
             player_id = witness.player_id,
+            player_name = witness.player_name,
             entity_id,
+            entity_name = names.observee(entity_id),
             class_id,
+            class_name = cimmeria_wire::names::class_name(class_id),
             reason = "witness_addr_unmapped",
             "EnteredAoI for unmapped witness — CREATE_ENTITY + cascade will be dropped; entity invisible to witness until relog"
         );
@@ -350,8 +365,8 @@ pub(super) async fn entity_moved(
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             tracing::trace!(
                 %addr,
-                witness_id,
-                entity_id,
+                witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+                entity_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
                 "Dropping EntityMoved while witness is pre-onClientReady"
             );
             return;
@@ -384,7 +399,7 @@ pub(super) async fn entity_method_call(
     // Logged before the deferred-buffer check so pre-
     // onClientReady buffered calls still appear once on the
     // wire log; deferred-replay does NOT re-emit.
-    crate::wire_log::log_outbound_entity_method(entity_id, entity_id, method_index, &args);
+    crate::wire_log::log_outbound_entity_method(entity_id, entity_id, true, method_index, &args);
     // Gate on the TARGET entity's session — entity-method calls
     // are dispatched to the entity_id's owning client (see
     // `aoi::entity_method_call`'s lookup). If that client is
@@ -395,7 +410,7 @@ pub(super) async fn entity_method_call(
         .and_then(|m| m.get(&entity_id).copied());
     if let Some(addr) = target_addr {
         if deferred_aoi::should_defer(connected, addr) {
-            deferred_aoi::push_deferred(
+            let outcome = deferred_aoi::push_deferred(
                 connected,
                 addr,
                 deferred_aoi::DeferredAoiMsg::EntityMethodCall {
@@ -403,6 +418,16 @@ pub(super) async fn entity_method_call(
                     method_index,
                     args,
                 },
+            );
+            method_delivery::log_method_deferred(
+                outcome,
+                entity_id,
+                entity_id,
+                true,
+                method_index,
+                "client_not_ready",
+                connected,
+                entity_to_addr,
             );
             return;
         }
@@ -431,7 +456,13 @@ pub(super) async fn entity_method_call_batch(
     // applied per-method so the SigNoz `wire.out` stream sees every
     // method exactly once even when they ride the same packet.
     for (method_index, args) in &calls {
-        crate::wire_log::log_outbound_entity_method(entity_id, entity_id, *method_index, args);
+        crate::wire_log::log_outbound_entity_method(
+            entity_id,
+            entity_id,
+            true,
+            *method_index,
+            args,
+        );
     }
     let target_addr = entity_to_addr
         .lock()
@@ -444,7 +475,7 @@ pub(super) async fn entity_method_call_batch(
             // batching benefit during deferred replay but
             // preserve the at-most-once delivery guarantee.
             for (method_index, args) in calls {
-                deferred_aoi::push_deferred(
+                let outcome = deferred_aoi::push_deferred(
                     connected,
                     addr,
                     deferred_aoi::DeferredAoiMsg::EntityMethodCall {
@@ -452,6 +483,16 @@ pub(super) async fn entity_method_call_batch(
                         method_index,
                         args,
                     },
+                );
+                method_delivery::log_method_deferred(
+                    outcome,
+                    entity_id,
+                    entity_id,
+                    true,
+                    method_index,
+                    "client_not_ready",
+                    connected,
+                    entity_to_addr,
                 );
             }
             return;
@@ -475,13 +516,19 @@ pub(super) async fn witness_entity_method(
     // observer (witness_id) and observee (entity_id) differ
     // on the AoI fanout — both are recorded so SigNoz can
     // answer "what did entity X broadcast to its witnesses?"
-    crate::wire_log::log_outbound_entity_method(witness_id, entity_id, method_index, &args);
+    crate::wire_log::log_outbound_entity_method(
+        witness_id,
+        entity_id,
+        entity_is_player,
+        method_index,
+        &args,
+    );
     // Cinematic hold: the observee's CREATE_ENTITY is still buffered, so
     // this method would reach a client with no such entity and be dropped
     // for good. Buffer it behind the create. Logged above so a held call
     // appears once on the wire log; the replay does not re-log.
     if let Some(addr) = held_witness_addr(witness_id, entity_id, connected, entity_to_addr) {
-        deferred_aoi::push_deferred(
+        let outcome = deferred_aoi::push_deferred(
             connected,
             addr,
             deferred_aoi::DeferredAoiMsg::WitnessEntityMethod {
@@ -490,6 +537,16 @@ pub(super) async fn witness_entity_method(
                 args,
                 entity_is_player,
             },
+        );
+        method_delivery::log_method_deferred(
+            outcome,
+            witness_id,
+            entity_id,
+            entity_is_player,
+            method_index,
+            "held_behind_create",
+            connected,
+            entity_to_addr,
         );
         return;
     }

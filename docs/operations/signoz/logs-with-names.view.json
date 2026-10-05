@@ -1,0 +1,26 @@
+{
+  "name": "Named telemetry — Logs with names",
+  "sourcePage": "logs",
+  "category": "named-telemetry",
+  "tags": ["named-telemetry", "nt-50"],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server'"
+          },
+          "having": { "expression": "" }
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\":[{\"name\":\"event\",\"signal\":\"logs\"},{\"name\":\"player_name\",\"signal\":\"logs\"},{\"name\":\"account_name\",\"signal\":\"logs\"},{\"name\":\"entity_name\",\"signal\":\"logs\"},{\"name\":\"template_name\",\"signal\":\"logs\"},{\"name\":\"world\",\"signal\":\"logs\"},{\"name\":\"ability_name\",\"signal\":\"logs\"},{\"name\":\"item_name\",\"signal\":\"logs\"},{\"name\":\"mission_name\",\"signal\":\"logs\"},{\"name\":\"msg_name\",\"signal\":\"logs\"},{\"name\":\"method_name\",\"signal\":\"logs\"},{\"name\":\"reason\",\"signal\":\"logs\"},{\"name\":\"body\",\"signal\":\"logs\"}]}"
+}

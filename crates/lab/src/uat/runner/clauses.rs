@@ -3,12 +3,17 @@
 
 use serde_json::{json, Value};
 
-use super::actions::{subst, subst_str, CHAT_READ_TOOL};
+use super::actions::{captured_value, subst, subst_str, unresolved, CHAT_READ_TOOL};
+use super::packet::ENTITY_VAR;
+use super::players::Who;
 use super::{now_ms, utc_of, RowCtx, Runner};
-use crate::uat::clause::{compare, describe, eval_chat, json_at, new_lines};
+use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
 use crate::uat::invoke::ToolInvoker;
 use crate::uat::spec::{ExpectSpec, Source};
+
+/// The server read `@ability_state` resolves to (AB-L1).
+const ABILITY_STATE_TOOL: &str = "server_ability_state";
 
 /// How far around the row the SigNoz window reaches: a little before the
 /// anchor, and long enough after for batched log export to land.
@@ -17,6 +22,8 @@ const SIGNOZ_AFTER_MS: i64 = 120_000;
 
 impl<I: ToolInvoker> Runner<'_, I> {
     pub(crate) async fn eval_clause(&mut self, c: &ExpectSpec, ctx: &mut RowCtx) -> ClauseResult {
+        let c = &with_vars(c, &ctx.vars);
+        let who = Who::of(c.client.as_deref());
         let mut r = ClauseResult {
             id: c.id.clone(),
             text: c.text.clone(),
@@ -28,24 +35,25 @@ impl<I: ToolInvoker> Runner<'_, I> {
             detail: None,
             evaluated_ms: now_ms(),
             query: None,
+            client: who.tag(),
             evidence_refs: vec![],
         };
         match c.source {
-            Source::Chat => self.eval_chat_clause(c, ctx, &mut r).await,
+            Source::Chat => self.eval_chat_clause(who, c, ctx, &mut r).await,
             Source::Tool => {
                 let tool = c.tool.clone().unwrap_or_default();
                 let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-                self.eval_read(&tool, args, c, &mut r).await;
+                self.eval_read(who, &tool, args, c, &mut r).await;
             }
             Source::Lua => {
                 let chunk = subst_str(c.chunk.as_deref().unwrap_or_default(), &ctx.vars);
-                self.eval_lua(&chunk, c, &mut r).await;
+                self.eval_lua(who, &chunk, c, &mut r).await;
             }
             Source::Wait => {
                 let cond = subst_str(c.lua_condition.as_deref().unwrap_or_default(), &ctx.vars);
                 let args =
                     json!({ "lua_condition": cond, "timeout_ms": c.timeout_ms.unwrap_or(10_000) });
-                let out = self.inv.call("client_wait_for", args).await;
+                let out = self.on(who).call("client_wait_for", args).await;
                 if out.ok {
                     let met = out
                         .json
@@ -100,16 +108,40 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     // the spec's rules without re-reading the spec.
                     "grading": {
                         "min_rows": c.min_rows, "max_rows": c.max_rows,
-                        "field": c.field, "op": c.op, "value": c.value,
+                        "field": c.field, "op": c.op, "value": c.value, "tolerance": c.tolerance,
                     },
                 }));
-                r.detail =
-                    Some("run the query, then lab_uat_attest the row count and key rows".into());
+                r.detail = Some(match unresolved(&filter) {
+                    // A `${cast_id}` the press never captured: the query is
+                    // still written, but it must be filled in by hand.
+                    Some(v) => format!(
+                        "{v} was not captured this row: fill it in from the press (its action's calls, or SigNoz) before running the query, then lab_uat_attest"
+                    ),
+                    None => "run the query, then lab_uat_attest the row count and key rows".into(),
+                });
             }
+            Source::ClientEvent => self.eval_client_event(who, c, ctx, &mut r).await,
             Source::Server => match self.server {
                 Some(server) => {
                     let tool = c.tool.clone().unwrap_or_default();
-                    let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    let mut args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    // `server_ability_state` with no entity reads the lab
+                    // character's own (found by name, as the packet tap is).
+                    if tool == ABILITY_STATE_TOOL && args.get("entity_id").is_none() {
+                        match self.tap_entity(server, ctx).await {
+                            Ok(e) => {
+                                ctx.vars.insert(ENTITY_VAR.into(), json!(e));
+                                if !args.is_object() {
+                                    args = json!({});
+                                }
+                                args["entity_id"] = json!(e);
+                            }
+                            Err(e) => {
+                                r.detail = Some(format!("{tool}: {e}"));
+                                return r;
+                            }
+                        }
+                    }
                     let out = server.call(&tool, args).await;
                     if out.ok {
                         let v = json_at(&out.json, c.pointer.as_deref()).cloned();
@@ -126,23 +158,39 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     );
                 }
             },
+            Source::Packet => {
+                // Graded from the tap read before teardown (`packet.rs`).
+                r.detail = Some("a packet clause is graded from the row's tap".into());
+            }
             Source::Human => {
                 r.verdict = Verdict::NeedsHuman;
                 r.evidence_refs = ctx.attachments.iter().map(|a| a.path.clone()).collect();
             }
         }
+        // A read that came back (PASS or FAIL) can seed a later clause.
+        if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
+            && matches!(r.verdict, Verdict::Pass | Verdict::Fail)
+        {
+            capture(c, Some(&r.observed), ctx);
+        }
         r
     }
 
-    async fn eval_chat_clause(&mut self, c: &ExpectSpec, ctx: &mut RowCtx, r: &mut ClauseResult) {
-        let after = match self.read_chat(ctx).await {
+    async fn eval_chat_clause(
+        &mut self,
+        who: Who,
+        c: &ExpectSpec,
+        ctx: &mut RowCtx,
+        r: &mut ClauseResult,
+    ) {
+        let after = match self.read_chat_of(who).await {
             Ok(a) => a,
             Err(e) => {
                 r.detail = Some(format!("{CHAT_READ_TOOL}: {e}"));
                 return;
             }
         };
-        let key = c.since.clone().unwrap_or_default();
+        let key = who.mark(c.since.as_deref().unwrap_or_default());
         let before = ctx.chat_marks.get(&key).cloned().unwrap_or_default();
         let (lines, overlap) = new_lines(&before, &after);
         // Variables may appear in the pattern (`' - ${character} \('`).
@@ -156,20 +204,28 @@ impl<I: ToolInvoker> Runner<'_, I> {
             );
         }
         if let (Some(var), Some(v)) = (&c.capture_var, captured) {
-            ctx.vars.insert(var.clone(), json!(v));
+            let v = captured_value(&v);
+            ctx.vars.insert(var.clone(), v.clone());
             observed["captured"] = json!({ var: v });
         }
         r.verdict = verdict;
         r.observed = observed;
     }
 
-    async fn eval_read(&mut self, tool: &str, args: Value, c: &ExpectSpec, r: &mut ClauseResult) {
-        if !self.inv.has_tool(tool) {
+    async fn eval_read(
+        &mut self,
+        who: Who,
+        tool: &str,
+        args: Value,
+        c: &ExpectSpec,
+        r: &mut ClauseResult,
+    ) {
+        if !self.on(who).has_tool(tool) {
             r.verdict = Verdict::Blocked;
             r.detail = Some(format!("tool {tool} is not routed"));
             return;
         }
-        let out = self.inv.call(tool, args).await;
+        let out = self.on(who).call(tool, args).await;
         if !out.ok {
             r.detail = Some(format!("{tool}: {}", out.error.unwrap_or_default()));
             return;
@@ -180,16 +236,14 @@ impl<I: ToolInvoker> Runner<'_, I> {
 
     /// A Lua read: its first result, parsed as JSON when it is JSON. A
     /// Lua error means the reader broke, not the game: UNVERIFIED.
-    async fn eval_lua(&mut self, chunk: &str, c: &ExpectSpec, r: &mut ClauseResult) {
-        if !self.inv.has_tool("client_lua_eval") {
+    async fn eval_lua(&mut self, who: Who, chunk: &str, c: &ExpectSpec, r: &mut ClauseResult) {
+        let inv = self.on(who);
+        if !inv.has_tool("client_lua_eval") {
             r.verdict = Verdict::Blocked;
             r.detail = Some("tool client_lua_eval is not routed".into());
             return;
         }
-        let out = self
-            .inv
-            .call("client_lua_eval", json!({ "chunk": chunk }))
-            .await;
+        let out = inv.call("client_lua_eval", json!({ "chunk": chunk })).await;
         let ok = out.ok && out.json.get("ok").and_then(Value::as_bool).unwrap_or(false);
         if !ok {
             let err = out
@@ -220,9 +274,31 @@ impl<I: ToolInvoker> Runner<'_, I> {
     }
 }
 
-/// Compare an observation and set the verdict.
+/// Compare an observation and set the verdict. Every tool, server and
+/// Lua clause comes through here, so `approx` gets its `tolerance`.
+/// The clause with its `value` and `match_fields` filled in from the row's
+/// vars, so `value = "${mitigation_before}"` compares with a baseline an
+/// earlier clause captured.
+pub(crate) fn with_vars(c: &ExpectSpec, vars: &serde_json::Map<String, Value>) -> ExpectSpec {
+    let mut c = c.clone();
+    c.value = c.value.map(|v| subst(&v, vars));
+    if let Some(m) = c.match_fields.take() {
+        c.match_fields = subst(&Value::Object(m), vars).as_object().cloned();
+    }
+    c
+}
+
+/// A tool, server or lua clause's `capture_var`: keep what it observed.
+fn capture(c: &ExpectSpec, observed: Option<&Value>, ctx: &mut RowCtx) {
+    if let (Some(var), Some(v)) = (&c.capture_var, observed) {
+        if !v.is_null() {
+            ctx.vars.insert(var.clone(), v.clone());
+        }
+    }
+}
+
 fn judge(c: &ExpectSpec, observed: Option<Value>, r: &mut ClauseResult) {
-    match compare(c.op, observed.as_ref(), c.value.as_ref()) {
+    match compare_tol(c.op, observed.as_ref(), c.value.as_ref(), c.tolerance) {
         Ok(ok) => r.verdict = if ok { Verdict::Pass } else { Verdict::Fail },
         Err(e) => r.detail = Some(e),
     }

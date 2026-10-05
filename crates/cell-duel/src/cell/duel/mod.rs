@@ -13,6 +13,7 @@
 
 pub use cimmeria_cell_world::cell::duel::*;
 
+mod duelist_names;
 mod engage;
 pub mod forfeit;
 pub mod response;

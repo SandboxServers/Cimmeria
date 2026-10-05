@@ -45,7 +45,9 @@ pub async fn dispatch(
                 target: "crafting",
                 event = "malformed",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 args_len = args.len(),
                 ?error,
                 "crafting request arguments did not parse; dropped"
@@ -160,8 +162,8 @@ pub async fn send_on_update_discipline(
         .await
     {
         tracing::warn!(
-            entity_id,
-            discipline_id,
+            entity_id, // nt:id-only dead code with no SpaceManager in scope to name it
+            discipline_id, // nt:id-only no discipline name table in the NameBook yet
             expertise,
             error = %e,
             "onUpdateDiscipline send dropped — base receiver gone",

@@ -7,6 +7,16 @@
 //! and measures the leash on the NPC itself; these rows are how that is
 //! checked in play. `loop` counts leash entries per NPC in a sliding window
 //! and should read zero after NA12.
+//!
+//! A leash whose trigger is `target_dead` or `target_gone` is not counted
+//! (DA-F2): the NPC won, or its target left, and the walk home is how every
+//! fight ends. Counting them made an NPC that kills three enemies a minute a
+//! "loop" — the Debug Area arena's squads, which stand at their spawn
+//! (`npc_to_spawn` 0), kill, reset and pick the next enemy, wrote
+//! `event=loop` WARNs from their first round on the colo (2026-10-05). The
+//! loop NA12 fixed is a fight given up and restarted against a target that
+//! is still alive; only those triggers (`beyond_band`, `chase_outward`,
+//! `vertical_cap`, `target_out_of_aoi`, `threat_empty`, ...) count.
 
 use std::time::{Duration, Instant};
 
@@ -19,6 +29,15 @@ use crate::cell::space_manager::SpaceManager;
 pub(in crate::cell) const LEASH_LOOP_COUNT: usize = 3;
 pub(in crate::cell) const LEASH_LOOP_WINDOW: Duration = Duration::from_secs(60);
 const LEASH_LOOP_WARN_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Leash triggers that end a fight rather than give it up: the target died
+/// or left the space. They are not counted toward [`LEASH_LOOP_COUNT`].
+pub(in crate::cell) const FIGHT_ENDED_TRIGGERS: [&str; 2] = ["target_dead", "target_gone"];
+
+/// Whether a leash entry with `trigger` counts toward the loop detector.
+pub(in crate::cell) fn counts_toward_loop(trigger: &str) -> bool {
+    !FIGHT_ENDED_TRIGGERS.contains(&trigger)
+}
 
 /// Why and how an NPC entered Leashing, for the `enter` row.
 pub struct LeashEntry {
@@ -60,10 +79,13 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
         event = "enter",
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         reason,
         trigger,
         // Horizontal: the distance the NA12 leash measures.
@@ -80,6 +102,9 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
         "npc_ai.leash: NPC gave up its fight and is heading home"
     );
 
+    if !counts_toward_loop(trigger) {
+        return;
+    }
     let track = space_mgr.npc_detectors.ai.entry(npc_id).or_default();
     track.leash_times.push_back(now);
     while track
@@ -106,10 +131,13 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
         event = "loop",
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         leash_count,
         window_secs = LEASH_LOOP_WINDOW.as_secs(),
         target_to_spawn = spawn.zip(target_pos).map(|(s, t)| s.distance_to(&t)),
@@ -161,7 +189,9 @@ pub fn on_complete(space_mgr: &mut SpaceManager, npc_id: u32, end: LeashEnd) {
         event = if snapped { "snap_fallback" } else { "arrived" },
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
         from_x = from.x,
@@ -201,10 +231,13 @@ pub fn on_damage_while_leashing(
         event = "damage_ignored",
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
         attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         amount,
         "npc_ai.leash: NPC is walking home (evading): threat ignored"
     );

@@ -81,14 +81,17 @@ pub(in crate::cell::service) async fn crafting_station_tick(
     for report in reports {
         let (entity_id, player_id) = (report.entity_id, report.player_id);
         if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(report))).await {
-            let account_id = space_mgr.player_identity(entity_id).account_id;
+            let who = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 target: "crafting",
                 event = "forward_failed",
                 kind = "crafting_stations",
-                account_id,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = who.player_name,
                 error = %e,
                 "crafting station report could not be queued (base channel closed)"
             );

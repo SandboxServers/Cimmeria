@@ -99,6 +99,72 @@ fn native_admission_duplicate_lifecycle_and_reopen_are_authoritative() {
 }
 #[cfg(target_os = "macos")]
 #[test]
+fn play_releases_the_store_before_dispatch_and_its_failure_path() {
+    // Everything runs on a worker thread so a store-lock deadlock fails this test
+    // rather than hanging the suite. No async runtime exists on that thread, so
+    // dispatch fails after admission and its failure path locks the store again.
+    let (send, done) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (_root, host) = super::fixture::fixture();
+        let before = host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        let id = Uuid::new_v4();
+        let played = host
+            .launch_command(LaunchCommand::Play {
+                schema_version: 1,
+                operation_id: id,
+                operation_revision: before.native.operation.revision,
+                installation_id: before.installation_id.unwrap(),
+            })
+            .map(|_| ());
+        let after = host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        let operation = after.native.operation.operation.unwrap();
+        let _ = send.send((played, operation.id == id, operation.state));
+    });
+    let (played, admitted, state) = done
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .expect("Play held the store lock across dispatch");
+    assert_eq!(played, Err(JobError::Io));
+    assert!(admitted);
+    assert_eq!(
+        state,
+        cimmeria_launcher_engine::OperationState::ReconciliationRequired
+    );
+}
+#[cfg(target_os = "macos")]
+#[test]
+fn fresh_install_is_never_offered_or_admitted_without_the_patch_artifact() {
+    let (_root, mut host) = super::fixture::fixture();
+    let before = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    let installation = before.installation_id.unwrap();
+    host.launch_resources.as_mut().unwrap().client_patches = None;
+    let status = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    assert!(!status.resources_available);
+    assert!(status.installation_id.is_none());
+    assert_eq!(
+        host.launch_command(LaunchCommand::Play {
+            schema_version: 1,
+            operation_id: Uuid::new_v4(),
+            operation_revision: before.native.operation.revision,
+            installation_id: installation,
+        })
+        .unwrap_err(),
+        JobError::PlatformUnavailable
+    );
+    let after = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    assert_eq!(after.native.operation, before.native.operation);
+}
+#[cfg(target_os = "macos")]
+#[test]
 #[ignore = "JSON-lines JS UAT fixture, no real game or runtime"]
 fn launch_uat_bridge() {
     use std::io::{BufRead, Write};

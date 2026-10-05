@@ -8,6 +8,9 @@ description = "Data-driven content system: trigger/condition/action chains repla
 [dependencies]
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
+# Seed names for loader warnings (`chain_name`, `template_name`, `world`;
+# Rule 6, NT-21).
+cimmeria-names = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -18,9 +18,11 @@
 //! connection is offline, so an event here means the client *tried* to
 //! send; the server's inbound span says whether it arrived.
 //!
-//! The detour only reads: it never touches `args` and forwards all four
-//! arguments untouched. Thread: the main thread (Lua and UI handlers send
-//! from there).
+//! The detour forwards all four arguments untouched. For a method in the
+//! ability allowlist it also decodes `args` with the game's own read-only
+//! bag readers and watches whether the router reaches a `start*Message`
+//! (`client.ability.sent` / `press_dropped`, [`super::ability::route`]).
+//! Thread: the main thread (Lua and UI handlers send from there).
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
@@ -103,7 +105,11 @@ unsafe extern "stdcall-unwind" fn route_detour(
     };
     let original: RouteFn = unsafe { std::mem::transmute(t) };
     guarded(|| observe(entity, method));
+    let probe = super::ability::route::RouteProbe::begin(entity, method, args);
     original(entity, desc, method, args);
+    if let Some(p) = probe {
+        p.finish();
+    }
 }
 
 fn observe(entity: *mut c_void, method: *mut c_void) {
@@ -144,6 +150,11 @@ fn observe(entity: *mut c_void, method: *mut c_void) {
         to_local,
     );
     let name_key = name.as_deref().unwrap_or("?");
+    // The 21 version requests of a login say nothing about what they carry;
+    // the cache hooks report what each storage holds as the first one leaves.
+    if name_key == "versionInfoRequest" {
+        super::cooked_cache::note_version_request();
+    }
     let decision = trace::throttle(&format!("{target}:{name_key}"), key);
     if let Some(f) = trace::with_suppressed(fields, decision) {
         crate::hooks::emit::emit(target, "info", f);

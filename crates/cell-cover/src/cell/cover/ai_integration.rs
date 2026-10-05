@@ -99,10 +99,10 @@ pub(super) fn try_reserve_or_warn(
             // `reason = "cover_slot_taken"`.
             tracing::warn!(
                 target: "cover.reservation",
-                npc_id = npc_id.0,
+                npc_id = npc_id.0, // nt:id-only cell-cover sees no entity table; the npc_ai caller row names the NPC
                 holder = current_holder.0,
-                chunk_id = slot.chunk_id,
-                node_id = slot.node_id,
+                chunk_id = slot.chunk_id, // nt:id-only cover chunk index, cover nodes carry no names
+                node_id = slot.node_id, // nt:id-only cover node index, cover nodes carry no names
                 reason = "cover_slot_taken",
                 "cover reserve_for_entity lost the race -- falling back to NoCover"
             );
@@ -334,7 +334,7 @@ pub fn maintain_cover_for_npc_checked(
         };
         tracing::debug!(
             target: "cover.flank_check",
-            npc_id = npc_id.0,
+            npc_id = npc_id.0, // nt:id-only cell-cover sees no entity table; the npc_ai caller row names the NPC
             slot = ?slot,
             node_x = node.pos.x,
             node_y = node.pos.y,

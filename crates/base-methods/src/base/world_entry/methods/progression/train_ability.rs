@@ -5,6 +5,7 @@
 //! ([`persist_purchase`]) and reports the new counters back to the cell with
 //! `BaseToCellMsg::AbilityGranted`.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -105,7 +106,16 @@ pub async fn handle_train_ability(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::warn!(entity_id, player_id, ability_id, "TrainAbility: no DB pool");
+            let player_label = known_names::player_name(player_id);
+            tracing::warn!(
+                entity_id,
+                entity_name = player_label,
+                player_id,
+                player_name = player_label,
+                ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                "TrainAbility: no DB pool"
+            );
             return;
         }
     };
@@ -114,12 +124,16 @@ pub async fn handle_train_ability(
     // forbids it (`skill_point_cost >= 0`), so this only fires on a
     // corrupted message; refuse rather than let the UPDATE run.
     if cost < 0 {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "abilities",
             event = "train_negative_cost",
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             cost,
             "TrainAbility: negative cost — rejecting"
         );
@@ -129,7 +143,11 @@ pub async fn handle_train_ability(
     let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
         Some(a) => a,
         None => {
-            tracing::warn!(entity_id, "TrainAbility: no address for entity");
+            tracing::warn!(
+                entity_id,
+                entity_name = known_names::player_name(player_id),
+                "TrainAbility: no address for entity"
+            );
             return;
         }
     };
@@ -150,23 +168,32 @@ pub async fn handle_train_ability(
         let session = map.get(&addr);
         let active = session.and_then(|s| s.active_player_id);
         if active != Some(player_id) {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "abilities",
                 event = "train_player_mismatch",
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 active_player_id = ?active,
+                active_player_name = known_names::player_name(active),
                 "TrainAbility: session is not playing the validated character — rejecting"
             );
             return;
         }
         let tp_in_memory = session.and_then(|s| s.player_training_points).unwrap_or(0);
         if (tp_in_memory as i64) < cost as i64 {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 cost,
                 training_points = tp_in_memory,
                 "TrainAbility: rejected — not enough training points (in-memory)"
@@ -178,10 +205,14 @@ pub async fn handle_train_ability(
     let result = match persist_purchase(pool, player_id, ability_id, cost).await {
         Ok(Some(r)) => r,
         Ok(None) => {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 cost,
                 "TrainAbility: UPDATE matched 0 rows (player missing, too few points, \
                  or already known) — nothing debited"
@@ -189,10 +220,14 @@ pub async fn handle_train_ability(
             return;
         }
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "TrainAbility: UPDATE failed: {e}"
             );
             return;
@@ -214,12 +249,16 @@ pub async fn handle_train_ability(
         }
     }
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "abilities",
         event = "train_persisted",
         entity_id,
+        entity_name = player_label,
         player_id,
+        player_name = player_label,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         tree_index,
         cost,
         training_points = result.training_points,
@@ -241,7 +280,11 @@ pub async fn handle_train_ability(
             .await
         {
             tracing::error!(
-                entity_id, ability_id, error = %e,
+                entity_id,
+                entity_name = known_names::player_name(player_id),
+                ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                error = %e,
                 "TrainAbility: base→cell AbilityGranted send failed; hotbar will desync until relog"
             );
         }

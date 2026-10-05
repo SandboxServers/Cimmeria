@@ -16,7 +16,8 @@ use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::super::super::timer_update::send_timer_update;
+use super::super::super::timer_update::send_timer_update_ctx;
+use super::super::super::wire_ledger::WireCtx;
 use super::super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 /// Why a warmup was interrupted. The label is the `reason` log field.
@@ -39,6 +40,11 @@ pub(crate) enum InterruptReason {
     AmmoUnavailable,
     /// A respec removed the warming ability (AT-08).
     AbilityUnlearned,
+    /// Another entity's interrupt effect broke it (ability mechanics
+    /// AB-09c, `effects::interrupt`).
+    Interrupted,
+    /// A stun or knockdown landed on the caster (AB-09a).
+    Incapacitated,
 }
 
 impl InterruptReason {
@@ -52,6 +58,8 @@ impl InterruptReason {
             Self::NoLineOfSight => "no_line_of_sight",
             Self::AmmoUnavailable => "ammo_unavailable",
             Self::AbilityUnlearned => "ability_unlearned",
+            Self::Interrupted => "interrupt_effect",
+            Self::Incapacitated => "incapacitated",
         }
     }
 }
@@ -90,6 +98,7 @@ pub(crate) async fn interrupt_pending_cast(
     };
     let cooldown_refunded = caster.abilities.clear_ability_cooldown(pc.ability_id);
     let is_player = caster.is_player;
+    let who = caster.identity();
     let loop_was_on_this_ability =
         is_player && caster.abilities.auto_cycle_ability_id == Some(pc.ability_id);
     space_mgr.pending_casts.remove(&entity_id);
@@ -97,12 +106,26 @@ pub(crate) async fn interrupt_pending_cast(
     tracing::info!(
         target: "abilities",
         event = "warmup_interrupted",
+        stage = "end",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = pc.ability_id,
+        ability_name = cimmeria_names::book().ability(pc.ability_id),
         target_id = pc.target_id,
+        target_name = space_mgr.entity_label(pc.target_id as u32),
         reason = reason.as_str(),
         cooldown_refunded,
         "ability warmup interrupted; the cast did not fire"
+    );
+    crate::cell::abilities::metrics::cast_in(
+        space_mgr,
+        entity_id,
+        crate::cell::abilities::metrics::CastOutcome::Interrupted,
     );
     // A deployable's staged ground point dies with its warmup.
     space_mgr.deployables.clear_staged(entity_id);
@@ -121,7 +144,11 @@ pub(crate) async fn interrupt_pending_cast(
         for timer_type in [TIMER_ABILITY_WARMUP, TIMER_ABILITY_COOLDOWN] {
             let args =
                 serialize_timer_update(pc.ability_id, timer_type, entity_id as i32, 0, 0.0, 0.0);
-            send_timer_update(entity_id, args, tx, space_mgr).await;
+            let ctx = WireCtx::new("warmup_interrupt")
+                .cast(Some(pc.cast_id()))
+                .ability(pc.ability_id)
+                .reason(reason.as_str());
+            send_timer_update_ctx(entity_id, args, ctx, tx, space_mgr).await;
         }
     }
 

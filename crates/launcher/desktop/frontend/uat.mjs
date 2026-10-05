@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
 import { mountLauncher } from './.test-build/view.mjs';
 import { tmpdir } from 'node:os';
@@ -112,6 +112,29 @@ try {
   assert.equal((await fourth.invoke({command:'inspect', schema_version:1})).preferences.launcher_summary_consent, true);
   await fourth.close();
   console.log('PASS restart after UI action: checkbox change persisted; no desktop or network used');
+  // Seed only a journal fixture: this proves native reopen and JS decoding, not
+  // an admitted Update plan or content replacement.
+  await writeFile(join(root, 'operation.json'), JSON.stringify({schema_version:1,revision:8,
+    operation:{id:'310ba1b3-1ca1-4af8-a1df-6785b3e824b6',kind:'update',state:'running',intent_digest:Array(32).fill(7)}}));
+  const update = start();
+  const calls=[];
+  await Effect.runPromise(Effect.scoped(Effect.gen(function*(){
+    const launcher=yield* makeLauncher;
+    yield* launcher.inspect;
+    const value=(yield* launcher.snapshot).native.operation;
+    assert.equal(value.operation.kind,'update');
+    assert.equal(value.operation.state,'reconciliation_required');
+    assert.equal(value.revision,9);
+  }).pipe(Effect.provide(bridgeLayer(request=>{calls.push(request);return update.invoke(request);})))));
+  assert.deepEqual(calls,[{command:'inspect',schema_version:1}]);
+  await update.close();
+  const savedUpdate=JSON.parse(await readFile(join(root,'operation.json'),'utf8'));
+  assert.equal(savedUpdate.operation.state,'reconciliation_required');
+  const reopenedUpdate=start();
+  assert.deepEqual((await reopenedUpdate.invoke({command:'inspect',schema_version:1})).operation,savedUpdate);
+  await reopenedUpdate.close();
+  console.log('PASS Update journal: native reopen persists reconciliation once; Effect accepts kind and revision without redispatch. Not covered: Update admission, confirmation, replacement, recovery UI or visual rendering.');
+
 } finally {
   for (const child of children) {
     if (child.exitCode === null && child.signalCode === null) {

@@ -75,6 +75,7 @@ async fn pair(
         entity_id: 12,
         method_index: 8,
         args: vec![1, 0, 0, 0, 1],
+        packet_seq: None,
     };
     handle_base_message(accept, tx, mgr, engine, &[]).await;
     assert_eq!(mgr.resources.squads().squad_of(2), Some(SID));

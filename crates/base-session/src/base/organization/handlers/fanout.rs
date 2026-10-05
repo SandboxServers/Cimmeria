@@ -9,6 +9,7 @@
 use cimmeria_entity::organization::OrgLeaveReason;
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 
+use super::log_names::identity_of_player;
 use super::OrgCtx;
 use crate::base::helpers::send_bundle_to_witness_reliable;
 use crate::cell::messages::{BaseToCellMsg, OrgBaseToCell};
@@ -78,6 +79,7 @@ pub async fn send_to_player(
 pub async fn send_to_members(
     ctx: &OrgCtx<'_>,
     org_id: i32,
+    org_name: Option<&str>,
     recipients: &[OnlineMember],
     messages: &[(u16, Vec<u8>)],
     what: &'static str,
@@ -86,17 +88,24 @@ pub async fn send_to_members(
     for r in recipients {
         match send_to_player(ctx, r.entity_id, messages).await {
             Ok(()) => sent += 1,
-            Err(reason) => tracing::warn!(
-                target: "org",
-                event = "org.send_failed",
-                what,
-                org_id,
-                target_account_id = r.account_id,
-                target_player_id = r.player_id,
-                entity_id = r.entity_id,
-                reason,
-                "organization message could not be sent to a member"
-            ),
+            Err(reason) => {
+                let who = identity_of_player(ctx, r.player_id);
+                tracing::warn!(
+                    target: "org",
+                    event = "org.send_failed",
+                    what,
+                    org_id,
+                    org_name,
+                    target_account_id = r.account_id,
+                    target_account_name = who.account_name,
+                    target_player_id = r.player_id,
+                    target_player_name = who.player_name,
+                    entity_id = r.entity_id,
+                    entity_name = who.player_name,
+                    reason,
+                    "organization message could not be sent to a member"
+                );
+            }
         }
     }
     sent
@@ -112,6 +121,7 @@ pub async fn membership_ended(
     ctx: &OrgCtx<'_>,
     member: OnlineMember,
     org_id: i32,
+    org_name: Option<&str>,
     reason: OrgLeaveReason,
 ) {
     let Some(tx) = ctx.cell_tx else {
@@ -119,7 +129,9 @@ pub async fn membership_ended(
             target: "org",
             event = "org.membership_ended_skipped",
             org_id,
+            org_name,
             target_player_id = member.player_id,
+            target_player_name = identity_of_player(ctx, member.player_id).player_name,
             reason = "no_cell_channel",
             "no cell to tell that a membership ended"
         );
@@ -132,14 +144,19 @@ pub async fn membership_ended(
         reason,
     });
     if tx.send(msg).await.is_err() {
+        let who = identity_of_player(ctx, member.player_id);
         tracing::warn!(
             target: "org",
             event = "org.send_failed",
             what = "membership_ended",
             org_id,
+            org_name,
             target_account_id = member.account_id,
+            target_account_name = who.account_name,
             target_player_id = member.player_id,
+            target_player_name = who.player_name,
             entity_id = member.entity_id,
+            entity_name = who.player_name,
             reason = "cell_unreachable",
             "the cell could not be told that a membership ended"
         );

@@ -167,7 +167,7 @@ fn assert_system_refused(capture: &crate::test_support::LogCaptureGuard, type_id
         capture.all().iter().any(|e| e.level == tracing::Level::WARN
             && e.has_field("event", "mail.system_refused")
             && e.has_field("reason", "item_no_carried_bag")
-            && e.has_field("type_id", &type_id.to_string())),
+            && e.has_field("item_type_id", &type_id.to_string())),
         "mail.system_refused reason=item_no_carried_bag type_id={type_id}"
     );
 }

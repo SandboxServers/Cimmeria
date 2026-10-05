@@ -117,6 +117,9 @@ async fn live_db_a_missing_player_row_is_refused() {
 async fn no_pool_logs_db_unavailable() {
     let c = caller(0x90, 0x7000_BBE9);
     let client = in_world(c, 40908);
+    // NT-22 (Rule 6): the refusal names the player and the login.
+    cimmeria_entity::known_names::remember_player(c.player_id, "Evelyn Reynolds");
+    cimmeria_entity::known_names::remember_account(c.account_id, "nt22_bank");
     let capture = LogCapture::install();
 
     handle_expand(
@@ -130,13 +133,20 @@ async fn no_pool_logs_db_unavailable() {
     )
     .await;
 
-    one(
+    let row = one(
         &capture,
         "expand_rejected",
         Level::WARN,
         c,
         &[("reason", "db_unavailable"), ("offered_slots", "40")],
     );
+    for (k, v) in [
+        ("player_name", "Evelyn Reynolds"),
+        ("entity_name", "Evelyn Reynolds"),
+        ("account_name", "nt22_bank"),
+    ] {
+        assert!(row.has_field(k, v), "{k}={v}: {row:#?}");
+    }
     assert!(client.saw_text("Your vault could not be expanded right now. Nothing was charged."));
 }
 

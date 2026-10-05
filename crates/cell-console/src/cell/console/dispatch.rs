@@ -5,14 +5,15 @@
 //! contract and [`exec`] routes a validated command to its family handler.
 
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use tokio::sync::mpsc;
 
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, gm, mail,
-    mission, net, org, org_create, patrol, pet, placement, query, seed, server, social, spawn,
-    squad, stats, travel,
+    abilities, aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, gm,
+    mail, mission, net, org, org_create, patrol, pet, placement, query, seed, server, social,
+    spawn, squad, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -45,7 +46,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "unknown_command");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "unknown_command",
+        );
         return;
     };
 
@@ -60,7 +66,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_few_args");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "too_few_args",
+        );
         return;
     }
     if args.len() > spec.max {
@@ -74,7 +85,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_many_args");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "too_many_args",
+        );
         return;
     }
 
@@ -83,7 +99,12 @@ pub async fn handle_console_command(
         Ok(t) => t,
         Err(msg) => {
             send_gm_feedback(caller_id, &format!(".{name}: {msg}"), tx).await;
-            crate::cell::playtest_friction::console_rejected(caller_id, name, "bad_target");
+            crate::cell::playtest_friction::console_rejected(
+                space_mgr,
+                caller_id,
+                name,
+                "bad_target",
+            );
             return;
         }
     };
@@ -106,25 +127,47 @@ pub async fn handle_console_command(
     // moment two GMs are online, and `entity_id` can't stand in for identity
     // because it's a recycled per-space slot. Log the account directly.
     let id = space_mgr.player_identity(caller_id);
+    // The subject, for a command that takes a target: named on the same row
+    // so the audit line says who the GM acted on (Rule 5 § actor on someone
+    // else). A player subject carries its character, an NPC its template
+    // pair (D-NT5). A no-target command only passes the GM's selection
+    // through, so it names no subject.
+    let subject_id = target_id.filter(|_| spec.target != Target::None);
+    let subject = subject_id.map_or(PlayerIdentity::UNKNOWN, |t| space_mgr.player_identity(t));
+    let subject_names = subject_id
+        .map(|t| space_mgr.entity_names(t))
+        .unwrap_or_default();
     tracing::info!(
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
+        target_id,
+        target_name = target_id.and_then(|t| space_mgr.entity_label(t)),
+        subject_player_id = subject.player_id,
+        subject_player_name = subject.player_name,
+        target_template_id = subject_names.template_id,
+        target_template_name = subject_names.template_name,
         access_level,
         command = name,
         argc = args.len(),
         "GM .-console command accepted"
     );
 
-    // Discord gm-channel audit trail. Attribute to the caller's cached name
-    // (threaded in via InitPlayerState); fall back to the entity id if the
-    // name isn't cached yet. Args are name/position tokens, never secrets —
-    // the same privacy balance as the audit log above.
-    let gm_name = space_mgr
-        .get_entity(caller_id)
-        .and_then(|e| e.character_name.clone())
-        .unwrap_or_else(|| format!("entity:{caller_id}"));
-    cimmeria_discord::emit_gm_command(gm_name, format!(".{name}"), args.join(" "));
+    // Discord gm-channel audit trail. Attribute to the caller's cached
+    // `player_id` and name (threaded in via InitPlayerState); fall back to
+    // the entity id if neither is cached yet. The selected target, when the
+    // command resolved one, rides along as its own pair. Args are
+    // name/position tokens, never secrets — the same privacy balance as the
+    // audit log above.
+    cimmeria_discord::emit_gm_command(
+        space_mgr.discord_character(caller_id),
+        format!(".{name}"),
+        args.join(" "),
+        target_id.map(|t| space_mgr.discord_entity(t)),
+    );
 
     exec(name, caller_id, &args, target_id, tx, space_mgr, engine).await;
 }
@@ -172,8 +215,11 @@ pub(crate) async fn refuse_non_gm_command(
             decision_outcome = "gm_refused",
             reason = "not_gm",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             access_level,
             command = spec.name,
             "non-GM .-console command refused"
@@ -183,8 +229,11 @@ pub(crate) async fn refuse_non_gm_command(
             decision_outcome = "refused",
             reason = "not_gm",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             access_level,
             command = spec.name,
             "non-GM .-console command refused"
@@ -247,7 +296,9 @@ fn resolve_target(
     if !space_mgr.target_in_view(caller_id, target_id) {
         tracing::debug!(
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             reason = "target_not_in_view",
             "console: stored target is outside the caller's AoI -- refusing the command"
         );
@@ -380,6 +431,10 @@ pub async fn exec(
         "infiniteammo" | "gmsetinfiniteammo" => {
             gm::set_infinite_ammo::set_infinite_ammo(caller_id, target_id, args, tx, space_mgr)
                 .await
+        }
+        // Ability lab commands (ability-mechanics AB-L2)
+        "effects" | "cooldowns" | "dummy" | "cleareffects" => {
+            abilities::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
         }
         "giveability" => {
             give_ability::give_ability(caller_id, target_id, args, tx, space_mgr).await

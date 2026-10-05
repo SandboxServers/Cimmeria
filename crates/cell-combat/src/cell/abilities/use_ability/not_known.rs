@@ -2,7 +2,10 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`
 /// (`entities/defs/enumerations.xml`). Exact fit: the caster does not have
@@ -16,6 +19,7 @@ const CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY: u16 = 167;
 /// this the press was refused silently.
 pub(super) async fn send_not_known_feedback(
     entity_id: u32,
+    who: PlayerIdentity,
     ability_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
@@ -23,6 +27,7 @@ pub(super) async fn send_not_known_feedback(
     args.push(0u8); // SystemID: ERRORCODE_SYSTEM_Ability
     args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
     args.extend_from_slice(&CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY.to_le_bytes());
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -32,12 +37,28 @@ pub(super) async fn send_not_known_feedback(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed(
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+            crate::cell::abilities::metrics::UNKNOWN_WORLD,
+        );
         tracing::warn!(
             target: "abilities",
             event = "not_known_feedback_send_failed",
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = who.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner_as(
+            who,
+            entity_id,
+            WireCtx::new("not_known").reason("ability_not_known"),
         );
     }
 }

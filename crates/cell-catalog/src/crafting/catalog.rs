@@ -117,8 +117,9 @@ impl CraftingCatalog {
                 tracing::warn!(
                     target: "crafting",
                     event = "catalog_orphan_component",
-                    blueprint_id = row.blueprint_id,
+                    blueprint_id = row.blueprint_id, // nt:id-only unknown blueprint, no row to name
                     item_id = row.item_id,
+                    item_name = cimmeria_names::book().item(row.item_id),
                     "crafting catalog: component row names an unknown blueprint, dropped"
                 );
                 continue;
@@ -246,6 +247,7 @@ impl CraftingCatalog {
                     target: "crafting",
                     event = "catalog_unknown_quality",
                     item_id = r.item_id,
+                    item_name = cimmeria_names::book().item(r.item_id),
                     quality = %r.quality,
                     "crafting catalog: item has an unknown quality label, skipped"
                 );

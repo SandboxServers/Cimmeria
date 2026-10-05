@@ -362,7 +362,7 @@ What moved, and what did not:
 - **Stayed in `cell-world`, and why.** Each is called from below the leaf:
   - the passive pass (`effects/passives.rs`), which `cimmeria-cell`'s base-message handlers call at world entry, on a grant and on a respec;
   - the pet-script name predicates `acts_on_owner_pet` and `is_passive_script` (`effects/pet_scripts.rs`), which the owner-pet cast redirect in `cell-combat` and the passive pass ask;
-  - the stat-buff ledger (`effects/stat_buff/`: `SpaceManager::apply_stat_buff`, `remove_stat_buffs`, `StatBuffRemoval`), which `cell-combat`'s stat-buff tick calls, and which is an inherent `impl SpaceManager` that cannot leave the crate defining `SpaceManager` anyway;
+  - the timed effect ledger (`effects/stat_buff/`: `SpaceManager::apply_timed_effect`, `remove_timed_effects`, `StatBuffRemoval`), which `cell-combat`'s stat-buff tick calls, and which is an inherent `impl SpaceManager` that cannot leave the crate defining `SpaceManager` anyway;
   - the special-ammo shot helpers the damage path reads (`effects/ammo_damage.rs`, `effects/ammo_explosive.rs`), which hold no script.
 
   No script needed a value-returning combat hook: every one is a synchronous `SpaceManager` mutator, so none was left behind for that reason. Three leaf modules share a name with the world module they extend (`registry`, `pet_scripts`, `stat_buff`) and re-export it.

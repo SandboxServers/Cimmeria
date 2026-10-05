@@ -216,7 +216,20 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             player_id,
             world_name,
             position: pos,
-        } => position::persist_position(player_id, &world_name, pos, ctx.db_pool).await,
+        } => {
+            // The player's name for the persist lines (Rule 6), from the
+            // session if it is still open. Disconnect-only, so the scan is
+            // off any hot path.
+            let player_name = ctx.connected.lock().ok().and_then(|clients| {
+                clients
+                    .values()
+                    .find(|c| c.active_player_id == Some(player_id))
+                    .and_then(|c| {
+                        cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
+                    })
+            });
+            position::persist_position(player_id, player_name, &world_name, pos, ctx.db_pool).await
+        }
         CellToBaseMsg::RefreshAppearance {
             entity_id,
             player_id,

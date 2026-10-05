@@ -21,6 +21,7 @@
 //! [`load_crafting_state_locked`] and [`save_crafting_state_in`], so the
 //! `sgw_player` row stays locked from the read to the commit.
 
+use cimmeria_entity::known_names;
 use sqlx::{PgConnection, PgPool};
 
 use cimmeria_entity::crafting::CraftingState;
@@ -205,7 +206,9 @@ async fn read_state(
         let level_i8 = i8::try_from(level).unwrap_or_else(|_| {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 paradigm_id,
+                paradigm_name = cimmeria_names::racial_paradigm_name(paradigm_id),
                 level,
                 "racial paradigm level exceeds i8 range — clamping; check DB integrity"
             );
@@ -340,7 +343,9 @@ async fn write_state(
             .unwrap_or_else(|| {
                 tracing::warn!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     paradigm_id,
+                    paradigm_name = cimmeria_names::racial_paradigm_name(paradigm_id),
                     "racial paradigm level missing on save — backfilling with 0"
                 );
                 0
@@ -372,6 +377,7 @@ async fn write_state(
     if update_result.rows_affected() == 0 {
         tracing::error!(
             player_id,
+            player_name = known_names::player_name(player_id),
             "save_crafting_state: UPDATE matched 0 rows — sgw_player row missing"
         );
         return Err(sqlx::Error::RowNotFound);

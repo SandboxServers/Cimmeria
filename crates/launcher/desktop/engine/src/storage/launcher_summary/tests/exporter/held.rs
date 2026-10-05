@@ -38,7 +38,7 @@ async fn an_opt_out_aborts_a_held_post() {
         );
         // Nothing followed the aborted request, and nothing waited.
         assert_eq!(rig.paths().await, [INGEST]);
-        assert_eq!(rig.probe.sleeps(), []);
+        assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
         assert_eq!(stored(&rig.owner()), Queue::empty(generation + 1));
     }
 }

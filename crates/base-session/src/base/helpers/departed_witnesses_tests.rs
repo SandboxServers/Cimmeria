@@ -172,3 +172,55 @@ async fn destroy_client_entities_marks_the_player_departed() {
     );
     assert_eq!(misses(&capture, Level::DEBUG, "witness_session_ended"), 1);
 }
+
+/// AB-T4: a session that ends while its pre-ready buffer still holds entity
+/// methods logs them as discarded (`deferred_discarded`, with the counts and
+/// the teardown reason). Revert-proof: without the teardown hook the buffer
+/// drops with the session and nothing says so.
+#[test]
+fn teardown_logs_the_entity_methods_still_buffered() {
+    const PLAYER: u32 = 0x5EED_0A05;
+    let addr: SocketAddr = "127.0.0.1:47105".parse().unwrap();
+    let mut state = test_default_connected_client_state();
+    state.account_id = 0x5EEE;
+    state.player_entity_id = Some(PLAYER);
+    for method_index in [14u16, 14, 12] {
+        state.deferred_aoi_msgs.push(
+            crate::base::deferred_aoi::DeferredAoiMsg::EntityMethodCall {
+                entity_id: PLAYER,
+                method_index,
+                args: vec![],
+            },
+        );
+    }
+    state
+        .deferred_aoi_msgs
+        .push(crate::base::deferred_aoi::DeferredAoiMsg::LeftAoI { entity_id: 7 });
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(PLAYER, addr)])));
+    let entity_manager = Arc::new(Mutex::new(cimmeria_entity::manager::EntityManager::new()));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+    let capture = LogCapture::install();
+
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &None,
+        &entity_to_addr,
+        &transport,
+        &None,
+        "client_disconnect",
+    );
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "base.entity_method" && c.has_field("event", "deferred_discarded"))
+        .collect();
+    assert_eq!(rows.len(), 1, "{:#?}", capture.all());
+    assert!(rows[0].has_field("methods", "3"), "leaves are not counted");
+    assert!(rows[0].has_field("method_counts", "12:1,14:2"));
+    assert!(rows[0].has_field("reason", "client_disconnect"));
+    assert!(rows[0].has_field("account_id", &0x5EEE.to_string()));
+}

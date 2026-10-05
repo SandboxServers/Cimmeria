@@ -169,12 +169,12 @@ async fn the_task_survives_a_rate_limit_and_delivers_on_the_next_trigger() {
     // The cycle at start and the one for the stored wake-up: one request each.
     // A retry would have recorded its wait before the second request was sent.
     assert_eq!(rig.paths_after(2).await, [INGEST; 2]);
-    assert_eq!(rig.probe.sleeps(), []);
+    assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
     assert_eq!(queued(&rig.owner()), waiting, "the row waits");
     assert!(!task.is_finished(), "the exporter stays alive");
 
     delivers_both_on_the_next_row(&rig).await;
-    assert_eq!(rig.probe.sleeps(), []);
+    assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
     task.abort();
 }
 

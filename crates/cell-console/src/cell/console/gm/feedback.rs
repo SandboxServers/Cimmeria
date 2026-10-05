@@ -26,7 +26,7 @@ pub async fn send_gm_feedback(caller_entity_id: u32, text: &str, tx: &mpsc::Send
     // position, `.searchmission`'s hits, every rejection reason).
     tracing::debug!(
         target: "console.feedback",
-        entity_id = caller_entity_id,
+        entity_id = caller_entity_id, // nt:id-only no SpaceManager reaches this 387-caller helper; refusals answer before any audit row, so join on entity_id
         text_len = text.chars().count(),
         text = %text.chars().take(400).collect::<String>(),
         "GM console feedback sent to client"
@@ -41,7 +41,7 @@ pub async fn send_gm_feedback(caller_entity_id: u32, text: &str, tx: &mpsc::Send
         .await
     {
         tracing::warn!(
-            caller_entity_id,
+            caller_entity_id, // nt:id-only no SpaceManager reaches this 387-caller helper; refusals answer before any audit row, so join on entity_id
             error = %e,
             "GM feedback send to base failed — GM won't see the result line"
         );

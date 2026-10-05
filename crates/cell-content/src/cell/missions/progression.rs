@@ -8,7 +8,7 @@ use super::{
     suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
 };
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Advance a mission to a new step: complete old objectives, set new step, load new objectives.
 ///
@@ -63,8 +63,11 @@ pub async fn advance_step(
         tracing::debug!(
             target: "mission.step_context",
             entity_id,
+            entity_name = EntityNames::of(e).entity_name,
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             new_step_id,
+            new_step_name = cimmeria_names::book().mission_step(new_step_id),
             x = e.position.x,
             y = e.position.y,
             z = e.position.z,
@@ -93,14 +96,20 @@ pub async fn advance_step(
         None => return false,
     };
     let player_id = entity.player_id;
+    // Snapshot for the log lines below, which run while `mission` borrows
+    // the entity mutably. A player's name is already interned: no lookup.
+    let entity_name = EntityNames::of(entity).entity_name;
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
         Some(m) => m,
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 new_step_id,
+                new_step_name = cimmeria_names::book().mission_step(new_step_id),
                 "advance_step: mission not found"
             );
             return false;
@@ -150,10 +159,14 @@ pub async fn advance_step(
             })
             .await
         {
+            let names = cimmeria_names::book();
             tracing::warn!(
                 entity_id,
+                entity_name,
                 mission_id,
+                mission_name = names.mission(mission_id),
                 objective_id = obj.objective_id,
+                objective_name = names.mission_objective(obj.objective_id),
                 reason = "advance_step_objective_send_failed",
                 "advance_step: onObjectiveUpdate send failed -- the client keeps \
                  the objective unchecked until relog: {e}"
@@ -172,14 +185,21 @@ pub async fn advance_step(
     mission.current_step_id = Some(new_step_id);
     mission.active_objectives = new_objectives.clone();
 
-    tracing::info!(
-        entity_id,
-        mission_id,
-        ?old_step_id,
-        new_step_id,
-        new_objectives = new_objectives.len(),
-        "Mission step advanced"
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            entity_id,
+            entity_name,
+            mission_id,
+            mission_name = names.mission(mission_id),
+            ?old_step_id,
+            old_step_name = old_step_id.and_then(|s| names.mission_step(s)),
+            new_step_id,
+            new_step_name = names.mission_step(new_step_id),
+            new_objectives = new_objectives.len(),
+            "Mission step advanced"
+        );
+    }
     crate::cell::player_journal::note(
         entity_id,
         crate::cell::player_journal::kinds::STEP_ADVANCE,
@@ -258,24 +278,34 @@ pub async fn complete_objective(
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => {
+            let names = cimmeria_names::book();
             tracing::warn!(
-                entity_id,
+                entity_id, // nt:id-only the entity is gone, nothing left to name
                 mission_id,
+                mission_name = names.mission(mission_id),
                 objective_id,
+                objective_name = names.mission_objective(objective_id),
                 "complete_objective: entity not found"
             );
             return false;
         }
     };
     let player_id = entity.player_id;
+    // Snapshot for the log lines below, which run while `mission` borrows
+    // the entity mutably. A player's name is already interned: no lookup.
+    let entity_name = EntityNames::of(entity).entity_name;
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
         Some(m) => m,
         None => {
+            let names = cimmeria_names::book();
             tracing::warn!(
                 entity_id,
+                entity_name,
                 mission_id,
+                mission_name = names.mission(mission_id),
                 objective_id,
+                objective_name = names.mission_objective(objective_id),
                 "complete_objective: mission not tracked"
             );
             return false;
@@ -283,17 +313,30 @@ pub async fn complete_objective(
     };
 
     if !mission.complete_objective(objective_id) {
+        let names = cimmeria_names::book();
         tracing::warn!(
             entity_id,
+            entity_name,
             mission_id,
+            mission_name = names.mission(mission_id),
             objective_id,
+            objective_name = names.mission_objective(objective_id),
             current_step_id = ?mission.current_step_id,
+            current_step_name = mission.current_step_id.and_then(|s| names.mission_step(s)),
             "complete_objective: objective not on the current step's roster — no-op"
         );
         return false;
     }
 
-    tracing::debug!(entity_id, mission_id, objective_id, "Objective completed");
+    tracing::debug!(
+        entity_id,
+        entity_name,
+        mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
+        objective_id,
+        objective_name = cimmeria_names::book().mission_objective(objective_id),
+        "Objective completed"
+    );
 
     // Hidden missions progress normally; only the frames are skipped (#715).
     let send_frames = !suppress_hidden_mission_frames(
@@ -352,11 +395,16 @@ pub async fn complete_objective(
     // behaviour and changing it is outside this packet), but logged so a
     // surprise completion in UAT is attributable instead of mysterious.
     if all_required_complete && required_count == 0 {
+        let names = cimmeria_names::book();
         tracing::warn!(
             entity_id,
+            entity_name,
             mission_id,
+            mission_name = names.mission(mission_id),
             objective_id,
+            objective_name = names.mission_objective(objective_id),
             current_step_id = ?mission.current_step_id,
+            current_step_name = mission.current_step_id.and_then(|s| names.mission_step(s)),
             optional_count = mission.active_objectives.len(),
             "mission auto-completed on a step with no required objectives —              `all_required_complete` was vacuously true"
         );
@@ -398,7 +446,13 @@ pub async fn complete_objective(
                 .await;
         }
 
-        tracing::info!(entity_id, mission_id, "Mission completed!");
+        tracing::info!(
+            entity_id,
+            entity_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            "Mission completed!"
+        );
         crate::cell::player_journal::note(
             entity_id,
             crate::cell::player_journal::kinds::MISSION_COMPLETE,
@@ -433,13 +487,18 @@ pub async fn complete_mission_direct(
         tracing::Span::current().record("player_id", pid);
     }
     let player_id = entity.player_id;
+    // Snapshot for the log lines below, which run while `mission` borrows
+    // the entity mutably. A player's name is already interned: no lookup.
+    let entity_name = EntityNames::of(entity).entity_name;
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
         Some(m) => m,
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "complete_mission_direct: mission not found"
             );
             return;
@@ -469,7 +528,13 @@ pub async fn complete_mission_direct(
     let step_id = mission.completed_steps.last().copied();
     let is_hidden = mission.is_hidden;
 
-    tracing::info!(entity_id, mission_id, "Mission completed directly");
+    tracing::info!(
+        entity_id,
+        entity_name,
+        mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
+        "Mission completed directly"
+    );
     crate::cell::player_journal::note(
         entity_id,
         crate::cell::player_journal::kinds::MISSION_COMPLETE,

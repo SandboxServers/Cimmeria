@@ -3,6 +3,8 @@
 
 use cimmeria_client_hookgate::Site;
 
+use super::ability_sites::*;
+
 /// `FFullScreenMovieBink::Tick`: `xorps xmm1, xmm1; sub esp, 8; push esi;
 /// mov esi, ecx`.
 pub const BINK_TICK: Site = code_site(
@@ -377,7 +379,57 @@ pub const SCRIPTED_DEBUG_ERROR: Site = code_site(
 );
 
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 39] = [
+/// `ZipStorageBase` read version (the `MetaData` entry into `out`): `push
+/// -1; push 0x0167e51d; mov eax, fs:[0]` (`ret 8`).
+pub const COOKED_READ_VERSION: Site = code_site(
+    "ZipStorageBase read version",
+    0x0047_8f00,
+    &[
+        0x6A, 0xFF, 0x68, 0x1D, 0xE5, 0x67, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `ZipStorageBase` read entry (find, extract to memory, length check):
+/// `mov eax, fs:[0]; push -1; push 0x0167e508` (`ret 0xc`).
+pub const COOKED_READ_ENTRY: Site = code_site(
+    "ZipStorageBase read entry",
+    0x0047_8e10,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x08, 0xE5, 0x67,
+    ],
+);
+
+/// `CZipArchive::FindFile`: `push ecx; mov eax, 0xffff; cmp [ecx+0x5e], ax;
+/// je +0x4a` (`ret 0xc`).
+pub const ZIP_FIND_FILE: Site = code_site(
+    "CZipArchive::FindFile",
+    0x0139_6900,
+    &[
+        0x51, 0xB8, 0xFF, 0xFF, 0x00, 0x00, 0x66, 0x39, 0x41, 0x5E, 0x74, 0x4A,
+    ],
+);
+
+/// `CZipArchive::ExtractFile` to a memory file: `push ebp; mov ebp, esp;
+/// push -1; push 0x0177cb38; mov eax, fs:[0]` (`ret 0x10`).
+pub const ZIP_EXTRACT_FILE: Site = code_site(
+    "CZipArchive::ExtractFile (memory)",
+    0x0139_8af0,
+    &[
+        0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0xCB, 0x77, 0x01, 0x64, 0xA1,
+    ],
+);
+
+/// `ServerSource_SetVersion`: `mov eax, [esp+4]; mov edx, [eax]; mov
+/// [ecx+0x24], edx; call 0x00479e10` (`ret 4`).
+pub const COOKED_SET_VERSION: Site = code_site(
+    "ServerSource_SetVersion",
+    0x0047_9e90,
+    &[
+        0x8B, 0x44, 0x24, 0x04, 0x8B, 0x10, 0x89, 0x51, 0x24, 0xE8, 0x72, 0xFF,
+    ],
+);
+
+pub const CODE_SITES: [Site; 71] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -417,9 +469,41 @@ pub const CODE_SITES: [Site; 39] = [
     SCRIPTED_DEBUG_LOG,
     SCRIPTED_DEBUG_WARN,
     SCRIPTED_DEBUG_ERROR,
+    USE_ACTION_THUNK,
+    USE_ABILITY_THUNK,
+    ABILITY_SLOT,
+    ABILITY_LOOKUP,
+    ABILITY_SEND_BUILDER,
+    PET_ABILITY_ACTION_EXECUTE,
+    GAME_PET_SEND,
+    START_ENTITY_MESSAGE,
+    START_PROXY_MESSAGE,
+    CHANNEL_SEND,
+    NUB_SEND,
+    SEQ_NEXT,
+    EFFECT_TIMER,
+    EFFECT_LOOKUP,
+    EFFECT_ANNOUNCE,
+    EFFECT_DATA_REQUEST,
+    EFFECT_POST,
+    COOLDOWN_TIMER,
+    COOLDOWN_UI,
+    STAT_HANDLER,
+    STAT_BASE_HANDLER,
+    STAT_FUNCTOR,
+    STAT_BASE_FUNCTOR,
+    ON_SEQUENCE,
+    EVENT_GET_INT,
+    EVENT_GET_FLOAT,
+    EVENT_GET_BYTE,
+    COOKED_READ_VERSION,
+    COOKED_READ_ENTRY,
+    ZIP_FIND_FILE,
+    ZIP_EXTRACT_FILE,
+    COOKED_SET_VERSION,
 ];
 
-const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {
+pub(super) const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {
     Site {
         name,
         address,

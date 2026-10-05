@@ -115,8 +115,11 @@ async fn refuse(
         decision_outcome = "refused",
         reason,
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ammo_type,
         "gm_give_ammo refused at the console; nothing sent to the base"
     );
@@ -236,15 +239,21 @@ pub(crate) async fn give_ammo(
         event = events::GM_GIVE_AMMO,
         decision_outcome = "forwarded",
         entity_id = caller_id,
+        entity_name = caller.player_name,
         account_id = caller.account_id,
+        account_name = caller.account_name,
         player_id = gm_player_id,
+        player_name = caller.player_name,
         subject_entity_id = subject,
+        subject_entity_name = space_mgr.entity_label(subject),
         subject_player_id = player_id,
+        subject_player_name = space_mgr.player_identity(subject).player_name,
         item_id,
+        item_name = cimmeria_names::book().item(item_id),
         ammo_type,
         quantity = granted,
         requested = rounds,
-        "gm_give_ammo forwarded to the base"
+        "gm_give_ammo forwarded to the base",
     );
     let msg = GmGiveAmmo {
         entity_id: subject,
@@ -263,14 +272,19 @@ pub(crate) async fn give_ammo(
             decision_outcome = "send_failed",
             reason = "cell_to_base_closed",
             entity_id = caller_id,
+            entity_name = caller.player_name,
             account_id = caller.account_id,
+            account_name = caller.account_name,
             player_id = gm_player_id,
+            player_name = caller.player_name,
             subject_player_id = player_id,
+            subject_player_name = space_mgr.player_identity(subject).player_name,
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             ammo_type,
             quantity = granted,
             error = %e,
-            "gm_give_ammo: not sent to the base; nothing granted"
+            "gm_give_ammo: not sent to the base; nothing granted",
         );
     }
 }

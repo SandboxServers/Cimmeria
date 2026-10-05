@@ -11,6 +11,8 @@ use tokio::sync::mpsc;
 
 use cimmeria_wire::cell::client_methods::duel::TEXT_DUEL_ABORTED;
 
+use cimmeria_entity::known_names;
+
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -94,8 +96,10 @@ pub async fn gm_end(
                 target: "duel",
                 event = "duel.notify_skipped",
                 player_id,
+                player_name = known_names::player_name(player_id),
                 target_player_id = other,
-                duel_id = aborted.duel_id(),
+                target_player_name = known_names::player_name(other),
+                duel_id = aborted.duel_id(), // nt:id-only duel row id with no name column; the duelists are named in the same event
                 why = "gm_end",
                 reason = "player_not_in_world",
                 "duelist not in the world; no abort line sent"
@@ -123,11 +127,16 @@ fn log_gm_ended(
         target: "duel",
         event = "duel.gm_ended",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id = gm_entity_id,
+        entity_name = gm.player_name,
         subject_player_id,
+        subject_player_name = known_names::player_name(subject_player_id),
         opponent_player_id = opponent,
-        duel_id = aborted.duel_id(),
+        opponent_player_name = known_names::player_name(opponent),
+        duel_id = aborted.duel_id(), // nt:id-only duel row id with no name column; the duelists are named in the same event
         stage = aborted.stage(),
         "GM ended a duel"
     );

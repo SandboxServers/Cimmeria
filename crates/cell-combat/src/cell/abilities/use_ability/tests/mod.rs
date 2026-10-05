@@ -13,21 +13,41 @@ use cimmeria_entity::abilities::AbilityDef;
 use tokio::sync::mpsc;
 
 mod auto_cycle;
+mod beneficial;
+mod beneficial_cast_rows;
+mod beneficial_live_db;
+mod beneficial_training_dummy;
+mod cast_correlation;
+mod combat_debug;
 mod content_events;
 mod duel_end;
+mod duel_end_cc;
 mod duel_gate;
 mod duel_nonlethal;
+mod effect_routing;
+mod effect_routing_live_db;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod incapacitated;
+mod interrupt_effect;
+mod launch_timer_rows;
+mod metrics;
 mod min_range;
+mod named_rows;
+mod no_mechanics;
+mod no_mechanics_live_db;
 mod npc_timer_routing;
+mod passive_cast;
 mod pet_kill_credit;
 mod range_units;
 mod range_units_live_db;
 mod registered_pet_kill_credit;
 mod sequence;
 mod sequence_phases;
+mod shield_full;
+mod silent_paths;
+mod starter_kit_live_db;
 mod summon;
 mod summon_live_db;
 mod summon_logs;
@@ -35,10 +55,18 @@ mod summon_roster_live_db;
 mod summoned_pet_kill_credit;
 mod support_shot;
 mod target_validity;
+mod timed_buffs;
+mod toggles;
 mod warmup;
 mod warmup_interrupt;
 mod weapon_grant;
 mod weapon_range;
+
+/// Every [`make_ability`] fixture carries the shared no-op mechanic effect,
+/// so it passes the AB-12 launch gate (`no_mechanics`) and behaves as the
+/// effectless fixtures did before the gate. [`make_mgr`] seeds it; a test
+/// that builds its own manager calls [`seed_fixture_effect`].
+const FIXTURE_EFFECT: i32 = crate::test_support::MECHANIC_FIXTURE_EFFECT;
 
 fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
     AbilityDef {
@@ -51,11 +79,13 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
         min_range: 0.0,
         max_range: max_range as f32,
         target_type_id: 0,
-        effect_ids: vec![],
+        effect_ids: vec![FIXTURE_EFFECT],
         moniker_ids: vec![],
         required_ammo,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
+        passive: false,
     }
 }
 
@@ -70,7 +100,14 @@ fn make_mgr() -> SpaceManager {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
     )
     .unwrap();
+    seed_fixture_effect(&mut mgr);
     mgr
+}
+
+/// Seed [`FIXTURE_EFFECT`] (and its no-op script) on a manager a test built
+/// itself, so its [`make_ability`] fixtures have their mechanic.
+fn seed_fixture_effect(mgr: &mut SpaceManager) {
+    crate::test_support::seed_mechanic_effect(mgr);
 }
 
 fn make_player(mgr: &mut SpaceManager, id: u32, pos: [f32; 3]) {

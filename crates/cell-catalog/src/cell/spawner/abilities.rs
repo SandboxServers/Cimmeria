@@ -93,7 +93,8 @@ pub async fn load_ability_defs(
     let rows = sqlx::query_as::<_, AbilityRow>(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
          min_range, max_range, target_type_id, effect_ids, \
-         required_ammo, event_set_id, velocity \
+         required_ammo, event_set_id, velocity, type_id::text AS type_id, \
+         passive_yn \
          FROM resources.abilities",
     )
     .fetch_all(pool)
@@ -123,6 +124,10 @@ struct AbilityRow {
     required_ammo: i32,
     event_set_id: Option<i32>,
     velocity: f32,
+    /// The `"EAbilityTypes"` label, read as text (`ABILITY_TYPE_Heal`).
+    type_id: String,
+    /// `passive_yn` (NOT NULL).
+    passive_yn: bool,
 }
 
 impl AbilityRow {
@@ -130,7 +135,24 @@ impl AbilityRow {
     /// The range columns are UE3 units (100 per metre, the client's cooked
     /// `MaxRange`); `AbilityDef` holds metres (#919).
     fn into_def(self) -> cimmeria_entity::abilities::AbilityDef {
-        use cimmeria_entity::abilities::ability_range_to_metres;
+        use cimmeria_entity::abilities::{ability_range_to_metres, AbilityType};
+        // The column is a Postgres enum, so an unknown label means the enum
+        // gained a token this server does not know. Undefined is the safe
+        // reading: it never makes an ability beneficial (D-AB02).
+        let type_id = AbilityType::from_db_label(&self.type_id).unwrap_or_else(|| {
+            tracing::warn!(
+                target: "abilities",
+                event = "ability_type_unknown",
+                ability_id = self.ability_id,
+                ability_name = Some(self.name.as_str()).filter(|n| !n.trim().is_empty()),
+                // The `abilities.type_id` enum label, not an ID (Rule 6:
+                // generic keys name their domain).
+                ability_type = %self.type_id,
+                reason = "unknown_ability_type",
+                "resources.abilities.type_id label unknown to the server; loaded as Undefined"
+            );
+            AbilityType::Undefined
+        });
         cimmeria_entity::abilities::AbilityDef {
             ability_id: self.ability_id,
             name: self.name,
@@ -146,6 +168,8 @@ impl AbilityRow {
             required_ammo: self.required_ammo,
             event_set_id: self.event_set_id,
             velocity: self.velocity,
+            type_id,
+            passive: self.passive_yn,
         }
     }
 }
@@ -405,7 +429,19 @@ mod range_unit_tests {
             required_ammo: 0,
             event_set_id: None,
             velocity: 100.0,
+            type_id: "ABILITY_TYPE_DD".into(),
+            passive_yn: false,
         }
+    }
+
+    /// AB-08: `passive_yn` reaches `AbilityDef::passive`, which the launch
+    /// gate refuses.
+    #[test]
+    fn passive_yn_reaches_the_def() {
+        let mut r = row(0, 0);
+        r.passive_yn = true;
+        assert!(r.into_def().passive);
+        assert!(!row(0, 0).into_def().passive);
     }
 
     /// #919: the column is UE3 units, `AbilityDef` is metres. Without the

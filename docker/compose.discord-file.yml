@@ -1,0 +1,26 @@
+# Cimmeria — Discord notifications from a host file (opt-in overlay).
+#
+# Mounts ./config/discord.toml, which you write yourself, at the path
+# cimmeria-discord reads. This is how the colo runs: it allows any set of
+# channels, muted accounts and event toggles without a new release. The
+# release-rendered compose.discord.yml is the alternative; use one or the
+# other.
+#
+#   mkdir -p config
+#   $EDITOR config/discord.toml        # format: docs/architecture/discord-notifications.md
+#   sudo chown 1001:1001 config/discord.toml && sudo chmod 0440 config/discord.toml
+#
+# The server runs as uid 1001 inside the container, so the file must be
+# readable by uid 1001 on the host. If it isn't, the server logs
+# `Discord notifications disabled` (with file_present=true, because the path
+# exists) and runs without them. The webhook URLs are secrets: keep the file
+# 0440 and out of git.
+#
+# A bind mount survives watchtower swaps. If config/discord.toml is missing
+# when the container is created, Docker creates an empty directory in its
+# place; delete it, write the file, and run `docker compose up -d` again.
+
+services:
+  cimmeria:
+    volumes:
+      - ./config/discord.toml:/opt/cimmeria/config/discord.toml:ro

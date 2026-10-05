@@ -1,5 +1,5 @@
-//! Crowd-control darts through `apply_damage_to_target` and the pulse tick
-//! (ammo campaign AM-11a): a dart shot with Poison, Disease or Tranquilizer
+//! Crowd-control darts through `apply_damage_to_target`, the pulse tick and
+//! the stat-buff tick (ammo campaign AM-11a): a dart shot with Poison, Disease or Tranquilizer
 //! loaded runs its on-hit effect on the target, and the effect keeps going
 //! (or ends) on the pulse tick.
 //!
@@ -64,7 +64,7 @@ fn seeded_effects() -> Vec<EffectDef> {
         effect(
             TRANQ_EFFECT,
             Some("MovementSlow"),
-            (4, 2.0),
+            (1, 6.0),
             &[("SpeedReduction", "40")],
         ),
     ]
@@ -250,26 +250,26 @@ async fn disease_dart_is_a_weaker_longer_dot() {
     assert_eq!(before - npc_health(&mgr), 2);
 }
 
-/// A Tranquilizer dart slows the target to 60% speed; a second hit from the
-/// same shooter does not slow it further; the slow ends with the effect.
-/// Fails if the on-hit slow is not dispatched, stacks per hit or pulse, or
-/// is never restored.
+/// A Tranquilizer dart slows the target to 60% speed for 6 s as one
+/// timed-ledger entry (ability mechanics AB-09b); a second hit from the
+/// same shooter refreshes it without slowing further; the stat-buff tick's
+/// expiry restores the speed exactly. Fails if the on-hit slow is not
+/// dispatched, stacks per hit, or is never restored.
 #[tokio::test]
 async fn tranquilizer_dart_slows_until_the_effect_expires() {
     let seq = hit_seq().await;
     let (mut mgr, ability) = setup(DART_TRANQUILIZER);
     shoot(&mut mgr, &ability, seq).await;
     assert_eq!(npc_speed(&mgr), 60);
-    assert_eq!(instance_pulses(&mgr, TRANQ_EFFECT), Some(3));
+    assert_eq!(instance_pulses(&mgr, TRANQ_EFFECT), None, "a ledger entry");
+    assert_eq!(mgr.get_entity(NPC).unwrap().stat_buffs.entries.len(), 1);
 
     shoot(&mut mgr, &ability, seq).await;
     assert_eq!(npc_speed(&mgr), 60, "a refresh must not slow again");
 
-    for _ in 0..2 {
-        pulse(&mut mgr).await;
-        assert_eq!(npc_speed(&mgr), 60, "a pulse must not slow again");
-    }
-    pulse(&mut mgr).await;
-    assert_eq!(instance_pulses(&mgr, TRANQ_EFFECT), None, "expired");
+    let (tx, _rx) = mpsc::channel(256);
+    let later = Instant::now() + Duration::from_secs(7);
+    let expired = crate::cell::effects::stat_buff_tick_at(later, &tx, &mut mgr).await;
+    assert_eq!(expired, 1, "expired");
     assert_eq!(npc_speed(&mgr), 100, "expiry restores the speed");
 }

@@ -74,7 +74,11 @@ fn restore_objectives(space_mgr: &SpaceManager, saved: &SavedMission) -> Vec<Mis
             if saved.status == MISSION_ACTIVE {
                 tracing::warn!(
                     mission_id = saved.mission_id,
-                    current_step_id = ?saved.current_step_id,
+                    mission_name = cimmeria_names::book().mission(saved.mission_id),
+                    current_step_id = saved.current_step_id,
+                    current_step_name = saved
+                        .current_step_id
+                        .and_then(|s| cimmeria_names::book().mission_step(s).map(str::to_owned)),
                     objectives = saved.active_objective_ids.len(),
                     reason = "active_mission_step_undefined",
                     "Restoring mission objectives without a step definition — \
@@ -83,6 +87,7 @@ fn restore_objectives(space_mgr: &SpaceManager, saved: &SavedMission) -> Vec<Mis
             } else {
                 tracing::debug!(
                     mission_id = saved.mission_id,
+                    mission_name = cimmeria_names::book().mission(saved.mission_id),
                     status = saved.status,
                     objectives = saved.active_objective_ids.len(),
                     "Restoring a finished mission's final-step objectives verbatim"
@@ -109,8 +114,13 @@ fn restore_objectives(space_mgr: &SpaceManager, saved: &SavedMission) -> Vec<Mis
         if !defs.iter().any(|d| d.objective_id == oid) {
             tracing::warn!(
                 mission_id = saved.mission_id,
-                current_step_id = ?saved.current_step_id,
+                mission_name = cimmeria_names::book().mission(saved.mission_id),
+                current_step_id = saved.current_step_id,
+                current_step_name = saved
+                    .current_step_id
+                    .and_then(|s| cimmeria_names::book().mission_step(s).map(str::to_owned)),
                 objective_id = oid,
+                objective_name = cimmeria_names::book().mission_objective(oid),
                 "Saved objective id is not defined for the current step — \
                  dropping it from the restored roster (pre-H50 rows stored the \
                  step id here)"

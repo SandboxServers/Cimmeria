@@ -12,6 +12,7 @@ use cimmeria_entity::organization::{OrgType, TextReject};
 use super::fanout::feedback;
 use super::telemetry::{ActionRow, OrgReject};
 use super::OrgCtx;
+use crate::base::session_identity::identity_for_entity;
 
 pub const NOT_MEMBER_TEXT: &str = "You are not a member of that organization.";
 pub const NO_PERMISSION_TEXT: &str = "Your rank does not allow that.";
@@ -131,8 +132,11 @@ pub(super) fn db_failed(row: &ActionRow, e: &dyn std::fmt::Display) -> OrgReject
         event = "org.action_failed",
         action = row.action,
         account_id = row.account_id,
+        account_name = row.account_name,
         player_id = row.player_id,
+        player_name = row.player_name,
         org_id = row.org_id,
+        org_name = row.org_name,
         reason = "db_error",
         error = %e,
         "organization action failed in the database"
@@ -165,8 +169,9 @@ pub async fn not_available(ctx: &OrgCtx<'_>, entity_id: u32, instance_id: i32) {
             target: "org",
             event = "org.send_failed",
             what = "not_available",
-            org_id = instance_id,
+            org_id = instance_id, // nt:id-only the id the client sent; no organization was resolved to name
             entity_id,
+            entity_name = identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id).player_name,
             reason,
             "organization refusal could not be sent"
         );

@@ -41,7 +41,8 @@ crates = ["cimmeria-wire", "cimmeria-wire-log", "cimmeria-patch-wire", "cimmeria
 [[group]]
 id = "domain"
 title = "Domain and engine"
-crates = ["cimmeria-content-engine", "cimmeria-game", "cimmeria-entity", "cimmeria-commands", "cimmeria-defs", "cimmeria-occluder"]
+crates = ["cimmeria-content-engine", "cimmeria-game", "cimmeria-entity", "cimmeria-commands", "cimmeria-defs", "cimmeria-occluder",
+          "cimmeria-names"]
 
 [[group]]
 id = "foundation"

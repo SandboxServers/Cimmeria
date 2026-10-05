@@ -105,12 +105,16 @@ pub async fn gm_list(ctx: GmCtx<'_>, db_pool: &Option<Arc<PgPool>>) {
             return;
         }
     };
+    let id = ctx.identity();
     tracing::info!(
         event = "bm.gm_action",
         action = "bm_list",
         entity_id = ctx.actor.entity_id,
+        entity_name = id.player_name,
         account_id = ctx.actor.account_id,
+        account_name = id.account_name,
         player_id = ctx.actor.player_id,
+        player_name = id.player_name,
         total,
         shown = rows.len(),
         "GM .bm_list read the active auctions"

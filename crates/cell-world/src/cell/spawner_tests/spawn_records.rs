@@ -71,6 +71,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     }
 }
 

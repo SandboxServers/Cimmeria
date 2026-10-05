@@ -104,13 +104,19 @@ pub(super) async fn refuse(
             decision_outcome = "owner_ability_refused",
             stage,
             entity_id = owner,
+            entity_name = space_mgr.entity_label(owner),
             owner_id = owner,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             pet_ids = ?pet_ids,
             reason = refusal.reason(),
             error_code = refusal.code(),
+            error_name = cimmeria_names::book().error_code(refusal.code()),
             "owner ability on a pet refused"
         );
     } else {
@@ -120,13 +126,19 @@ pub(super) async fn refuse(
             decision_outcome = "owner_ability_refused",
             stage,
             entity_id = owner,
+            entity_name = space_mgr.entity_label(owner),
             owner_id = owner,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             pet_ids = ?pet_ids,
             reason = refusal.reason(),
             error_code = refusal.code(),
+            error_name = cimmeria_names::book().error_code(refusal.code()),
             "owner ability on a pet refused"
         );
     }

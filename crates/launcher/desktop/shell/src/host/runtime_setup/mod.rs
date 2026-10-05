@@ -82,7 +82,9 @@ impl NativeHost {
                 .operation
                 .as_ref()
                 .is_some_and(|op| {
-                    (op.kind == OperationKind::Install && op.state == OperationState::Succeeded)
+                    // A published adoption is installed content just as an Install is.
+                    (matches!(op.kind, OperationKind::Install | OperationKind::Adopt)
+                        && op.state == OperationState::Succeeded)
                         || (op.kind == OperationKind::PrepareRuntime
                             && matches!(
                                 op.state,
@@ -95,6 +97,11 @@ impl NativeHost {
             let Some(installed) = state.installed_content()? else {
                 return Ok(None);
             };
+            // Prerequisites are not offered for an adopted copy whose imported
+            // settings no longer verify; the copy itself stays manageable.
+            if state.effective_launch_binding().is_err() {
+                return Ok(None);
+            }
             Ok(
                 matches!(installed.intent.backend, ExtractionBackend::Wine { .. })
                     .then_some(installed.intent.operation_id),
@@ -129,6 +136,8 @@ impl NativeHost {
                 let installed = owner
                     .installed_content()?
                     .ok_or(JobError::IdentityConflict)?;
+                // The renderer names an installation; eligibility is decided here.
+                owner.effective_launch_binding()?;
                 let ExtractionBackend::Wine { runtime_sha256, .. } = installed.intent.backend
                 else {
                     return Err(JobError::PlatformUnavailable);

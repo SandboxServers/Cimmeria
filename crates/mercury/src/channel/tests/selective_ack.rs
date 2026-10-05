@@ -205,6 +205,12 @@ fn watchdog_warns_once_then_throttles_and_counts_the_hole_once() {
         "witness_bundle",
         Some((2, 4)),
         Some(7),
+        Some(crate::packet::MessageHead {
+            offset: 0,
+            msg_id: 0x09,
+            entity_id: None,
+            method_index: None,
+        }),
     );
     ch.process_ack_footer(&[1149, 1150]);
 
@@ -226,6 +232,7 @@ fn watchdog_warns_once_then_throttles_and_counts_the_hole_once() {
     assert_eq!(stall.fragment_index, Some(2));
     assert_eq!(stall.fragment_count, Some(4));
     assert_eq!(stall.message_count, Some(7));
+    assert_eq!(stall.first_message.map(|h| h.msg_id), Some(0x09));
     assert!(stall.first_warning);
     assert_eq!(ch.tx_hole_stalls, 1);
 

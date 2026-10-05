@@ -239,7 +239,7 @@ This is the scenario the whole C01 purge exists for. Before the purge, the auto-
 
 **Relog check:** relog on step 2114 — the prisoner's dialog set is re-bound by mission-accept state, so the topic must still be there and must still be the single correct one.
 
-**Server evidence:** `logs\content.log`, grep `Content: adding dialog set`. You should see **exactly one** line, with `dialog_set_id=2794` (Tau'ri) or `dialog_set_id=5866` (Jaffa), from `chain_id=1011` or `1012` respectively. Two lines is a fail. Also `fire_enter_region: matched` in the same file with `region_tag=Castle_Cellblock.Region2`.
+**Server evidence:** `logs\content.log`, grep `Content: adding dialog set`. You should see **exactly one** line, with `dialog_set_map_id=2794` (Tau'ri) or `dialog_set_map_id=5866` (Jaffa), from `chain_id=1011` or `1012` respectively. Two lines is a fail. Also `fire_enter_region: matched` in the same file with `region_tag=Castle_Cellblock.Region2`.
 
 ### T07 — Cell door Livewire
 

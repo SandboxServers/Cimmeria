@@ -8,10 +8,16 @@
 //! - `lua_type(L, idx)`: any index; an index past the top is `LUA_TNONE`.
 //! - `lua_tolstring(L, idx, &len)`: only after `lua_type` said the value
 //!   is a string (on a number it would convert the value in place).
-//! - `lua_pushvalue(L, -1)` + `lua_getinfo(L, L">S", &ar)`: only when the
-//!   top is a function and the stack has room for the copy (checked from
-//!   `L->top` / `L->stack_last`, see [`STATE_TOP`]). `">S"` pops the copy
-//!   and fills the source fields; it grows nothing (only `f` and `L` push).
+//! - `lua_pushvalue(L, idx)` + `lua_getinfo(L, L">S", &ar)`: only when the
+//!   value at `idx` is a function and the stack has room for the copy
+//!   (checked from `L->top` / `L->stack_last`, see [`STATE_TOP`]). `">S"`
+//!   pops the copy and fills the source fields; it grows nothing (only `f`
+//!   and `L` push).
+//! - `lua_tonumber(L, idx)`: only after `lua_type` said the value is a
+//!   number (on a string it would parse it).
+//! - `lua_topointer(L, idx)`: any index; the closure's address for a
+//!   function, which `ability_trace::shown` uses as a cache key (exports
+//!   added 2026-10-04, checked in the QA `lua51.dll`'s export table).
 //!
 //! Every export is resolved by its mangled name from the loaded
 //! `lua51.dll` (export table checked against the QA client's DLL on
@@ -24,6 +30,8 @@
 //! `+0x0c`, `source` `+0x10`, `linedefined` `+0x1c`,
 //! `lastlinedefined` `+0x20` and `short_src` (`wchar_t[60]`) `+0x24`.
 
+/// `LUA_TNUMBER`.
+pub(crate) const LUA_TNUMBER: i32 = 3;
 /// `LUA_TSTRING`.
 pub(crate) const LUA_TSTRING: i32 = 4;
 /// `LUA_TFUNCTION`.
@@ -113,6 +121,8 @@ mod native {
     type ToLStringFn = unsafe extern "C" fn(*mut c_void, i32, *mut u32) -> *const u16;
     type PushValueFn = unsafe extern "C" fn(*mut c_void, i32);
     type GetInfoFn = unsafe extern "C" fn(*mut c_void, *const u16, *mut u8) -> i32;
+    type ToNumberFn = unsafe extern "C" fn(*mut c_void, i32) -> f64;
+    type ToPointerFn = unsafe extern "C" fn(*mut c_void, i32) -> *const c_void;
 
     /// The `lua51.dll` exports the readers use, resolved once.
     struct Api {
@@ -120,6 +130,8 @@ mod native {
         tolstring: ToLStringFn,
         pushvalue: Option<PushValueFn>,
         getinfo: Option<GetInfoFn>,
+        tonumber: Option<ToNumberFn>,
+        topointer: Option<ToPointerFn>,
     }
 
     static API: OnceLock<Option<Api>> = OnceLock::new();
@@ -151,6 +163,8 @@ mod native {
                         .as_deref(),
                 )
             });
+            let n = export(c"?lua_tonumber@@YANPAUlua_State@@H@Z");
+            let tp = export(c"?lua_topointer@@YAPBXPAUlua_State@@H@Z");
             // SAFETY: the exports' signatures, from the mangled names.
             unsafe {
                 Some(Api {
@@ -158,6 +172,8 @@ mod native {
                     tolstring: std::mem::transmute::<usize, ToLStringFn>(s),
                     pushvalue: p.map(|a| std::mem::transmute::<usize, PushValueFn>(a)),
                     getinfo: g.map(|a| std::mem::transmute::<usize, GetInfoFn>(a)),
+                    tonumber: n.map(|a| std::mem::transmute::<usize, ToNumberFn>(a)),
+                    topointer: tp.map(|a| std::mem::transmute::<usize, ToPointerFn>(a)),
                 })
             }
         })
@@ -205,6 +221,33 @@ mod native {
     /// for the copy `lua_getinfo(">S")` pops, or an export is missing. The
     /// stack is left as it was.
     pub(crate) fn top_function_info(l: *mut c_void) -> Option<(String, i32)> {
+        function_info_at(l, -1)
+    }
+
+    /// The number at `idx`, only when it is one (`lua_tonumber` on a
+    /// number converts nothing).
+    pub(crate) fn number_at(l: *mut c_void, idx: i32) -> Option<f64> {
+        let api = api()?;
+        let tonumber = api.tonumber?;
+        // SAFETY: a live state on this thread; `lua_type` accepts any
+        // index and `lua_tonumber` runs only on a number.
+        unsafe { ((api.lua_type)(l, idx) == LUA_TNUMBER).then(|| tonumber(l, idx)) }
+    }
+
+    /// The identity of the value at `idx` (`lua_topointer`: the closure
+    /// for a function), or `None` without the export.
+    pub(crate) fn pointer_at(l: *mut c_void, idx: i32) -> Option<usize> {
+        let api = api()?;
+        let topointer = api.topointer?;
+        // SAFETY: `lua_topointer` reads the slot and allocates nothing; an
+        // index past the top reads `nil` and returns null.
+        Some(unsafe { topointer(l, idx) } as usize)
+    }
+
+    /// `short_src` and `linedefined` of the function at `idx` (a negative,
+    /// top-relative index), with the same checks as [`top_function_info`]:
+    /// a copy is pushed and `lua_getinfo(">S")` pops it.
+    pub(crate) fn function_info_at(l: *mut c_void, idx: i32) -> Option<(String, i32)> {
         let api = api()?;
         let (pushvalue, getinfo) = (api.pushvalue?, api.getinfo?);
         let state = cimmeria_client_hookgate::os::read_bytes(l as usize, STATE_STACK_LAST + 4)?;
@@ -219,10 +262,10 @@ mod native {
         // (checked), and `">S"` pops exactly the copy pushed here while
         // filling `ar`, which is the size of this build's `lua_Debug`.
         unsafe {
-            if (api.lua_type)(l, -1) != LUA_TFUNCTION {
+            if (api.lua_type)(l, idx) != LUA_TFUNCTION {
                 return None;
             }
-            pushvalue(l, -1);
+            pushvalue(l, idx);
             if getinfo(l, what.as_ptr(), ar.as_mut_ptr()) == 0 {
                 return None;
             }
@@ -232,7 +275,9 @@ mod native {
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-pub(crate) use native::{read_string, top_function_info, value_type};
+pub(crate) use native::{
+    function_info_at, number_at, pointer_at, read_string, top_function_info, value_type,
+};
 
 #[cfg(test)]
 mod tests {

@@ -254,6 +254,7 @@ async fn a_blueprint_whose_discipline_was_dropped_before_the_transaction_is_not_
         player_id: f.player_id,
         entity_id: f.entity_id,
         gm_entity_id: None,
+        gm_name: None,
     };
 
     let applied = apply_craft_transaction(&f.env, &ids, &plan)

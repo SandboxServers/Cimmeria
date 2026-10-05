@@ -80,6 +80,7 @@ pub(crate) async fn begin_switch_return_with(
     let (Some(player_id), account_id) = (e.player_id, e.account_id) else {
         return SwitchReturn::Proceed;
     };
+    let who = e.identity();
     let Some(item) = e.bandolier_items.get(&slot_id) else {
         return SwitchReturn::Proceed;
     };
@@ -92,7 +93,14 @@ pub(crate) async fn begin_switch_return_with(
             target: "ammo",
             event = "ammo_switch_dropped",
             reason = "request_in_flight",
-            account_id, player_id, entity_id, ammo_type = old_type, to_ammo_type = new_ammo_type,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type = old_type,
+            to_ammo_type = new_ammo_type,
             "ammo switch ignored: a reserve request is still in flight"
         );
         return SwitchReturn::Deferred;
@@ -116,7 +124,13 @@ pub(crate) async fn begin_switch_return_with(
                 target: "ammo",
                 event = "reserve_request_send_failed",
                 reason = "base_channel_closed",
-                account_id, player_id, entity_id, ammo_type = old_type,
+                account_id,
+                account_name = who.account_name,
+                player_id,
+                player_name = who.player_name,
+                entity_id,
+                entity_name = who.player_name,
+                ammo_type = old_type,
                 "switch return could not be queued; the switch did not happen"
             );
             return SwitchReturn::Deferred;
@@ -144,8 +158,16 @@ pub(crate) async fn begin_switch_return_with(
         tracing::debug!(
             target: "ammo",
             event = "ammo_switch_return_requested",
-            account_id, player_id, entity_id, ammo_type = old_type,
-            to_ammo_type = new_ammo_type, slot_id, rounds = clip,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type = old_type,
+            to_ammo_type = new_ammo_type,
+            slot_id, // nt:id-only bandolier slot index, not a named object
+            rounds = clip,
             "ammo switch: returning unfired special rounds to the bags"
         );
         flush_stats(entity_id, tx, space_mgr).await;
@@ -159,8 +181,17 @@ pub(crate) async fn begin_switch_return_with(
         tracing::debug!(
             target: "ammo",
             event = "ammo_switch_default_emptied",
-            account_id, player_id, entity_id, ammo_type = old_type,
-            to_ammo_type = new_ammo_type, slot_id, clip_before = clip, clip_after = 0,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type = old_type,
+            to_ammo_type = new_ammo_type,
+            slot_id, // nt:id-only bandolier slot index, not a named object
+            clip_before = clip,
+            clip_after = 0,
             "ammo switch to a special type: the free default rounds leave the clip"
         );
         flush_stats(entity_id, tx, space_mgr).await;
@@ -190,20 +221,25 @@ pub async fn handle_switch_returned(
     else {
         return;
     };
-    let account_id = match space_mgr.get_entity(entity_id) {
-        Some(e) if e.player_id == Some(player_id) => e.account_id,
+    let who = match space_mgr.get_entity(entity_id) {
+        Some(e) if e.player_id == Some(player_id) => e.identity(),
         _ => {
             tracing::info!(
                 target: "ammo",
                 event = "switch_returned_stale",
                 reason = "entity_gone",
-                player_id, entity_id, ammo_type = from_ammo_type, returned, remainder,
+                player_id, // nt:id-only the entity left: no session left to name
+                entity_id, // nt:id-only gone or reused: a live label would name another
+                ammo_type = from_ammo_type,
+                returned,
+                remainder,
                 "switch return answered for an entity that is no longer this player; \
                  the weapon row is already settled"
             );
             return;
         }
     };
+    let account_id = who.account_id;
     if let Some(s) = reserve_state_mut(space_mgr, entity_id) {
         s.pending_switch
             .take_if(|p| p.slot_id == slot_id && p.instance_id == instance_id);
@@ -242,8 +278,16 @@ pub async fn handle_switch_returned(
             target: "ammo",
             event = "switch_returned_stale",
             reason = "slot_changed",
-            account_id, player_id, entity_id, ammo_type = from_ammo_type, slot_id,
-            returned, remainder,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type = from_ammo_type,
+            slot_id, // nt:id-only bandolier slot index, not a named object
+            returned,
+            remainder,
             "switch return answered after the weapon left its slot"
         );
         return;
@@ -265,11 +309,20 @@ pub async fn handle_switch_returned(
                 Ok(()) => "bags_full",
                 Err(r) => r.reason(),
             },
-            account_id, player_id, entity_id, ammo_type = from_ammo_type,
-            to_ammo_type, slot_id, returned, remainder,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type = from_ammo_type,
+            to_ammo_type,
+            slot_id, // nt:id-only bandolier slot index, not a named object
+            returned,
+            remainder,
             "ammo switch did not happen; the unfitted rounds stay loaded as the old type"
         );
-        send_feedback_line(entity_id, &text, tx).await;
+        send_feedback_line(entity_id, who.player_name, &text, tx).await;
     }
     // The client's picker already shows the new choice; tell it the type
     // the slot really holds either way.

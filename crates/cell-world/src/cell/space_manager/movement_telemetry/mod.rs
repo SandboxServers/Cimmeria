@@ -78,12 +78,25 @@ mod tests;
 /// to the process CWD, so a test cannot make that branch fire at all —
 /// and this is the only navmesh log line in the codebase with no other
 /// caller to prove its field set.
-pub(crate) fn log_navmesh_loaded(space_id: u32, world_name: &str, fp: &NavMeshFingerprint) {
+///
+/// `file_source` is `world` for the world's own `.nav` and `client_map` when
+/// the world had none and the cell loaded its client map's (D-DA5, see
+/// `space_files`); `world_id` is `None` only for a name the wire table does
+/// not know.
+pub(crate) fn log_navmesh_loaded(
+    space_id: u32,
+    world_name: &str,
+    world_id: Option<i32>,
+    file_source: &str,
+    fp: &NavMeshFingerprint,
+) {
     tracing::info!(
         target: "movement.navmesh",
         event = "navmesh_loaded",
         space_id,
         world = %world_name,
+        world_id,
+        file_source,
         path = %fp.path,
         polys = fp.npolys,
         verts = fp.nverts,

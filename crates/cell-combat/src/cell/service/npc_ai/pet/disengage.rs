@@ -120,6 +120,7 @@ fn log_released(
         return;
     }
     let id = owner_identity(space_mgr, pet_id, owner_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -129,6 +130,13 @@ fn log_released(
         owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         reason,
         released = released.len(),
         target_ids = ?released,
@@ -180,6 +188,7 @@ pub(super) fn drop_targets_not_worth_fighting(
     let released = release_pet_from(space_mgr, pet_id, &invalid);
     log_released(space_mgr, pet_id, owner_id, &released, "target_invalid");
     let id = owner_identity(space_mgr, pet_id, owner_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     for (target_id, reason) in dropped {
         tracing::debug!(
             target: "pets.ai",
@@ -190,7 +199,15 @@ pub(super) fn drop_targets_not_worth_fighting(
             owner_id,
             account_id = id.account_id,
             player_id = id.player_id,
+            entity_name = names.entity_name,
+            pet_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            owner_name = id.player_name,
+            account_name = id.account_name,
+            player_name = id.player_name,
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             reason,
             "pet: dropped a target not worth fighting"
         );
@@ -271,6 +288,7 @@ pub(in crate::cell::service::npc_ai) async fn rearm_after_fight(
         defend::sync_owner_combat(npc_id, owner_id, tx, space_mgr).await;
     }
     let id = owner_identity(space_mgr, npc_id, owner_id);
+    let names = super::debug_row_names(space_mgr, npc_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = npc_id,
@@ -280,6 +298,13 @@ pub(in crate::cell::service::npc_ai) async fn rearm_after_fight(
         owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         reason = reason.label(),
         trigger,
         threat_count,

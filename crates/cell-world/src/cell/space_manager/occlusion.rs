@@ -114,18 +114,46 @@ impl SpaceManager {
         eye_height_for(e.body_set.as_deref(), &self.body_set_eye_heights)
     }
 
-    /// The occluder for `world_name` (by the `.nav` file-name rule: lower
-    /// case, spaces as underscores), loaded on first use and cached,
-    /// including a miss, so an instanced world is read once.
+    /// The occluder for `world_name`: its own `.occ`, else its client map's
+    /// (D-DA5, see `space_files`), loaded on first use and cached, including
+    /// a miss, so an instanced world is read once. The cache is keyed by the
+    /// **file**, so two worlds on one map (`DebugArea` and
+    /// `Ihpet_Crater_Light`) share one occluder and one residency set.
     pub(crate) fn occluder_for_world(&mut self, world_name: &str) -> Option<Arc<PagedOccluder>> {
-        let key = world_name.to_lowercase().replace(' ', "_");
-        if let Some(cached) = self.occluders.get(&key) {
+        let world_key = super::space_files::file_key(world_name);
+        let file_key = self.occluder_files.get(&world_key).unwrap_or(&world_key);
+        if let Some(cached) = self.occluders.get(file_key) {
             return cached.clone();
         }
-        let path = format!("data/spaces/{key}.occ");
-        let loaded = load_occluder(Path::new(&path), world_name);
-        self.occluders.insert(key, loaded.clone());
+        let resolved =
+            super::space_files::resolve_space_file(&self.space_data_dir, world_name, "occ");
+        let (file_key, loaded) = match resolved {
+            Ok(file) => {
+                let loaded = match self.occluders.get(&file.key) {
+                    Some(cached) => cached.clone(),
+                    None => load_occluder(&file.path, world_name, file.source.label()),
+                };
+                (file.key, loaded)
+            }
+            Err(own_path) => {
+                log_occluder_absent(&own_path, world_name);
+                (world_key.clone(), None)
+            }
+        };
+        self.occluders.insert(file_key.clone(), loaded.clone());
+        self.occluder_files.insert(world_key, file_key);
         loaded
+    }
+
+    /// The occluder-cache key a world's spaces count toward: the file it
+    /// resolved to, else its own name key (a world the cache was seeded for
+    /// directly, as tests do).
+    fn occluder_file_key(&self, world_name: &str) -> String {
+        let world_key = super::space_files::file_key(world_name);
+        self.occluder_files
+            .get(&world_key)
+            .cloned()
+            .unwrap_or(world_key)
     }
 
     /// The occluder of the space `entity_id` is in.
@@ -159,7 +187,7 @@ impl SpaceManager {
             if space.occluder.is_none() {
                 continue;
             }
-            let key = space.world_name.to_lowercase().replace(' ', "_");
+            let key = self.occluder_file_key(&space.world_name);
             spaces.entry(key.clone()).or_default().push(space.space_id);
             let pts = players.entry(key).or_default();
             for pid in &space.players {
@@ -232,21 +260,25 @@ impl SpaceManager {
     }
 }
 
-/// Read one `.occ` file. Absent is normal (the world keeps the navmesh
-/// ray); unreadable is a WARN, because a shipped file that fails to load
-/// silently changes every NPC's line of sight in that world.
-fn load_occluder(path: &Path, world_name: &str) -> Option<Arc<PagedOccluder>> {
-    if !path.exists() {
-        tracing::info!(target: "npc_ai.occluder", world = %world_name, path = %path.display(),
-            event = "occluder_absent",
-            "occluder: no .occ for this world -- line of sight uses the navmesh ray");
-        return None;
-    }
+/// Absent is normal (the world keeps the navmesh ray).
+fn log_occluder_absent(path: &Path, world_name: &str) {
+    tracing::info!(target: "npc_ai.occluder", world = %world_name,
+        world_id = cimmeria_wire::mercury::world_data::known_world_id(world_name),
+        path = %path.display(), event = "occluder_absent",
+        "occluder: no .occ for this world or its client map -- line of sight uses the navmesh ray");
+}
+
+/// Read one `.occ` file. Unreadable is a WARN, because a shipped file that
+/// fails to load silently changes every NPC's line of sight in that world.
+/// `file_source` is `world` or `client_map` (D-DA5).
+fn load_occluder(path: &Path, world_name: &str, file_source: &str) -> Option<Arc<PagedOccluder>> {
+    let world_id = cimmeria_wire::mercury::world_data::known_world_id(world_name);
     let started = std::time::Instant::now();
     match PagedOccluder::load(path) {
         Ok(occ) => {
             let st = occ.stats();
-            tracing::info!(target: "npc_ai.occluder", world = %world_name, path = %path.display(),
+            tracing::info!(target: "npc_ai.occluder", world = %world_name, world_id,
+                file_source, path = %path.display(),
                 event = "occluder_loaded", occluder_hash = occ.short_hash(),
                 pages = st.pages, packed_bytes = st.packed_bytes,
                 full_ram_bytes = occ.full_ram_bytes(),
@@ -256,7 +288,8 @@ fn load_occluder(path: &Path, world_name: &str) -> Option<Arc<PagedOccluder>> {
             Some(Arc::new(occ))
         }
         Err(e) => {
-            tracing::warn!(target: "npc_ai.occluder", world = %world_name, path = %path.display(),
+            tracing::warn!(target: "npc_ai.occluder", world = %world_name, world_id,
+                file_source, path = %path.display(),
                 event = "occluder_load_failed", error = %e,
                 "occluder: .occ failed to load -- line of sight falls back to the navmesh ray");
             None

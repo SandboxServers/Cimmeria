@@ -2,12 +2,12 @@
 title: "Effect System"
 type: reference
 audience: engineers
-last_updated: 2026-09-28
+last_updated: 2026-10-03
 ---
 
 # Effect System
 
-> **Last updated**: 2026-09-28 (#804: the clear-on-death rows follow the stat-buff ledger)
+> **Last updated**: 2026-10-03 (ability mechanics AB-04: single-pulse timed buffs and debuffs on the timed effect ledger; duration tracking was only true for multi-pulse effects, audit B-34)
 > **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Gaps: diminishing returns, most of the effect-clear flags (only `EF_ClearOnDeath` is honoured, and only by the timed stat-buff ledger), and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
 
 ## Overview
@@ -21,21 +21,21 @@ The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Effect application | DONE | `addEffect()` on AbilityManager |
-| Effect removal (by ID, by flag, by moniker) | DONE | Multiple removal paths |
+| Effect removal (by ID, by flag, by moniker) | DONE | Multiple removal paths. Category cleanses (`RemoveEffects`, AB-10) remove an exact count per category ("Purges 2 Mental and 2 Health effects") from pulsing and ledger effects, harmful ones from the caster or an ally only; Mental, Kinetic and Health come from the resist rolls that gate each effect |
 | Pulsing effects (periodic) | DONE | Timer-based pulse loop |
-| Duration tracking | DONE | `completeTime`, `remainingPulses` |
+| Duration tracking | PARTIAL | Multi-pulse effects: `active_effects` (`cell/effects/pulsing/`). Single-pulse timed effects (`pulse_count = 1`, `pulse_duration > 0`, the shape of every authored buff and debuff) never register there; since ability mechanics AB-04 the ones with stat NVPs live on the timed effect ledger (`CellEntity::stat_buffs`, one entry per effect and invoker, expired by the stat-buff tick, icon via `onTimerUpdate` type 5 with SecondaryId = effect id). The generated stat effects and the stimpacks use it. Since AB-08 it also holds entries with no expiry: a toggle's (a stance, on with one press, off with the next, a new stance replacing the old by `EFFECT_Stance`) and a stat passive's (`EF_AlwaysPersist`, held while the ability is known). Since AB-10 the absorb shields use it too (a shield's entry also holds its mutable absorb pools); CC and regen buffs do not yet (AB-05, AB-09). [ADR decision 28](../architecture/abilities-and-effects-decisions-23-33.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) |
 | Stat modification (absolute) | DONE | `changeStat()` with STAT_Absolute |
 | Stat modification (% current) | DONE | `STAT_CurrentPercentage` |
 | Stat modification (% max) | DONE | `STAT_MaxPercentage` |
 | Stat modification (% min-max) | DONE | `STAT_MinMaxPercentage` |
-| Temporary vs permanent changes | NOT IMPL | No permanent/temporary distinction exists in `crates/`. A stat change is reverted only by its script's `on_remove` (AbsorbShield, Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
+| Temporary vs permanent changes | PARTIAL | A timed effect ledger entry records exactly what it moved and takes back exactly that on expiry or removal (`StatBuff`, `TimedStat`). An absorb shield's unspent capacity comes off with its ledger entry (AB-10). Otherwise a stat change is reverted only by its script's `on_remove` (Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
 | QR combat damage | DONE | `qrCombatDamage()` using shared or per-effect QR |
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
 | Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/cell-world/src/cell/effects/` or `crates/cell-combat/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
 | Client result reporting | DONE | `onEffectResults` with stat delta list |
 | Clear on death/damage/rez/bandolier | PARTIAL | On death, `resolve_death` ends the timed stat buffs whose effect carries `EF_ClearOnDeath` (`EF_CLEAR_ON_DEATH`, `cell/effects/stat_buffs/`). Pulsing effects ignore the flag: pulses on a dead target are skipped (the instances stay and age out) and a dying channeller's channels are cancelled (`cell/abilities/death/mod.rs`). `EF_ClearOnDamage`, `EF_ClearOnRez` and `EF_RemoveOnBandolierSlotChange` have no Rust constant, and nothing clears effects on damage, revive, or bandolier swap |
 | Effect stacking rules | DONE | Refcounted via `state_flag_counts`; shipped in PR #420 |
-| Absorption shields | DONE | Absorption pool with defined drain ordering; shipped in PR #420 |
+| Absorption shields | DONE | Absorption pool with defined drain ordering, shipped in PR #420. Since ability mechanics AB-10 a shield is a timed effect ledger entry with one pool per damage type: Focus and Health damage, scripted or not, DoT pulses included, drain it before Focus; it comes off when empty or expired. Personal Shield (4306, 500 Physical / Energy / Contamination for 30 s) is the one shield whose text gives a number; [ADR decision 9](../architecture/abilities-and-effects-system.md#9-absorption-pool-drain-elemental-specific-first-generic-catch-all-second) |
 | Channeled effect pulses | DONE | `cell/effects/pulsing/`, including channel cancellation and the `AF_CHANNEL_ALLOWS_MOVEMENT` gate |
 | Diminishing returns | NOT IMPL | `diminishingReturns` property exists |
 | Confirmation dialog | NOT IMPL | `confirmationResponse` is a stub |
@@ -84,7 +84,7 @@ AbilityManager.addEffect(effect, invokerId)
 | `EF_ClearOnRez` | -- | NO | Remove effect on revive |
 | `EF_RemoveOnBandolierSlotChange` | -- | NO | Remove on weapon swap |
 | `EF_OnlySendToSelf` | -- | NO | Don't broadcast to witnesses |
-| `EF_DontUseQR` | `EF_DONT_USE_QR` (32, `crates/entity/src/abilities/defs.rs`) | NO | Skip QR calculation. The constant is defined but never read |
+| `EF_DontUseQR` | `EF_DONT_USE_QR` (16, `crates/entity/src/abilities/defs.rs`) | YES | Skip QR calculation: the effect never misses, and a hit whose every effect carries it takes no roll (`damage_apply/qr_gate.rs`, AB-06) |
 | `EF_Beneficial_Effect` | -- | NO | AI: is this hostile? |
 | `EF_Offline_Time_Counts` | -- | NO | Count cooldown while offline |
 | `EF_HasInductionBar` | -- | NO | Show deploy/grenade bar |

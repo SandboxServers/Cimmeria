@@ -1,5 +1,5 @@
 ---
-applyTo: "crates/services/**/*.rs,crates/cell/**/*.rs,crates/cell-*/**/*.rs,crates/base/**/*.rs,crates/base-*/**/*.rs,crates/wire/**/*.rs"
+applyTo: "crates/services/**/*.rs,crates/cell/**/*.rs,crates/cell-*/**/*.rs,crates/base/**/*.rs,crates/base-*/**/*.rs,crates/wire/**/*.rs,crates/content-engine/**/*.rs,crates/entity/**/*.rs,crates/game/**/*.rs,crates/server/**/*.rs"
 ---
 
 # Rust services review rules
@@ -16,7 +16,7 @@ The cell-side and base-side server logic lives in the crates split out of `crate
 
 Every action type in `Action` (see `crates/content-engine/src/actions.rs`) needs an executor arm in `crates/cell-content/src/cell/content/executor/mod.rs`. Stubs that only log are a known footgun — they make a chain *look* like it's running while doing nothing. If you spot a stub arm during review, ask whether the calling chain actually expects the side effect.
 
-Existing stubs to watch for: `Action::RemoveItem` (logs only — see content-chain rules), `Action::IncrementCounter`, `Action::ResetCounter`. Newer additions should either implement fully or be flagged with a `tracing::warn!` so silent no-ops are visible in logs.
+`Action::RemoveItem`, `Action::IncrementCounter` and `Action::ResetCounter`, once stubs, are implemented (`executor/inventory.rs`, `executor/counter.rs`). New actions should either implement fully or be flagged with a `tracing::warn!` so silent no-ops are visible in logs.
 
 ## Wire format
 
@@ -32,7 +32,7 @@ Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the 
 
 1. Iterate with `cargo check -p <crate>` on the crate you changed. `cimmeria-services` is a small facade over the split crates, so `-p cimmeria-services` doesn't cover them.
 2. Agent and worker `cargo` calls go through the build lane, `tools/build-lane/lane.sh`, which limits how many builds run on the machine at once.
-3. Workspace builds for final validation only, with the six `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
+3. Workspace builds for final validation only, with the seven `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
 
 ## File caps
 

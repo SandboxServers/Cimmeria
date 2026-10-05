@@ -79,6 +79,7 @@ fn space_with_three_players() -> SpaceManager {
             address_origin: 18,
             arrival: None,
             event_set_id: Some(EVENT_SET),
+            debug_dial_hub: false,
         },
     );
     mgr.sequence_map

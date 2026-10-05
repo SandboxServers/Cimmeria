@@ -353,6 +353,7 @@ impl Channel {
             fragment_index: None,
             fragment_count: None,
             message_count: None,
+            first_message: None,
             retransmit_cap: None,
         };
 
@@ -413,6 +414,7 @@ impl Channel {
         kind: &'static str,
         fragment: Option<(usize, usize)>,
         message_count: Option<usize>,
+        first_message: Option<crate::packet::MessageHead>,
     ) {
         if let Some(entry) = self
             .tx_window
@@ -427,6 +429,7 @@ impl Channel {
                 entry.fragment_count = Some(count);
             }
             entry.message_count = message_count;
+            entry.first_message = first_message;
         }
     }
 
@@ -501,6 +504,7 @@ impl Channel {
             fragment_index: None,
             fragment_count: None,
             message_count: None,
+            first_message: None,
             retransmit_cap: None,
         });
         self.last_sent = now;

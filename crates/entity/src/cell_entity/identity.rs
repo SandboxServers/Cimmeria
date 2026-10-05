@@ -30,7 +30,12 @@
 //! `unwrap_or(0)` these — a sentinel 0 is indistinguishable from a real id
 //! in a query.
 //!
-//! See `docs/architecture/instrumentation-discipline.md` §Rule 5.
+//! The two names (`player_name`, `account_name`) follow the same contract:
+//! Rule 6 pairs every ID with its name, and an unknown name is left out.
+//!
+//! See `docs/architecture/instrumentation-discipline.md` §Rule 5 and §Rule 6.
+
+use crate::name_intern::intern_opt;
 
 /// The stable identity correlator pair for one player connection.
 ///
@@ -45,6 +50,12 @@ pub struct PlayerIdentity {
     /// The `sgw_player.player_id` of the character being played. `None` for
     /// NPCs and before character select.
     pub player_id: Option<i32>,
+    /// The character's name, paired with `player_id` (Rule 6). `None` for
+    /// NPCs and whenever the name is not known yet; never `""`.
+    pub player_name: Option<&'static str>,
+    /// The login name, paired with `account_id` (Rule 6). `None` for NPCs
+    /// and whenever it is not known; never `""`.
+    pub account_name: Option<&'static str>,
 }
 
 impl PlayerIdentity {
@@ -54,14 +65,29 @@ impl PlayerIdentity {
     pub const UNKNOWN: Self = Self {
         account_id: None,
         player_id: None,
+        player_name: None,
+        account_name: None,
     };
 
-    /// Build from the two raw halves.
+    /// Build from the two raw ID halves, with no names.
     #[must_use]
     pub fn new(account_id: Option<u32>, player_id: Option<i32>) -> Self {
         Self {
             account_id,
             player_id,
+            ..Self::UNKNOWN
+        }
+    }
+
+    /// Attach the names that pair with the IDs (Rule 6). Both are interned
+    /// (see [`crate::name_intern`]) so the identity stays `Copy`; a blank
+    /// name becomes `None`.
+    #[must_use]
+    pub fn with_names(self, player_name: Option<&str>, account_name: Option<&str>) -> Self {
+        Self {
+            player_name: intern_opt(player_name),
+            account_name: intern_opt(account_name),
+            ..self
         }
     }
 
@@ -73,16 +99,41 @@ impl PlayerIdentity {
     }
 }
 
+/// The interned names a player entity's log lines carry (Rule 6). Set
+/// through [`CellEntity::stamp_log_names`](super::CellEntity::stamp_log_names).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogNames {
+    /// The character name.
+    pub player_name: Option<&'static str>,
+    /// The login name.
+    pub account_name: Option<&'static str>,
+}
+
 impl super::CellEntity {
     /// This entity's stable log-correlation identity.
     ///
     /// Returns [`PlayerIdentity::UNKNOWN`] for NPCs, whose `account_id` and
-    /// `player_id` are both `None`.
+    /// `player_id` are both `None`. A plain copy: no lock, no hashing, so
+    /// the per-hit callers pay nothing for the names.
     #[must_use]
     pub fn identity(&self) -> PlayerIdentity {
         PlayerIdentity {
             account_id: self.account_id,
             player_id: self.player_id,
+            player_name: self.log_names.player_name,
+            account_name: self.log_names.account_name,
+        }
+    }
+
+    /// Intern and store the log names. A `None` (or blank) argument keeps
+    /// the name already stamped, so a later stamp that lacks one half (for
+    /// `InitPlayerState`, the login name) never erases it.
+    pub fn stamp_log_names(&mut self, player_name: Option<&str>, account_name: Option<&str>) {
+        if let Some(n) = intern_opt(player_name) {
+            self.log_names.player_name = Some(n);
+        }
+        if let Some(n) = intern_opt(account_name) {
+            self.log_names.account_name = Some(n);
         }
     }
 }
@@ -112,6 +163,41 @@ mod tests {
         e.player_id = Some(12);
         assert_eq!(e.identity(), PlayerIdentity::new(Some(6), Some(12)));
         assert!(e.identity().is_known());
+    }
+
+    #[test]
+    fn identity_carries_the_stamped_names() {
+        let mut e = entity();
+        e.account_id = Some(6);
+        e.player_id = Some(12);
+        e.stamp_log_names(Some("Teal'c"), Some("sgc_login"));
+        let id = e.identity();
+        assert_eq!(id.player_name, Some("Teal'c"));
+        assert_eq!(id.account_name, Some("sgc_login"));
+    }
+
+    #[test]
+    fn a_partial_stamp_keeps_the_other_name() {
+        let mut e = entity();
+        e.stamp_log_names(Some("Teal'c"), Some("sgc_login"));
+        e.stamp_log_names(Some("Teal'c"), None);
+        assert_eq!(e.identity().account_name, Some("sgc_login"));
+    }
+
+    #[test]
+    fn blank_names_are_left_out() {
+        let mut e = entity();
+        e.stamp_log_names(Some(""), Some("  "));
+        assert_eq!(e.identity().player_name, None);
+        assert_eq!(e.identity().account_name, None);
+    }
+
+    #[test]
+    fn identity_does_not_read_the_game_name() {
+        // `character_name` is the game's field; only a stamp names the log.
+        let mut e = entity();
+        e.character_name = Some("Teal'c".into());
+        assert_eq!(e.identity().player_name, None);
     }
 
     #[test]

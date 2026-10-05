@@ -66,11 +66,14 @@ pub(super) async fn disband(
             target: "org",
             event = "org.forward_failed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             entity_id = caller_id,
-            org_id,
+            entity_name = id.player_name,
+            org_id, // nt:id-only organization names live on the base, not the cell
             reason = "cell_to_base_closed",
-            "org_disband could not reach the base"
+            "org_disband could not reach the base",
         );
         refused("cell_to_base_closed", Some(org_id));
     }
@@ -160,10 +163,13 @@ fn refused_row(
             outcome = "rejected",
             reason,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id = caller_id,
-            org_id,
-            "organization action rejected"
+            entity_name = id.player_name,
+            org_id, // nt:id-only organization names live on the base, not the cell
+            "organization action rejected",
         );
     }
 }
@@ -185,12 +191,15 @@ async fn to_base(
             target: "org",
             event = "org.forward_failed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id = caller_id,
-            org_id,
+            entity_name = id.player_name,
+            org_id, // nt:id-only organization names live on the base, not the cell
             kind,
             reason = "cell_to_base_closed",
-            "GM organization command could not reach the base"
+            "GM organization command could not reach the base",
         );
         refused_row(event, "cell_to_base_closed", caller_id, space_mgr, org_id);
     }

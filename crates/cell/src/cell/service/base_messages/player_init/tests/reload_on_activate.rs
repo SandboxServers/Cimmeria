@@ -90,6 +90,8 @@ async fn init_player_state_triggers_reload_on_activate_when_clip_partial() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     // Pre-mark the weapon as drawn so the Phase A draw window
@@ -172,6 +174,8 @@ async fn init_player_state_triggers_reload_on_activate_when_holstered() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     // Sanity: the fixture starts with the production default

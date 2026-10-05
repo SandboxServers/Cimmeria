@@ -2,7 +2,7 @@
 title: "Archetype Content Availability Map"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-04
 ---
 
 # Archetype Content Availability Map
@@ -86,15 +86,22 @@ No prerequisite chains or level gating has been implemented.
 
 ### Starting Abilities
 
-All Soldier character definitions (def IDs 1, 2, 11, 12) receive:
+Every character definition (def IDs 1-23, every archetype) receives the same
+five starter abilities:
 
 | Ability ID | Name | Description |
 |---|---|---|
-| 592 | Pistol Shot | Ranged single-target attack (shared with Commando) |
-| 594 | Strike | Melee attack (shared with Commando) |
-| 597 | Heal Focus | Restores 35% Focus, 30s cooldown (shared with Commando) |
+| 592 | Pistol Shot | Ranged single-target attack; with a weapon drawn it fires that weapon's ranged ability |
+| 594 | Strike | Melee attack |
+| 597 | Heal Focus | Restores 35% Focus, 30s cooldown |
+| 1646 | Health Heal | Restores 10% Health, 30s cooldown |
+| 1218 | Medical Attention: Recuperation | Restores 75% Health over 25 s, 30s cooldown |
 
-Source: `resources.char_creation_abilities`
+Every character definition also starts with item 55, SI 3 9mm Pistol, loaded,
+in bandolier slot 0 (`resources.char_creation_items`), so Pistol Shot fires at
+spawn. See [character-creation.md § Starter kit](../gameplay/character-creation.md#starter-kit-rust-server).
+
+Source: `resources.char_creation_abilities`, `resources.char_creation_items`
 
 ### Character Creation Definitions
 
@@ -175,8 +182,11 @@ All 85 abilities have `level = 1` and `prerequisite_abilities = '{}'`.
 
 ### Starting Abilities
 
-All Commando character definitions (def IDs 3, 4, 13, 14) receive the same 3
-starting abilities as Soldier: Pistol Shot (592), Strike (594), Heal Focus (597).
+All Commando character definitions (def IDs 3, 4, 13, 14) receive the same
+starter kit as every other class: Pistol Shot (592), Strike (594), Heal Focus
+(597), Health Heal (1646) and Recuperation (1218), and the loaded starter pistol
+(item 55) in bandolier slot 0. The seeded playtest characters (player ids
+62-70) are Praxis Commandos (def ID 3).
 
 ### Character Creation Definitions
 
@@ -396,8 +406,9 @@ To bring a placeholder archetype from "shell" to "minimally playable":
    (Confidence: HIGH -- the loading code in `Archetype.py` is generic)
 
 3. **Add starting abilities** -- Add rows to `resources.char_creation_abilities`
-   for each char_def_id of the archetype. Minimum 3 abilities (ranged, melee, heal)
-   to match Soldier/Commando pattern.
+   for each char_def_id of the archetype. Every char_def today gets the same five
+   (592, 594, 597, 1646, 1218); a class-specific weapon is a
+   `resources.char_creation_items` row.
    (Confidence: HIGH)
 
 4. **Add trainer abilities** -- Add rows to `resources.trainer_abilities` for
@@ -426,7 +437,7 @@ To bring a placeholder archetype from "shell" to "minimally playable":
 | Stat design | Trivial | 6 rows x 11 columns in `resources.archetypes` |
 | Ability definitions | **Large** | ~80-85 abilities per archetype, each needing effects, animations, balance |
 | Ability tree layout | Small | Populate `archetype_ability_tree` once abilities exist |
-| Starting abilities | Trivial | 3 rows per char_def_id in `char_creation_abilities` |
+| Starting abilities | Trivial | 5 rows per char_def_id in `char_creation_abilities` |
 | Trainer list | Small | Mirror the ability tree into `trainer_abilities` |
 | Tutorial fixes | Small | Fix branching in 4 Python scripts for 3 missing cases |
 | Testing | Medium | Each archetype needs combat, leveling, trainer flow testing |

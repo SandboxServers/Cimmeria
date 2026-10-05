@@ -91,9 +91,9 @@ pub fn report_scan(
     if rejects.is_empty() && found_candidate {
         return;
     }
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
+    // Built on the first admitted row, not before the sampling below: the
+    // names cost NameBook and interner reads (Rule 6, hot path).
+    let mut ident_cache: Option<Option<NpcIdent>> = None;
     let Some((npc_pos, radius)) = space_mgr
         .get_entity(npc_id)
         .map(|e| (e.position, crate::cell::combat::aggro_radius(e)))
@@ -110,17 +110,26 @@ pub fn report_scan(
         ) else {
             continue;
         };
+        let Some(ident) = ident_cache
+            .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+            .clone()
+        else {
+            return;
+        };
         let target_pos = space_mgr.get_entity(player_id).map(|p| p.position);
         tracing::debug!(
             target: "npc_ai.aggro_scan",
             event = "candidate_rejected",
             npc_id,
             tag = %ident.tag,
+            npc_name = ident.npc_name,
             template_id = ident.template_id,
+            template_name = ident.template_name,
             world = %ident.world,
             space_id = ident.space_id,
             reason = reason.label(),
             player_id,
+            player_name = space_mgr.entity_label(player_id),
             npc_to_target = target_pos.map(|p| p.distance_to(&npc_pos)),
             dy = target_pos.map(|p| p.y - npc_pos.y),
             aggro_radius = radius,
@@ -139,12 +148,20 @@ pub fn report_scan(
     ) else {
         return;
     };
+    let Some(ident) = ident_cache
+        .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+        .clone()
+    else {
+        return;
+    };
     tracing::debug!(
         target: "npc_ai.aggro_scan",
         event = "no_candidates",
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
         witness_count,
@@ -189,12 +206,16 @@ pub fn report_assist_rejects(
             event = "assist_rejected",
             npc_id = assister_id,
             tag = %ident.tag,
+            npc_name = ident.npc_name,
             template_id = ident.template_id,
+            template_name = ident.template_name,
             world = %ident.world,
             space_id = ident.space_id,
             reason = reason.label(),
             victim_id,
+            victim_name = space_mgr.entity_label(victim_id),
             player_id,
+            player_name = space_mgr.entity_label(player_id),
             ai_state = e.ai_state().label(),
             npc_to_victim = e.position.distance_to(&victim_pos),
             dy = victim_pos.y - e.position.y,
@@ -219,9 +240,9 @@ pub fn report_npc_rejects(
     if rejects.is_empty() {
         return;
     }
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
+    // Built on the first admitted row, not before the sampling below: the
+    // names cost NameBook and interner reads (Rule 6, hot path).
+    let mut ident_cache: Option<Option<NpcIdent>> = None;
     let Some((npc_pos, npc_faction, radius)) = space_mgr
         .get_entity(npc_id)
         .map(|e| (e.position, e.faction, crate::cell::combat::aggro_radius(e)))
@@ -238,6 +259,12 @@ pub fn report_npc_rejects(
         ) else {
             continue;
         };
+        let Some(ident) = ident_cache
+            .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+            .clone()
+        else {
+            return;
+        };
         let Some(t) = space_mgr.get_entity(target_id) else {
             continue;
         };
@@ -246,12 +273,15 @@ pub fn report_npc_rejects(
             event = "npc_candidate_rejected",
             npc_id,
             tag = %ident.tag,
+            npc_name = ident.npc_name,
             template_id = ident.template_id,
+            template_name = ident.template_name,
             world = %ident.world,
             space_id = ident.space_id,
             npc_faction,
             reason = reason.label(),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             target_tag = t.tag.as_deref().unwrap_or(""),
             target_faction = t.faction,
             target_ai_state = t.ai_state().label(),

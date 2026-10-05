@@ -68,6 +68,8 @@ pub struct PendingOrgInvite {
     /// The inviter's character name, for the decline line.
     pub inviter_name: String,
     pub org_id: i32,
+    /// The organization's name when the issuer knew it, for the expiry log.
+    pub org_name: Option<String>,
     pub org_type: OrgType,
     pub expires_at: Instant,
 }
@@ -162,6 +164,30 @@ impl OrgInviteState {
         org_type: OrgType,
         now: Instant,
     ) -> Result<PendingOrgInvite, IssueReject> {
+        self.issue_named(
+            invitee_player_id,
+            inviter_player_id,
+            inviter_name,
+            org_id,
+            None,
+            org_type,
+            now,
+        )
+    }
+
+    /// [`OrgInviteState::issue`] that also records the organization's name,
+    /// so a later `invite_expired` line can name it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn issue_named(
+        &mut self,
+        invitee_player_id: i32,
+        inviter_player_id: i32,
+        inviter_name: &str,
+        org_id: i32,
+        org_name: Option<&str>,
+        org_type: OrgType,
+        now: Instant,
+    ) -> Result<PendingOrgInvite, IssueReject> {
         self.purge(now);
         let mut held = 0;
         for inv in self
@@ -184,6 +210,7 @@ impl OrgInviteState {
             inviter_player_id,
             inviter_name: inviter_name.to_owned(),
             org_id,
+            org_name: org_name.map(str::to_owned),
             org_type,
             expires_at: now + INVITE_TTL,
         };

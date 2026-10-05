@@ -121,7 +121,7 @@ fn reconcile_with(
         return Err(StorageError::Corrupt.into());
     }
     let release = state
-        .release_for_intent(&plan.installation)
+        .verify_release_identity(plan.release_identity())
         .map_err(|_| StorageError::Corrupt)?;
     failed_cleanup::validate_tree(&plan.work_directory())?;
     let game = root.join("game");
@@ -182,7 +182,7 @@ fn publish(
     }
     commit::sync(&plan.work_directory())?;
     commit::sync(root)?;
-    atomic::write(root, "content-ready.json", &plan.installation)?;
+    installed_content::write_ready(root, &plan.installation, plan.release_identity())?;
     commit::record(state, plan, Phase::Published)?;
     hook(Point::Published)?;
     state

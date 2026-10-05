@@ -128,11 +128,11 @@ mod live_db_tests {
     /// the stock CellBlock keeps its own id.
     #[tokio::test]
     async fn historical_cellblocks_load_under_their_wire_world_ids() {
-        use cimmeria_wire::mercury::world_data::historical_cellblocks::HISTORICAL_CELLBLOCKS;
+        use cimmeria_wire::mercury::world_data::historical_cellblocks::historical_cellblocks;
 
         let pool = require_db_or_skip!();
         let rows = load_world_rows(&pool).await.expect("load_world_rows");
-        for world in &HISTORICAL_CELLBLOCKS {
+        for world in historical_cellblocks() {
             let row = rows.get(world.world).unwrap_or_else(|| {
                 panic!(
                     "resources.worlds must carry {} ({})",
@@ -144,6 +144,72 @@ mod live_db_tests {
         }
         assert_eq!(rows["Castle_CellBlock"].world_id, 12);
     }
+
+    /// World 1300 `DebugArea` (DA-01) is seeded whole: its world row under the
+    /// wire id, advisory like the map it plays on, its two respawners (130
+    /// arrival, 131 the respawn test) and the cover nodes `cover_extract`
+    /// generated from the Ihpet_Crater_Light map. Every piece fails here if
+    /// its seed rows go missing.
+    #[tokio::test]
+    async fn live_db_debug_area_world_respawners_and_cover_are_seeded() {
+        use cimmeria_wire::mercury::world_data::added_worlds::{
+            DEBUG_AREA_WORLD, DEBUG_AREA_WORLD_ID,
+        };
+
+        let pool = require_db_or_skip!();
+        let rows = load_world_rows(&pool).await.expect("load_world_rows");
+        let row = rows
+            .get(DEBUG_AREA_WORLD)
+            .expect("resources.worlds must carry 1300 'DebugArea'");
+        assert_eq!(row.world_id, DEBUG_AREA_WORLD_ID);
+        assert_eq!(row.navmesh_mode, NavmeshMode::Advisory);
+
+        let respawners = super::super::respawners::load_respawners(&pool)
+            .await
+            .expect("load_respawners");
+        let mut debug: Vec<(i32, [f32; 3])> = respawners
+            .iter()
+            .filter(|r| r.world_name == DEBUG_AREA_WORLD)
+            .map(|r| (r.respawner_id, r.pos))
+            .collect();
+        debug.sort_by_key(|(id, _)| *id);
+        assert_eq!(
+            debug,
+            [(130, [251.0, 8.0, -962.0]), (131, [438.0, 10.4, -916.0])],
+            "respawner 130 is the arrival `.gotolocation DebugArea` picks \
+             (lowest id), 131 the Z9 respawn test"
+        );
+
+        let (sets, min_id, max_id): (i64, Option<i32>, Option<i32>) = sqlx::query_as(
+            "SELECT count(*), min(chunk_id), max(chunk_id) \
+             FROM resources.cover_sets WHERE world_id = $1",
+        )
+        .bind(DEBUG_AREA_WORLD_ID)
+        .fetch_one(&pool)
+        .await
+        .expect("cover_sets query");
+        let (nodes,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM resources.cover_nodes n \
+             JOIN resources.cover_sets s ON s.chunk_id = n.chunk_id WHERE s.world_id = $1",
+        )
+        .bind(DEBUG_AREA_WORLD_ID)
+        .fetch_one(&pool)
+        .await
+        .expect("cover_nodes query");
+        assert_eq!(
+            (sets, nodes),
+            (DEBUG_AREA_COVER_SETS, DEBUG_AREA_COVER_NODES),
+            "world 1300's cover is the cover_extract output for Ihpet_Crater_Light"
+        );
+        // Set ids are world_id * 100000 + n (n from 1).
+        assert_eq!(min_id, Some(130_000_001));
+        assert_eq!(max_id, Some(130_000_000 + DEBUG_AREA_COVER_SETS as i32));
+    }
+
+    /// `cover_extract` for `--map 1300=DebugArea=<CookedPC>/Maps/Ihpet_Crater_Light`
+    /// (the counts in the cover seed headers).
+    const DEBUG_AREA_COVER_SETS: i64 = 706;
+    const DEBUG_AREA_COVER_NODES: i64 = 6_324;
 
     /// The column's default does the work for every row the seed never
     /// mentions it on. The advisory rows are exactly the worlds whose
@@ -168,6 +234,9 @@ mod live_db_tests {
     ///   `castle_cellblock.nav` does not match their older geometry, so
     ///   advisory keeps a mesh dropped in later from gating anyone before it
     ///   has been walked.
+    /// - `DebugArea` (1300): the GM test map on the Ihpet_Crater_Light client
+    ///   map. It runs on that map's `ihpet_crater_light.nav` (D-DA5), which is
+    ///   advisory for world 73 too.
     ///
     /// `Castle_CellBlock` (12) is the one meshed world left on `enforce`:
     /// its mesh was rebuilt on 2026-09-19 and has been walked since.
@@ -198,6 +267,7 @@ mod live_db_tests {
                 "CellBlock63",
                 "Dakara_E1",
                 "Dakara_E1_StoryRm",
+                "DebugArea",
                 "Harset",
                 "Harset_CmdCenter",
                 "Harset_Market",

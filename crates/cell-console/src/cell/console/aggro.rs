@@ -62,10 +62,12 @@ pub(super) async fn toggle(
             target: "npc_ai.aggro",
             event = "gm_toggle",
             entity_id = caller_id,
+            entity_name = space_mgr.entity_label(caller_id),
             player_id = character_id,
+            player_name = space_mgr.entity_label(caller_id),
             aggro_off = off,
             changed,
-            "GM proximity-aggro switch set"
+            "GM proximity-aggro switch set",
         );
     }
     let state = if off {

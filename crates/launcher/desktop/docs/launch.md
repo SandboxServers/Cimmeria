@@ -22,10 +22,11 @@ ordinary file matching an independently trusted build digest. `Resources.helper`
 is the x86 lifecycle worker. `client_patches: Some(artifact)` injects the approved
 patch DLL before the first game thread runs; `None` explicitly starts without
 that functionality. No telemetry DLL or session is created. Launcher summary
-consent never changes game telemetry. Imported legacy configuration must be
-validated and deliberately mapped before admission; imports do not manufacture
-signed content evidence or installation ownership. This packet uses the saved
-installation's login servers and native bundle patch selection.
+consent never changes game telemetry. Imports do not manufacture signed content
+evidence or installation ownership. A fresh installation uses its saved login
+servers and the bundle's patch artifact. A verified adopted copy uses the patch
+setting and ordered login servers the user reviewed; see
+[Patch policy per installation](#patch-policy-per-installation).
 
 Admission verifies installed identity/content, resource hashes and platform
 support. Mac additionally requires successful current prerequisite evidence and
@@ -56,6 +57,16 @@ stays alive until the game exits. It reuses `cimmeria-client-launch`'s existing
 suspended-process creation, ordered injection and `resume_running` primitives.
 The retained original Windows process handle avoids an OpenProcess race when
 SGW exits immediately. No legacy launcher source behavior changes.
+
+The helper starts the game under plain `C:\...` paths. A native launcher sends
+canonical paths, which on Windows carry the verbatim `\\?\` prefix. Windows does
+not resolve `..` under a verbatim working directory, and `SGW.exe` finds its
+config as `..\SGWGame\Config\`, so with the prefix it quits at startup with
+"Failed to find default engine .ini file". The helper strips the prefix from the
+exe and the working directory with `cimmeria_client_launch::launch::strip_verbatim`,
+the function the Windows launcher already uses. A Wine guest path is already
+plain. Changing the helper changes its SHA-256, so restage it and rebuild the
+shell with the new `CIMMERIA_LAUNCH_HELPER_SHA256`.
 
 ### Development resource staging
 
@@ -128,6 +139,96 @@ must stage exact artifacts, record provenance and notices and validate them with
 the real client. Successful PhysX/module prerequisites do not demonstrate device
 creation, DLL patch hooks, login or world entry.
 
+## Optional Mac application identity for the game window
+
+macOS automation that selects an application by name, bundle path or bundle
+identifier cannot select a stock Wine game. The process that owns the game
+window registers with Launch Services as `wine`, with no bundle identifier and
+no bundle. A separate wrapper application does not change that: windows and
+their accessibility tree belong to the process that created them, and a Wine
+guest process is never the wrapper.
+
+A Wine process takes its identity from the directory its loader really runs
+from. The pinned runtime's loader sets `wineloader` to `wine` beside the
+`ntdll.so` it loaded, after `realpath`
+([`init_paths`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/dlls/ntdll/unix/loader.c#L387-L404)),
+and every child process, including `SGW.exe`, executes that path
+([`preloader_exec`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/dlls/ntdll/unix/loader.c#L443-L466)).
+macOS gives a process a main bundle when that path is
+`<name>.app/Contents/MacOS/`. Links do not count, because the loader resolves
+them first.
+
+Setting `CIMMERIA_WINE_APP_IDENTITY=1` in the launcher's own environment makes
+Play stage `wine-app-identity/Stargate Worlds.app` under the launcher state root
+and start the launch worker with the loader inside it. The webview cannot set
+this. Without the variable Play starts `bin/wine` from the runtime exactly as
+before and writes nothing.
+
+| Bundle entry | Content |
+|---|---|
+| `Contents/Info.plist` | `CFBundleIdentifier` `app.cimmeria.stargate-worlds`, `CFBundleName` `Stargate Worlds`, `CFBundleExecutable` `wine`, `LSUIElement` true |
+| `Contents/MacOS/<file>` | A copy of every regular file in the runtime's `lib/wine/x86_64-unix/`, including the loader and `ntdll.so`, each checked against the bytes it was copied from |
+| `Contents/MacOS/libvulkan.1.dylib` | Link to the same runtime file the runtime's own relative link names |
+| `Contents/MacOS/x86_64-unix` | Link to `.`, where Wine looks for a builtin's unix library |
+| `Contents/MacOS/x86_64-windows`, `i386-windows` | Links to the runtime's PE directories |
+| `share` | Link to the runtime's `share`, where Wine looks for its data |
+
+Staging runs after the runtime tree digest is verified and while its cache lock
+is held. The bundle is rebuilt on every Play in a staging directory and swapped
+in; an old bundle is removed without following links, and a bundle path or
+state directory that is a link is refused. The bundle is then registered with
+`lsregister -f` so lookups by name or identifier can find it. If anything
+fails before the worker starts, Play uses the stock loader and prints the
+reason to the launcher's standard error. The environment, the 30 FPS
+`DXVK_FRAME_RATE` limit, the helper protocol and host supervision are the same
+on both paths: the host PID is still the real Wine process.
+
+`LSUIElement` matters. Every Wine process of the session shares the bundle.
+Wine's Mac driver promotes a process to a regular application only when it
+shows a window
+([`cocoa_app.m`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/dlls/winemac.drv/cocoa_app.m#L312));
+without the key the windowless desktop host `explorer.exe` also becomes a
+foreground application with the same identifier.
+
+What was observed on macOS 26.6.1 with the pinned runtime, never with the game:
+
+| Case | Window owner as Launch Services sees it |
+|---|---|
+| Stock loader, Wine Notepad | name `wine`, no bundle identifier, no bundle |
+| Foreground wrapper application starting a separate window-owning process (native fixture) | wrapper has the identifier and zero windows; the child owns the window and has no identifier |
+| Staged bundle loader, 32-bit `cmd` starting 32-bit Notepad | Notepad process is `Stargate Worlds`, `app.cimmeria.stargate-worlds`, type Foreground, one accessibility window; `explorer.exe` has the same identifier, type UIElement, no accessibility window |
+| `lsregister -f` on a fixture bundle under the user Library | `NSWorkspace` resolves the identifier to the bundle path; the same bundle under `/tmp` does not resolve |
+
+The last case is the ignored engine test
+`real_wine_window_owner_carries_the_bundle_identity`. It needs
+`CIMMERIA_WINE_RUNTIME_CLONE` set to a copy of the managed runtime directory,
+uses a throwaway prefix, shows a Notepad window and stops only that prefix's
+wineserver:
+
+```bash
+CIMMERIA_WINE_RUNTIME_CLONE=<copy of the runtime directory> \
+  bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine \
+  --lib app_identity -- --ignored
+```
+
+Still unproved, and the reason this is opt-in:
+
+- The game itself under the staged loader: D9VK and MoltenVK rendering, patch
+  injection, login. A failure after the worker starts has no fallback.
+- The optional x87 accelerator. Wine executes `ROSETTA_X87_PATH` in place of the
+  loader for 32-bit processes; whether the process that ends up owning the
+  window still runs from the bundle has not been observed.
+- Whether a given automation tool binds the window owner. Two running
+  processes share the identifier and the windowless one registers first. A tool
+  that takes the first match instead of the regular application gets no window.
+
+To roll back, start the launcher without the variable. The staged bundle is
+inert; delete `wine-app-identity/` under the state root and run
+`lsregister -u` on the bundle path to drop the registration. Opening the bundle
+directly runs the loader with no arguments, which prints its usage and exits
+without creating a prefix.
+
 ## Validation and human launch checklist
 
 Portable tests cover operation identity/revision, duplicate admission/dispatch,
@@ -183,11 +284,14 @@ the frontend cannot supply paths, executable names, environment or hashes.
 |---|---|
 | `CIMMERIA_LAUNCH_HELPER_SHA256` | `windows/cimmeria-launch-worker.exe` |
 | `CIMMERIA_CLIENT_PATCHES_SHA256` | `windows/cimmeria_client_patches.dll` |
+| `CIMMERIA_CLIENT_TELEMETRY_SHA256` | `windows/cimmeria_client_telemetry.dll` (optional, [opt-in](#opt-in-game-telemetry)) |
 | `CIMMERIA_D3D9_SHA256` | `graphics/d3d9.dll` (Mac required) |
 | `CIMMERIA_ROSETTA_X87_SHA256` | `graphics/rosettax87` (optional pair) |
 | `CIMMERIA_ROSETTA_X87_LIBRARY_SHA256` | `graphics/libRuntimeRosettax87` (optional pair) |
 
-This shell requires client patches. It never silently drops them to enable Play.
+The launch helper is required for every installation. The patch artifact is
+required only by the installations that inject it (next section); it is never
+silently dropped to enable Play.
 The x87 pair must either have both pinned artifacts or be entirely absent; absent
 acceleration uses stock Rosetta. Resource hashes are rechecked during inspection,
 admission and dispatch. Missing/mismatched resources produce an unavailable Play
@@ -201,6 +305,113 @@ observed exit; restart with an unfinished attempt reports unknown and stays gate
 The display distinguishes preparation, process start, early/normal exit and
 unknown. No message claims login or world entry from process start or zero exit.
 Launcher summary consent remains independent and is not changed by Play.
+
+## Patch policy per installation
+
+Native code decides whether Play injects client patches. The renderer cannot.
+
+| Installation | Patch artifact | Play |
+|---|---|---|
+| Fresh install | Verified | Injects patches |
+| Fresh install | Absent or replaced | Unavailable |
+| Adopted, patches reviewed on | Verified | Injects patches |
+| Adopted, patches reviewed on | Absent or replaced | Unavailable |
+| Adopted, patches reviewed off | Any | Starts without patches |
+
+`DesktopState::resolve_play_resources` applies this table to the bundle, and
+`admit_launch` refuses resources that disagree with it, so a host that skips
+resolution cannot inject or drop the patch.
+
+An adopted copy's imported settings are accepted only while every independent
+record of the review agrees:
+
+- the installed index's adoption provenance;
+- the Published adoption record `adoption-<work>.json`;
+- the admission checkpoint `adoption-plan-<work>.json`, which is why that file
+  must outlive publication;
+- the Adopt journal digest, while Adopt is still the latest operation;
+- the retained `legacy-import.json`, re-derived from the exact legacy JSON.
+
+When they disagree, Play and prerequisite setup are not offered and both
+commands are refused. Inspect still answers, the copy can still be uninstalled,
+and the bundle is not reported as missing resources. The signed launcher minimum
+belongs to the owner's release and is checked first, so it is reported whether or
+not the imported settings verify.
+
+The Play view has no separate message for refused imported settings yet. It
+shows the general "finish installation and compatibility checks" line.
+
+## Opt-in game telemetry
+
+The launch helper injects `cimmeria-client-telemetry` after the client patches
+when the player has opted in. It is off by default. The DLL observes the
+running game and uploads events and engine logs to the server; what it
+captures is described in [client-telemetry.md](../../../../docs/architecture/client-telemetry.md).
+
+**The choice is its own record.** `game-telemetry.json` in the state directory
+holds `opted_in` and, from the first opt-in, an install identity. The
+`game_telemetry_command` (`inspect`, `set`) reads and saves it. Launcher-summary
+consent (`preferences.json`) is a different choice and never turns it on, and
+saving one does not touch the other. Opting out keeps the identity, so a later
+opt-in is the same install to the server.
+
+**The DLL is an optional bundle resource.** A build that pins no
+`CIMMERIA_CLIENT_TELEMETRY_SHA256`, or whose DLL no longer matches, cannot offer
+game telemetry: `set` with `opted_in: true` fails with `platform_unavailable`
+and saves nothing. Play is unaffected. A `lab-bridge` build is refused three
+times: by `tools/stage-helper.py --kind client-telemetry`, when the shell
+resolves its bundle, and at admission. It is built natively by the
+`launcher runtime probe` workflow, which logs its SHA-256 next to the patch
+DLL's.
+
+**What Play does when it is on:**
+
+1. `resolve_play_resources` keeps the DLL in the launch resources. Admission
+   refuses it for a player who is not opted in, even from a host that skipped
+   resolution.
+2. The worker asks the installation's first login server for a session:
+   `POST <login server>/api/auth/dev-session`, with the identity and the tags
+   `desktop-launcher`, the host OS and `wine` or `native`. The wait is bounded
+   to 8 seconds. Addresses follow the Windows launcher's rule
+   (`telemetry/endpoint.rs`, compiled into the engine): https anywhere, plain
+   http only to this machine or to a login server's own host and port. The rule
+   is applied to the upload address the server returns as well.
+3. The session marker is written to `Working/Binaries/sessions/current-session.json`,
+   the file the DLL reads at boot. It is the same shape the Windows launcher
+   writes (`telemetry/session.rs`, compiled into the engine).
+4. The DLL is added to the helper's request after the patch DLL. The helper
+   already accepts two DLLs; it is unchanged.
+
+No session, a refused address or an unwritable marker means the DLL is left
+out and the game starts as it would with telemetry off. `game-telemetry-status.json`
+records which of those happened for the last launch (`attached`,
+`session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings
+shows it. `attached` means the DLL was on the injection list with a marker on
+disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
+`cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
+for those.
+
+A plan that does not carry the DLL serializes without a `client_telemetry` key,
+so plans written before this field existed keep their digests.
+
+**Capture switches.** The game's environment is built from scratch, so the
+DLL's developer switches are copied on purpose, and only when telemetry is
+attached: `CIMMERIA_CLIENT_CAPTURE`, `CIMMERIA_CLIENT_HOOKS_ENABLE` and
+`CIMMERIA_CLIENT_HOOKS_DISABLE`, each a short comma-separated list. Set them in
+the launcher's own environment, for example on macOS:
+
+```bash
+open --env CIMMERIA_CLIENT_CAPTURE=unfilter,firehose "<launcher bundle>"
+```
+
+**Not covered:**
+
+- An adopted copy still launches without game telemetry. Its imported choice
+  is reported as unavailable, as before.
+- The session token is minted once per Play and is not refreshed. A session
+  that outlives the token stops uploading.
+- The launcher does not tail `SGWDebugLog.log` or upload bundles, as the
+  Windows launcher's own telemetry runner does.
 
 ## Headless integration checks
 
@@ -235,3 +446,22 @@ returned and repeated status polls keep Play disabled with update guidance.
 This read does not change consent or the operation journal. Existing native
 admission checks remain authoritative. Development-build exemptions retain the
 legacy policy; this status does not imply updater download or replacement.
+
+## Background observation and the Play button
+
+A status read preserves the last confirmed Play capability while it is pending;
+it does not show the starting state or dim the button. Clicking Play during a
+read queues one intent through the Effect semaphore, refreshes native state, then
+admits it only if still eligible. Duplicate clicks are suppressed immediately.
+Changed native capability or a failed read still disables Play. A failed read
+stops automatic polling until explicit recheck succeeds, so a macOS folder-access
+prompt cannot accumulate an unbounded sequence of native reads.
+
+The held-read regression covers stable enabled/text/busy state and exactly one
+click admitted after the read. Native-persistence Play UAT additionally covers
+lost replies, reopening and minimum-launcher rejection. This does not establish
+actual game startup, login or world entry.
+
+The same steady-state rule applies to **Recheck Play status**: background reads
+do not toggle its disabled style. Read deduplication remains internal; launching
+a game still disables both controls until the native result is observed.

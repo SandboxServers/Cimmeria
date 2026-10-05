@@ -126,6 +126,7 @@ fn live_owner_and_foreign_receipt_veto_deletion() {
 
 fn interrupted(state: &mut DesktopState, intent: &InstallIntent) -> Plan {
     let plan = Plan {
+        current_release: None,
         schema_version: 1,
         id: Uuid::new_v4(),
         installation: intent.clone(),

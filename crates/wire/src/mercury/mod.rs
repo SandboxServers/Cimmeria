@@ -56,7 +56,8 @@ pub use aoi::{
 pub use world_data::{
     archetype_stats, build_create_player, build_enter_world, build_enter_world_body,
     build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
-    build_setup_world_parameters, fragment_count, fragment_map_loaded,
+    build_setup_world_parameters, fragment_count, fragment_map_loaded, world_entry_stat_args,
+    WORLD_ENTRY_STATE_FIELD,
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 /// and breaks character select, which runs on Account's exposed base methods
 /// (`createCharacter`/`playCharacter`). See
 /// `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
-pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
+pub const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).

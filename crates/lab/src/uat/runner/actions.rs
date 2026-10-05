@@ -1,16 +1,23 @@
 //! Executing actions: tool calls by name (with fallbacks), typed chat
-//! lines, waits and captures; plus the up-front checks that BLOCK a row
-//! before anything is driven, and evidence attachments.
+//! lines, waits and captures; and evidence attachments. The up-front
+//! checks that BLOCK a row are in [`super::checks`].
 
 use std::time::Duration;
 
 use serde_json::{json, Map, Value};
 
+use super::players::Who;
 use super::{now_ms, RowCtx, Runner};
 use crate::uat::evidence::{clip, ActionRecord, Attachment};
 use crate::uat::invoke::{ToolInvoker, ToolOutcome};
-use crate::uat::spec::{ActionKind, ActionSpec, RowSpec, SectionSpec, Source};
+use crate::uat::lab_commands;
+use crate::uat::spec::{ActionKind, ActionSpec, RowSpec};
 use crate::uat::tier::{self, Role};
+use crate::uat::tools::TARGET_PLAYER_TOOL;
+
+/// The press tool whose result carries the ability and the event seq the
+/// cast-id capture starts from.
+pub(crate) const USE_ABILITY_TOOL: &str = "client_use_ability";
 
 /// The tools a typed chat line expands into when `client_chat_send` is
 /// not routed: focus, Enter, type, Enter (the same keys `lab_logout`
@@ -24,32 +31,35 @@ pub const CHAT_READ_TOOL: &str = "client_ui_state";
 /// Lines the chat reader asks for (the tool's maximum).
 const CHAT_TAIL: u32 = 150;
 
-/// Colo rule 6: these need the owner's say-so in the run's
-/// `owner_approvals` (the approval word is the second item).
-pub const OWNER_ONLY: [(&str, &str); 5] = [
-    (".announce", "announce"),
-    (".bm_seed", "bm_seed"),
-    (".mute", "mute"),
-    ("/gmshout", "gmshout"),
-    ("server_content_reload", "content_reload"),
-];
-
-/// Characters `client_type_text` can type today.
-pub fn typable(line: &str) -> bool {
-    line.chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_' | '/' | '.'))
-}
-
-/// `${name}` → the variable's value, in every string of `v`.
+/// `${name}` → the variable's value, in every string of `v`. A string
+/// that is exactly one `${name}` takes the variable's own JSON value, so
+/// `entity_id = "${dummy_id}"` reaches a tool as the number it holds.
 pub fn subst(v: &Value, vars: &Map<String, Value>) -> Value {
     match v {
-        Value::String(s) => Value::String(subst_str(s, vars)),
+        Value::String(s) => match exact_var(s).and_then(|k| vars.get(k)) {
+            Some(val) if !val.is_string() => val.clone(),
+            _ => Value::String(subst_str(s, vars)),
+        },
         Value::Array(a) => Value::Array(a.iter().map(|x| subst(x, vars)).collect()),
         Value::Object(o) => {
             Value::Object(o.iter().map(|(k, x)| (k.clone(), subst(x, vars))).collect())
         }
         other => other.clone(),
     }
+}
+
+/// A captured chat group as a var: a whole number stays a number (an
+/// entity or mail id reaches a tool's integer argument as one); anything
+/// else is a string. Either substitutes into a line as the same text.
+pub(crate) fn captured_value(s: &str) -> Value {
+    s.parse::<u64>().map_or_else(|_| json!(s), |n| json!(n))
+}
+
+/// `name` when `s` is exactly `${name}`.
+fn exact_var(s: &str) -> Option<&str> {
+    s.strip_prefix("${")
+        .and_then(|r| r.strip_suffix('}'))
+        .filter(|k| !k.contains(['$', '{', '}']))
 }
 
 pub fn subst_str(s: &str, vars: &Map<String, Value>) -> String {
@@ -67,116 +77,13 @@ pub fn subst_str(s: &str, vars: &Map<String, Value>) -> String {
     out
 }
 
-fn unresolved(s: &str) -> Option<String> {
+pub(crate) fn unresolved(s: &str) -> Option<String> {
     let start = s.find("${")?;
     let end = s[start..].find('}')?;
     Some(s[start..start + end + 1].to_string())
 }
 
 impl<I: ToolInvoker> Runner<'_, I> {
-    /// Reasons this row cannot run at all, found before anything moves.
-    pub(crate) fn static_blocks(&self, spec: &SectionSpec, row: &RowSpec) -> Vec<String> {
-        let mut out = Vec::new();
-        if let Some(b) = &row.blocked {
-            out.push(b.clone());
-        }
-        if row.players > 1 {
-            out.push(format!(
-                "needs {} players: a second lab instance or a wireclient puppet (matrix X1)",
-                row.players
-            ));
-        }
-        if spec.section.account == "non-gm" {
-            out.push("needs a non-GM account (matrix X2): only the GM lab account exists".into());
-        }
-        let all = row.setup.iter().chain(&row.steps).chain(&row.teardown);
-        for a in all {
-            self.check_action(a, &mut out);
-        }
-        for c in row.expect.iter().filter(|c| c.required) {
-            let reader = match c.source {
-                Source::Chat => Some(CHAT_READ_TOOL),
-                Source::Tool => c.tool.as_deref(),
-                Source::Lua => Some("client_lua_eval"),
-                Source::Wait => Some("client_wait_for"),
-                _ => None,
-            };
-            if let Some(t) = reader {
-                if !self.inv.has_tool(t) {
-                    out.push(format!(
-                        "clause {} needs tool {t}, which is not routed",
-                        c.id
-                    ));
-                }
-            }
-        }
-        out.dedup();
-        out
-    }
-
-    fn check_action(&self, a: &ActionSpec, out: &mut Vec<String>) {
-        let text = a
-            .chat
-            .clone()
-            .or_else(|| a.tool.clone())
-            .unwrap_or_default();
-        for (pat, word) in OWNER_ONLY {
-            let hit = text == pat || text.starts_with(&format!("{pat} "));
-            if hit && !self.req.owner_approvals.iter().any(|w| w == word) {
-                out.push(format!(
-                    "colo rule 6: {pat} needs the owner's say-so (owner_approvals: [\"{word}\"])"
-                ));
-            }
-        }
-        match a.kind() {
-            Ok(ActionKind::Tool) => {
-                let t = a.tool.as_deref().unwrap_or_default();
-                let alt = a.fallback.iter().any(|f| self.action_available(f));
-                if !self.inv.has_tool(t) && !alt {
-                    out.push(format!("needs tool {t}, which is not routed"));
-                }
-                if let Err(e) = tier::resolve_tool(t, a.tier) {
-                    out.push(format!("spec: {e}"));
-                }
-            }
-            Ok(ActionKind::Chat) => {
-                let line = a.chat.as_deref().unwrap_or_default();
-                if !self.inv.has_tool(CHAT_SEND_TOOL) {
-                    for t in CHAT_MACRO_TOOLS {
-                        if !self.inv.has_tool(t) {
-                            out.push(format!("typing chat needs tool {t}, which is not routed"));
-                        }
-                    }
-                    // `${var}` values are checked when the line is sent.
-                    let bare = crate::uat::spec::without_vars(line);
-                    if !typable(&bare) {
-                        out.push(format!(
-                            "chat line {line:?} has characters the lab cannot type yet (needs {CHAT_SEND_TOOL} / matrix L11)"
-                        ));
-                    }
-                }
-            }
-            Ok(ActionKind::Capture) => {
-                if !self.inv.has_tool(CHAT_READ_TOOL) {
-                    out.push(format!("capture needs tool {CHAT_READ_TOOL}"));
-                }
-            }
-            Ok(ActionKind::Wait) => {}
-            Err(e) => out.push(format!("spec: {e}")),
-        }
-    }
-
-    fn action_available(&self, a: &ActionSpec) -> bool {
-        match a.kind() {
-            Ok(ActionKind::Tool) => a.tool.as_deref().is_some_and(|t| self.inv.has_tool(t)),
-            Ok(ActionKind::Chat) => {
-                self.inv.has_tool(CHAT_SEND_TOOL)
-                    || CHAT_MACRO_TOOLS.iter().all(|t| self.inv.has_tool(t))
-            }
-            _ => true,
-        }
-    }
-
     /// Run one action and record it. Tool fallbacks are tried in order
     /// only when the primary tool is not routed.
     pub(crate) async fn exec(
@@ -185,10 +92,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
         role: Role,
         ctx: &mut RowCtx,
     ) -> ActionRecord {
-        let chosen: &ActionSpec = if a.tool.as_deref().is_some_and(|t| !self.inv.has_tool(t)) {
+        let who = Who::of(a.client.as_deref());
+        let chosen: &ActionSpec = if a.tool.as_deref().is_some_and(|t| !self.routed(who, t)) {
             a.fallback
                 .iter()
-                .find(|f| self.action_available(f))
+                .find(|f| self.action_available(who, f))
                 .unwrap_or(a)
         } else {
             a
@@ -215,10 +123,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
             error: None,
             result: Value::Null,
             calls: vec![],
+            client: who.tag(),
         };
         let t0 = std::time::Instant::now();
         match chosen.kind() {
-            Ok(ActionKind::Tool) => self.exec_tool(chosen, role, ctx, &mut rec).await,
+            Ok(ActionKind::Tool) => self.exec_tool(chosen, who, role, ctx, &mut rec).await,
             Ok(ActionKind::Chat) => {
                 rec.kind = "chat".into();
                 let line = subst_str(chosen.chat.as_deref().unwrap_or_default(), &ctx.vars);
@@ -233,7 +142,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 if let Some(v) = unresolved(&line) {
                     fail(&mut rec, format!("unresolved variable {v}"));
                 } else if rec.ok {
-                    self.send_chat(&line, &mut rec).await;
+                    self.send_chat(who, &line, &mut rec).await;
                 }
             }
             Ok(ActionKind::Wait) => {
@@ -246,7 +155,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 let re = chosen.regex.clone().unwrap_or_default();
                 let var = chosen.var.clone().unwrap_or_default();
                 rec.requested = format!("capture {var} from chat /{re}/");
-                match (self.read_chat(ctx).await, regex::Regex::new(&re)) {
+                match (self.read_chat_of(who).await, regex::Regex::new(&re)) {
                     (Ok(lines), Ok(re)) => {
                         let hit = lines.iter().rev().find_map(|l| {
                             re.captures(l)
@@ -255,7 +164,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
                         });
                         match hit {
                             Some(v) => {
-                                ctx.vars.insert(var.clone(), json!(v));
+                                let v = captured_value(&v);
+                                ctx.vars.insert(var.clone(), v.clone());
                                 rec.result = json!({ var: v });
                             }
                             None => fail(&mut rec, "no chat line matched".into()),
@@ -274,6 +184,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
     async fn exec_tool(
         &mut self,
         a: &ActionSpec,
+        who: Who,
         role: Role,
         ctx: &mut RowCtx,
         rec: &mut ActionRecord,
@@ -297,8 +208,31 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if let Some(v) = unresolved(&args.to_string()) {
             return fail(rec, format!("unresolved variable {v}"));
         }
-        let out = self.inv.call(&name, args).await;
-        if let Some(chars) = out.json.get("characters").and_then(Value::as_array) {
+        // `@dummy`, `@cooldowns_reset`, `@clear_effects`: typed dot commands.
+        match lab_commands::build(&name, &args) {
+            Ok(Some(cmd)) => return self.exec_lab_command(cmd, who, ctx, rec).await,
+            Ok(None) => {}
+            Err(e) => return fail(rec, e),
+        }
+        let out = if name == TARGET_PLAYER_TOOL {
+            match self.target_player_args(who, args, ctx) {
+                Ok(args) => {
+                    rec.tool = Some("client_target".into());
+                    rec.args = args.clone();
+                    self.on(who).call("client_target", args).await
+                }
+                Err(e) => return fail(rec, e),
+            }
+        } else {
+            self.on(who).call(&name, args).await
+        };
+        // Only p1's character list is the run's (p2 plays its own account).
+        if let Some(chars) = out
+            .json
+            .get("characters")
+            .and_then(Value::as_array)
+            .filter(|_| who == Who::P1)
+        {
             self.characters = chars.clone();
         }
         self.attach_images(ctx, &format!("action{}", rec.index), &name, &out);
@@ -315,14 +249,20 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 rec.tier_source = Some(format!("reported:{word}"));
             }
         }
+        // A press: find the cast it became, for `${cast_id}` (AB-L3).
+        if name == USE_ABILITY_TOOL && out.ok && role != Role::Teardown {
+            self.capture_cast_id(who, a.label.as_deref(), &out.json, ctx, rec)
+                .await;
+        }
     }
 
     /// Send one chat line: `client_chat_send` when routed, else the
     /// focus / Enter / type / Enter macro.
-    async fn send_chat(&self, line: &str, rec: &mut ActionRecord) {
-        if self.inv.has_tool(CHAT_SEND_TOOL) {
+    pub(crate) async fn send_chat(&self, who: Who, line: &str, rec: &mut ActionRecord) {
+        let inv = self.on(who);
+        if inv.has_tool(CHAT_SEND_TOOL) {
             rec.tool = Some(CHAT_SEND_TOOL.into());
-            let out = self.inv.call(CHAT_SEND_TOOL, json!({ "line": line })).await;
+            let out = inv.call(CHAT_SEND_TOOL, json!({ "line": line })).await;
             rec.calls
                 .push(json!({ "tool": CHAT_SEND_TOOL, "ok": out.ok }));
             record_outcome(rec, &out);
@@ -336,7 +276,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             ("client_input_key", json!({ "key": "Enter" }), 900),
         ];
         for (tool, args, settle) in seq {
-            let out = self.inv.call(tool, args.clone()).await;
+            let out = inv.call(tool, args.clone()).await;
             rec.calls
                 .push(json!({ "tool": tool, "args": args, "ok": out.ok, "error": out.error }));
             if !out.ok {
@@ -348,10 +288,15 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
     }
 
-    /// The chat box's last lines (oldest first).
+    /// p1's chat box's last lines (oldest first).
     pub(crate) async fn read_chat(&self, _ctx: &RowCtx) -> Result<Vec<String>, String> {
+        self.read_chat_of(Who::P1).await
+    }
+
+    /// `who`'s chat box's last lines (oldest first).
+    pub(crate) async fn read_chat_of(&self, who: Who) -> Result<Vec<String>, String> {
         let out = self
-            .inv
+            .on(who)
             .call(CHAT_READ_TOOL, json!({ "chat_lines": CHAT_TAIL }))
             .await;
         if !out.ok {
@@ -378,7 +323,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
         ctx: &mut RowCtx,
     ) {
         for e in row.evidence.iter().filter(|e| e.at.as_ref() == label) {
-            if !self.inv.has_tool(&e.tool) {
+            let inv = self.on(Who::of(e.client.as_deref()));
+            if !inv.has_tool(&e.tool) {
                 ctx.attachments.push(Attachment {
                     name: e.name.clone(),
                     path: String::new(),
@@ -388,7 +334,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 continue;
             }
             let args = subst(e.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-            let out = self.inv.call(&e.tool, args).await;
+            let out = inv.call(&e.tool, args).await;
             self.attach_images(ctx, &e.name, &e.tool, &out);
             let path = self
                 .run
@@ -412,6 +358,15 @@ impl<I: ToolInvoker> Runner<'_, I> {
         {
             let out = self.inv.call("lab_screenshot", json!({})).await;
             self.attach_images(ctx, "final", "lab_screenshot", &out);
+        }
+    }
+
+    /// p2's final screenshot on a two-player row (`final-p2.png`).
+    pub(crate) async fn capture_final_p2(&mut self, ctx: &mut RowCtx) {
+        let inv = self.on(Who::P2);
+        if self.p2.is_ok() && inv.has_tool("lab_screenshot") {
+            let out = inv.call("lab_screenshot", json!({})).await;
+            self.attach_images(ctx, "final-p2", "lab_screenshot", &out);
         }
     }
 
@@ -442,7 +397,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
     }
 
-    fn rel(&self, p: &std::path::Path) -> String {
+    pub(crate) fn rel(&self, p: &std::path::Path) -> String {
         p.strip_prefix(&self.run.root)
             .unwrap_or(p)
             .to_string_lossy()
@@ -450,7 +405,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
     }
 }
 
-fn fail(rec: &mut ActionRecord, msg: String) {
+pub(crate) fn fail(rec: &mut ActionRecord, msg: String) {
     rec.ok = false;
     rec.error = Some(msg);
 }
@@ -475,18 +430,16 @@ mod tests {
         vars.insert("n".into(), json!(3));
         let v = subst(&json!({"a": ["uat ${row_id}", "${n}x"]}), &vars);
         assert_eq!(v, json!({"a": ["uat M1-1", "3x"]}));
+        // A whole-string var keeps its type: an entity id stays a number.
+        assert_eq!(subst(&json!({"id": "${n}"}), &vars), json!({"id": 3}));
+        assert_eq!(subst(&json!("${row_id}"), &vars), json!("M1-1"));
+        assert_eq!(captured_value("4242"), json!(4242));
+        assert_eq!(captured_value("Labone"), json!("Labone"));
+        assert_eq!(captured_value("-3"), json!("-3"));
         assert_eq!(
             unresolved(".mail_expire ${mail_id}").as_deref(),
             Some("${mail_id}")
         );
         assert!(unresolved("no vars").is_none());
-    }
-
-    #[test]
-    fn typable_matches_the_lab_charset() {
-        assert!(typable(".bug uat M1-1"));
-        assert!(typable("/gmgotolocation Harset 0 0 0"));
-        assert!(!typable("/afk afk, back soon"));
-        assert!(!typable(".bug what?"));
     }
 }

@@ -71,13 +71,41 @@ pub(super) async fn grant_stargate_address(
     if !space_mgr.stargates.contains_key(&stargate_id) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             known_gate_count = space_mgr.stargates.len(),
             reason = "grant_unknown_stargate",
             "grant_stargate_address: no resources.stargates row for this id -- \
              nothing granted; check the seed row's target_id against \
              db/resources/Worlds/Seed/stargates.sql"
+        );
+        return;
+    }
+
+    // An outbound-only dial hub (the Debug Area gate, `debug_dial_hub`) is
+    // never a destination, so no chain may teach it: the dial gate would
+    // refuse it one layer down, and a hub id sitting in a persisted book is
+    // exactly the leak the hub rule exists to prevent.
+    if space_mgr
+        .stargates
+        .get(&stargate_id)
+        .is_some_and(|g| g.debug_dial_hub)
+    {
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
+            stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            reason = "grant_dial_hub_outbound_only",
+            "grant_stargate_address: the id is an outbound-only dial hub -- nothing \
+             granted; nobody may hold a hub's address, fix the chain's target_id"
         );
         return;
     }
@@ -92,9 +120,13 @@ pub(super) async fn grant_stargate_address(
     if player_id <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "grant_non_player_actor",
             "grant_stargate_address: acting entity carries no DB player id -- address \
              not granted; the chain fired against an NPC, a prop, or an unloaded player"
@@ -105,9 +137,13 @@ pub(super) async fn grant_stargate_address(
     let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "grant_entity_missing",
             "grant_stargate_address: no cell entity for the actor -- address not granted"
         );
@@ -117,9 +153,13 @@ pub(super) async fn grant_stargate_address(
     if entity.known_stargates.contains(&stargate_id) {
         tracing::debug!(
             entity_id,
+            entity_name = entity.identity().player_name,
             player_id,
+            player_name = entity.identity().player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "grant_stargate_address: already known -- no-op"
         );
         return;
@@ -130,9 +170,13 @@ pub(super) async fn grant_stargate_address(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         stargate_id,
+        stargate_name = cimmeria_names::book().stargate(stargate_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         known_count,
         "Content: granting stargate address"
     );
@@ -164,9 +208,13 @@ pub(super) async fn grant_stargate_address(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "grant_notify_send_failed",
             "grant_stargate_address: updateStargateAddress could not be enqueued ({e}) -- \
              the server will accept the dial but the client's DHD will not offer \
@@ -184,9 +232,13 @@ pub(super) async fn grant_stargate_address(
     {
         tracing::error!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "grant_persist_send_failed",
             "grant_stargate_address: cell->base send failed ({e}) -- the address works \
              for this session only and is lost on relog"

@@ -116,7 +116,8 @@ fn mismatched_owner_signature_and_future_schema_are_not_adopted() {
         NAME,
         &Record {
             adoption: None,
-            schema_version: 3,
+            schema_version: 4,
+            current_release: None,
             intent,
         },
     )
@@ -163,4 +164,140 @@ fn linked_content_is_not_owned_even_when_receipts_match() {
         state.installed_content(),
         Err(StorageError::UnsafeFile)
     ));
+}
+
+// Construct the durable post-publication state directly. This exercises consumers
+// of two releases, not an Update worker or proof that replacement was completed.
+fn changed_release() -> (
+    tempfile::TempDir,
+    DesktopState,
+    InstallIntent,
+    ReleaseIdentity,
+) {
+    let (root, mut state, intent) = fixture();
+    state.remember_prepared_content().unwrap();
+    state
+        .operations_mut()
+        .unwrap()
+        .observe(intent.operation_id, OperationState::Succeeded)
+        .unwrap();
+    let body = serde_json::to_vec(&serde_json::json!({"schema":1,"seed":{"blob":"next.zip","size":2,"sha256":"b".repeat(64)},"patches":[]})).unwrap();
+    let sig = SigningKey::from_bytes(&crate::manifest::DEV_MANIFEST_PRIVKEY).sign(&body);
+    let sig: String = sig.to_bytes().iter().map(|b| format!("{b:02x}")).collect();
+    let release = verify_release(&body, sig.as_bytes()).unwrap();
+    let current = ReleaseIdentity {
+        evidence_id: Uuid::new_v4(),
+        manifest_digest: release.digest(),
+    };
+    state
+        .save_release_evidence(current.evidence_id, &release)
+        .unwrap();
+    write_ready(&intent.destination, &intent, current).unwrap();
+    atomic::write(
+        &state.directory.root,
+        NAME,
+        &Record {
+            schema_version: 3,
+            intent: intent.clone(),
+            adoption: None,
+            current_release: Some(current),
+        },
+    )
+    .unwrap();
+    (root, state, intent, current)
+}
+
+#[test]
+fn repair_reopen_uses_current_signed_release_and_preserves_original_owner() {
+    let (root, mut state, owner, current) = changed_release();
+    let owner_bytes = std::fs::read(owner.destination.join(".cimmeria-install.json")).unwrap();
+    let installed = state.installed_content().unwrap().unwrap();
+    assert_eq!(installed.intent, owner);
+    assert_eq!(installed.current_release, current);
+    assert_eq!(installed.release.digest(), current.manifest_digest);
+    let id = Uuid::new_v4();
+    let rev = state.operations().snapshot().revision;
+    let plan = state
+        .admit_repair(id, rev, owner.operation_id, true)
+        .unwrap()
+        .plan;
+    assert_eq!(plan.installation, owner);
+    assert_eq!(plan.release_identity(), current);
+    assert_eq!(
+        state.cached_extraction_release(id).unwrap().digest(),
+        current.manifest_digest
+    );
+    drop(state);
+    let state = DesktopState::open(&root.path().join("state")).unwrap();
+    assert_eq!(state.repair_plan().unwrap().unwrap(), plan);
+    assert_eq!(
+        state.cached_extraction_release(id).unwrap().digest(),
+        current.manifest_digest
+    );
+    assert_eq!(
+        state
+            .verify_release_identity(owner.release_identity())
+            .unwrap()
+            .digest(),
+        owner.manifest_digest
+    );
+    assert_eq!(
+        std::fs::read(owner.destination.join(".cimmeria-install.json")).unwrap(),
+        owner_bytes
+    );
+}
+
+#[test]
+fn uninstall_after_release_change_keeps_owner_identity_and_retained_evidence() {
+    let (root, mut state, owner, current) = changed_release();
+    let target = state.uninstall_target().unwrap().unwrap();
+    assert_eq!(target.installation_id, owner.operation_id);
+    let revision = state.operations().snapshot().revision;
+    state
+        .uninstall(Uuid::new_v4(), revision, owner.operation_id, true)
+        .unwrap();
+    assert!(!owner.destination.exists());
+    assert!(state.installed_content().unwrap().is_none());
+    drop(state);
+    let state = DesktopState::open(&root.path().join("state")).unwrap();
+    assert_eq!(
+        state.verify_release_identity(current).unwrap().digest(),
+        current.manifest_digest
+    );
+    assert_eq!(
+        state
+            .verify_release_identity(owner.release_identity())
+            .unwrap()
+            .digest(),
+        owner.manifest_digest
+    );
+}
+
+#[test]
+fn current_receipt_cannot_substitute_another_owner_or_another_release() {
+    let (_root, mut state, owner, current) = changed_release();
+    atomic::write(
+        &owner.destination,
+        "content-ready.json",
+        &ContentReceipt {
+            schema_version: 2,
+            installation_id: Uuid::new_v4(),
+            release: current,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        state.installed_content(),
+        Err(StorageError::Corrupt)
+    ));
+    write_ready(&owner.destination, &owner, owner.release_identity()).unwrap();
+    assert!(matches!(
+        state.installed_content(),
+        Err(StorageError::Corrupt)
+    ));
+    write_ready(&owner.destination, &owner, current).unwrap();
+    assert_eq!(
+        state.installed_content().unwrap().unwrap().current_release,
+        current
+    );
 }

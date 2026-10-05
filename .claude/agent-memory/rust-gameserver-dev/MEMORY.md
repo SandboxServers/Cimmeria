@@ -14,6 +14,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Working environment
 
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — other sessions on the repo: work in `.claude/worktrees/<slug>/`, junction `external/`.
+- [shared-scratchpad-name-collisions.md](shared-scratchpad-name-collisions.md) — sibling workers share the scratchpad; prefix script names with the packet id.
 - [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor.
 - [shepherd-merge-traps.md](shepherd-merge-traps.md) — clean merges of main can duplicate a doc section or index line; const-slice ptr::eq fails on i686.
 - [rebase-keep-both-regex-drops-braces.md](rebase-keep-both-regex-drops-braces.md) — scripted "keep both" conflict fixes can drop a `}` mid-hunk; inspect + `cargo check` before `--continue`.
@@ -26,12 +27,15 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-native-owner-handle.md](launcher-native-owner-handle.md) — native launch reads installation identity through its locked handle; Windows revert proof must run natively.
 
 - [patchset-supersede-and-restore-to-stock](patchset-supersede-and-restore-to-stock.md) — apply skips target==result before source check; a delta back to an LZO stock map ships CME bytes.
+- [ring-rig-clone-to-new-map](ring-rig-clone-to-new-map.md) — patch 010: region 3 rig roots, donor pinned to 007's result, central chunk for streaming, floor heights.
 - [client-file-case-and-stock-listing](client-file-case-and-stock-listing.md) — game UI lookups are case-sensitive on Windows (eula.lua = no login); rename keeps target spelling; DATA.INF = stock names.
 - [offline-client-event-trace-and-udp-port-trap](offline-client-event-trace-and-udp-port-trap.md) — no Ghidra: client Lua + PE bytes + RTTI name the CME event a handler raises.
 - [mail-escrow-lock-order-and-proof-traps](mail-escrow-lock-order-and-proof-traps.md) — inventory lock order is advisory → item row → sgw_player.
+- [bash-heredoc-backslash-and-metric-tests](bash-heredoc-backslash-and-metric-tests.md) — a doubled backslash in a heredoc arrives as one: use Edit for backslash text; metric tests use a per-test world label.
 - [python-write-mangles-utf8-and-crlf](python-write-mangles-utf8-and-crlf.md) — `write_text` encodes cp1252: use bytes + restore CRLF.
 - [i686-test-exe-uac-installer-detection](i686-test-exe-uac-installer-detection.md) — a 32-bit test exe named `*patch*` fails with os error 740 under UAC.
 - [rustfmt-trailing-line-comment-quirk](rustfmt-trailing-line-comment-quirk.md) — rustfmt pulls a standalone comment into the previous line's trailing column.
+- [rustfmt-skips-sigil-tracing-macros](rustfmt-skips-sigil-tracing-macros.md) — a `%`/`?` field makes rustfmt skip the whole tracing call; reflow scripted inserts by hand.
 - [rustfmt-reorders-mod-declarations](rustfmt-reorders-mod-declarations.md) — `reorder_modules` sorts `mod` lines, so "append at the end" never survives `cargo fmt`.
 - [clippy-items-after-test-module](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be last.
 - [tooling-filter-and-path-traps](tooling-filter-and-path-traps.md) — `live-db-test.sh` takes positional substrings, not filtersets.
@@ -42,6 +46,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Wire format
 
+- [wire-names-generated-tables.md](wire-names-generated-tables.md) — `cimmeria_wire::names` is generated from defs (regen cmd), doc-checked; naming rules for unknown entity types.
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files; GM tail is `109 + K`.
 - [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `mercury::method_idx` is a drifted partial copy; `def_conformance` guards both (#801).
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.
@@ -56,10 +61,15 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`.
 - [cooked-data-full-resync.md](cooked-data-full-resync.md) — #840: paced full resync (RequiredUpdates=0), misses jump the stream, Play held for 6 no-miss-path categories.
 - [cooked-item-additions-shape.md](cooked-item-additions-shape.md) — real shipped COOKED_ITEM shape (not alphabetical); new ids via ITEM_ADDITIONS; AmmoType_Icons = EAmmoType labels.
+- [ability-telemetry-coverage-gate.md](ability-telemetry-coverage-gate.md) — AB-C7: script set + four scanned code tables + client declaration; AB-C6 timing tables are process-global.
 
 ## Lab supervisor
 
+- [stacked-pr-ship-title-and-ab-lab-tools.md](stacked-pr-ship-title-and-ab-lab-tools.md) — ship.py mistitles stacked PRs; AB-T5 snapshot builder, lab dummy = AI-skip extension, cooldown clear is type 2.
 - [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
+- [lab-daemon-lease-gate.md](lab-daemon-lease-gate.md) — lease gate is hand-written call_tool; new tools need a policy line; runner touches its own lease; per-test lease books.
+- [ability-uat-staging-limits.md](ability-uat-staging-limits.md) — warmup and cleanse rows need .dummy caster (#1188); 1462/4306/2827 are effect ids; one graded press per row.
+- [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
 
@@ -69,7 +79,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Injected client DLLs
 
+- [offline-disasm-and-minhook-detour-tests.md](offline-disasm-and-minhook-detour-tests.md) — capstone under `py -V:3.13` reads SGW.exe offline; MinHook stand-in tests for detours; game calls outside catch_unwind.
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
+- [entity-method-stream-is-memory-ostream.md](entity-method-stream-is-memory-ostream.md) — onEntityMethod's live stream is a queued MemoryOStream subobject (cursor +0x14, end +0xc), not MemoryIStream.
+- [client-handler-abi-and-static-disassembly.md](client-handler-abi-and-static-disassembly.md) — CME handlers are `ret 8` (event, subject); verify `ret N` with capstone on the local QA exe; event-bag getters.
 - [lab-probe-traffic-starves-watchdog.md](lab-probe-traffic-starves-watchdog.md) — per-field mem_reads starved the lab heartbeat and killed a healthy client; keep bridge reads coarse.
 - [lab-event-store-and-ui-lua-hooks.md](lab-event-store-and-ui-lua-hooks.md) — events_read drains; read via the supervisor store; one UI Lua subscription per window per event.
 - [lab-ui-reader-lua-traps.md](lab-ui-reader-lua-traps.md) — stock UI Lua facts behind the UI readers (right-click use, Ctrl-drag split, one chat capture via the events store; lupa offline check.
@@ -89,6 +102,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [seeds-and-content-chains-index](seeds-and-content-chains-index.md) — sub-index: template/cover/name seeds, chain conditions and edge triggers, dialog binds, inventory locks, pet and trainer seeds.
 
+## Debug Area
+
+- [debug-area-plaza-and-training-dummies.md](debug-area-plaza-and-training-dummies.md) — tags fire in any world; TrainingDummy mark; gm_ability_bulk; hub once-placed guards scoped to the hub.
+
 ## Base sessions
 
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
@@ -100,19 +117,34 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Cell systems
 
 - [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn, and the ammo campaign (#1026) notes.
+- [adding-a-cimmeria-world-touchpoints](adding-a-cimmeria-world-touchpoints.md) — new world id = one ADDED_WORLDS row + seed/spaces data; nav/occ client-map fallback; bounds unused.
 
 ## Observability
 
+- [named-telemetry-sweep-traps](named-telemetry-sweep-traps.md) — Rule 6 sweeps: chain/loot/event-set names exist in seed; keys holding the wrong ID; rescan without rebuild.
+- [rule6-sweep-scanner-and-naming-traps](rule6-sweep-scanner-and-naming-traps.md) — list unpaired sites by zeroing baseline rows; `$level!` rows escape the scan; never name a deferred effect's invoker live.
+- [discord-named-pairs-resolvers](discord-named-pairs-resolvers.md) — Discord Event objects are `Named` pairs (NT-10); base/cell/content resolvers; button text and minigame ids are unnameable.
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
+- [rule6-name-pairing-traps](rule6-name-pairing-traps.md) — base names via known_names; NameBook borrow vs owned; rustfmt bails on >100-col macro lines.
+- [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.
 - [discord-noise-and-teardown-race](discord-noise-and-teardown-race.md) — SIGNOZ_ONLY_EVENTS; logOff witness-send race is DEBUG via departed_witnesses; colo warns that are real faults.
+- [rule6-name-pairing-sweep-techniques](rule6-name-pairing-sweep-techniques.md) — list unpaired sites by zeroing the baseline; lazy fields + `enabled!`; base NPC names only from EnteredAoI.
+- [base-side-log-naming-and-lock-traps](base-side-log-naming-and-lock-traps.md) — base Rule 6 resolvers (session_identity), base can't name NPCs bar AoI name_id; match-scrutinee guard + name lookup = nested lock.
+- [unpaired-id-sweep-workflow-traps](unpaired-id-sweep-workflow-traps.md) — NT sweep: per-site dump patch, lane quiet-mode log-dir race, B: <10 GB refusals, heredoc edits eat `\` continuations.
 - [log-filter-parity-traps](log-filter-parity-traps.md) — `EnvFilter::new` drops a bad directive silently.
 - [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
 - [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env; opted-in player launch mints the session before the game.
 - [client-telemetry-governor-classify-table](client-telemetry-governor-classify-table.md) — every DLL event passes the governor; new targets default to Budgeted; must-keep rows need a server priority prefix too.
+- [telemetry-ingest-naming-traps](telemetry-ingest-naming-traps.md) — replay: 32-field event cap, no router state (global cell sender), docs/ not in the image, lane log-dir race.
+
+- [rule6-name-pairing-patterns](rule6-name-pairing-patterns.md) — tracing field exprs are lazy (inline names are free); book() guard in closures fails E0515.
 
 ## Testing patterns
 
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
+- [aoi-fixture-introducible-and-wire-ledger](aoi-fixture-introducible-and-wire-ledger.md) — account_id without archetype_id hides a test player from AoI; ability sends go through `wire_ledger` (AB-T4).
+- [damage-apply-miss-gate-and-seeded-rolls](damage-apply-miss-gate-and-seeded-rolls.md) — since AB-06 a miss lands nothing; a literal effect_seq may roll a miss; use `seq_rolling`.
+- [player-cast-fixtures-need-a-mechanic](player-cast-fixtures-need-a-mechanic.md) — since AB-12 a player cast with no mechanic is refused; effectless fixtures need `seed_mechanic_effect`.
 
 ## Campaign judgment
 

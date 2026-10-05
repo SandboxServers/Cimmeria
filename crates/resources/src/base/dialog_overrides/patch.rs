@@ -199,6 +199,7 @@ pub fn apply_dialog_patches(
         let Some(original) = elements.get(&patch.dialog_id) else {
             tracing::warn!(
                 dialog_id = patch.dialog_id,
+                dialog_name = cimmeria_names::book().dialog(patch.dialog_id),
                 reason = "dialog_entry_absent",
                 "dialog patch skipped: entry not present in the loaded dialog catalogue",
             );
@@ -211,6 +212,7 @@ pub fn apply_dialog_patches(
                 applied.push(patch.dialog_id);
                 tracing::info!(
                     dialog_id = patch.dialog_id,
+                    dialog_name = cimmeria_names::book().dialog(patch.dialog_id),
                     plan = ?patch.buttons,
                     ui_screen_type = ?patch.ui_screen_type,
                     "Applied Cimmeria dialog patch",
@@ -219,7 +221,8 @@ pub fn apply_dialog_patches(
             Err(PatchError::ScreenMissing { screen_id }) => {
                 tracing::warn!(
                     dialog_id = patch.dialog_id,
-                    screen_id,
+                    dialog_name = cimmeria_names::book().dialog(patch.dialog_id),
+                    screen_id, // nt:id-only a dialog screen number, screens have no name table
                     reason = "screen_absent",
                     "dialog patch skipped: target screen not present in the cooked entry — \
                      keeping the canonical entry",
@@ -228,6 +231,7 @@ pub fn apply_dialog_patches(
             Err(PatchError::Unparsable) => {
                 tracing::warn!(
                     dialog_id = patch.dialog_id,
+                    dialog_name = cimmeria_names::book().dialog(patch.dialog_id),
                     reason = "unparsable_entry",
                     "dialog patch skipped: cooked XML shape did not parse — \
                      keeping the canonical entry",

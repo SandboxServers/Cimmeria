@@ -355,7 +355,7 @@ async fn live_db_both_carried_bags_full_refuses_a_vault_first_grant() {
         ("account_id", account_id.to_string()),
         ("player_id", player_id.to_string()),
         ("entity_id", entity_id.to_string()),
-        ("type_id", VAULT_FIRST_BOTH_BAGS.to_string()),
+        ("item_type_id", VAULT_FIRST_BOTH_BAGS.to_string()),
         ("quantity", "1".to_string()),
     ] {
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");

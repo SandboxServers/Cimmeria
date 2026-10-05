@@ -15,10 +15,12 @@ use cimmeria_wire::cell::client_methods::duel::{
 use crate::cell::messages::{CellToBaseMsg, DuelBaseToCell};
 use crate::cell::space_manager::SpaceManager;
 
-use super::connected_player;
+use cimmeria_entity::known_names;
+
 use super::limits::CHALLENGE_RANGE;
 use super::outbound::{send_challenge_prompt, send_line, Recipient};
 use super::registry::ChallengeRefusal;
+use super::{connected_player, duelist_log_names};
 
 /// Handle one duel message from the base, on the wall clock.
 pub async fn handle(msg: DuelBaseToCell, tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager) {
@@ -80,9 +82,12 @@ async fn challenge(
             target: "duel",
             event = "duel.challenge_refused",
             account_id = req.account_id,
+            account_name = known_names::account_name(req.account_id),
             player_id = req.player_id,
-            entity_id = req.entity_id,
+            player_name = known_names::player_name(req.player_id),
+            entity_id = req.entity_id, // nt:id-only the challenger's entity is gone, nothing to name
             target_player_id = req.target_player_id,
+            target_player_name = known_names::player_name(req.target_player_id),
             reason = "challenger_gone",
             "duel challenge dropped: the challenger is no longer in the world"
         );
@@ -90,15 +95,15 @@ async fn challenge(
     };
 
     if req.player_id == req.target_player_id {
-        refuse(&req, tx, "self_challenge", TEXT_CHALLENGE_SELF, None).await;
+        refuse(&req, tx, mgr, "self_challenge", TEXT_CHALLENGE_SELF, None).await;
         return;
     }
     let Some(target) = connected_player(mgr, req.target_entity_id, req.target_player_id) else {
-        refuse(&req, tx, "target_gone", TEXT_TARGET_NOT_ONLINE, None).await;
+        refuse(&req, tx, mgr, "target_gone", TEXT_TARGET_NOT_ONLINE, None).await;
         return;
     };
     if target.space_id != challenger.space_id {
-        refuse(&req, tx, "cross_space", TEXT_NOT_CLOSE_ENOUGH, None).await;
+        refuse(&req, tx, mgr, "cross_space", TEXT_NOT_CLOSE_ENOUGH, None).await;
         return;
     }
     let distance = challenger.position.distance_to(&target.position);
@@ -106,6 +111,7 @@ async fn challenge(
         refuse(
             &req,
             tx,
+            mgr,
             "out_of_range",
             TEXT_NOT_CLOSE_ENOUGH,
             Some(distance),
@@ -128,7 +134,7 @@ async fn challenge(
                     ChallengeRefusal::TargetBusy => TEXT_TARGET_BUSY,
                     ChallengeRefusal::PairCooldown => TEXT_PAIR_COOLDOWN,
                 };
-                refuse(&req, tx, refusal.reason(), text, Some(distance)).await;
+                refuse(&req, tx, mgr, refusal.reason(), text, Some(distance)).await;
                 return;
             }
         };
@@ -147,15 +153,27 @@ async fn challenge(
         mgr.resources
             .duels_mut()
             .cancel_pending(req.target_player_id);
+        let c = duelist_log_names(mgr, req.entity_id, req.player_id, Some(req.account_id));
+        let t = duelist_log_names(
+            mgr,
+            target.entity_id,
+            req.target_player_id,
+            target.account_id,
+        );
         tracing::warn!(
             target: "duel",
             event = "duel.challenge_undelivered",
-            duel_id = pending.duel_id,
+            duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
             account_id = req.account_id,
+            account_name = c.account_name,
             player_id = req.player_id,
+            player_name = c.player_name,
             entity_id = req.entity_id,
+            entity_name = c.entity_name,
             target_player_id = req.target_player_id,
+            target_player_name = t.player_name,
             target_entity_id = target.entity_id,
+            target_entity_name = t.entity_name,
             reason = "prompt_not_queued",
             "duel prompt could not be queued; challenge withdrawn"
         );
@@ -170,17 +188,31 @@ async fn challenge(
     }
     // Logged only once the prompt is queued: a failed send logs
     // `duel.challenge_undelivered` instead, never both.
+    let c = duelist_log_names(mgr, req.entity_id, req.player_id, Some(req.account_id));
+    let t = duelist_log_names(
+        mgr,
+        target.entity_id,
+        req.target_player_id,
+        target.account_id,
+    );
     tracing::debug!(
         target: "duel",
         event = "duel.challenge_sent",
-        duel_id = pending.duel_id,
+        duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
         account_id = req.account_id,
+        account_name = c.account_name,
         player_id = req.player_id,
+        player_name = c.player_name,
         entity_id = req.entity_id,
+        entity_name = c.entity_name,
         target_player_id = req.target_player_id,
+        target_player_name = t.player_name,
         target_entity_id = target.entity_id,
+        target_entity_name = t.entity_name,
         target_account_id = target.account_id,
+        target_account_name = t.account_name,
         space_id = challenger.space_id,
+        world = mgr.world_name_for_space(challenger.space_id),
         distance,
         expires_in_ms = (pending.expires_at - now).as_millis() as u64,
         "duel challenge pending: target prompted"
@@ -199,18 +231,26 @@ async fn challenge(
 async fn refuse(
     req: &Request,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    mgr: &SpaceManager,
     reason: &'static str,
     text: &str,
     distance: Option<f32>,
 ) {
+    let c = duelist_log_names(mgr, req.entity_id, req.player_id, Some(req.account_id));
+    let t = duelist_log_names(mgr, req.target_entity_id, req.target_player_id, None);
     tracing::debug!(
         target: "duel",
         event = "duel.challenge_refused",
         account_id = req.account_id,
+        account_name = c.account_name,
         player_id = req.player_id,
+        player_name = c.player_name,
         entity_id = req.entity_id,
+        entity_name = c.entity_name,
         target_player_id = req.target_player_id,
+        target_player_name = t.player_name,
         target_entity_id = req.target_entity_id,
+        target_entity_name = t.entity_name,
         reason,
         distance,
         range = CHALLENGE_RANGE,

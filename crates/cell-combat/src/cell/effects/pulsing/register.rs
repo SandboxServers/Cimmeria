@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::abilities::{serialize_timer_update, EffectDef, TIMER_DURATION_EFFECT};
 use cimmeria_entity::cell_entity::ActiveEffectInstance;
 
-use crate::cell::abilities::send_timer_update;
+use crate::cell::abilities::{send_timer_update_ctx, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -47,6 +47,9 @@ pub async fn register_active_effect(
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) -> bool {
     if !effect.is_pulsing() {
+        // The normal answer for a single-shot effect, which callers pass
+        // without filtering: TRACE, not a refusal.
+        not_registered(space_mgr, target_id, invoker_id, effect, "not_pulsing");
         return false;
     }
     // pulse_count == 0 → channelled. Compute the cap as
@@ -65,6 +68,7 @@ pub async fn register_active_effect(
     // remaining_pulses = total - 1 (the initial pulse already fired).
     let remaining = total_pulses - 1;
     if remaining <= 0 {
+        not_registered(space_mgr, target_id, invoker_id, effect, "no_pulses_left");
         return false;
     }
     let pulse_secs = effect.pulse_duration.max(0.1);
@@ -79,8 +83,21 @@ pub async fn register_active_effect(
     } else {
         None
     };
+    // AB-T1: the cast resolving now. Every later pulse row logs it, so the
+    // ticks join their launch row. A refresh takes the refreshing cast's.
+    let cast_id = space_mgr.current_cast_id();
+    // Snapshot now: the pulse and end rows log it after the invoker may have
+    // left and its entity id been reused (rule 5).
+    let who = space_mgr.player_identity(invoker_id);
+    // The invoker's name (an NPC's too), snapshotted once per registration
+    // so the pulse and end rows name a mob after it is gone (Rule 6).
+    let invoker_name = space_mgr.entity_names(invoker_id).entity_name;
 
     let was_refresh = {
+        if space_mgr.get_entity(target_id).is_none() {
+            not_registered(space_mgr, target_id, invoker_id, effect, "target_gone");
+            return false;
+        }
         let Some(target) = space_mgr.get_entity_mut(target_id) else {
             return false;
         };
@@ -105,6 +122,10 @@ pub async fn register_active_effect(
             // Refresh also re-anchors the channel-start position so
             // standing still after a re-channel doesn't trigger interrupt.
             existing.invoker_position_at_register = invoker_position_for_channel;
+            existing.cast_id = cast_id;
+            // The refreshing cast's invoker, snapshotted with its cast id.
+            existing.invoker_identity = who;
+            existing.invoker_name = invoker_name;
             true
         } else {
             target.active_effects.push(ActiveEffectInstance {
@@ -116,6 +137,9 @@ pub async fn register_active_effect(
                 next_pulse_at: next_at,
                 pulse_interval_secs: pulse_secs,
                 invoker_position_at_register: invoker_position_for_channel,
+                cast_id,
+                invoker_identity: who,
+                invoker_name,
             });
             false
         }
@@ -124,10 +148,20 @@ pub async fn register_active_effect(
     tracing::info!(
         target: "abilities",
         event = if was_refresh { "active_effect_refreshed" } else { "active_effect_registered" },
+        stage = "pulse",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         invoker_id,
+        invoker_name = space_mgr.caster_label(invoker_id),
+        cast_id, // nt:id-only per-cast sequence number, no name exists
         effect_id = effect.effect_id,
+        effect_name = cimmeria_names::book().effect(effect.effect_id),
         ability_id = effect.ability_id,
+        ability_name = cimmeria_names::book().ability(effect.ability_id),
         remaining_pulses = remaining,
         total_pulses,
         pulse_interval = pulse_secs,
@@ -153,7 +187,56 @@ pub async fn register_active_effect(
         crate::mercury::game_clock::game_time_secs() + total_time,
     );
     // Target's own client only; an NPC target's timer has no client handler.
-    send_timer_update(target_id, timer_bytes, tx, space_mgr).await;
+    let ctx = WireCtx::new("pulse_register")
+        .cast(cast_id)
+        .ability(effect.ability_id)
+        .reason("effect_started");
+    send_timer_update_ctx(target_id, timer_bytes, ctx, tx, space_mgr).await;
 
     true
+}
+
+/// A pulsing registration that did not happen (AB-T2). `not_pulsing` is the
+/// single-shot answer and logs at TRACE; the other two mean a pulsing
+/// effect landed its first pulse and will not tick again, so DEBUG.
+fn not_registered(
+    space_mgr: &SpaceManager,
+    target_id: u32,
+    invoker_id: u32,
+    effect: &EffectDef,
+    reason: &'static str,
+) {
+    let who = space_mgr.player_identity(invoker_id);
+    let cast_id = space_mgr.current_cast_id();
+    macro_rules! row {
+        ($level:ident) => {
+            tracing::$level!(
+                target: "abilities.pulse",
+                event = "active_effect_not_registered",
+                stage = "pulse",
+                reason,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                invoker_id,
+                invoker_name = space_mgr.caster_label(invoker_id),
+                target_id,
+                target_name = space_mgr.entity_label(target_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
+                effect_id = effect.effect_id,
+                effect_name = cimmeria_names::book().effect(effect.effect_id),
+                ability_id = effect.ability_id,
+                ability_name = cimmeria_names::book().ability(effect.ability_id),
+                pulse_count = effect.pulse_count,
+                pulse_duration = effect.pulse_duration,
+                "pulsing effect not registered ({reason}): the first pulse already landed, no further pulses tick and no duration icon is sent"
+            )
+        };
+    }
+    if reason == "not_pulsing" {
+        row!(trace);
+    } else {
+        row!(debug);
+    }
 }

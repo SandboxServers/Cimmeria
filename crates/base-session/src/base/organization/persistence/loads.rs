@@ -70,6 +70,8 @@ pub async fn load_memberships<'e>(
         rows.into_iter()
             .map(
                 |(org_id, org_type, name, motd, cash, experience, rank, perms)| {
+                    // Rule 6: vault and org lines name the organization from here.
+                    cimmeria_entity::known_names::remember_org(org_id, &name);
                     Ok(OrgMembership {
                         header: OrgHeader {
                             org_id,
@@ -89,7 +91,7 @@ pub async fn load_memberships<'e>(
                 tracing::debug!(
                     target: "org",
                     event = "load_memberships",
-                    player_id,
+                    player_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
                     rows_affected = ms.len(),
                     "Organization memberships loaded"
                 )
@@ -134,7 +136,7 @@ pub async fn load_roster<'e>(
                 tracing::debug!(
                     target: "org",
                     event = "load_roster",
-                    org_id,
+                    org_id, // nt:id-only the roster read joins members and characters, never the organization row
                     rows_affected = r.len(),
                     "Organization roster loaded"
                 )
@@ -169,7 +171,7 @@ pub async fn load_ranks<'e>(
                 tracing::debug!(
                     target: "org",
                     event = "load_ranks",
-                    org_id,
+                    org_id, // nt:id-only the rank read selects rank rows only, never the organization row
                     rows_affected = r.len(),
                     "Organization ranks loaded"
                 )

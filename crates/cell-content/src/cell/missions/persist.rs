@@ -105,8 +105,11 @@ pub async fn send_mission_update(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 site,
                 "send_mission_update: no live mission instance — skipping persist \
                  (mission progress for this action will not survive relog)"
@@ -117,7 +120,14 @@ pub async fn send_mission_update(
 
     if let Err(e) = tx.send(msg).await {
         tracing::error!(
-            entity_id, player_id, mission_id, site, error = %e,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            site,
+            error = %e,
             "MissionUpdate send to base failed -- mission progress not persisted"
         );
     }

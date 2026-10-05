@@ -130,8 +130,8 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
             None => {
                 skipped_height += 1;
                 tracing::warn!(
-                    chunk_id,
-                    node_id,
+                    chunk_id, // nt:id-only cover chunk index, cover nodes carry no names
+                    node_id,  // nt:id-only cover node index, cover nodes carry no names
                     height = height_text,
                     "cover_nodes: unknown height enum, skipping row"
                 );
@@ -143,8 +143,8 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
             None => {
                 skipped_quality += 1;
                 tracing::warn!(
-                    chunk_id,
-                    node_id,
+                    chunk_id, // nt:id-only cover chunk index, cover nodes carry no names
+                    node_id,  // nt:id-only cover node index, cover nodes carry no names
                     quality = quality_text,
                     "cover_nodes: unknown quality enum, skipping row"
                 );
@@ -154,8 +154,8 @@ pub async fn load_cover_nodes(pool: &PgPool) -> Result<Vec<CoverNode>, CoverLoad
         if tail_bytes.len() != 4 {
             skipped_tail += 1;
             tracing::warn!(
-                chunk_id,
-                node_id,
+                chunk_id, // nt:id-only cover chunk index, cover nodes carry no names
+                node_id,  // nt:id-only cover node index, cover nodes carry no names
                 tail_len = tail_bytes.len(),
                 "cover_nodes: tail blob is not 4 bytes, skipping row"
             );

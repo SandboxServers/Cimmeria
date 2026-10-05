@@ -41,6 +41,10 @@ pub const PATCH_TARGETS: &[&str] = &[
     // 006-gate-sound-bank: new files, in the stock `audio/ui` directory.
     "Working/SGWGame/Content/audio/ui/prp_gen.fev",
     "Working/SGWGame/Content/audio/ui/prp_gen_gate.fsb",
+    // 009-starter-hotbar
+    "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
+    // 010-debug-area-rings
+    "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
 ];
 
 /// One file [`restore`] renamed, as paths relative to the install.

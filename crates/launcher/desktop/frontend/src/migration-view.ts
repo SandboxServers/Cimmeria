@@ -13,7 +13,7 @@ export function migrationText(s:MigrationState):string {
  }
  if(s.status?.native.requires_reopen)return 'Restart the launcher to recover saved import state before continuing.';
  if(s.status?.preview)return 'Review the folders, identity, configuration and ordered historical patch claims below. Import changes the selected game folder and saves these records; it does not modify game files.';
- if(s.status?.imported)return 'Legacy settings and identity saved. Historical content is unverified: this import does not enable Play, Repair or Uninstall. Keep using the old launcher for this installation until verified adoption is available, or choose a separate empty folder for a new desktop install.';
+ if(s.status?.imported)return 'Legacy settings and identity saved. Historical content is unverified: this import does not enable Play, Repair or Uninstall. Continue in Verified copy adoption below to prepare a separate desktop-owned copy, or keep using the old launcher for this installation.';
  return 'Import settings from an existing launcher. Select its folder, then explicitly select the corresponding game root. Windows paths are not automatically converted.';
 }
 export function mountMigration(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {

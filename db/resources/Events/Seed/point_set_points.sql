@@ -439,5 +439,9 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2106, 2518, -166.117996, -31.1299992, 234.796997, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2107, 2519, 0.0, -30.7199993, 288.799988, 0, 0, 0);
 
+-- Debug Area gate volume anchor (set 13800, DA-07): the same point as set
+-- 1011's on the same client map.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13800, 13800, 251.294998, 10.5959997, -990.02301, 0, 0, 0);
+
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2551, true);
 

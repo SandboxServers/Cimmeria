@@ -22,11 +22,21 @@ pub(super) async fn handle_interact(
         .get_entity(entity_id)
         .is_some_and(|actor| !crate::cell::combat::is_dead_state(actor.state_field))
     {
-        tracing::debug!(entity_id, "interact: actor missing or dead");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "interact: actor missing or dead"
+        );
         return;
     }
     let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-    tracing::info!(entity_id, target_entity_id, "interact");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id,
+        target_entity_name = space_mgr.entity_label(target_entity_id as u32),
+        "interact"
+    );
 
     // Reject negative target_entity_id rather than sign-extending into a
     // high u32 that no real entity will match.
@@ -35,7 +45,9 @@ pub(super) async fn handle_interact(
         Err(_) => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id as u32),
                 "interact: negative target_entity_id, ignoring"
             );
             return;
@@ -54,7 +66,9 @@ pub(super) async fn handle_interact(
     if is_hostile {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id as u32),
             "interact: targeting hostile NPC for combat"
         );
         // The onTargetUpdate below tells the client this NPC is its
@@ -77,7 +91,9 @@ pub(super) async fn handle_interact(
         {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id as u32),
                 "interact: cell->base channel closed sending hostile-NPC combat method: {e}"
             );
             return;
@@ -112,7 +128,9 @@ pub(super) async fn handle_interact(
             None => {
                 tracing::debug!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     target_entity_id,
+                    target_entity_name = space_mgr.entity_label(target_entity_id as u32),
                     "interact: unarmed → ability 594 (Strike)"
                 );
                 RIGHT_CLICK_FALLBACK_MELEE
@@ -127,8 +145,11 @@ pub(super) async fn handle_interact(
                     target: "abilities",
                     event = "weapon_unbound",
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     target_entity_id,
-                    item_id,
+                    target_entity_name = space_mgr.entity_label(target_entity_id as u32),
+                    item_type_id = item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     "interact: no items_event_sets binding for active \
                      weapon (EVENT_ITEM_RANGED=7) — content gap; \
                      falling back to ability 592 (Pistol Shot)"

@@ -9,6 +9,7 @@ use super::super::escrow::is_seed_listing;
 use super::super::helpers::now_unix_secs;
 use super::super::player_name;
 use super::super::sweep::{notify_settled, settle_expired_once, SettledAuction};
+use super::super::telemetry::item_name as item_name_of_type;
 use super::super::types::auction_status;
 use super::{item_name, pool_or_refuse, GmCtx};
 
@@ -114,13 +115,18 @@ pub async fn gm_expire(ctx: GmCtx<'_>, sequence_id: i32, db_pool: &Option<Arc<Pg
         (None, None, Some(_)) => "retry",
         (None, None, None) => "not_settled",
     };
+    let id = ctx.identity();
     tracing::info!(
         event = "bm.gm_action",
         action = "bm_expire",
         entity_id = ctx.actor.entity_id,
+        entity_name = id.player_name,
         account_id = ctx.actor.account_id,
+        account_name = id.account_name,
         player_id = ctx.actor.player_id,
-        auction_id = sequence_id,
+        player_name = id.player_name,
+        auction_id = sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+        item_name = ours.and_then(|s| item_name_of_type(s.after.item_def_id)),
         expires_at = now,
         outcome,
         settled_in_pass = report.settled.len(),

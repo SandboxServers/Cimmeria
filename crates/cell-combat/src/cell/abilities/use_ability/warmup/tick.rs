@@ -52,6 +52,24 @@ pub(crate) async fn resolve_warmups(
         else {
             // Entity destroyed, or its cast already resolved: drop the
             // stale candidate.
+            let who = space_mgr.player_identity(entity_id);
+            tracing::debug!(
+                target: "abilities",
+                event = "warmup_candidate_stale",
+                stage = "warmup",
+                reason = if space_mgr.get_entity(entity_id).is_some() {
+                    "no_pending_cast"
+                } else {
+                    "caster_gone"
+                },
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "warmup tick: expected a warming cast on this caster, found none; the stale candidate is dropped and nothing fires"
+            );
             space_mgr.pending_casts.remove(&entity_id);
             continue;
         };
@@ -62,6 +80,29 @@ pub(crate) async fn resolve_warmups(
             continue;
         }
         if now < pc.fire_at {
+            // Still warming: not a refusal, so TRACE (one row per 100 ms
+            // tick per warming caster). The interrupt and fire rows carry
+            // the outcome. Per tick, so one identity copy names the caster
+            // (a player's `entity_name` is its character name) and the
+            // ability's name is left to the launch and fire rows.
+            if tracing::enabled!(target: "abilities", tracing::Level::TRACE) {
+                let who = space_mgr.player_identity(entity_id);
+                tracing::trace!(
+                    target: "abilities",
+                    event = "warmup_pending",
+                    stage = "warmup",
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    entity_id,
+                    entity_name = who.player_name,
+                    cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
+                    ability_id = pc.ability_id, // nt:id-only per-tick row: the launch and fire rows name the ability
+                    remaining_ms = pc.fire_at.saturating_duration_since(now).as_millis() as u64,
+                    "warmup tick: cast still warming"
+                );
+            }
             continue;
         }
         if let Some(reason) =
@@ -70,10 +111,24 @@ pub(crate) async fn resolve_warmups(
             interrupt_pending_cast(entity_id, reason, tx, space_mgr).await;
             continue;
         }
+        record_warmup_fire(&pc, now, entity_id, space_mgr);
         fire_due_cast(entity_id, pc, &ability_def, tx, space_mgr, events).await;
         fired += 1;
     }
     fired
+}
+
+/// AB-T6: count a warmed cast's fire and its press-to-fire time, from the
+/// cell's receipt of the press (`PendingCast::received_at`) to `now`, the
+/// tick's clock: any launch delay, the warmup, and the tick's lateness.
+fn record_warmup_fire(pc: &PendingCast, now: Instant, entity_id: u32, space_mgr: &SpaceManager) {
+    use crate::cell::abilities::metrics;
+    metrics::fired(
+        metrics::FirePath::Warmup,
+        now.saturating_duration_since(pc.received_at),
+        metrics::caster_kind(space_mgr, entity_id),
+        metrics::world_of(space_mgr, entity_id),
+    );
 }
 
 /// The caster has moved more than [`CHANNEL_INTERRUPT_DISTANCE`] (planar)
@@ -145,10 +200,26 @@ async fn fire_time_refusal(
         return Some(InterruptReason::AmmoUnavailable);
     }
 
-    if pc.target_id <= 0 {
+    // A beneficial cast (AB-01) re-resolves from the client's target through
+    // the launch's resolver: on the caster it fires with no target checks; on
+    // an ally it takes the range and sight checks below, against that ally,
+    // but not the hostility gate.
+    let beneficial =
+        super::super::beneficial::is_player_beneficial(space_mgr, entity_id, ability_def);
+    let mut checked_target = pc.target_id;
+    if beneficial {
+        use super::super::beneficial::{resolve_cast_target, CastTarget};
+        match resolve_cast_target(space_mgr, entity_id, ability_def, pc.wire_target_id) {
+            CastTarget::Caster => return None,
+            CastTarget::Ally(id) => checked_target = id as i32,
+            CastTarget::Hostile(_) | CastTarget::None => return Some(InterruptReason::TargetLost),
+        }
+    }
+
+    if checked_target <= 0 {
         return None;
     }
-    let target_eid = pc.target_id as u32;
+    let target_eid = checked_target as u32;
     let Some(target) = space_mgr.get_entity(target_eid) else {
         return Some(InterruptReason::TargetLost);
     };
@@ -163,6 +234,7 @@ async fn fire_time_refusal(
     // A support shot at an ally (beneficial ammo, AM-11d) is the one
     // exception; `fire_support` re-classifies the target when it fires.
     if caster.is_player
+        && !beneficial
         && !super::super::support_shot::is_support_ally(space_mgr, caster, target, ability_def)
         && !combat::player_may_attack(caster, target, space_mgr.resources.duels())
     {
@@ -212,6 +284,7 @@ async fn fire_time_refusal(
         space_mgr,
     )
     .await
+    .is_some()
     {
         return Some(InterruptReason::NoLineOfSight);
     }
@@ -228,12 +301,45 @@ async fn fire_time_refusal(
 
 /// Fire an expired, re-validated cast through the post-warmup path.
 ///
+/// The `combat.cast_fire` span and the cast scope (AB-T1) wrap the whole
+/// fire, kill credit included, so every row it causes carries the cast's
+/// `cast_id`, the one its launch row logged. One span per fired cast, not
+/// per tick: the tick itself opens nothing (instrumentation-discipline
+/// rule 3).
+#[tracing::instrument(
+    name = "combat.cast_fire",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id = entity_id,
+        cast_id = pc.cast_id(),
+        ability_id = pc.ability_id,
+        target_id = pc.target_id
+    )
+)]
+async fn fire_due_cast(
+    entity_id: u32,
+    pc: PendingCast,
+    ability_def: &Option<AbilityDef>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    events: &dyn ContentEvents,
+) {
+    let outer_cast = space_mgr.enter_cast_scope(Some(pc.cast_id()));
+    fire_and_credit(entity_id, pc, ability_def, tx, space_mgr, events).await;
+    space_mgr.exit_cast_scope(outer_cast);
+    // The cast's debug lines (AB-N1), now its scope is closed.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
+}
+
+/// The body of [`fire_due_cast`].
+///
 /// Player casts go through the same kill credit the launch entry points
 /// use (`EntityDeath` for tagged kills, the `entity_health_below` drain), so
 /// a quest kill made by a charged ability still counts. NPC casts do not:
 /// NPC kills credit nothing, as with the bare `handle_use_ability` the NPC
 /// fight tick calls.
-async fn fire_due_cast(
+async fn fire_and_credit(
     entity_id: u32,
     pc: PendingCast,
     ability_def: &Option<AbilityDef>,
@@ -253,12 +359,22 @@ async fn fire_due_cast(
     // warmed-up cast credits nobody.
     let is_player = space_mgr.credit_recipient_quiet(entity_id).is_some();
 
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities",
         event = "warmup_complete",
+        stage = "fire",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = pc.ability_id,
+        ability_name = cimmeria_names::book().ability(pc.ability_id),
         target_id = pc.target_id,
+        target_name = space_mgr.entity_label(pc.target_id as u32),
         warmup_secs = pc.warmup_secs,
         "ability warmup complete; firing the cast"
     );
@@ -288,6 +404,7 @@ async fn fire_due_cast(
         entity_id,
         pc.ability_id,
         pc.target_id,
+        pc.wire_target_id,
         pc.effect_seq,
         ability_def,
         tx,

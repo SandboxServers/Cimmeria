@@ -70,7 +70,12 @@ pub fn log_entity_moved(sampler: &FirehoseSampler, row: &EntityMovedRow) {
         velocity,
         npc_moved_since_last,
     } = *row;
-    tracing::trace!(target: AOI_POSITION_TARGET, witness_id, entity_id, "AoI: entity position update");
+    tracing::trace!(
+        target: AOI_POSITION_TARGET,
+        witness_id, // nt:id-only per-move row on the 10 Hz path; the wire crate has no registry
+        entity_id, // nt:id-only per-move row on the 10 Hz path; the wire crate has no registry
+        "AoI: entity position update"
+    );
     // UPDATE_AVATAR is unreliable and never reaches `wire.out`, so without
     // this there is no record of the position / facing a client was given.
     let Some(suppressed) = sampler.admit() else {
@@ -78,9 +83,10 @@ pub fn log_entity_moved(sampler: &FirehoseSampler, row: &EntityMovedRow) {
     };
     tracing::debug!(
         target: AOI_POSITION_SAMPLE_TARGET,
-        witness_id,
-        entity_id,
+        witness_id, // nt:id-only sampled 10 Hz path; the wire crate has no registry
+        entity_id, // nt:id-only sampled 10 Hz path; the wire crate has no registry
         msg_id = crate::mercury::aoi::BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
+        msg_name = crate::names::client_msg_name(crate::mercury::aoi::BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR),
         pos_variant = "FullPos",
         x = position[0],
         y = position[1],

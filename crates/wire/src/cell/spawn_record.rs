@@ -124,6 +124,11 @@ pub struct SpawnRecord {
     /// the column defaults to `personal`, so every other template carries
     /// `Personal` and ignores it.
     pub vault_scope: cimmeria_entity::cell_entity::VaultScope,
+    /// `entity_templates.training_dummy` (Debug Area D-DA7): the NPC never
+    /// fights back. The spawn path puts the `TrainingDummy` mark on it (no AI
+    /// turn) and gives it the dummy Health. A template property, so a GM
+    /// `.spawn` of the template is a dummy too.
+    pub training_dummy: bool,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.

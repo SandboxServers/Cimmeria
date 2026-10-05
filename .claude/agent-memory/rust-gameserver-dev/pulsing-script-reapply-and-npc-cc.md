@@ -1,16 +1,19 @@
 ---
 name: pulsing-script-reapply-and-npc-cc
-description: A pulsing effect's script on_apply runs on the hit, on every pulse and on every same-source refresh, but on_remove runs once; stateful scripts need an instance guard. NPC AI ignores BSF_MOVEMENT_LOCK; slows go through MOVEMENT_SPEED_MOD.
+description: A pulsing script's on_apply runs per hit/pulse/refresh but on_remove once; stateful scripts belong on the timed-effect ledger (state_flags payload since AB-09). Interrupts from scripts queue on SpaceManager for combat to resolve.
 metadata:
   type: project
 ---
 
-Found 2026-09-28 while building AM-11a (ammo campaign, dart Tranquilizer). The Stun bug is filed as #1049.
+Found 2026-09-28 (AM-11a, #1049); fixed by AB-09 on 2026-10-03.
 
-- **on_apply runs many times per instance.** `damage_apply` dispatches the script on the hit, before `register_active_effect`. `pulsing/tick.rs::fire_pulse` re-dispatches it on every pulse, and a same-source re-hit refreshes the instance and still dispatches it. `on_remove` runs once, at the sweep, duel strip or channel cancel, and every one of those paths drops the instance *before* calling it.
-- **So a stateful script (a flag, a stat delta) must guard itself.** `on_apply` skips when `target.active_effects` already holds an instance of the same `effect_id`. `on_remove` restores only when none is left. The pattern is `MovementSlow` in `crates/cell-world/src/cell/effects/ammo_dart_cc.rs`. `Stun` has no such guard and leaks the `BSF_MOVEMENT_LOCK` refcount.
-- **A `pulse_count = 1` effect never registers an instance,** so its `on_remove` never runs (see the `StatBuff` module doc).
-- **NPC AI never reads `BSF_MOVEMENT_LOCK`.** A "stun" does nothing to an NPC. The NPC movement tick scales speed by `MOVEMENT_SPEED_MOD` (`effective_move_speed`, 100 = normal), and the client applies the same factor to players. So a slow that works on both is a `MOVEMENT_SPEED_MOD` delta.
-- **Pulse-layer `onTimerUpdate` carries the effect id to the client,** to the target player or to every witness of an NPC target. A new effect id (outside the cooked data) reaches clients this way; flag it for UAT (compare #938).
+- **on_apply runs many times per instance.** `damage_apply` dispatches the script on the hit, before `register_active_effect`; `pulsing/tick.rs::fire_pulse` re-dispatches it every pulse; a same-source re-hit refreshes and still dispatches. `on_remove` runs once, after the instance is dropped. A `pulse_count = 1` effect never registers an instance, so its `on_remove` never runs.
+- **The fix pattern is the timed-effect ledger, not an instance guard.** `apply_timed_effect` is keyed `(effect, invoker)`: a re-run replaces its own entry (release, then retake), so re-apply is idempotent and expiry is the stat-buff tick's. Stat deltas: `stats`; `state_field` bits: `TimedEffectSpec::state_flags` (one counted ref per entry, `entity/cell_entity/stat_buff_flags.rs`). `Stun`/`Knockdown` (`cell-effect-scripts/.../crowd_control.rs`) and `MovementSlow` (`TimedStacking::PerEffect`) use it. `flush_stat_buff_timers` sends the owed `onStateFieldUpdate` (self + witnesses) only when the value changed.
+- **`clear_all_state_flags` forfeits ledger holds** (zeroes entries' `state_flags`); keep that if you add another hard reset.
+- **NPCs honour `BSF_MOVEMENT_LOCK` since AB-09:** `npc_ai_fight` holds (`decision_outcome = stunned`, before the leash check) and `npc_movement_tick` zeroes velocity and keeps the route. The AoI tick resends velocity every 100 ms, so a frozen NPC must have zero velocity or it runs in place.
+- **Scripts cannot reach async combat:** to interrupt, a script calls `crowd_control::queue_interrupt` (`SpaceManager::pending_interrupts`; each request gets a nonce, never seed a roll without one); `cell-combat effects::interrupt` resolves it inside `flush_stat_buff_timers` (same burst) and on the stat-buff tick. Use the same queue-then-flush shape for any other script-triggered async action.
+- **"Stunned" means a ledger entry holds the lock** (`CellEntity::holds_ledger_flag`), not the bare bit (death and ring transport set it too). Stunned casters are refused in `use_ability/incapacitated.rs` and in consumable use; a landed stun queues an unrolled `InterruptCause::Incapacitated`. Anything that strips effects (duel end) must walk the ledger as well as `active_effects`: single-pulse CC never gets an instance.
+- **Test trap:** effect-script tests and `install_effect_scripts` share one registry; a fixture effect whose QR roll can miss lands nothing since AB-06, so CC pipeline fixtures add `EF_DONT_USE_QR`.
+- **Pulse-layer `onTimerUpdate` carries the effect id** to the target player or every witness of an NPC; the ledger's timers go to player targets only.
 
-Related: [[effect-scripts-run-after-the-death-check]], [[owner-pet-effects-and-passives]].
+Related: [[timed-effect-ledger-and-stat-routing]], [[effect-scripts-run-after-the-death-check]], [[damage-apply-miss-gate-and-seeded-rolls]].

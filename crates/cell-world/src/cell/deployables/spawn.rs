@@ -114,18 +114,29 @@ impl SpaceManager {
         match &result {
             Ok(entity_id) => {
                 let state = self.deployables.get(*entity_id);
+                let names = self.entity_names(*entity_id);
+                let book = cimmeria_names::book();
+                let space_id = self.get_entity_space_id(*entity_id);
                 tracing::info!(
                     target: "deployables.lifecycle",
                     decision_outcome = "spawned",
                     event = "spawned",
                     entity_id = *entity_id,
+                    entity_name = names.entity_name,
                     deployable_id = *entity_id,
+                    deployable_name = names.entity_name,
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     ability_id = spec.ability_id,
+                    ability_name = book.ability(spec.ability_id),
                     template_id = spec.template_id,
-                    space_id = self.get_entity_space_id(*entity_id),
+                    template_name = book.template(spec.template_id),
+                    space_id,
+                    world = space_id.and_then(|s| self.world_name_for_space(s)),
                     x = point.x,
                     y = point.y,
                     z = point.z,
@@ -144,11 +155,17 @@ impl SpaceManager {
                     decision_outcome = "spawn_failed",
                     event = "spawn_failed",
                     entity_id = owner,
+                    entity_name = self.entity_label(owner),
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     ability_id = spec.ability_id,
+                    ability_name = cimmeria_names::book().ability(spec.ability_id),
                     template_id = spec.template_id,
+                    template_name = cimmeria_names::book().template(spec.template_id),
                     reason = e.reason(),
                     error = %e,
                     "deployable could not be placed"

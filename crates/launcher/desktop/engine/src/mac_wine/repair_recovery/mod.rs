@@ -26,8 +26,20 @@ pub(crate) fn stop_reference(state: &DesktopState, id: Uuid) -> Result<StoppedPr
         stage: record.stage(),
         cache: record.cache(),
         installation: record.descriptor,
+        current_release: None,
     };
     stop_bound_work(state, id, false, work)
+}
+pub(crate) fn stop_update(
+    state: &DesktopState,
+    id: Uuid,
+    require_completed: bool,
+) -> Result<StoppedPrefix, IntentError> {
+    let plan = state.update_plan()?.ok_or(StorageError::Corrupt)?;
+    if plan.id != id {
+        return Err(StorageError::Corrupt.into());
+    }
+    stop_work(state, id, require_completed)
 }
 fn stop_work(
     state: &DesktopState,

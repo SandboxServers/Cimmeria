@@ -34,10 +34,12 @@ pub(super) struct Delivered {
 /// What a committed attached send moved: the sender's balance and, if an
 /// item was attached, the escrowed item. Read inside the transaction, so
 /// the client is told exactly what committed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(in super::super) struct AttachedOutcome {
     pub(in super::super) mail_id: i32,
     pub(in super::super) recipient_id: i32,
+    /// The recipient's stored name, for the log lines only.
+    pub(in super::super) recipient_name: Option<String>,
     pub(in super::super) debit: Debit,
     pub(in super::super) item: Option<EscrowedItem>,
 }
@@ -66,6 +68,8 @@ pub(super) enum DeliverError {
         /// The resolved recipient, when there was exactly one, for the
         /// refusal log's `target_player_id`.
         recipient_id: Option<i32>,
+        /// The resolved recipient's stored name, for the same log line.
+        recipient_name: Option<String>,
     },
     Db(sqlx::Error),
 }
@@ -232,6 +236,7 @@ pub(super) async fn deliver(
                 refusal,
                 balance,
                 recipient_id: Some(*recipient_id),
+                recipient_name: names.get(recipient_id).cloned(),
             };
             let source = match item_request {
                 Some(item) => Some((
@@ -281,6 +286,7 @@ pub(super) async fn deliver(
             delivery.attached = Some(AttachedOutcome {
                 mail_id,
                 recipient_id: *recipient_id,
+                recipient_name: names.get(recipient_id).cloned(),
                 debit,
                 item,
             });
@@ -298,6 +304,7 @@ pub(super) async fn deliver(
                 ),
                 balance,
                 recipient_id: None,
+                recipient_name: None,
             });
         }
     }

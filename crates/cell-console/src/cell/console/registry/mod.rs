@@ -239,8 +239,42 @@ const MAIL_EXPIRE_ARGS: &[ArgSpec] = &[arg(
     "Required. The mail to expire (see .mailbox); refused until mail expiry lands",
 )];
 
+/// The ability lab commands (AB-L2) have no legacy counterpart; written
+/// from `console/abilities/`.
+const COOLDOWNS_ARGS: &[ArgSpec] = &[
+    arg(
+        "reset",
+        "str",
+        "Optional. `reset` clears your cooldowns and sends your client the clear timers; without it, lists them",
+    ),
+    arg(
+        "abilityId",
+        "int",
+        "Optional, after `reset`. Clear only this ability (and its moniker groups); the clear is sent even if the server had none running",
+    ),
+];
+const DUMMY_ARGS: &[ArgSpec] = &[
+    arg(
+        "mode",
+        "str",
+        "Optional. `hostile` (default) or `friendly` places a dummy 3 m in front of you; `caster` places a hostile one that casts an ability at you; `clear` removes your own dummies",
+    ),
+    arg(
+        "templateId",
+        "int",
+        "Optional. The entity template to use (default 34, SGC Jaffa); after `caster`, the ability it casts",
+    ),
+    arg(
+        "intervalSecs",
+        "int",
+        "Optional, `caster` only. Seconds between casts (default 8, 1-290, so two casts fit its 10 minutes); at least the ability's cooldown and longer than its warmup",
+    ),
+];
+
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
+        "cooldowns" => COOLDOWNS_ARGS,
+        "dummy" => DUMMY_ARGS,
         "mute" => MUTE_ARGS,
         "unmute" => UNMUTE_ARGS,
         "help" => HELP_ARGS,

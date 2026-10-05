@@ -1303,7 +1303,7 @@ See [`findings/ability-resolution-pipeline.md`](findings/ability-resolution-pipe
 | Address | Function | Notes |
 |---------|----------|-------|
 | `0x00aa2910` | Lua `useAbility` thunk | Entry point from Lua VM → forwards to AbilitySet_InvokeAbility. Error string at `0x01940b70`: `"#ferror in function 'useAbility'"` |
-| `0x00d2a000` | `AbilitySet_GetSlotByIndex` | Looks up AbilitySlot pointer by zero-based index; returns null if out of range |
+| `0x00d2a000` | `AbilitySet` find by id | `thiscall(set, abilityId)`, `ret 4`: finds the ability in the `std::map<int, AbilityData*>` at `set+0x28`; returns null when the client does not know it. Earlier named `AbilitySet_GetSlotByIndex` (a lookup by index), which was wrong (corrected 2026-10-04) |
 | `0x00d2ae40` | `AbilitySet_EmitUseAbilityOrGroundTarget` | Branch on targetType (slot+0x48): 3=TargetGround → reticle flow; else → Pattern B emit for `Event_NetOut_UseAbility` |
 | `0x00dea330` | `AbilitySet_ActivateGroundTargetReticle` | Asserts TCM_AERadius==2 AND TargetGround==3; shows AE reticle; subscribes to `Event_Player_GroundTargetingEnd` |
 | `0x00d29d40` | `AbilityInfo_GetAERadius` | Returns the int at param_1+0xa0 (UE3 units, from `0x00d29e90`); asserts TCM==TCM_AERadius(2). Effective score 87. |
@@ -1598,7 +1598,8 @@ Native Lua bindings behind `Content/UI/Core/Ability/Ability.lua`. Full writeup: 
 |---------|------|-------|
 | `0x00aa2ac0` / `0x00ad8700` | `getTrainingTreeCount` shim / inner | Returns outer-array size of the `+0x8c → +0x50` ability-tree cache |
 | `0x00aa2ba0` / `0x00add0a0` | `getTrainableList` shim / inner | Walks the tree cache's inner array in stored (tree) order — not the trainer's offered-list order |
-| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Joins the `+0x8c → +0x3c` trainer-offered map with the client's own known-abilities lookup; writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Looks the id up in the `+0x8c → +0x50` trainer-offered map (`FUN_00e19890`) and computes `haveIt` from the `+0x8c → +0x3c` known-abilities `AbilitySet` (`0x00d2a000`); writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2740` / `0x00adb810` | `getAbilityList` shim / inner | **Zero arguments** (`tolua_isnoobj(L,1)`; any argument raises). Returns the known-ability ids from `+0x8c → +0x3c → +0xc` as a Lua array. Unused by the stock UI; client patch 009 calls it |
 | `0x00aa2ca0` / `0x00ad8720` | `buyTrainable` shim / sender | |
 | `0x00aa2d80` / `0x00aeacd0` | `respecAbilities` shim / sender | Zero-argument cell method 72 `resetMyAbilities` call |
 | `0x00c66ad0` | `GameEntityManager::instance()` | Asserts against `.\Src\GameEntityManager.cpp`; singleton is `g_EntityManager` at `0x01ef244c` (already listed above) |
@@ -2080,3 +2081,41 @@ Recovered in [client-mercury-receive-path.md](findings/client-mercury-receive-pa
 | `0x0157a1b0` / `0x01579710` | `Bundle::begin` | cursor starts at 1; empty leading packets skipped |
 | `0x0158aa40` | `InterfaceElement` header length | 1 fixed, `1 + width` variable |
 | `0x0081c2e0` | Mercury log function | a one-byte `ret` stub: no Mercury log line ever prints |
+
+## Ability client hook anchors (AB-C0, 2026-10-04)
+
+Evidence and per-seam confidence: [ability-client-hook-anchors.md](findings/ability-client-hook-anchors.md) and [native-combat-debug.md](findings/native-combat-debug.md).
+
+| Address | Name | Notes |
+|---|---|---|
+| `0x00d43dc0` | NetOut member callback | `thiscall(handler, event, subject)`, `ret 8`; `handler+4` desc, `handler+8` method; calls `RouteOutgoingEntityRpc`. Shared by every `EventHandler<Event_NetOut_*>` |
+| `0x00c6fc40` | `RouteOutgoingEntityRpc` | `stdcall(entity, desc, method, args)`, `ret 0x10`; `args` is the event bag; only caller is `0x00d43dd9` |
+| `0x00a372f0` | event dispatch to subscribers | `thiscall(sys, subject, event, baseTD, classTD)`, `ret 0x10`; main thread; also dispatches `Event_UI_*` |
+| `0x00a374a0` | event subscribe | `thiscall(sys, subject, &callback)`, `ret 8`; wrapped by per-type helpers such as `0x00dfac80` |
+| `0x004414d0` | `NetworkEvent` post | queues a 0x18-byte record; `Event_NetOut_*` use the twin `0x00cacd50` |
+| `0x00e3cba0` / `0x00e3cc20` / `0x00d434d0` | event-bag `GetInt` / `GetFloat` / `GetByte` | `bool thiscall(event, const std::string* name, T* out)`, `ret 8` |
+| `0x00aa94e0` | Lua `useAction` thunk | `useAction(actionId, bool)`; third argument must be absent (`0x00403280` is `tolua_isnoobj`) |
+| `0x00aa2910` | Lua `useAbility` thunk | `useAbility(id, target)`; used by `Ability.lua`, not by the hotbar |
+| `0x00ad9580` | `useAction` native body | `ActionBar = [[EM+0x8c]+0x4c]`, slot `actionId-1` (< 200), `action->vtable[9](flag)` |
+| `0x00e3cd90` / `0x00e3cf40` | `AbilityAction` / `PetAbilityAction` execute | `thiscall(action, bool selfFlag)`, `ret 4`; target from `GameBeing+0xfc` or the own id |
+| `0x00ad78e0` | Lua-path ability use | cdecl `(abilityId, targetSlot)`; maps the slot with `0x00c67410` |
+| `0x00d2afc0` | `AbilitySet` use | `thiscall(set, abilityId, targetId)`, `ret 8`; **silent drop** when the id is not in the set (`0x00d2afcf`) |
+| `0x00d2a000` | `AbilitySet` find by id | `std::map<int, AbilityData*>` at `set+0x28`; `ret 4` |
+| `0x00d2b020` | `AbilitySet` add if absent | `thiscall(set, id)`, `ret 4`; not a gate |
+| `0x00d2ae40` | emit `Event_NetOut_UseAbility` | `thiscall(set, rec, targetId)`; `rec+0xc` ability id, `rec+0x48 == 3` ground target |
+| `0x00c67410` | unit slot to entity id | thunk to `0x00c67120`; map at `GameEntityManager+0x130`; writer `0x00c67bd0` |
+| `0x00dd0de0` | `findEntity` | `thiscall(EM, id, flag)`, `ret 8`; flag adds the cache map |
+| `0x00dd6130` | `isConnected` | `[conn+0x30c] != 0` |
+| `0x00e003c0` / `0x00de9ae0` | `GameBeing::setTargetId` / `GameProxyPlayer::setTarget` | `GameBeing+0xfc` is the target entity id |
+| `0x00e018b0` | `GameBeing` `onTargetUpdate` handler | field `TargetId` |
+| `0x00e02ab0` | `GameBeing::registerCallbacks` | handler list in the finding; `0x00e02c00` unregisters |
+| `0x00e01f40` / `0x00e02060` | `GameBeing` stat handlers | functors `0x00e004e0` (current) and `0x00e005b0` (base); stats map at `GameBeing+0x160` |
+| `0x00ea62b0` | `CooldownManager` UI callback caller | `thiscall(this, type, id, float remaining, uint)` |
+| `0x00d05790` | `SequenceManager::onSequence` | drop at `0x00d0585c` when no client entity exists for `SourceID` |
+| `0x00cf33e0` | `Communicator` `onErrorCode` handler | function not defined in the project; prologue verified from bytes |
+| `0x00ac67e0` | Lua `writeLocalFeedback` thunk | not defined in the project |
+| `0x0158bb40` | outgoing sequence counter | `eax = [ecx+0x4c]; [ecx+0x4c] = (eax+1) & 0x0fffffff`; one caller, `Nub::send` |
+| `0x01582160` | `Nub::send` | network thread; `thiscall(nub, addr, bundle, channel)`; assigns `packet+0x44` |
+| `0x0157aff0` / `0x0157af60` / `0x0157b030` | `MemoryIStream` retrieve / remaining / peek byte | vtable `0x01b18e38`; cursor `+8`, end `+0xc` |
+| `0x01590bb0` | flat method index decode | `k = 0x3e - (N+0xc0)/0xff`; id below `k` is direct, otherwise `k + 0x100*(id-k) + nextByte` |
+| `0x00db3390` | outgoing and incoming method bind sweep | `gmDebug*` binds at `0x00dc555e`, `0x00dc55d8`, `0x00dc5652`, `0x00dc56cc`, `0x00dc58b4` |

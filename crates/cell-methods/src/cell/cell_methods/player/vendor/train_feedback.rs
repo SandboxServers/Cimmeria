@@ -115,9 +115,12 @@ pub(super) async fn send_reject_feedback(
             target: "abilities",
             event = "train_feedback_send_failed",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             reason = reject.reason(),
             error_code = code,
+            error_name = cimmeria_names::book().error_code(code),
             error = %e,
             "trainAbility: rejection onErrorCode could not be queued (base channel closed)"
         );

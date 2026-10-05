@@ -112,6 +112,7 @@ impl SpaceManager {
         if let Some(prev) = replaced {
             tracing::debug!(
                 entity_id,
+                entity_name = self.entity_label(entity_id),
                 previous_target = prev.target_address_id,
                 new_target = target_address_id,
                 "gate dial: re-dial cancelled the in-flight dial"

@@ -45,7 +45,8 @@ use crate::consts;
 use crate::packet::SEQUENCE_MASK;
 
 use super::channel_core::{seq_mod_leq, Channel};
-use super::state::{TxEntry, TxHole};
+use super::state::{MessageNames, TxEntry, TxHole};
+use crate::packet::MessageHead;
 
 /// True if `a` is strictly before `b` in the 28-bit modular sequence space.
 fn seq_mod_lt(a: u32, b: u32) -> bool {
@@ -85,6 +86,8 @@ pub struct TxHoleStall {
     pub fragment_index: Option<usize>,
     pub fragment_count: Option<usize>,
     pub message_count: Option<usize>,
+    /// The message the missing packet starts in, when the sender recorded it.
+    pub first_message: Option<MessageHead>,
     /// True on the first warning for this hole. False on the throttled
     /// repeats.
     pub first_warning: bool,
@@ -240,6 +243,18 @@ impl Channel {
     /// means the resends are not getting through, and the peer is still
     /// holding every reliable message behind the missing one.
     pub fn check_tx_hole(&mut self) -> Option<TxHoleStall> {
+        self.check_tx_hole_named(|_| MessageNames::default())
+    }
+
+    /// [`Self::check_tx_hole`], with `name` identifying the missing packet's
+    /// first message for the WARN (`msg_id`, `msg_name`, `method_name`) from
+    /// its retained entry. It runs only on a tick that warns, so the service
+    /// can afford to decrypt the retained bytes and look the names up; the
+    /// send path records nothing for it.
+    pub fn check_tx_hole_named(
+        &mut self,
+        name: impl FnOnce(&TxEntry) -> MessageNames,
+    ) -> Option<TxHoleStall> {
         let hole = self.tx_hole?;
         let now = self.clock().now();
         let stalled_for = now.saturating_duration_since(hole.since);
@@ -288,8 +303,10 @@ impl Channel {
             fragment_index: entry.and_then(|e| e.fragment_index),
             fragment_count: entry.and_then(|e| e.fragment_count),
             message_count: entry.and_then(|e| e.message_count),
+            first_message: entry.and_then(|e| e.first_message),
             first_warning,
         };
+        let names = entry.map(name).unwrap_or_default();
         tracing::warn!(
             target: "mercury.tx_hole",
             event = "tx_hole_stall",
@@ -306,6 +323,10 @@ impl Channel {
             fragment_index = ?stall.fragment_index,
             fragment_count = ?stall.fragment_count,
             message_count = ?stall.message_count,
+            // The first message in the held packet, named by the caller.
+            msg_id = names.msg_id,
+            msg_name = names.msg_name,
+            method_name = names.method_name,
             stalled_ms = stall.stalled_for.as_millis() as u64,
             first_warning,
             "peer has acked later reliable packets but not this one -- it is holding every \

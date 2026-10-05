@@ -1,0 +1,26 @@
+{
+  "name": "Named telemetry — Missing names",
+  "sourcePage": "logs",
+  "category": "named-telemetry",
+  "tags": ["named-telemetry", "nt-50", "seed-holes"],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server' AND ((template_id EXISTS AND template_name NOT EXISTS) OR (item_type_id EXISTS AND item_name NOT EXISTS) OR (ability_id EXISTS AND ability_name NOT EXISTS) OR (effect_id EXISTS AND effect_name NOT EXISTS) OR (mission_id EXISTS AND mission_name NOT EXISTS) OR (dialog_id EXISTS AND dialog_name NOT EXISTS) OR (chain_id EXISTS AND chain_name NOT EXISTS))"
+          },
+          "having": { "expression": "" }
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\":[{\"name\":\"event\",\"signal\":\"logs\"},{\"name\":\"scope_name\",\"signal\":\"logs\"},{\"name\":\"template_id\",\"signal\":\"logs\"},{\"name\":\"item_type_id\",\"signal\":\"logs\"},{\"name\":\"ability_id\",\"signal\":\"logs\"},{\"name\":\"effect_id\",\"signal\":\"logs\"},{\"name\":\"mission_id\",\"signal\":\"logs\"},{\"name\":\"dialog_id\",\"signal\":\"logs\"},{\"name\":\"chain_id\",\"signal\":\"logs\"},{\"name\":\"reason\",\"signal\":\"logs\"},{\"name\":\"body\",\"signal\":\"logs\"}]}"
+}

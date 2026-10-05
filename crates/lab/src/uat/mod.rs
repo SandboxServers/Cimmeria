@@ -2,10 +2,12 @@
 //! client through the lab tools by name, an evidence bundle per run, and
 //! ledger output in the unified-uat.md "Recording results" format.
 //!
-//! - [`spec`] — the TOML row-spec schema (`docs/guides/uat-specs/*.toml`).
+//! - [`spec`] — the TOML row-spec schema (`docs/guides/uat-specs/*.toml`);
+//!   [`spec_validate`] — the rules the types cannot express.
 //! - [`tier`] — native levels (N1/N2/N3/G/X) and what each tool may claim.
 //! - [`tools`] — the capability table (`@world_click` → tool name), the one
-//!   place a tool rename is made.
+//!   place a tool rename is made; [`lab_commands`] — the ability dot
+//!   commands (`@dummy`, `@cooldowns_reset`, `@clear_effects`) it names.
 //! - [`runner`] — executes rows; [`invoke`] is its by-name action layer.
 //! - [`clause`] / [`grade`] — pure evaluation and grading rules.
 //! - [`evidence`] — the bundle layout; [`ledger`] — the paste-ready text.
@@ -18,9 +20,11 @@ pub mod clause;
 pub mod evidence;
 pub mod grade;
 pub mod invoke;
+pub mod lab_commands;
 pub mod ledger;
 pub mod runner;
 pub mod spec;
+pub mod spec_validate;
 pub mod tier;
 pub mod tools;
 

@@ -363,3 +363,22 @@ fn build_fragmented_bundle_masks_seq_in_single_packet_path() {
     let p = parse_incoming(&packets[0]).expect("masked unmasked-base parses");
     assert_eq!(p.seq_id, Some(0), "NULL_SEQUENCE masked back to 0");
 }
+
+/// The flag byte's log names (NT-31): every bit is named once, in bit
+/// order, and the unencrypted login byte (0x41) renders by name.
+#[test]
+fn packet_flags_name_every_bit_of_the_flag_byte() {
+    let masks: Vec<u64> = PACKET_FLAGS.entries().iter().map(|&(m, _)| m).collect();
+    assert_eq!(masks, (0..8).map(|b| 1u64 << b).collect::<Vec<_>>());
+    assert_eq!(
+        PACKET_FLAGS
+            .render(FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE)
+            .to_string(),
+        "FLAG_HAS_REQUESTS|FLAG_HAS_SEQUENCE"
+    );
+    assert_eq!(
+        PACKET_FLAGS.render(0xFFu8).to_string(),
+        "FLAG_HAS_REQUESTS|FLAG_PIGGYBACK|FLAG_HAS_ACKS|FLAG_ON_CHANNEL|FLAG_RELIABLE|\
+         FLAG_FRAGMENTED|FLAG_HAS_SEQUENCE|FLAG_INDEXED"
+    );
+}

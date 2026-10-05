@@ -33,7 +33,12 @@ pub(super) async fn handle_spawn_by_cmd(
     let (design_id_str, consumed) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, "gmSpawnByCmd: malformed DesignId WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                "gmSpawnByCmd: malformed DesignId WSTRING",
+            );
             send_gm_feedback(entity_id, "gmSpawnByCmd: malformed DesignId", tx).await;
             return true;
         }
@@ -46,9 +51,10 @@ pub(super) async fn handle_spawn_by_cmd(
         _ => {
             tracing::warn!(
                 entity_id,
-                design_id = %design_id_str,
+                entity_name = space_mgr.entity_label(entity_id),
+                template_arg = %design_id_str,
                 "gmSpawnByCmd: DesignId is not a positive numeric template id — \
-                 internal-name resolution is not wired in the cell; rejecting"
+                 internal-name resolution is not wired in the cell; rejecting",
             );
             send_gm_feedback(
                 entity_id,
@@ -65,6 +71,7 @@ pub(super) async fn handle_spawn_by_cmd(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmSpawnByCmd: truncated args (missing FLOAT XOffset)"
             );
@@ -77,6 +84,7 @@ pub(super) async fn handle_spawn_by_cmd(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmSpawnByCmd: truncated args (missing FLOAT ZOffset)"
             );
@@ -92,7 +100,11 @@ pub(super) async fn handle_spawn_by_cmd(
             [e.position.x, e.position.y, e.position.z],
         ),
         None => {
-            tracing::warn!(entity_id, "gmSpawnByCmd: caller entity not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmSpawnByCmd: caller entity not found"
+            );
             send_gm_feedback(entity_id, "gmSpawnByCmd: caller entity not found", tx).await;
             return true;
         }
@@ -102,6 +114,7 @@ pub(super) async fn handle_spawn_by_cmd(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "gmSpawnByCmd: caller has no resolvable world name"
             );
             send_gm_feedback(
@@ -119,6 +132,7 @@ pub(super) async fn handle_spawn_by_cmd(
     if !position.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ?position,
             x_off,
             z_off,
@@ -135,11 +149,13 @@ pub(super) async fn handle_spawn_by_cmd(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         template_id,
+        template_name = cimmeria_names::book().template(template_id),
         space_id,
-        %world_name,
+        world = %world_name,
         ?position,
-        "gmSpawnByCmd: requesting NPC spawn from base"
+        "gmSpawnByCmd: requesting NPC spawn from base",
     );
     if let Err(e) = tx
         .send(CellToBaseMsg::GmSpawnNpc {
@@ -157,7 +173,14 @@ pub(super) async fn handle_spawn_by_cmd(
         })
         .await
     {
-        tracing::warn!(entity_id, template_id, error = %e, "gmSpawnByCmd: GmSpawnNpc send to base failed — spawn dropped");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            error = %e,
+            "gmSpawnByCmd: GmSpawnNpc send to base failed — spawn dropped",
+        );
         send_gm_feedback(entity_id, "gmSpawnByCmd: spawn request failed", tx).await;
         return true;
     }

@@ -17,6 +17,7 @@
 //! A refusal re-sends the organization's true state and a feedback line, so
 //! a client that hid the organization on the press shows it again.
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::{OrgLeaveReason, OrgRank};
 use cimmeria_wire::cell::client_methods::organization::{
     build_on_member_left_organization, build_on_organization_left, ON_MEMBER_LEFT_ORGANIZATION,
@@ -28,6 +29,7 @@ use super::disband::fan_out_disband;
 use super::fanout::{
     feedback, membership_ended, online_members, send_to_members, send_to_player, OnlineMember,
 };
+use super::log_names::identity_of_player;
 use super::push::push_org_state;
 use super::telemetry::{OrgReject, Row};
 use super::{OrgCtx, OrgPlayer};
@@ -58,6 +60,7 @@ pub enum LeaveOutcome {
 struct Decided {
     outcome: LeaveOutcome,
     org_type: &'static str,
+    org_name: Option<&'static str>,
     /// The roster before the leave, the leaver included.
     roster: Vec<RosterMember>,
     from_rank: OrgRank,
@@ -78,6 +81,7 @@ pub async fn handle_leave(
     player: &OrgPlayer,
     org_id: i32,
 ) -> Result<LeaveOutcome, OrgReject> {
+    let who = identity_of_player(ctx, player.player_id);
     let mut row = Row {
         event: "org.leave",
         action: "leave",
@@ -86,37 +90,45 @@ pub async fn handle_leave(
         entity_id: Some(player.entity_id),
         org_id,
         org_type: None,
+        account_name: who.account_name,
+        player_name: who.player_name,
+        org_name: None,
     };
     let Some(pool) = ctx.db_pool.as_deref() else {
         return refuse(ctx, row, player, OrgReject::NoDb).await;
     };
     let decided = match pool.begin().await {
-        Ok(mut tx) => match decide(&mut tx, player, org_id).await {
+        Ok(mut tx) => match decide(&mut tx, player, who, org_id).await {
             Ok(d) => match tx.commit().await {
                 Ok(()) => Ok(d),
-                Err(e) => Err(db_error(e.into(), player, org_id)),
+                Err(e) => Err(db_error(e.into(), player, who, org_id, d.org_name)),
             },
             // Dropping `tx` rolls back.
             Err(why) => Err(why),
         },
-        Err(e) => Err(db_error(e.into(), player, org_id)),
+        Err(e) => Err(db_error(e.into(), player, who, org_id, None)),
     };
     let d = match decided {
         Ok(d) => d,
-        Err((why, org_type)) => {
+        Err((why, org_type, org_name)) => {
             row.org_type = org_type;
+            row.org_name = org_name;
             return refuse(ctx, row, player, why).await;
         }
     };
     row.org_type = Some(d.org_type);
+    row.org_name = d.org_name;
 
     tracing::debug!(
         target: "org",
         event = "member_left",
         reason = "requested",
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         org_id,
+        org_name = d.org_name,
         from_rank = d.from_rank.as_u8(),
         "organization member left"
     );
@@ -128,6 +140,7 @@ pub async fn handle_leave(
                 target: "org",
                 event = "org_events_export",
                 org_id,
+                org_name = d.org_name,
                 reason = "db_error",
                 error = %e,
                 "organization audit rows not exported; the startup sweep will"
@@ -145,9 +158,13 @@ pub async fn handle_leave(
             event = "org.send_failed",
             what = "organization_left",
             org_id,
+            org_name = d.org_name,
             account_id = player.account_id,
+            account_name = who.account_name,
             player_id = player.player_id,
+            player_name = who.player_name,
             entity_id = player.entity_id,
+            entity_name = who.player_name,
             reason,
             "onOrganizationLeft could not be sent to the leaver"
         );
@@ -157,7 +174,7 @@ pub async fn handle_leave(
         entity_id: player.entity_id,
         account_id: player.account_id,
     };
-    membership_ended(ctx, me, org_id, OrgLeaveReason::Requested).await;
+    membership_ended(ctx, me, org_id, d.org_name, OrgLeaveReason::Requested).await;
     match d.outcome {
         LeaveOutcome::Left => {
             let others: Vec<i32> = d
@@ -177,6 +194,7 @@ pub async fn handle_leave(
             send_to_members(
                 ctx,
                 org_id,
+                d.org_name,
                 &recipients,
                 &[(ON_MEMBER_LEFT_ORGANIZATION, args)],
                 "member_left",
@@ -191,7 +209,7 @@ pub async fn handle_leave(
                 .map(|m| m.player_id)
                 .filter(|&p| p != player.player_id)
                 .collect();
-            fan_out_disband(ctx, org_id, &others, "last_member_left").await;
+            fan_out_disband(ctx, org_id, d.org_name, &others, "last_member_left").await;
             feedback(
                 ctx,
                 player.entity_id,
@@ -204,44 +222,52 @@ pub async fn handle_leave(
     Ok(d.outcome)
 }
 
-type Refusal = (OrgReject, Option<&'static str>);
+/// The refusal, the organization type and the organization name where the
+/// lock had read them.
+type Refusal = (OrgReject, Option<&'static str>, Option<&'static str>);
 
 /// The locked part: authorize and write, inside `tx`.
 async fn decide(
     tx: &mut Transaction<'_, Postgres>,
     player: &OrgPlayer,
+    who: PlayerIdentity,
     org_id: i32,
 ) -> Result<Decided, Refusal> {
-    let db = |e: OrgStoreError| db_error(e, player, org_id);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
-        .map_err(|e| db(e.into()))?
-        .ok_or((OrgReject::NotMember, None))?;
+        .map_err(|e| db_error(e.into(), player, who, org_id, None))?
+        .ok_or((OrgReject::NotMember, None, None))?;
     let org_type = access.org_type().name();
+    let org_name = access.org_name();
+    let db = |e: OrgStoreError| db_error(e, player, who, org_id, org_name);
     let roster = load_roster(&mut **tx, org_id).await.map_err(db)?;
     let from_rank = access.rank();
     if roster.len() > 1 && from_rank == OrgRank::LEADER {
-        return Err((OrgReject::LeaderCannotLeave, Some(org_type)));
+        return Err((OrgReject::LeaderCannotLeave, Some(org_type), org_name));
     }
     if roster.len() <= 1 {
         return match disband(tx, &access, org_id).await {
             Ok(_) => Ok(Decided {
                 outcome: LeaveOutcome::Disbanded,
                 org_type,
+                org_name,
                 roster,
                 from_rank,
                 tx_id: None,
             }),
-            Err(OrgStoreError::VaultNotEmpty) => Err((OrgReject::VaultNotEmpty, Some(org_type))),
-            Err(e) => Err((db(e).0, Some(org_type))),
+            Err(OrgStoreError::VaultNotEmpty) => {
+                Err((OrgReject::VaultNotEmpty, Some(org_type), org_name))
+            }
+            Err(e) => Err((db(e).0, Some(org_type), org_name)),
         };
     }
     let removal = remove_member(tx, &access, org_id, player.player_id)
         .await
-        .map_err(|e| (db(e).0, Some(org_type)))?;
+        .map_err(|e| (db(e).0, Some(org_type), org_name))?;
     Ok(Decided {
         outcome: LeaveOutcome::Left,
         org_type,
+        org_name,
         roster,
         from_rank,
         tx_id: Some(removal.tx_id),
@@ -251,18 +277,27 @@ async fn decide(
 /// A database failure: WARN with the error, then the `db_error` refusal.
 /// Every other `OrgStoreError` here is a state the checks above rule out
 /// under the lock, so it is reported the same way.
-fn db_error(e: OrgStoreError, player: &OrgPlayer, org_id: i32) -> Refusal {
+fn db_error(
+    e: OrgStoreError,
+    player: &OrgPlayer,
+    who: PlayerIdentity,
+    org_id: i32,
+    org_name: Option<&'static str>,
+) -> Refusal {
     tracing::warn!(
         target: "org",
         event = "org.leave_failed",
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         org_id,
+        org_name,
         reason = e.reason(),
         error = %e,
         "organization leave failed in the database"
     );
-    (OrgReject::DbError, None)
+    (OrgReject::DbError, None, org_name)
 }
 
 /// Log the refusal, send the feedback line and, where the player is still a

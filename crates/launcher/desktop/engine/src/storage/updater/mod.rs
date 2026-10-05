@@ -1,4 +1,7 @@
-//! A bounded download-only updater. This module cannot execute or install bytes.
+//! Native signed-package ownership, platform replacement and startup acknowledgment.
+mod apply;
+mod bundle;
+pub use apply::InstalledTarget;
 mod policy;
 mod transport;
 use super::{atomic, ensure_regular_or_absent, read, DesktopState, StorageError, MAX_REVISION};
@@ -7,6 +10,16 @@ use serde::{Deserialize, Serialize};
 use std::io::Read;
 pub use transport::{check, download};
 use uuid::Uuid;
+
+#[cfg(feature = "test-support")]
+thread_local! {
+    static FAIL_NEXT_SAVE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+/// Fail one atomic updater save on this worker thread, before or after replacement.
+#[cfg(feature = "test-support")]
+pub fn fail_next_update_save_for_test(after_replace: bool) {
+    FAIL_NEXT_SAVE.with(|fault| fault.set(Some(after_replace)));
+}
 
 const RECORD: &str = "launcher-update.json";
 const ARTIFACT: &str = "launcher-update.verified";
@@ -27,6 +40,11 @@ pub enum Error {
     Transport,
     Timeout,
     Interrupted,
+    Package,
+    Target,
+    Replace,
+    Spawn,
+    Reconciliation,
     Storage(StorageError),
 }
 impl From<StorageError> for Error {
@@ -45,11 +63,23 @@ pub enum Phase {
     Downloading,
     Verifying,
     Ready,
+    Installing,
+    RestartRequired,
+    ReconciliationRequired,
+    Installed,
     Failed,
 }
 impl Phase {
     fn busy(self) -> bool {
-        matches!(self, Self::Checking | Self::Downloading | Self::Verifying)
+        matches!(
+            self,
+            Self::Checking
+                | Self::Downloading
+                | Self::Verifying
+                | Self::Installing
+                | Self::RestartRequired
+                | Self::ReconciliationRequired
+        )
     }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +100,8 @@ struct Record {
     owner: Option<Uuid>,
     offer: Option<Offer>,
     failure: Option<Error>,
+    #[serde(default)]
+    apply: Option<apply::Attempt>,
 }
 impl Default for Record {
     fn default() -> Self {
@@ -80,6 +112,7 @@ impl Default for Record {
             owner: None,
             offer: None,
             failure: None,
+            apply: None,
         }
     }
 }
@@ -134,6 +167,22 @@ impl DesktopState {
             .checked_add(1)
             .filter(|v| *v <= MAX_REVISION)
             .ok_or(StorageError::Corrupt)?;
+        #[cfg(feature = "test-support")]
+        let result = match FAIL_NEXT_SAVE.with(|fault| fault.take()) {
+            Some(after_replace) => {
+                atomic::write_with(self.state_root(), RECORD, &record, |point| {
+                    if (point == atomic::Checkpoint::AfterReplace) == after_replace {
+                        Err(std::io::Error::other(
+                            "injected updater persistence failure",
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                })
+            }
+            None => atomic::write(self.state_root(), RECORD, &record),
+        };
+        #[cfg(not(feature = "test-support"))]
         let result = atomic::write(self.state_root(), RECORD, &record);
         self.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
         result?;
@@ -149,7 +198,14 @@ impl DesktopState {
     /// Called once by DesktopState::open, never by a live worker's polling path.
     pub(crate) fn recover_launcher_update(&mut self) -> Result<(), StorageError> {
         let mut record = self.update_record()?;
-        if record.phase.busy() {
+        if matches!(
+            record.phase,
+            Phase::Installing | Phase::RestartRequired | Phase::ReconciliationRequired
+        ) {
+            record.phase = Phase::ReconciliationRequired;
+            record.failure = Some(Error::Reconciliation);
+            self.save_update(record)?;
+        } else if record.phase.busy() {
             record.phase = Phase::Failed;
             record.owner = None;
             record.failure = Some(Error::Interrupted);
@@ -175,7 +231,7 @@ impl DesktopState {
             schema_version: 1,
             revision: record.revision,
             operation_revision: self.operations.snapshot().revision,
-            phase: if config.is_none() {
+            phase: if config.is_none() && !record.phase.busy() {
                 Phase::Disabled
             } else {
                 record.phase
@@ -189,7 +245,7 @@ impl DesktopState {
                     notes: offer.notes,
                 })
             },
-            failure: if config.is_none() {
+            failure: if config.is_none() && !record.phase.busy() {
                 Some(Error::Disabled)
             } else {
                 record.failure
@@ -231,6 +287,7 @@ impl DesktopState {
         record.owner = Some(Uuid::new_v4());
         record.offer = None;
         record.failure = None;
+        record.apply = None;
         let record = self.save_update(record)?;
         Ok(Ticket {
             owner: record.owner.unwrap(),
@@ -368,3 +425,6 @@ impl DesktopState {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod bundle_tests;

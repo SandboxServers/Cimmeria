@@ -28,8 +28,10 @@ fires `Event_UI_AbilityCooldown` transitions. Channeled abilities are cancelled 
     ↓ AbilitySet_InvokeAbility
            — RTTI-casts local entity to GameBeing
            — resolves AbilityType for abilityId
-    ↓ AbilitySet_GetSlotByIndex (0x00d2a000)
-           — looks up slot in ability array by zero-based index
+    ↓ AbilitySet find by id (0x00d2a000)
+           — std::map<int, AbilityData*> find at AbilitySet+0x28; null when the
+             client does not know the ability (corrected 2026-10-04; earlier
+             named AbilitySet_GetSlotByIndex)
     ↓ AbilitySet_EmitUseAbilityOrGroundTarget (0x00d2ae40)
            — reads targetType from pAbilityData+0x48
            — BRANCHES:

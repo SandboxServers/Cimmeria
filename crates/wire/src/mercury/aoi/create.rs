@@ -452,7 +452,7 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
     // surface it loudly. See docs/architecture/negative-logging-convention.md.
     tracing::warn!(
         target: "aoi.cascade_appearance_missing",
-        entity_id,
+        entity_id, // nt:id-only the wire crate has no NameBook; the cell AoI enter row names the NPC
         body_set = d.body_set.as_deref().unwrap_or("<none>"),
         static_mesh = d.static_mesh.as_deref().unwrap_or("<none>"),
         components_count = d.components.len(),

@@ -37,7 +37,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::claim::{unix_now, OpError};
-use super::notify::{notify_delivered, Delivery};
+use super::notify::{notify_delivered, online_identity, Delivery};
 use crate::base::feedback::{
     send_to_current_player, serialize_on_player_communication, FeedbackCtx, CHAN_FEEDBACK,
     FEEDBACK_SPEAKER,
@@ -47,6 +47,7 @@ use crate::base::ConnectedClientState;
 use crate::cell::mail;
 use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
 use crate::mercury::method_idx;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 
 pub(super) use terminal::{expire_one, ExpireOutcome, Expired, ExpiryPath};
 
@@ -139,7 +140,7 @@ pub async fn sweep_due(pool: &PgPool, now: i32, notify: SweepNotify<'_>) -> Swee
         {
             Ok(batch) => batch,
             Err(e) => {
-                scan_failed(SweepSource::Tick, None, &e);
+                scan_failed(SweepSource::Tick, None, &e, notify);
                 summary.failed += 1;
                 break;
             }
@@ -162,7 +163,7 @@ pub async fn sweep_due(pool: &PgPool, now: i32, notify: SweepNotify<'_>) -> Swee
             break;
         }
     }
-    log_summary(SweepSource::Tick, None, now, summary);
+    log_summary(SweepSource::Tick, None, now, summary, notify);
     summary
 }
 
@@ -190,7 +191,7 @@ pub async fn sweep_mailbox(
     {
         Ok(due) => due,
         Err(e) => {
-            scan_failed(SweepSource::Login, Some(owner), &e);
+            scan_failed(SweepSource::Login, Some(owner), &e, notify);
             summary.failed += 1;
             return summary;
         }
@@ -207,7 +208,7 @@ pub async fn sweep_mailbox(
         )
         .await;
     }
-    log_summary(SweepSource::Login, Some(owner), now, summary);
+    log_summary(SweepSource::Login, Some(owner), now, summary, notify);
     summary
 }
 
@@ -230,7 +231,7 @@ pub(super) async fn expire_and_tell(
                 ExpiryPath::Deleted => summary.deleted += 1,
                 ExpiryPath::Quarantined { .. } => summary.quarantined += 1,
             }
-            log_expired(&expired, source, now);
+            log_expired(&expired, source, now, notify);
             if let Some(ctx) = notify {
                 tell(pool, ctx, &expired).await;
             }
@@ -238,11 +239,13 @@ pub(super) async fn expire_and_tell(
         }
         Ok(ExpireOutcome::Skipped(reason)) => {
             summary.skipped += 1;
+            let who = owner_identity(notify, Some(owner));
             tracing::debug!(
                 target: "mail",
                 event = "mail.expire_skipped",
                 player_id = owner,
-                mail_id,
+                player_name = who.player_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason,
                 source = source.name(),
                 "expiry sweep left a mail unchanged",
@@ -256,11 +259,13 @@ pub(super) async fn expire_and_tell(
                 OpError::Db(e) => ("db_error", Some(e.to_string())),
                 OpError::Refused(r) => (r.reason, None),
             };
+            let who = owner_identity(notify, Some(owner));
             tracing::error!(
                 target: "mail",
                 event = "mail.expire_failed",
                 player_id = owner,
-                mail_id,
+                player_name = who.player_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason,
                 error,
                 source = source.name(),
@@ -321,11 +326,13 @@ async fn tell(pool: &PgPool, ctx: &FeedbackCtx<'_>, expired: &Expired) {
 /// `mail.expired`: INFO for a return or a delete, WARN for a quarantine
 /// (D-SS04: a quarantined mail needs a GM). `player_id` is the mailbox the
 /// mail expired from, `target_player_id` its sender.
-fn log_expired(e: &Expired, source: SweepSource, now: i32) {
+fn log_expired(e: &Expired, source: SweepSource, now: i32, notify: SweepNotify<'_>) {
+    let who = owner_identity(notify, Some(e.owner));
     let returned_to = match e.path {
         ExpiryPath::Returned { to_player_id } => Some(to_player_id),
         _ => None,
     };
+    let book = cimmeria_names::book();
     macro_rules! expired_event {
         ($level:ident, $reason:expr, $msg:literal) => {
             tracing::$level!(
@@ -334,10 +341,15 @@ fn log_expired(e: &Expired, source: SweepSource, now: i32) {
                 path = e.path.name(),
                 reason = $reason,
                 player_id = e.owner,
+                player_name = who.player_name,
                 target_player_id = e.sender_id,
+                target_player_name = e.sender_name.as_deref(),
                 returned_to,
-                mail_id = e.mail_id,
+                mail_id = e.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 item_id = e.item_id,
+                item_name = e
+                    .item_type_id
+                    .and_then(|t| book.item(t)),
                 cash = e.cash,
                 cod_cancelled = e.cod_cancelled,
                 expires_at = e.expires_at,
@@ -366,12 +378,28 @@ fn log_expired(e: &Expired, source: SweepSource, now: i32) {
     }
 }
 
-fn log_summary(source: SweepSource, owner: Option<i32>, now: i32, s: SweepSummary) {
+/// The owner's identity when a session is at hand to name them.
+fn owner_identity(notify: SweepNotify<'_>, owner: Option<i32>) -> PlayerIdentity {
+    match (notify, owner) {
+        (Some(ctx), Some(owner)) => online_identity(ctx.connected, owner),
+        _ => PlayerIdentity::UNKNOWN,
+    }
+}
+
+fn log_summary(
+    source: SweepSource,
+    owner: Option<i32>,
+    now: i32,
+    s: SweepSummary,
+    notify: SweepNotify<'_>,
+) {
+    let who = owner_identity(notify, owner);
     tracing::debug!(
         target: "mail",
         event = "mail.expiry_sweep",
         source = source.name(),
         player_id = owner,
+        player_name = who.player_name,
         now,
         scanned = s.scanned,
         returned = s.returned,
@@ -383,12 +411,14 @@ fn log_summary(source: SweepSource, owner: Option<i32>, now: i32, s: SweepSummar
     );
 }
 
-fn scan_failed(source: SweepSource, owner: Option<i32>, e: &sqlx::Error) {
+fn scan_failed(source: SweepSource, owner: Option<i32>, e: &sqlx::Error, notify: SweepNotify<'_>) {
+    let who = owner_identity(notify, owner);
     tracing::error!(
         target: "mail",
         event = "mail.expire_failed",
         source = source.name(),
         player_id = owner,
+        player_name = who.player_name,
         reason = "scan_db_error",
         error = %e,
         "mail expiry scan failed; the next sweep retries",

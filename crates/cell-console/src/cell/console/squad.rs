@@ -53,13 +53,18 @@ impl GmRow {
             outcome,
             reason = out.reason,
             account_id = self.gm.account_id,
+            account_name = self.gm.account_name,
             player_id = self.gm.player_id,
+            player_name = self.gm.player_name,
             entity_id = self.entity_id,
+            entity_name = self.gm.player_name,
             target_account_id = target.account_id,
+            target_account_name = target.account_name,
             target_player_id = target.player_id,
-            squad_id = out.squad_id,
+            target_player_name = target.player_name,
+            squad_id = out.squad_id, // nt:id-only squads carry no name, only their members do
             "GM squad command {}",
-            outcome
+            outcome,
         );
         count_action(self.action, outcome, out.reason.unwrap_or("none"));
     }

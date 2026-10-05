@@ -137,13 +137,28 @@ async fn execute(
     {
         return Ok(Observation::NotStarted);
     }
+    // A session that cannot be had costs a bounded wait, never the launch.
+    let session = telemetry::session(&state, plan).await;
+    let minted = session.is_some();
     let prepared = plan.clone();
-    let setup = tokio::task::spawn_blocking(move || prepare(&prepared, &root))
+    let setup = tokio::task::spawn_blocking(move || prepare(&prepared, &root, session.as_ref()))
         .await
         .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup else {
         return Ok(Observation::NotStarted);
     };
+    if minted {
+        let attached = request.dlls.len() > plan.resources.client_patches.iter().count();
+        telemetry::record(
+            &state,
+            plan,
+            if attached {
+                crate::game_telemetry::Outcome::Attached
+            } else {
+                crate::game_telemetry::Outcome::SessionNotWritten
+            },
+        );
+    }
     {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         if cancel.is_cancelled() {
@@ -177,6 +192,7 @@ enum Ownership {
 fn prepare(
     plan: &Plan,
     root: &Path,
+    session: Option<&crate::game_telemetry::Session>,
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -188,7 +204,7 @@ fn prepare(
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
         {
-            let (spec, request, resources) = wine::prepare(plan, root)?;
+            let (spec, request, resources) = wine::prepare(plan, root, session)?;
             return Ok((
                 spec,
                 request,
@@ -204,10 +220,11 @@ fn prepare(
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan)
+    prepare_native(plan, session)
 }
 fn prepare_native(
     plan: &Plan,
+    session: Option<&crate::game_telemetry::Session>,
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -229,19 +246,22 @@ fn prepare_native(
         return Err(StorageError::Corrupt.into());
     }
     let directory = preparation::prepare(plan)?;
+    let telemetry = telemetry::injected(plan, session);
     let request = cimmeria_runtime_probe::game_launch::Request {
         schema_version: 1,
         operation_id: plan.id,
         exe: directory.join("SGW.exe"),
         directory: directory.clone(),
+        // Patches first: the telemetry DLL shares their install lock.
         dlls: plan
             .resources
             .client_patches
             .iter()
+            .chain(telemetry)
             .map(|p| p.path().to_path_buf())
             .collect(),
     };
-    let environment = [
+    let environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> = [
         "SystemRoot",
         "WINDIR",
         "PATH",
@@ -253,6 +273,12 @@ fn prepare_native(
     ]
     .into_iter()
     .filter_map(|key| std::env::var_os(key).map(|value| (key.into(), value)))
+    .chain(
+        telemetry
+            .iter()
+            .flat_map(|_| crate::game_telemetry::passthrough_environment())
+            .map(|(key, value)| (key.into(), value.into())),
+    )
     .collect();
     Ok((
         crate::helper_supervisor::HelperCommand {
@@ -270,12 +296,8 @@ fn prepare_native(
 mod tests {
     use super::*;
 
-    #[test]
-    fn native_preparation_reads_locked_owner_and_retains_exclusion() {
-        let (root, _state, plan) = super::super::tests::fixture();
-        let game = plan.installation.destination.join("game");
-        let exe = game.join("Working/Binaries/SGW.exe");
-        // Inert PE32 header, sufficient for real client preparation, never spawned.
+    // Inert PE32 header, sufficient for real client preparation, never spawned.
+    fn inert_client(exe: &Path) {
         let mut bytes = vec![0u8; 0x200];
         bytes[..2].copy_from_slice(b"MZ");
         bytes[60..64].copy_from_slice(&0x128u32.to_le_bytes());
@@ -283,14 +305,76 @@ mod tests {
         bytes[0x13c..0x13e].copy_from_slice(&0xe0u16.to_le_bytes());
         bytes[0x140..0x142].copy_from_slice(&0x10bu16.to_le_bytes());
         bytes[0x186..0x188].copy_from_slice(&0x8140u16.to_le_bytes());
-        std::fs::write(&exe, bytes).unwrap();
+        std::fs::write(exe, bytes).unwrap();
+    }
+
+    #[test]
+    fn telemetry_is_injected_after_the_patches_and_only_with_its_session_marker() {
+        let (root, _state, mut plan) = super::super::tests::fixture();
+        let directory = root.path().canonicalize().unwrap();
+        let game = plan.installation.destination.join("game");
+        inert_client(&game.join("Working/Binaries/SGW.exe"));
+        let patches = super::super::tests::artifact(&directory, "patches.dll");
+        let telemetry = super::super::tests::artifact(&directory, "telemetry.dll");
+        plan.resources.client_patches = Some(patches.clone());
+        plan.resources.client_telemetry = Some(telemetry.clone());
+        let marker = game.join("Working/Binaries/sessions/current-session.json");
+
+        // No session (the server gave none): the DLL stays out and nothing is written.
+        let (_, request, ownership) = prepare_native(&plan, None).unwrap();
+        assert_eq!(request.dlls, [patches.path()]);
+        assert!(!marker.exists());
+        drop(ownership);
+
+        let session = crate::game_telemetry::Session::fixture();
+        let (_, request, ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        assert_eq!(request.dlls, [patches.path(), telemetry.path()]);
+        let written: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&marker).unwrap()).unwrap();
+        assert_eq!(written["telemetry"]["enabled"], true);
+        assert_eq!(written["telemetry"]["token"], "payload.sig");
+        assert_eq!(written["session_id"], "session-fixture");
+        drop(ownership);
+
+        // A plan that does not carry the DLL ignores a session it is handed.
+        plan.resources.client_telemetry = None;
+        std::fs::remove_file(&marker).unwrap();
+        let (_, request, _ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        assert_eq!(request.dlls, [patches.path()]);
+        assert!(!marker.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_session_marker_is_never_written_through_a_link_out_of_the_game() {
+        let (root, _state, mut plan) = super::super::tests::fixture();
+        let directory = root.path().canonicalize().unwrap();
+        let game = plan.installation.destination.join("game");
+        inert_client(&game.join("Working/Binaries/SGW.exe"));
+        plan.resources.client_telemetry =
+            Some(super::super::tests::artifact(&directory, "telemetry.dll"));
+        let outside = directory.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, game.join("Working/Binaries/sessions")).unwrap();
+        let session = crate::game_telemetry::Session::fixture();
+        let (_, request, _ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        assert!(request.dlls.is_empty(), "no marker, so no DLL");
+        assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn native_preparation_reads_locked_owner_and_retains_exclusion() {
+        let (root, _state, plan) = super::super::tests::fixture();
+        let game = plan.installation.destination.join("game");
+        let exe = game.join("Working/Binaries/SGW.exe");
+        inert_client(&exe);
 
         // Windows exercises the dispatch preparation entry point; other hosts
         // exercise the same native preparation without enabling native dispatch.
         let prepared = if cfg!(windows) {
-            prepare(&plan, root.path())
+            prepare(&plan, root.path(), None)
         } else {
-            prepare_native(&plan)
+            prepare_native(&plan, None)
         };
         let (command, request, ownership) = prepared.unwrap();
         assert_eq!(request.operation_id, plan.id);

@@ -1,0 +1,151 @@
+## family cleanse
+generated: 46 effects
+    725 -           EffectCategory Mental  "Wide Cone\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+    748 -           EffectCategory Mental  "Single Target\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+    756 -           EffectCategory Kinetic "Small Radius\nKnockdown: 6 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+    910 -           EffectCategory Kinetic "Medium Radius AE\nKnockdown: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+    937 -           EffectCategory Health  "Small Radius AE\nDebuff -200 ACC / DEF: 15 Seconds"
+        note: gated by a Health Resist Roll at effect_sequence 2: a harmful health effect (alias.xml healthRes)
+   1228 -           EffectCategory Mental  "Single Target\nSuppression: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   1460 -           EffectCategory Kinetic "Single Target\nTarget Movement Speed-30%"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1462 -           EffectCategory Kinetic "Single Target\nSnare: 15 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 1: a harmful kinetic effect (alias.xml kineticRes)
+   1466 -           EffectCategory Kinetic "Small Radius AE\nStun: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1474 -           EffectCategory Mental  "Single Target\nSuppression: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   1475 -           EffectCategory Mental  "Medium Cone\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 1: a harmful mental effect (alias.xml mentalRes)
+   1478 -           EffectCategory Mental  "Single Target\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 1: a harmful mental effect (alias.xml mentalRes)
+   1479 -           EffectCategory Mental  "Medium Radius AE\nSuppression: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 1: a harmful mental effect (alias.xml mentalRes)
+   1483 -           EffectCategory Mental  "Single Target\nSuppression: 25 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   1486 -           EffectCategory Mental  "Single Target\nFear: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   1494 -           EffectCategory Kinetic "Small Radius AE\nKnockdown: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1571 -           EffectCategory Kinetic "Single Target\nSecondary Knockdown: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1572 -           EffectCategory Kinetic "Single Target\nTarget Knockdown: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 1: a harmful kinetic effect (alias.xml kineticRes)
+   1599 -           EffectCategory Kinetic "Target\nStun: 5 seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 1: a harmful kinetic effect (alias.xml kineticRes)
+   1765 -           EffectCategory Health  "Single Target\nSecondary (No Check) -30% Movement Speed\nDuration: 15 Seconds"
+        note: gated by a Health Resist Roll at effect_sequence 1: a harmful health effect (alias.xml healthRes)
+   1783 -           EffectCategory Kinetic "Large Radius AE\nKnockdown: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1967 -           EffectCategory Kinetic "Small Radius AE\nStun: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   1969 -           EffectCategory Health  "Small Radius AE\nDebuff -200 ACC / DEF: 15 Seconds"
+        note: gated by a Health Resist Roll at effect_sequence 1: a harmful health effect (alias.xml healthRes)
+   1976 -           EffectCategory Mental  "Single Target\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   1996 -           EffectCategory Mental  "Medium Radius AE\nDisorient: 10 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   2608 -           EffectCategory Kinetic "Knockdown: 5 seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   2619 -           EffectCategory Kinetic "Knockdown: 3 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   2620 -           EffectCategory Kinetic "Knockdown: 3 seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 1: a harmful kinetic effect (alias.xml kineticRes)
+   2672 RemoveEffects RemoveCategories Mental:5, RemovePolarity Harmful "Purge: Mental Effects x5"
+        note: harmful effects only, from the caster or an ally: the resist kinds are 'harmful' effects in alias.xml
+   2674 -           EffectCategory Mental  "Medium Radius AE\nSuppression: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   2720 -           EffectCategory Health  "-150 F / -15 H\n10 Ticks"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+   2731 -           EffectCategory Health  "-150 F / -15 H\n10 Ticks"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+   2827 RemoveEffects RemoveCategories Mental:5, RemovePolarity Harmful "Purges Mental States x5"
+        note: harmful effects only, from the caster or an ally: the resist kinds are 'harmful' effects in alias.xml
+   3114 -           EffectCategory Kinetic "Single Target\nSecondary -30% Move: 5 Seconds"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   3117 -           EffectCategory Kinetic "Single Target\nSelf 15 Ticks: 2 Second Duration"
+        note: gated by a Kinetic Resist Roll at effect_sequence 0: a harmful kinetic effect (alias.xml kineticRes)
+   3923 -           EffectCategory Mental  "Medium Radius AE\nConfuse: 20 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   4007 -           EffectCategory Mental  "Single Target\nSuppression: 15 Seconds"
+        note: gated by a Mental Resist Roll at effect_sequence 0: a harmful mental effect (alias.xml mentalRes)
+   4168 RemoveEffects RemoveCategories Mental:2, RemovePolarity Harmful "Purge Mental Effects: X 2"
+        note: harmful effects only, from the caster or an ally: the resist kinds are 'harmful' effects in alias.xml
+   4169 RemoveEffects RemoveCategories Health:2, RemovePolarity Harmful "Purge Health Effects: X 2"
+        note: harmful effects only, from the caster or an ally: the resist kinds are 'harmful' effects in alias.xml
+   4235 -           EffectCategory Health  "Single Target\n-50F / -5H\n8 Ticks x1sec"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+   4237 -           EffectCategory Health  "Single Target\n-50F / -5H\n8 Ticks x1sec"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+   4309 -           EffectCategory Health  "Single Target\nTarget -100 Response"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+   4333 -           EffectCategory Health  "Single Target\nTarget -200ACC / -200DEF"
+        note: gated by a Health Resist Roll at effect_sequence 3: a harmful health effect (alias.xml healthRes)
+   4334 -           EffectCategory Mental  "Single Target\nTarget Disorient: 15 Sec"
+        note: gated by a Mental Resist Roll at effect_sequence 1: a harmful mental effect (alias.xml mentalRes)
+   4335 -           EffectCategory Health  "Single Target\nTarget -100 Response"
+        note: gated by a Health Resist Roll at effect_sequence 2: a harmful health effect (alias.xml healthRes)
+   4411 -           EffectCategory Health  "Single Target\nTarget -30% Movement Speed\nDuration: 15 Seconds"
+        note: gated by a Health Resist Roll at effect_sequence 0: a harmful health effect (alias.xml healthRes)
+hand-authored, left alone: 0
+unparsed: 53
+  by category: count 1, category 2, moniker 45, routing 0, scope 2, tag 0, grammar 3
+    713 (ability 649) "Remove 1 EFFECT_Stance": moniker: "Remove 1 EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+    824 (ability 781) "Removes 1 Focus Buff from User": category: "Removes 1 Focus Buff from User" names a category the client data does not define
+    859 (ability 813) "Removes Mini-game Abilities from play": scope: mini-game cleanup, not a combat effect
+    920 (ability 857) "Remove Effect of moniker EFFECT_Stance": moniker: "Remove Effect of moniker EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+    945 (ability 874) "User Single Target\nRemove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+    946 (ability 875) "User Single Target\nRemove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+    961 (ability 883) "Remove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+    963 (ability 884) "Remove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   1218 (ability 722) "Remove DOT moniker": moniker: "Remove DOT moniker" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   1360 (ability 1192) "Purges Focus Degeneration state": category: "Purges Focus Degeneration state" names a category the client data does not define
+   1363 (ability 1195) "Removes Mini-game Abilities and Cheats from play": scope: mini-game cleanup, not a combat effect
+   1405 (ability 1244) "User Single Target\nRemove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   1415 (ability 791) "Remove EFFECT_Stance": moniker: "Remove EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   1742 (ability 1451) "Remove Stance Moniker": moniker: "Remove Stance Moniker" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   2253 (ability 1016) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: "User Remove Effect of EFFECT_Shield" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   2407 (ability 1883) "Remove 1 Effect of Moniker EFFECT_Burning": moniker: "Remove 1 Effect of Moniker EFFECT_Burning" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   2693 (ability 1735) "Purge: Kinetic Effects": count: "Purge: Kinetic Effects" names no number (one, or all?)
+   2997 (ability 2173) "Remove Effect of moniker EFFECT_Stance": moniker: "Remove Effect of moniker EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3080 (ability 1017) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: "User Remove Effect of EFFECT_Shield" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3084 (ability 1018) "SingleTarget\nUser Remove Effect of EFFECT_Shield": moniker: "User Remove Effect of EFFECT_Shield" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3107 (ability 1013) "Removes current shield effect": moniker: "Removes current shield effect" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3113 (ability 1015) "Single Target\nSecondary Remove 1 Effect of EFFECT_Snare": moniker: "Secondary Remove 1 Effect of EFFECT_Snare" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3122 (ability 1015) "Single Target\nSecondary Remove 1 Effect of EFFECT_Slow": moniker: "Secondary Remove 1 Effect of EFFECT_Slow" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3151 (ability 1235) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: "User Remove Effect of EFFECT_Shield" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3477 (ability 1883) "Remove 1 Effect of Moniker EFFECT_Burning": moniker: "Remove 1 Effect of Moniker EFFECT_Burning" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   3663 (ability 2507) "Stacks with Remove Distractions": grammar: unrecognised line "Stacks with Remove Distractions"
+   4087 (ability 2824) "Remove current stance": moniker: "Remove current stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4160 (ability 2861) "Remove Moniker: CHAIN_I": moniker: "Remove Moniker: CHAIN_I" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4163 (ability 2862) "F-800\nH-80\nRemoves Moniker: DCHAIN_I\nRemoves Moniker: DCHAIN_II": grammar: unrecognised line "F-800"
+   4234 (ability 651) "Remove 1 Effect of Moniker EFFECT_Wound": moniker: "Remove 1 Effect of Moniker EFFECT_Wound" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4236 (ability 716) "Remove 1 Effect of Moniker EFFECT_Wound": moniker: "Remove 1 Effect of Moniker EFFECT_Wound" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4294 (ability 859) "Remove Effect of moniker EFFECT_Stance": moniker: "Remove Effect of moniker EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4352 (ability 1891) "Remove Moniker EFFECT_Stance": moniker: "Remove Moniker EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4354 (ability 1891) "Remove Moniker EFFECT_Stance": moniker: "Remove Moniker EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4382 (ability 815) "Remove Stance Moniker": moniker: "Remove Stance Moniker" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4478 (ability 2074) "Remove EFFECT_Stance": moniker: "Remove EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4479 (ability 2074) "Remove EFFECT_Stance": moniker: "Remove EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4538 (ability 1889) "Remove DOT Cone": moniker: "Remove DOT Cone" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4539 (ability 1889) "Remove DOT AOE": moniker: "Remove DOT AOE" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4551 (ability 1083) "VFX: Remove Disguise": grammar: unrecognised line "VFX: Remove Disguise"
+   4620 (ability 1539) "Moniker removal: DOT_Focus": moniker: "Moniker removal: DOT_Focus" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4630 (ability 1545) "Remove EFFECT_DOT_Energy Moniker": moniker: "Remove EFFECT_DOT_Energy Moniker" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4644 (ability 1564) "Removes current buff": moniker: "Removes current buff" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4703 (ability 3166) "Remove Moniker: EFFECT_CoverDebuff": moniker: "Remove Moniker: EFFECT_CoverDebuff" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4709 (ability 3168) "Remove Moniker: EFFECT_Debuff_Response-100": moniker: "Remove Moniker: EFFECT_Debuff_Response-100" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4788 (ability 1565) "Removes Moniker: BUFF_EnergyToShield": moniker: "Removes Moniker: BUFF_EnergyToShield" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   4919 (ability 901) "Remove 1 Effect of EFFECT_Stance": moniker: "Remove 1 Effect of EFFECT_Stance" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5004 (ability 1228) "Single Target\nTarget Remove 1 Effect of EFFECT_Disease": moniker: "Target Remove 1 Effect of EFFECT_Disease" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5005 (ability 1228) "Single Target\nTarget Remove 1 Effect of EFFECT_Poison": moniker: "Target Remove 1 Effect of EFFECT_Poison" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5033 (ability 722) "Remove moniker": moniker: "Remove moniker" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5057 (ability 1228) "Single Target\nTarget Remove 1 Effet of EFFECT_Poison": moniker: "Target Remove 1 Effet of EFFECT_Poison" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5232 (ability 1206) "Removes Moniker: TURRET_ContamAmmo": moniker: "Removes Moniker: TURRET_ContamAmmo" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+   5255 (ability 972) "Remove Moniker: TURRET_EnergyAmmo": moniker: "Remove Moniker: TURRET_EnergyAmmo" removes by an EFFECT_/DOT/stance moniker (AB-08 stances, DoT refresh; never seeded)
+

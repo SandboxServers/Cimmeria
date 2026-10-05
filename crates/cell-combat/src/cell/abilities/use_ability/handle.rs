@@ -8,7 +8,6 @@
 //! space_manager access is delicate and a hand-rolled split here would just
 //! trade lines for `&mut` plumbing.
 
-use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
@@ -22,8 +21,11 @@ use super::super::super::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
 use super::super::auto_cycle_state::send_auto_cycle_state;
-use super::super::timer_update::send_timer_update;
+use super::super::timer_update::send_timer_update_ctx;
+use super::super::wire_ledger::WireCtx;
 
+use super::super::metrics::{self, FirePath, RefusalReason};
+use super::gate_rows::{LaunchRefusal, LaunchRow};
 use super::weapon_redirect::resolve_weapon_redirect;
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
@@ -43,7 +45,8 @@ use super::weapon_redirect::resolve_weapon_redirect;
 /// resolution and wire packets have fired by then; with a positive warmup
 /// they fire later from the warmup tick, or never if it is interrupted.
 /// Returns `false` when any pre-consume guard rejected the call (entity
-/// missing/dead, already warming up, no ability, on cooldown, reload in
+/// missing/dead, already warming up, no ability, a player's ability with no
+/// mechanic yet (AB-12, `no_mechanics`), on cooldown, reload in
 /// flight, no ammo, out-of-range, a target in another space (#906), or no
 /// fire-time line of sight for an explicit target). Ground-target AoE
 /// callers gate secondary-target damage on this return value.
@@ -51,7 +54,7 @@ use super::weapon_redirect::resolve_weapon_redirect;
     name = "combat.use_ability",
     level = "info",
     skip_all,
-    fields(entity_id, ability_id, target_id)
+    fields(entity_id, ability_id, target_id, cast_id = tracing::field::Empty)
 )]
 pub async fn handle_use_ability(
     entity_id: u32,
@@ -60,6 +63,8 @@ pub async fn handle_use_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The press reached the cell: `abilities_press_to_fire_ms` starts here.
+    let pressed_at = std::time::Instant::now();
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
 
@@ -71,6 +76,25 @@ pub async fn handle_use_ability(
     // + scope limits.
     let (ability_id, ability_def) =
         resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
+    // Rule 5: every row below names the player (`None` for an NPC caster).
+    let who = space_mgr.player_identity(entity_id);
+    // One lookup for the client's target: it is the resolved target too
+    // until the launch resolves another (`LaunchRow::set_target`).
+    let wire_target_name = super::gate_rows::target_label(space_mgr, target_id);
+    // Every early return logs one row through it (AB-T2, `gate_rows`).
+    let mut row = LaunchRow {
+        who,
+        entity_id,
+        entity_name: space_mgr.entity_names(entity_id).entity_name,
+        ability_id,
+        ability_name: ability_def.as_ref().map(|d| d.name.as_str()),
+        wire_target_id: target_id,
+        wire_target_name,
+        target_id,
+        target_name: wire_target_name,
+        caster: metrics::caster_kind(space_mgr, entity_id),
+        world: metrics::world_of(space_mgr, entity_id),
+    };
 
     // ── Pet summon (pets PT-03) ──
     //
@@ -86,8 +110,31 @@ pub async fn handle_use_ability(
     let owner_pet = super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id);
     // A deployable aims at its staged ground point (`abilities::deployable`).
     let deploy = super::super::deployable::player_deployable(space_mgr, entity_id, ability_id);
-    let target_id = if summon.is_some() || owner_pet || deploy.is_some() {
-        0
+    // A beneficial cast (a heal, a buff) lands on the caster or an ally,
+    // whatever the client named (AB-01). See `beneficial`.
+    let diverted = summon.is_some() || owner_pet || deploy.is_some();
+    let client_target_id = target_id;
+    let Some(super::beneficial::LaunchTarget {
+        target_id,
+        beneficial,
+        resolved: beneficial_resolution,
+    }) = super::beneficial::launch_target(
+        entity_id,
+        ability_def.as_ref(),
+        target_id,
+        diverted,
+        tx,
+        space_mgr,
+    )
+    .await
+    else {
+        row.refused(LaunchRefusal::NoBeneficialTarget);
+        return false;
+    };
+    row.set_target(space_mgr, target_id);
+    // The fire re-resolves a beneficial cast from what the client sent.
+    let wire_target_id = if beneficial {
+        client_target_id
     } else {
         target_id
     };
@@ -112,11 +159,7 @@ pub async fn handle_use_ability(
     });
     if override_clears_loop {
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-            tracing::info!(
-                entity_id,
-                ability_id,
-                "auto-cycle: cleared by manual override (different ability fired)"
-            );
+            row.auto_cycle_overridden();
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
     }
@@ -128,34 +171,40 @@ pub async fn handle_use_ability(
     // A player pressed a server-known ability they do not know: answered
     // with `onErrorCode` below, once the entity borrow ends.
     let mut not_known = false;
+    // A known ability with no mechanic yet (AB-12): answered below, before
+    // any target or range check could refuse the press silently.
+    let mut no_mechanics = false;
+    let mut shield_full = false;
+    // Stunned or knocked down (AB-09a): answered below, before any cost.
+    let mut incapacitated = false;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
     let support = super::support_shot::beneficial_shot(space_mgr, entity_id, ability_def.as_ref());
-    let mut support_ally = false;
+    // A support shot at an ally or a beneficial cast: never arms auto-cycle.
+    let mut friendly_cast = false;
     let mut support_hostile = false;
     'validate: {
-        let entity = match space_mgr.get_entity(entity_id) {
-            Some(e) => e,
-            None => {
-                tracing::warn!(entity_id, "useAbility: entity not found");
-                return false;
-            }
-        };
-
-        if combat::is_dead_state(entity.state_field) {
+        let Some(entity) = space_mgr.get_entity(entity_id) else {
+            row.refused(LaunchRefusal::CasterMissing);
             return false;
+        };
+        if combat::is_dead_state(entity.state_field) {
+            row.refused(LaunchRefusal::CasterDead);
+            return false;
+        }
+        if super::incapacitated::is_incapacitated(entity) {
+            incapacitated = true;
+            break 'validate;
         }
         // One cast at a time: python `canUseAbility` refused a launch while
         // `currentAbility` (an ability in its warmup) was set. The refusal
         // is silent, like the cooldown refusal below (AT-10).
         if let Some(pending) = entity.pending_cast.as_ref() {
-            tracing::debug!(
-                entity_id,
-                ability_id,
-                warming_ability_id = pending.ability_id,
-                "useAbility: already warming up an ability"
-            );
+            row.refused(LaunchRefusal::AlreadyWarming {
+                ability_id: pending.ability_id,
+                cast_id: pending.cast_id(),
+            });
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
@@ -185,11 +234,7 @@ pub async fn handle_use_ability(
                 //   spam-burn the log index just by sending bogus
                 //   ability ids on this client-controlled path.
                 if ability_def.is_some() {
-                    tracing::warn!(
-                        entity_id,
-                        ability_id,
-                        "useAbility: ability not in known set and not granted by active weapon"
-                    );
+                    row.refused(LaunchRefusal::NotKnown);
                     // A stale action-bar button after a respec (AT-08)
                     // lands here: the bar is client-side and keeps the
                     // binding. The press gets feedback (project rule). A
@@ -199,18 +244,32 @@ pub async fn handle_use_ability(
                         break 'validate;
                     }
                 } else {
-                    tracing::debug!(
-                        entity_id,
-                        ability_id,
-                        "useAbility: unknown ability_id (no server def — likely client-forged or stale)"
-                    );
+                    row.refused(LaunchRefusal::UnknownAbilityId);
                 }
                 return false;
             }
         }
         if entity.abilities.is_on_cooldown(ability_id) {
-            tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
+            row.refused(LaunchRefusal::OnCooldown);
             return false;
+        }
+        if super::no_mechanics::lacks_mechanics(
+            entity_id,
+            ability_id,
+            ability_def.as_ref(),
+            space_mgr,
+        ) {
+            no_mechanics = true;
+            break 'validate;
+        }
+        if super::shield_full::shield_has_no_room(
+            entity_id,
+            ability_def.as_ref(),
+            target_id,
+            space_mgr,
+        ) {
+            shield_full = true;
+            break 'validate;
         }
 
         // Range + target validation
@@ -218,71 +277,27 @@ pub async fn handle_use_ability(
             if let Some(target) = space_mgr.get_entity(target_id as u32) {
                 // Don't attack dead targets
                 if combat::is_dead_state(target.state_field) {
-                    tracing::debug!(
-                        entity_id,
-                        ability_id,
-                        target_id,
-                        "useAbility: target is dead"
-                    );
+                    row.refused(LaunchRefusal::TargetDead);
                     return false;
                 }
-                // Server-authority target-validity gate (#444), scoped to
-                // PLAYER attackers — that's the forgery vector. The
-                // single-target path resolves as damage unconditionally
-                // (see `apply_damage_to_target` — there is no offensive vs
-                // supportive branch), so a player may only target a hostile
-                // NPC. A non-hostile NPC (vendor / quest giver / neutral)
-                // must never take player damage, and another player is
-                // never a legitimate single-target target in today's
-                // PvE-only design. Mirrors the AoE (`abilities/dispatch/`)
-                // and cone (`abilities/cone_aoe.rs`) faction filters;
-                // without it a forged `useAbility` packet griefs vendors,
-                // quest NPCs, party members, or other players (the client
-                // UI restricts target selection, but the server must
-                // enforce it).
-                //
-                // NPC attackers are deliberately NOT gated here: NPC AI
-                // fight (`npc_ai`) calls this same entry point to attack a
-                // PLAYER, which is legitimate — the AI already picks valid
-                // targets server-side.
-                //
-                // Beneficial ammo has the inverse gate (AM-11d, below).
-                // TODO: supportive single-target *abilities* (heal/buff an
-                // ally) will need it too once an offensive/supportive
-                // ability flag exists — `AbilityDef` has no such field
-                // today, and `target_type_id` only encodes
-                // self/target/ground. The rule
-                // itself is `combat::player_may_attack`: a hostile NPC, or
-                // the attacker's engaged duel partner (SS-D2); pets obey the
-                // same function.
-                //
-                // A support shot (AM-11d) reverses the rule: an ally or the
-                // shooter is admitted, and a hostile target is refused with
-                // feedback once the borrow ends. Anything else (a vendor)
-                // still falls to the #444 refusal.
-                let support_target = support.map(|_| {
-                    super::support_shot::classify(entity, target, space_mgr.resources.duels())
-                });
-                if support_target == Some(super::support_shot::SupportTarget::Hostile) {
-                    support_hostile = true;
-                    break 'validate;
-                }
-                support_ally = support_target == Some(super::support_shot::SupportTarget::Ally);
-                if entity.is_player
-                    && !support_ally
-                    && !combat::player_may_attack(entity, target, space_mgr.resources.duels())
-                {
-                    tracing::warn!(
-                        entity_id,
-                        ability_id,
-                        target_id,
-                        target_is_player = target.is_player,
-                        target_faction = target.faction,
-                        "useAbility rejected -- player single-target ability against a \
-                         non-hostile target (friendly-fire / forged target); \
-                         damage pipeline not entered (#444)"
-                    );
-                    return false;
+                // The #444 gate and its two inversions (support shots,
+                // beneficial casts) live in `beneficial::target_gate`.
+                match super::beneficial::target_gate(
+                    entity,
+                    target,
+                    ability_id,
+                    support.is_some(),
+                    beneficial,
+                    space_mgr,
+                ) {
+                    super::beneficial::TargetGate::SupportHostile => {
+                        support_hostile = true;
+                        break 'validate;
+                    }
+                    super::beneficial::TargetGate::Refused => return false,
+                    super::beneficial::TargetGate::Admitted { friendly } => {
+                        friendly_cast = friendly
+                    }
                 }
                 // Range check, in metres: the loader converted the
                 // ability's UE3-unit ranges (#919). A player is also held
@@ -316,6 +331,14 @@ pub async fn handle_use_ability(
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
+        row.count(RefusalReason::SupportHostileTarget);
+        return false;
+    }
+
+    if incapacitated {
+        super::incapacitated::refuse_while_incapacitated(entity_id, ability_id, tx, space_mgr)
+            .await;
+        row.count(RefusalReason::Incapacitated);
         return false;
     }
 
@@ -330,7 +353,25 @@ pub async fn handle_use_ability(
                 return false;
             }
         }
-        super::not_known::send_not_known_feedback(entity_id, ability_id, tx).await;
+        super::not_known::send_not_known_feedback(entity_id, who, ability_id, tx).await;
+        return false;
+    }
+
+    // A shield whose every pool is already full: feedback, no cooldown.
+    if shield_full {
+        if let Some(def) = ability_def.as_ref() {
+            super::shield_full::refuse_shield_full(entity_id, def, tx, space_mgr).await;
+        }
+        row.count(RefusalReason::ShieldFull);
+        return false;
+    }
+
+    // A known ability with no mechanic yet: feedback, no cooldown (AB-12).
+    if no_mechanics {
+        if let Some(def) = ability_def.as_ref() {
+            super::no_mechanics::refuse_without_mechanics(entity_id, def, tx, space_mgr).await;
+        }
+        row.count(RefusalReason::NoMechanics);
         return false;
     }
 
@@ -345,19 +386,23 @@ pub async fn handle_use_ability(
             space_mgr,
         )
         .await;
+        row.count(RefusalReason::from_range(failure.refusal));
         return false;
     }
 
     if let Some(summon) = summon {
         if super::summon::refuse_summon_launch(entity_id, ability_id, summon, tx, space_mgr).await {
+            row.count(RefusalReason::SummonRefused);
             return false;
         }
     }
     if owner_pet
         && super::owner_pet::refuse_owner_pet_launch(entity_id, ability_id, tx, space_mgr).await
     {
+        row.count(RefusalReason::OwnerPetRefused);
         return false;
     }
+    // A deployable refusal counts itself (`deployable::launch::refuse`).
     if deploy.is_some()
         && super::super::deployable::refuse_unstaged_launch(entity_id, ability_id, tx, space_mgr)
             .await
@@ -368,8 +413,8 @@ pub async fn handle_use_ability(
     // Fire-time target checks, players only: a target in another space is
     // refused with onErrorCode 0 (#906), a wall between the eyes with 39
     // (NA31, D-NA14). See `fire_los` for where they apply.
-    if target_id > 0
-        && super::fire_los::refuse_without_line_of_sight(
+    if target_id > 0 {
+        if let Some(reason) = super::fire_los::refuse_without_line_of_sight(
             entity_id,
             ability_id,
             target_id as u32,
@@ -378,97 +423,31 @@ pub async fn handle_use_ability(
             space_mgr,
         )
         .await
+        {
+            row.count(reason);
+            return false;
+        }
+    }
+
+    // Weapon attacks: the holstered-draw queue and the slot-swap lockout,
+    // each counting its own refusal or hold.
+    if super::weapon_gate::hold_weapon_attack(
+        entity_id,
+        ability_id,
+        target_id,
+        ability_def.as_ref(),
+        tx,
+        space_mgr,
+    )
+    .await
     {
         return false;
     }
 
-    // Attack-while-holstered queue: when the player presses fire while
-    // the weapon is holstered, defer the ability dispatch until the
-    // draw animation has had time to play. Mirrors the
-    // reload-while-holstered Phase A — draw the weapon, fire
-    // `Item_Equip`, stash the ability + target, and let
-    // `pending_attack_tick` re-invoke `handle_use_ability` after
-    // `UNHOLSTER_DRAW_DURATION`.
-    //
-    // Only weapon attacks (`required_ammo > 0`) gate on this queue.
-    // Non-weapon abilities (heals, buffs, self-casts) bypass entirely
-    // — they don't need the weapon drawn to function, and they
-    // shouldn't be locked out while a queued weapon shot is mid-draw.
-    //
-    // Subsequent weapon-attack presses during the draw window are
-    // rejected so the first press locks in the queue. Ammo is NOT
-    // checked here — the deferred re-invocation runs the normal ammo
-    // check at fire time.
-    let is_weapon_attack = ability_def.as_ref().is_some_and(|d| d.required_ammo > 0);
-    let queued_attack_already_pending = space_mgr
-        .get_entity(entity_id)
-        .is_some_and(|e| e.pending_attack_at.is_some());
-    if queued_attack_already_pending && is_weapon_attack {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            "useAbility: weapon attack already queued (mid-draw), ignoring input"
-        );
-        return false;
-    }
-
-    // Block weapon attacks while a bandolier slot swap is in progress.
-    // The player's hands are physically holstering the old weapon and
-    // drawing the new one; firing through that window would defeat the
-    // animation penalty that makes weapon swaps a real loadout choice.
-    // Non-weapon abilities (heals, buffs) are still permitted — the
-    // queue is about the FIRE pose, not a global ability lockout.
-    let slot_swap_in_progress = space_mgr.get_entity(entity_id).is_some_and(|e| {
-        e.pending_slot_swap_at
-            .is_some_and(|t| std::time::Instant::now() < t)
-    });
-    if slot_swap_in_progress && is_weapon_attack {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            "useAbility: bandolier slot swap in progress, weapon attack blocked"
-        );
-        return false;
-    }
-
-    let needs_unholster_queue = is_weapon_attack
-        && !queued_attack_already_pending
-        && space_mgr
-            .get_entity(entity_id)
-            .is_some_and(|e| e.is_player && e.weapon_holstered && e.threatened_mobs.is_empty());
-    if needs_unholster_queue {
-        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-            e.set_weapon_holstered(false);
-            e.combat_exit_at = Some(std::time::Instant::now());
-            e.holster_animation_complete_at = None;
-            e.pending_attack_at = Some(
-                std::time::Instant::now()
-                    + super::super::super::cell_methods::player::world::UNHOLSTER_DRAW_DURATION,
-            );
-            e.pending_attack_ability_id = Some(ability_id);
-            e.pending_attack_target_id = Some(target_id);
-        }
-        tracing::info!(
-            entity_id,
-            ability_id,
-            target_id,
-            "useAbility: holstered → queueing attack, drawing weapon first"
-        );
-        super::super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
-        super::super::super::cell_methods::player::world::fire_item_sequence(
-            entity_id,
-            super::super::super::spawner::EVENT_ITEM_EQUIP,
-            tx,
-            space_mgr,
-        )
-        .await;
-        return false;
-    }
-
     // Mutable borrow for state changes
-    let entity = match space_mgr.get_entity_mut(entity_id) {
-        Some(e) => e,
-        None => return false,
+    let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
+        row.refused(LaunchRefusal::CasterVanished);
+        return false;
     };
 
     // Check ammo for ranged abilities (players only — NPCs have infinite ammo).
@@ -486,23 +465,16 @@ pub async fn handle_use_ability(
     // effectively granting free ammo. The tick is the sole authority that
     // clears `reload_complete_at`, so we gate on its presence.
     if required_ammo > 0 && entity.is_player && entity.reload_complete_at.is_some() {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            "useAbility: reload in progress, blocking fire"
-        );
+        row.refused(LaunchRefusal::Reloading);
         return false;
     }
 
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            current = current_ammo,
-            required = required_ammo,
-            "useAbility: not enough ammo"
-        );
+        row.refused(LaunchRefusal::NoAmmo {
+            current: current_ammo,
+            required: required_ammo,
+        });
         return false;
     }
 
@@ -539,41 +511,49 @@ pub async fn handle_use_ability(
         entity.abilities.last_fired_ability_id = Some(ability_id);
     }
 
-    // ── Auto-cycle commit-time arm / deactivate classification ──
-    //
-    // Three cases after the cooldown has started:
-    //
-    //   1. `AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`) on the firing
-    //      ability — break the loop. One-shot specials that mustn't
-    //      auto-repeat.
-    //   2. `auto_cycle == true` (button armed) — stash the ability id
-    //      AND set `BSF_AUTO_CYCLING`. The driver tick reads
-    //      `current_target_id` LIVE at re-fire time so target stash
-    //      isn't needed here.
-    //   3. `auto_cycle == false` — no-op.
-    //
-    // Mutation + broadcast run AFTER the cooldown-timer send below
-    // (which would re-acquire the immutable borrow).
-    let is_player = entity.is_player;
-    let auto_cycle_armed = entity.abilities.auto_cycle;
-    // A `DoNotActivate_AutoCycle` (512) ability neither arms nor clears the
-    // loop: python passed `autoCycle = False` for it (`SGWPlayer.py:1177`).
-    let (has_deactivate_flag, never_arms) = ability_def.as_ref().map_or((false, false), |d| {
-        let deactivate = d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0;
-        (deactivate, d.flags & AF_DO_NOT_ACTIVATE_AUTO_CYCLE != 0)
-    });
-
-    // Get effect sequence ID for this ability invocation
+    // The cast's sequence id: the `InstanceId` of its sequences, the effect
+    // id the client receives, and its telemetry `cast_id` (AB-T1). Every row
+    // the cast causes, here or later from a tick, carries it.
     let effect_seq = entity.abilities.next_effect_id();
+    tracing::Span::current().record("cast_id", effect_seq);
 
+    // The launch row reuses the names the gate row resolved.
+    let launched_wire_target_name = if wire_target_id == row.target_id {
+        row.target_name
+    } else if wire_target_id == row.wire_target_id {
+        row.wire_target_name
+    } else {
+        super::gate_rows::target_label(space_mgr, wire_target_id)
+    };
     tracing::info!(
+        target: "abilities",
+        event = "ability_launched",
+        stage = "launch",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = row.entity_name,
+        cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
         ability_id,
         target_id,
+        target_name = row.target_name,
+        wire_target_id,
+        wire_target_name = launched_wire_target_name,
         cooldown_secs,
         warmup_secs,
-        ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
+        ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
         "useAbility: launched"
+    );
+    // A beneficial cast's launch resolution, now it has a `cast_id`.
+    super::beneficial::log_launch_resolution(
+        space_mgr,
+        entity_id,
+        ability_def.as_ref(),
+        client_target_id,
+        beneficial_resolution,
+        effect_seq,
     );
 
     // ── Send cooldown timer to the attacker's own client ──
@@ -593,40 +573,26 @@ pub async fn handle_use_ability(
 
     // Owner only: the client binds onTimerUpdate on SGWPlayer alone, so an
     // NPC's cooldown sent to its witnesses was dropped on every shot.
-    send_timer_update(entity_id, timer_args, tx, space_mgr).await;
+    // The cast scope opens only at fire, so the launch names its cast itself.
+    let ctx = WireCtx::new("ability_launch")
+        .cast(Some(effect_seq))
+        .ability(ability_id)
+        .reason("cooldown_start");
+    send_timer_update_ctx(entity_id, timer_args, ctx, tx, space_mgr).await;
 
     // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
-    //
-    // Classification was captured before the mutable borrow ended.
-    // Run the actual state mutation + broadcast now that the cooldown
-    // timer send is past.
-    // A support shot at an ally never arms the loop: auto-cycle is an
-    // attack loop, and its tick stops on any player it may not attack.
-    if is_player && auto_cycle_armed && !support_ally && (has_deactivate_flag || !never_arms) {
-        if has_deactivate_flag {
-            if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-                tracing::info!(
-                    entity_id,
-                    ability_id,
-                    "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
-                );
-                send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
-            }
-        } else if let Some(new_state) =
-            combat::arm_auto_cycle(space_mgr, entity_id, ability_id, target_id)
-        {
-            tracing::info!(
-                entity_id,
-                ability_id,
-                target_id,
-                "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
-            );
-            send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
-        }
-        // Bit-already-set path: `arm_auto_cycle` updates the stash
-        // unconditionally; only the `Some(new_state)` branch needs to
-        // broadcast.
-    }
+    super::auto_cycle_commit::commit_auto_cycle(
+        super::auto_cycle_commit::CommitCast {
+            entity_id,
+            ability_id,
+            target_id,
+            friendly_cast,
+        },
+        ability_def.as_ref(),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     if let Some(summon) = summon {
         super::summon::log_summon_launched(
@@ -659,9 +625,11 @@ pub async fn handle_use_ability(
             super::warmup::WarmupStart {
                 ability_id,
                 target_id,
+                wire_target_id,
                 effect_seq,
                 warmup_secs,
                 event_set_id: ability_def.as_ref().and_then(|d| d.event_set_id),
+                received_at: pressed_at,
             },
             tx,
             space_mgr,
@@ -673,15 +641,27 @@ pub async fn handle_use_ability(
     // Zero warmup: fire in this pass. Cooldown + ammo are consumed and the
     // cast committed even when no target resolves; ground-target callers
     // see this as "primary succeeded" and proceed with any AoE secondaries.
+    // The cast scope stamps `cast_id` on whatever the fire lands (AB-T1).
+    metrics::fired(
+        FirePath::Instant,
+        pressed_at.elapsed(),
+        row.caster,
+        row.world,
+    );
+    let outer_cast = space_mgr.enter_cast_scope(Some(effect_seq));
     super::fire::fire_cast(
         entity_id,
         ability_id,
         target_id,
+        wire_target_id,
         effect_seq,
         &ability_def,
         tx,
         space_mgr,
     )
     .await;
+    space_mgr.exit_cast_scope(outer_cast);
+    // The cast's debug lines (AB-N1), now its scope is closed.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     true
 }

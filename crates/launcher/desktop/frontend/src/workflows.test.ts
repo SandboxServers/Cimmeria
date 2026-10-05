@@ -164,3 +164,22 @@ test("adoption operation remains an authoritative nonterminal native snapshot",a
   assert.deepEqual((yield* launcher.snapshot).native,snapshot);
  }).pipe(Effect.provide(bridgeLayer(async()=>snapshot)))));
 });
+
+test("inspection retains a native game Update reconciliation owner without dispatch", async () => {
+  const state: NativeSnapshot = {...initial(), operation: {schema_version: 1, revision: 8, operation: {
+    id: "update-fixture", kind: "update", state: "reconciliation_required", intent_digest: Array(32).fill(7),
+  }}};
+  const calls: unknown[] = [];
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const launcher = yield* makeLauncher;
+    yield* launcher.inspect;
+    const observed = yield* launcher.snapshot;
+    assert.equal(observed.native?.operation.operation?.kind, "update");
+    assert.equal(observed.native?.operation.operation?.state, "reconciliation_required");
+    assert.equal(observed.native?.operation.revision, 8);
+    assert.deepEqual(calls, [{command: "inspect", schema_version: 1}]);
+  }).pipe(Effect.provide(bridgeLayer(async request => {
+    calls.push(request);
+    return state;
+  })))));
+});

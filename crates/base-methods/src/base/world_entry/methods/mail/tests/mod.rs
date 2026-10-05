@@ -30,6 +30,7 @@ mod expiry_live;
 mod expiry_race;
 mod gm_live;
 mod header_time_live;
+mod named_telemetry;
 mod notify_live;
 mod packets;
 mod placement_gate;
@@ -444,6 +445,24 @@ pub(super) async fn has_escrow(pool: &PgPool, mail_id: i32) -> bool {
 
 /// Assert one `mail.op_refused` WARN for `op` / `reason` / `mail_id`,
 /// carrying the rule-5 identity fields.
+/// The login name every test session holds, for the Rule 6 pairs.
+pub(super) const SESSION_ACCOUNT_NAME: &str = "mail-test-login";
+
+/// The sender's names a mail event must carry (Rule 6): the character the
+/// session plays and the login, under both `player_*` and `entity_name`.
+pub(super) fn assert_actor_names(ev: &crate::test_support::Captured, player_name: &str) {
+    for key in ["player_name", "entity_name"] {
+        assert!(
+            ev.has_field(key, player_name),
+            "{key}={player_name}: {ev:?}"
+        );
+    }
+    assert!(
+        ev.has_field("account_name", SESSION_ACCOUNT_NAME),
+        "account_name: {ev:?}"
+    );
+}
+
 pub(super) fn assert_refused(
     capture: &crate::test_support::LogCaptureGuard,
     op: &str,
@@ -462,6 +481,9 @@ pub(super) fn assert_refused(
         })
         .unwrap_or_else(|| panic!("mail.op_refused op={op} reason={reason} mail_id={mail_id}"));
     for key in ["account_id", "player_id", "entity_id"] {
+        assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
+    }
+    for key in ["account_name", "player_name", "entity_name"] {
         assert!(ev.fields.contains_key(key), "{key} missing: {ev:?}");
     }
 }

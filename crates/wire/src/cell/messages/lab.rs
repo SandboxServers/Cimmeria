@@ -3,7 +3,8 @@
 //! These types are the request/reply payload for
 //! [`crate::cell::messages::BaseToCellMsg::LabQuery`] — the read-only snapshot
 //! path the lab MCP endpoint (`cimmeria-lab-mcp`) uses to inspect live cell
-//! state (`server_entity_get` / `server_entity_query` / `server_witnesses`).
+//! state (`server_entity_get` / `server_entity_query` / `server_witnesses` /
+//! `server_ability_state`).
 //!
 //! The cell loop owns `SpaceManager`; nothing outside the loop can read it. The
 //! one precedent for pulling a value back out is
@@ -21,6 +22,7 @@
 //! (with `total_matched`/`capped` reported so the caller knows it was
 //! truncated). The witness lists are naturally bounded by AoI size.
 
+use cimmeria_entity::cell_entity::{AbilityStateSnapshot, StatState};
 use serde::{Deserialize, Serialize};
 
 /// Maximum number of entity snapshots a single [`LabQuery::EntityQuery`]
@@ -53,6 +55,9 @@ pub enum LabQuery {
     EntityQuery { filter: LabEntityFilter },
     /// The bidirectional witness relationship for one entity.
     Witnesses { entity_id: u32 },
+    /// One entity's ability state (ability-mechanics AB-L1 over AB-T5's
+    /// [`AbilityStateSnapshot`]), or `None` if no such entity exists.
+    AbilityState { entity_id: u32 },
 }
 
 /// Filter for [`LabQuery::EntityQuery`]. All fields are AND-combined; a `None`
@@ -109,6 +114,8 @@ pub enum LabQueryReply {
     },
     /// [`LabQuery::Witnesses`] — the bidirectional witness report.
     Witnesses { report: LabWitnessReport },
+    /// [`LabQuery::AbilityState`] — the snapshot, or `null` if absent.
+    AbilityState { state: Option<AbilityStateSnapshot> },
 }
 
 /// A copied-out, allocation-bounded snapshot of one cell entity. Every field is
@@ -116,13 +123,25 @@ pub enum LabQueryReply {
 ///
 /// Deliberately not a full `CellEntity` mirror: it carries the fields an AoI /
 /// visibility / spawn investigation actually needs (identity, position,
-/// class/faction, health, AI state, witness counts). Combat timers, bandolier
-/// contents, trade proposals, and the like are intentionally omitted — add a
-/// field here only when a lab question needs it.
+/// class/faction, health, focus, every stat, AI state, witness counts).
+/// Cooldowns, effects and the warmup are [`LabQuery::AbilityState`]'s;
+/// bandolier contents, trade proposals, and the like are intentionally
+/// omitted — add a field here only when a lab question needs it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabEntitySnapshot {
     pub entity_id: u32,
+    /// Rule 6 pair for `entity_id` (`docs/architecture/instrumentation-discipline.md`):
+    /// the character name for a player; for an NPC its `npc_name`, filled by
+    /// the cell, else the text of its template's `name_id`, filled by the lab
+    /// endpoint from the NameBook. Left out when nothing resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_name: Option<String>,
     pub space_id: u32,
+    /// Rule 6 pair for `space_id`: the space's world, left out when the space
+    /// has none. Same value as `world_name`, which predates Rule 6 and stays
+    /// for existing callers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<String>,
     pub world_name: String,
     pub position: [f32; 3],
     /// `[pitch, yaw, roll]` in radians (players and NPCs both — see
@@ -137,17 +156,30 @@ pub struct LabEntitySnapshot {
     pub alignment: u8,
     pub level: u32,
     /// `character_name` for players, `npc_name` for NPCs; `None` if unset.
+    /// Predates Rule 6: `entity_name` is the paired key, and it also falls
+    /// back to the NameBook.
     pub name: Option<String>,
     pub template_id: Option<i32>,
+    /// `entity_templates.template_name`, filled by the lab endpoint from the
+    /// NameBook. Left out for a player or an unnamed template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_name: Option<String>,
     pub spawn_id: Option<i32>,
     pub tag: Option<String>,
     pub name_id: Option<i32>,
     pub archetype_id: Option<i32>,
+    /// `archetype_name()` of `archetype_id`, filled by the lab endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archetype_name: Option<String>,
     pub access_level: u32,
     /// Debug label of the NPC AI state (`Idle`, `Fighting`, `Dead`, …).
     /// Meaningful only for NPCs; present for all entities.
     pub ai_state: String,
     pub current_target_id: Option<i32>,
+    /// The current target's entity name, when the target is a live entity in
+    /// the same space and has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_target_name: Option<String>,
     pub aoi_radius: f32,
     pub state_field: u32,
     pub interaction_type_flags: i64,
@@ -165,6 +197,18 @@ pub struct LabEntitySnapshot {
     /// Current / max HEALTH stat, if the entity carries one.
     pub health_cur: Option<i32>,
     pub health_max: Option<i32>,
+    /// Current / max FOCUS stat, if the entity carries one (AB-L1).
+    #[serde(default)]
+    pub focus_cur: Option<i32>,
+    #[serde(default)]
+    pub focus_max: Option<i32>,
+    /// Every stat the entity carries, by stat id (AB-L1): the same rows the
+    /// ability snapshot reports, so a `server_entity_get` answers "what is
+    /// its Defense / Accuracy" without a second query. Filled by
+    /// [`LabQuery::EntityGet`] only; empty in a [`LabQuery::EntityQuery`]
+    /// reply, which can carry [`LAB_ENTITY_QUERY_CAP`] snapshots.
+    #[serde(default)]
+    pub stats: Vec<StatState>,
 }
 
 /// The bidirectional witness relationship for one entity — the direct answer to
@@ -173,11 +217,42 @@ pub struct LabEntitySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabWitnessReport {
     pub entity_id: u32,
+    /// `entity_id`'s names (Rule 6), filled like a [`LabEntityRef`]'s.
+    #[serde(flatten)]
+    pub names: LabEntityNames,
     pub space_id: u32,
-    /// Player entity ids that currently have `entity_id` in their AoI —
+    /// Rule 6 pair for `space_id`: the space's world, left out when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<String>,
+    /// Player entities that currently have `entity_id` in their AoI —
     /// the observers of X. Resolved via `SpaceManager::get_witnesses_of`.
-    pub witnessed_by: Vec<u32>,
-    /// Entity ids `entity_id` currently sees. Populated only when `entity_id`
+    pub witnessed_by: Vec<LabEntityRef>,
+    /// Entities `entity_id` currently sees. Populated only when `entity_id`
     /// is a player (only players carry a witness set); empty for NPCs.
-    pub witnesses: Vec<u32>,
+    pub witnesses: Vec<LabEntityRef>,
+}
+
+/// An entity id in a lab reply's list, with the names Rule 6 pairs with it
+/// (`docs/architecture/instrumentation-discipline.md`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabEntityRef {
+    pub entity_id: u32,
+    #[serde(flatten)]
+    pub names: LabEntityNames,
+}
+
+/// The names that go next to an entity id. A field that does not resolve is
+/// left out of the JSON, never written as a placeholder.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LabEntityNames {
+    /// A player's character name or an NPC's `npc_name` (cell), else the text
+    /// of the template's `name_id` (lab endpoint, NameBook).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_name: Option<String>,
+    /// An NPC's template; `None` for a player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_id: Option<i32>,
+    /// `entity_templates.template_name` (lab endpoint, NameBook).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_name: Option<String>,
 }

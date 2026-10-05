@@ -47,7 +47,13 @@ impl SpaceManager {
         space.entities.insert(entity_id, cell_entity);
         self.entity_space.insert(entity_id, space_id);
 
-        tracing::debug!(entity_id, space_id, ?position, "NPC entity spawned");
+        tracing::debug!(
+            entity_id, // nt:id-only unnamed until the spawner stamps its template
+            space_id,
+            world = %world_name,
+            ?position,
+            "NPC entity spawned"
+        );
         Ok(space_id)
     }
 
@@ -199,8 +205,9 @@ impl SpaceManager {
                     tracing::debug!(
                         target: "spawner.npc_behaviour",
                         event = "spawn_grounded",
-                        spawn_id = record.spawn_id,
+                        spawn_id = record.spawn_id, // nt:id-only spawn rows have no name column
                         template_id = record.template_id,
+                        template_name = cimmeria_names::book().template(record.template_id),
                         seeded_y = seeded.y,
                         floor_y = floor,
                         "NPC spawn Y moved onto the navmesh floor"
@@ -325,6 +332,9 @@ impl SpaceManager {
             stat.max = 200;
             stat.set_current(200);
         }
+        if record.training_dummy {
+            apply_training_dummy(&mut e);
+        }
 
         let space = self
             .spaces
@@ -342,6 +352,29 @@ impl SpaceManager {
 
         Ok(space_id)
     }
+}
+
+/// Make a freshly built NPC a seeded training dummy (Debug Area D-DA7):
+/// the [`super::TrainingDummy`] mark, which keeps it out of the AI tick, and
+/// [`super::TRAINING_DUMMY_HEALTH`] max Health. A hostile one (faction 10,
+/// the one players may shoot) starts full. Any other starts at half, so it
+/// is a heal target with room to show a heal's size; nothing but a heal
+/// changes its Health (NPCs do not regenerate). The respawn tick refills
+/// Health to max, which keeps the dummy figure.
+fn apply_training_dummy(e: &mut CellEntity) {
+    use cimmeria_entity::stats::HEALTH;
+    let max = super::TRAINING_DUMMY_HEALTH;
+    let current = if e.faction == super::super::combat::faction_reaction::HOSTILE_FACTION {
+        max
+    } else {
+        max / 2
+    };
+    if let Some(stat) = e.stats.get_mut(HEALTH) {
+        stat.max = max;
+        stat.set_current(current);
+    }
+    e.extensions
+        .insert(super::TrainingDummy::new(std::time::Instant::now()).with_rest_health(current));
 }
 
 /// Any `INT_Vendor*` bit (`EInteractionNotificationType` bits 13-21).

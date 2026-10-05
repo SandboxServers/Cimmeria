@@ -16,8 +16,8 @@ pub use cimmeria_cell_world::cell::effects::registry::*;
 
 use super::EffectScript;
 use super::{
-    ammo_dart_cc, ammo_dart_support, ammo_dart_tech, ammo_emp, cover_stance, pet_scripts, scripts,
-    stat_buff,
+    ammo_dart_cc, ammo_dart_support, ammo_dart_tech, ammo_emp, cover_stance, crowd_control,
+    pet_scripts, scripts, stat_buff,
 };
 
 /// Every effect script, in registration order. The order is the order
@@ -29,7 +29,9 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("MeleeDamage", &scripts::MeleeDamage),
     ("MeleePhysicalDamage", &scripts::MeleePhysicalDamage),
     ("AbsorbShield", &scripts::AbsorbShield),
-    ("Stun", &scripts::Stun),
+    // Crowd control (ability mechanics AB-09): ledger entries holding
+    // BSF_MovementLock, and the interrupt queued for combat.
+    ("Stun", &crowd_control::Stun),
     ("Suppression", &scripts::Suppression),
     ("RangedPhysicalDamage", &scripts::RangedPhysicalDamage),
     ("RangedEnergyDamage", &scripts::RangedEnergyDamage),
@@ -43,8 +45,14 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("PetDeathTimer", &pet_scripts::PetDeathTimer),
     ("HealPetHealth", &pet_scripts::HealPetHealth),
     ("PetSummonSpeed", &pet_scripts::PetSummonSpeed),
-    // Timed primary-attribute buffs: the consumable stimpacks.
+    // Timed stat buffs stacked by stat: the consumable stimpacks.
     ("StatBuff", &stat_buff::StatBuff),
+    // Timed ability buffs and debuffs on the same ledger (ability mechanics
+    // AB-04): one entry per (effect, invoker).
+    ("TimedStat", &stat_buff::TimedStat),
+    // "Remove Effect of moniker EFFECT_Stance": a stance clears the old one
+    // (ability mechanics AB-08).
+    ("RemoveByMoniker", &stat_buff::RemoveByMoniker),
     // Radioactive dart dose (ammo AM-11b).
     ("RadiationDamage", &ammo_dart_tech::RadiationDamage),
     // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.
@@ -53,6 +61,8 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("EmpDisrupt", &ammo_emp::EmpDisrupt),
     // Dart_Tranquilizer's on-hit slow (ammo campaign AM-11a).
     ("MovementSlow", &ammo_dart_cc::MovementSlow),
+    ("Knockdown", &crowd_control::Knockdown),
+    ("Interrupt", &crowd_control::Interrupt),
 ];
 
 /// The cell's registry, built from [`EFFECT_SCRIPTS`]: `Err` when two rows
@@ -89,12 +99,15 @@ mod tests {
         assert!(lookup("MeleePhysicalDamage").is_some());
         assert!(lookup("AbsorbShield").is_some());
         assert!(lookup("Stun").is_some());
+        assert!(lookup("Knockdown").is_some());
+        assert!(lookup("Interrupt").is_some());
         assert!(lookup("Suppression").is_some());
         assert!(lookup("RangedPhysicalDamage").is_some());
         assert!(lookup("RangedEnergyDamage").is_some());
         assert!(lookup("CoverStance").is_some());
         assert!(lookup("RemoveCoverStance").is_some());
         assert!(lookup("StatBuff").is_some());
+        assert!(lookup("TimedStat").is_some());
         for pet_script in [
             "PetStatBuff",
             "PetDeathTimer",

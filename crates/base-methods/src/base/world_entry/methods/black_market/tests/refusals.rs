@@ -39,7 +39,7 @@ fn errors_sent(capture: &LogCaptureGuard) -> usize {
         .iter()
         .filter(|e| {
             e.message_contains("Black Market client send")
-                && e.has_field("method", "onBMError")
+                && e.has_field("method_name", "onBMError")
                 && e.has_field("sent", "true")
         })
         .count()

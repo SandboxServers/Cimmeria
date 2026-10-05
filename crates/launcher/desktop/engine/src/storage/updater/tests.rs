@@ -35,7 +35,7 @@ fn fixture(version: &str) -> (Config, Offer) {
     };
     (config, offer)
 }
-fn available(state: &mut DesktopState, config: &Config, offer: Offer) -> Snapshot {
+pub(super) fn available(state: &mut DesktopState, config: &Config, offer: Offer) -> Snapshot {
     let before = state.launcher_update_snapshot(Some(config)).unwrap();
     let ticket = state
         .begin_launcher_update_check(Some(config), before.revision, before.operation_revision)
@@ -45,7 +45,7 @@ fn available(state: &mut DesktopState, config: &Config, offer: Offer) -> Snapsho
         .unwrap();
     state.launcher_update_snapshot(Some(config)).unwrap()
 }
-fn prepare(
+pub(super) fn prepare(
     state: &mut DesktopState,
     config: &Config,
     snapshot: Snapshot,
@@ -446,6 +446,7 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 launch::Resources {
                     helper: artifact,
                     client_patches: None,
+                    client_telemetry: None,
                     graphics: None
                 }
             )
@@ -490,10 +491,10 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 operation_revision: 0,
                 preferences_revision: 2,
                 release,
-                artifacts: crate::adoption::Artifacts {
+                artifacts: Some(crate::adoption::Artifacts {
                     seed: root.path().join("unused.zip"),
                     patches: vec![],
-                },
+                }),
             },
             tokio_util::sync::CancellationToken::new(),
             progress,

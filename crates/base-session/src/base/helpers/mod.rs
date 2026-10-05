@@ -227,7 +227,9 @@ pub fn collect_pending_retransmits(
     // reliable packets we sent after one it never acked, so it is holding
     // everything behind that one (no entity creates, leaves or method
     // calls reach it) until a resend lands. The WARN is logged inside.
-    if let Some(stall) = channel.check_tx_hole() {
+    if let Some(stall) = channel
+        .check_tx_hole_named(|entry| reliable_send::name_stalled_entry(&clients, &state.enc, entry))
+    {
         if stall.first_warning {
             cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
         }
@@ -240,6 +242,7 @@ pub fn collect_pending_retransmits(
         tracing::warn!(
             %addr,
             account_id = state.account_id,
+            account_name = state.account_name.as_deref(),
             seq = dropped.seq,
             retransmit_count = dropped.retransmit_count,
             event = "reliable_resend_abandoned",
@@ -392,11 +395,13 @@ pub fn destroy_client_entities(
         account_eid,
         player_eid,
         account_id,
-        account_name,
         player_name,
+        discord_account,
+        discord_character,
         session_secs,
         ended,
         plugins,
+        identity,
     ) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
@@ -413,8 +418,12 @@ pub fn destroy_client_entities(
         // Snapshot identity + session length for the Discord disconnect emit
         // before `remove` drops the state.
         let account_id = c.account_id;
-        let account_name = c.account_name.clone();
+        let discord_account = c.discord_account();
+        let discord_character = c.discord_character();
         let player_name = c.player_name.clone();
+        // The names for this function's lines (Rule 6), taken before the
+        // session is removed.
+        let identity = crate::base::session_identity::session_identity(c);
         let session_secs = c.connected_at.elapsed().as_secs();
         // Snapshot before `remove`: a character still in the world is
         // announced offline once (a `logOff` already unlisted and announced).
@@ -425,11 +434,13 @@ pub fn destroy_client_entities(
                     player_id,
                     entity_id,
                     player_name: player_name.clone(),
+                    account_name: identity.account_name,
                 })
             }
             _ => None,
         };
         crate::base::player_index::log_unlisted(addr, c, reason);
+        crate::base::deferred_aoi::log_discarded_on_teardown(addr, c, reason);
         // The session's plugin registry outlives the session for the
         // disconnect hook below.
         let plugins = clients.remove(&addr).map(|c| c.plugins).unwrap_or_default();
@@ -437,16 +448,23 @@ pub fn destroy_client_entities(
             account_eid,
             player_eid,
             account_id,
-            account_name,
             player_name,
+            discord_account,
+            discord_character,
             session_secs,
             ended,
             plugins,
+            identity,
         )
     };
 
     if account_eid != 0 {
-        tracing::debug!(%addr, account_entity_id = account_eid, "Destroying Account entity");
+        tracing::debug!(
+            %addr,
+            account_entity_id = account_eid,
+            account_entity_name = identity.account_name,
+            "Destroying Account entity"
+        );
         // The Account entity has no cell-side mirror, so there is nothing to
         // race: free it immediately.
         entity_manager
@@ -455,13 +473,21 @@ pub fn destroy_client_entities(
             .destroy_entity(EntityId(account_eid as i32));
     }
     if let Some(player_eid) = player_eid {
-        tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
+        tracing::debug!(
+            %addr,
+            player_entity_id = player_eid,
+            player_entity_name = identity.player_name,
+            "Destroying Player entity"
+        );
         tracing::info!(
             target: "session.end",
             %addr,
             entity_id = player_eid,
+            entity_name = identity.player_name,
             account_id,
-            player_name = ?player_name,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = player_name.as_deref(),
             disconnect_reason = reason,
             session_secs,
             "player session ended"
@@ -518,7 +544,9 @@ pub fn destroy_client_entities(
                             Err(_) => {
                                 tracing::warn!(
                                     entity_id = player_eid,
+                                    entity_name = identity.player_name,
                                     account_id,
+                                    account_name = identity.account_name,
                                     disconnect_reason = reason,
                                     "destroy_client_entities: cell dropped the \
                                      DisconnectEntity reply without confirming \
@@ -530,7 +558,9 @@ pub fn destroy_client_entities(
                         Err(e) => {
                             tracing::warn!(
                                 entity_id = player_eid,
+                                entity_name = identity.player_name,
                                 account_id,
+                                account_name = identity.account_name,
                                 disconnect_reason = reason,
                                 error = %e,
                                 "destroy_client_entities: DisconnectEntity send \
@@ -556,8 +586,12 @@ pub fn destroy_client_entities(
     tracing::info!(
         %addr,
         disconnect_reason = reason,
+        account_id,
+        account_name = identity.account_name,
         account_entity_id = account_eid,
+        account_entity_name = identity.account_name,
         player_entity_id = ?player_eid,
+        player_entity_name = identity.player_name,
         "Client entities cleaned up"
     );
 
@@ -576,9 +610,8 @@ pub fn destroy_client_entities(
     // is the one place that reports *why* a player dropped. The stable
     // `reason` label maps to a typed `DisconnectReason` for the embed.
     cimmeria_discord::emit_player_disconnect(
-        Some(account_id),
-        account_name,
-        player_name,
+        discord_account,
+        discord_character,
         addr,
         cimmeria_discord::DisconnectReason::from_label(reason),
         session_secs,
@@ -630,6 +663,7 @@ where
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Unreliable,
+                    connected,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -659,7 +693,7 @@ where
                 // but should remain queryable when investigating
                 // missing-update bug reports.
                 tracing::debug!(
-                    witness_id,
+                    witness_id, // nt:id-only the session left mid-send, so nothing names it
                     %addr,
                     reason = "client_disconnected",
                     "AoI: client disconnected mid-send -- packet dropped"
@@ -675,7 +709,16 @@ where
     let packet = build_packet(&key, version, seq, &acks);
     let bytes = packet.len();
     if let Err(e) = transport.send_to(&packet, addr).await {
-        tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
+        tracing::warn!(
+            witness_id,
+            witness_name = crate::base::session_identity::entity_name_for(
+                connected,
+                entity_to_addr,
+                witness_id
+            ),
+            %addr,
+            "AoI: failed to send packet: {e}"
+        );
         return WitnessSendOutcome::SendError;
     }
     WitnessSendOutcome::Sent { addr, seq, bytes }
@@ -726,6 +769,7 @@ where
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Reliable,
+                    connected,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -746,7 +790,7 @@ where
             }
             None => {
                 tracing::debug!(
-                    witness_id,
+                    witness_id, // nt:id-only the session left mid-send, so nothing names it
                     %addr,
                     reason = "client_disconnected",
                     "AoI reliable: client disconnected mid-send -- packet dropped"
@@ -762,7 +806,16 @@ where
     let packet = build_packet(&key, version, seq, &acks);
     let bytes = packet.len();
     if let Err(e) = transport.send_to(&packet, addr).await {
-        tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
+        tracing::warn!(
+            witness_id,
+            witness_name = crate::base::session_identity::entity_name_for(
+                connected,
+                entity_to_addr,
+                witness_id
+            ),
+            %addr,
+            "AoI reliable: failed to send packet: {e}"
+        );
         return WitnessSendOutcome::SendError;
     }
     // Register the encrypted bytes with the per-session Channel so
@@ -776,6 +829,8 @@ where
             kind: "witness_single",
             fragment: None,
             message_count: None,
+            // The closure encrypts the packet; its message is not seen here.
+            first_message: None,
         },
     );
     WitnessSendOutcome::Sent { addr, seq, bytes }
@@ -840,6 +895,7 @@ pub async fn send_bundle_to_witness_reliable(
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Bundle,
+                    connected,
                 );
                 return BundleSendOutcome::AddrUnresolved;
             }
@@ -850,7 +906,7 @@ pub async fn send_bundle_to_witness_reliable(
             Some(c) => c,
             None => {
                 tracing::debug!(
-                    witness_id,
+                    witness_id, // nt:id-only the session left mid-send, so nothing names it
                     %addr,
                     reason = "client_disconnected",
                     "AoI bundle: client disconnected mid-send -- bundle dropped"
@@ -883,10 +939,13 @@ pub async fn send_bundle_to_witness_reliable(
         let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
         let key = c.key;
         let version = c.enc_version;
-        Some((addr, key, version, base_seq, packet_count))
+        // For the flush line (Rule 6). Interning is a read-locked hash hit
+        // once the name has been seen, taken in this existing lock window.
+        let witness_name = cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref());
+        Some((addr, key, version, base_seq, packet_count, witness_name))
     };
 
-    let Some((addr, key, version, base_seq, packet_count)) = send_data else {
+    let Some((addr, key, version, base_seq, packet_count, witness_name)) = send_data else {
         // Unreachable: every None path inside the block above early-returns
         // a specific outcome. Defensive fallback keeps the match exhaustive.
         return BundleSendOutcome::Empty;
@@ -917,6 +976,7 @@ pub async fn send_bundle_to_witness_reliable(
     tracing::info!(
         %addr,
         witness_id,
+        witness_name,
         messages = num_messages,
         body_bytes = body_len,
         packets = packets.len(),
@@ -944,6 +1004,7 @@ pub async fn send_bundle_to_witness_reliable(
             // less wasted bandwidth.
             tracing::error!(
                 witness_id,
+                witness_name,
                 %addr,
                 frag_seq,
                 fragment = i + 1,
@@ -966,6 +1027,9 @@ pub async fn send_bundle_to_witness_reliable(
                 kind: "witness_bundle",
                 fragment: (packets.len() > 1).then_some((i + 1, packets.len())),
                 message_count: Some(num_messages),
+                // A later fragment starts inside the stream; the plan's walk
+                // recorded the message it starts in, for `mercury.tx_hole`.
+                first_message: plan.heads.get(i).copied().flatten().filter(|_| i > 0),
             },
         );
     }
@@ -998,3 +1062,9 @@ mod disconnect_teardown;
 
 #[cfg(test)]
 mod departed_witnesses_tests;
+
+#[cfg(test)]
+mod sent_message_head_tests;
+
+#[cfg(test)]
+mod session_end_names_tests;

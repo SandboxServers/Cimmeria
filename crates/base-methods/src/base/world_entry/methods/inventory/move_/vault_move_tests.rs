@@ -242,7 +242,7 @@ async fn live_db_deposit_then_withdraw_round_trips_the_same_item() {
                 ("player_id", player_id.to_string()),
                 ("entity_id", entity_id.to_string()),
                 ("item_id", item.to_string()),
-                ("type_id", BANKABLE.to_string()),
+                ("item_type_id", BANKABLE.to_string()),
                 ("quantity", "5".into()),
                 ("kind", kind.into()),
                 ("source_container_id", from.0.into()),
@@ -534,7 +534,7 @@ async fn live_db_a_mission_item_is_rejected() {
         entity_id,
         carried,
     );
-    assert_fields(&event, &[("type_id", MISSION.to_string())], &[]);
+    assert_fields(&event, &[("item_type_id", MISSION.to_string())], &[]);
     assert_eq!(bank_events(&capture, "move_rejected").len(), 2);
     assert!(client.saw_text("Mission items cannot be stored in the vault."));
 

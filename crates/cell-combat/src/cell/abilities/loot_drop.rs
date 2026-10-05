@@ -42,7 +42,14 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
     let entries = match space_mgr.loot_tables.get(&loot_table_id) {
         Some(entries) => entries.clone(),
         None => {
-            tracing::debug!(target_eid, loot_table_id, "No loot table entries found");
+            tracing::debug!(
+                target: "abilities",
+                event = "loot_table_empty",
+                target_eid,
+                loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+                "No loot table entries found"
+            );
             return;
         }
     };
@@ -70,6 +77,8 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
         target.interaction_type_flags |= INT_NORMAL_LOOT;
         target.interaction_type = Some(cimmeria_entity::cell_entity::NpcInteractionType::Loot);
         tracing::debug!(
+            target: "abilities",
+            event = "loot_interaction_set",
             target_eid,
             items = target.loot.len(),
             "NPC has loot — set INT_NormalLoot interaction"
@@ -104,9 +113,16 @@ pub fn roll_loot_entries(
             entry.min_quantity
         } else if entry.min_quantity > entry.max_quantity {
             tracing::warn!(
+                target: "abilities",
+                event = "loot_entry_bad_quantity",
                 owner,
                 loot_table_id,
-                design_id = ?entry.design_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+                // `design_id` stays for the cell/base loot join (NT-22a);
+                // `item_type_id` is its Rule 6 key and carries the name.
+                design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named
+                item_type_id = entry.design_id,
+                item_name = cimmeria_cell_world::cell::effects::content_names::item_name(entry.design_id),
                 min = entry.min_quantity,
                 max = entry.max_quantity,
                 "loot entry has min_quantity > max_quantity; using min as fallback"
@@ -118,9 +134,16 @@ pub fn roll_loot_entries(
         };
         if quantity > 0 {
             tracing::debug!(
+                target: "abilities",
+                event = "loot_generated",
                 owner,
                 loot_table_id,
-                design_id = ?entry.design_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+                // `design_id` stays for the cell/base loot join (NT-22a);
+                // `item_type_id` is its Rule 6 key and carries the name.
+                design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named
+                item_type_id = entry.design_id,
+                item_name = cimmeria_cell_world::cell::effects::content_names::item_name(entry.design_id),
                 quantity,
                 probability = entry.probability,
                 "Loot generated"

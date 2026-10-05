@@ -78,8 +78,10 @@ pub(super) async fn npc_bark(
         None => {
             tracing::warn!(
                 entity_id,
-                screen_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                screen_id, // nt:id-only no dialog_screens row cached, so no text to name it by
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 reason = "screen_not_cached",
                 "npc_bark: no resources.dialog_screens row for this screen_id -- \
                  nothing spoken (check the seed row, or whether the startup \
@@ -91,8 +93,10 @@ pub(super) async fn npc_bark(
     if text.trim().is_empty() {
         tracing::warn!(
             entity_id,
-            screen_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            screen_id, // nt:id-only the screen text is blank, which is the name this would carry
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "empty_text",
             "npc_bark: dialog screen text is blank -- nothing spoken (a speaker \
              prefix with no line is visible garbage in the chat window)"
@@ -103,8 +107,11 @@ pub(super) async fn npc_bark(
     if !space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             screen_id,
+            screen_name = screen_label(text),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "actor_not_player",
             "npc_bark: the chain's acting entity is not a player -- a bark is \
              addressed to the triggering player's own client, and method 28 to \
@@ -115,8 +122,11 @@ pub(super) async fn npc_bark(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         screen_id,
+        screen_name = screen_label(text),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         speaker,
         channel,
         text_len = text.chars().count(),
@@ -142,11 +152,24 @@ pub(super) async fn npc_bark(
         // signal that the chain fired.
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             screen_id,
+            screen_name = screen_label(text),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "npc_bark: cell→base send failed -- the line will not reach the player: {e}"
         );
     }
+}
+
+/// A dialog screen's name for a log line: the start of its text, which is
+/// what `dialog_screens` has instead of a name column (Rule 6). Cut at 80
+/// characters so a long speech doesn't swamp the line.
+fn screen_label(text: &str) -> &str {
+    let text = text.trim();
+    text.char_indices()
+        .nth(80)
+        .map_or(text, |(i, _)| &text[..i])
 }
 
 #[cfg(test)]

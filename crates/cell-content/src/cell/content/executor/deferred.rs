@@ -52,7 +52,9 @@ pub async fn deferred_content_action_tick(
     for (entity_id, pending) in ready {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             chain_id = pending.chain_id,
+            chain_name = cimmeria_names::book().chain(pending.chain_id),
             action = ?pending.action,
             "Content: firing deferred action"
         );
@@ -68,7 +70,9 @@ pub async fn deferred_content_action_tick(
             tracing::info!(
                 target: "content.deferred",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 chain_id = pending.chain_id,
+                chain_name = cimmeria_names::book().chain(pending.chain_id),
                 action_kind = %crate::cell::player_journal::action_kind(&pending.action),
                 delay_ms = r.delay_ms,
                 late_ms = r.late_ms,

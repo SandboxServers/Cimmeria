@@ -11,6 +11,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `CONDITION_FEEDBACK_InvalidEntity`: the generic refusal.
 pub(super) const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
@@ -104,6 +105,7 @@ pub(super) async fn send_refusal(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         if tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
@@ -113,18 +115,34 @@ pub(super) async fn send_refusal(
             .await
             .is_err()
         {
+            crate::cell::abilities::metrics::wire_send_failed(
+                crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+                crate::cell::abilities::metrics::UNKNOWN_WORLD,
+            );
             tracing::warn!(
                 target: "deployables.lifecycle",
                 event = "refusal_feedback_send_failed",
                 decision_outcome = "refusal_feedback_send_failed",
                 entity_id,
+                entity_name = id.player_name,
                 owner_id = entity_id,
+                owner_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = refusal.reason(),
                 "deployable refusal feedback could not be queued (base channel closed)"
+            );
+        } else {
+            row.sent_to_owner_as(
+                id,
+                entity_id,
+                WireCtx::new("deployable").reason(refusal.reason()),
             );
         }
     }

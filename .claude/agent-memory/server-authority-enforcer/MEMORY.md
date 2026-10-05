@@ -69,3 +69,10 @@
 - [project_bank_vault_bv09_review.md](project_bank_vault_bv09_review.md) — BV-09 Team vault expansion from treasury: leader-under-lock cleared; leaver + recycled-eid guards added; other-member onBagInfo open
 - [exploit_refund_not_bound_to_payment.md](exploit_refund_not_bound_to_payment.md) — CR10 respec refunded ASP per discipline held, not per ASP paid; free grant paths minted ASP (fixed: spent counter)
 - [reference_respawn_gate.md](reference_respawn_gate.md) — callForAid/respawn dead gate + offered_in_world live in the dispatch arms, not handle_respawn (#799)
+- [reference_beneficial_cast_gate.md](reference_beneficial_cast_gate.md) — AB-01 beneficial classifier/resolver; Heal-typed debuff/CC hazard fixed by the classifier (heal script or bit required)
+- [project_ab08_toggles_passives_review.md](project_ab08_toggles_passives_review.md) — AB-08 held toggles/passives cleared shape; passive-cast hole resolved (passive_yn loaded, casts refused at launch)
+- [pattern_deferred_name_resolution.md](pattern_deferred_name_resolution.md) — NT reviews: id captured at queue time, named at confirm = recycled-slot mislabel; subject names under actor keys
+- [exploit_public_ingest_cell_channel_dos.md](exploit_public_ingest_cell_channel_dos.md) — Public ingest -> shared 256-slot base->cell channel; try_send protects sender not cell; semaphore + is_closed (#1215)
+- [exploit_vendor_buy_sell_arbitrage.md](exploit_vendor_buy_sell_arbitrage.md) — Buy list priced under any sell list mints naquadah (DA-02 list 1300 SMG 1 vs 1000); ask for global no-arbitrage seed guard
+- [reference_world_1300_not_gm_enforced.md](reference_world_1300_not_gm_enforced.md) — DebugArea 1300 "GM-only" is no-stargate-row only; .summon/relog lands non-GMs; rigs there must self-gate
+- [project_debug_area_dial_hub_da07_review.md](project_debug_area_dial_hub_da07_review.md) — DA-07 gate 29 dial hub: grant-not-bypass cleared; hub filters per writer; Men'fa gate 22 ~192 m under floor

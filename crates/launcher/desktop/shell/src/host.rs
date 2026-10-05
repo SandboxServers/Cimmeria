@@ -5,7 +5,15 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod adoption;
+mod game_telemetry;
+mod game_update;
+#[cfg(test)]
+mod held_download;
 mod install;
+pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};
+pub use game_telemetry::{GameTelemetryCommand, GameTelemetryStatus};
+pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;
 mod launch;
@@ -18,7 +26,10 @@ mod summary;
 pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
+    game_update_offer: Mutex<game_update::Offers>,
+    game_update_worker: Mutex<Option<game_update::dispatch::Worker>>,
     updater_config: Option<cimmeria_launcher_engine::updater::Config>,
+    updater_shutdown: Option<Arc<dyn Fn() + Send + Sync>>,
     root: PathBuf,
     default_install_directory: Option<PathBuf>,
     #[cfg(target_os = "macos")]
@@ -29,8 +40,13 @@ pub struct NativeHost {
     runtime_worker: Mutex<Option<cimmeria_launcher_engine::mac_wine::prerequisites::Worker>>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     migration_preview: Mutex<Option<migration::Preview>>,
+    adoption: Mutex<adoption::Adoption>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
+    #[cfg(test)]
+    game_update_fixture: Option<game_update::TestDispatch>,
+    #[cfg(test)]
+    adoption_fixture: Option<adoption::TestDispatch>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -39,7 +55,10 @@ pub struct NativeHost {
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
+            game_update_offer: Mutex::new(game_update::Offers::default()),
+            game_update_worker: Mutex::new(None),
             updater_config: None,
+            updater_shutdown: None,
             root,
             default_install_directory: None,
             #[cfg(target_os = "macos")]
@@ -50,8 +69,13 @@ impl NativeHost {
             runtime_worker: Mutex::new(None),
             state: Mutex::new(None),
             migration_preview: Mutex::new(None),
+            adoption: Mutex::new(adoption::Adoption::default()),
             #[cfg(test)]
             repair_fixture: None,
+            #[cfg(test)]
+            game_update_fixture: None,
+            #[cfg(test)]
+            adoption_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
             repair_worker: Mutex::new(None),
@@ -98,7 +122,21 @@ impl NativeHost {
     fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            let mut state = DesktopState::open(&self.root)?;
+            let restart = std::env::args_os().any(|arg| arg == "--launcher-update-restart");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let mut state = loop {
+                match DesktopState::open(&self.root) {
+                    Err(StorageError::InUse) if restart && std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(50))
+                    }
+                    result => break result?,
+                }
+            };
+            if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
+                // Only the running binary's compiled version acknowledges a handoff.
+                // Failure leaves the updater owner visible and excludes game work.
+                let _ = state.reconcile_launcher_update(&target, env!("CARGO_PKG_VERSION"));
+            }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()
                 && state.operations().snapshot().operation.is_none()

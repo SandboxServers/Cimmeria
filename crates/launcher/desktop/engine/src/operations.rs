@@ -12,6 +12,7 @@ pub enum OperationKind {
     Install,
     PrepareRuntime,
     Repair,
+    Update,
     Uninstall,
     Launch,
 }

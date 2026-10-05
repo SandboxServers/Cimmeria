@@ -65,6 +65,45 @@ fn convert_open_black_market_action() {
     );
 }
 
+fn gm_ability_bulk_row(params: serde_json::Value) -> DbActionRow {
+    DbActionRow {
+        chain_id: 13000,
+        action_type: "gm_ability_bulk".to_string(),
+        target_id: None,
+        target_key: None,
+        params,
+        delay_ms: 0,
+        sort_order: 0,
+    }
+}
+
+/// DA-02: the granter's two modes convert, and a row naming neither is
+/// dropped rather than defaulting to a grant.
+#[test]
+fn convert_gm_ability_bulk_action() {
+    use crate::actions::AbilityBulkChange;
+    for (raw, want) in [
+        ("grant_all", AbilityBulkChange::GrantAll),
+        ("reset", AbilityBulkChange::Reset),
+    ] {
+        let action = convert_action(&gm_ability_bulk_row(serde_json::json!({"change": raw})));
+        assert!(
+            matches!(action, Some(Action::GmAbilityBulk { change }) if change == want),
+            "{raw}: got {action:?}"
+        );
+    }
+    for params in [
+        serde_json::json!({}),
+        serde_json::json!({"change": "all"}),
+        serde_json::json!({"change": 1}),
+    ] {
+        assert!(
+            convert_action(&gm_ability_bulk_row(params.clone())).is_none(),
+            "{params} must not convert"
+        );
+    }
+}
+
 #[test]
 fn convert_set_active_slot_action() {
     let row = DbActionRow {

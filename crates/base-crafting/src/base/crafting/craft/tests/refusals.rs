@@ -211,7 +211,7 @@ async fn live_db_too_few_components_in_the_two_bags_are_refused() {
         "You do not have enough components: 13 of 14 needed. Nothing was used.",
         &[
             ("blueprint_id", BLUEPRINT.to_string()),
-            ("design_id", STEEL_CORE.to_string()),
+            ("design_item_type_id", STEEL_CORE.to_string()),
             ("needed", "14".to_string()),
             ("available", "13".to_string()),
         ],

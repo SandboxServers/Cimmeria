@@ -30,7 +30,12 @@ pub async fn dispatch(
                 return true;
             }
             let crouched = args[0] as i8;
-            tracing::debug!(entity_id, crouched, "setCrouched");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                crouched,
+                "setCrouched"
+            );
 
             if let Some(e) = space_mgr.get_entity_mut(entity_id) {
                 let old = e.state_field;
@@ -53,8 +58,18 @@ pub async fn dispatch(
             }
             true
         }
+        // Crafted callers only: the stock client sends the GM twin 172
+        // instead (AB-N1). GM-gated in `gm_gate`.
         TOGGLE_HEAL_DEBUG => {
-            tracing::debug!(entity_id, "toggleHealDebug (stub)");
+            cimmeria_cell_world::cell::combat_debug::commands::toggle_from_cell_method(
+                tx,
+                space_mgr,
+                entity_id,
+                method_index,
+                "toggleHealDebug",
+                cimmeria_cell_world::cell::combat_debug::commands::Toggle::Heal,
+            )
+            .await;
             true
         }
         REQUEST_HOLSTER_WEAPON => {
@@ -62,7 +77,12 @@ pub async fn dispatch(
                 return true;
             }
             let holstered = args[0] != 0;
-            tracing::debug!(entity_id, holstered, "requestHolsterWeapon");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                holstered,
+                "requestHolsterWeapon"
+            );
 
             // Update server-side holster state on `CellEntity` rather
             // than the long-defunct `BSF_HOLSTER` bit of `state_field`

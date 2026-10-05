@@ -138,6 +138,7 @@ async fn live_db_crafting_supplies_land_in_the_crafting_bag_and_are_usable() {
         player_id: PLAYER_ID,
         entity_id: ACCOUNT_ID as u32,
         gm_entity_id: None,
+        gm_name: None,
     };
     let crafted = run_craft_transaction(
         &pool,

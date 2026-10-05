@@ -221,7 +221,7 @@ async fn lethal_partner_bleed_clamps_to_one_hp() {
     let pulses = logs
         .all()
         .into_iter()
-        .filter(|c| c.has_field("event", "effect_pulse_fired"))
+        .filter(|c| c.has_field("event", "pulse_ticked"))
         .count();
     assert_eq!(
         pulses, 1,

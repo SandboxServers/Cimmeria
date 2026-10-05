@@ -147,6 +147,13 @@ ALTER TABLE ONLY char_creation_choices
     ADD CONSTRAINT char_creation_choices_pkey PRIMARY KEY (choice_id);
 
 --
+-- Name: char_creation_items_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY char_creation_items
+    ADD CONSTRAINT char_creation_items_pkey PRIMARY KEY (char_def_id, item_id);
+
+--
 -- TOC entry 2938 (class 2606 OID 63215)
 -- Name: char_creation_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
 --
