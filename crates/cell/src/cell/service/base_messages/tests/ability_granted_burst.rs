@@ -139,6 +139,7 @@ async fn grant_mirrors_provenance_points_and_spend_onto_the_cell() {
             trained_abilities: vec![597],
             tree_points_spent: 2,
             training_points: 3,
+            credited_grants: Vec::new(),
         }
     );
 }
@@ -270,6 +271,7 @@ async fn level_gate_reads_the_level_hydrated_at_world_entry() {
                 trained_abilities: vec![],
                 tree_points_spent: 0,
                 training_points: 2,
+                credited_grants: Vec::new(),
             },
             level: 5,
             character_name: None,

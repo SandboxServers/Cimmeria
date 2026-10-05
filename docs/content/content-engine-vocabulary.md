@@ -183,6 +183,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `open_black_market` | `OpenBlackMarket` | 0 |
 | `open_loot` | `OpenLoot` | 8 |
 | `gm_ability_bulk` | `GmAbilityBulk` | 2 |
+| `grant_ability` | `GrantAbility` | 0 |
 
 `gm_ability_bulk` is the GM bulk ability change, fired from an NPC (Debug
 Area DA-02). Its one param, `change`, is `grant_all` or `reset`; a row
@@ -195,7 +196,8 @@ clears every running cooldown (with the client's clear timers, as
 `.cooldowns reset`), then sends the base the same `GmAbilityBulk` that
 `/gmgiveallabilities` (`grant_all`: every ability of the archetype tree
 the player does not know, capstones included) or `/gmresetabilities`
-(`reset`: back to the character-creation starters, tree points refunded)
+(`reset`: back to the character-creation starters plus every non-`gm`
+grant, tree points refunded; see [`grant_ability` params](#grant_ability-params))
 sends; the base's reply refreshes the Abilities window and adds its result
 line. Every click gets a line on the first press. Each click writes one
 `event = "ability_granter"` row on target `content` naming the player
@@ -453,6 +455,100 @@ can ask again in 7 minutes", rounded up), or the reason. Telemetry:
 | `content.send_system_mail` `reason=...` | `content` | WARN | nothing sent: `cooldown` (with `last_used_at`, `remaining_secs`), `no_player`, `base_channel_closed`, `no_db_pool`, or the writer's reason (`unknown_item_type`, `recipient_not_found`, ...) |
 
 Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
+
+##### `grant_ability` params
+
+Teaches the chain's player one or more abilities for free and records where
+they came from (Class Start v6 CS-01a, decisions OD-CS04 and OD-CS06 and lock
+L6 in the [campaign ledger](../analysis/class-start-v6/README.md)). Tutorials, racial
+cores, class signatures and mission rewards use it. It is **not** GM-gated.
+
+`target_id` and `target_key` stay empty. Every param is in `params`:
+
+```json
+{"ability_ids": [598], "source_kind": "signature", "source_id": 687, "archetypes": [1]}
+```
+
+| Param | Required | Meaning |
+|---|---|---|
+| `ability_ids` | **yes** | A non-empty list of distinct `resources.abilities` ids |
+| `source_kind` | **yes** | `tutorial`, `racial_core`, `signature` or `mission`. `gm` is refused |
+| `source_id` | no | The mission or chain id the grant comes from. For `mission` the logs name the mission |
+| `archetypes` | **yes** for `signature` and `racial_core`, no otherwise | The `EArchetype` ordinals (1-8) that may receive it. Absent means every archetype |
+
+**Gate class and race grants on the grant itself.** The executor checks
+`archetypes` against the player's own archetype, and the base checks it again
+against `sgw_player.archetype`; a mismatch writes nothing, sends no line and
+logs one `reason=archetype_mismatch` row. A chain must never rely on its
+trigger's `archetype` condition alone: an `archetype` condition on a trigger
+that does not set the param reads -1, so `eq` never matches and `neq` always
+passes. That is why the loader requires `archetypes` on `signature` and
+`racial_core` rows.
+
+**A bad row refuses the whole chain**, not just the row: a missing or empty
+list, a duplicate or non-positive id, an unknown kind, `gm`, a non-integer
+`source_id`, a `target_id`, a missing `archetypes` on a class or race grant,
+or an `archetypes` list that is empty, repeats a value or holds anything but
+1-8. The chain is also refused when an id has no `resources.abilities` row
+(checked once the ability table is loaded); if that table cannot be read,
+every `grant_ability` chain is refused and the rest of the engine still
+loads. Each refusal is one `event = "chain_refused"` ERROR on target
+`content`. A grant chain usually does several things for one milestone, so
+running the rest without the grant would tell the player about an ability
+they never got.
+
+The cell writes nothing itself. The executor arm
+([`executor/ability_grant.rs`](../../crates/cell-content/src/cell/content/executor/ability_grant.rs))
+sends the base one `ContentGrantAbilities`. The base
+([`progression/content_grant_write.rs`](../../crates/base-methods/src/base/world_entry/methods/progression/content_grant_write.rs))
+locks the player's `sgw_player` row and, in one transaction, decides each id:
+
+| The player... | Result |
+|---|---|
+| has an archetype outside `archetypes` | nothing, for every id |
+| gets one of the archetype's character-creation starters | appended if missing; no row and no branch credit (a starter is never spend, D-AT03) |
+| does not know it | appended to `sgw_player.abilities`, with a `sgw_player_ability_grants` row |
+| knows it and bought it from a trainer | **converted** (OD-CS06, "costs no point"): removed from `trained_abilities`, its tree node's `skill_point_cost` refunded to `training_points` and taken off `tree_points_spent` (never below 0), and the row written, so a later respec keeps it |
+| knows it with no row (a legacy grant) | gets its row |
+| knows it with a `gm` row | the row is promoted to this kind, so the next GM reset keeps it |
+| knows it with a content row | unchanged: the first content source wins |
+
+A replay changes nothing. The cell then adds the new ids to the known set,
+drops converted ids from `trained_abilities` and takes the base's points,
+sends `onKnownAbilitiesUpdate`, the point counter after a conversion, one
+`You have learned <ability>.` line per new ability and one "is now yours for
+free" line per conversion, adds the credited ids to the branch credit, and
+re-sends an open trainer.
+
+Provenance is what the rest of the ability system reads:
+
+- **Branch credit.** The trainer's spend gate compares
+  `tree_points_spent` plus the `skill_point_cost` of every node of the
+  player's archetype tree held with a non-`gm` row, starters excepted. A
+  free class signature therefore opens the nodes its cost would have
+  opened. Refunds still pay back trained points only.
+- **Respec** removes trainer purchases only; every grant and its row
+  survive.
+- **The GM / Debug NPC ability reset** rebuilds `abilities` as the
+  character-creation starters plus every non-`gm` grant, and deletes the
+  `gm` rows with their abilities. `.giveability`, `/gmgiveallabilities`
+  and the Debug Area granter write `gm` rows.
+
+Telemetry:
+
+| Event | Target | Level | When |
+|---|---|---|---|
+| `content_grant_ability` `decision_outcome=forwarded` | `cimmeria_cell_content::...` (module path) | DEBUG | the cell sent the grant to the base |
+| `content_grant_ability` `decision_outcome=refused` | `content` | INFO / WARN | nothing sent: `reason=archetype_mismatch` (INFO, ordinary play), `not_a_player` (WARN, an NPC or an unloaded player); ERROR on `cell_to_base_closed` |
+| `content_grant_ability` `decision_outcome=granted` / `converted_from_trained` | `abilities` | INFO | one per learned or converted id, after the commit; `provenance_written`, `refunded`, the points after |
+| `content_grant_ability` `decision_outcome=already_known` / `starter_kept` | `abilities` | DEBUG | one per id that was neither |
+| `content_grant_ability` `decision_outcome=refused` | `abilities` | WARN | nothing written: `no_database`, `session_mismatch`, `player_row_missing`, `gm_kind_from_content`, `archetype_mismatch`; ERROR on `db_error` |
+| `content_grant_mirror` `decision_outcome=learned` | `abilities` | INFO | the cell mirrored one learned id |
+| `init_grant_merge` `decision_outcome=kept_late_grants` | `abilities` | INFO | a world-entry snapshot predated a grant the cell had applied; the grant was kept |
+
+Each row carries `entity_id`, `account_id`, `player_id`, `chain_id`,
+`source_kind`, `source_id` (with `source_name` for a mission) and the
+ability ids with their names.
 
 #### Entity-lifecycle verbs
 

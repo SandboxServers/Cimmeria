@@ -26,6 +26,11 @@ pub(super) struct PlayerInitRow {
     // The once-per-character loot containers already opened (the
     // `open_loot` gate). Read here so a relog restores the flags.
     pub(super) looted_containers: Vec<String>,
+    // Abilities with a non-`gm` grant provenance (CS-01a): the spend gate's
+    // branch credit. Read in the same statement as the spend, so a grant
+    // and a purchase cannot straddle the read. GM grants and the
+    // archetype's character-creation starters never count (review F3, F4).
+    pub(super) credited_grants: Vec<i32>,
 }
 
 /// `Ok(None)` when no row has `player_id`.
@@ -37,8 +42,17 @@ pub(super) async fn load_player_init_row(
         "SELECT bandolier_slot, auto_reload, reload_on_activate, \
                 known_stargates, trained_abilities, tree_points_spent, \
                 training_points, level, bodyset, \
-                looted_containers::text[] AS looted_containers \
-           FROM sgw_player WHERE player_id = $1",
+                looted_containers::text[] AS looted_containers, \
+                ARRAY(SELECT g.ability_id FROM sgw_player_ability_grants g \
+                       WHERE g.player_id = p.player_id AND g.source_kind <> 'gm' \
+                         AND g.ability_id NOT IN (\
+                             SELECT ca.ability_id \
+                               FROM resources.char_creation_abilities ca \
+                               JOIN resources.char_creation cc USING (char_def_id) \
+                              WHERE cc.archetype = \
+                                    (enum_range(NULL::resources.\"EArchetype\"))[p.archetype + 1]) \
+                       ORDER BY g.granted_at, g.ability_id) AS credited_grants \
+           FROM sgw_player p WHERE player_id = $1",
     )
     .bind(player_id)
     .fetch_optional(pool)
@@ -113,6 +127,73 @@ mod tests {
             (vec![597, 598], 3, 3, 7),
             "the world-entry read returns the purchases, the spend, the points and the level"
         );
+    }
+
+    /// **Guard (CS-01a review F3, F4): world entry credits only non-`gm`,
+    /// non-starter grants.** A Soldier holds a `signature` row, a `gm` row
+    /// (the Debug Area granter's) and a `tutorial` row on one of the
+    /// Soldier's own character-creation starters. Only the signature reaches
+    /// `credited_grants`. Drop `<> 'gm'` and every GM grant-all becomes
+    /// archetype-wide credit after a relog; drop the starter filter and an
+    /// overlapping grant list gives every Soldier free credit.
+    #[tokio::test]
+    async fn live_db_player_init_row_credits_only_non_gm_non_starter_grants() {
+        const CREDIT_ID: i32 = 0x7030_0312;
+        const SIGNATURE: i32 = 0x7030_0340;
+        const GM_GRANT: i32 = 0x7030_0341;
+        let pool = require_db_or_skip!();
+        let starter: i32 = sqlx::query_scalar(
+            "SELECT MIN(ca.ability_id) FROM resources.char_creation_abilities ca \
+               JOIN resources.char_creation cc USING (char_def_id) \
+              WHERE cc.archetype = 'ARCHETYPE_Soldier'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("the seed gives a Soldier a starter");
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(CREDIT_ID)
+            .execute(&pool)
+            .await;
+        sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+            .bind(CREDIT_ID)
+            .bind(format!("cs01a-credit-{CREDIT_ID}"))
+            .execute(&pool)
+            .await
+            .expect("insert account");
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id\
+             ) VALUES ($1, $1, 3, 0, 1, 1, $2, '', 'Castle', \
+                       'BS_HumanMale.BS_HumanMale', 0.0, 0.0, 0.0, 0)",
+        )
+        .bind(CREDIT_ID)
+        .bind(format!("cs01a-credit-{CREDIT_ID}"))
+        .execute(&pool)
+        .await
+        .expect("insert a Soldier");
+        sqlx::query(
+            "INSERT INTO sgw_player_ability_grants (player_id, ability_id, source_kind) \
+             VALUES ($1, $2, 'signature'), ($1, $3, 'gm'), ($1, $4, 'tutorial')",
+        )
+        .bind(CREDIT_ID)
+        .bind(SIGNATURE)
+        .bind(GM_GRANT)
+        .bind(starter)
+        .execute(&pool)
+        .await
+        .expect("insert provenance rows");
+
+        let row = load_player_init_row(&pool, CREDIT_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(CREDIT_ID)
+            .execute(&pool)
+            .await;
+        assert_eq!(row.credited_grants, vec![SIGNATURE]);
     }
 
     /// The once-per-character loot flag survives a relog: what

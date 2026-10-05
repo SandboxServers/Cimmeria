@@ -9,7 +9,8 @@ use sqlx::PgPool;
 
 use cimmeria_content_engine::chain::{Chain, ChainEngine};
 use cimmeria_content_engine::loader::{
-    build_chains_from_rows, DbActionRow, DbChainRow, DbConditionRow, DbTriggerRow,
+    build_chains_from_rows, refuse_chains_with_unknown_abilities, DbActionRow, DbChainRow,
+    DbConditionRow, DbTriggerRow,
 };
 
 /// Build the content engine by loading chains from the database.
@@ -125,11 +126,30 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
         "Loaded content engine rows from database"
     );
 
-    Ok(build_chains_from_rows(
-        chain_rows,
-        trigger_rows,
-        condition_rows,
-        action_rows,
+    let chains = build_chains_from_rows(chain_rows, trigger_rows, condition_rows, action_rows);
+    // `grant_ability` ids must be real abilities (CS-01a). The row converter
+    // cannot see the ability table, so the check runs here. A failed read
+    // refuses only the grant chains, never the whole engine.
+    let known_abilities: Option<std::collections::HashSet<i32>> =
+        match sqlx::query_scalar::<_, i32>("SELECT ability_id FROM resources.abilities")
+            .fetch_all(pool)
+            .await
+        {
+            Ok(ids) => Some(ids.into_iter().collect()),
+            Err(e) => {
+                tracing::error!(
+                    target: "content",
+                    event = "ability_table_unavailable",
+                    error = %e,
+                    "content engine: resources.abilities unreadable; grant_ability chains \
+                     are refused, every other chain loads"
+                );
+                None
+            }
+        };
+    Ok(refuse_chains_with_unknown_abilities(
+        chains,
+        known_abilities.as_ref(),
     ))
 }
 

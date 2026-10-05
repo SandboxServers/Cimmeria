@@ -13,6 +13,9 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::ability_grant::AbilityGrant;
+pub use cimmeria_entity::cell_entity::AbilityGrantKind;
+
 use crate::context::ExecutionContext;
 
 /// Serde default for [`Action::StartMinigame`]'s `difficulty`.
@@ -507,6 +510,9 @@ pub enum Action {
     /// does for the GM themself: the same plan, the same base write, the
     /// same `onKnownAbilitiesUpdate` burst and result line.
     GmAbilityBulk { change: AbilityBulkChange },
+    /// Teach the acting player abilities for free, with a recorded
+    /// provenance (Class Start v6 CS-01a); see [`AbilityGrant`].
+    GrantAbility(AbilityGrant),
 }
 
 /// What a [`Action::GmAbilityBulk`] does to the player's known abilities.

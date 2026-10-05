@@ -7,24 +7,52 @@
 //! its root (audit A-20). Branch isolation comes from prerequisites instead,
 //! which are always in the node's own branch.
 //!
-//! Only trainer purchases add to `tree_points_spent` (D-AT03). A starter or
-//! quest-granted ability satisfies a prerequisite, but it never counts as
-//! spend.
+//! The spend the gate compares is the **effective** spend:
+//! `tree_points_spent` (trainer purchases, D-AT03) plus branch credit, the
+//! `skill_point_cost` of every node of the player's archetype tree they hold
+//! through a non-`gm` grant provenance (Class Start v6 CS-01a, OD-CS06: a
+//! free class signature counts as owned and as branch credit). A starter
+//! with no provenance row, a GM grant and a grant of an ability outside the
+//! archetype's tree add nothing. Refunds and the respec still use
+//! `tree_points_spent` alone: credit is never paid out.
 
 use super::super::catalog::TreeNode;
 use super::super::predicate::{TrainContext, TrainReject};
 
-/// The archetype-wide spend meets the node's `required_branch_points`.
+/// Branch credit: the summed `skill_point_cost` of the credited grants that
+/// are nodes of `archetype_id`'s tree. A duplicated id counts once.
+pub fn grant_credit(
+    catalog: &super::super::catalog::AbilityTreeCatalog,
+    archetype_id: i32,
+    credited_grants: &[i32],
+) -> i32 {
+    credited_grants
+        .iter()
+        .enumerate()
+        .filter(|&(i, id)| !credited_grants[..i].contains(id))
+        .filter_map(|(_, &id)| catalog.node(archetype_id, id))
+        .map(|node| node.skill_point_cost.max(0))
+        .sum()
+}
+
+/// The archetype-wide effective spend meets the node's
+/// `required_branch_points`.
 ///
 /// Cell-side only: the base's purchase `UPDATE` does not re-check it. That
-/// is safe while `tree_points_spent` only grows, because a stale cell value
-/// can only under-count. A respec that lowers the spend (AT-08) must reset
-/// the cell mirror in the same step, or add a base-side check.
+/// is safe while the effective spend only grows between the cell's reads,
+/// because a stale cell value can only under-count. A respec lowers
+/// `tree_points_spent` and resets the cell mirror in the same step (AT-08);
+/// the GM reset keeps every credited grant, so it never lowers the credit.
 pub(super) fn branch_points(ctx: &TrainContext<'_>, node: &TreeNode) -> Result<(), TrainReject> {
-    if ctx.tree_points_spent < node.required_branch_points {
+    let spent = ctx.tree_points_spent.saturating_add(grant_credit(
+        ctx.catalog,
+        node.archetype_id,
+        ctx.credited_grants,
+    ));
+    if spent < node.required_branch_points {
         return Err(TrainReject::SpendGate {
             required: node.required_branch_points,
-            spent: ctx.tree_points_spent,
+            spent,
         });
     }
     Ok(())

@@ -97,6 +97,16 @@ ALTER TABLE ONLY sgw_player_content_cooldown
     ADD CONSTRAINT sgw_player_content_cooldown_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: sgw_player_ability_grants_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Ability grant provenance (Class Start v6, CS-01a); a deleted character takes
+-- its rows with it.
+--
+
+ALTER TABLE ONLY sgw_player_ability_grants
+    ADD CONSTRAINT sgw_player_ability_grants_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- Name: sgw_contact_list_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 -- ON DELETE CASCADE ensures all lists (and via FK below, all members) are

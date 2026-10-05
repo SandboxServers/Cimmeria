@@ -29,12 +29,16 @@
 //!   consumable round trip (the base consumes, then the cell applies).
 //! - `ability_gm` — `GmAbilityBulk` and `GmAbilitiesChanged`, the GM bulk
 //!   ability round trip (`gmGiveAllAbilities`, `gmResetAbilities`; AB-N2).
+//! - `ability_content` — `ContentGrantAbilities` and
+//!   `ContentAbilitiesGranted`, the content `grant_ability` round trip
+//!   (Class Start v6, CS-01a).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
 //! - `entity_labels` — `EntityLabelsRequest`, sent on its own ingest-to-cell
 //!   channel (never the gameplay one): the telemetry ingest naming entity
 //!   IDs from late client rows (NT-40).
 
+mod ability_content;
 mod ability_gm;
 mod ammo_gm_cell_to_base;
 mod ammo_reserve;
@@ -60,6 +64,7 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     GmGrantAppliedSciencePoints, GmGrantExpertise, RespecCraftOpen, StationChangeCause, StationSet,
 };
+pub use ability_content::{ContentAbilitiesGranted, ContentGrantAbilities};
 pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};

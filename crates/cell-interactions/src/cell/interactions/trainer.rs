@@ -180,6 +180,7 @@ pub async fn try_open_trainer(
                 level: player.level as i32,
                 known: &player.abilities,
                 tree_points_spent: player.tree_progress.tree_points_spent,
+                credited_grants: &player.tree_progress.credited_grants,
                 training_points: player.tree_progress.training_points,
                 trainer: pin,
             };

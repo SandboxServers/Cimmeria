@@ -51,6 +51,7 @@ fn tree_info_order_is_catalog_order_the_trainer_uses() {
                 level: 1,
                 known: &known,
                 tree_points_spent: 0,
+                credited_grants: &[],
                 // Enough to clear the spend gate: this test is about order.
                 training_points: 100,
                 // At a trainer offering the node, in range: only order matters here.

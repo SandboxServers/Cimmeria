@@ -608,11 +608,15 @@ pub async fn handle_grant_cash(
 }
 
 mod asp_earning;
+mod content_grant;
+mod content_grant_write;
 mod gm_ability_bulk;
 mod grant_ability;
+mod grant_provenance;
 mod grant_training_points;
 mod respec;
 mod train_ability;
+pub use content_grant::handle_content_grant_abilities;
 pub use gm_ability_bulk::handle_gm_ability_bulk;
 pub use grant_ability::{handle_gm_grant_ability, AbilityGrant};
 pub use grant_training_points::{handle_grant_training_points, TrainingPointsGrant};
@@ -629,9 +633,15 @@ pub use train_ability::{persist_purchase, PurchaseResult};
 #[cfg(test)]
 mod asp_earning_tests;
 #[cfg(test)]
+mod content_grant_conversion_tests;
+#[cfg(test)]
+mod content_grant_tests;
+#[cfg(test)]
 mod gm_ability_bulk_tests;
 #[cfg(test)]
 mod grant_ability_tests;
+#[cfg(test)]
+mod grant_provenance_tests;
 #[cfg(test)]
 mod grant_training_points_tests;
 #[cfg(test)]

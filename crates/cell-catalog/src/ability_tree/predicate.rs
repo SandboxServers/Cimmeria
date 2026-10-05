@@ -43,6 +43,11 @@ pub struct TrainContext<'a> {
     pub known: &'a dyn KnownAbilities,
     /// Archetype-wide tree points spent (`sgw_player.tree_points_spent`).
     pub tree_points_spent: i32,
+    /// Abilities with a non-`gm` grant provenance
+    /// (`TreeProgress::credited_grants`). The spend gate adds the
+    /// `skill_point_cost` of each one that is a node of the player's
+    /// archetype tree to `tree_points_spent` (CS-01a, OD-CS06).
+    pub credited_grants: &'a [i32],
     /// Unspent training points (`sgw_player.training_points`).
     pub training_points: i32,
     /// The player's pinned interaction target, resolved by the caller.
@@ -85,6 +90,7 @@ pub enum TrainReject {
         missing: i32,
     },
     /// The archetype-wide spend is below the node's `required_branch_points`.
+    /// `spent` is the effective spend: trained points plus grant credit.
     SpendGate {
         required: i32,
         spent: i32,
