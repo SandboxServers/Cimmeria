@@ -24,6 +24,12 @@
 //! the requested access and the disposition show which it asked for, and
 //! `existed` whether a create-style open found a file there.
 //!
+//! The cache's own archives never come this way: the zip library opens them
+//! with `_wsopen_s` from `MSVCR80.dll`. That import is hooked beside the
+//! cache's version read (`inline_hooks::cooked_cache`) and reports under the
+//! same target with `via: "crt"`. This hook still covers any other `.pak`
+//! the client opens through `CreateFile`.
+//!
 //! # Volume
 //!
 //! Successful opens (the overwhelming majority) cost one bounded read of the

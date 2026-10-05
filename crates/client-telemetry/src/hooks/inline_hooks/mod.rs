@@ -40,7 +40,9 @@
 //! - [`cooked_cache`] — the cooked-data cache: the version read out of
 //!   each cache PAK and why a read failed, every version stamp, and what
 //!   the client holds when it asks the server (`client.cooked.*`,
-//!   2026-10-04).
+//!   2026-10-04). It also swaps four IAT slots (the `MSVCP80.dll` stream
+//!   read and the zip library's `MSVCR80.dll` file calls), listed in its
+//!   `imports` module.
 //!
 //! # What's installed
 //!
@@ -95,7 +97,7 @@
 //! | `ZipStorageBase` read version (`this, out, archive`, `ret 8`) | `0x00478f00` | `client.cooked.version_read` (`outcome` names the failed step; `warn` unless `read`) | unthrottled: one per archive open |
 //! | `ZipStorageBase` read entry (`this, stream, archive, name`, `ret 0xc`) | `0x00478e10` | (feeds the version read's outcome; no event) | - |
 //! | `CZipArchive::FindFile` (`archive, name, case, name_only`, `ret 0xc`) | `0x01396900` | (feeds the version read's outcome; no event) | - |
-//! | `CZipArchive::ExtractFile` to memory (`archive, index, file, flag, buffer`, `ret 0x10`) | `0x01398af0` | (feeds the version read's outcome; no event) | - |
+//! | `CZipArchive::ExtractFile` to memory (`archive, index, file, flag, buffer`, `ret 0x10`) | `0x01398af0` | (feeds the version read: result, directory record, extracted bytes; no event) | - |
 //! | `ServerSource_SetVersion` (`this, &version`, `ret 4`) | `0x00479e90` | `client.cooked.version_set`; `client.cooked.versions_held` once per login, from the `versionInfoRequest` router | unthrottled: two per category per resync |
 //! | `ScriptedDebug` `log` / `warn` / `error` tolua bindings (`Debug:log` etc., `cdecl int(lua_State*)`; the logger they call, `0x0081c2e0`, is a bare `ret`) | `0x00aa1620`, `0x00aa1710`, `0x00aa1800` | `client.lua.debug_log` (`channel`, `source`, `text`) | per (channel, message shape) bucket |
 //!
