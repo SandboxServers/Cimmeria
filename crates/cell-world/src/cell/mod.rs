@@ -26,6 +26,10 @@ pub mod service;
 pub mod space_manager;
 pub mod squad;
 
+/// Seed-vs-navmesh guard for the Free Jaffa start on Dakara_E1 and its
+/// plaza respawner (Class Start v6 CS-02).
+#[cfg(test)]
+mod dakara_start_tests;
 /// Seed-vs-navmesh guards for the Debug Area gate (stargate 29, DA-07).
 #[cfg(test)]
 mod debug_area_gate_tests;

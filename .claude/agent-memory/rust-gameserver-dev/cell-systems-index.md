@@ -55,6 +55,7 @@ Moved out of MEMORY.md to keep the index under its read limit. One line per topi
 - [live-loot-containers-and-tag-state.md](live-loot-containers-and-tag-state.md) — open_loot rolls per player_id on a live chest; once flags in sgw_player.looted_containers; entity_tag_state reads live_tags.
 - [grantitem-overcap-and-process-wide-gm-switches.md](grantitem-overcap-and-process-wide-gm-switches.md) — GrantItem over-cap row (#1045), use return_rounds; player_id-keyed GM switches in cimmeria-entity.
 - [ability-grant-provenance-seams.md](ability-grant-provenance-seams.md) — CS-01a: every non-trainer ability append decides a provenance row; credit is cell-only; grant_ability id check skipped by test loaders.
+- [start-profile-seams.md](start-profile-seams.md) — CS-02: start profiles in resources.char_creation, registry + EnterableWorlds, starters = legacy_kit, debug_kit, load_all Send trap.
 
 ## Ammo campaign (#1026)
 

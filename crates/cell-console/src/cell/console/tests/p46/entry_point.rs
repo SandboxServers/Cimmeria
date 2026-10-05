@@ -267,3 +267,34 @@ async fn gotolocation_skips_a_gate_left_at_the_origin() {
     assert_eq!(t.only_gate_travel().3, [30.0, 1.0, 30.0]);
     assert!(t.mentions("[respawner]"), "got {:?}", t.feedback);
 }
+
+/// **Class Start v6 CS-02.** Dakara_E1 is the Free Jaffa start world, so its
+/// entry point is the start profile's plaza point, ahead of its gate; with no
+/// profile loaded the gate rule decides. The old two-world rule only knew
+/// the Cellblock and SGC_W1 and sent `.gotolocation Dakara_E1` to the gate.
+#[test]
+fn dakara_e1_entry_point_is_the_free_jaffa_start() {
+    use crate::cell::console::travel::world_entry_point::{world_entry_point_in, EntrySource};
+    use cimmeria_resources::base::start_profiles::fixture;
+
+    let (mut mgr, _gm, _npc) = setup_worlds();
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces>
+            <Space WorldName="Dakara_E1" Instanced="false" MinX="-2000" MaxX="2000" MinY="-2000" MaxY="2000" />
+        </Spaces>"#,
+    )
+    .unwrap();
+    mgr.stargates
+        .insert(25, gate("Dakara_E1", [96.174, -15.164, 253.206], None));
+    let profiles = fixture::seeded();
+
+    assert_eq!(
+        world_entry_point_in(Some(&profiles), &mgr, "Dakara_E1"),
+        Some((fixture::DAKARA_E1_START, EntrySource::CharacterStart))
+    );
+    assert_eq!(
+        world_entry_point_in(None, &mgr, "Dakara_E1").map(|(_, s)| s),
+        Some(EntrySource::Stargate),
+        "control: without a profile the gate decides"
+    );
+}

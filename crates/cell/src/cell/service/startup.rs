@@ -9,6 +9,7 @@ use super::super::cover;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::super::{spawner, CellError};
+use super::start_profile_audit::audit_start_profiles;
 use super::CellService;
 
 impl CellService {
@@ -616,6 +617,26 @@ impl CellService {
                     break;
                 }
             }
+            // Instanced worlds have no startup space, so `SpaceData` alone
+            // does not tell the base that a player can be delivered to
+            // Castle_CellBlock or SGC_W1. Character creation needs to know
+            // (Class Start v6 lock L3: a start world with no space refuses).
+            let worlds = space_mgr.enterable_worlds();
+            if tx
+                .send(CellToBaseMsg::EnterableWorlds { worlds })
+                .await
+                .is_err()
+            {
+                tracing::warn!("Failed to send EnterableWorlds to BaseApp (channel closed)");
+            }
+        }
+
+        // The start profiles (Class Start v6 CS-02): the respawn fallback and
+        // the console's `.gotolocation <world>` read the process copy. The
+        // base loads them too; whichever starts second reloads the same rows.
+        if let Some(pool) = self.db_pool.as_deref() {
+            cimmeria_resources::base::start_profiles::load_at_boot(pool).await;
+            audit_start_profiles(&space_mgr);
         }
 
         // The process name book (NT-01). The base loads it too; whichever

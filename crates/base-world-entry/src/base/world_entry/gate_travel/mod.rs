@@ -29,6 +29,7 @@ mod address_grant;
 mod gm_only;
 mod persist_arrival;
 pub(crate) use address_grant::handle_grant_stargate_address;
+use cimmeria_base_session::base::world_entry::gm_only_worlds::GmOnlyDecision;
 use gm_only::gm_only_gate_redirect;
 // The arrival write. A test hook too: the dial-refusal round trip in
 // `cimmeria-services` (`gate_round_trip_tests::dial_refusal_persist`), which
@@ -320,14 +321,35 @@ pub async fn handle_gate_travel(
         )
         .await
         {
-            Some(r) => (r.world, r.position, [0.0; 3], None, None),
-            None => (
+            GmOnlyDecision::Redirect(r) => (r.world, r.position, [0.0; 3], None, None),
+            GmOnlyDecision::Allowed => (
                 target_world_name,
                 position,
                 rotation,
                 destination_space_id,
                 destination_ring_id,
             ),
+            GmOnlyDecision::NoHome { refused_world } => {
+                // Lock L3: no start profile is loaded to send the player
+                // home, and the GM-only world must stay closed. The entity
+                // is already out of its origin space, so end the session; a
+                // reconnect loads them at their saved origin.
+                tracing::error!(
+                    entity_id,
+                    entity_name = log_player_name,
+                    account_id,
+                    account_name = log_account_name,
+                    player_id = active_player_id,
+                    player_name = log_player_name,
+                    %addr,
+                    world = refused_world,
+                    reason = "no_start_profile",
+                    "GateTravel: a non-GM was headed for a GM-only world and no start \
+                     profile is loaded to send them home — ending the session"
+                );
+                abandon_unspaced_session(addr, entity_id, connected, entity_to_addr, cell_tx).await;
+                return Ok(());
+            }
         };
 
     // Tell CellService to create the entity in the new space and await the

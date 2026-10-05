@@ -43,9 +43,7 @@ fn historical_cellblocks_never_fall_back_into_the_stock_cellblock_space() {
 
 /// The Debug Area (1300) is shared, not instanced, but it has no stand-in
 /// space either: the default would put a player bound for `DebugArea` in the
-/// stock CellBlock space. Every added world fails closed; a shipped world the
-/// table does not list keeps the old default (see the function's docs for
-/// why that is not widened yet).
+/// stock CellBlock space. Every added world fails closed.
 #[test]
 fn every_added_world_fails_closed_including_the_debug_area() {
     use crate::mercury::world_data::added_worlds::ADDED_WORLDS;
@@ -59,9 +57,36 @@ fn every_added_world_fails_closed_including_the_debug_area() {
             world.world
         );
     }
-    assert_eq!(
-        resolve_space_id_fallback("Ihpet_Crater_Light"),
-        Some(DEFAULT_SPACE_ID),
-        "the shipped map the Debug Area plays on is not an added world"
+}
+
+/// **Regression guard (Class Start v6 L3).** A world the cell never
+/// announced fails closed with an ERROR, where it used to land silently in
+/// the Castle_CellBlock space. Reverting the `_` arm to `DEFAULT_SPACE_ID`
+/// fails the first assertion.
+#[test]
+fn an_unannounced_world_fails_closed_loudly() {
+    let logs = crate::test_support::LogCapture::install();
+    assert_eq!(resolve_space_id_fallback("CS02_Nowhere"), None);
+    assert!(
+        logs.all().iter().any(|e| e.level == tracing::Level::ERROR
+            && e.has_field("reason", "unknown_world_no_space")
+            && e.has_field("world", "CS02_Nowhere")),
+        "the refusal is an ERROR naming the world"
     );
+}
+
+/// A world whose startup space the cell announced resolves to that space's
+/// real id (not a guessed one), and an announced instanced world counts as
+/// enterable for character creation.
+#[test]
+fn announced_spaces_and_worlds_are_used() {
+    use super::space_registry::{is_world_enterable, register_enterable_worlds, register_space};
+
+    assert!(!is_world_enterable("CS02_Instanced"));
+    register_space("CS02_Startup".to_string(), 0x0001_0123);
+    assert_eq!(resolve_space_id_fallback("CS02_Startup"), Some(0x0001_0123));
+    assert!(is_world_enterable("CS02_Startup"));
+    register_enterable_worlds(["CS02_Instanced"]);
+    assert!(is_world_enterable("CS02_Instanced"));
+    assert!(!is_world_enterable("cs02_instanced"), "exact match");
 }

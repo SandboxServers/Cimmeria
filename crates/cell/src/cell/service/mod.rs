@@ -30,6 +30,7 @@ mod message_loop;
 // of the services crate split and names that crate's own `npc_ai`, so only
 // the service loop and its tests use this path now.
 mod npc_ai;
+mod start_profile_audit;
 mod startup;
 pub(crate) mod ticks;
 

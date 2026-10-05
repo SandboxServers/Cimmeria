@@ -39,6 +39,8 @@ cimmeria-names = { workspace = true }
 cimmeria-observability = { workspace = true }
 # The respawn notification.
 cimmeria-discord = { workspace = true }
+# The respawn fallback reads the start profiles (Class Start v6 CS-02).
+cimmeria-resources = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
@@ -51,6 +53,8 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 test-support = []
 
 [dev-dependencies]
+# `start_profiles::fixture`: the respawn fallback tests.
+cimmeria-resources = { workspace = true, features = ["test-support"] }
 # The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
 # the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
 # dev-dependency must be listed in tools/test-live-db.{sh,ps1};

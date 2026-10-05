@@ -22,6 +22,10 @@ async fn travel_to_debug_area(
     alignment: Option<i32>,
     port: u16,
 ) -> (String, [f32; 3], i32) {
+    // The seeded start profiles: the home a refused player is sent to.
+    cimmeria_resources::base::start_profiles::install(
+        cimmeria_resources::base::start_profiles::fixture::seeded(),
+    );
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
     let mut state = make_state();
     state.access_level = access_level;

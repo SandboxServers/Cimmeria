@@ -56,6 +56,7 @@ async fn unplaceable_kit_rolls_the_character_back_live_db() {
     cleanup(&pool, ROLLBACK_ACCOUNT).await;
     remove_kit_row(&pool, item).await;
     insert_account(&pool, ROLLBACK_ACCOUNT, 0).await;
+    super::live_db_tests::register_start_worlds(&pool).await;
     sqlx::query(
         "INSERT INTO resources.char_creation_items (char_def_id, item_id, stack_size) \
          VALUES ($1, $2, 1)",

@@ -1,14 +1,13 @@
-//! A fresh character's starter kit against the real seed: what a new
-//! character (or a seeded playtest character) holds at spawn works on the
-//! first press.
+//! The debug kit against the real seed: what a debug-kit character (the
+//! seeded playtest characters, Class Start v6 lock L2) holds at spawn works
+//! once the pistol is reloaded.
 //!
-//! The kit comes from the seed, not from constants here: the starter
-//! abilities from `char_creation_abilities`, the weapon from
-//! `char_creation_items` with its magazine loaded (as `createCharacter`
-//! writes it), and the weapon's RANGED binding from `items_event_sets`.
-//! Maintainer report 2026-10-04: every class must spawn able to use Pistol
-//! Shot, focus regen (597 Heal Focus) and health regen (1646 Health Heal,
-//! 1218 Recuperation).
+//! The kit comes from the seed, not from constants here: the abilities from
+//! `char_creation_debug_kit_abilities`, the weapon from
+//! `char_creation_debug_kit_items`, and the weapon's RANGED binding from
+//! `items_event_sets`. Since CS-02 a normal character starts with no kit, and
+//! the pistol is created empty (OD-CS13 amendment): the tests load the
+//! magazine the way the player's one free reload does.
 
 use cimmeria_entity::cell_entity::BandolierItem;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
@@ -19,8 +18,6 @@ use crate::cell::spawner::{
 };
 use crate::test_support::require_db_or_skip;
 
-/// Praxis Commando, male: the seeded playtest characters' char_def.
-const CHAR_DEF: i32 = 3;
 const PISTOL_SHOT: i32 = 592;
 const HEAL_FOCUS: i32 = 597;
 const HEALTH_HEAL: i32 = 1646;
@@ -30,7 +27,7 @@ const MOB: u32 = 2;
 const MAX: i32 = 1000;
 const START_HEALTH: i32 = 500;
 
-/// The seed's kit for [`CHAR_DEF`].
+/// The seed's debug kit.
 struct Kit {
     abilities: Vec<i32>,
     weapon: BandolierItem,
@@ -39,26 +36,23 @@ struct Kit {
 }
 
 async fn seeded_kit(pool: &sqlx::PgPool) -> Kit {
-    let abilities: Vec<i32> = sqlx::query_scalar(
-        "SELECT ability_id FROM resources.char_creation_abilities WHERE char_def_id = $1",
-    )
-    .bind(CHAR_DEF)
-    .fetch_all(pool)
-    .await
-    .expect("starter abilities");
+    let abilities: Vec<i32> =
+        sqlx::query_scalar("SELECT ability_id FROM resources.char_creation_debug_kit_abilities")
+            .fetch_all(pool)
+            .await
+            .expect("starter abilities");
     let (item_id, clip_size, default_ammo_type): (i32, i32, i32) = sqlx::query_as(
         "SELECT ri.item_id, ri.clip_size, \
                 COALESCE(array_position(enum_range(NULL::resources.\"EAmmoType\"), \
                                         ri.default_ammo_type) - 1, 0) \
-         FROM resources.char_creation_items ci \
+         FROM resources.char_creation_debug_kit_items ci \
          JOIN resources.items ri ON ri.item_id = ci.item_id \
-         WHERE ci.char_def_id = $1 AND 3 = ANY(ri.container_sets) \
+         WHERE 3 = ANY(ri.container_sets) \
          ORDER BY ri.item_id LIMIT 1",
     )
-    .bind(CHAR_DEF)
     .fetch_one(pool)
     .await
-    .expect("char_creation_items gives the char_def a bandolier weapon");
+    .expect("the debug kit has a bandolier weapon");
     let ranged_ability: i32 = sqlx::query_scalar(
         "SELECT ability_id FROM resources.items_event_sets WHERE item_id = $1 AND event_id = $2",
     )
@@ -74,7 +68,7 @@ async fn seeded_kit(pool: &sqlx::PgPool) -> Kit {
             item_id,
             clip_size,
             default_ammo_type,
-            // `createCharacter` loads the magazine (ammo = clip_size).
+            // Created empty (OD-CS13); this is after the one free reload.
             current_ammo: clip_size,
             cur_ammo_type: default_ammo_type,
         },

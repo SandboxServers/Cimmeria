@@ -27,6 +27,11 @@ mod respawn_target;
 /// Castle_CellBlock instanced space (every dispatch test sees a
 /// fresh world). Caller can override is_player and stats.
 fn make_mgr_with_player(world: &str) -> SpaceManager {
+    // The seeded start profiles: a start world's no-respawner fallback is
+    // its profile point (Class Start v6 CS-02).
+    cimmeria_resources::base::start_profiles::install(
+        cimmeria_resources::base::start_profiles::fixture::seeded(),
+    );
     let mut mgr = SpaceManager::new(1);
     let xml = format!(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,

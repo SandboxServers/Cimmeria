@@ -9,7 +9,7 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
 
-use super::super::gm_only_worlds::{gm_only_redirect, note_gm_only_redirect};
+use super::super::gm_only_worlds::{gm_only_redirect, note_gm_only_redirect, GmOnlyDecision};
 use super::super::space_registry::resolve_space_id_fallback;
 
 /// Resolve the CREATE_BASE_PLAYER `class_id` byte from the caller's access
@@ -128,10 +128,11 @@ pub async fn query_world_entry(
         pos_y: f32,
         pos_z: f32,
         alignment: i32,
+        archetype: i32,
     }
 
     match sqlx::query_as::<_, EntryRow>(
-        "SELECT player_name, world_location, pos_x, pos_y, pos_z, alignment \
+        "SELECT player_name, world_location, pos_x, pos_y, pos_z, alignment, archetype \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -141,22 +142,40 @@ pub async fn query_world_entry(
     {
         Ok(Some(mut row)) => {
             // A non-GM saved in a GM-only world (a relog after a GM summon,
-            // a demoted GM) enters at their faction's start instead, before
-            // the cell ever places them there (D-DA4).
-            if let Some(redirect) =
-                gm_only_redirect(&row.world_location, access_level, row.alignment)
-            {
-                note_gm_only_redirect(
-                    "login",
-                    player_id,
-                    Some(&row.player_name),
-                    Some(account_id),
-                    account_name.as_deref(),
-                    access_level,
-                    &redirect,
-                );
-                row.world_location = redirect.world.to_string();
-                [row.pos_x, row.pos_y, row.pos_z] = redirect.position;
+            // a demoted GM) enters at their start profile's home instead,
+            // before the cell ever places them there (D-DA4).
+            match gm_only_redirect(
+                &row.world_location,
+                access_level,
+                row.alignment,
+                row.archetype,
+            ) {
+                GmOnlyDecision::Allowed => {}
+                GmOnlyDecision::Redirect(redirect) => {
+                    note_gm_only_redirect(
+                        "login",
+                        player_id,
+                        Some(&row.player_name),
+                        Some(account_id),
+                        account_name.as_deref(),
+                        access_level,
+                        &redirect,
+                    );
+                    row.world_location = redirect.world.to_string();
+                    [row.pos_x, row.pos_y, row.pos_z] = redirect.position;
+                }
+                GmOnlyDecision::NoHome { refused_world } => {
+                    // Lock L3: no loaded start profile names a home, so the
+                    // entry is refused rather than guessed into a world.
+                    tracing::error!(
+                        player_id, player_name = %row.player_name,
+                        account_id, account_name = account_name.as_deref(),
+                        world = refused_world, reason = "no_start_profile",
+                        "World entry refused: a non-GM is saved in a GM-only world and no \
+                         start profile is loaded to send them home — returning sentinel entity id"
+                    );
+                    return default_entry_with_eid(NO_ENTITY_ID);
+                }
             }
             // Kept whole so a refused entry below can hand the id back.
             let player_entity = entity_manager.lock().unwrap().create_entity("SGWPlayer");
@@ -367,6 +386,18 @@ mod tests {
     const HISTORICAL_LOGIN_BASE: i32 = 0x7000_1D00;
 
     async fn seed_player_in(pool: &PgPool, account_id: i32, player_id: i32, world: &str) {
+        seed_player_as(pool, account_id, player_id, world, 0, 1).await;
+    }
+
+    /// [`seed_player_in`] with an explicit `alignment` and `archetype`.
+    async fn seed_player_as(
+        pool: &PgPool,
+        account_id: i32,
+        player_id: i32,
+        world: &str,
+        alignment: i32,
+        archetype: i32,
+    ) {
         sqlx::query("DELETE FROM account WHERE account_id = $1")
             .bind(account_id)
             .execute(pool)
@@ -383,13 +414,15 @@ mod tests {
                 account_id, player_id, level, alignment, archetype, gender, \
                 player_name, extra_name, world_location, bodyset, \
                 pos_x, pos_y, pos_z, skin_color_id, naquadah\
-             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', $4, 'BS_HumanMale.BS_HumanMale', \
+             ) VALUES ($1, $2, 1, $5, $6, 1, $3, '', $4, 'BS_HumanMale.BS_HumanMale', \
                        -334.231, 73.472, -228.026, 0, 0)",
         )
         .bind(account_id)
         .bind(player_id)
         .bind(format!("historical-login-{player_id}"))
         .bind(world)
+        .bind(alignment)
+        .bind(archetype)
         .execute(pool)
         .await
         .expect("INSERT sentinel sgw_player");
@@ -529,16 +562,37 @@ mod tests {
     }
 
     /// D-DA4: a non-GM saved in the Debug Area (a relog after a GM summon, a
-    /// demoted GM) logs in at the Praxis start, before the cell places them;
-    /// a GM saved there logs in there. Revert proof: drop the
+    /// demoted GM) logs in at their start profile's home, before the cell
+    /// places them; a GM saved there logs in there. Revert proof: drop the
     /// `gm_only_redirect` block and the player's create names `DebugArea`.
+    /// The Free Jaffa row is the CS-02 change: the home is the profile's
+    /// (Dakara_E1), not the alignment's old SGC_W1.
     #[tokio::test]
     async fn live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start() {
         let pool = require_db_or_skip!();
-        for (offset, access_level, want) in [(4, 0, "Castle_CellBlock"), (6, 2, "DebugArea")] {
+        cimmeria_resources::base::start_profiles::install(
+            cimmeria_resources::base::start_profiles::load_all(
+                &mut pool.acquire().await.expect("connection"),
+            )
+            .await
+            .expect("start profiles load"),
+        );
+        for (offset, access_level, alignment, archetype, want) in [
+            (4, 0, 0, 1, "Castle_CellBlock"),
+            (6, 2, 0, 1, "DebugArea"),
+            (8, 0, 2, 7, "Dakara_E1"),
+        ] {
             let account_id = HISTORICAL_LOGIN_BASE + offset;
             let player_id = account_id + 1;
-            seed_player_in(&pool, account_id, player_id, "DebugArea").await;
+            seed_player_as(
+                &pool,
+                account_id,
+                player_id,
+                "DebugArea",
+                alignment,
+                archetype,
+            )
+            .await;
             let (created_in, entry) =
                 login_answered(pool.clone(), account_id, player_id, access_level).await;
             sqlx::query("DELETE FROM account WHERE account_id = $1")
@@ -548,8 +602,10 @@ mod tests {
                 .expect("cleanup sentinel account");
             assert_eq!(created_in, want, "access level {access_level}");
             assert_eq!(entry.world_name, want, "access level {access_level}");
-            if access_level == 0 {
+            if want == "Castle_CellBlock" {
                 assert_eq!(entry.pos, [-334.231, 73.472, -228.026]);
+            }
+            if access_level == 0 {
                 assert!(
                     super::super::super::gm_only_worlds::take_redirect_line(player_id).is_some(),
                     "the arrival owes the player the reason"

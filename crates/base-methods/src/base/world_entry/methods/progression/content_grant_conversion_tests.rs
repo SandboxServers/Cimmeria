@@ -43,15 +43,28 @@ async fn soldier_node(pool: &sqlx::PgPool) -> (i32, i32) {
     .expect("the seed has a Soldier tree node that is no starter")
 }
 
+/// A plain (`legacy_kit`) starter for the Soldier. Since Class Start v6
+/// CS-02 no canonical profile has one (only the Goa'uld / Asgard holding
+/// states do), so the test adds 592 to char_def 1 for its run and
+/// [`drop_soldier_starter`] removes it.
 async fn soldier_starter(pool: &sqlx::PgPool) -> i32 {
-    sqlx::query_scalar(
-        "SELECT MIN(ca.ability_id) FROM resources.char_creation_abilities ca \
-           JOIN resources.char_creation cc USING (char_def_id) \
-          WHERE cc.archetype = 'ARCHETYPE_Soldier'",
+    sqlx::query(
+        "INSERT INTO resources.char_creation_abilities (char_def_id, ability_id, source_kind) \
+         VALUES (1, 592, 'legacy_kit') ON CONFLICT DO NOTHING",
     )
-    .fetch_one(pool)
+    .execute(pool)
     .await
-    .expect("the seed gives a Soldier a starter")
+    .expect("add a Soldier legacy starter");
+    592
+}
+
+async fn drop_soldier_starter(pool: &sqlx::PgPool) {
+    let _ = sqlx::query(
+        "DELETE FROM resources.char_creation_abilities \
+          WHERE char_def_id = 1 AND ability_id = 592 AND source_kind = 'legacy_kit'",
+    )
+    .execute(pool)
+    .await;
 }
 
 async fn setup(pool: &sqlx::PgPool, id: i32, abilities: &[i32], trained: &[i32], spent: i32) {
@@ -237,4 +250,5 @@ async fn live_db_content_grant_gives_a_starter_no_row_and_no_credit() {
         "still only the node's row"
     );
     cleanup(&pool, ID).await;
+    drop_soldier_starter(&pool).await;
 }

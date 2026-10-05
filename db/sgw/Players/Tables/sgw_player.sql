@@ -74,6 +74,11 @@ CREATE TABLE sgw_player (
     -- '{}' / 0: nothing is revoked or backfilled.
     trained_abilities integer[] DEFAULT '{}'::integer[] NOT NULL,
     tree_points_spent integer DEFAULT 0 NOT NULL,
+    -- Class Start v6 lock L2: created with the debug kit
+    -- (resources.char_creation_debug_kit_*), from the start profile's
+    -- debug_kit flag, never from access level. The GM / Debug NPC reset gives
+    -- the kit back to such a character.
+    debug_kit boolean DEFAULT false NOT NULL,
     -- Personal vault (container 17) size. Every player starts at 40 and
     -- expands in steps of 10 up to the container's ceiling of 100
     -- (bag_max_slots in crates/entity/src/inventory.rs). onBagInfo declares

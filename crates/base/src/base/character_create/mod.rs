@@ -10,16 +10,20 @@ use sqlx::PgPool;
 use crate::mercury::read_wstring;
 
 use super::character::{query_character_list, send_char_create_failed};
-use super::chardef::chardef_lookup;
+use super::chardef::{chardef_lookup, CharDefIdentity};
 use super::helpers::{
     drain_acks_and_seq, get_access_level, get_account_entity_id, get_enc_version,
 };
 use super::ConnectedClientState;
 
+mod name;
+mod start_profile;
 mod starter_kit;
+use name::validate_character_name;
+use start_profile::{resolve_start, starting_points};
 use starter_kit::{
-    describe_abilities, describe_items, has_loaded_bandolier_weapon, insert_starter_inventory,
-    load_starter_abilities, load_starter_items, StarterItem,
+    describe_abilities, describe_items, has_bandolier_weapon, insert_starter_inventory,
+    record_profile_grants, start_kit, StarterItem,
 };
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
@@ -37,6 +41,26 @@ pub(crate) async fn handle_create_character(
     payload: &[u8],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    create_character(
+        transport, addr, key, account_id, payload, connected, db_pool, false,
+    )
+    .await
+}
+
+/// [`handle_create_character`] with a test-only override: `force_debug_kit`
+/// adds the debug kit whatever the profile says (the seed-drift test creates
+/// a debug-kit char_def 3 this way). Never set from access level (L2).
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn create_character(
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    payload: &[u8],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    force_debug_kit: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pool = match db_pool {
         Some(p) => p,
@@ -161,20 +185,24 @@ pub(crate) async fn handle_create_character(
         return Ok(());
     }
 
-    // Derive alignment, archetype, gender, bodyset, starting position from CharDefId.
-    let (alignment, archetype, gender, bodyset, world_location, start_x, start_y, start_z) =
-        match chardef_lookup(char_def_id) {
-            Some(info) => info,
-            None => {
-                tracing::warn!(
-                    %addr,
-                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
-                    "createCharacter: unknown CharDefId"
-                );
-                send_char_create_failed(transport, addr, key, connected, 2).await?;
-                return Ok(());
-            }
-        };
+    // Identity from the CharDef table; where it starts is the start profile.
+    let CharDefIdentity {
+        alignment,
+        archetype,
+        gender,
+        bodyset,
+    } = match chardef_lookup(char_def_id) {
+        Some(info) => info,
+        None => {
+            tracing::warn!(
+                %addr,
+                char_def_id, // nt:id-only CharDef rows carry no name column to pair
+                "createCharacter: unknown CharDefId"
+            );
+            send_char_create_failed(transport, addr, key, connected, 2).await?;
+            return Ok(());
+        }
+    };
 
     tracing::info!(
         %addr,
@@ -363,53 +391,45 @@ pub(crate) async fn handle_create_character(
         }
     }
 
-    // ── Look up world_id (Account.py:163) ───
+    // ── The start profile (Class Start v6 CS-02): world, point, level, kit ───
 
-    let world_id: Option<i32> =
-        match sqlx::query_scalar("SELECT world_id FROM resources.worlds WHERE world = $1")
-            .bind(world_location)
-            .fetch_optional(pool.as_ref())
-            .await
-        {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!(
-                    world_location,
-                    "character_create: world_id lookup failed: {e}"
-                );
-                None
-            }
-        };
-
-    // ── Look up starting abilities (Account.py:166) and the starter kit ───
-
-    // A lookup that fails is a failed creation, not a character without its
-    // kit: nothing would ever add the missing abilities or pistol later.
-    let (starter_abilities, kit_items) = match (
-        load_starter_abilities(pool.as_ref(), char_def_id).await,
-        load_starter_items(pool.as_ref(), char_def_id).await,
-    ) {
-        (Ok(a), Ok(i)) => (a, i),
-        _ => {
+    let start = match resolve_start(pool.as_ref(), addr, char_def_id, force_debug_kit).await {
+        Ok(start) => start,
+        Err(code) => {
+            send_char_create_failed(transport, addr, key, connected, code).await?;
+            return Ok(());
+        }
+    };
+    let world_location = start.profile.world.as_str();
+    let world_id = Some(start.world_id);
+    let [start_x, start_y, start_z] = start.profile.position;
+    let start_level = start.profile.start_level;
+    let (training_points, applied_science_points) = starting_points(start_level);
+    let (starter_abilities, kit_items) = match start_kit(pool.as_ref(), &start).await {
+        Ok(kit) => kit,
+        Err(_) => {
             send_char_create_failed(transport, addr, key, connected, 3).await?;
             return Ok(());
         }
     };
     let abilities: Vec<i32> = starter_abilities.iter().map(|a| a.ability_id).collect();
     // The visual-choice items first (clothes onto the body), then the
-    // char_creation_items kit (the pistol into the bandolier).
+    // profile's items and the debug kit (a weapon into the bandolier).
     let mut starter_items = item_choices;
     starter_items.extend(kit_items);
 
     tracing::debug!(
         %addr,
         char_def_id, // nt:id-only CharDef rows carry no name column to pair
+        profile_id = %start.profile.profile_id,
+        start_state = start.profile.start_state.as_str(),
+        debug_kit = start.debug_kit.is_some(),
         components = ?body_components,
         item_count = starter_items.len(),
         world_id = ?world_id,
         world = world_location,
         ability_count = abilities.len(),
-        "Resolved character creation visuals"
+        "Resolved character creation visuals and start profile"
     );
 
     // ── INSERT into sgw_player with components, world_id, abilities ───
@@ -459,8 +479,8 @@ pub(crate) async fn handle_create_character(
          (account_id, player_name, extra_name, alignment, archetype, gender, \
           world_location, bodyset, level, title, pos_x, pos_y, pos_z, \
           skin_color_id, components, world_id, abilities, access_level, training_points, \
-          applied_science_points) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) \
+          applied_science_points, debug_kit) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $20, 0, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) \
          RETURNING player_id",
     )
     .bind(account_id as i32)
@@ -479,12 +499,16 @@ pub(crate) async fn handle_create_character(
     .bind(world_id)
     .bind(&abilities)
     .bind(access_level)
-    // v2 economy (D-AT02): a level-1 character starts with 1 training point.
-    // The column default is 0, so this bind is what gives it.
-    .bind(cimmeria_game::player::STARTING_TRAINING_POINTS as i32)
-    // Likewise one Applied Science Point at level 1; each level gained adds
-    // one more in `handle_grant_xp`. The column default is 0.
-    .bind(cimmeria_game::player::STARTING_APPLIED_SCIENCE_POINTS)
+    // v2 economy (D-AT02): one training point and one Applied Science Point
+    // per level, so a level-1 start has 1 of each. The column defaults are 0,
+    // so these binds are what give them.
+    .bind(training_points)
+    .bind(applied_science_points)
+    // Lock L2: the GM / Debug NPC reset gives a debug-kit character its kit
+    // back. From the profile (or the test override), never access level.
+    .bind(start.debug_kit.is_some())
+    // The profile's own level, never a mission's (CS-02).
+    .bind(start_level)
     .fetch_one(&mut *tx)
     .await;
 
@@ -504,6 +528,16 @@ pub(crate) async fn handle_create_character(
                         return Ok(());
                     }
                 };
+            // Provenance for the profile's racial_core / signature / ...
+            // grants (CS-01a table), in the same transaction.
+            if record_profile_grants(&mut tx, addr, player_id, &start.profile)
+                .await
+                .is_err()
+            {
+                let _ = tx.rollback().await;
+                send_char_create_failed(transport, addr, key, connected, 3).await?;
+                return Ok(());
+            }
             if let Err(e) = tx.commit().await {
                 tracing::error!(
                     event = "character_create_failed",
@@ -534,9 +568,13 @@ pub(crate) async fn handle_create_character(
                 archetype_name = cimmeria_names::archetype_name(archetype),
                 world_id = ?world_id,
                 world = world_location,
+                profile_id = %start.profile.profile_id,
+                start_state = start.profile.start_state.as_str(),
+                debug_kit = start.debug_kit.is_some(),
+                level = start_level,
                 abilities = %describe_abilities(&starter_abilities),
                 items = %describe_items(&placed),
-                armed = has_loaded_bandolier_weapon(&placed),
+                armed = has_bandolier_weapon(&placed),
                 "Character created successfully"
             );
 
@@ -592,35 +630,6 @@ pub(crate) async fn handle_create_character(
     Ok(())
 }
 
-/// Validate a character name for length, format, and whitespace rules.
-///
-/// Allowed characters: ASCII letters, digits, spaces, hyphens, apostrophes.
-/// Rejects: leading/trailing whitespace, consecutive spaces, control chars,
-/// HTML/script injection, zero-width characters, and names outside 3-20 chars.
-///
-/// Returns `Ok(())` if valid, or `Err(reason)` with a human-readable rejection reason.
-fn validate_character_name(name: &str) -> Result<(), &'static str> {
-    if name.len() < 3 {
-        return Err("too short (min 3)");
-    }
-    if name.len() > 20 {
-        return Err("too long (max 20)");
-    }
-    if name != name.trim() {
-        return Err("leading or trailing whitespace");
-    }
-    if name.contains("  ") {
-        return Err("consecutive spaces");
-    }
-    if !name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '\'')
-    {
-        return Err("invalid characters (only letters, digits, spaces, hyphens, apostrophes)");
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod live_db_tests;
 
@@ -631,64 +640,4 @@ mod seed_parity_live_db_tests;
 mod kit_rollback_live_db_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn name_valid() {
-        assert!(validate_character_name("John").is_ok());
-        assert!(validate_character_name("Sam Carter").is_ok());
-        assert!(validate_character_name("O'Neill").is_ok());
-        assert!(validate_character_name("Teal-c").is_ok());
-        assert!(validate_character_name("abc").is_ok()); // min length
-        assert!(validate_character_name("12345678901234567890").is_ok()); // max length (20)
-    }
-
-    #[test]
-    fn name_too_short() {
-        assert!(validate_character_name("AB").is_err());
-        assert!(validate_character_name("A").is_err());
-        assert!(validate_character_name("").is_err());
-    }
-
-    #[test]
-    fn name_too_long() {
-        assert!(validate_character_name("123456789012345678901").is_err()); // 21 chars
-        assert!(validate_character_name("AAAAAAAAAAAAAAAAAAAAA").is_err());
-    }
-
-    #[test]
-    fn name_rejects_html() {
-        assert!(validate_character_name("<script>").is_err());
-        assert!(validate_character_name("a]>b").is_err());
-    }
-
-    #[test]
-    fn name_rejects_control_chars() {
-        assert!(validate_character_name("abc\0def").is_err());
-        assert!(validate_character_name("abc\ndef").is_err());
-        assert!(validate_character_name("abc\tdef").is_err());
-    }
-
-    #[test]
-    fn name_rejects_bad_whitespace() {
-        assert!(validate_character_name(" Leading").is_err());
-        assert!(validate_character_name("Trailing ").is_err());
-        assert!(validate_character_name("Two  Spaces").is_err());
-    }
-
-    #[test]
-    fn name_rejects_non_ascii() {
-        assert!(validate_character_name("Ünïcödé").is_err());
-        assert!(validate_character_name("名前").is_err());
-    }
-
-    #[test]
-    fn skin_tint_valid_range() {
-        for i in 0..=15i32 {
-            assert!((0..=15).contains(&i));
-        }
-        assert!(!(0..=15).contains(&-1i32));
-        assert!(!(0..=15).contains(&16i32));
-    }
-}
+mod profile_live_db_tests;

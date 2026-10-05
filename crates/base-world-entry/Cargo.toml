@@ -71,3 +71,5 @@ tokio = { workspace = true, features = ["test-util"] }
 # The send-failure-injecting `Transport` fakes in the cell-dispatch,
 # enable-entities and map-loaded tests; the trait uses `#[async_trait]`.
 async-trait = { workspace = true }
+# `start_profiles::fixture`: the GM-only gate-travel home tests.
+cimmeria-resources = { workspace = true, features = ["test-support"] }

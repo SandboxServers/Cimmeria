@@ -11,7 +11,9 @@
 //! - [`base::mission_overrides`], [`base::item_overrides`],
 //!   [`base::dialog_overrides`] and [`base::sequence_overrides`]: the
 //!   per-category override tables and the XML patchers that apply them.
-//! - [`base::chardef`]: the CharDefId table character creation reads.
+//! - [`base::chardef`]: the CharDefId identity table character creation reads.
+//! - [`base::start_profiles`]: where each char_def starts and what it starts
+//!   with (Class Start v6 CS-02), read from `resources.char_creation`.
 //!
 //! The wire side (answering `versionInfoRequest`, streaming
 //! `RESOURCE_FRAGMENT`s) stays in `cimmeria-services` (`base::cooked_data`).
@@ -33,6 +35,7 @@ pub mod base {
     pub mod resources;
     pub mod sequence_overrides;
     pub mod stargate_overrides;
+    pub mod start_profiles;
     pub mod world_info_overrides;
 }
 

@@ -163,6 +163,7 @@ pub async fn route_cell_message(
     // new variant that isn't slotted into a family below fails to compile.
     match msg {
         CellToBaseMsg::SpaceData { .. }
+        | CellToBaseMsg::EnterableWorlds { .. }
         | CellToBaseMsg::EntityCreated { .. }
         | CellToBaseMsg::EnteredAoI { .. }
         | CellToBaseMsg::LeftAoI { .. }
