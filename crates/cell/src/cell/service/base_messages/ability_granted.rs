@@ -89,7 +89,7 @@ pub(super) async fn handle_ability_granted(
         "AbilityGranted: cell mirrored + hotbar refresh"
     );
     send_known_abilities_update(entity_id, "ability_granted", tx, space_mgr).await;
-    send_training_points(entity_id, training_points, tx).await;
+    send_training_points(entity_id, training_points, tx, space_mgr).await;
 
     // Python parity (`AbilityTrainer.onTrainAbility:128`): if the
     // newly-learned ability is a prerequisite for another offered
@@ -193,7 +193,7 @@ pub(super) async fn handle_training_points_granted(
         training_points,
         "TrainingPointsGranted: cell mirrored + counter refresh"
     );
-    send_training_points(entity_id, training_points, tx).await;
+    send_training_points(entity_id, training_points, tx, space_mgr).await;
     resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
 }
 
@@ -275,6 +275,7 @@ pub(super) async fn send_training_points(
     entity_id: u32,
     training_points: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
@@ -287,7 +288,8 @@ pub(super) async fn send_training_points(
         tracing::warn!(
             target: "abilities",
             event = "training_points_send_failed",
-            entity_id, // nt:id-only the base channel is closed; no SpaceManager here to name it
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             training_points,
             error = %e,
             "AbilityGranted: training-point property send failed; counter stale until relog"

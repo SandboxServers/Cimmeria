@@ -109,7 +109,7 @@ pub(super) async fn handle_gm_abilities_changed(
 
     send_known_abilities_update(entity_id, "gm_abilities_changed", tx, space_mgr).await;
     if change == GmAbilityChange::Reset {
-        send_training_points(entity_id, training_points, tx).await;
+        send_training_points(entity_id, training_points, tx, space_mgr).await;
     }
     resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
     let text = match change {

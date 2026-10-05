@@ -305,18 +305,16 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             }
             continue;
         }
-        // One re-fire per caster per cooldown, not per tick, so the
-        // names cost a few hash lookups at the ability's own fire rate.
-        let target = target_names(space_mgr, target_id);
+        // A rejected re-fire (out of ammo) repeats every tick, so the names
+        // are resolved inside the macro, only when the row is enabled, and
+        // the target carries its label alone (no template pair).
         tracing::debug!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             ability_id,
             ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
-            target_name = target.entity_name,
-            template_id = target.template_id,
-            template_name = target.template_name,
+            target_name = target_label(space_mgr, target_id),
             "auto_cycle_tick: re-firing"
         );
         // Route loop-driven re-fires through the kill-credit wrapper

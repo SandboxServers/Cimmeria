@@ -323,9 +323,21 @@ async fn a_grant_hotbar_refresh_writes_a_wire_row_naming_the_grant() {
 #[tokio::test]
 async fn the_granted_row_names_the_ability_and_the_player() {
     use cimmeria_names::{NameBook, Table};
+
+    /// The NameBook is process-global. nextest runs each test in its own
+    /// process; under `cargo test` this guard puts the empty book back even
+    /// when an assertion panics, so no other test sees the test's names.
+    struct EmptyBookOnDrop;
+    impl Drop for EmptyBookOnDrop {
+        fn drop(&mut self) {
+            cimmeria_names::global().store(NameBook::empty());
+        }
+    }
+
     let mut book = NameBook::empty();
     book.insert(Table::Abilities, 597, "NT28c Staff Blast");
     cimmeria_names::global().store(book);
+    let _reset = EmptyBookOnDrop;
     let mut mgr = fixture(false);
     let p = mgr.get_entity_mut(PLAYER).unwrap();
     p.account_id = Some(6);
@@ -333,7 +345,6 @@ async fn the_granted_row_names_the_ability_and_the_player() {
     let capture = crate::test_support::LogCapture::install();
 
     let _ = deliver(&mut mgr, granted(597, 0, 1)).await;
-    cimmeria_names::global().store(NameBook::empty());
 
     let all = capture.all();
     let row = all
