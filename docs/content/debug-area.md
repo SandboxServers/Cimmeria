@@ -710,8 +710,10 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   been measured. The two body sets with no reference mesh (`BS_RaJaff`,
   `HM_BodySet`) are expected to draw nothing or a placeholder, and the
   Straegis Titan (35 m tall) will clip the ruin walls around its court.
-  Whether the client shows an `onBeingNameUpdate` label on a mob, and how
-  much of a 40-character one, has not been seen.
+  The lab saw the `onBeingNameUpdate` label become the mob's client-side
+  name (2026-10-05); the drawn nameplate is not yet screenshotted. Arrival
+  with the lineup currently wedges the reliable stream on one oversized
+  cascade: see [Arrival load](#arrival-load-and-the-oversized-cascade).
 
 ## DA-03 spawn tables
 
@@ -1478,6 +1480,33 @@ NPC anywhere draws its seeded colours or skin tint. In the lineup:
 The coverage guard keeps counting them as distinct looks, because the data
 says they are. Drawing the tint needs a server change to the cascade, which
 is raised with the owner separately.
+
+### Arrival load and the oversized cascade
+
+Measured in the lab on 2026-10-05, with a local server built from this
+branch. A fresh character went from Castle_CellBlock to the Z1 arrival
+(`.gotolocation DebugArea`), with and without the lineup's spawn rows:
+
+| At Z1 | With the lineup | Without it |
+|---|---:|---:|
+| World load (command to world 1300) | 11.8 s | 4.0 s |
+| Reliable packets in the arrival burst | about 415 | about 93 |
+| Frame rate after arrival (lab per-frame counter) | 43 FPS | 60 FPS |
+| Entities on the client | 150, plus 74 never delivered | 63, settled within 12 s |
+
+With the lineup, arrival broke the session's reliable stream. The AoI
+enter of `Petbe #221 BS_JaffaMale` (spawn 13952) sends its whole
+createOnClient cascade as one unfragmented packet, and with its nameplate
+that packet is 1504 bytes encrypted, over the client's 1472-byte receive
+limit. The client never gets it, so it holds every later reliable message
+behind it (the `mercury.tx_hole` stall): 74 NPCs, the lineup's and the
+plaza's, never appeared. Moh'Katan #54 is 1456 bytes and crosses the limit
+with eight piggybacked acks; three more cascades (Petbe #163, Anat #43 and
+the gallery's Petbe, which has no label) sit at 1440. The unguarded
+cascade send is a server bug that predates the lineup, and a Mercury fix
+is in progress. **The arrival cost above is acceptable only once that fix
+is in;** until then, arriving in the compound with the lineup seeded
+wedges the client.
 
 ### Coverage delta: 162 → 161
 
