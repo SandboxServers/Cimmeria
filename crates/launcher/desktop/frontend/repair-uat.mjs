@@ -1,0 +1,46 @@
+// Actual Effect/view program, backed by the native JSON-lines persistence fixture.
+import {spawn} from 'node:child_process';
+import {createInterface} from 'node:readline';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {parseHTML} from 'linkedom';
+import {mountInstall} from './.test-build/install-view.mjs';
+const child=spawn(process.env.REPAIR_UAT_BINARY,['--ignored','--nocapture','repair_uat_bridge'],{stdio:['pipe','pipe','inherit']});
+const pending=[];
+createInterface({input:child.stdout}).on('line',line=>{if(line.startsWith('REPAIR_UAT ')){const {resolve,reject}=pending.shift();const result=JSON.parse(line.slice(11));result.error?reject(result.error):resolve(result.ok);}});
+const send=request=>new Promise((resolve,reject)=>{pending.push({resolve,reject});child.stdin.write(JSON.stringify(request)+'\n');});
+const calls=[];let lose=false;
+const invoke=async(_,{request})=>{calls.push(request.command);const result=await send(request);if(lose&&request.command==='repair'){lose=false;throw 'transport';}return result;};
+const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
+const mount=()=>{const {document,window}=parseHTML(html);const app=mountInstall(document,invoke,randomUUID);return {app,document,click:id=>document.getElementById(id).dispatchEvent(new window.Event('click'))};};
+const settle=async ui=>{await ui.app.settled();await new Promise(resolve=>setImmediate(resolve));};
+let ui=mount();
+try {
+ await ui.app.ready;await settle(ui);
+ const initial=await send({command:'inspect',schema_version:1});
+ assert.equal(initial.native.preferences.launcher_summary_consent,true);
+ ui.click('repair');assert.equal(ui.document.getElementById('repair-directory').textContent,initial.repair.target.directory);
+ assert.notEqual(initial.repair.target.directory,initial.native.preferences.install_directory);
+ ui.click('dismiss-repair');assert.equal(calls.includes('repair'),false);
+ ui.click('repair');ui.click('confirm-repair');ui.click('confirm-repair');await settle(ui);
+ assert.equal(calls.filter(x=>x==='repair').length,1);
+ ui.click('cancel-install');await settle(ui);
+ let status=await send({command:'inspect',schema_version:1});assert.equal(status.native.operation.operation.state,'cancelled');
+ assert.equal(status.native.preferences.launcher_summary_consent,true);
+ lose=true;ui.click('repair');ui.click('confirm-repair');await settle(ui);
+ assert.match(ui.document.getElementById('install-status').textContent,/Recheck status/);
+ await ui.app.dispose();await send({command:'reopen'});ui=mount();await ui.app.ready;await settle(ui);
+ assert.equal(calls.filter(x=>x==='repair').length,2);
+ status=await send({command:'inspect',schema_version:1});assert.equal(status.native.operation.operation.state,'reconciliation_required');
+ ui.click('recover-repair');ui.click('confirm-repair');await settle(ui);
+ status=await send({command:'inspect',schema_version:1});assert.equal(status.native.operation.operation.state,'reconciliation_required');
+ await ui.app.refresh();await settle(ui);
+ ui.click('abandon-repair');ui.click('confirm-repair');await settle(ui);
+ status=await send({command:'inspect',schema_version:1});assert.equal(status.native.operation.operation.state,'cancelled');
+ assert.deepEqual(status.native.preferences,initial.native.preferences);
+ await ui.app.dispose();await send({command:'reopen'});
+ status=await send({command:'inspect',schema_version:1});assert.equal(status.native.operation.operation.state,'cancelled');
+ console.log('Repair logic UAT passed: confirmation/dismissal, saved owner, duplicate click, cancellation, lost reply/reopen, refused recovery, explicit abandonment, persisted consent.');
+ console.log('Excluded: actual reconstruction/download, commit/cleanup filesystem mutations, real Wine, Windows, packaged visual/focus UAT.');
+} finally {await ui.app.dispose();child.stdin.end();}

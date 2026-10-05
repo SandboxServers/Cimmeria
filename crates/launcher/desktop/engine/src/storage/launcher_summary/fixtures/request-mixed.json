@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "client_dropped": {
+    "overflow": 0,
+    "expired": 0,
+    "rejected": 0
+  },
+  "summaries": [
+    {
+      "event_id": "000000e1-0000-4000-8000-000000000001",
+      "attempt_id": "000000a1-0000-4000-8000-000000000001",
+      "operation": "install",
+      "phase": "download",
+      "outcome": "failed",
+      "error_code": "install_failed",
+      "duration_ms": 81234,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 12
+        },
+        {
+          "phase": "running",
+          "duration_ms": 40
+        },
+        {
+          "phase": "download",
+          "duration_ms": 81000
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e1-0000-4000-8000-000000000001",
+      "attempt_id": "000000a1-0000-4000-8000-000000000002",
+      "operation": "install",
+      "phase": "download",
+      "outcome": "failed",
+      "error_code": "install_failed",
+      "duration_ms": 81234,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 12
+        },
+        {
+          "phase": "running",
+          "duration_ms": 40
+        },
+        {
+          "phase": "download",
+          "duration_ms": 81000
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e1-0000-4000-8000-000000000003",
+      "attempt_id": "000000a1-0000-4000-8000-000000000003",
+      "operation": "install",
+      "phase": "download",
+      "outcome": "failed",
+      "error_code": "not_a_known_code",
+      "duration_ms": 81234,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 12
+        },
+        {
+          "phase": "running",
+          "duration_ms": 40
+        },
+        {
+          "phase": "download",
+          "duration_ms": 81000
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    }
+  ]
+}

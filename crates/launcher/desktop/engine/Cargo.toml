@@ -1,0 +1,57 @@
+[package]
+name = "cimmeria-launcher-engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+test-support = []
+
+[dependencies]
+flate2 = "=1.1.10"
+tar = "=0.4.46"
+plist = "=1.10.1"
+minisign-verify = "=0.2.4"
+base64 = "=0.22.1"
+semver = "=1.0.28"
+cimmeria-runtime-probe = { path = "../runtime-probe" }
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+
+serde_json = "1"
+tempfile = "3"
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] }
+thiserror = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+
+# Share the existing patch algorithms, including UPK normalization.
+cimmeria-patchset = { path = "../../../patchset" }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
+tokio-util = "0.7"
+futures-util = "0.3"
+sha2 = "0.11"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+unrar = "0.5"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Cabinets", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_System_WindowsProgramming"] }
+
+[dev-dependencies]
+minisign = "=0.8.0"
+wiremock = "0.6"
+crc32fast = "1"
+
+[[test]]
+name = "helper_supervisor_process"
+path = "tests/helper_supervisor_process.rs"
+harness = false
+
+[[test]]
+name = "prerequisite_supervisor_process"
+path = "tests/prerequisite_supervisor_process.rs"
+harness = false

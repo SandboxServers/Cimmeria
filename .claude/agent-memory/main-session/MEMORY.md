@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (12/min per address), public login-port mount approved, inert (no endpoint); production endpoint is a later rollout
+- [project_mac_client_cooked_version_zero.md](project_mac_client_cooked_version_zero.md) — under Wine the client sent cooked version 0 at every login: Wine's msvcp80 `strstreambuf::underflow` returns EOF after a write; repaired in-process by the patches DLL (verified live 2026-10-05), which also made character creation work
 - [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — 2026-09-29 stall on 1488-byte datagrams (client reads 1472); cause was uncapped piggybacked ACKs, capped 2026-10-03; send/recv fingerprint telemetry
 - [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
@@ -22,6 +24,27 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
+- [reference_desktop_game_telemetry_2026_10_04.md](reference_desktop_game_telemetry_2026_10_04.md) — desktop launcher game telemetry (PR #1241) proven under Wine; plan-digest trap; rosettax87 breaks launch supervision; engine tests run on Linux
+- [Native updater handoff](../updater-handoff-fix/reference_native_handoff.md) — shutdown follows successful spawn even if later persistence fails; fixture regression and platform limits.
+
+- [reference_current_release_identity_2026_10_04.md](reference_current_release_identity_2026_10_04.md) — immutable owner with separate signed current-release reference; Update publication remains required.
+- [reference_loopback_exporter_test_seams_2026_10_04.md](reference_loopback_exporter_test_seams_2026_10_04.md) — WSL2 mirrored networking hangs on a closed 127.0.0.1 port (use `[::1]:9`); wiremock responder and pooled-server traps; engine reqwest has no `json`
+
+- [reference_desktop_engine_test_seams_2026_10_04.md](reference_desktop_engine_test_seams_2026_10_04.md) — desktop engine suite runs on Linux/WSL through the lane; launch, install-worker and uninstall test seams; `FileJournal::commit` sees every journal write
+
+- [reference_owner_lock_release_2026_10_04.md](reference_owner_lock_release_2026_10_04.md) — explicit unlock at Repair/prefix logical-owner drop; duplicate-handle regression and native CI boundary.
+
+- [reference_archive_preflight_2026_10_04.md](reference_archive_preflight_2026_10_04.md) — RAR/FDI name inventory before output; rebuilt Windows helper and spanning-cabinet validation required.
+
+- [reference_launcher_repair_ui.md](reference_launcher_repair_ui.md) — Settings Repair retains preparation-to-commit ownership; native-persistence Effect UAT covers cancellation/reopen/abandonment, with real-client, Windows and visual gates open.
+
+- [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last
+
+- [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 proposed egui/wgpu versus Tauri versus SwiftUI evaluation; no accepted architecture or performance benchmark; scoped Mac packaging proof later authorized
+
+- [reference_macos_wgl_forward_compat.md](reference_macos_wgl_forward_compat.md) — 2026-10-03: WoWSilicon launcher WGL rejection is missing forward-compatible flag; CX_FWD_COMPAT_GL_CTX=1 opens launcher and manifest; game UAT pending
+
 - [reference_npc_costume_components.md](reference_npc_costume_components.md) — NPC components must be BodyComponent exports (query-index scan); Ra kit + NPC_Ra_Head_00/RaG fingernail = placeholder cube; female Goa'uld armour is Anat's kit only
 - [reference_ihpet_crater_light_render_gaps.md](reference_ihpet_crater_light_render_gaps.md) — world 1300/73 map: terrain draws white, north palace terrace white/magenta with grey void east of it; put showcase NPCs on paving
 - [reference_lab_local_server.md](reference_lab_local_server.md) — lab client on a local branch server: temp Local row in LoginInternal.lua, shard 'Test', seeded lab account, chat-focus and teleport gotchas
@@ -39,3 +62,11 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_client_rar_and_cache_tiers.md](reference_client_rar_and_cache_tiers.md) — archive.org client RAR is the 2009 installer's MakeCAB set (hashes, layout); Cache.en-US (writable, pushed) vs SourceCache.en-us (bundled) tiers
 - [reference_signoz_log_mining.md](reference_signoz_log_mining.md) — SigNoz MCP: condense oversized results, filters and keys that work, session anchors, what is normal
 - [reference_client_idle_send_cadence.md](reference_client_idle_send_cadence.md) — idle client sends ~6 pkt/s, perfStats every 15 s; NetInactivityTimeout=15 is client-side; read before changing timeouts
+
+- [reference_desktop_updater_parity_research.md](reference_desktop_updater_parity_research.md) — legacy checksum updater and Tauri signed-package ownership/recovery differences.
+
+- [reference_launcher_uat_integration_2026_10_04.md](reference_launcher_uat_integration_2026_10_04.md) — adoption UI + effective settings + Wine identity combined: checkpoint lifetime, helper eligibility, UAT bridge selection, hidden-ancestor regression and partial native evidence.
+- [reference_launcher_minimum_poll_2026_10_04.md](reference_launcher_minimum_poll_2026_10_04.md) — signed minimum state must survive automatic Play inspection.
+- [reference_launcher_updater_integration_2026_10_04.md](reference_launcher_updater_integration_2026_10_04.md) — early mutation gates and updater revision refresh across other operations.
+- [reference_adoption_contract_audit_2026_10_04.md](reference_adoption_contract_audit_2026_10_04.md) — verified separate-copy adoption and effective settings remain distinct from settings import.
+- [reference_launcher_game_update_review.md](reference_launcher_game_update_review.md) — native signed game offers, stale-review invalidation and actual store-reopen Effect UAT; Apply UI integration remains pending.

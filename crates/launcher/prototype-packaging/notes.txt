@@ -1,0 +1,20 @@
+Dialog portraits
+Shows the speaker's portrait in NPC dialog windows, which the stock UI never displays. Replaces TaharezLook.scheme and the Dialog and Blurb window layouts and scripts with whole files, so it applies whatever state those files are in. Supersedes 001.
+
+003-cooked-data
+No description provided in the manifest.
+
+004-log-config
+No description provided in the manifest.
+
+005-login-delay
+No description provided in the manifest.
+
+006-gate-sound-bank
+No description provided in the manifest.
+
+Black Market window (UI files)
+Adds the Black Market window's layout and Lua under SGWGame/Content/UI. The client-patches DLL drives it; without the DLL the window never opens.
+
+Castle Armory ring transport
+Adds the ring rig on the Castle CellBlock Armory pad that mission 688 needs. Changes one Castle CellBlock map file.

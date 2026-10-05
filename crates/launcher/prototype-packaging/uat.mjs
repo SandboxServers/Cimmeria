@@ -1,0 +1,21 @@
+// REPL-style pass against the actual shared Rust state model, not a JS imitation.
+import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const bin=process.argv[2];
+if(!bin) throw Error('Pass the packaging-proof-model executable');
+const actions=['telemetry','notes','settings','install','home','repair','uninstall','telemetry'];
+const result=spawnSync(bin,{input:actions.join('\n')+'\n',encoding:'utf8'});
+assert.equal(result.status,0,result.stderr);
+const states=result.stdout.trim().split('\n').map(JSON.parse);
+assert.equal(states.length,actions.length+1);
+assert.equal(states[0].telemetry,false);
+assert.equal(states[1].telemetry,true);
+assert.equal(states[2].notes,true);
+assert.equal(states[3].settings,true);
+assert.match(states[4].status,/Simulation/);
+assert.equal(states[5].notes,false);
+assert.equal(states[5].telemetry,true);
+assert.match(states[6].status,/no filesystem action/);
+assert.match(states[7].status,/no filesystem action/);
+assert.equal(states[8].telemetry,false);
+console.log(JSON.stringify({passed:actions,final:states.at(-1),notCovered:['UI bindings','native accessibility','real installation','persistence','clean machine']},null,2));

@@ -1,0 +1,428 @@
+{
+  "title": "Cimmeria — Launcher journey",
+  "description": "What the desktop launcher's attempt summaries (schema version 1) say about install, runtime setup, repair, uninstall and launch attempts. Cohort: attempts from opted-in launchers whose summary the server successfully received, and nothing else. This is not an all-player funnel, not an install success rate, and not a login or world-entry metric: a launch counts as succeeded when the observed game process exited with code 0. A launch row times only its preparation (the starting phase); the length of the play session is never reported. unknown is its own outcome (the launcher lost sight of the attempt); it is never folded into succeeded or failed. The rows are self-reported and can be forged within the ingest quota, so do not alert on them or set a target from them. Every panel is count() over launcher.summary rows in the cimmeria-client index. Attempt panels count event = launcher_summary and the phase panel counts event = launcher_phase, so an attempt is never counted once per timed phase. Reference: docs/operations/signoz/launcher-summary-views.md.",
+  "tags": [
+    "cimmeria",
+    "launcher",
+    "launcher-summary"
+  ],
+  "version": "v5",
+  "variables": {},
+  "layout": [
+    {
+      "h": 7,
+      "i": "attempts-by-version-os-outcome",
+      "w": 6,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 7,
+      "i": "failures-by-operation-phase-error",
+      "w": 6,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "h": 7,
+      "i": "phase-durations",
+      "w": 6,
+      "x": 0,
+      "y": 7
+    },
+    {
+      "h": 7,
+      "i": "attempt-durations",
+      "w": 6,
+      "x": 6,
+      "y": 7
+    }
+  ],
+  "widgets": [
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One launcher_summary row per received attempt. outcome is succeeded | failed | cancelled | unknown; unknown means the launcher lost sight of the attempt (a crash, or a state it had to reconcile). For a launch, succeeded means the observed game process exited with code 0; it is never login or world entry. A failure before admission (phase platform_check, compatibility_check, catalog_fetch, manifest_verify, destination_check or admission) is counted as one failed row and stands for retry_count + 1 identical failed commands. Opted-in, received attempts only: the split is not a success rate.",
+      "fillSpans": false,
+      "id": "attempts-by-version-os-outcome",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-client' AND scope_name = 'launcher.summary' AND event = 'launcher_summary'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "launcher_version",
+                  "name": "launcher_version",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "os",
+                  "name": "os",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "outcome",
+                  "name": "outcome",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Attempts by launcher version, OS and outcome",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Failed attempts only. phase is where the attempt ended. none: the end was reported by a later launcher process, so no phase and no timing was observed. A check before admission (platform_check, compatibility_check, catalog_fetch, manifest_verify, destination_check, admission): the command was never admitted; the row has no duration, stands for retry_count + 1 identical failed commands and is counted once. admission with local_io or state_invalid means before or at admission. Otherwise the last timed phase entered (starting, running, download, extraction); launch_not_started can appear with phase = running. error_code is a closed set; unspecified means the launcher had no more specific code. retry_count is an at-least-once approximation: a retried request repeats it.",
+      "fillSpans": false,
+      "id": "failures-by-operation-phase-error",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-client' AND scope_name = 'launcher.summary' AND event = 'launcher_summary' AND outcome = 'failed'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "operation",
+                  "name": "operation",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "phase",
+                  "name": "phase",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "error_code",
+                  "name": "error_code",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Failures by operation, phase and error code",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One launcher_phase row per timed phase of an attempt the launcher watched from admission. The count is the sample size of each bucket: lt_1s | lt_10s | lt_1m | lt_5m | lt_30m | ge_30m. Attempts reported after a launcher restart carry no phase timings, so they are absent here. Install: download and extraction each accumulate across the seed and every patch, and extraction also includes content verification and promotion after the last unpack. Launch: only the starting (preparation) phase is timed; there is no running row, because it would be the length of the play session. The last timed phase of a failed or cancelled attempt is included and ends at the failure. An unknown attempt (lost observation) has no timing for the phase that was open.",
+      "fillSpans": false,
+      "id": "phase-durations",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-client' AND scope_name = 'launcher.summary' AND event = 'launcher_phase'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "operation",
+                  "name": "operation",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "phase",
+                  "name": "phase",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "duration_bucket",
+                  "name": "duration_bucket",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Phase durations by operation and phase (sample counts)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Whole-attempt duration, counted per bucket (same buckets as the phase panel). A row with an empty duration_bucket counts attempts that carry no duration: every launch (its duration would be the length of the play session), unknown attempts (lost observation), failures before admission, and attempts reported after a launcher restart.",
+      "fillSpans": false,
+      "id": "attempt-durations",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-client' AND scope_name = 'launcher.summary' AND event = 'launcher_summary'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "operation",
+                  "name": "operation",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "duration_bucket",
+                  "name": "duration_bucket",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Attempt durations by operation",
+      "yAxisUnit": "none"
+    }
+  ]
+}

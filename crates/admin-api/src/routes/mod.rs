@@ -33,5 +33,11 @@ pub fn api_routes() -> Router<Arc<Orchestrator>> {
         .nest("/editor", editor::routes())
         .nest("/auth", auth::routes())
         .nest("/audit", audit::routes())
-        .nest("/telemetry", telemetry::routes())
+        // The launcher-summary ingest is merged by name rather than
+        // folded into `telemetry::routes()`, so each listener that serves
+        // it says so.
+        .nest(
+            "/telemetry",
+            telemetry::routes().merge(telemetry::launcher_summary_routes()),
+        )
 }

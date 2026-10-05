@@ -1,6 +1,6 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-09-29
+> **Last updated**: 2026-10-04
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -110,8 +110,15 @@ plain HTTP on that port. No TLS or tunnel is required; a Cloudflare route
 in front of the admin port remains an option.
 
 Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
-stateless router holding only those four routes (with their body limits
-and the same per-request trace span as the admin router). The composition
+stateless router holding those four routes and, since 2026-10-04, a fifth:
+the launcher-summary ingest. Launcher summaries do not use dev-session
+tokens: that route is anonymous, and the mint refuses `launcher_summary`
+as a session kind like any other unknown one (see
+[launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The owner
+approved serving the fifth route on the login port on 2026-10-04, which
+extends the decision above to it. The router comes with the routes'
+body limits and a per-request trace span like the admin router's, except
+that it records the path without the query string. The composition
 root (`crates/server/src/main.rs`) hands it to the auth service through
 `AuthService::set_public_routes` before `start_all`, and the auth service
 merges it next to `/SGWLogin/*`. The auth crate sits below the admin API
@@ -375,7 +382,9 @@ implementation:
   with a per-process random seed, so a collision cannot be picked or
   precomputed; what remains is an unaimable ~1-in-4096 chance that two
   live callers share a bucket. IPv6 keys fold to the /64 prefix,
-  because a single host is routinely handed a whole /64.
+  because a single host is routinely handed a whole /64. An
+  IPv4-mapped IPv6 peer (`::ffff:a.b.c.d`, as seen on a dual-stack
+  listener) is keyed as its IPv4 address.
 - **Caller metadata is checked before it is logged.** `machine_id`,
   `branch`, `git_sha` and `launcher_version` reach the INFO mint line,
   and the plain `fmt` log sinks do not escape them, so a value with a

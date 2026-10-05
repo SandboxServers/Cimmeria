@@ -1,0 +1,5 @@
+/tauri/node_modules/
+/tauri/ui/app.js
+/tauri/gen/
+/target/
+/dist/

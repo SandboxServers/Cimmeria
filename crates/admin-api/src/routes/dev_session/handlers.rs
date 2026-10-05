@@ -401,7 +401,7 @@ fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
     }
 }
 
-pub(super) fn kill_switch_active() -> bool {
+pub(crate) fn kill_switch_active() -> bool {
     matches!(
         std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
         Ok(v) if v == "1"
@@ -433,7 +433,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
-fn env_u32(name: &str, default: u32) -> u32 {
+pub(crate) fn env_u32(name: &str, default: u32) -> u32 {
     std::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse().ok())

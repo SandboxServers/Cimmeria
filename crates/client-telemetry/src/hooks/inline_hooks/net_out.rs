@@ -150,6 +150,11 @@ fn observe(entity: *mut c_void, method: *mut c_void) {
         to_local,
     );
     let name_key = name.as_deref().unwrap_or("?");
+    // The 21 version requests of a login say nothing about what they carry;
+    // the cache hooks report what each storage holds as the first one leaves.
+    if name_key == "versionInfoRequest" {
+        super::cooked_cache::note_version_request();
+    }
     let decision = trace::throttle(&format!("{target}:{name_key}"), key);
     if let Some(f) = trace::with_suppressed(fields, decision) {
         crate::hooks::emit::emit(target, "info", f);

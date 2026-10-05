@@ -1,0 +1,44 @@
+// Headless JS REPL-style binding check. No browser or desktop is opened.
+import vm from 'node:vm';
+import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const binary=process.argv[2];
+if(!binary) throw Error('Pass the actual packaging-proof-model executable');
+const elements=new Map();
+function element(id){if(!elements.has(id)) elements.set(id,{hidden:false,checked:false,textContent:'',attrs:{},listeners:{},children:[],setAttribute(k,v){this.attrs[k]=v;},addEventListener(k,v){this.listeners[k]=v;},append(...items){this.children.push(...items);}});return elements.get(id);}
+const history=[];
+const invoke=async(command,{name})=>{
+  assert.equal(command,'action');
+  if(name!=='snapshot') history.push(name);
+  const result=spawnSync(binary,{input:history.join('\n')+'\n',encoding:'utf8'});
+  assert.equal(result.status,0,result.stderr);
+  const states=result.stdout.trim().split('\n').map(JSON.parse);
+  return states[history.length];
+};
+const manifest=JSON.parse(readFileSync(new URL('./tauri/ui/manifest.json',import.meta.url)));
+const context=vm.createContext({document:{getElementById:element,createElement:()=>element(Symbol())},window:{__TAURI__:{core:{invoke}}},fetch:async()=>({json:async()=>manifest})});
+const source=readFileSync(new URL('./tauri/ui/app.js',import.meta.url),'utf8').replace(/export\s*\{\s*\};?/g,'');
+await vm.runInContext(source+'\n pending;',context);
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(element('telemetry').checked,false);
+assert.equal(element('entries').children.length,manifest.patches.length);
+for(const [i,patch] of manifest.patches.entries()) assert.equal(element('entries').children[i].children[0].textContent,patch.title||patch.id);
+element('telemetry').listeners.change();
+element('notes').listeners.click();
+element('settings').listeners.click();
+await vm.runInContext('pending',context);
+assert.equal(element('telemetry').checked,true);
+assert.equal(element('play').hidden,true);
+assert.equal(element('gear').hidden,false);
+assert.equal(element('notes').attrs['aria-pressed'],'true');
+element('repair').listeners.click();
+element('home').listeners.click();
+await vm.runInContext('pending',context);
+assert.match(element('status').textContent,/no filesystem action/);
+assert.equal(element('play').hidden,false);
+assert.equal(element('telemetry').checked,true);
+element('telemetry').listeners.change();
+await vm.runInContext('pending',context);
+assert.equal(element('telemetry').checked,false);
+console.log('PASS: compiled TypeScript event queue, actual Rust model, tabs/settings/consent, repair feedback, bundled notes. Not covered: layout, WebKit IPC transport, accessibility, persistence, real installation.');

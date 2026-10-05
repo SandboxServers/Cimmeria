@@ -27,9 +27,14 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+#[path = "install_seed.rs"]
+mod seed;
+pub use seed::{SeedBackend, SeedExtraction, SeedExtractor};
+
 use crate::install_layout;
+use crate::install_progress::{ProgressReporter, ProgressSink};
 use crate::install_report::{InstallReport, PatchOutcomeKind};
-use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
+use crate::manifest::{blob_url, Manifest, PatchEntry};
 use crate::patch_dest::patch_dest;
 use crate::state::{InstalledState, StateError};
 use crate::unpack::{self, UnpackError, UnpackSink};
@@ -41,7 +46,7 @@ pub enum InstallError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Unpack error: {0}")]
-    Unpack(#[from] UnpackError),
+    Unpack(#[source] UnpackError),
     #[error("State error: {0}")]
     State(#[from] StateError),
     #[error("Hash mismatch for {what}: expected {expected}, got {actual}")]
@@ -56,11 +61,22 @@ pub enum InstallError {
     InvalidSha256(String),
     #[error("Cancelled")]
     Cancelled,
+    #[error("External seed extraction requires reconciliation")]
+    SeedExtractionUncertain,
     #[error(transparent)]
     PatchDest(#[from] crate::patch_dest::NoSgwGameDir),
     /// Some patches failed; every other patch was still applied.
     #[error("{}", patches_failed_message(.0))]
     PatchesFailed(Vec<PatchFailure>),
+}
+
+impl From<UnpackError> for InstallError {
+    fn from(error: UnpackError) -> Self {
+        match error {
+            UnpackError::Cancelled => Self::Cancelled,
+            other => Self::Unpack(other),
+        }
+    }
 }
 
 /// One patch that did not apply, and why.
@@ -128,7 +144,7 @@ pub struct InstallContext<'a> {
     pub manifest: &'a Manifest,
     pub login_servers: &'a [crate::client_setup::LoginServer],
     pub cancel: CancellationToken,
-    pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
+    pub progress: ProgressSink,
     /// Shared HTTP client owned by the worker — reused across the
     /// seed download, every patch download, and the post-install
     /// manifest revalidation. Avoids rebuilding the connection pool
@@ -140,7 +156,19 @@ pub struct InstallContext<'a> {
 /// patch (for the install-result telemetry event).
 pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, InstallReport) {
     let mut report = InstallReport::default();
-    let result = install_all_into(ctx, &mut report).await;
+    let result = install_all_into(ctx, &mut report, None).await;
+    report.finish(&result);
+    (result, report)
+}
+
+/// Native platform adapters may replace only seed extraction. Downloads, hashes,
+/// installed-state transitions, patch ordering and preparation remain shared.
+pub async fn install_all_with_seed_extractor(
+    ctx: InstallContext<'_>,
+    backend: SeedBackend<'_>,
+) -> (Result<(), InstallError>, InstallReport) {
+    let mut report = InstallReport::default();
+    let result = install_all_into(ctx, &mut report, Some(backend)).await;
     report.finish(&result);
     (result, report)
 }
@@ -148,13 +176,16 @@ pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, 
 async fn install_all_into(
     ctx: InstallContext<'_>,
     report: &mut InstallReport,
+    backend: Option<SeedBackend<'_>>,
 ) -> Result<(), InstallError> {
-    std::fs::create_dir_all(ctx.install_dir)?;
+    if backend.is_none() {
+        std::fs::create_dir_all(ctx.install_dir)?;
+    }
     let mut state = InstalledState::load(ctx.install_dir);
 
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
-        apply_seed(&ctx, &ctx.manifest.seed).await?;
+        seed::apply(&ctx, &ctx.manifest.seed, backend).await?;
         report.seed_applied = true;
         // Re-seeding invalidates the applied-patches list.
         state = InstalledState {
@@ -223,26 +254,6 @@ async fn install_all_into(
         return Err(InstallError::PatchesFailed(failures));
     }
     Ok(())
-}
-
-async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), InstallError> {
-    let url = blob_url(ctx.manifest_url, &seed.blob);
-    let short_hash = safe_sha_prefix(&seed.sha256)?;
-    let tmp = ctx
-        .install_dir
-        .join(format!(".tmp-seed-{short_hash}.download"));
-    download_to_file(
-        ctx.http,
-        &url,
-        &tmp,
-        ctx.cancel.clone(),
-        seed.size,
-        "seed",
-        &ctx.progress,
-    )
-    .await?;
-    info!("Unpacking seed into {}", ctx.install_dir.display());
-    verify_and_unpack(ctx, &tmp, ctx.install_dir, &seed.sha256, "seed").await
 }
 
 async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(), InstallError> {
@@ -331,7 +342,7 @@ pub(crate) async fn download_to_file(
     cancel: CancellationToken,
     expected_size: u64,
     label: &str,
-    progress: &tokio::sync::mpsc::UnboundedSender<Progress>,
+    progress: &impl ProgressReporter,
 ) -> Result<(), InstallError> {
     use futures_util::StreamExt;
 
@@ -344,7 +355,11 @@ pub(crate) async fn download_to_file(
     if existing_len > 0 {
         req = req.header("Range", format!("bytes={existing_len}-"));
     }
-    let resp = req.send().await?;
+    let resp = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+        response = req.send() => response?,
+    };
 
     let status = resp.status();
     // 416 on a Range request for a file we already hold in full: the
@@ -390,16 +405,21 @@ pub(crate) async fn download_to_file(
     let mut downloaded = if resumed { existing_len } else { 0 };
     let mut stream = resp.bytes_stream();
     let mut last_emit = std::time::Instant::now();
-    while let Some(chunk) = stream.next().await {
-        if cancel.is_cancelled() {
-            return Err(InstallError::Cancelled);
-        }
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+            chunk = stream.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let chunk = chunk?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
         // Throttle progress emits so the UI channel isn't flooded by tiny chunks.
         if last_emit.elapsed() >= std::time::Duration::from_millis(33) {
-            let _ = progress.send(Progress::Downloading {
+            progress.report(Progress::Downloading {
                 label: label.to_string(),
                 downloaded,
                 total,
@@ -408,7 +428,7 @@ pub(crate) async fn download_to_file(
         }
     }
     file.flush().await?;
-    let _ = progress.send(Progress::Downloading {
+    progress.report(Progress::Downloading {
         label: label.to_string(),
         downloaded,
         total,

@@ -144,7 +144,7 @@ async fn hash_mismatch_deletes_the_download() {
         manifest: &manifest,
         login_servers: &[],
         cancel: CancellationToken::new(),
-        progress: tx,
+        progress: tx.into(),
         http: &http,
     };
     let err = verify_and_unpack(&ctx, &tmp, ctx.install_dir, "00", "seed")
@@ -389,7 +389,7 @@ async fn install_all_reports_every_patch_outcome() {
         manifest: &manifest,
         login_servers: &[],
         cancel: CancellationToken::new(),
-        progress: tx,
+        progress: tx.into(),
         http: &http,
     };
     let (result, report) = install_all(ctx).await;
@@ -423,4 +423,134 @@ async fn install_all_reports_every_patch_outcome() {
         .unwrap()
         .contains("builds on 002"));
     assert!(dir.path().join("hello.txt").is_file());
+}
+
+/// Exercises the shared pipeline with a stalled desktop progress consumer:
+/// HTTP download, SHA-256, extraction, patch overlay, preparation, and no-op retry.
+#[tokio::test]
+async fn desktop_progress_installs_seed_and_patch_then_reuses_saved_state() {
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+    let server = MockServer::start().await;
+    let mut exe = vec![0u8; 0x200];
+    exe[..2].copy_from_slice(b"MZ");
+    exe[60..64].copy_from_slice(&0x128u32.to_le_bytes());
+    exe[0x128..0x12c].copy_from_slice(b"PE\0\0");
+    exe[0x13c..0x13e].copy_from_slice(&0xe0u16.to_le_bytes());
+    exe[0x140..0x142].copy_from_slice(&0x10bu16.to_le_bytes());
+    exe[0x186..0x188].copy_from_slice(&0x40u16.to_le_bytes());
+    let seed = zip_with("Working/Binaries/SGW.exe", &exe);
+    let patch = zip_with("fixture.txt", b"patched");
+    for (name, body) in [("/seed.zip", seed.clone()), ("/patch.zip", patch.clone())] {
+        Mock::given(method("GET"))
+            .and(path(name))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let mut manifest = fake_manifest(&sha_hex(&seed));
+    manifest.seed.blob = "seed.zip".into();
+    manifest.seed.size = seed.len() as u64;
+    let mut item = entry("overlay", None);
+    item.blob = "patch.zip".into();
+    item.sha256 = sha_hex(&patch);
+    item.size = patch.len() as u64;
+    manifest.patches.push(item);
+    let root = tempfile::tempdir().unwrap();
+    let url = format!("{}/manifest.json", server.uri());
+    let client = reqwest::Client::new();
+    let servers = crate::client_setup::login_servers::default_servers();
+    let (progress, receiver) = crate::install_progress::ProgressSink::latest();
+    for pass in 0..2 {
+        let (result, report) = install_all(InstallContext {
+            manifest_url: &url,
+            install_dir: root.path(),
+            manifest: &manifest,
+            login_servers: &servers,
+            cancel: CancellationToken::new(),
+            progress: progress.clone(),
+            http: &client,
+        })
+        .await;
+        result.unwrap();
+        assert_eq!(report.seed_applied, pass == 0);
+    }
+    assert!(
+        receiver.borrow().is_some(),
+        "stalled observer retains a final progress value"
+    );
+    assert_eq!(
+        std::fs::read(root.path().join("fixture.txt")).unwrap(),
+        b"patched"
+    );
+    let final_exe = std::fs::read(root.path().join("Working/Binaries/SGW.exe")).unwrap();
+    assert_eq!(
+        final_exe[0x186] & 0x40,
+        0,
+        "client preparation disables ASLR"
+    );
+    assert!(crate::client_setup::login_servers::path(root.path()).is_file());
+    assert!(InstalledState::load(root.path()).has_applied_patch(&manifest.patches[0]));
+    server.verify().await;
+}
+
+/// A body can stall indefinitely between chunks: cancellation must wake the
+/// downloader without waiting for another byte or the HTTP client's timeout.
+#[tokio::test]
+async fn cancelling_a_stalled_response_body_stops_the_download() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (ready, received) = tokio::sync::oneshot::channel();
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 4096];
+        assert!(socket.read(&mut request).await.unwrap() > 0);
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\na")
+            .await
+            .unwrap();
+        ready.send(()).unwrap();
+        let _ = held.await;
+    });
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("partial");
+    let observed_target = target.clone();
+    let cancel = CancellationToken::new();
+    let worker_cancel = cancel.clone();
+    let job = tokio::spawn(async move {
+        let (sink, _observed) = crate::install_progress::ProgressSink::latest();
+        download_to_file(
+            &reqwest::Client::new(),
+            &format!("http://{address}/seed"),
+            &target,
+            worker_cancel,
+            100,
+            "seed",
+            &sink,
+        )
+        .await
+    });
+    received.await.unwrap();
+    // File creation follows receipt of headers, so cancellation exercises the
+    // stalled body wait rather than merely racing header parsing.
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while !observed_target.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    cancel.cancel();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), job)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(result, Err(InstallError::Cancelled)));
+    let _ = release.send(());
+    server.await.unwrap();
 }

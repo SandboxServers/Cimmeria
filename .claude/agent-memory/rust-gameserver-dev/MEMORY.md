@@ -24,6 +24,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Tooling quirks
 
+- [launcher-native-owner-handle.md](launcher-native-owner-handle.md) — native launch reads installation identity through its locked handle; Windows revert proof must run natively.
+
 - [patchset-supersede-and-restore-to-stock](patchset-supersede-and-restore-to-stock.md) — apply skips target==result before source check; a delta back to an LZO stock map ships CME bytes.
 - [ring-rig-clone-to-new-map](ring-rig-clone-to-new-map.md) — patch 010: region 3 rig roots, donor pinned to 007's result, central chunk for streaming, floor heights.
 - [client-file-case-and-stock-listing](client-file-case-and-stock-listing.md) — game UI lookups are case-sensitive on Windows (eula.lua = no login); rename keeps target spelling; DATA.INF = stock names.
@@ -154,3 +156,4 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — the egui-only dependabot PR is a no-op; the eframe PR carries the breakage.
 - [training-points-cache-absolute-write.md](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache.
 - [loot-seed-pins-and-grant-stack-cap.md](loot-seed-pins-and-grant-stack-cap.md) — new loot rows break exact pins on tables 3/7/8/9 (filter by NOT EXISTS); GrantItem does not cap at max stack.
+- [admin-api-ingest-test-seams.md](admin-api-ingest-test-seams.md) — admin-api has no dev-deps: test ingest through injected `*_inner` fns and a local capture layer; statics and env are shared under `cargo test`.

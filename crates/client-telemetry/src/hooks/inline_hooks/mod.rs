@@ -49,13 +49,20 @@
 //!   router's send decision with decoded arguments, and the Mercury
 //!   sequence range of the carrying bundle (`client.ability.*`,
 //!   2026-10-04).
+//! - [`cooked_cache`] — the cooked-data cache: the version read out of
+//!   each cache PAK and why a read failed, every version stamp, and what
+//!   the client holds when it asks the server (`client.cooked.*`,
+//!   2026-10-04). It also swaps four IAT slots (the `MSVCP80.dll` stream
+//!   read and the zip library's `MSVCR80.dll` file calls), listed in its
+//!   `imports` module.
 //!
 //! # What's installed
 //!
-//! 57 hooks: 33 in the original rows of the table below, the 12 ability
-//! press / send hooks listed in `ability/mod.rs` (AB-C1, AB-C2), and the
-//! 12 ability applied / net-in hooks in the table's last rows (AB-C4,
-//! AB-C5; all 2026-10-04, static anchors, live status UNVERIFIED).
+//! 62 hooks: 33 in the original rows of the table below, the 5 cooked-cache
+//! hooks after them, the 12 ability press / send hooks listed in
+//! `ability/mod.rs` (AB-C1, AB-C2), and the 12 ability applied / net-in
+//! hooks in the table's last rows (AB-C4, AB-C5; all 2026-10-04, static
+//! anchors, live status UNVERIFIED).
 //! Every address in the table was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
@@ -104,6 +111,11 @@
 //! | `SequenceManager` `Event_Cache_ElementReady` (`this, evt, arg`, `ret 8`) | `0x00d06f30` | `client.sequence.dropped` (`no_source_entity`, `no_source_pawn`, `no_cooked_data`, `expired`) | per (path, Source entity) bucket |
 //! | sequence play step (`this, data, request, source`, `ret 0xc`) | `0x00d06dd0` | `client.sequence.dropped` (`culled_by_distance` at `debug`, `instance_refused`) | per (path, Source entity) bucket |
 //! | Kismet sequence instantiate (`this, out, name, pawn`, `ret 0xc`) | `0x00d067e0` | (records the play step's result; no event) | - |
+//! | `ZipStorageBase` read version (`this, out, archive`, `ret 8`) | `0x00478f00` | `client.cooked.version_read` (`outcome` names the failed step; `warn` unless `read`) | unthrottled: one per archive open |
+//! | `ZipStorageBase` read entry (`this, stream, archive, name`, `ret 0xc`) | `0x00478e10` | (feeds the version read's outcome; no event) | - |
+//! | `CZipArchive::FindFile` (`archive, name, case, name_only`, `ret 0xc`) | `0x01396900` | (feeds the version read's outcome; no event) | - |
+//! | `CZipArchive::ExtractFile` to memory (`archive, index, file, flag, buffer`, `ret 0x10`) | `0x01398af0` | (feeds the version read: result, directory record, extracted bytes; no event) | - |
+//! | `ServerSource_SetVersion` (`this, &version`, `ret 4`) | `0x00479e90` | `client.cooked.version_set`; `client.cooked.versions_held` once per login, from the `versionInfoRequest` router | unthrottled: two per category per resync |
 //! | `EffectSet` timer handler (`this, event, subject`, `ret 8`) | `0x00e09160` | `client.ability.applied` `effect_bar_*` | per-name bucket |
 //! | `EffectSet` entry lookup / effect-bar announce / display-data request (probes, `ret 4`) and the post to the UI (`ret 8`) | `0x00e08570`, `0x00e0a9e0`, `0x00e0a810`, `0x00e0a2d0` | (feed the effect-bar row; no event) | - |
 //! | `CooldownManager` timer handler (`ret 8`) + button callback (`ret 0x10`) | `0x00ea6af0`, `0x00ea62b0` | `client.ability.applied` `cooldown` | per-name bucket |
@@ -136,6 +148,9 @@ mod anim_notify;
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cme_event_factory;
 mod console_command;
+// Its pure helpers (outcome, level, fields) run only from the i686 detours.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+mod cooked_cache;
 mod engine_frame;
 mod engine_loading;
 // The event family of a class name, shared with the catalog dump.
@@ -221,6 +236,7 @@ unsafe fn install_inner(producer: Producer) {
     mercury_recv::install_all(&producer);
     sequence_manager::install_all(&producer);
     lua_debug_log::install_all(&producer);
+    cooked_cache::install_all(&producer);
     ability::install_all(&producer);
     ability_apply::install_all(&producer);
     sequence_net_in::install_all(&producer);
@@ -230,7 +246,7 @@ unsafe fn install_inner(producer: Producer) {
         "client.hooks.inline.install_complete",
         [(
             "hook_count",
-            serde_json::json!(33 + ability::HOOK_COUNT + ability_apply::HOOK_COUNT + 1),
+            serde_json::json!(33 + 5 + ability::HOOK_COUNT + ability_apply::HOOK_COUNT + 1),
         )],
     );
 }
@@ -566,6 +582,11 @@ mod tests {
             super::ability_apply::ADDR_STAT_FUNCTOR,
             super::ability_apply::ADDR_STAT_BASE_FUNCTOR,
             super::sequence_net_in::ADDR_ON_SEQUENCE,
+            super::cooked_cache::ADDR_READ_VERSION,
+            super::cooked_cache::ADDR_READ_ENTRY,
+            super::cooked_cache::ADDR_FIND_FILE,
+            super::cooked_cache::ADDR_EXTRACT_FILE,
+            super::cooked_cache::ADDR_SET_VERSION,
         ];
         for addr in hooked {
             assert!(

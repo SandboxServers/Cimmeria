@@ -16,7 +16,7 @@ pub(crate) fn sink() -> (UnpackSink, tokio::sync::mpsc::UnboundedReceiver<Progre
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     (
         UnpackSink {
-            progress: tx,
+            progress: tx.into(),
             label: "test".into(),
             cancel: CancellationToken::new(),
         },

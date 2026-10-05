@@ -288,7 +288,7 @@ impl Worker {
                 manifest: &manifest,
                 login_servers: &config.login_servers,
                 cancel,
-                progress: prog_tx,
+                progress: prog_tx.into(),
                 http: &http,
             };
             let (result, report) = install_all(ctx).await;

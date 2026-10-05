@@ -1,0 +1,5 @@
+# Signed desktop updater
+
+- 2026-10-04: `desktop/engine/src/storage/updater/` implements check/download/verification only. Tauri updater v2.13.1's Minisign global signature authenticates its trusted-comment `version`; artifact verification alone does not bind the unsigned feed's version. `minisign-verify` 0.2.4 performs the cryptography. The parser additionally rejects duplicate version fields.
+- `launcher-update.json` owns in-progress phases under the existing DesktopState mutex/process lock. Call `ensure_updater_idle()` before other mutation preparations, not only at operation.begin: writing plans before the admission guard can leave unwanted files. Reopen marks checking/downloading/verifying interrupted; Ready rereads and reverifies the bounded native artifact.
+- Production composition intentionally has no endpoint/key. It reports Disabled and cannot check or prepare. The ignored `updater_native_uat_bridge` creates only ephemeral test keys and inert HTTP fixtures; it never installs bytes. Future apply must reverify and separately prove package installation, relaunch and rollback.

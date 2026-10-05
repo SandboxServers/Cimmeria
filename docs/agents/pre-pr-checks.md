@@ -21,6 +21,18 @@ Not every check blocks a merge. Here's what each one is actually worth:
 
 Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, run at the same time, upload to Codecov (which merges them) and do not gate. Only runs on `main` save the Rust caches, and PRs restore them (see [build-system.md §12](../architecture/build-system.md#12-ci-caches-are-saved-from-main-only)). After a merge, [regen-docs.yml](../../.github/workflows/regen-docs.yml) reruns `tools/docs-gen/regen.py` on `main` and commits any generated doc blocks that changed; nothing in a PR checks them. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
+## Desktop launcher workspace
+
+Changes under `crates/launcher/desktop/` also run the native Mac/Windows workflow
+`.github/workflows/launcher-desktop.yml`. It checks the standalone Rust engine,
+Effect frontend, native Tauri shell, and JS logic UAT against the state harness. Root
+workspace checks do not cover this directory; follow the
+[desktop README](../../crates/launcher/desktop/README.md) commands as well.
+The separate `.github/workflows/launcher-runtime-probe.yml` builds and tests the
+x86 prerequisite probe on native Windows; it does not wait for the desktop matrix.
+Its artifact still needs managed Wine/SDK validation. Passing these jobs is not
+packaged UI, signing or game UAT.
+
 ## The full checklist
 
 Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones (`bash tools/build-lane/lane.sh --exclusive cargo clippy …`).

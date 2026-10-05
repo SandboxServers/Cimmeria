@@ -17,8 +17,10 @@
 
 mod cab_set;
 mod dos_time;
+mod entry_inventory;
 #[cfg(windows)]
 mod fdi;
+mod prerequisites;
 mod rar;
 mod zip;
 
@@ -30,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::install::Progress;
+use crate::install_progress::{ProgressReporter, ProgressSink};
 
 /// Name of the staging directory a RAR is extracted into, under the
 /// destination. Removed when unpacking finishes, and cleared before a retry.
@@ -49,6 +52,8 @@ pub enum UnpackError {
     UnknownFormat(PathBuf),
     #[error("Archive entry {0:?} would land outside the install directory")]
     UnsafePath(String),
+    #[error("Archive entry {0:?} conflicts with another entry")]
+    EntryConflict(String),
     #[error("Patch set error: {0}")]
     Patchset(String),
     /// A patch set met a file whose hash is not the one its recipe
@@ -72,7 +77,7 @@ pub enum UnpackError {
 /// (not borrowed) so it can move onto a blocking thread.
 #[derive(Clone)]
 pub struct UnpackSink {
-    pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
+    pub progress: ProgressSink,
     pub label: String,
     pub cancel: CancellationToken,
 }
@@ -87,7 +92,7 @@ impl UnpackSink {
     }
 
     fn report(&self, step: &str, current: usize, total: usize, path: &Path) {
-        let _ = self.progress.send(Progress::Extracting {
+        self.progress.report(Progress::Extracting {
             label: format!("{} ({step})", self.label),
             current,
             total,
@@ -137,6 +142,7 @@ pub fn unpack(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), Unpa
                     "RAR holds an installer cabinet set; expanding it"
                 );
                 cab_set::expand(&set, dest, sink)?;
+                prerequisites::preserve(&staging, dest, sink)?;
             } else {
                 move_tree(&staging, &staging, dest)?;
             }
@@ -275,7 +281,13 @@ mod tests {
         let cabs = super::test_fixtures::make_cab_set(&cab_dir, &files, 65_536);
         assert!(cabs.len() >= 2, "{cabs:?}");
 
-        let mut entries: Vec<(String, Vec<u8>)> = vec![("SetupQA.exe".into(), b"MZ".to_vec())];
+        let mut entries: Vec<(String, Vec<u8>)> = vec![
+            ("SetupQA.exe".into(), b"MZ".to_vec()),
+            (
+                "Data/Prerequisites/DX9.0c/DXSETUP.exe".into(),
+                b"inert vendor fixture".to_vec(),
+            ),
+        ];
         for name in cabs.iter().map(String::as_str).chain(["DATA.INF"]) {
             entries.push((
                 format!("Data\\{name}"),
@@ -305,6 +317,14 @@ mod tests {
                 .modified()
                 .unwrap(),
             super::test_fixtures::fixture_mtime()
+        );
+        assert_eq!(
+            std::fs::read(
+                dest.join(prerequisites::DIRECTORY)
+                    .join("DX9.0c/DXSETUP.exe")
+            )
+            .unwrap(),
+            b"inert vendor fixture"
         );
         assert!(!dest.join("SetupQA.exe").exists());
         assert!(!dest.join("Data").exists());

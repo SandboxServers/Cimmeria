@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stargate Worlds</title><link rel="stylesheet" href="style.css"></head><body>
+<div class="shell">
+<header><span class="eyebrow">Cimmeria</span><span class="proof">Packaging prototype</span></header>
+<nav aria-label="Launcher sections"><button id="home">Play</button><button id="notes">Patch Notes</button><button id="settings" aria-label="Game settings" title="Game settings" aria-controls="gear">⚙</button></nav>
+<div class="content">
+<section id="gear" hidden aria-label="Game settings"><h2>Game settings</h2><p class="path">Local install directory: not configured in this proof</p><div class="settings-actions"><button id="folder">Open folder</button><button id="repair">Repair game</button><button id="uninstall" class="danger">Uninstall…</button></div><p class="caption">Simulated actions only. No files are changed.</p></section>
+<main id="play"><div class="hero"><div class="intro"><span class="eyebrow">Step into another world</span><h1>Stargate<br>Worlds</h1><p>The original adventure.<br>One setup. Then just Play.</p></div><div class="gate" aria-hidden="true"></div></div><div class="setup"><strong>Your next adventure, without the setup.</strong><p>The launcher will prepare compatibility, install the game, and apply Cimmeria patches.</p><small>This proof only demonstrates the launcher experience.</small></div></main>
+<section id="patches" hidden><span class="eyebrow">Current client patches</span><h2>Patch Notes</h2><p class="caption">Bundled release manifest snapshot. This is not a list of installed patches.</p><div id="entries"></div></section>
+</div>
+<footer><button class="primary" id="install">Install Stargate Worlds</button><label class="consent"><input type="checkbox" id="telemetry"><span>Share diagnostic logs <span class="optional">· optional</span><small>Change this anytime. This proof keeps your choice in memory and sends nothing.</small></span></label><p id="status" role="status">Opening bundled interface…</p><small class="disclaimer">PROTOTYPE · No game or runtime downloads</small></footer>
+</div><script type="module" src="app.js"></script></body></html>

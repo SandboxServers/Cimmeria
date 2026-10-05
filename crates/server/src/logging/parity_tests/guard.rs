@@ -194,6 +194,35 @@ fn client_replays_land_only_in_the_client_index() {
     }
 }
 
+/// The launcher-summary ingest's two targets, by name: the self-reported
+/// summary and phase rows (`launcher.summary`, INFO) land in
+/// `cimmeria-client` only, and the server's own per-request batch row
+/// (`launcher.ingest`, INFO) in `cimmeria-server` only.
+///
+/// The targets are spelled out here on purpose. The test above loops over
+/// `CLIENT_TARGETS`, so it passes whatever that list holds; removing
+/// `"launcher.summary"` from it sends the summary rows to `cimmeria-server`
+/// (through `launcher=debug`) and fails the first assertion here.
+#[test]
+fn launcher_summary_rows_land_in_the_client_index_and_batch_rows_in_the_server_index() {
+    use cimmeria_admin_api::routes::telemetry::{
+        LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET,
+    };
+
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let otlp = |target: &str, lvl: Level| -> Vec<String> {
+        sinks_for(&dispatch, &hits, target, lvl)
+            .into_iter()
+            .filter(|s| s.starts_with("otlp:"))
+            .collect()
+    };
+    assert_eq!(otlp("launcher.summary", Level::INFO), [OTLP_CLIENT]);
+    assert_eq!(otlp("launcher.ingest", Level::INFO), [OTLP_SERVER]);
+    // The ingest emits under exactly these two names.
+    assert_eq!(LAUNCHER_SUMMARY_TARGET, "launcher.summary");
+    assert_eq!(LAUNCHER_SUMMARY_BATCH_TARGET, "launcher.ingest");
+}
+
 /// No target, at any level, is indexed twice.
 #[test]
 fn no_record_reaches_two_indexes() {

@@ -11,7 +11,7 @@
 //! |---|---|---|
 //! | `AUTH_HOST` | `0.0.0.0` | Auth service bind address |
 //! | `AUTH_PORT` | `13001` | Auth service port (BaseApp connections) |
-//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). |
+//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). A fifth, `/api/telemetry/launcher-summary` (desktop launcher attempt summaries), is merged beside them. It is anonymous (no token; an `Authorization` header is never read), accepts only its exact schema-1 JSON payload and is rate-limited per address by `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`. The owner approved serving it on this port on 2026-10-04, which extends that decision to it. No launcher build has a summary endpoint yet, so nothing calls it. |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
@@ -27,12 +27,13 @@
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the dev-session token mint at `/api/auth/dev-session` (launchers and lab supervisors) and the upload endpoints at `/api/telemetry/upload-{chunk,bundle}`, whose client-side rows land in SigNoz as `service.name = cimmeria-client`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset or shorter than 32 bytes ⇒ every mint and upload returns 500, logged as `dev_session_secret_unusable` at startup (WARN) and per request (ERROR). On the colo it comes from `/opt/cimmeria/.env` through `docker/compose.yml`. |
 //! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload **base** URL handed back in the dev-session response; callers append `/upload-chunk` and `/upload-bundle`. Unset or blank ⇒ the default, which works only when the caller shares the host. Players' launchers accept `https://` anywhere and plain `http://` only to loopback or a login server's host and port, so a public deployment sets its login port, e.g. `http://play.cimmeria.app:8081/api/telemetry` (an HTTPS URL also works). Logged once at startup. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
-//! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
+//! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry: every mint and refresh, and the launcher-summary ingest route, return 503 + Retry-After. The two upload routes do not check it. |
 //! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
 //! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints allowed per `install_id` per window. A speed bump for a launcher stuck relaunching, not a boundary: `install_id` is caller-supplied. `0` disables. |
 //! | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token allowed per peer address per window on `/api/auth/dev-session/refresh`. Charged only after the token verifies. `0` disables. |
 //! | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window; over it returns 429. Kept apart from the valid-token counter so junk cannot lock launchers out. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests allowed per peer address per minute on `/api/telemetry/launcher-summary` (owner decision, 2026-10-04); over quota returns 429 + `Retry-After` of 61 s at most. `0` disables. The window is a fixed 60 s of that route's own: `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` does not change it. That route is anonymous, so this is its rate limit: anyone can post correctly shaped rows within it. It is charged before anything is parsed, so malformed and refused requests count too. The allowance is shared by everyone behind one address, such as a NAT, a reverse proxy or a tunnel; 12 a minute leaves room for many launchers, and an operator with a large deployment behind one address may need to raise it. The route also honours `CIMMERIA_TELEMETRY_KILL_SWITCH`. |
 //! | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | Longest a single minted session may be extended by chained refreshes, measured from the original mint. Past it, refresh returns 401 and the launcher mints a fresh session. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
 //! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
@@ -173,7 +174,9 @@ async fn main() {
     // is also served on the public SOAP login port, so a remote player's
     // launcher reaches it with no config and no secret. Decision
     // (@Cadacious, 2026-09-29): plain HTTP there is acceptable, the game's
-    // own login already sends passwords over it. Only those four routes go
+    // own login already sends passwords over it. Only those four routes,
+    // and the anonymous launcher-summary ingest merged beside them (owner
+    // decision, 2026-10-04; see `cimmeria_admin_api::login_port`), go
     // on 8081; the rest of the admin API stays on its private listener.
     orch.state()
         .write()

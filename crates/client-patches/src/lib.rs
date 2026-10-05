@@ -29,6 +29,11 @@
 //!    encode the cell methods 61–66 with `cimmeria-patch-wire` and hand them
 //!    to `ServerConnection::startEntityMessage`.
 //!
+//! One repair is not a shelved feature and uses no `SGW.exe` address:
+//! [`strstream_underflow`] makes Wine's `msvcp80.dll` return what was just
+//! written to a `std::strstream`, without which the client cannot read its
+//! cooked-data cache. It runs first, and only under Wine.
+//!
 //! Every address is in [`addresses`], with its evidence. Everything that is
 //! not raw FFI (name matching, the local-player check, the queue, the Lua
 //! call plan, the prologue check) is portable and unit-tested on the host;
@@ -47,6 +52,7 @@ pub mod memory;
 pub mod queue;
 pub mod receive;
 pub mod send;
+pub mod strstream_underflow;
 
 #[cfg(all(windows, target_arch = "x86"))]
 mod boot;

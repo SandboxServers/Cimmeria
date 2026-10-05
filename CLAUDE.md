@@ -44,6 +44,14 @@ After building, copy the exe to the project root. A build that went through the 
 
 The reasons behind all of this are in [docs/architecture/build-system.md](docs/architecture/build-system.md).
 
+### Desktop launcher exception
+
+The explicitly authorized macOS/Windows launcher implementation lives in the
+standalone `crates/launcher/desktop/` workspace. Build it natively on each target
+OS, always through the lane; its README lists explicit manifest checks because
+root workspace CI does not include it. This does not authorize cross-compiling
+Windows artifacts or native Mac builds of the server and existing Windows tools.
+
 ### Build lane and concurrency
 
 Several sessions and agents build on one workstation at once. Every agent or worker `cargo` call that compiles (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane, [tools/build-lane/lane.sh](tools/build-lane/lane.sh):
