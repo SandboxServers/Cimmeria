@@ -1,5 +1,5 @@
 //! Live-DB guards for the opt-in NPC tint (`entity_templates.send_tint`) on
-//! Z10, the Debug Area's Visual NPC Lineup (DA-10, templates 1410-1599):
+//! Z10, the Debug Area's Visual NPC Lineup (DA-10, display actors 1410-1570):
 //!
 //! * every lineup actor opts in, and its two colours and skin tint are its
 //!   source template's (the one its tag names); a template-less actor's are
@@ -18,8 +18,9 @@ mod live_db {
     use crate::cell::spawner::*;
     use crate::test_support::require_db_or_skip;
 
-    const TEMPLATES: (i32, i32) = (1410, 1599);
-    const SPAWNS: (i32, i32) = (13870, 14099);
+    /// The display actors. DA-10's block (1410-1599) also holds the group
+    /// switch attendants (1590-1595), which are not actors and do not opt in.
+    const TEMPLATES: (i32, i32) = (1410, 1570);
     const ACTORS: usize = 161;
     /// Lineup actors whose source has a non-zero colour (of the 115
     /// templates outside the block that carry one, grouped by look).
@@ -116,7 +117,7 @@ mod live_db {
         let mut errors = Vec::new();
         let mut lineup = 0;
         for r in &records {
-            if (SPAWNS.0..=SPAWNS.1).contains(&r.spawn_id) {
+            if (TEMPLATES.0..=TEMPLATES.1).contains(&r.template_id) {
                 lineup += 1;
                 let w = want.get(&r.template_id).copied();
                 if r.tint != w {
