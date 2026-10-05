@@ -37,10 +37,14 @@
 //! - [`lua_debug_log`] — the UI's `Debug:log` / `warn` / `error` lines,
 //!   which the shipping client discards (`client.lua.debug_log`,
 //!   2026-09-29).
+//! - [`cooked_cache`] — the cooked-data cache: the version read out of
+//!   each cache PAK and why a read failed, every version stamp, and what
+//!   the client holds when it asks the server (`client.cooked.*`,
+//!   2026-10-04).
 //!
 //! # What's installed
 //!
-//! 33 hooks. Every address below was re-checked against the QA
+//! 38 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -88,6 +92,11 @@
 //! | `SequenceManager` `Event_Cache_ElementReady` (`this, evt, arg`, `ret 8`) | `0x00d06f30` | `client.sequence.dropped` (`no_source_entity`, `no_source_pawn`, `no_cooked_data`, `expired`) | per (path, Source entity) bucket |
 //! | sequence play step (`this, data, request, source`, `ret 0xc`) | `0x00d06dd0` | `client.sequence.dropped` (`culled_by_distance` at `debug`, `instance_refused`) | per (path, Source entity) bucket |
 //! | Kismet sequence instantiate (`this, out, name, pawn`, `ret 0xc`) | `0x00d067e0` | (records the play step's result; no event) | - |
+//! | `ZipStorageBase` read version (`this, out, archive`, `ret 8`) | `0x00478f00` | `client.cooked.version_read` (`outcome` names the failed step; `warn` unless `read`) | unthrottled: one per archive open |
+//! | `ZipStorageBase` read entry (`this, stream, archive, name`, `ret 0xc`) | `0x00478e10` | (feeds the version read's outcome; no event) | - |
+//! | `CZipArchive::FindFile` (`archive, name, case, name_only`, `ret 0xc`) | `0x01396900` | (feeds the version read's outcome; no event) | - |
+//! | `CZipArchive::ExtractFile` to memory (`archive, index, file, flag, buffer`, `ret 0x10`) | `0x01398af0` | (feeds the version read's outcome; no event) | - |
+//! | `ServerSource_SetVersion` (`this, &version`, `ret 4`) | `0x00479e90` | `client.cooked.version_set`; `client.cooked.versions_held` once per login, from the `versionInfoRequest` router | unthrottled: two per category per resync |
 //! | `ScriptedDebug` `log` / `warn` / `error` tolua bindings (`Debug:log` etc., `cdecl int(lua_State*)`; the logger they call, `0x0081c2e0`, is a bare `ret`) | `0x00aa1620`, `0x00aa1710`, `0x00aa1800` | `client.lua.debug_log` (`channel`, `source`, `text`) | per (channel, message shape) bucket |
 //!
 //! # Why MinHook
@@ -104,6 +113,9 @@ mod anim_notify;
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cme_event_factory;
 mod console_command;
+// Its pure helpers (outcome, level, fields) run only from the i686 detours.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+mod cooked_cache;
 mod engine_frame;
 mod engine_loading;
 // The event family of a class name, shared with the catalog dump.
@@ -187,11 +199,12 @@ unsafe fn install_inner(producer: Producer) {
     mercury_recv::install_all(&producer);
     sequence_manager::install_all(&producer);
     lua_debug_log::install_all(&producer);
+    cooked_cache::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(33))],
+        [("hook_count", serde_json::json!(38))],
     );
 }
 
@@ -467,6 +480,11 @@ mod tests {
             super::lua_debug_log::ADDR_DEBUG_LOG,
             super::lua_debug_log::ADDR_DEBUG_WARN,
             super::lua_debug_log::ADDR_DEBUG_ERROR,
+            super::cooked_cache::ADDR_READ_VERSION,
+            super::cooked_cache::ADDR_READ_ENTRY,
+            super::cooked_cache::ADDR_FIND_FILE,
+            super::cooked_cache::ADDR_EXTRACT_FILE,
+            super::cooked_cache::ADDR_SET_VERSION,
         ];
         for addr in hooked {
             assert!(

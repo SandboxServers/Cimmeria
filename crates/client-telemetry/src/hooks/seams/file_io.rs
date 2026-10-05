@@ -15,10 +15,20 @@
 //! kernel set, whatever this hook did in between (formatting and queueing
 //! events can themselves set it).
 //!
+//! # Cooked-data cache archives
+//!
+//! One kind of successful open is reported too: a `.pak` file
+//! (`client.io.pak_open`, 2026-10-04). The cooked-data cache decides how to
+//! open each archive from an existence, size and read-only check, and a wrong
+//! answer makes it create (and so empty) a cache it meant to read. The path,
+//! the requested access and the disposition show which it asked for, and
+//! `existed` whether a create-style open found a file there.
+//!
 //! # Volume
 //!
-//! Successful opens (the overwhelming majority) cost one comparison and
-//! report nothing. Failures are rate-limited per path; "file not found" and
+//! Successful opens (the overwhelming majority) cost one bounded read of the
+//! path and report nothing unless it ends in `.pak`; those are rate-limited
+//! per path. Failures are rate-limited per path; "file not found" and
 //! "path not found" are routine probes (the engine tests for optional
 //! packages and localised files) and are `debug`, additionally limited per
 //! file extension so a run of missing packages cannot flood; every other
@@ -44,6 +54,13 @@ pub const MAX_PATH_CHARS: usize = 260;
 
 /// Telemetry target.
 pub const TARGET: &str = "client.io.open_failed";
+
+/// Telemetry target of a successful `.pak` open.
+pub const TARGET_PAK_OPEN: &str = "client.io.pak_open";
+
+/// `ERROR_ALREADY_EXISTS`: what a successful `CREATE_ALWAYS` or
+/// `OPEN_ALWAYS` leaves in the last error when the file was already there.
+pub const ERROR_ALREADY_EXISTS: u32 = 183;
 
 /// `ERROR_FILE_NOT_FOUND`.
 pub const ERROR_FILE_NOT_FOUND: u32 = 2;
@@ -106,6 +123,53 @@ pub fn path_key(code: u32, path: &str) -> String {
     format!("{code}:{}", path.to_ascii_lowercase())
 }
 
+/// Whether a path, as UTF-16 units, names a `.pak` file.
+pub fn is_pak(units: &[u16]) -> bool {
+    const SUFFIX: [u8; 4] = *b".pak";
+    units.len() >= SUFFIX.len()
+        && units[units.len() - SUFFIX.len()..]
+            .iter()
+            .zip(SUFFIX)
+            .all(|(unit, c)| u8::try_from(*unit).is_ok_and(|b| b.eq_ignore_ascii_case(&c)))
+}
+
+/// `CreateFile`'s creation disposition by name.
+pub fn disposition_name(disposition: u32) -> &'static str {
+    match disposition {
+        1 => "create_new",
+        2 => "create_always",
+        3 => "open_existing",
+        4 => "open_always",
+        5 => "truncate_existing",
+        _ => "other",
+    }
+}
+
+/// The fields of one successful `.pak` open. `existed` is reported only for
+/// the dispositions where the last error says so.
+pub fn pak_open_fields(
+    path: &str,
+    access: u32,
+    share: u32,
+    disposition: u32,
+    last_error: u32,
+    suppressed: u64,
+) -> Fields {
+    let mut f: Fields = vec![
+        ("path", json!(path)),
+        ("write", json!(wants_write(access))),
+        ("share", json!(share)),
+        ("disposition", json!(disposition_name(disposition))),
+    ];
+    if matches!(disposition, 2 | 4) {
+        f.push(("existed", json!(last_error == ERROR_ALREADY_EXISTS)));
+    }
+    if suppressed > 0 {
+        f.push(("suppressed", json!(suppressed)));
+    }
+    f
+}
+
 /// The fields of one failed open.
 pub fn open_fields(
     path: &str,
@@ -148,6 +212,7 @@ mod x86 {
 
     static PATH_THROTTLE: SinkThrottle = SinkThrottle::new();
     static NOT_FOUND_THROTTLE: SinkThrottle = SinkThrottle::new();
+    static PAK_THROTTLE: SinkThrottle = SinkThrottle::new();
 
     /// Test switch: make `report` clobber the thread's last error, as real
     /// event formatting and queueing could, so the restore is what the test
@@ -187,6 +252,19 @@ mod x86 {
             level(code),
             "io.open_failed",
             open_fields(&path, code, access, disposition, carried + suppressed),
+        );
+    }
+
+    fn report_pak(path: String, access: u32, share: u32, disposition: u32, last_error: u32) {
+        let key = format!("{disposition}:{}", path.to_ascii_lowercase());
+        let Decision::Emit { suppressed } = PAK_THROTTLE.check(&key) else {
+            return;
+        };
+        emit(
+            TARGET_PAK_OPEN,
+            "info",
+            "io.pak_open",
+            pak_open_fields(&path, access, share, disposition, last_error, suppressed),
         );
     }
 
@@ -235,6 +313,23 @@ mod x86 {
                 }
             }));
             unsafe { SetLastError(code) };
+        } else {
+            // A create-style open that found a file says so here.
+            let code = unsafe { GetLastError() };
+            let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                if let Some(s) = mem::wide_at(name as usize, MAX_PATH_CHARS) {
+                    if is_pak(&s.units) {
+                        report_pak(
+                            text::decode_wide(&s.units),
+                            access,
+                            share,
+                            disposition,
+                            code,
+                        );
+                    }
+                }
+            }));
+            unsafe { SetLastError(code) };
         }
         handle
     }
@@ -261,6 +356,23 @@ mod x86 {
             let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 if let Some(s) = mem::ansi_at(name as usize, MAX_PATH_CHARS) {
                     report(text::decode_ansi(&s.units), code, access, disposition);
+                }
+            }));
+            unsafe { SetLastError(code) };
+        } else {
+            let code = unsafe { GetLastError() };
+            let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                if let Some(s) = mem::ansi_at(name as usize, MAX_PATH_CHARS) {
+                    let units: Vec<u16> = s.units.iter().map(|b| u16::from(*b)).collect();
+                    if is_pak(&units) {
+                        report_pak(
+                            text::decode_ansi(&s.units),
+                            access,
+                            share,
+                            disposition,
+                            code,
+                        );
+                    }
                 }
             }));
             unsafe { SetLastError(code) };
@@ -443,5 +555,45 @@ mod tests {
     fn the_iat_slots_are_the_import_directorys() {
         assert_eq!(IAT_CREATE_FILE_A, 0x017e_f2a4);
         assert_eq!(IAT_CREATE_FILE_W, 0x017e_f2a8);
+    }
+
+    #[test]
+    fn only_a_pak_path_is_a_cache_archive() {
+        let units = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
+        assert!(is_pak(&units("C:\\users\\x\\Cache.en-US\\TextStrings.pak")));
+        assert!(is_pak(&units("COOKEDDATAITEMS.PAK")));
+        assert!(!is_pak(&units("SGW_UI.upk")));
+        assert!(!is_pak(&units("pak")));
+        assert!(!is_pak(&units("")));
+        // A wide unit that is not ASCII never matches a suffix byte.
+        assert!(!is_pak(&[
+            u16::from(b'.'),
+            u16::from(b'p'),
+            u16::from(b'a'),
+            0x216A
+        ]));
+    }
+
+    #[test]
+    fn a_cache_open_reports_how_it_was_opened_and_whether_a_file_was_there() {
+        // A read-write open of an existing archive: nothing to say about existence.
+        let f = pak_open_fields("C:\\c\\TextStrings.pak", 0xC000_0000, 3, 3, 0, 0);
+        let get = |f: &Fields, k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get(&f, "path"), Some(json!("C:\\c\\TextStrings.pak")));
+        assert_eq!(get(&f, "write"), Some(json!(true)));
+        assert_eq!(get(&f, "share"), Some(json!(3)));
+        assert_eq!(get(&f, "disposition"), Some(json!("open_existing")));
+        assert_eq!(get(&f, "existed"), None);
+        assert_eq!(get(&f, "suppressed"), None);
+        // A create that replaced a file: the open that empties a cache.
+        let f = pak_open_fields("x.pak", 0x4000_0000, 0, 2, ERROR_ALREADY_EXISTS, 2);
+        assert_eq!(get(&f, "disposition"), Some(json!("create_always")));
+        assert_eq!(get(&f, "existed"), Some(json!(true)));
+        assert_eq!(get(&f, "suppressed"), Some(json!(2)));
+        // A create with no file there before.
+        let f = pak_open_fields("x.pak", 0x4000_0000, 0, 2, 0, 0);
+        assert_eq!(get(&f, "existed"), Some(json!(false)));
+        assert_eq!(disposition_name(4), "open_always");
+        assert_eq!(disposition_name(9), "other");
     }
 }
