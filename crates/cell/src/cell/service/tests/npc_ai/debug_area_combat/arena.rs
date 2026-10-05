@@ -1,8 +1,10 @@
 //! Z6, the NPC-vs-NPC arena (D-DA8) on the real east shelf (DA-F2 moved it off
 //! the pit's water plane): fight 1 (faction 3 against faction 10, a player can
-//! join) and fight 2 (faction 27 against 29, spectators only). Every assertion runs the production Idle scan (#1009):
-//! the grid query, the faction table, the 4 u band, the aggro radius and the
-//! occluder line of sight.
+//! join) and fight 2 (faction 27 against 29, spectators only). Every
+//! assertion runs the production Idle scan (#1009): the grid query, the
+//! faction table, the 4 u band, the aggro radius and the occluder line of
+//! sight. Where spectators can stand without being pulled is the pull map's
+//! job (`arena_pull_map.rs`), which sweeps the navmesh instead of fixed spots.
 
 use std::collections::HashSet;
 
@@ -13,23 +15,9 @@ const NID: &str = "DebugArea_Arena_NID";
 const GREEN: &str = "DebugArea_Arena_Green";
 const YELLOW: &str = "DebugArea_Arena_Yellow";
 
-/// Where spectators watch from, all inside the 150 u AoI of the squads
-/// (occluder terrain heights where the navmesh agrees, DA-F2 survey). The
-/// first three are on the terrain north of the shelf, 17-20 u above it; the
-/// fourth is the east approach, 4.5 u above it and 69 u from the nearest NID
-/// guard; the fifth is the slope below the shelf's south edge, 7 u below it;
-/// the last two stand on the shelf right beside each side of fight 2 (where a
-/// tester watches it or loot-checks a corpse), 49 u or more from every NID
-/// guard.
-const SPECTATOR_SPOTS: [[f32; 3]; 7] = [
-    [354.0, 8.52, -654.0],
-    [330.0, 6.5, -662.0],
-    [306.0, 5.98, -658.0],
-    [410.0, -6.64, -698.0],
-    [350.0, -18.19, -766.0],
-    [340.0, -11.12, -690.0],
-    [366.0, -11.12, -690.0],
-];
+/// The watcher's spot on the terrain north of the shelf, 20 u above it
+/// (out of the 4 u band) and inside the squads' 150 u AoI.
+const WATCH_SPOT: [f32; 3] = [354.0, 8.52, -654.0];
 
 /// The east shelf's terrain height (`spawnlist_debug_area_combat.sql`).
 const SHELF_Y: f32 = -11.12;
@@ -56,7 +44,7 @@ async fn every_arena_row_engages_the_opposing_squad_when_watched() {
     let Some(mut mgr) = scene(&records) else {
         return;
     };
-    add_player(&mut mgr, PLAYER, SPECTATOR_SPOTS[0]);
+    add_player(&mut mgr, PLAYER, WATCH_SPOT);
     let arena = ids(&da04(&records, "DebugArea_Arena_"));
     for (side, enemy) in fights {
         let rows = da04(&records, side);
@@ -100,41 +88,6 @@ async fn no_arena_row_engages_while_nobody_watches() {
     }
 }
 
-/// **Content guard.** A spectator above, below or beside the shelf is never
-/// pulled: every arena row picks an NPC of the other side, never the player.
-/// The spots above and below are out of the 4 u band, the ones on the shelf
-/// out of the 30 u radius. Fails if the NID squad moves toward fight 2 or its
-/// radius grows past the shelf's west half.
-#[tokio::test]
-async fn spectators_on_the_rim_and_the_slope_are_never_pulled() {
-    let records = world_records();
-    for spot in SPECTATOR_SPOTS {
-        let rim = (spot[1] - SHELF_Y).abs() > 4.0;
-        let nid_dist = da04(&records, NID)
-            .iter()
-            .map(|r| (r.x - spot[0]).hypot(r.z - spot[2]))
-            .fold(f32::INFINITY, f32::min);
-        assert!(
-            rim || nid_dist > 30.0,
-            "fixture: {spot:?} is a spectator spot, not inside the fight"
-        );
-        let Some(mut mgr) = scene(&records) else {
-            return;
-        };
-        add_player(&mut mgr, PLAYER, spot);
-        let arena = ids(&da04(&records, "DebugArea_Arena_"));
-        for r in da04(&records, "DebugArea_Arena_") {
-            reset_idle(&mut mgr, arena.iter().copied());
-            let (_, targets) = scan(&mut mgr, npc_id(r)).await;
-            assert!(
-                !targets.contains(&PLAYER),
-                "{:?} pulled the spectator at {spot:?}",
-                r.tag
-            );
-        }
-    }
-}
-
 /// A player who walks onto the shelf beside the NID squad is engaged by it (he
 /// joins on the Praxis side), and the Praxis squad never targets him.
 #[tokio::test]
@@ -169,10 +122,10 @@ async fn a_player_on_the_shelf_is_fought_by_the_nid_squad_only() {
     }
 }
 
-/// Fight 2 stands 39 u or more from every NID guard (DA-04 review finding 1;
-/// 39 on the shelf, DA-F2), so a tester who walks up to watch it, or to check a
-/// corpse's loot cursor, is outside the guards' 30 u aggro radius whatever
-/// round fight 1 is in.
+/// Fight 2 stands at least the NID aggro radius plus a 9 u margin from every
+/// NID guard (DA-04 review finding 1; the margin is what the shelf allows,
+/// DA-F2), so a tester who walks up to watch it, or to check a corpse's loot
+/// cursor, is outside the guards' radius whatever round fight 1 is in.
 #[test]
 fn the_spectator_fight_stands_clear_of_the_nid_squad() {
     let records = world_records();
@@ -183,7 +136,13 @@ fn the_spectator_fight_stands_clear_of_the_nid_squad() {
     {
         for g in &nid {
             let d = (r.x - g.x).hypot(r.z - g.z);
-            assert!(d >= 39.0, "{:?} is {d:.1} u from {:?}", r.tag, g.tag);
+            let radius = g.aggro_radius.expect("the NID template sets a radius");
+            assert!(
+                d >= radius + 9.0,
+                "{:?} is {d:.1} u from {:?} (radius {radius})",
+                r.tag,
+                g.tag
+            );
         }
     }
 }

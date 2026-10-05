@@ -193,9 +193,11 @@ water.
   reaches it.
 - **Walls.** The shelf is the floor of a ruin, and its low walls block sight at
   eye height almost everywhere. Fight 1 stands in the one strip where a
-  3-against-3 line 24 m apart has all nine sight lines clear with 1 m to spare
-  on both sides: between the long east-west wall at z -736 and the south edge
-  wall at z -749. A grid search on the occluder found it.
+  3-against-3 line 24 m apart has clear sight: between the long east-west wall
+  at z -736 and the south edge wall at z -749. A grid search on the occluder
+  found it. The rows are 3 m apart: with the third pair at z -746, the third
+  NID guard saw past the long wall's west end and pulled a tester standing in
+  the fight-2 room (#1244 review).
 - **Getting there.** The south edge is a 3 to 14 m drop. The way on is from
   the east, through the gap at x 390-400, z -738 to -744. DA-08's faction-yard
   ring pad (394, -10.59, -738) stands in that gap.
@@ -218,11 +220,11 @@ The NID squad is hostile and damageable.
 | Spawn | Template | Tag | Name shown | Faction | Position (x, y, z) |
 |---:|---:|---|---|---:|---|
 | 13600 | 1370 | `DebugArea_Arena_Praxis1` | Op-CORE Soldier | 3 | (378, -11.12, -738) |
-| 13601 | 1371 | `DebugArea_Arena_Praxis2` | Praxis Jaffa Guard | 3 | (378, -11.12, -742) |
-| 13602 | 1370 | `DebugArea_Arena_Praxis3` | Op-CORE Soldier | 3 | (378, -11.12, -746) |
+| 13601 | 1371 | `DebugArea_Arena_Praxis2` | Praxis Jaffa Guard | 3 | (378, -11.12, -741) |
+| 13602 | 1370 | `DebugArea_Arena_Praxis3` | Op-CORE Soldier | 3 | (378, -11.12, -744) |
 | 13603 | 1372 | `DebugArea_Arena_NID1` | NID Guard | 10 | (354, -11.12, -738) |
-| 13604 | 1372 | `DebugArea_Arena_NID2` | NID Guard | 10 | (354, -11.12, -742) |
-| 13605 | 1372 | `DebugArea_Arena_NID3` | NID Guard | 10 | (354, -11.12, -746) |
+| 13604 | 1372 | `DebugArea_Arena_NID2` | NID Guard | 10 | (354, -11.12, -741) |
+| 13605 | 1372 | `DebugArea_Arena_NID3` | NID Guard | 10 | (354, -11.12, -744) |
 
 **Fight 2, Lucia Green against Lucia Yellow (spectators only).** Faction 27
 against faction 29, one of the player-safe hostile pairs, in the open room
@@ -262,7 +264,9 @@ north of the long wall.
   terrain north of the shelf to start the fights. A fight already under way
   finishes without a witness.
 - The other way round: any player within 150 m keeps the arena cycling. That
-  includes testers at the faction yard. Every round writes `npc_ai.aggro
+  includes testers at the faction yard (about 60 m) and, just, the Gallery
+  east ring pad (about 149 m); the dummy range, the AI slope and the gallery
+  rows are out of range. Every round writes `npc_ai.aggro
   cause=proximity` and `loot.drop reason=npc_only_kill` rows, so filter
   SigNoz queries on the `DebugArea_Arena_` tag prefix (or exclude it) when
   you read another station's AI or DPS telemetry.
@@ -495,8 +499,8 @@ the ring switch beside the pad that you right-click.
 | Compound | (224.0, 7.44, -938.0) | Z1 arrival (36 m), Z2 services plaza (32 m), Z8 cover course entry (23 m); Z3 dummies are 74 m north in the same compound | `DebugArea_Ring_Compound` | 35 |
 | Faction yard | (394.0, -10.59, -738.0) | Z4 faction yard, 52 m south | `DebugArea_Ring_FactionYard` | 36 |
 | AI slope | (81.0, 0.59, -782.0) | Z5 wanderer (36 m) and patrol (57 m) | `DebugArea_Ring_AiSlope` | 37 |
-| Arena rim | (176.0, -6.65, -702.0) | Z6 arena, the west ledge 26 m above the pit | `DebugArea_Ring_ArenaRim` | 38 |
-| Arena pit | (210.0, -32.74, -725.0) | Z6 arena floor, beside the friendly Praxis squad | `DebugArea_Ring_ArenaPit` | 39 |
+| Arena rim | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit. Since DA-F2 moved the arena to the east shelf, it is 167 to 205 m from the squads, outside the 150 m AoI: arriving here neither shows nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
+| Arena pit | (210.0, -32.74, -725.0) | The pit floor, on its water plane (K27). The arena left for the east shelf in DA-F2; DA-08's pad relocation moves this station beside it, at (331, -11.12, -693) | `DebugArea_Ring_ArenaPit` | 39 |
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
@@ -582,9 +586,12 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
   `ihpet_crater_light.nav` and `.occ`, the world-1300 cover seed, and every
   world-1300 row of the seed files. It needs no database.
   - `arena.rs`: every arena row engages only the opposing squad when watched,
-    and nothing while nobody watches. A spectator above, below or beside the
-    shelf is never pulled. A player on the shelf between the squads is fought
-    by the NID squad only.
+    and nothing while nobody watches. A player on the shelf between the
+    squads is fought by the NID squad only.
+  - `arena_pull_map.rs` (DA-F2): a lone player stepped over a 2 m navmesh
+    grid around the shelf, at four heights, is engaged by a NID guard only
+    inside the fight-1 strip, never in the fight-2 room, on the terrain above,
+    on the slope below or on the east approach.
   - `arena.rs` also pins fight 2 at 39 m or more from every NID guard, and its
     spectator spots include both sides of fight 2.
   - `arena.rs` (DA-F2) checks that every arena row stands on occluder terrain

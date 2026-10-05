@@ -165,8 +165,9 @@ fn refuse_unbound_npc_method(
 /// the "NPC with no witnesses" warning — that signal indicates a routing bug
 /// for ghost entities, which doesn't apply when the caller has explicitly
 /// asked for witness-only fanout. Even there the WARN is written only when a
-/// player has a stake in the NPC (`SpaceManager::player_involved`, DA-F2):
-/// an NPC-vs-NPC fight with no player present writes nothing.
+/// player is present (`SpaceManager::player_present`, DA-F2: a player has
+/// the NPC in AoI range, or a player side entity is in its fight): an
+/// NPC-vs-NPC fight with no player present writes nothing.
 pub async fn send_entity_method_to_witnesses(
     entity_id: u32,
     method_index: u16,
@@ -238,10 +239,10 @@ fn witness_audience(
             }
             let witnesses = space_mgr.get_witnesses_of(entity_id);
             // An NPC nobody watches drops the method by design. It is only
-            // a fault when a player has a stake in the NPC (DA-F2:
-            // `SpaceManager::player_involved`); NPC-vs-NPC with no player
-            // writes nothing.
-            if witnesses.is_empty() && space_mgr.player_involved(entity_id, None) {
+            // a fault when a player is present: in AoI range of the NPC, or
+            // in its fight (DA-F2: `SpaceManager::player_present`).
+            // NPC-vs-NPC with no player around writes nothing.
+            if witnesses.is_empty() && space_mgr.player_present(entity_id, None) {
                 tracing::warn!(
                     target: "abilities.wire",
                     event = "wire_npc_no_witnesses",

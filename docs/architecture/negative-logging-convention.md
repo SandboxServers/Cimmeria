@@ -282,7 +282,7 @@ warmup ability is the warmup tick, not the launch (AT-10).
 | `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
 | `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
 | `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
-| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is involved (the target, or a threat-list entry, is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_involved`, DA-F2). An NPC shooting an NPC with no player involved writes nothing | same, plus `sequence_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter or the target within their AoI radius, or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id` |
 | `stance_not_announced` | the Ability_End reached a witness but the NPC's `BSF_InCombat` stance had not (the shot came from outside the Fighting pass, or the stance sync regressed): the client draws no muzzle flash, tracer or weapon sound | same, plus `sequence_id`, `witness_count` |
 
 This is a Pattern D seam with one deliberate difference: the throttle

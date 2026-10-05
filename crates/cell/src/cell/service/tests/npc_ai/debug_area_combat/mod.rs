@@ -20,6 +20,7 @@
 //! Skips (with a SKIPPED line) on a checkout without the navmesh or occluder.
 
 mod arena;
+mod arena_pull_map;
 mod cover;
 mod death_respawn;
 mod live_db;

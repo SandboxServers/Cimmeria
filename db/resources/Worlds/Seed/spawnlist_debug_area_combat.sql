@@ -20,14 +20,18 @@
 -- sink through to the lakebed at y -52 while NPCs stand on the navmesh on top
 -- of it. The shelf is terrain (occluder layer Terrain, navmesh within 0.01 u)
 -- and no fluid volume reaches it, but it is the floor of a ruin: its low walls
--- block sight at eye height almost everywhere. The rows below are the only
--- 24 u, 3-against-3 layout on it whose nine sight lines are clear with 1 u to
--- spare on both sides (a grid search on ihpet_crater_light.occ): the strip
--- between the long east-west wall at z -736 and the south edge wall at z -749.
+-- block sight at eye height almost everywhere. Fight 1 stands in the strip
+-- between the long east-west wall at z -736 and the south edge wall at z -749,
+-- the one place a 24 u, 3-against-3 line has clear sight (a grid search on
+-- ihpet_crater_light.occ). Its rows are 3 u apart (z -738/-741/-744): with the
+-- third pair at z -746 the third NID guard saw past the long wall's west end
+-- and pulled a tester in the fight-2 room (#1244 review). The pull-map test
+-- (debug_area_combat/arena_pull_map.rs) sweeps the navmesh around the shelf
+-- and allows a NID pull only inside the strip.
 -- The south edge is a 3-14 u drop; the way on is from the east, through the
 -- gap at x 390-400, z -738..-744, where DA-08's faction-yard ring pad stands
 -- (394, -738). Fight 1: the NID squad on x 354 faces the Praxis squad on x 378,
--- 24 u apart, inside both sides' 30 u aggro radius. The NID guards stay 40 u
+-- 24 u apart, inside both sides' aggro radius (NID 30 u, Praxis 28 u). The NID guards stay 40 u
 -- from that pad, so a player who rings in is not pulled; one who walks west
 -- past the Praxis line comes within 30 u of the guards and joins on the Praxis
 -- side. A player watching within 150 u (AoI) starts the fight. Fight 2, which
@@ -35,11 +39,11 @@
 -- every NID guard: the Green Sniper pair on x 364 against the Yellow Faction
 -- pair on x 343, 21 u apart. Neither fight-2 side targets players.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13600, 378, -11.12, -738, -1.5708, 1300, 1370, 'DebugArea_Arena_Praxis1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13601, 378, -11.12, -742, -1.5708, 1300, 1371, 'DebugArea_Arena_Praxis2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13602, 378, -11.12, -746, -1.5708, 1300, 1370, 'DebugArea_Arena_Praxis3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13601, 378, -11.12, -741, -1.5708, 1300, 1371, 'DebugArea_Arena_Praxis2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13602, 378, -11.12, -744, -1.5708, 1300, 1370, 'DebugArea_Arena_Praxis3', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13603, 354, -11.12, -738, 1.5708, 1300, 1372, 'DebugArea_Arena_NID1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13604, 354, -11.12, -742, 1.5708, 1300, 1372, 'DebugArea_Arena_NID2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13605, 354, -11.12, -746, 1.5708, 1300, 1372, 'DebugArea_Arena_NID3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13604, 354, -11.12, -741, 1.5708, 1300, 1372, 'DebugArea_Arena_NID2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13605, 354, -11.12, -744, 1.5708, 1300, 1372, 'DebugArea_Arena_NID3', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13610, 364, -11.12, -700, -1.5708, 1300, 1373, 'DebugArea_Arena_Green1', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13611, 364, -11.12, -696, -1.5708, 1300, 1373, 'DebugArea_Arena_Green2', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13612, 343, -11.12, -700, 1.5708, 1300, 1374, 'DebugArea_Arena_Yellow1', NULL);

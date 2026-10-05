@@ -268,41 +268,66 @@ async fn an_npc_attack_nobody_can_see_warns_no_witnesses() {
     assert!(warns[0].has_field("sequence_id", "15"), "{:?}", warns[0]);
 }
 
+/// An NPC at `npc_pos` that knows the fixture ability, and an NPC target
+/// 15 u further along z, both created after the fixture's AoI pass.
+fn npc_pair(mgr: &mut SpaceManager, npc: u32, target: u32, npc_pos: [f32; 3]) {
+    mgr.create_entity(npc, "Castle_CellBlock", npc_pos, [0.0; 3])
+        .unwrap();
+    arm_npc(mgr, npc, ABILITY, Some(EVENT_SET));
+    let t = [npc_pos[0], npc_pos[1], npc_pos[2] + 15.0];
+    mgr.create_entity(target, "Castle_CellBlock", t, [0.0; 3])
+        .unwrap();
+}
+
+async fn npc_fires_at(mgr: &mut SpaceManager, npc: u32, target: u32) {
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(
+        handle_use_ability(npc, ABILITY, target as i32, &tx, mgr).await,
+        "control: the NPC's cast commits"
+    );
+}
+
 /// **Regression guard (DA-F2, colo 2026-10-05).** The Debug Area arena's
 /// NPC-vs-NPC shots wrote `outcome=no_witnesses` WARNs whenever no player
 /// was near (Praxis Jaffa Guard -> NID Guard, Yellow Faction -> Green
-/// Sniper). Owner decision: an NPC shooting an NPC with no player involved
-/// writes nothing. Same unseen shooter as the test above, but the target is
-/// a second unseen NPC. The test above is the player-involved half (the
-/// target is player 1) and must keep its WARN. Fails when the
-/// `player_involved` gate in `sequence.rs` is reverted.
+/// Sniper). Owner decision: an NPC shooting an NPC with no player present
+/// writes nothing. The pair stands 400 u from both players, outside their
+/// 100 u AoI. Fails when the `player_present` gate in `sequence.rs` is
+/// reverted.
 #[tokio::test]
-async fn an_npc_shooting_an_npc_nobody_can_see_writes_nothing() {
-    const UNSEEN_NPC: u32 = 6;
-    const UNSEEN_TARGET: u32 = 7;
+async fn an_npc_shooting_an_npc_with_no_player_near_writes_nothing() {
     let mut mgr = scene();
-    arm_npc(&mut mgr, UNSEEN_NPC, ABILITY, Some(EVENT_SET));
-    mgr.create_entity(
-        UNSEEN_TARGET,
-        "Castle_CellBlock",
-        [0.0, 0.0, 15.0],
-        [0.0; 3],
-    )
-    .unwrap();
-    assert!(
-        mgr.get_witnesses_of(UNSEEN_NPC).is_empty(),
-        "fixture: nobody sees the new NPC yet"
-    );
+    npc_pair(&mut mgr, 6, 7, [0.0, 0.0, 400.0]);
     let logs = LogCapture::install();
 
-    let (tx, _rx) = mpsc::channel(256);
-    assert!(
-        handle_use_ability(UNSEEN_NPC, ABILITY, UNSEEN_TARGET as i32, &tx, &mut mgr).await,
-        "control: the NPC's cast commits"
-    );
+    npc_fires_at(&mut mgr, 6, 7).await;
 
     assert!(
         sequence_warns(&logs.all(), "no_witnesses").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+}
+
+/// The other half of the rule (#1244 review): the same NPC-vs-NPC shot 10 u
+/// from the players, whose witness sets have not picked the pair up yet. A
+/// player is present, so the empty witness list is a fault and WARNs. Fails
+/// if the gate checks involvement only.
+#[tokio::test]
+async fn an_npc_shooting_an_npc_beside_a_player_with_a_stale_witness_set_warns() {
+    let mut mgr = scene();
+    npc_pair(&mut mgr, 6, 7, [0.0, 0.0, 10.0]);
+    assert!(
+        mgr.get_witnesses_of(6).is_empty(),
+        "fixture: nobody's witness set has the new NPC yet"
+    );
+    let logs = LogCapture::install();
+
+    npc_fires_at(&mut mgr, 6, 7).await;
+
+    assert_eq!(
+        sequence_warns(&logs.all(), "no_witnesses").len(),
+        1,
         "{:#?}",
         logs.all()
     );

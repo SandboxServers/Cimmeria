@@ -341,7 +341,7 @@ fn no_witness_warns(logs: &crate::test_support::LogCaptureGuard) -> usize {
 /// NPC-vs-NPC fights wrote `wire_npc_no_witnesses` WARNs for every health
 /// and state update while no player was near. Owner decision: with no
 /// player involved the drop writes nothing, at any level. Fails when the
-/// `player_involved` gate in `witness_audience` is reverted.
+/// `player_present` gate in `witness_audience` is reverted.
 #[tokio::test]
 async fn an_npc_only_fight_nobody_watches_writes_no_witness_warn() {
     let mgr = npc_fight_nobody_watches();
@@ -369,6 +369,27 @@ async fn an_npc_only_fight_nobody_watches_writes_no_witness_warn() {
 async fn an_unseen_npc_a_player_is_fighting_still_warns() {
     let mut mgr = npc_fight_nobody_watches();
     mgr.get_entity_mut(10).unwrap().threat_list.insert(1, 5.0);
+    let (tx, _rx) = mpsc::channel(64);
+    let logs = crate::test_support::LogCapture::install();
+
+    send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
+
+    assert_eq!(no_witness_warns(&logs), 1, "{:#?}", logs.all());
+}
+
+/// **Review probe (#1244).** The WARN's own fault case: a player stands
+/// 30 u from the NPC, inside their AoI, but the witness set is stale (no AoI
+/// pass since they arrived), so the send finds no witness. The player is not
+/// fighting the NPC. They are present, so the drop is a fault and WARNs.
+/// Fails if the gate checks involvement only (it wrote 0 WARNs then).
+#[tokio::test]
+async fn a_player_in_range_with_a_stale_witness_set_still_warns() {
+    let mut mgr = npc_fight_nobody_watches();
+    mgr.update_position_preserving_facing(1, [30.0, 0.0, 0.0], [0.0; 3]);
+    assert!(
+        mgr.get_witnesses_of(10).is_empty(),
+        "fixture: the witness set is stale"
+    );
     let (tx, _rx) = mpsc::channel(64);
     let logs = crate::test_support::LogCapture::install();
 
