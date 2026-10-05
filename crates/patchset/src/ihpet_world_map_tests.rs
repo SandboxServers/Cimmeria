@@ -133,6 +133,32 @@ fn the_new_transform_round_trips_beside_the_old_ones() {
     assert_eq!(serde_json::from_str::<Transform>(&json).unwrap(), t);
 }
 
+/// The `Transform` of the launchers that predate 013, as published: two unit
+/// variants. Reading the committed recipe with it is what such a launcher does.
+#[test]
+fn a_launcher_with_the_old_transform_enum_rejects_the_committed_recipe_by_name() {
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    #[allow(dead_code)]
+    enum OldTransform {
+        None,
+        UpkNormalize,
+    }
+    #[derive(Debug, serde::Deserialize)]
+    #[allow(dead_code)]
+    struct OldSource {
+        transform: OldTransform,
+    }
+    let (_, mut z) = recipe(ID);
+    let json: serde_json::Value =
+        serde_json::from_slice(&entry(&mut z, crate::recipe::RECIPE_NAME)).unwrap();
+    let source = json["ops"][0]["sources"][0].clone();
+    let err = serde_json::from_value::<OldSource>(source)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unknown variant `world_map_rebake`"), "{err}");
+}
+
 fn recipe_json(transform: &str) -> String {
     format!(
         r#"{{"schema":1,"ops":[{{"target":"a.bin","sources":[{{"path":"a.bin","sha256":"00","transform":{transform}}}],"delta":"deltas/000.bsdiff","result_sha256":"00"}}]}}"#
