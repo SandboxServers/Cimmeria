@@ -17,7 +17,7 @@ use cimmeria_cell_world::cell::effects::registry::EffectScripts;
 use cimmeria_cell_world::cell::plugin::CellPlugins;
 use cimmeria_common::ServerConfig;
 
-use super::messages::{BaseToCellMsg, CellToBaseMsg};
+use super::messages::{BaseToCellMsg, CellToBaseMsg, EntityLabelsRequest};
 
 // `pub(crate)` so the mission-relog guards (`cell::content_tests`) can drive
 // the real `player_init::mission_restore` hydration instead of a hand-built
@@ -49,6 +49,11 @@ pub struct CellService {
 
     /// Sender for messages to BaseApp (set by orchestrator before start).
     pub(crate) cell_to_base_tx: Option<mpsc::Sender<CellToBaseMsg>>,
+
+    /// The telemetry ingest's entity-label questions (NT-40), on a channel
+    /// of their own so the public ingest never shares the gameplay queue.
+    /// The loop reads it only when no gameplay message is waiting.
+    pub(crate) entity_labels_rx: Option<mpsc::Receiver<EntityLabelsRequest>>,
 
     /// Path to the entities directory for loading space XML files.
     pub(crate) entities_dir: String,
@@ -88,6 +93,7 @@ impl CellService {
             is_running: false,
             base_to_cell_rx: None,
             cell_to_base_tx: None,
+            entity_labels_rx: None,
             entities_dir: "entities".to_string(),
             db_pool: None,
             cell_loop_handle: None,
@@ -135,6 +141,13 @@ impl CellService {
         self.cell_to_base_tx = Some(tx);
     }
 
+    /// Wire in the telemetry ingest's entity-label channel (NT-40). Called
+    /// by the orchestrator before `start()`; without it the cell answers no
+    /// label questions and the ingest replays rows unnamed.
+    pub fn set_entity_labels_channel(&mut self, rx: mpsc::Receiver<EntityLabelsRequest>) {
+        self.entity_labels_rx = Some(rx);
+    }
+
     /// Get a clone of the CellToBase sender (for minigame result routing).
     pub fn cell_to_base_tx(&self) -> Option<mpsc::Sender<CellToBaseMsg>> {
         self.cell_to_base_tx.clone()
@@ -163,6 +176,7 @@ impl CellService {
         }
         self.base_to_cell_rx = None;
         self.cell_to_base_tx = None;
+        self.entity_labels_rx = None;
         self.is_running = false;
         tracing::trace!("Cell service stopped");
     }

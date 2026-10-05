@@ -189,6 +189,34 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Client telemetry names its entity IDs by asking the cell who held each
+    // slot when the row was written (NT-40). The upload routes have no router
+    // state (they are also on the public login port), so the ingest gets its
+    // own small label channel to the cell here, once. Never `cell_tx`: the
+    // ingest is reachable from the internet and must not share the gameplay
+    // queue.
+    {
+        let state = orch.state();
+        let labels_tx = state.read().await.entity_labels_tx.clone();
+        let symbols = cimmeria_admin_api::routes::telemetry::load_client_symbols();
+        match labels_tx {
+            Some(tx) => {
+                cimmeria_admin_api::routes::telemetry::connect_entity_labels(tx);
+                tracing::info!(
+                    target: "launcher.ingest",
+                    client_symbols = symbols,
+                    "client telemetry ingest names entity IDs through the cell's label channel"
+                );
+            }
+            None => tracing::warn!(
+                target: "launcher.ingest",
+                client_symbols = symbols,
+                reason = "no_label_channel",
+                "client telemetry ingest has no label channel; entity IDs replay unnamed"
+            ),
+        }
+    }
+
     // Spawn background audit writer to persist login events to the database.
     {
         let state = orch.state();

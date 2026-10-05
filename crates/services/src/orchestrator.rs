@@ -20,7 +20,9 @@ use tokio::sync::broadcast;
 use crate::audit::{LoginEvent, LoginEventBuffer};
 use crate::auth::{AuthService, ShardInfo};
 use crate::base::BaseService;
-use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
+use crate::cell::messages::{
+    BaseToCellMsg, CellToBaseMsg, EntityLabelsRequest, ENTITY_LABEL_CHANNEL_CAPACITY,
+};
 use crate::cell::CellService;
 use crate::database::DatabasePool;
 use crate::orchestrator_postgres::ensure_postgresql_running;
@@ -67,6 +69,11 @@ pub struct ServerState {
 
     /// Sender to the CellService message loop (for admin-triggered reload, etc.).
     pub cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+
+    /// Sender for the telemetry ingest's entity-label questions (NT-40): a
+    /// small channel of its own, separate from `cell_tx`, because the ingest
+    /// is reachable from the internet and must never fill the gameplay queue.
+    pub entity_labels_tx: Option<mpsc::Sender<EntityLabelsRequest>>,
 }
 
 /// Service orchestrator that coordinates startup, shutdown, and state access.
@@ -141,6 +148,9 @@ impl Orchestrator {
         let (cell_to_base_tx, cell_to_base_rx) = mpsc::channel::<CellToBaseMsg>(256);
         let cell_tx_for_admin = base_to_cell_tx.clone();
         cell.set_channels(base_to_cell_rx, cell_to_base_tx);
+        let (entity_labels_tx, entity_labels_rx) =
+            mpsc::channel::<EntityLabelsRequest>(ENTITY_LABEL_CHANNEL_CAPACITY);
+        cell.set_entity_labels_channel(entity_labels_rx);
         base.set_cell_channel(base_to_cell_tx, cell_to_base_rx);
 
         let state = ServerState {
@@ -151,6 +161,7 @@ impl Orchestrator {
             start_time: Instant::now(),
             config,
             cell_tx: Some(cell_tx_for_admin),
+            entity_labels_tx: Some(entity_labels_tx),
         };
 
         tracing::trace!("Orchestrator constructed");

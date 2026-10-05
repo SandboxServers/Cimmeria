@@ -28,7 +28,6 @@ use std::sync::{Mutex, PoisonError};
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::TelemetryEvent;
-use super::replay::{replay_ndjson_gated, ReplayCounts, ReplayError};
 
 /// Budget window.
 pub(super) const WINDOW_SECS: i64 = 60;
@@ -188,20 +187,24 @@ const PRIORITY_PREFIXES: &[&str] = &[
     "client.ability.",
 ];
 
-/// Replay one chunk for `claims.sid` at `now_secs` under the process-wide
-/// ledger: what the upload handler calls. Returns the chunk's counts and
-/// the session's totals after it.
-pub(super) fn replay_budgeted(
+/// Decide, for each event of one parsed chunk of `claims.sid` at
+/// `now_secs`, whether it replays, against the process-wide ledger: what
+/// the upload handler calls before naming anything, so a session over its
+/// budget costs the cell nothing for rows it won't replay. Returns the
+/// decisions and the session's totals after them.
+pub(super) fn admit_budgeted(
     claims: &TokenClaims,
-    ndjson: &str,
+    events: &[TelemetryEvent],
     now_secs: i64,
-) -> Result<(ReplayCounts, SessionTotals), ReplayError> {
-    let counts = replay_ndjson_gated(claims, ndjson, |ev| {
-        let priority = is_priority(ev);
-        with_ledger(|l| l.admit(&claims.sid, priority, now_secs))
-    })?;
+) -> (Vec<bool>, SessionTotals) {
+    let admitted = with_ledger(|l| {
+        events
+            .iter()
+            .map(|ev| l.admit(&claims.sid, is_priority(ev), now_secs))
+            .collect()
+    });
     let totals = with_ledger(|l| l.totals(&claims.sid)).unwrap_or_default();
-    Ok((counts, totals))
+    (admitted, totals)
 }
 
 /// Whether an event is replayed even over budget.

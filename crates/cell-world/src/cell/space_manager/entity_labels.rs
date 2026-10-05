@@ -11,6 +11,10 @@ use std::time::SystemTime;
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::name_intern::intern_opt;
 
+use crate::cell::messages::{
+    EntityLabelQuery, EntityLabelsReply, EntityLabelsRequest, ENTITY_LABEL_QUERY_CAP,
+};
+
 use super::departed_ring::DepartedEntity;
 use super::SpaceManager;
 
@@ -119,7 +123,12 @@ impl SpaceManager {
     /// row (NT-40) maps the row onto the server clock first, from the
     /// server's receive time or a per-session clock offset, and never
     /// passes the client's time raw.
-    pub fn entity_label_at(&self, space_id: u32, entity_id: u32, at: SystemTime) -> Option<&str> {
+    pub fn entity_label_at(
+        &self,
+        space_id: u32,
+        entity_id: u32,
+        at: SystemTime,
+    ) -> Option<&'static str> {
         if let Some(e) = self
             .spaces
             .get(&space_id)
@@ -132,6 +141,33 @@ impl SpaceManager {
         self.departed
             .alive_at(space_id, entity_id, at)
             .and_then(|d| d.label)
+    }
+
+    /// Answer an [`EntityLabelsRequest`] from the telemetry ingest (NT-40),
+    /// unless the ingest already stopped waiting for it: then the answer
+    /// would go nowhere, so none is computed. Returns whether it answered.
+    pub fn answer_entity_labels(&self, req: EntityLabelsRequest) -> bool {
+        if req.reply_tx.is_closed() {
+            return false;
+        }
+        req.reply_tx
+            .send(self.entity_labels_at(&req.queries))
+            .is_ok()
+    }
+
+    /// One [`Self::entity_label_at`] per query, in order. Queries past
+    /// [`ENTITY_LABEL_QUERY_CAP`] get `None`, so one telemetry chunk can't
+    /// stall the tick.
+    pub fn entity_labels_at(&self, queries: &[EntityLabelQuery]) -> EntityLabelsReply {
+        queries
+            .iter()
+            .enumerate()
+            .map(|(i, q)| {
+                (i < ENTITY_LABEL_QUERY_CAP)
+                    .then(|| self.entity_label_at(q.space_id, q.entity_id, q.at))
+                    .flatten()
+            })
+            .collect()
     }
 
     /// What the ring needs about a live entity, taken before it is

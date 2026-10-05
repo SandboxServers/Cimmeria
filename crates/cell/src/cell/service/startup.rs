@@ -593,6 +593,7 @@ impl CellService {
         // Take ownership of channels for the message processing loop
         let rx = self.base_to_cell_rx.take();
         let tx = self.cell_to_base_tx.clone();
+        let mut labels_rx = self.entity_labels_rx.take();
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             // Stash a shutdown signal so `stop()` can ask the loop to exit
@@ -602,6 +603,7 @@ impl CellService {
             let handle = tokio::spawn(async move {
                 super::message_loop::run_cell_loop(
                     &mut rx,
+                    &mut labels_rx,
                     &tx,
                     space_mgr,
                     engine,

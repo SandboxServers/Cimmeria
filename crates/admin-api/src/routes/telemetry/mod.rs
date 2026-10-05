@@ -39,15 +39,29 @@
 //! - [`replay`] — replaying each uploaded event through `tracing` with
 //!   the session's identity and kind; the client-side rows land in the
 //!   `cimmeria-client` SigNoz service.
+//! - [`replay_native`] — one injected-DLL row, its IDs named (NT-40):
+//!   content IDs from the NameBook, method indexes and message ids from the
+//!   NT-30 wire tables, addresses from [`client_symbols`].
+//! - [`entity_labels`] — naming entity IDs, which needs the cell: the
+//!   row's time on the server clock, its space, and one query per chunk.
+//! - [`client_symbols`] — SGW.exe function names for native addresses,
+//!   from the committed `client_symbols.tsv`.
 //! - [`session_budget`] — per-session accepted/suppressed totals and the
 //!   runaway-client guard (a per-minute event budget past which only
 //!   warn/error and boot events are replayed, reported at `warn`).
 
+mod client_symbols;
 mod dto;
+mod entity_labels;
 mod handlers;
 mod replay;
+mod replay_native;
 mod session_budget;
 
+#[cfg(test)]
+mod entity_labels_tests;
+#[cfg(test)]
+mod replay_names_tests;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -55,7 +69,9 @@ mod session_budget_tests;
 #[cfg(test)]
 mod tests;
 
-pub use replay::{replay_ndjson, ReplayCounts, ReplayError};
+pub use client_symbols::load_client_symbols;
+pub use entity_labels::{connect_entity_labels, EntityLabelLink};
+pub use replay::{replay_ndjson, replay_ndjson_named, ReplayCounts, ReplayError};
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
