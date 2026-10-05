@@ -121,8 +121,17 @@ fn only_the_allowed_files_mention_the_summary_consent_flag() {
         "storage/mod.rs",
     ];
     // `host.rs` carries the saved value over when it seeds the default install
-    // directory; `host/summary.rs` sets it in its own tests.
-    const SHELL: &[&str] = &["host.rs", "host/summary.rs"];
+    // directory; `host/summary.rs` sets it in its own tests. The other two are
+    // test code in files this scan does not recognise as tests: the adoption
+    // UAT bridge reports and flips the value to show an adoption leaves it
+    // alone, and the game-telemetry host asserts its own choice does not
+    // touch it. Neither reads it in production.
+    const SHELL: &[&str] = &[
+        "host.rs",
+        "host/adoption/uat_bridge.rs",
+        "host/game_telemetry.rs",
+        "host/summary.rs",
+    ];
     fn is_test(path: &Path) -> bool {
         let name = path.file_name().unwrap().to_string_lossy();
         name == "tests.rs"

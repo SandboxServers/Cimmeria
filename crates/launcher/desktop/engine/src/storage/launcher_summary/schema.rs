@@ -118,6 +118,9 @@ impl SummaryOperation {
             OperationKind::Launch => Some(Self::Launch),
             // Adoption of an existing installation has no schema v1 value.
             OperationKind::Adopt => None,
+            // Nor has a game update: the ingest accepts the exact v1 set
+            // and would reject a sixth operation.
+            OperationKind::Update => None,
         }
     }
 }

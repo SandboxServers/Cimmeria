@@ -26,7 +26,7 @@ async fn a_queued_row_is_posted_once_and_removed() {
     assert_eq!(sent.summaries, rows);
     assert_eq!(sent.client_dropped, DroppedCounts::default());
     assert_eq!(stored(&rig.owner()).entries, []);
-    assert_eq!(rig.probe.sleeps(), []);
+    assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new());
     // The row is gone, so the next cycle has nothing to send.
     assert_eq!(rig.cycle().await, CycleOutcome::Empty);
     assert_eq!(rig.paths().await, [INGEST]);
@@ -121,7 +121,7 @@ async fn a_body_refused_for_good_is_dropped_and_counted() {
         assert_eq!(on_disk.entries, [], "{status}");
         assert_eq!(on_disk.dropped.rejected, 2, "{status}");
         assert_eq!(rig.paths().await, [INGEST], "{status}: no retry");
-        assert_eq!(rig.probe.sleeps(), [], "{status}");
+        assert_eq!(rig.probe.sleeps(), Vec::<Duration>::new(), "{status}");
     }
 }
 

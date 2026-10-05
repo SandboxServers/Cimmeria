@@ -32,6 +32,7 @@ fn admitted() -> (tempfile::TempDir, DesktopState, Clock, Plan) {
         resources: Resources {
             helper: Artifact::open(helper, &hash).unwrap(),
             client_patches: None,
+            client_telemetry: None,
             graphics: None,
         },
     };
