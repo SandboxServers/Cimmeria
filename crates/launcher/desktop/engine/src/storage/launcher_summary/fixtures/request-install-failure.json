@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "client_dropped": {
+    "overflow": 0,
+    "expired": 0,
+    "rejected": 0
+  },
+  "summaries": [
+    {
+      "event_id": "00000000-0000-4000-8000-000000000002",
+      "attempt_id": "00000000-0000-4000-8000-000000000001",
+      "operation": "install",
+      "phase": "running",
+      "outcome": "failed",
+      "error_code": "install_failed",
+      "duration_ms": 12,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 12
+        },
+        {
+          "phase": "running",
+          "duration_ms": 0
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  ]
+}

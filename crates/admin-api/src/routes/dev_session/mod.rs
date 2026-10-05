@@ -31,7 +31,10 @@
 //! needs a launcher-side handshake.
 //!
 //! `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every mint and refresh
-//! return 503 with `Retry-After: 60`.
+//! return 503 with `Retry-After: 60`. The anonymous launcher-summary
+//! ingest ([`crate::routes::telemetry::launcher_summary_routes`]) takes no
+//! token from here, but obeys the same switch and counts its per-address
+//! quota in a [`quota::WindowTable`].
 //!
 //! # Module layout
 //!
@@ -63,10 +66,34 @@ pub use token::{
     SESSION_KIND_LAB, SESSION_KIND_PLAYER,
 };
 
+pub(crate) use handlers::{env_u32, kill_switch_active};
 pub(crate) use token::load_secret;
 
+// The launcher-summary ingest was the one reader of the mint's policy
+// outside this module, for the quota window. It has its own window now, so
+// only tests name the type from outside: `mint_for_test` below, and the
+// summary test that shows the two windows are separate.
+#[cfg(test)]
+pub(crate) use handlers::QuotaPolicy;
 #[cfg(test)]
 pub use token::env_lock;
+
+/// Mint through the real path with fresh quota tables, for the tests of
+/// the launcher-summary ingest under [`crate::routes::telemetry`]: they
+/// show that a real player or lab token changes nothing on that anonymous
+/// route, and a token built by hand would not notice a change to what the
+/// mint issues. The caller holds [`env_lock`] and has set the HMAC secret.
+#[cfg(test)]
+pub(crate) fn mint_for_test(req: DevSessionRequest) -> Result<DevSessionResponse, AuthError> {
+    handlers::mint_inner(
+        &handlers::Tables::new(),
+        &QuotaPolicy::from_env(),
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        req,
+        std::time::Instant::now(),
+        chrono::Utc::now().timestamp(),
+    )
+}
 
 /// Request-body cap for both routes. The `Json` extractor reads and
 /// deserializes the body before any quota is charged, so axum's 2 MiB

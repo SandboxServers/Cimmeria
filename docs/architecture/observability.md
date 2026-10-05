@@ -185,11 +185,17 @@ replayed by the telemetry ingest (`/api/telemetry/upload-*`, see
 [dev-session-telemetry.md](dev-session-telemetry.md)), is data about the
 client, not the server, so it has a service of its own and the other three
 reject it at every level. The targets are `otel::CLIENT_TARGETS`:
-`client.native` (the injected `cimmeria-client-telemetry` DLL's events) and
+`client.native` (the injected `cimmeria-client-telemetry` DLL's events),
 the game-log lines the launcher tails (`launcher.client_log`,
-`launcher.debug_log`, `launcher.session_meta`). The ingest's own account
-of an upload (`launcher.ingest`, `launcher.bundle`) and the mint rows stay
-in `cimmeria-server`; `launcher.key_dump` stays `off`. Client rows ship at
+`launcher.debug_log`, `launcher.session_meta`), and `launcher.summary`:
+the desktop launcher's self-reported rows, one per install, runtime-setup,
+repair, uninstall or launch attempt. Those arrive through the anonymous
+`/api/telemetry/launcher-summary` route, not an upload, so they carry no
+`session_id` or `install_id`
+([launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The
+ingest's own account of an upload (`launcher.ingest`, `launcher.bundle`)
+and the mint rows stay in `cimmeria-server`; `launcher.key_dump` stays
+`off`. Client rows ship at
 every level the client sent, TRACE included: the DLL already throttled and
 paid for the upload, and a client WARN is not a server problem.
 

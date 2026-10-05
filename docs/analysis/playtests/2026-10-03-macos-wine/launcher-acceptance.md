@@ -21,7 +21,7 @@ No merge, deployment, release publication or force-push is authorized.
 |---|---|---|
 | Updater / `launcher/updater-apply` | Updater apply engine, platform handoff, host and Settings wiring | Verified native package Apply, restart/version acknowledgment and failure recovery |
 | Integration owner | Shared extraction preflight, contracts, registrations, CI, indexes and integrated UAT | Windows cabinet validation; adoption integration; updater Apply/recovery; effective configuration and game Update |
-| External Windows observability track | Summary schema, queue/export, ingestion and query fixtures | Discovery integrated; fresh implementation assignment recorded; do not duplicate reserved work |
+| External Windows observability track | Summary schema, queue/export, ingestion and query fixtures | Implemented, inert, activation gated on draft PR #1205 ([handoff](worknotes/observability.md)); native Windows/macOS CI result and integration remain |
 
 Repair, Launch, migration-import UI, adoption reference preparation and signed
 updater check/download workers have completed their packets. Workers isolate shared-file changes in separate
@@ -60,7 +60,7 @@ documented fixture scopes. These are not gameplay or release evidence.
 - Shared RAR/cabinet name preflight is committed in `198573ce7`. Mac tests and
   engine clippy passed; Windows FDI tests passed in run `37219800831`, while the
   rebuilt-helper Wine validation is pending.
-  Observability remains reserved for the external Windows track.
+  Observability is implemented, inert and activation gated on draft PR #1205.
 - Retained adoption references are integrated as `211226a8`/`2857705a7`; isolated
   real RAR/CAB helper fixtures passed on the worker's earlier helper. Latest local
   engine suite passes 363 tests (18 ignored) after a narrow lock-release fix.
@@ -79,8 +79,8 @@ documented fixture scopes. These are not gameplay or release evidence.
 | Repair | Integrated with review fixes; production preparation/commit/cleanup JS UAT passed | Native visual and original-client repair UAT |
 | Confirmed uninstall | Existing Settings confirmation and native ownership checks | Integrated confirmation/dismiss/removal/recovery UAT; integration |
 | Signed GitHub manifest patch notes | Actual Tauri tab rendered seven verified entries; wrong-key rejection observed | Refresh/reconnect after integrated changes; integration |
-| Default-off optional summary consent | Separate persisted preference; exporter absent | Consent preservation plus local exporter race/failure evidence; external track and integration |
-| Focused observability | Discovery reviewed and integrated; implementation assignment recorded | Full bounded producer-to-local-ingestion/query fixture; external track |
+| Default-off optional summary consent | Separate persisted preference; exporter implemented, inert, activation gated, with local opt-out race and failure-isolation tests | Native Windows/macOS CI result; consent copy and frontend UAT in the rollout packet; integration |
+| Focused observability | Implemented, inert, activation gated: producer, queue, exporter, anonymous strict ingest and offline-guarded query fixtures ([handoff](worknotes/observability.md)) | Production endpoint (https, publicly trusted certificate), decided with the rollout; fixtures checked against a live SigNoz; integration. The owner approved the public login-port mount and set the limit at 12 requests a minute per address on 2026-10-04 |
 | Migration and identity/consent preservation | Explicit settings import and verified-copy foundation integrated | Published-client adoption, effective settings, UI, permanent owner/current release and game Update |
 | Single updater owner and version/asset mapping | Native minimum gates and signed check/download integrated; composed persistence UAT passed | Apply/restart/rollback, resume, production configuration and Windows replacement parity |
 | Tests, docs and project memory | Existing baseline artifacts | Per-packet guards, fresh bounded review, matching docs/indexes and findings |
@@ -110,4 +110,9 @@ installed-state adoption remain outstanding. See the linked worknotes above.
 External observability discovery `56b2599aa` is integrated. The
 [implementation assignment](worknotes/observability-implementation-assignment.md)
 records current shared ownership, endpoint disabled, separate public-mount review
-and the requirement to retain bounded phase-duration evidence.
+and the requirement to retain bounded phase-duration evidence. The
+[implementation handoff](worknotes/observability.md) records the result on draft
+PR #1205: implemented, inert, activation gated. On 2026-10-04 the owner approved
+the public login-port mount and set the rate limit at 12 requests a minute per
+address. No build has an endpoint; a production endpoint, the consent copy and
+the frontend UAT remain a later, separately decided rollout.

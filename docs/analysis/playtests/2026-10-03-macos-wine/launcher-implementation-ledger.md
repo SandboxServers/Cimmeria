@@ -657,7 +657,6 @@ pending. No local Windows compilation or real-game probe is claimed. Managed
 integration still requires helper hash/owned-root binding and supervisor deadlines.
 See [probe contracts](../../../../crates/launcher/desktop/docs/prerequisites.md).
 
-
 ### 2026-10-04: Settings Repair journey
 
 Settings connects confirmation against the saved installation identity, retained
@@ -688,3 +687,14 @@ the coordinator's RAR/FDI preflight (`198573ce7`). Current helper rebuild, full
 published seed, effective settings/UI and owner/current-release parity remain
 required. Latest integrated local engine tests pass 363, with 18 ignored;
 this includes the owner-lock correction described in the acceptance checklist.
+
+### 2026-10-04: consented launcher summaries and anonymous ingest (packets 6 and 7)
+
+PR #1205 adds the consented summary schema, bounded queue and exporter; an anonymous strict ingest (owner decisions,
+2026-10-04: no token, exact v1 payload, 12 requests a minute per address, public login-port mount approved) writing
+`launcher.summary` rows; and unimported SigNoz fixtures. It is inert: no build configures an endpoint. See the
+[worknote](worknotes/observability.md) and [design reference](../../../architecture/launcher-summary-telemetry.md).
+Local Linux lane at `8f5e082f4`: engine 423 passed/4 ignored; admin-api plus server nextest 239 passed. CI passed
+all 22 checks, native Windows and macOS included, at `4361679e7` (the earlier token design); read the PR for the
+current head before claiming it. Open, as a later and separately decided rollout: a production endpoint (https,
+publicly trusted certificate; not the plain-HTTP login port), and the consent copy and frontend UAT.
