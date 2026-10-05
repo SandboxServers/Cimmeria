@@ -333,6 +333,34 @@ async fn an_npc_shooting_an_npc_beside_a_player_with_a_stale_witness_set_warns()
     );
 }
 
+/// **Regression guard (colo 2026-10-05, Debug Area arena).** A player at
+/// the edge of the fight sees the target but not the shooter: the target
+/// stands 140 u from the players (inside their 150 u AoI), the shooter 160 u
+/// (outside it). The shooter has no witnesses and rightly so, so no WARN.
+/// Fails when the counterpart's AoI range counts toward `player_present`.
+#[tokio::test]
+async fn an_npc_shooting_a_target_a_player_sees_from_beyond_its_own_aoi_writes_nothing() {
+    let mut mgr = scene();
+    mgr.create_entity(6, "Castle_CellBlock", [0.0, 0.0, 160.0], [0.0; 3])
+        .unwrap();
+    arm_npc(&mut mgr, 6, ABILITY, Some(EVENT_SET));
+    mgr.create_entity(7, "Castle_CellBlock", [0.0, 0.0, 140.0], [0.0; 3])
+        .unwrap();
+    assert!(
+        mgr.player_in_aoi_of(7) && !mgr.player_in_aoi_of(6),
+        "fixture: the players see the target and not the shooter"
+    );
+    let logs = LogCapture::install();
+
+    npc_fires_at(&mut mgr, 6, 7).await;
+
+    assert!(
+        sequence_warns(&logs.all(), "no_witnesses").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+}
+
 /// The fifth seam (stance): the Ability_End resolves and reaches a witness,
 /// but the NPC never had its `BSF_InCombat` stance announced, so the client
 /// draws no muzzle flash, tracer or weapon sound (colo, 2026-09-29). A Fighting
