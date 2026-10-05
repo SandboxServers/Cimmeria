@@ -22,4 +22,5 @@
 - [na36-extractor-mesh-actor-gap.md](na36-extractor-mesh-actor-gap.md) — NA36 widened the extractor to KActor/FracturedStaticMeshActor (always) + InterpActor (opt-in, off by default — doors); did NOT explain Harset's raised-platform telemetry gap or spawn 308
 - [castle-world8-layout-and-authoring.md](castle-world8-layout-and-authoring.md) — Castle floors/components/route (throne floor y 38.4, Alpha via NE ramp), Patrol point sets, empty Ogilvie moniker 8895, free id gaps
 - [npc-vs-npc-1009.md](npc-vs-npc-1009.md) — #1009: reaction table with NPC as viewer, witness-gated grid scan, dormant seekers, NPC-only kills pay nothing, Castle standoff D-CP11 spots
+- [debug-area-combat-zones-da04.md](debug-area-combat-zones-da04.md) — DA-04 world 1300: pit SW ramp is in the 4 u band, west-wing LoS spots, Z9 terrain vs nav, 559 kill math, seed-file footer trap
 - [debug-area-map-survey.md](debug-area-map-survey.md) — cover-node counts per client map; Ihpet crater floor is one component; nav vs occluder terrain heights differ up to 3.3 m; player-safe NPC-vs-NPC faction pairs

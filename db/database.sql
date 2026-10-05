@@ -308,6 +308,7 @@
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/monikers.sql
 \ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
@@ -360,6 +361,7 @@
 \ir resources/Worlds/Seed/spawn_points.sql
 \ir resources/Worlds/Seed/spawn_sets.sql
 \ir resources/Worlds/Seed/spawnlist.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
 \ir resources/Content/Seed/castle_cellblock_chains.sql
