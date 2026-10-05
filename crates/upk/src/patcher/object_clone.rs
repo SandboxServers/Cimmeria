@@ -288,6 +288,35 @@ pub fn clone_objects(
     })
 }
 
+/// Bytes of one empty `FStaticMeshComponentLODInfo` (Epic 486): `ShadowMaps`
+/// count, `ShadowVertexBuffers` count, `LightMap` type (`LMT_None` = 0).
+const EMPTY_LOD_INFO: usize = 12;
+
+/// Whether the native data after an export's property list holds no names or
+/// object refs, so it can be copied unchanged.
+///
+/// - An empty array (`LODData` on a mesh component, `SavedActorTransforms` on
+///   `SeqAct_Interp`) is a zero count.
+/// - A `StaticMeshComponent` placed without baked lighting has one empty
+///   `LODInfo` per LOD: a count, then all zeros. Region 3's ring base in
+///   `Castle_CellBlock-fffeffff` (export 1616) is this shape. A non-zero word
+///   there is a shadow map or light map, which points at textures and is
+///   refused rather than copied with stale refs.
+///
+/// Anything else is baked data this cloner does not understand.
+fn tail_copies_verbatim(class: &str, tail: &[u8]) -> bool {
+    if tail.len() <= 8 && tail.iter().all(|&b| b == 0) {
+        return true;
+    }
+    if class.ends_with("StaticMeshComponent") && tail.len() >= 4 {
+        let lods = LittleEndian::read_i32(tail);
+        return lods > 0
+            && tail.len() == 4 + lods as usize * EMPTY_LOD_INFO
+            && tail[4..].iter().all(|&b| b == 0);
+    }
+    false
+}
+
 fn clone_one(
     target: &mut PatchSession,
     source: &PatchSession,
@@ -393,21 +422,17 @@ fn clone_one(
         return err(format!("actor export {index} has no Location property"));
     }
 
-    // Native data after the property list. An empty array (LODData on a mesh
-    // component, SavedActorTransforms on SeqAct_Interp) is a zero count; anything
-    // more is baked data this cloner does not understand.
+    let class = source
+        .package
+        .export_class_name(&source.package.exports[index])
+        .to_string();
     let tail = &data[end..];
-    if tail.len() > 8 || tail.iter().any(|&b| b != 0) {
+    if !tail_copies_verbatim(&class, tail) {
         return err(format!(
             "export {index} has {} bytes of post-property data the cloner does not understand",
             tail.len()
         ));
     }
-
-    let class = source
-        .package
-        .export_class_name(&source.package.exports[index])
-        .to_string();
     let base_name = rm.target.name(name_index)?.to_string();
     let name = if name_number > 0 {
         format!("{base_name}_{}", name_number - 1)

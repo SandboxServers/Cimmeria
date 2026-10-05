@@ -299,6 +299,12 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              login on this machine (no saved UI variables), once. Action bars that \
              already exist are never changed. Changes ActionProfileDefault1.lua.",
         ),
+        "010-debug-area-rings" => (
+            "Debug Area ring transports",
+            "Adds eight working ring transport stations to the Ihpet Crater map that the \
+             GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Castle \
+             Armory ring patch (007) first.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

@@ -3,7 +3,7 @@
 //! Usage:
 //!   upk-patch roundtrip <in> <out>
 //!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
-//!             [--map SRC:DST,...] [--first-at X,Y,Z | --offset DX,DY,DZ | --anchor SRC:DST]
+//!             [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]
 //!
 //! `roundtrip` rewrites a package uncompressed with no content change.
 //! `clone-objects` copies each root (a 0-based export index in <source>) and
@@ -11,9 +11,12 @@
 //! export onto an existing target export instead of cloning it. `--anchor` places
 //! the clones relative to target actor DST as they sit relative to source actor
 //! SRC, yaw included. Coordinates are UE units. <source> may be <target_in>.
+//! `--first-at` may be repeated: each point gets its own copy of the whole root
+//! set in one session, so the tables are written once and each copy's root
+//! sequence takes its own instance number (`_Seq`, `_Seq_0`, `_Seq_1`, ...).
 //! Both refuse to overwrite <in>, and both re-open the output to verify it.
 
-use cimmeria_upk::patcher::{clone_objects, CloneRequest, PatchSession, Placement};
+use cimmeria_upk::patcher::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
 use cimmeria_upk::{extract_actors, Package};
 use std::env;
 use std::path::Path;
@@ -26,15 +29,21 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z | --offset DX,DY,DZ | --anchor SRC:DST]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
     );
     process::exit(1);
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    flags(args, name).into_iter().next()
+}
+
+/// Every value of a repeatable flag, in command-line order.
+fn flags<'a>(args: &'a [String], name: &str) -> Vec<&'a str> {
     args.windows(2)
-        .find(|w| w[0] == name)
+        .filter(|w| w[0] == name)
         .map(|w| w[1].as_str())
+        .collect()
 }
 
 fn parse_vec3(s: &str) -> [f32; 3] {
@@ -129,6 +138,44 @@ fn verify(original: &str, output: &str, changed: &[usize]) {
     );
 }
 
+/// One placement's clone summary.
+fn print_report(report: &CloneReport) {
+    for o in report.objects.iter().filter(|o| o.is_root) {
+        match o.location {
+            Some(l) => println!(
+                "cloned source export {} ({}) -> ref {} '{}' at UE ({:.1}, {:.1}, {:.1}) = game ({:.3}, {:.3}, {:.3})",
+                o.source_index,
+                o.class,
+                o.target_ref,
+                o.name,
+                l[0],
+                l[1],
+                l[2],
+                l[1] / 100.0,
+                l[2] / 100.0,
+                l[0] / 100.0
+            ),
+            None => println!(
+                "cloned source export {} ({}) -> ref {} '{}'",
+                o.source_index, o.class, o.target_ref, o.name
+            ),
+        }
+    }
+    println!(
+        "added {} name(s), {} import(s), {} export(s) from {} root(s)",
+        report.names_added,
+        report.imports_added,
+        report.exports_added,
+        report.objects.iter().filter(|o| o.is_root).count()
+    );
+    if let Some((from, to)) = report.level_actor_count {
+        println!("level actors {from} -> {to}");
+    }
+    for (parent, seq) in &report.sequences_attached {
+        println!("sequence ref {seq} attached to SequenceObjects of export {parent}");
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -146,70 +193,49 @@ fn main() {
             refuse_in_place(input, output);
             let roots = parse_indices(flag(&args, "--roots").unwrap_or_else(|| usage()));
             let mapped = parse_pairs(flag(&args, "--map").unwrap_or(""));
-            let placement = match (
-                flag(&args, "--first-at"),
+            let first_at = flags(&args, "--first-at");
+            let placements: Vec<Placement> = match (
+                first_at.is_empty(),
                 flag(&args, "--offset"),
                 flag(&args, "--anchor"),
             ) {
-                (Some(p), None, None) => Placement::FirstActorAt(parse_vec3(p)),
-                (None, Some(d), None) => Placement::Offset(parse_vec3(d)),
-                (None, None, Some(a)) => match parse_pairs(a)[..] {
-                    [(source, target)] => Placement::Anchor { source, target },
+                (false, None, None) => first_at
+                    .iter()
+                    .map(|p| Placement::FirstActorAt(parse_vec3(p)))
+                    .collect(),
+                (true, Some(d), None) => vec![Placement::Offset(parse_vec3(d))],
+                (true, None, Some(a)) => match parse_pairs(a)[..] {
+                    [(source, target)] => vec![Placement::Anchor { source, target }],
                     _ => fail("--anchor takes one SRC:DST pair"),
                 },
-                (None, None, None) => Placement::Offset([0.0; 3]),
+                (true, None, None) => vec![Placement::Offset([0.0; 3])],
                 _ => usage(),
             };
 
             let src = PatchSession::open(source).unwrap_or_else(|e| fail(&e.to_string()));
             let mut dst = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
-            let request = CloneRequest {
-                roots: &roots,
-                mapped: &mapped,
-                placement,
-            };
-            let report =
-                clone_objects(&mut dst, &src, &request).unwrap_or_else(|e| fail(&e.to_string()));
-            for o in report.objects.iter().filter(|o| o.is_root) {
-                match o.location {
-                    Some(l) => println!(
-                        "cloned source export {} ({}) -> ref {} '{}' at UE ({:.1}, {:.1}, {:.1}) = game ({:.3}, {:.3}, {:.3})",
-                        o.source_index,
-                        o.class,
-                        o.target_ref,
-                        o.name,
-                        l[0],
-                        l[1],
-                        l[2],
-                        l[1] / 100.0,
-                        l[2] / 100.0,
-                        l[0] / 100.0
-                    ),
-                    None => println!(
-                        "cloned source export {} ({}) -> ref {} '{}'",
-                        o.source_index, o.class, o.target_ref, o.name
-                    ),
-                }
-            }
-            println!(
-                "added {} name(s), {} import(s), {} export(s) from {} root(s)",
-                report.names_added,
-                report.imports_added,
-                report.exports_added,
-                report.objects.iter().filter(|o| o.is_root).count()
-            );
+            // One session for every copy: the tables are written once, and each
+            // copy's root sequence takes the next free instance number.
             let mut changed = Vec::new();
-            if let Some((from, to)) = report.level_actor_count {
-                println!("level actors {from} -> {to}");
-                changed.push(
-                    dst.level_export_index()
-                        .unwrap_or_else(|e| fail(&e.to_string())),
-                );
+            for placement in placements {
+                let request = CloneRequest {
+                    roots: &roots,
+                    mapped: &mapped,
+                    placement,
+                };
+                let report = clone_objects(&mut dst, &src, &request)
+                    .unwrap_or_else(|e| fail(&e.to_string()));
+                print_report(&report);
+                if report.level_actor_count.is_some() {
+                    changed.push(
+                        dst.level_export_index()
+                            .unwrap_or_else(|e| fail(&e.to_string())),
+                    );
+                }
+                changed.extend(report.sequences_attached.iter().map(|(parent, _)| *parent));
             }
-            for (parent, seq) in &report.sequences_attached {
-                println!("sequence ref {seq} attached to SequenceObjects of export {parent}");
-                changed.push(*parent);
-            }
+            changed.sort_unstable();
+            changed.dedup();
             let bytes = dst.finish().unwrap_or_else(|e| fail(&e.to_string()));
             std::fs::write(output, &bytes).unwrap_or_else(|e| fail(&e.to_string()));
             println!("wrote {output} ({} bytes, uncompressed)", bytes.len());

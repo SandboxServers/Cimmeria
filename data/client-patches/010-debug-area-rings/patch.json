@@ -1,0 +1,14 @@
+{
+  "id": "010-debug-area-rings",
+  "title": "Debug Area ring transports",
+  "description": "Adds eight working ring transport stations to the Ihpet Crater map that the GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Castle Armory ring patch (007) first.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap", "transform": "upk_normalize"},
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap"}
+      ]
+    }
+  ]
+}

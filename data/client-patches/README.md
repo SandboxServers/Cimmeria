@@ -29,6 +29,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
 | `008-dialog-portraits` | **Supersedes 001.** The same five dialog-portrait files, shipped whole instead of as deltas, so it applies to any client: stock, Project Giza, or one that already carries a hand-installed portrait fix | 5 whole files | 93 KB |
 | `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.7 KB |
+| `010-debug-area-rings` | Eight working ring transport rigs in the Debug Area (world 1300), on the Ihpet_Crater_Light map (see below). **Needs 007 applied first** | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -93,6 +94,59 @@ module loads that file after `ActionProfiles.lua`.
   the v26 pack's `ActionProfiles.lua`, to also run it against the real
   scripts. Its stub natives raise on a wrong argument count, as the client's
   tolua shims do.
+
+### 010-debug-area-rings
+
+The ring stations of the GM-only Debug Area (DA-08,
+[debug-area.md § Ring transports](../../docs/content/debug-area.md#ring-transports)).
+One op rebuilds `Ihpet_Crater_Light-fff80002.umap`, the chunk in the
+middle of the crater, with eight copies of region 3's Castle CellBlock
+ring rig: base platform, five rings, the particle emitter and the whole
+Kismet sequence (rings rise, flash, sound, rings drop). Each copy's
+sequence took its own instance number, so the server plays one station
+at a time by object path. The console mesh is not cloned: the server's
+ring-switch entity (template 3) renders one.
+
+- **Depends on 007.** The rig's bytes come from
+  `Castle_CellBlock-fffeffff.umap`, which 007 rewrites, so the op's second
+  source is pinned to **007's result hash**, not the stock map's. Publish
+  010 with `"after": "007-castle-armory-ring"` (or later); if 007 did not
+  apply, the launcher skips 010 as a failed dependency instead of
+  refusing a non-stock source. `debug_area_rings_tests.rs` in
+  `crates/patchset` fails if the pin and 007's result ever disagree.
+- **No CME bytes.** The delta is 17 KB for a 2.26 MB map: the appended
+  objects are rebuilt from the player's own stock Ihpet chunk and 007's
+  Armory map. Its extra block (bytes not derived from either source) is
+  487 bytes compressed, 4.2 KB of short fragments.
+- **World 73 sees it too.** The live Ihpet Crater (world 73) loads the
+  same map file, so it shows the eight platforms as scenery. Nothing is
+  seeded for world 73, so none of them does anything there.
+- **Without the patch** the Debug Area consoles and trips still work, with
+  no ring hardware on the pads and no animation.
+- **Rebuild.** `upk_patch` takes `--first-at` once per station (UE units:
+  `X = game z * 100`, `Y = game x * 100`, `Z = floor y * 100`), in the
+  station order the server's sequence ids assume:
+
+  ```bash
+  upk_patch clone-objects <stock>/.../Ihpet_Crater_Light-fff80002.umap \
+      <007-applied>/.../Castle_CellBlock-fffeffff.umap <patched>/.../Ihpet_Crater_Light-fff80002.umap \
+      --roots 772,1192,216,218,219,220,227,228 --map 764:104 \
+      --first-at -93800,22400,690   --first-at -73800,39400,-1113 \
+      --first-at -78200,8100,5      --first-at -70200,17600,-719 \
+      --first-at -72500,21000,-3328 --first-at -55900,12700,2306 \
+      --first-at -56600,43600,2309  --first-at -93700,43700,1130
+  ```
+
+  The output's SHA-256 is
+  `62ef4acdc08eb784816e4d9ca0cfd1e9790e8b24a421c0615b2711885eaa4946`.
+  Then run `cimmeria-patchset build` as below with a `--stock` tree whose
+  `Castle_CellBlock-fffeffff.umap` is 007's result (sha256 `2f41a7e1…`).
+- **Check on a real client.** With `SGW_PATCHED_CLIENT` set to a client
+  that has 007 applied:
+  `cargo test -p cimmeria-patchset real_client_debug_area_rings -- --ignored`.
+- **Publishing** (coordinator): add the printed manifest entry after
+  007's, with `after` pointing at the previous entry, re-check the
+  `after` chain, sign the manifest offline and upload it with the zip.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them

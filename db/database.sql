@@ -325,6 +325,7 @@
 \ir resources/Events/Seed/point_sets_debug_area_npcs.sql
 \ir resources/Events/Seed/sequences.sql
 \ir resources/Events/Seed/sequences_nvp.sql
+\ir resources/Events/Seed/debug_area_ring_events.sql
 \ir resources/Items/Seed/bank_expansion_price.sql
 \ir resources/Items/Seed/containers.sql
 \ir resources/Items/Seed/crafting_item_effects.sql
@@ -372,6 +373,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
+\ir resources/Worlds/Seed/debug_area_rings.sql
 \ir resources/Content/Seed/castle_cellblock_chains.sql
 \ir resources/Content/Seed/castle_701_chains.sql
 \ir resources/Content/Seed/castle_706_708_chains.sql
@@ -384,6 +386,7 @@
 \ir resources/Content/Seed/sgc_w1_chains.sql
 \ir resources/Content/Seed/debug_hub_chains.sql
 \ir resources/Content/Seed/debug_area_plaza_chains.sql
+\ir resources/Content/Seed/debug_area_ring_chains.sql
 
 \ir resources/_foreign_keys.sql
 

@@ -178,6 +178,13 @@ numbering. `+16..19` copies through from a source actor of the same class.
 lighting ends with 4 zero bytes after its property list (an empty `LODData`
 array); one with a vertex lightmap carries kilobytes of inline bulk data there.
 
+A component placed without lighting but with an LOD entry carries `1, 0, 0, 0`
+instead: one `FStaticMeshComponentLODInfo` whose `ShadowMaps` and
+`ShadowVertexBuffers` arrays are empty and whose `LightMap` type is `LMT_None`
+(region 3's ring base, `Castle_CellBlock-fffeffff` export 1616). The cloner
+copies that shape verbatim, since it names no object, and refuses any non-zero
+word in it.
+
 ## Component serial blob — 226-byte prefix + 594-byte suffix
 
 `SGWCoverNodeComponent` exports wrap their property stream in substantial
@@ -511,6 +518,12 @@ upk_patch clone-objects <target_in> <source> <out> --roots 772,216,218 \
     --anchor 1192:1174         # place relative to target actor 1174 as the
                                # originals sit relative to source actor 1192, yaw included
                                # (or --first-at X,Y,Z / --offset DX,DY,DZ, UE units)
+
+# One copy of the whole root set per --first-at point, all in one session: the
+# tables are written once and each copy's root sequence takes the next free
+# instance number (`..._Seq`, `..._Seq_0`, ...). Client patch 010 places eight rigs this way.
+upk_patch clone-objects <target_in> <source> <out> --roots 772,1192,216,218 \
+    --map 764:104 --first-at X1,Y1,Z1 --first-at X2,Y2,Z2
 ```
 
 Both commands refuse to write over their input and re-open the output to check

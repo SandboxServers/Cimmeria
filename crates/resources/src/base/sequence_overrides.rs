@@ -47,6 +47,35 @@ pub struct SequenceOverride {
 const ARMORY_RING_RIG: &str =
     "Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0";
 
+/// The eight ring rigs client patch `010-debug-area-rings` clones into
+/// `Ihpet_Crater_Light-fff80002.umap` for the Debug Area (world 1300, DA-08),
+/// in station order: Compound, Faction yard, AI slope, Arena rim, Arena pit,
+/// Gallery west, Gallery east, Death yard. All eight are copies of region 3's
+/// rig, so each copy's root sequence took the next free instance number under
+/// `Main_Sequence.Prefabs`: the first has no suffix, the rest `_0` to `_6`.
+/// Seeded as event sets 13800-13807 in
+/// `db/resources/Events/Seed/debug_area_ring_events.sql`.
+pub const DEBUG_AREA_RING_RIGS: [&str; 8] = [
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_1",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_2",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_3",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_4",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_5",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_6",
+];
+
+/// Teleport Out / Teleport In for Debug Area station `n`: ids `10189 + 2n` and
+/// `10190 + 2n`.
+const fn debug_area_ring(n: usize, event_id: u32) -> SequenceOverride {
+    SequenceOverride {
+        sequence_id: 10189 + 2 * n as u32 + (event_id - 8000),
+        event_id,
+        kismet_script_name: DEBUG_AREA_RING_RIGS[n],
+    }
+}
+
 /// All Cimmeria-introduced sequences. Adding one:
 ///
 ///   1. Add the row to `db/resources/Events/Seed/sequences.sql` so the server's
@@ -66,6 +95,22 @@ pub const SEQUENCE_OVERRIDES: &[SequenceOverride] = &[
         event_id: 8001,
         kismet_script_name: ARMORY_RING_RIG,
     },
+    debug_area_ring(0, 8000),
+    debug_area_ring(0, 8001),
+    debug_area_ring(1, 8000),
+    debug_area_ring(1, 8001),
+    debug_area_ring(2, 8000),
+    debug_area_ring(2, 8001),
+    debug_area_ring(3, 8000),
+    debug_area_ring(3, 8001),
+    debug_area_ring(4, 8000),
+    debug_area_ring(4, 8001),
+    debug_area_ring(5, 8000),
+    debug_area_ring(5, 8001),
+    debug_area_ring(6, 8000),
+    debug_area_ring(6, 8001),
+    debug_area_ring(7, 8000),
+    debug_area_ring(7, 8001),
 ];
 
 fn escape_xml_attr(text: &str) -> String {
@@ -167,5 +212,40 @@ mod tests {
             .map(|o| (o.sequence_id, o.event_id))
             .collect();
         assert_eq!(events, vec![(10187, 8000), (10188, 8001)]);
+    }
+
+    /// Every Debug Area rig is reachable from a client: one Teleport Out and
+    /// one Teleport In per station, at the ids
+    /// `db/resources/Events/Seed/debug_area_ring_events.sql` seeds. A rig
+    /// missing here never animates, because the client resolves the id only
+    /// through its own catalogue.
+    #[test]
+    fn each_debug_area_rig_has_teleport_out_and_in_at_its_seeded_ids() {
+        for (n, rig) in DEBUG_AREA_RING_RIGS.iter().enumerate() {
+            let events: Vec<(u32, u32)> = SEQUENCE_OVERRIDES
+                .iter()
+                .filter(|o| o.kismet_script_name == *rig)
+                .map(|o| (o.sequence_id, o.event_id))
+                .collect();
+            let out = 10189 + 2 * n as u32;
+            assert_eq!(
+                events,
+                vec![(out, 8000), (out + 1, 8001)],
+                "station {n}: {rig}"
+            );
+        }
+    }
+
+    /// The eight copies have eight object paths. Two stations sharing one
+    /// path would make the second rig unreachable and fire the first.
+    #[test]
+    fn debug_area_rig_paths_are_distinct_and_in_the_patched_chunk() {
+        let mut paths = DEBUG_AREA_RING_RIGS.to_vec();
+        assert!(paths
+            .iter()
+            .all(|p| p.starts_with("Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.")));
+        paths.sort_unstable();
+        paths.dedup();
+        assert_eq!(paths.len(), 8);
     }
 }

@@ -27,7 +27,8 @@ point.", and the base logs a WARN `gm_only_world_refused` naming the
 player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
-This page covers the zones from packets DA-02, DA-03 and DA-04; DA-05
+This page covers the zones from packets DA-02, DA-03 and DA-04, and the
+ring transports that link them (DA-08); DA-05
 completes it with the station index and the UAT mapping. Each packet's rows are
 in their own seed files:
 
@@ -403,6 +404,66 @@ carry loot table 2, so their corpses exercise loot.
 
 No fall or environmental damage exists on the server, so Z9 has no fall-death
 test.
+
+## Ring transports
+
+DA-08. Eight ring stations let a tester travel between the Debug Area's zones
+the way rings work elsewhere in the game: the rings rise around the pad, flash
+and drop, and the travellers arrive on the destination pad as its rings drop
+there. Every station reaches every other one.
+
+### Stations
+
+Positions are BigWorld metres. "Pad" is the arrival point the server seeds
+(the rig's base platform plus 0.537 m, as in Castle CellBlock). The console is
+the ring switch beside the pad that you right-click.
+
+| Station | Pad (x, y, z) | Serves | Console tag | Region |
+|---|---|---|---|---|
+| Compound | (224.0, 7.44, -938.0) | Z1 arrival (36 m), Z2 services plaza (32 m), Z8 cover course entry (23 m); Z3 dummies are 74 m north in the same compound | `DebugArea_Ring_Compound` | 35 |
+| Faction yard | (394.0, -10.59, -738.0) | Z4 faction yard, 52 m south | `DebugArea_Ring_FactionYard` | 36 |
+| AI slope | (81.0, 0.59, -782.0) | Z5 wanderer (36 m) and patrol (57 m) | `DebugArea_Ring_AiSlope` | 37 |
+| Arena rim | (176.0, -6.65, -702.0) | Z6 arena, the west ledge 26 m above the pit | `DebugArea_Ring_ArenaRim` | 38 |
+| Arena pit | (210.0, -32.74, -725.0) | Z6 arena floor, beside the friendly Praxis squad | `DebugArea_Ring_ArenaPit` | 39 |
+| Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
+| Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
+| Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
+
+No station is within 25 m of a hostile that can aggro (DA-03 and DA-04
+checked their seeded rows against these points). The pit "floor" is the
+water collision plane at y -33.28, which the navmesh treats as ground.
+
+### Using a ring
+
+1. Right-click the console beside a pad. The destination list opens on the
+   world map, with the other seven stations as transporter icons.
+2. Pick a destination, then step onto the pad within 60 s.
+3. The rings play for about 4 s, you are moved, the destination pad's rings
+   play, and you can move again about 5.5 s after arriving.
+
+Anyone standing on the pad when it fires travels too. Players who can see
+the traveller see the rings animate as well.
+
+### What needs the client patch
+
+The rigs exist only in client patch `010-debug-area-rings`
+([data/client-patches](../../data/client-patches/README.md)), which needs
+`007-castle-armory-ring` applied first. Without it the consoles and the trip
+still work, but there is no ring hardware on the pads and no animation.
+
+World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
+ring platforms too. They do nothing there: world 73 has no pads, consoles or
+chains.
+
+### Seed and code
+
+| What | Where |
+|---|---|
+| Pads, consoles | `db/resources/Worlds/Seed/debug_area_rings.sql` |
+| Sequences, event sets, trigger volumes | `db/resources/Events/Seed/debug_area_ring_events.sql` |
+| Console chains (`interact_tag` -> `trigger_transporter`) | `db/resources/Content/Seed/debug_area_ring_chains.sql` |
+| Sequence ids the client resolves | `crates/resources/src/base/sequence_overrides.rs` (`DEBUG_AREA_RING_RIGS`) |
+| Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--8-regions-fully-connected-cimmeria-da-08) |
 
 ## Reach between stations
 

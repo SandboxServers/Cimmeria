@@ -91,6 +91,7 @@ least 86 m apart with a wall between, against an 18 m default aggro radius and
 | Templates 1300-1329, spawns 13000-13199 | DA-02 |
 | Templates 1330-1369, spawns 13200-13599, point sets 13200-13209, points 13200-13299 | DA-03 |
 | Templates 1370-1399, spawns 13600-13799 | DA-04 |
+| Spawns 13800-13807, ring regions 35-42, event sets / point sets / points / chains 13800-13807, sequences 10189-10204 | DA-08 |
 
 Check each range is free in the seed before using it; raise a clash with the
 coordinator instead of moving into another packet's block.
@@ -109,6 +110,7 @@ coordinator instead of moving into another packet's block.
 | DA-07 | The Debug Area stargate: gate 29 (outbound-only dial hub) on the Ihpet_Crater_Light gate prop, its gate volume, DHD and cooked entry; a GM at its DHD can dial every gate on a loadable world; nobody can dial in (D-DA4 as amended); template 1 DHDs made clickable. Ids: spawn, point set and point 13800, stargate 29. | DA-01 | Review |
 | DA-05 | `docs/content/debug-area.md`, `docs/guides/uat-specs/debug-area.toml`, unified UAT section mapping every system to a station. | DA-02..04 | BlockedDependency |
 | DA-06 | Live-client check in the lab: the map loads as world 1300, spawn heights, doorway collision, map Kismet, every station answers. Fixes as `DA-F<n>`. | DA-01..04 deployed | BlockedDependency |
+| DA-08 | Ring transports: client patch `010-debug-area-rings` clones eight working ring rigs (region 3's Castle rig with its Kismet) into `Ihpet_Crater_Light-fff80002`, and the world-1300 seed wires a fully connected ring network across them (Compound, Faction yard, AI slope, Arena rim, Arena pit, Gallery west, Gallery east, Death yard). Ring `onSequence` now reaches witnesses too. Station table in [debug-area.md § Ring transports](../../content/debug-area.md#ring-transports). Publishing the manifest entry (after 007) is a coordinator step. | DA-01 | Review |
 | REL | Close-out: status docs, unified UAT, content patch publish, `/release`. | all above | BlockedDependency |
 
 ## What each implemented system is tested with

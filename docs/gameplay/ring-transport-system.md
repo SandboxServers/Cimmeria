@@ -2,7 +2,7 @@
 title: "Ring Transport System"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-10-04
 ---
 
 # Ring Transport System
@@ -265,6 +265,8 @@ if (this->sequenceEventType == this->teleportDirection + 8000)
 
 Sequences are per-ring-platform matinees baked into the client level packages. Only played for the first player to avoid animation conflicts (noted as FIXME in server code).
 
+**Witnesses see it too (Cimmeria, not 2009).** The Python sent `onSequence` to the first traveller's client only, so anyone watching saw the passengers fade out on a pad that never moved. Since DA-08 the dispatcher (`wire_helpers::send_play_sequence`) still sends the traveller its owner method and also sends the same frame, addressed to the traveller, to every witness of the traveller, as gate travel does for its stargate sequences. It is still one send per trip per client: the FSM only emits `PlaySequence` for the first player.
+
 ### Slash Command
 
 `/gmsetringdestination [regionId] [destinationId]` — Programmer-only debug command (`Access="p"`) defined in `InternalSlashCommands.xml`.
@@ -424,6 +426,27 @@ CREATE TABLE ring_transport_regions (
 | 30 | MenfaDark_Ring_00040001 | {31} | Paired |
 | 31 | MenfaDark_Ring_00040000 | {30} | Paired |
 | 32 | MenfaDark_Ring_ffff0003 | {} | Dead end — receive only |
+
+#### Debug Area (world 1300) — 8 regions, fully connected (Cimmeria, DA-08)
+
+Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `010-debug-area-rings` clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
+
+| ID | `ring_transport_regions.tag` | Console spawn tag | Event set | Sequences (out / in) | Rig |
+|---|---|---|---|---|---|
+| 35 | `DebugArea_Ring_CompoundRegion` | `DebugArea_Ring_Compound` | 13800 | 10189 / 10190 | `…Pf0_Seq` |
+| 36 | `DebugArea_Ring_FactionYardRegion` | `DebugArea_Ring_FactionYard` | 13801 | 10191 / 10192 | `…Pf0_Seq_0` |
+| 37 | `DebugArea_Ring_AiSlopeRegion` | `DebugArea_Ring_AiSlope` | 13802 | 10193 / 10194 | `…Pf0_Seq_1` |
+| 38 | `DebugArea_Ring_ArenaRimRegion` | `DebugArea_Ring_ArenaRim` | 13803 | 10195 / 10196 | `…Pf0_Seq_2` |
+| 39 | `DebugArea_Ring_ArenaPitRegion` | `DebugArea_Ring_ArenaPit` | 13804 | 10197 / 10198 | `…Pf0_Seq_3` |
+| 40 | `DebugArea_Ring_GalleryWestRegion` | `DebugArea_Ring_GalleryWest` | 13805 | 10199 / 10200 | `…Pf0_Seq_4` |
+| 41 | `DebugArea_Ring_GalleryEastRegion` | `DebugArea_Ring_GalleryEast` | 13806 | 10201 / 10202 | `…Pf0_Seq_5` |
+| 42 | `DebugArea_Ring_DeathYardRegion` | `DebugArea_Ring_DeathYard` | 13807 | 10203 / 10204 | `…Pf0_Seq_6` |
+
+Rig paths are `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq[_N]`: each copy took the next free instance number. Every region lists the other seven. Consoles are template 3, like Harset's, and are wired the same way (`interact_tag` -> `trigger_transporter`, chains 13800-13807). The map patch clones no console mesh, because template 3 renders one. Pad rows are the base platform origin + 0.537 m, the offset regions 1 and 3 use. Station positions, what each serves and how to use them: [debug-area.md § Ring transports](../content/debug-area.md#ring-transports).
+
+No cross-world destination. The FSM supports cross-world trips (regions 14 ↔ 17), but a ring in another world that listed a Debug Area pad would give ordinary players a way into a GM-only world, and a one-way ring out would reserve and animate a pad other players are using. GMs leave with `.gotolocation`.
+
+World 73 (the live Ihpet Crater) loads the same patched map file, so it renders the eight platforms as scenery. Nothing is seeded for it: no pad row, console, chain or sequence, so nothing there opens a ring list or plays a rig. `the_live_ihpet_crater_gets_no_ring_stations_live_db` pins that.
 
 > **Note:** Region IDs 9, 13, 15, 23 are unused gaps in the sequence (max=32).
 > All regions use `display_name_id = 7508` (shared "Ring Transporter" text).
