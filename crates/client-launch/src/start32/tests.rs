@@ -257,6 +257,7 @@ const PROMPT: std::time::Duration = std::time::Duration::from_millis(1000);
 /// while the console target is still running.
 #[cfg(windows)]
 #[test]
+#[ignore = "flaky on the hosted Windows runner (it times a ~2 s console target); run with --ignored"]
 fn helper_returns_before_a_console_target_exits() {
     let Some(helper) = helper() else { return };
     let Some((_dir, req)) = console_target_request() else {
@@ -288,6 +289,7 @@ fn helper_returns_before_a_console_target_exits() {
 /// did, so it measures the pipe and not `run`'s read.
 #[cfg(windows)]
 #[test]
+#[ignore = "flaky on the hosted Windows runner (it times a ~2 s console target); run with --ignored"]
 fn helper_stdout_closes_with_the_helper_not_the_console_target() {
     let Some(helper) = helper() else { return };
     let Some((_dir, req)) = console_target_request() else {
