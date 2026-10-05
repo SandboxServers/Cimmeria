@@ -292,7 +292,7 @@ async fn npc_fires_at(mgr: &mut SpaceManager, npc: u32, target: u32) {
 /// was near (Praxis Jaffa Guard -> NID Guard, Yellow Faction -> Green
 /// Sniper). Owner decision: an NPC shooting an NPC with no player present
 /// writes nothing. The pair stands 400 u from both players, outside their
-/// 100 u AoI. Fails when the `player_present` gate in `sequence.rs` is
+/// 150 u AoI. Fails when the `player_present` gate in `sequence.rs` is
 /// reverted.
 #[tokio::test]
 async fn an_npc_shooting_an_npc_with_no_player_near_writes_nothing() {
