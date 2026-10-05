@@ -121,6 +121,7 @@ impl CellEntity {
             container_loot: HashMap::new(),
             is_loot_container: false,
             looted_containers: HashSet::new(),
+            shown_tutorials: HashSet::new(),
             last_interaction_target: None,
             vault_session: None,
             offered_dialog_ids: VecDeque::new(),

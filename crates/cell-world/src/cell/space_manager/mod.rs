@@ -497,6 +497,14 @@ pub struct SpaceManager {
     /// `cimmeria_services::cell::combat::damage_credit` for why the sample cannot
     /// live at the ability caller.
     pub pending_health_below: Vec<super::combat::HealthBelowSample>,
+    /// `(player entity id, mob entity id)` for every player whose
+    /// `BSF_InCombat` flag just went on from an NPC's threat, awaiting the
+    /// content-layer `player_entered_combat` drain (Class Start v6, CS-03).
+    /// Filled by `cell::combat::enter_player_combat`, emptied by
+    /// `content::fire_pending_combat_entries` on the 100ms cell tick. A
+    /// queue because the threat seam is synchronous and sits below the
+    /// content engine in the crate split; a duel's combat flag never queues.
+    pub pending_combat_entries: Vec<(u32, u32)>,
     /// In-flight stargate dials, keyed by the dialing player. Armed by
     /// `cell::gate_travel::handle_dial_gate`, opened (and marked passable)
     /// by `cell::gate_travel::gate_dial_tick` on the 100ms cell tick, and
@@ -616,6 +624,7 @@ impl SpaceManager {
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
             pending_health_below: Vec::new(),
+            pending_combat_entries: Vec::new(),
             step_region_replay: StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),

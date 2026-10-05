@@ -392,6 +392,7 @@
 \ir resources/Content/Seed/debug_hub_chains.sql
 \ir resources/Content/Seed/debug_area_plaza_chains.sql
 \ir resources/Content/Seed/debug_area_ring_chains.sql
+\ir resources/Content/Seed/tutorial_chains.sql
 
 \ir resources/_foreign_keys.sql
 
@@ -434,6 +435,7 @@
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
 \ir sgw/Players/Tables/sgw_player_content_cooldown.sql
 \ir sgw/Players/Tables/sgw_player_ability_grants.sql
+\ir sgw/Players/Tables/sgw_player_tutorials.sql
 \ir sgw/Social/Tables/sgw_contact_list.sql
 \ir sgw/Social/Tables/sgw_contact_list_member.sql
 \ir sgw/Organizations/Tables/sgw_organizations.sql

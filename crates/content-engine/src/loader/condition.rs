@@ -12,6 +12,11 @@ use super::DbConditionRow;
 
 /// Convert a DB condition row to a Condition enum variant.
 pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
+    // Before the operator parse: an unknown operator must not drop this row
+    // (see `convert_tutorial_shown`).
+    if row.condition_type == "tutorial_shown" {
+        return Some(convert_tutorial_shown(row));
+    }
     let op = parse_comparison_op(&row.operator)?;
     match row.condition_type.as_str() {
         "mission_status" => {
@@ -131,6 +136,36 @@ pub(super) fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
             })
         }
         _ => None,
+    }
+}
+
+/// `tutorial_shown` (CS-03): `target_id` = the tutorial's dialog id,
+/// operator `eq` (shown) or `neq` (not shown); `target_key` and `value` are
+/// unused.
+///
+/// Never `None`: a dropped row would publish its chain ungated and replay a
+/// one-time tutorial. Every malformed shape builds a condition that never
+/// matches instead. A missing id becomes 0, which
+/// [`super::refuse_chains_with_unknown_tutorials`] then refuses (no dialog
+/// 0); a missing, unknown or ordered operator becomes `Gt`, which the
+/// evaluator answers `false`.
+fn convert_tutorial_shown(row: &DbConditionRow) -> Condition {
+    let op = parse_comparison_op(&row.operator)
+        .filter(|op| matches!(op, ComparisonOp::Eq | ComparisonOp::Neq));
+    if row.target_id.is_none() || op.is_none() {
+        warn!(
+            chain_id = row.chain_id,
+            chain_name = cimmeria_names::book().chain(row.chain_id),
+            operator = %row.operator,
+            target_id = ?row.target_id,
+            reason = "malformed_tutorial_shown",
+            "tutorial_shown needs target_id = a tutorial dialog id and operator eq|neq \
+             -- this row will never match",
+        );
+    }
+    Condition::TutorialShown {
+        tutorial_id: row.target_id.unwrap_or(0),
+        operator: op.unwrap_or(ComparisonOp::Gt),
     }
 }
 

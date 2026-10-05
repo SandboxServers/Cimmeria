@@ -205,6 +205,12 @@ pub enum BaseToCellMsg {
         /// action checks before it rolls, so a relog or respawn never
         /// re-rolls a chest. Empty when the row could not be read.
         looted_containers: Vec<String>,
+        /// `sgw_player_tutorials`: the one-time tutorials (dialog ids) this
+        /// character has been shown (CS-03). Merged into
+        /// `CellEntity::shown_tutorials`, which the `tutorial_shown`
+        /// condition and the `show_tutorial` action read. Empty when the
+        /// row could not be read.
+        shown_tutorials: Vec<i32>,
     },
 
     /// Update one bandolier slot after a runtime item grant.
@@ -333,6 +339,10 @@ pub enum BaseToCellMsg {
     /// The base's answer to `CellToBaseMsg::ContentGrantAbilities`
     /// (CS-01a); see [`super::ContentAbilitiesGranted`].
     ContentAbilitiesGranted(super::ContentAbilitiesGranted),
+
+    /// The base's answer to `CellToBaseMsg::RecordTutorialShown` (CS-03);
+    /// see [`super::TutorialRecorded`].
+    TutorialRecorded(super::TutorialRecorded),
 
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).

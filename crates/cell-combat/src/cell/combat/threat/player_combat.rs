@@ -81,6 +81,11 @@ pub fn enter_player_combat(
                 weapon_holstered,
                 "enter_player_combat: BSF_InCombat set (first threatened mob); weapon drawn"
             );
+            // The `player_entered_combat` content trigger (CS-03). Queued,
+            // not fired: this seam is synchronous and the content engine
+            // sits above this crate. The cell tick drains it
+            // (`content::fire_pending_combat_entries`).
+            space_mgr.pending_combat_entries.push((player_id, mob_id));
             return Some(new_state);
         }
     }
@@ -340,6 +345,32 @@ mod tests {
 
         assert_eq!(result, None, "re-adding same mob must not re-broadcast");
         assert_eq!(mgr.get_entity(1).unwrap().threatened_mobs.len(), 1);
+    }
+
+    /// **Guard (CS-03): combat entry queues exactly one
+    /// `player_entered_combat` event per `BSF_InCombat` transition.** The
+    /// first mob queues `(player, mob)`; a second mob and a re-add of the
+    /// same mob queue nothing; leaving and re-entering queues again. Drop
+    /// the push and the queue stays empty; move it out of the
+    /// `was_empty` branch and the second mob queues a duplicate.
+    #[test]
+    fn enter_player_combat_queues_one_combat_entry_per_transition() {
+        let mut mgr = make_test_space_mgr_with_npc();
+        add_npc(&mut mgr, 101, 25.0);
+
+        let _ = enter_player_combat(&mut mgr, 1, 100);
+        let _ = enter_player_combat(&mut mgr, 1, 101);
+        let _ = enter_player_combat(&mut mgr, 1, 100);
+        assert_eq!(mgr.pending_combat_entries, vec![(1, 100)]);
+
+        let _ = exit_player_combat(&mut mgr, 1, 100);
+        let _ = exit_player_combat(&mut mgr, 1, 101);
+        let _ = enter_player_combat(&mut mgr, 1, 101);
+        assert_eq!(mgr.pending_combat_entries, vec![(1, 100), (1, 101)]);
+
+        // An NPC never enters "player combat", so it never queues.
+        let _ = enter_player_combat(&mut mgr, 100, 1);
+        assert_eq!(mgr.pending_combat_entries.len(), 2);
     }
 
     #[test]

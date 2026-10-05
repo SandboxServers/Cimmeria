@@ -151,6 +151,25 @@ pub enum Condition {
         operator: ComparisonOp,
         expected: EntityTagStateValue,
     },
+
+    /// Has the acting player already been shown the one-time tutorial
+    /// `tutorial_id` (a `DUIST_DefaultTutorial` dialog id; Class Start v6,
+    /// CS-03)? `Eq` holds when it has, `Neq` when it has not.
+    ///
+    /// The set is persistent (`sgw_player_tutorials`), so unlike a
+    /// trigger's `once` flag or a counter it survives a relog and a world
+    /// change. The `show_tutorial` action adds the id the moment it asks
+    /// the base to record it, so a chain gated `tutorial_shown 5882 eq`
+    /// can run in the same tick as the chain that showed 5882.
+    ///
+    /// Reads the typed [`ExecutionContext::shown_tutorials`] set and **fails
+    /// closed** for every operator when it is `None` (no player behind the
+    /// event), like [`Condition::World`]: an unpopulated context must not
+    /// read every tutorial as unseen and replay it.
+    TutorialShown {
+        tutorial_id: i32,
+        operator: ComparisonOp,
+    },
 }
 
 /// The two states [`Condition::EntityTagState`] distinguishes.
@@ -394,6 +413,27 @@ impl Condition {
                     ComparisonOp::Eq => actual == *expected,
                     ComparisonOp::Neq => actual != *expected,
                     // Ordered operators mean nothing on a two-state value; the
+                    // loader warns and keeps the row so the chain stays gated.
+                    _ => false,
+                }
+            }
+            Condition::TutorialShown {
+                tutorial_id,
+                operator,
+            } => {
+                let Some(shown) = ctx.shown_tutorials.as_ref() else {
+                    tracing::debug!(
+                        tutorial_id,
+                        tutorial_name = cimmeria_names::book().dialog(*tutorial_id),
+                        "Condition::TutorialShown evaluated against a context with no \
+                         shown_tutorials -- failing closed; no player behind the event"
+                    );
+                    return false;
+                };
+                match operator {
+                    ComparisonOp::Eq => shown.contains(tutorial_id),
+                    ComparisonOp::Neq => !shown.contains(tutorial_id),
+                    // Ordered operators mean nothing on a yes/no value; the
                     // loader warns and keeps the row so the chain stays gated.
                     _ => false,
                 }

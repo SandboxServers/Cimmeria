@@ -362,3 +362,35 @@ fn world_ordered_operators_never_match() {
         }
     }
 }
+
+fn tutorial_shown(op: ComparisonOp) -> Condition {
+    Condition::TutorialShown {
+        tutorial_id: 5882,
+        operator: op,
+    }
+}
+
+/// `tutorial_shown` (CS-03): `eq` holds once the player has seen the
+/// tutorial, `neq` until then.
+#[test]
+fn tutorial_shown_eq_and_neq_follow_the_set() {
+    let seen = ExecutionContext::new().with_shown_tutorials([5882, 5883]);
+    let unseen = ExecutionContext::new().with_shown_tutorials([5883]);
+    assert!(tutorial_shown(ComparisonOp::Eq).evaluate(&seen));
+    assert!(!tutorial_shown(ComparisonOp::Eq).evaluate(&unseen));
+    assert!(!tutorial_shown(ComparisonOp::Neq).evaluate(&seen));
+    assert!(tutorial_shown(ComparisonOp::Neq).evaluate(&unseen));
+}
+
+/// **Guard: `tutorial_shown` fails closed with no player behind the
+/// event.** With `shown_tutorials` unset, `neq` must not read "not seen"
+/// and fire a one-time tutorial chain; ordered operators never match.
+#[test]
+fn tutorial_shown_fails_closed_without_a_set() {
+    let none = ExecutionContext::new();
+    for op in [ComparisonOp::Eq, ComparisonOp::Neq, ComparisonOp::Gt] {
+        assert!(!tutorial_shown(op.clone()).evaluate(&none), "{op:?}");
+    }
+    let seen = ExecutionContext::new().with_shown_tutorials([5882]);
+    assert!(!tutorial_shown(ComparisonOp::Gte).evaluate(&seen));
+}

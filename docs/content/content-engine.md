@@ -175,6 +175,7 @@ The `params jsonb` column is the catch-all for new action fields. Every new fiel
 - **Per-player mission state** — `sgw_mission` (player_id, mission_id, status, current_step_id, completed_step_ids[], …). Loaded by the world-entry path in [base/world_entry/methods/missions.rs](../../crates/base-methods/src/base/world_entry/methods/missions.rs), not by `engine_loader`. The engine reads it via `CellEntity.missions` after the populator runs.
 - **Counter state** — in-memory only on `CellEntity.counters: HashMap<String, i32>` ([cell_entity/mod.rs:290](../../crates/entity/src/cell_entity/mod.rs#L290)). **Not persisted; lost on logout.** Counter design assumes the completion threshold is reachable in one session. See §8.
 - **Fired-once chains** — in-memory only on `CellEntity.fired_once_chains: HashSet<i64>`. **Not persisted; lost with the entity** (logout, space change), which is what re-arms a `once` chain. See `content_triggers.once` above.
+- **One-time tutorials** — the one persisted one-time flag (CS-03). `show_tutorial` records `(player_id, tutorial_id)` in `sgw_player_tutorials` (PK on the pair, `ON DELETE CASCADE` from `sgw_player`) and displays the dialog only when that insert added the row. World entry hydrates the set into `CellEntity.shown_tutorials` (`InitPlayerState.shown_tutorials`, merged, not replaced), which the `tutorial_shown` condition reads. Survives relog and world change. Use it, not `once` or a counter, for anything a character must see exactly once.
 - **Inventory, stats, abilities, effects** — all live on `CellEntity` and persist via the existing per-domain save paths. The engine consumes them via populators.
 
 ---
@@ -213,6 +214,7 @@ When a chain action mutates **player** state, persistence is **not** the engine'
 | `ChangeStat` | Mutates `CellEntity.stats`; persistence rides existing player save |
 | `IncrementCounter`, `ResetCounter` | **Not persisted.** In-memory `CellEntity.counters` only |
 | Any action of a `once` chain | The fired-once record is **not persisted**: in-memory `CellEntity.fired_once_chains` only |
+| `ShowTutorial` | `CellToBaseMsg::RecordTutorialShown` → BaseApp `INSERT ... ON CONFLICT DO NOTHING` into `sgw_player_tutorials`; the reply `TutorialRecorded` decides whether the dialog is shown |
 
 The chain itself never touches a persistence table. Trace example: chain 1087 fires on `entity_dead_tag` `MessHall_Guard1`, condition `mission_status 681 eq active` passes → action `complete_mission 681` runs → `complete_mission_direct` mutates `MissionInstance` on the cell entity → emits `CellToBaseMsg::MissionUpdate { mission_id: 681, status: 2, repeats: bumped, ... }` over the outbox → BaseApp dequeues, runs the `UPSERT` ([missions.rs:103](../../crates/base-methods/src/base/world_entry/methods/missions.rs#L103)).
 

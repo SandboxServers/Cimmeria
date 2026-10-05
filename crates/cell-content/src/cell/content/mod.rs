@@ -42,14 +42,16 @@ pub use event_dispatch::{
     fire_chain_by_id, fire_cover_duration, fire_cover_entered, fire_cover_left, fire_dialog_choice,
     fire_dialog_open, fire_enter_region, fire_entity_death, fire_entity_health_below,
     fire_exit_region, fire_health_below_for_hit, fire_interact_tag, fire_interact_template,
-    fire_item_equipped, fire_item_use, fire_npc_flanked, fire_pending_health_below,
-    fire_player_flanked_npc, fire_player_loaded, fire_stargate_crossed, fire_stargate_dialed,
-    fire_teleport_in,
+    fire_item_equipped, fire_item_use, fire_npc_flanked, fire_pending_combat_entries,
+    fire_pending_health_below, fire_player_entered_combat, fire_player_flanked_npc,
+    fire_player_loaded, fire_stargate_crossed, fire_stargate_dialed, fire_teleport_in,
 };
 // Cell-tick drain for `content_actions.delay_ms > 0` (C08a) — called once
 // per tick from `cell::service::message_loop`, same flat depth as the
 // `fire_*` dispatchers above.
 pub use executor::deferred_content_action_tick;
+// The `show_tutorial` round trip's second half (`BaseToCellMsg::TutorialRecorded`).
+pub use executor::apply_tutorial_recorded;
 // The H52 step-activation region replay. Its re-entrancy guard lives on
 // `SpaceManager` (`space_manager::StepRegionReplayGuard`).
 pub use event_dispatch::{fire_mission_abandoned, fire_step_activation_regions};

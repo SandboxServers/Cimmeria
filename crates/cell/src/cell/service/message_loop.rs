@@ -319,6 +319,16 @@ pub(super) async fn run_cell_loop(
                     &mut space_mgr,
                 )
                 .await;
+
+                // `player_entered_combat` (CS-03): the threat seam queues a
+                // player whose BSF_InCombat just went on; fire the chains
+                // here. An empty queue returns before touching the engine.
+                super::super::content::fire_pending_combat_entries(
+                    &engine,
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
                 }
                 .instrument(tick_span)
                 .await;

@@ -213,6 +213,16 @@ pub async fn route_cell_message(
             )
             .await
         }
+        CellToBaseMsg::RecordTutorialShown(record) => {
+            crate::base::world_entry::shown_tutorials::handle_record_tutorial_shown(
+                record,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await
+        }
         CellToBaseMsg::GmAbilityBulk(bulk) => {
             super::methods::progression::handle_gm_ability_bulk(
                 bulk,

@@ -277,6 +277,7 @@ async fn level_gate_reads_the_level_hydrated_at_world_entry() {
             character_name: None,
             body_set: None,
             looted_containers: Vec::new(),
+            shown_tutorials: Vec::new(),
         },
     )
     .await;

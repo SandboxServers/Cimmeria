@@ -248,7 +248,7 @@ pub async fn handle_on_client_ready(
         active_bandolier_slot,
         bandolier_items,
         system_options,
-        (known_stargates, tree_progress, level, looted_containers),
+        (known_stargates, tree_progress, level, looted_containers, shown_tutorials),
         body_set,
     ) = if let Some(pool) = db_pool {
         let row =
@@ -280,6 +280,7 @@ pub async fn handle_on_client_ready(
                     },
                     r.level,
                     r.looted_containers,
+                    r.shown_tutorials,
                 ),
                 r.bodyset,
             ),
@@ -299,7 +300,7 @@ pub async fn handle_on_client_ready(
                 (
                     0,
                     cimmeria_entity::cell_entity::SystemOptions::default(),
-                    (Vec::new(), Default::default(), 1, Vec::new()),
+                    (Vec::new(), Default::default(), 1, Vec::new(), Vec::new()),
                     None,
                 )
             }
@@ -317,7 +318,7 @@ pub async fn handle_on_client_ready(
             0,
             Vec::new(),
             cimmeria_entity::cell_entity::SystemOptions::default(),
-            (Vec::new(), Default::default(), 1, Vec::new()),
+            (Vec::new(), Default::default(), 1, Vec::new(), Vec::new()),
             None,
         )
     };
@@ -370,6 +371,7 @@ pub async fn handle_on_client_ready(
                 character_name: player_name.clone(),
                 body_set,
                 looted_containers,
+                shown_tutorials,
             })
             .await
         {
