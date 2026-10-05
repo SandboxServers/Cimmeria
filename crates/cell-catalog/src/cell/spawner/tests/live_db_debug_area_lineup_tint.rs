@@ -9,7 +9,9 @@
 //! * both loaders (`load_spawns_from_db` and the template prototypes behind a
 //!   GM `.spawn`) hand the cell exactly those colours as wire `u32`s, the
 //!   negative `bigint`s reinterpreted as two's complement, and `None` for
-//!   every other template.
+//!   every other template;
+//! * the one pair that differs by colour alone, `NID Guard #146` (1426) and
+//!   `Opheltes #215` (1438), is sent two different tints.
 mod live_db {
     use cimmeria_entity::cell_entity::EntityTint;
 
@@ -164,6 +166,61 @@ mod live_db {
                 skin: 0xF0BC_9700,
             })
         );
+    }
+
+    /// Exactly one pair of lineup actors shares body set, components (as a
+    /// set) and static mesh: `NID Guard #146` (1426) and `Opheltes #215`
+    /// (1438). Only their tint tells them apart, so they are the A/B check
+    /// that the client draws it; both loaders must hand them different
+    /// tints, with the colours the seed holds. Revert proof: give 1438
+    /// template 146's colours, or set `send_tint` off on either, and this
+    /// fails.
+    #[tokio::test]
+    async fn debug_area_lineup_tint_live_db_the_colour_only_pair_is_sent_different_tints() {
+        let pool = require_db_or_skip!();
+        let pairs: Vec<(i32, i32)> = sqlx::query_as(
+            "WITH l AS ( \
+               SELECT template_id, body_set, coalesce(static_mesh, '') AS mesh, \
+                      (SELECT array_agg(c ORDER BY c) FROM unnest(components) c) AS comps \
+               FROM resources.entity_templates WHERE template_id BETWEEN $1 AND $2) \
+             SELECT a.template_id, b.template_id FROM l a JOIN l b \
+               ON a.template_id < b.template_id \
+              AND (a.body_set, a.comps, a.mesh) IS NOT DISTINCT FROM (b.body_set, b.comps, b.mesh) \
+             ORDER BY 1, 2",
+        )
+        .bind(TEMPLATES.0)
+        .bind(TEMPLATES.1)
+        .fetch_all(&pool)
+        .await
+        .expect("pair query must succeed");
+        assert_eq!(pairs, vec![(1426, 1438)], "the only colour-only pair");
+
+        let templates = load_spawn_templates(&pool)
+            .await
+            .expect("load_spawn_templates must succeed");
+        let skin = 0xF0BC_9700;
+        let want_146 = EntityTint {
+            primary: 0xFFFF_0000,
+            secondary: 0xFF00_0000,
+            skin,
+        };
+        let want_215 = EntityTint {
+            primary: 0,
+            secondary: 0,
+            skin,
+        };
+        assert_eq!(templates[&1426].tint, Some(want_146), "NID Guard #146");
+        assert_eq!(templates[&1438].tint, Some(want_215), "Opheltes #215");
+
+        let spawns: std::collections::HashMap<i32, Option<EntityTint>> = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed")
+            .into_iter()
+            .filter(|r| r.template_id == 1426 || r.template_id == 1438)
+            .map(|r| (r.template_id, r.tint))
+            .collect();
+        assert_eq!(spawns.get(&1426), Some(&Some(want_146)));
+        assert_eq!(spawns.get(&1438), Some(&Some(want_215)));
     }
 
     /// Each lineup template's expected tint: the low 32 bits of its source
