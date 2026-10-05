@@ -558,10 +558,21 @@ in world 73 as well (same map data).
   compounds, AI slope at its west edge, and Death yard on the south compound's
   east flank. The stock picture, captured the same way, is the zoomed corner
   described above. The lab client's file was put back to stock afterwards.
-- **What the lab check did not cover.** (1) World 73 itself: it reads the same
-  file and was not entered. (2) A real click on a ring console: the lab's camera
-  tool could not aim at it, so the list was fed to the same Lua with the
-  server's own data instead of arriving as `onRingTransporterList`. (3) Logging
+- **World 73 (second lab pass, same day).** With the same result file a fresh
+  character went `Castle_CellBlock` to `.gotolocation Ihpet_Crater_Light`
+  (world 73): loaded with no crash or hang, and the world map, titled
+  `Ihpet_Crater_Light`, shows the new picture with the player's marker (251.25,
+  -989.8) at the south compound's gate. A `.gotolocation DebugArea` straight
+  from 73 (same map, no reload) ended with the lab client dead; the cause was
+  not established (the lab was under heavy build load, which kills the client
+  through the watchdog below), and the stock file was not tried on that
+  transition. A cellblock to 1300 load then worked again.
+- **What the lab check did not cover.** (1) A real click on a ring console: the
+  console was put on screen (226.9, -936.7, with the player at 224.6, -942) and
+  `client_world_click` timed out three times, first because the player's own
+  model covers the console and then in the MCP call itself, so the list was fed
+  to the same Lua with the server's own data instead of arriving as
+  `onRingTransporterList`. (2) Logging
   in directly into a character saved in the Debug Area: the lab client died
   within about 50 s of Play on that path, six times out of six, with the stock
   file (2) and with 013's file (4), so the patch is not the cause. The lab
