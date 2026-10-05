@@ -867,7 +867,7 @@ dependencies = [
  "cimmeria-discord",
  "cimmeria-test-support",
  "cimmeria-workspace-hack",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "rand 0.10.3",
  "rcgen",
  "reqwest 0.13.4",
@@ -1254,7 +1254,7 @@ dependencies = [
  "cimmeria-wire",
  "cimmeria-workspace-hack",
  "proptest",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "serde_json",
  "sqlx",
  "thiserror 2.0.21",
@@ -1331,7 +1331,7 @@ name = "cimmeria-content-editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -1363,7 +1363,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-common",
  "cimmeria-workspace-hack",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
 ]
 
 [[package]]
@@ -1487,7 +1487,7 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "rand 0.10.3",
  "socket2",
  "tokio",
@@ -1550,7 +1550,7 @@ dependencies = [
  "cimmeria-workspace-hack",
  "ed25519-dalek",
  "qbsdiff",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -1568,7 +1568,7 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "tracing",
  "zip",
 ]
@@ -5768,9 +5768,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.41.0"
+version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
 ]
