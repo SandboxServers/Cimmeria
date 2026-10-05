@@ -51,6 +51,19 @@ For stream (1):
   Optional; skip the profile flag if you'd rather open the SigNoz UI
   port directly behind a VPN or LAN gate.
 
+> **Deployment layout update, 2026-10-04.** The single-file layout
+> above was replaced to match what the colo actually ran. The colo
+> runs two Compose projects joined by the external `signoz-net`
+> network: the game server and watchtower
+> ([`docker/compose.yml`](../../docker/compose.yml)), and SigNoz's own
+> upstream compose file, now vendored at v0.125.1 in
+> [`docker/signoz/`](../../docker/signoz/). SigNoz v0.125 folds the
+> query service, frontend and alertmanager into one `signoz` service
+> (UI on 8080). The Cloudflare Tunnel was never deployed and no longer
+> has a compose service; operators use the VPN. See
+> [colo-deploy.md](../operations/colo-deploy.md) and
+> [signoz-remote-access.md](../operations/signoz-remote-access.md).
+
 For stream (2): the launcher now uploads to cimmeria-server's own
 `/api/telemetry/upload-{chunk,bundle}` endpoints. The server validates
 the HMAC token (same dev-session flow as before), replays each event
@@ -479,7 +492,10 @@ The integration plan from this side:
   (SigNoz's ~6 services). All vendored into one self-contained
   `docker/compose.yml` so the deploy unit stays a single file, but
   upgrades require a manual re-vendor of the inlined SigNoz config
-  sections alongside the image-tag bump.
+  sections alongside the image-tag bump. (2026-10-04: now two compose
+  projects with SigNoz vendored in `docker/signoz/`; upgrades are still
+  a manual re-vendor, see
+  [signoz-deployment.md → Upgrading SigNoz](../operations/signoz-deployment.md#upgrading-signoz).)
 - The Cosmos write path is gone. If we ever want it back, we'd
   re-introduce `cosmos_log.rs` alongside (not instead of) the OTLP
   layer — they coexisted fine in earlier iterations.

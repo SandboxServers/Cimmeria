@@ -19,6 +19,25 @@ while ! pg_isready -h 127.0.0.1 -U "${POSTGRES_USER:-w-testing}" -d "${POSTGRES_
     sleep 0.5
 done
 
+# Wait for the OTLP collector too, so a cold start (host reboot, Docker
+# restart) doesn't open with a burst of export errors while SigNoz is still
+# booting. Telemetry is optional: after OTEL_WAIT_TIMEOUT seconds start
+# anyway. This lives here, not in /etc/cont-init.d, because s6-overlay v3
+# starts this service in parallel with the legacy cont-init scripts.
+if [ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]; then
+    hp="${OTEL_EXPORTER_OTLP_ENDPOINT#*://}"; hp="${hp%%/*}"
+    otel_host="${hp%:*}"; otel_port="${hp##*:}"
+    [ "$otel_port" = "$hp" ] && otel_port=4317
+    otel_deadline=$(( $(date +%s) + ${OTEL_WAIT_TIMEOUT:-120} ))
+    until timeout 3 bash -c "exec 3<>/dev/tcp/${otel_host}/${otel_port}" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$otel_deadline" ]; then
+            echo "[cimmeria-server] OTLP collector ${otel_host}:${otel_port} not reachable after ${OTEL_WAIT_TIMEOUT:-120}s; starting without it" >&2
+            break
+        fi
+        sleep 2
+    done
+fi
+
 # The server resolves its data/* paths relative to CWD, so we must `cd`
 # into /opt/cimmeria where data/cache/*.pak and data/spaces/*.nav live.
 cd /opt/cimmeria

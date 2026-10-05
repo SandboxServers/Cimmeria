@@ -1,7 +1,7 @@
 # Claude Code telemetry to the colo SigNoz
 
 > Type: how-to. Audience: the Claude Code coordinator, the person who runs the workstations, and the colo operator.
-> Updated: 2026-10-03 (TP-04 of [#957](https://github.com/SandboxServers/Cimmeria/issues/957)). Ledger: [docs/analysis/token-usage/](../analysis/token-usage/README.md). Field reference: Claude Code [monitoring-usage](https://code.claude.com/docs/en/monitoring-usage), read 2026-10-03.
+> Updated: 2026-10-04 (colo facts and repo layout); 2026-10-03 (TP-04 of [#957](https://github.com/SandboxServers/Cimmeria/issues/957)). Ledger: [docs/analysis/token-usage/](../analysis/token-usage/README.md). Field reference: Claude Code [monitoring-usage](https://code.claude.com/docs/en/monitoring-usage), read 2026-10-03.
 
 Claude Code can export OpenTelemetry metrics and events for every API request, tool call and permission decision. This runbook sends them from the workstations to the colo SigNoz, so token use can be checked live and reconciled against the transcript profiler ([TP-05](../analysis/token-usage/README.md#packets)).
 
@@ -12,12 +12,12 @@ Decision D-TP2 sets the rules: the sink is the colo SigNoz behind Cloudflare Acc
 | Question | Answer |
 |---|---|
 | Is a Cloudflare Tunnel running on the colo? | **No.** There is no `cloudflared` container, service or config on the colo. [signoz-remote-access.md](signoz-remote-access.md) describes a setup that was never deployed there. |
-| How does the colo run SigNoz? | From SigNoz's own upstream compose project (`signoz`), not from [`docker/compose.yml`](../../docker/compose.yml). Its collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes `8080`, to the colo's private network. The repo compose's `OTLP_BIND=127.0.0.1` default does not apply there. |
+| How does the colo run SigNoz? | As its own compose project (`signoz`), now vendored in the repo at [`docker/signoz/`](../../docker/signoz/) (2026-10-04). On the colo the collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes `8080`, on every host interface. The repo compose binds them to `OTLP_BIND` / `SIGNOZ_UI_BIND` (default `127.0.0.1`), so a colo moved onto the repo files sets both to its private address in `signoz/.env`. |
 | How do workstations reach it today? | Over the private network. The SigNoz MCP container on the main workstation already uses that route to the UI port, and the OTLP ports answer on it too (an OTLP/HTTP `GET /v1/logs` returns 405, gRPC `4317` accepts connections). |
 | Is OTLP ingest exposed through Cloudflare Access? | **No.** Nothing is. |
 | Does any Claude Code data arrive yet? | No. SigNoz has no `claude_code.*` metric. |
 
-Not checked: whether the colo's upstream network edge forwards `4317`, `4318` or `8080` from the internet. Docker-published ports bypass the host's `INPUT` chain, so if the edge forwards them, anyone could write to the collector or open the UI. The operator should confirm the edge does not forward them (step 0 below).
+Checked 2026-10-04 from an outside address: the colo's network edge **forwards `8080`** (the SigNoz UI and query API answer from the internet), and `4317` and `4318` do not answer. Docker-published ports bypass the host's `INPUT` chain, so the edge is the only gate. Nothing a player runs needs `8080`: player telemetry enters through the game server's login port (`8081`). Step 0 below is therefore still open for `8080`.
 
 So D-TP2 needs a colo change before it can be met as written. Two ways to proceed:
 
@@ -74,8 +74,8 @@ The data lives only in the colo ClickHouse, under SigNoz's log and metric retent
 
 These are changes to the colo and to Cloudflare. TP-04 did not make any of them.
 
-0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8080` on the colo's public address must not answer. If they do, remove the forwards before anything else.
-1. **Run `cloudflared` on the colo.** Either finish [signoz-remote-access.md](signoz-remote-access.md) (its UI ingress must point at `http://signoz:8080`, the colo's actual UI service, not `frontend:3301`), or create a separate tunnel. The container has to reach the collector: attach it to the SigNoz compose project's network (`docker network ls` on the colo lists it) and use the collector's service name, `signoz-otel-collector`.
+0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8080` on the colo's public address must not answer. If they do, remove the forwards before anything else. As of 2026-10-04, `4317` and `4318` pass and `8080` does not: the edge forwards it.
+1. **Run `cloudflared` on the colo.** Either finish [signoz-remote-access.md](signoz-remote-access.md) (UI ingress `http://signoz:8080`), or create a separate tunnel. The container has to reach the collector: run it on the `signoz-net` network and use the collector's container name, `signoz-otel-collector`.
 2. **Add an OTLP ingress rule** above the catch-all in the tunnel config:
 
    ```yaml
@@ -132,9 +132,9 @@ processors:
           - delete_key(attributes, "user.email")
 ```
 
-Restart the collector afterwards. Record the change in [colo-deploy.md](colo-deploy.md), because a SigNoz upgrade that replaces the deploy directory would drop it.
+Restart the collector afterwards. The processor is part of the repo's vendored collector config, [`docker/signoz/otel-collector-config.yaml`](../../docker/signoz/otel-collector-config.yaml); a SigNoz upgrade must carry it over ([signoz-deployment.md → Upgrading SigNoz](signoz-deployment.md#upgrading-signoz)).
 
-Applied on the colo on 2026-10-03 (processor `transform/claude-code-scrub`, in the `metrics` and `logs` pipelines before `batch`); see [colo-deploy.md](colo-deploy.md#optional-claude-code-telemetry).
+Applied on the colo on 2026-10-03 (processor `transform/claude-code-scrub`, in the `metrics` and `logs` pipelines before `batch`); in the repo since 2026-10-04 as part of [`docker/signoz/`](../../docker/signoz/); see [colo-deploy.md](colo-deploy.md#claude-code-telemetry).
 
 ## Workstation setup (coordinator, with the user)
 

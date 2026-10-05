@@ -9,7 +9,7 @@ last_updated: 2026-07-25
 
 Self-contained Docker image: server binary + cooked game data + pre-loaded Postgres + s6-overlay supervisor, in one published artifact. The goal is `docker run` and you have a working Cimmeria server — no Rust toolchain, no MSVC, no PowerShell bootstrap, no `.sql` files to load.
 
-> Looking to deploy this to a colo / single-host box with auto-update on every new release? See [Colo Auto-Update Deployment](colo-deploy.md) and the self-contained compose at [`docker/compose.yml`](../../docker/compose.yml) (single file — includes the SigNoz observability stack inlined).
+> Looking to deploy this to a colo / single-host box with auto-update on every new release? See [Colo Auto-Update Deployment](colo-deploy.md): the game stack is [`docker/compose.yml`](../../docker/compose.yml) and the optional SigNoz stack is [`docker/signoz/`](../../docker/signoz/), joined by the `signoz-net` Docker network.
 
 ## Release model
 
@@ -37,11 +37,9 @@ Versions are `YYYY-MM-DD.N` where `N` is the 1-based release count for that UTC 
 
 ```bash
 docker run -d --name cimmeria \
-  -p 13001:13001 \
   -p 32832:32832/udp \
-  -p 50000:50000/udp \
   -p 8081:8081 \
-  -p 8443:8443 \
+  -p 127.0.0.1:8443:8443 \
   -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
@@ -51,13 +49,13 @@ No volume mount for the database — the container reseeds pgdata from the image
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| 13001 | TCP | Auth (BaseApp connections) |
 | 32832 | UDP | BaseApp |
-| 50000 | UDP | CellApp |
-| 8081  | TCP | Auth HTTP (SOAP login) |
-| 8443  | TCP | Admin REST API |
+| 8081  | TCP | Auth HTTP (SOAP login); also launcher telemetry upload (`/api/auth/dev-session`, `/api/telemetry/*`) |
+| 8443  | TCP | Admin REST API (no authentication; publish on loopback) |
 | 30000 | TCP | Minigame SmartFoxServer (Livewire, Hack, Bypass, GoauldCrystals, Alignment, Activate, Analyze, Converse) |
 
+> The image also `EXPOSE`s `13001/tcp` (`AUTH_PORT`) and `50000/udp` (`CELL_PORT`), but nothing binds either: client login is the SOAP listener on `8081`, and the CellApp runs in-process. Don't publish them.
+>
 > The legacy C++ BaseApp had a Python console on port 8989; the Rust server does not implement it, so the container does not expose it.
 
 ## Environment
@@ -72,9 +70,9 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `BASE_HOST` | `0.0.0.0` | |
 | `BASE_EXTERNAL` | `127.0.0.1` | **Must override for non-localhost clients.** |
 | `BASE_PORT` | `32832` | |
-| `CELL_PORT` | `50000` | |
+| `CELL_PORT` | `50000` | Read into the config but bound by no listener; the CellApp runs in-process. |
 | `ADMIN_PORT` | `8443` | |
-| `ADMIN_BIND` | `0.0.0.0` (image) / `127.0.0.1` (bare binary) | The admin API has no auth (#439). The bare binary binds loopback; the image binds wide because a Docker published port forwards to the container's bridge address and cannot reach an in-container loopback bind. **In a container the `-p` publish is the exposure control**, not this variable: publish as `-p 127.0.0.1:8443:8443` for operator-only access, or drop the publish. A plain `-p 8443:8443` exposes unauthenticated admin control to every host that can route to the port. Launcher telemetry ingest shares this listener, so launchers on other hosts need the port reachable. |
+| `ADMIN_BIND` | `0.0.0.0` (image) / `127.0.0.1` (bare binary) | The admin API has no auth (#439). The bare binary binds loopback; the image binds wide because a Docker published port forwards to the container's bridge address and cannot reach an in-container loopback bind. **In a container the `-p` publish is the exposure control**, not this variable: publish as `-p 127.0.0.1:8443:8443` for operator-only access, or drop the publish. A plain `-p 8443:8443` exposes unauthenticated admin control to every host that can route to the port. Launcher telemetry ingest is also served on the login port (`8081`), so launchers on other hosts don't need `8443`. |
 | `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below. Note this differs from the non-container default (`port=5433`). |
 | `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
 | `RUST_LOG` | `info` | tracing-subscriber filter |
@@ -88,7 +86,7 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | Poll interval for hot-reloading the auth TLS cert/key on change (e.g. a Let's Encrypt renewal). `0` disables. Only active when the TLS listener is configured. |
 | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` and `cimmeria.deploy_env` on every span/log/metric. Set to `colo` on a colo box so its data doesn't mix with dev-laptop noise. `OTEL_RESOURCE_ATTRIBUTES` cannot override either. |
 | `CIMMERIA_GIT_SHA` | `unknown` | **Build argument, not a runtime variable.** Baked in by `crates/server/build.rs` as the OTLP `service.version` resource attribute. `release-container.yml` passes `github.sha` and `pr-container.yml` the PR head SHA; a source build falls back to `git rev-parse HEAD`. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP collector endpoint. Unset ⇒ exporter disabled. [`docker/compose.yml`](../../docker/compose.yml) sets this to the bundled SigNoz collector. See [signoz-deployment.md](signoz-deployment.md). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP collector endpoint. Unset ⇒ exporter disabled. [`docker/compose.yml`](../../docker/compose.yml) sets this to `http://otel-collector:4317`, the SigNoz collector on the `signoz-net` network. When set, the container waits up to `OTEL_WAIT_TIMEOUT` seconds (default 120) for it at start, then starts without it. See [signoz-deployment.md](signoz-deployment.md). |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` or `http/protobuf`. |
 | `OTEL_SERVICE_NAME` | `cimmeria-server` | `service.name` in SigNoz's service map. |
 | `OTEL_RESOURCE_ATTRIBUTES` | (unset) | Comma-separated `k=v` resource attributes. |
@@ -111,7 +109,7 @@ That applies regardless of how the path is mounted: anonymous volume, named volu
 
 This is deliberate. The design intent is "ephemeral DB, fresh every deploy" while the schema is still churning, and the reseed lives in the entrypoint because the alternative (relying on `WATCHTOWER_REMOVE_VOLUMES=true` to drop the anonymous volume) does not actually work — watchtower attaches the old volume to the new container before removing the old one, so Docker refuses the deletion and the stale database survives. Observed on the colo on 2026-05-26. The entrypoint's header comment documents the full mechanic.
 
-If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to graduate off this setup](colo-deploy.md#when-to-graduate-off-this-setup).
+If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to move off this setup](colo-deploy.md#when-to-move-off-this-setup).
 
 ### Reset to a fresh server
 
@@ -184,8 +182,7 @@ docker run -d --name cimmeria \
   --cap-drop=ALL \
   --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
   --security-opt=no-new-privileges \
-  -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
-  -p 8081:8081 -p 8443:8443 -p 30000:30000 \
+  -p 32832:32832/udp -p 8081:8081 -p 127.0.0.1:8443:8443 -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
 ```

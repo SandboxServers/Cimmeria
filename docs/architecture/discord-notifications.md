@@ -386,7 +386,7 @@ The colo never holds a `.env` file with webhooks — the rendered overlay carrie
 
 Channel-by-channel: a `[discord.channels.X]` block whose corresponding GH Actions secret was unset at render time is stripped from the rendered TOML entirely. Channels not in the rendered file are silently dropped from routing — see [`should_post`](../../crates/discord/src/config/mod.rs).
 
-See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#optional-discord-notifications) for the operator-facing runbook.
+See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#discord-notifications) for the operator-facing runbook.
 
 ## Testing
 

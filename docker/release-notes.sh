@@ -78,18 +78,20 @@ docker run ...   # same flags as above
 
 If \`compose.discord.yml\` is attached to this release, the colo can post
 lifecycle / error events to Discord via webhooks. Download it alongside
-\`compose.yml\` and bring up with both:
+\`compose.yml\`, add it to \`COMPOSE_FILE\` in \`.env\`, and bring the
+stack up:
 
 \`\`\`
 curl -L -o compose.discord.yml \\
   "https://github.com/sandboxservers/cimmeria/releases/download/v${VERSION}/compose.discord.yml"
-docker compose -f compose.yml -f compose.discord.yml up -d
+docker compose up -d
 \`\`\`
 
 The overlay carries webhook URLs already substituted from the release
-workflow's GitHub Actions secrets — no \`.env\` file on the colo host.
-Treat the rendered file as a secret (\`chmod 0600\`). See
-[docs/operations/colo-deploy.md](https://github.com/${OWNER}/cimmeria/blob/${SHA:-main}/docs/operations/colo-deploy.md#optional-discord-notifications)
+workflow's GitHub Actions secrets. Treat the rendered file as a secret
+(\`chmod 0600\`). It replaces the host-file route
+(\`compose.discord-file.yml\`); use one or the other. See
+[docs/operations/colo-deploy.md](https://github.com/${OWNER}/cimmeria/blob/${SHA:-main}/docs/operations/colo-deploy.md#discord-notifications)
 for the full operations notes.
 
 ### What's inside

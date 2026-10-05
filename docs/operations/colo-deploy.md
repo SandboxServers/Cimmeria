@@ -2,254 +2,252 @@
 title: "Colo / single-host auto-update deployment"
 type: how-to
 audience: operators
-last_updated: 2026-07-25
+last_updated: 2026-10-04
 ---
 
 # Colo / single-host auto-update deployment
 
-How to host a publicly-reachable Cimmeria server on a Debian box you don't want to babysit. Goal: bring the box up once, and every time a new `latest-prerelease` lands on GHCR the running container is automatically replaced with the fresh one — DB and all.
+How to host a public Cimmeria server on a Linux box you don't want to babysit, the way the project's colo runs it. You set it up once. After that, every new `latest-prerelease` image on GHCR replaces the running server within five minutes, and SigNoz keeps the logs, traces and metrics.
 
-This is **not** a production hosting story. The image is a self-contained demo (bundled Postgres with baked credentials, server + DB sharing one container, see [container.md → Security](container.md#security)). It's the right shape for a colo box running a public-but-trusted server, not for a hardened multi-tenant deployment.
+Everything here lives in [`docker/`](../../docker/). The files in the repo are the files the colo runs; what differs between hosts goes in two `.env` files.
 
-## What you get
+This is **not** a hardened production setup. The image bundles Postgres with baked credentials and resets the database on every start ([container.md → Security](container.md#security)). It suits a public server for a trusted community, not a multi-tenant one.
 
-- One `docker compose up -d` and you're done.
-- New GHCR `latest-prerelease` digest → container hot-swapped within ~5 minutes, no human action.
-- Every swap starts from a **clean DB** (the image's baked pgdata). No migration drift, no schema reconciliation, no "did the last release break the save format?"
-- Box rebooting is self-healing (`restart: unless-stopped`).
+## What runs
 
-## What you don't get (yet)
+Two Compose projects, joined by one Docker network:
 
-- **No persistence, full stop.** Player characters, mission progress, inventory — all reset every time a new image rolls, *and* on any plain `docker restart`. The container entrypoint reseeds the database from the image on every start; a named volume does not change this. See [container.md → Volume / persistence](container.md#volume--persistence). This is deliberate while we're churning the schema.
-- **No staged rollouts / canaries.** Watchtower replaces the running container as soon as it sees a digest change. If a release breaks boot, the box is down until the next release lands or you intervene manually.
-- **No HA.** Single container, single host. If you need redundancy, run two boxes behind a load balancer; this guide doesn't cover that.
+| Project | Directory on the host | Containers | Source |
+|---|---|---|---|
+| `cimmeria` | `/opt/cimmeria` | `cimmeria` (game server + bundled Postgres), `watchtower` | [`docker/compose.yml`](../../docker/compose.yml) and overlays |
+| `signoz` | `/opt/cimmeria/signoz` | `signoz` (UI + query API), `signoz-otel-collector`, `signoz-clickhouse`, `signoz-zookeeper-1`, plus two one-shot init containers | [`docker/signoz/`](../../docker/signoz/), vendored from SigNoz v0.125.1 |
+
+The game container reaches the collector as `otel-collector:4317` on the external network `signoz-net`. Either project can be started first, and the game runs without SigNoz.
+
+### Ports
+
+| Port | Service | Who should reach it | Published on |
+|---|---|---|---|
+| `8081/tcp` | SOAP login; also launcher telemetry upload (`/api/auth/dev-session`, `/api/telemetry/*`) | Players | all interfaces |
+| `32832/udp` | BaseApp, all game traffic after login | Players | all interfaces |
+| `30000/tcp` | Minigame SmartFoxServer | Players | all interfaces |
+| `8443/tcp` | Admin REST API. **No authentication** (#439) | Operators only | `ADMIN_PUBLISH`, default `127.0.0.1` |
+| `8444/tcp` | Live Research Lab endpoint (overlay) | The owner's dev box over the VPN | `CIMMERIA_WG_IP` only |
+| `8080/tcp` | SigNoz UI and query API | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
+| `4317/tcp`, `4318/tcp` | OTLP gRPC / HTTP into the collector. **No authentication** | Exporters outside Docker on the private network (a native server, workstation Claude Code telemetry) | `OTLP_BIND`, default `127.0.0.1` |
+
+Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. Docker-published ports bypass the host's `INPUT` firewall chain, so the network edge (the router or the provider's firewall) is what keeps the rest private. Ports `13001` and `50000/udp` appear in the image's `EXPOSE` list, but nothing binds them; don't publish or forward them.
+
+**How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8080` nor `4317`/`4318` needs to be reachable from the internet.
+
+### Files on the host
+
+```text
+/opt/cimmeria/
+├── compose.yml                 docker/compose.yml
+├── compose.lab.yml             docker/compose.lab.yml               (overlay)
+├── compose.discord-file.yml    docker/compose.discord-file.yml      (overlay)
+├── compose.discord.yml         release asset, if you use that route (overlay)
+├── .env                        from docker/.env.example, 0600, never committed
+├── config/discord.toml         your Discord config, uid 1001, 0440, never committed
+└── signoz/
+    ├── compose.yaml            docker/signoz/compose.yaml
+    ├── otel-collector-config.yaml
+    ├── common/…                ClickHouse and OpAMP config
+    └── .env                    from docker/signoz/.env.example, 0600
+```
+
+Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk). SigNoz data lives in the named volumes `signoz-clickhouse`, `signoz-sqlite` and `signoz-zookeeper-1`.
 
 ## Prerequisites
 
-- Debian 12+ (or any distro with a current Docker).
-- Docker Engine 24+ and the `docker compose` v2 plugin:
-  ```bash
-  sudo apt-get update
-  sudo apt-get install -y docker.io docker-compose-plugin
-  sudo systemctl enable --now docker
-  ```
-- A user in the `docker` group (or sudo every command).
-- Ports `13001/tcp`, `32832/udp`, `50000/udp`, `8081/tcp`, `8443/tcp`, and `30000/tcp` (minigame SmartFoxServer) reachable from your players — these are the ports [`docker/compose.yml`](../../docker/compose.yml) publishes.
-
-> **Warning — `8443` is the unauthenticated Admin API, published to players.** The admin API has no authentication (issue #439: server stop, content rewrite, and credential streaming via `/ws/logs` are all reachable without a token). Until the JWT middleware lands, remove `8443` from the compose `ports:` list (or publish it as `127.0.0.1:8443:8443` for loopback-only operator access) — in a container the publish is the exposure control, not `ADMIN_BIND` (the image binds `0.0.0.0` inside its own network namespace, because a published port cannot reach an in-container loopback bind). Narrowing or removing the publish also cuts off launcher telemetry ingest (`/api/auth/dev-session`, `/api/telemetry/*`) from other hosts, which shares this listener. Operators needing remote admin access should tunnel (SSH / Cloudflare Tunnel) instead of opening the port.
+- A 64-bit Linux host with Docker Engine and the `docker compose` v2 plugin. The colo runs Debian 12 with Docker 29. Install Docker from [Docker's apt repository](https://docs.docker.com/engine/install/debian/); Debian's own `docker.io` package does not ship the compose v2 plugin.
+- About 4 GB of RAM for SigNoz (ClickHouse is most of it) and disk for ClickHouse: the colo's grew to about 40 GB in its first four months. If the root filesystem is small, set Docker's `data-root` in `/etc/docker/daemon.json` to a bigger disk before you start.
+- Outbound HTTPS to `ghcr.io`, Docker Hub and `github.com`. SigNoz's first boot downloads a ClickHouse function from a GitHub release.
+- Edge forwards for `8081/tcp`, `32832/udp` and `30000/tcp` to the host, and a public address or DNS name for players.
 
 ## One-time setup
 
-1. Drop [`docker/compose.yml`](../../docker/compose.yml) onto the box (any path — `/opt/cimmeria/compose.yml` is a reasonable convention). The file is self-contained: it includes the cimmeria server, watchtower auto-update, and the full vendored SigNoz observability stack with all its config files inlined. No companion files needed.
-2. Edit the `BASE_EXTERNAL` environment variable to the public/LAN IP your players will connect to. **This is the single mandatory edit.** The image default of `127.0.0.1` only works for clients on the same host as the container.
-3. Bring it up:
+1. **Get the files.** Copy the repo's `docker/` directory to `/opt/cimmeria`. From a release tarball of `main`:
+
    ```bash
-   cd /opt/cimmeria
-   docker compose -f compose.yml up -d
+   sudo mkdir -p /opt/cimmeria && cd /opt/cimmeria
+   curl -fsSL https://github.com/SandboxServers/Cimmeria/archive/refs/heads/main.tar.gz \
+     | sudo tar -xz --strip-components=2 Cimmeria-main/docker
    ```
 
-That's the entire administrative cost. From this point on, the box self-maintains.
+   That also brings the `Dockerfile`, `entrypoint.sh` and `s6/`, which the host doesn't use; they're harmless.
+
+2. **Create the shared network**, once per host:
+
+   ```bash
+   docker network create signoz-net
+   ```
+
+3. **Start SigNoz** (skip this step to run without observability):
+
+   ```bash
+   cd /opt/cimmeria/signoz
+   sudo cp .env.example .env && sudo chmod 0600 .env
+   sudoedit .env        # SIGNOZ_JWT_SECRET=$(openssl rand -hex 32); SIGNOZ_UI_BIND / OTLP_BIND if operators reach it over a LAN or VPN
+   docker compose up -d
+   ```
+
+   Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8080` (or tunnel to it: `ssh -L 8080:127.0.0.1:8080 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
+
+4. **Start the game server:**
+
+   ```bash
+   cd /opt/cimmeria
+   sudo cp .env.example .env && sudo chmod 0600 .env
+   sudoedit .env        # BASE_EXTERNAL is the one required value
+   docker compose up -d
+   ```
+
+   `BASE_EXTERNAL` is the address players connect to, handed to them during login. Compose refuses to start without it. Getting it wrong is the most common failure: players log in, then get bounced back to the login screen.
+
+5. **Check it:**
+
+   ```bash
+   docker ps --format 'table {{.Names}}\t{{.Status}}'      # cimmeria (healthy) after ~1 min
+   docker logs cimmeria 2>&1 | grep -E '\[otel\] Streaming|Discord notifications|dev-session telemetry'
+   ```
+
+   `[otel] Streaming to http://otel-collector:4317` means telemetry is flowing. In SigNoz, Logs → `service.name = cimmeria-server` shows rows within a minute.
 
 ## What happens on every update
 
-Watchtower polls `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` every 5 minutes (`WATCHTOWER_POLL_INTERVAL=300`). When the digest moves:
+Watchtower checks `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` every five minutes. When the digest changes, it pulls the new image, stops and removes the `cimmeria` container, starts a replacement with the same settings, and deletes the old image. Downtime is about 30 seconds.
 
-1. Watchtower pulls the new image.
-2. Stops the running `cimmeria` container.
-3. Removes the old container (`WATCHTOWER_REMOVE_VOLUMES=true` is set, but see below — it is not what actually gives you the fresh DB).
-4. Starts a fresh container with the same config and the new image. The container's entrypoint reseeds pgdata from the image-baked copy before Postgres boots.
-5. Removes the old image (`WATCHTOWER_CLEANUP=true`) so disk doesn't accumulate.
+It touches nothing else. `WATCHTOWER_LABEL_ENABLE=true` limits it to containers labelled `com.centurylinklabs.watchtower.enable=true`, which only the `cimmeria` service is. Never run a watchtower without that or a `WATCHTOWER_SCOPE`: it would update every container on the host. `DOCKER_API_VERSION=1.44` is required on Docker 29 and later, which refuses watchtower's default API version, and watchtower then fails every poll.
 
-Total downtime per swap: ~30 seconds (mostly Postgres boot + s6 service init, same as a cold start).
+**Edits to the compose files or `.env` don't reach the running container until you run `docker compose up -d`.** Watchtower builds each replacement from the *old container's* settings, not from the files. Get into the habit: edit, then `docker compose up -d`, then check `docker inspect cimmeria` shows the change.
 
-## Why every swap gets a fresh DB
+Releases are cut by hand (`/release` on a merged PR, or a manual run of `release-container.yml`), so merging to `main` alone never restarts the colo.
 
-The reseed happens **in the entrypoint**, not through Docker volume mechanics. On every container start, [`docker/entrypoint.sh`](../../docker/entrypoint.sh) unconditionally copies the image-baked `/var/lib/postgresql/initial-data` over `/var/lib/postgresql/data`, then hands off to s6-overlay. That is what makes each deploy start clean.
+## The database resets on every start
 
-This is worth understanding because the obvious explanation is wrong. You might expect that, with no `volumes:` entry for the Postgres path, Docker would simply hand each new container a new anonymous volume populated from the image. In practice watchtower **attaches the old container's anonymous volume to the new container before removing the old one**, so Docker refuses the volume removal and the new instance inherits the previous database. Earlier revisions of this setup relied on `WATCHTOWER_REMOVE_VOLUMES=true` alone and did not reliably get a fresh DB. The entrypoint-level reseed sidesteps the mechanic entirely; `WATCHTOWER_REMOVE_VOLUMES=true` is now belt-and-suspenders only.
+[`docker/entrypoint.sh`](../../docker/entrypoint.sh) copies the image's baked database over `/var/lib/postgresql/data` every time the container starts. An image update, `docker restart cimmeria`, a Docker restart and a host reboot all start from a clean database. Characters, missions and inventory do not survive any of them. This is deliberate while the schema keeps changing.
 
-Two consequences follow. First, the reseed is unconditional — anything written to pgdata at runtime is discarded on the next start, including a restart that isn't an update. Second, named SigNoz volumes are unaffected and persist across swaps, so your observability history survives.
+The reset is in the entrypoint because Docker volume mechanics can't do it: watchtower attaches the old container's anonymous volume to its replacement before removing the old one, so Docker refuses to delete it, and the database would carry over. `WATCHTOWER_REMOVE_VOLUMES=true` is set but doesn't change this.
 
-If you ever **do** want persistence across updates, note that mounting a named volume will not get you there — the entrypoint reseed runs regardless of how the path is mounted, so the volume's contents are overwritten on every start. See [container.md → Volume / persistence](container.md#volume--persistence). The available route today is an external Postgres pointed at by `DB_URL`; at that point the auto-update story becomes "auto-update with persistent DB" and you've signed up for whatever schema drift the next release brings.
+Mounting a volume does not make the database persistent; the entrypoint overwrites whatever is there. The route to persistence is an external Postgres via `DB_URL` ([container.md](container.md#volume--persistence)), and then you own schema drift between releases.
 
-## Operational commands
+Hosts with automatic security updates and reboots (the colo reboots at 04:30 when an update needs it) reset the database on those reboots too.
 
-```bash
-# Tail server logs (postgres + cimmeria-server interleaved, prefixed by service name):
-docker logs -f cimmeria
+## Optional overlays
 
-# Just the game server's lines:
-docker logs -f cimmeria 2>&1 | grep cimmeria-server
-
-# Force an immediate watchtower check (don't wait for the 5 min poll):
-docker exec watchtower /watchtower --run-once cimmeria
-
-# Force a manual update right now (equivalent to the above, from outside the container):
-docker compose pull && docker compose up -d
-
-# Take the box out of rotation:
-docker compose down
-
-# Bring it back:
-docker compose up -d
-
-# Wipe everything (containers, anon volumes, downloaded images):
-docker compose down --volumes --rmi all
-```
-
-## Optional: Discord notifications
-
-The cimmeria server can post lifecycle / error events (server up, server down, warnings, panics, …) to one or more Discord channels via webhooks. See [discord-notifications.md](../architecture/discord-notifications.md) for the full design and the per-event toggle catalog.
-
-Deployment on the colo is a separate Compose overlay file generated by the release workflow:
-
-1. **Configure GitHub Actions secrets** in the SandboxServers/Cimmeria repo settings:
-   - `DISCORD_LIFECYCLE_WEBHOOK` — Discord webhook URL for the lifecycle channel (server up/down/panic).
-   - `DISCORD_ERRORS_WEBHOOK` — Discord webhook URL for the errors channel (`warn!` / `error!` harvest + the gameplay error event types).
-
-   Setting at least one of these enables overlay rendering. Setting neither (or the secrets being unavailable to forks) skips the overlay step entirely — release still completes, just without Discord wiring.
-
-2. **Download the rendered overlay** from the latest GitHub release alongside `compose.yml`:
-
-   ```bash
-   cd /opt/cimmeria
-   curl -L -o compose.discord.yml \
-     "https://github.com/SandboxServers/Cimmeria/releases/latest/download/compose.discord.yml"
-   ```
-
-   The release artifact has the webhook URLs already substituted into the inlined TOML — no `.env` on the colo host, no secrets sitting on disk outside the compose file itself. Read access to the compose file == read access to the webhook URLs, which is why the deployed file should be `chmod 0600` and owned by root (the entrypoint writes the in-container `/opt/cimmeria/config/discord.toml` as `0440`).
-
-3. **Bring up with both files** in a single compose invocation:
-
-   ```bash
-   docker compose -f compose.yml -f compose.discord.yml up -d
-   ```
-
-   The overlay only modifies the `cimmeria` service: it sets `DISCORD_CONFIG_TOML` to the inlined TOML, and [docker/entrypoint.sh](../../docker/entrypoint.sh) writes that to `/opt/cimmeria/config/discord.toml` before the server starts. Watchtower copies the container's environment into each replacement, so the config survives image updates.
-
-   Earlier versions used a compose `configs: content:` mount instead. Compose copies that file in only when compose creates the container, so the first watchtower swap dropped it and the server ran with Discord silently disabled. If a colo still runs that overlay, re-download it. A host file bind-mounted at `/opt/cimmeria/config/discord.toml` also survives swaps; the entrypoint leaves it alone when `DISCORD_CONFIG_TOML` is unset.
-
-   The server logs `Discord notifications enabled` or `disabled` at startup (target `cimmeria_discord`, `event=discord_config`), with the config path and whether the file was there. Check that line after a deploy.
-
-### Adding more channels
-
-The overlay ships with `lifecycle` + `errors` defined. To enable additional channels (`auth`, `world`, `chat`, `gameplay`, `gm`, `ops`):
-
-1. Add a `DISCORD_<CHANNEL>_WEBHOOK` GitHub Actions secret.
-2. Extend [docker/compose.discord.yml](../../docker/compose.discord.yml) with a new `[discord.channels.<channel>]` block using a fresh `__DISCORD_<CHANNEL>_WEBHOOK__` sentinel.
-3. Add a new awk-substitution arm to the render step in [.github/workflows/release-container.yml](../../.github/workflows/release-container.yml).
-4. Cut a new release. The new overlay artifact will include the channel.
-
-Channels without a `[discord.channels.X]` block are silently dropped from routing — see the `should_post` logic in [crates/discord/src/config/model.rs](../../crates/discord/src/config/model.rs) (line 86).
-
-### Per-event toggle overrides
-
-The rendered TOML inherits the crate's `EventToggles::default()` for every flag and overrides only what the colo needs to diverge on. The default colo overlay turns `warning = true` on (vs. `false` locally) so ops sees non-fatal regressions even when day-to-day development noise is muted elsewhere.
-
-To adjust further, edit the `[discord.events]` block in [docker/compose.discord.yml](../../docker/compose.discord.yml) and cut a new release. cimmeria-discord supports live reload, but the entrypoint writes the file only at container start, so toggles take effect on the next `docker compose up -d` with the new overlay.
-
-## Optional: Live Research Lab endpoint (WireGuard only)
-
-The in-server Live Research Lab endpoint (`cimmeria-lab-mcp`) lets the owner's dev box read live entity/witness/packet-tap state and run captured-output dot-console commands against the running colo server (design: [../architecture/live-research-lab.md](../architecture/live-research-lab.md); rulebook: [../guides/live-research-lab.md](../guides/live-research-lab.md)). It is **off by default and never exposed on the public internet**.
-
-Two things gate it, both fail-closed:
-
-1. **Config.** The server starts the endpoint only when *both* env vars are set, and refuses a token shorter than 32 bytes:
-   - `CIMMERIA_LAB_MCP_BIND` — the in-container bind address, e.g. `0.0.0.0:8444`. There is no default; absent = endpoint absent.
-   - `CIMMERIA_LAB_MCP_TOKEN` — the shared bearer token (32+ bytes). Absent = endpoint absent.
-2. **Port publication.** The port is published on the host's **WireGuard address only**, via the opt-in overlay [docker/compose.lab.yml](../../docker/compose.lab.yml). It is deliberately *not* in `docker/compose.yml`'s public `ports:` list. If you don't add the overlay, nothing is published.
-
-"WireGuard address" means any address the colo host owns that the dev box reaches over its VPN. When the VPN lands the dev box on the colo's LAN, that is the host's LAN address. The overlay also passes it as `CIMMERIA_LAB_MCP_ALLOWED_HOSTS`: the MCP transport's DNS-rebinding guard accepts only loopback `Host` headers by default and answers anything else with `403 Host header is not allowed`.
-
-Enable it on the colo box:
+Pick overlays with `COMPOSE_FILE` in `.env`, so a bare `docker compose up -d` always applies the same set. The colo uses:
 
 ```bash
-cd /opt/cimmeria
-export CIMMERIA_WG_IP=10.13.13.1              # this box's WireGuard address
-export CIMMERIA_LAB_MCP_TOKEN=$(openssl rand -hex 32)   # 64 hex chars = 32 bytes (the minimum)
-docker compose -f compose.yml -f compose.lab.yml up -d
+COMPOSE_FILE=compose.yml:compose.discord-file.yml:compose.lab.yml
 ```
 
-To keep the overlay across later `docker compose up` runs without re-exporting, put the three settings in `/opt/cimmeria/.env` (`chmod 0600`), which compose reads on its own:
+### Discord notifications
+
+The server can post lifecycle and error events to Discord webhooks ([discord-notifications.md](../architecture/discord-notifications.md)). There are two ways to give it the config. Use one.
+
+**From a host file**, [`compose.discord-file.yml`](../../docker/compose.discord-file.yml) (what the colo does). Write `config/discord.toml` yourself, starting from [config/discord.toml.example](../../config/discord.toml.example); any channels, muted accounts and event toggles work without a new release.
 
 ```bash
-COMPOSE_FILE=compose.yml:compose.lab.yml
-CIMMERIA_WG_IP=10.13.13.1
-CIMMERIA_LAB_MCP_TOKEN=<64 hex chars>
+cd /opt/cimmeria && sudo mkdir -p config
+sudoedit config/discord.toml
+sudo chown 1001:1001 config/discord.toml && sudo chmod 0440 config/discord.toml
 ```
 
-The overlay's `${CIMMERIA_WG_IP:?...}` / `${CIMMERIA_LAB_MCP_TOKEN:?...}` markers make compose refuse to start if either is unset, so the port can never bind to all interfaces and the endpoint can never start tokenless. From the dev box, reach it over WireGuard at `http://$CIMMERIA_WG_IP:8444/mcp` with `Authorization: Bearer <token>`, and point the `lab-server` entry in `.mcp.json` there (see [.mcp.json.example](../../.mcp.json.example)).
+The server runs as uid 1001 inside the container and must be able to read the file. If it can't, it logs `Discord notifications disabled` with `file_present=true` and carries on without them. If the file is missing when the container is created, Docker creates an empty directory in its place; remove the directory, write the file, and run `docker compose up -d` again.
 
-Every tool call on the endpoint emits one `lab.tool_call` audit event to SigNoz — that log line is the whole audit trail. On the colo, touch only the lab character and what it spawns unless the owner says otherwise in that session.
+**From the release**, `compose.discord.yml`. The release workflow renders the webhook URLs from the repo's `DISCORD_LIFECYCLE_WEBHOOK` and `DISCORD_ERRORS_WEBHOOK` Actions secrets into an overlay attached to each GitHub release. It passes the TOML as `DISCORD_CONFIG_TOML`, which the entrypoint writes into the container. It carries only the channels the workflow knows about.
 
-## Optional: client telemetry
+```bash
+curl -fL -o compose.discord.yml \
+  "https://github.com/SandboxServers/Cimmeria/releases/latest/download/compose.discord.yml"
+chmod 0600 compose.discord.yml
+```
 
-Launchers that opted in, and lab sessions, upload the client's logs and the injected DLL's events to the colo's `/api/telemetry/*`, which replays them into SigNoz as `service.name = cimmeria-client` (lab rows tagged `cimmeria.session_kind = lab`). It is **off until two values are in `/opt/cimmeria/.env`**; `docker/compose.yml` passes them through with `${VAR:-}` and never holds them itself:
+Either way, check `docker logs cimmeria 2>&1 | grep 'Discord notifications'` says `enabled` after a deploy. To add a channel to the release route: a `DISCORD_<CHANNEL>_WEBHOOK` secret, a `[discord.channels.<channel>]` block with a `__DISCORD_<CHANNEL>_WEBHOOK__` sentinel in [docker/compose.discord.yml](../../docker/compose.discord.yml), and a matching substitution in the render step of [release-container.yml](../../.github/workflows/release-container.yml).
+
+### Live Research Lab endpoint (VPN only)
+
+The in-server lab endpoint (`cimmeria-lab-mcp`) lets the owner's dev box read live server state and run captured dot-console commands ([design](../architecture/live-research-lab.md), [rulebook](../guides/live-research-lab.md)). It is off unless both of these hold:
+
+1. The server gets `CIMMERIA_LAB_MCP_BIND` and a `CIMMERIA_LAB_MCP_TOKEN` of 32+ bytes.
+2. [`compose.lab.yml`](../../docker/compose.lab.yml) publishes `8444` on `CIMMERIA_WG_IP` only.
+
+Add to `.env`:
+
+```bash
+CIMMERIA_WG_IP=<an address this host owns that the dev box reaches over the VPN; the LAN address when the VPN lands on the LAN>
+CIMMERIA_LAB_MCP_TOKEN=<openssl rand -hex 32>
+```
+
+and `compose.lab.yml` to `COMPOSE_FILE`. Compose refuses to start the overlay if either value is missing. The address is also the endpoint's `Host` allowlist; anything else gets `403 Host header is not allowed`. From the dev box: `http://$CIMMERIA_WG_IP:8444/mcp` with `Authorization: Bearer <token>`, in the `lab-server` entry of `.mcp.json` ([.mcp.json.example](../../.mcp.json.example)). Every call logs one `lab.tool_call` event to SigNoz. On the colo, touch only the lab character and what it spawns unless the owner says otherwise in that session.
+
+### Client telemetry from players
+
+Off until two values are in `.env`:
 
 ```bash
 CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>
-CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
+CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://<public host>:8081/api/telemetry
 ```
 
-The telemetry routes are also served on the public login port (8081), and players' launchers accept plain HTTP to the host and port of a login server they use, so no tunnel is needed (decision @Cadacious, 2026-09-29). A Cloudflare Tunnel hostname limited to `^/api/(auth/dev-session|telemetry/)` at `http://cimmeria:8443` is optional. Then `docker compose -f compose.yml up -d cimmeria`, and check `docker logs cimmeria 2>&1 | grep "dev-session telemetry"` says `mint and ingest enabled`. A missing or short secret does not stop the game server; it logs `dev_session_secret_unusable` at startup instead. The full steps, the optional tunnel rule and the checks are in [telemetry.md → Enable client telemetry on the colo](telemetry.md#enable-client-telemetry-on-the-colo).
+Then `docker compose up -d` and check `docker logs cimmeria 2>&1 | grep 'dev-session telemetry'` says `mint and ingest enabled`. A missing or short secret doesn't stop the server; it logs `dev_session_secret_unusable`. Details, secret rotation and checks: [telemetry.md](telemetry.md#enable-client-telemetry-on-the-colo).
 
-## Optional: Claude Code telemetry
+### Claude Code telemetry
 
-Workstations can export Claude Code's own usage telemetry to the colo SigNoz over the private network; the setup is in [claude-code-telemetry.md](claude-code-telemetry.md). Since 2026-10-03 the colo's SigNoz collector config (`otel-collector-config.yaml` in the SigNoz deploy directory) carries the `transform/claude-code-scrub` processor, which drops `user.email` from logs and metrics. A SigNoz upgrade that replaces that file drops the processor: re-add it as the runbook shows and restart the collector.
+Workstations can export Claude Code's usage telemetry to the colo SigNoz over the private network: [claude-code-telemetry.md](claude-code-telemetry.md). That needs `OTLP_BIND` set to the host's private address. The `transform/claude-code-scrub` processor in [`docker/signoz/otel-collector-config.yaml`](../../docker/signoz/otel-collector-config.yaml) drops `user.email` from those logs and metrics; keep it when you upgrade SigNoz.
 
-## Optional: watchtower notifications
+### Watchtower swap notifications
 
-Watchtower itself can ping Discord / Slack / email / Matrix via [shoutrrr](https://containrrr.dev/watchtower/notifications/) every time it swaps a container. This is independent of the cimmeria-discord crate above — watchtower notifications announce *image swaps*, while cimmeria-discord notifications announce *server events*. Set `WATCHTOWER_NOTIFICATIONS` and `WATCHTOWER_NOTIFICATION_URL` in the compose file if you want both.
+Watchtower can announce each image swap through [shoutrrr](https://containrrr.dev/shoutrrr/). That's separate from the server's own Discord events. Set `WATCHTOWER_NOTIFICATIONS=shoutrrr` and `WATCHTOWER_NOTIFICATION_URL=discord://<token>@<webhook-id>` in `.env` (the token and ID are the two parts of a Discord webhook URL, in that order).
 
-## Optional: pin watchtower's image
+## Operating it
 
-The sample compose uses `containrrr/watchtower:latest`. For belt-and-braces, pin by digest:
-
-```yaml
-watchtower:
-  image: containrrr/watchtower:1.7.1@sha256:<digest from docker hub>
+```bash
+cd /opt/cimmeria
+docker logs -f cimmeria                                  # server console + postgres
+docker exec watchtower /watchtower --run-once cimmeria   # check for a new image now
+docker compose pull && docker compose up -d              # same, by hand
+docker compose up -d                                     # apply edits to compose files or .env
+docker compose down                                      # stop the game (SigNoz keeps running)
+cd signoz && docker compose up -d                        # apply SigNoz edits
 ```
 
-This is the same hygiene rule the Cimmeria image itself follows — see [container.md → Image supply-chain posture](container.md#image-supply-chain-posture). Trade-off: you have to manually bump it for security fixes.
+The server writes `logs/*.log` under `CIMMERIA_LOG_DIR` and moves the previous run's files to `logs/archive/<timestamp>/` at each start. Nothing rotates or deletes them; the colo accumulated 6 GB in a week of busy testing. Prune old archives with a cron job if the disk is small:
+
+```bash
+find /path/to/logs/archive -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +
+```
+
+Container stdout is capped by the json-file driver (5 × 50 MB for `cimmeria`).
+
+Container recreations occasionally leave an unused anonymous volume of about 100 MB (an old Postgres data directory). `docker volume prune` removes unused anonymous volumes; named volumes such as SigNoz's are kept.
+
+SigNoz retention (how long logs, traces and metrics are kept) is set in the SigNoz UI under Settings. ClickHouse is the only thing on the host that grows without bound, so check `docker system df -v` now and then.
+
+Upgrading SigNoz: [signoz-deployment.md → Upgrading SigNoz](signoz-deployment.md#upgrading-signoz).
 
 ## Troubleshooting
 
-**Container won't start / immediately exits.**
+**Players log in, then return to the login screen.** `BASE_EXTERNAL` isn't an address they can reach, or `32832/udp` isn't forwarded. The server itself is fine.
 
-```bash
-docker logs cimmeria --tail 200
-```
+**`network signoz-net declared as external, but could not be found`.** Run `docker network create signoz-net`.
 
-Look for the s6 service prefix: `[cimmeria-server]` lines are the game server, `[postgres]` lines are the DB. The most common failure mode at colo is misconfigured `BASE_EXTERNAL` — players connect successfully but get kicked back to login because the BaseApp handshake hands them an unreachable address. The server itself starts fine in that case; the symptom is purely client-side.
+**`[otel] ... not reachable after 120s; starting without it` in the log**, then export errors. SigNoz is down or not on `signoz-net`. To run without it, set `OTEL_EXPORTER_OTLP_ENDPOINT=` (empty) in `.env` and `docker compose up -d`; the server then skips the 120-second wait too.
 
-**Watchtower isn't picking up new releases.**
+**Watchtower never updates.** `docker logs watchtower --tail 20` should show a `Session done ... Scanned=1` line every five minutes. `Scanned=0`: the label is missing from `cimmeria`. `client version 1.25 is too old`: `DOCKER_API_VERSION` is missing (Docker 29+).
 
-```bash
-docker logs watchtower --tail 50
-```
+**A setting I changed isn't in effect.** You edited a file but didn't run `docker compose up -d`; see [What happens on every update](#what-happens-on-every-update).
 
-Expect to see periodic "Session done" lines. If the cimmeria container isn't being inspected, check:
+**`docker compose` complains `required variable BASE_EXTERNAL is missing`.** You're running it outside `/opt/cimmeria`, or `.env` lacks the value.
 
-- `WATCHTOWER_LABEL_ENABLE=true` is set in compose AND the `com.centurylinklabs.watchtower.enable=true` label is on the `cimmeria` service.
-- The package is public (it should be — see GHCR settings). If it isn't, watchtower needs credentials per its [private-registries docs](https://containrrr.dev/watchtower/private-registries/).
+**SigNoz UI loads but shows no data.** Check the game log for `[otel] Streaming` and `docker logs signoz-otel-collector --tail 50`. More in [signoz-deployment.md → Troubleshooting](signoz-deployment.md#troubleshooting).
 
-**Disk usage growing over time.**
+## When to move off this setup
 
-Anonymous volumes from old containers should be cleaned up by `WATCHTOWER_REMOVE_VOLUMES=true`. Old images by `WATCHTOWER_CLEANUP=true`. If you see drift anyway:
+- **Persistent characters** → an external Postgres via `DB_URL`, and a migration plan for each release.
+- **More than one host** → an orchestrator; watchtower doesn't coordinate across nodes.
+- **Staged rollouts** → a CI/CD pipeline with a canary, not a polling auto-updater.
 
-```bash
-docker system df          # what's using space
-docker volume prune       # nuke unreferenced volumes
-docker image prune -a     # nuke unreferenced images
-```
-
-## When to graduate off this setup
-
-This pattern is right for: a single colo box, public demo or trusted-community play, no persistence requirement, no SLA. Move to something heavier when you need:
-
-- **Persistence across updates** → switch to a named volume, accept schema drift as a cost of doing business.
-- **More than one host** → orchestrator (k8s, Nomad). Watchtower doesn't coordinate across nodes.
-- **Staged rollouts** → CI/CD pipeline with a canary tier, not a polling auto-updater.
-- **External Postgres** → set `DB_URL` to a managed DB and run with `--external-db` (the orchestrator detects libpq-style `host=`/`port=` and skips the bundled Postgres bootstrap).
-
-See [container.md → Threat model](container.md#threat-model--deliberate-trade-offs) for the full set of trade-offs the bundled image makes that this guide inherits.
+[container.md → Threat model](container.md#threat-model--deliberate-trade-offs) lists the image's other trade-offs.
