@@ -78,6 +78,8 @@ companion_docs:
 - **In-client record**: the 2026-09-18 playtest ended at 708 step 4462 because the DHD had no `INT_DHD` interact arm (finding H10, 76 dead clicks). #662 added that arm the next day. Nobody has dialed a gate in a client since. Castle UAT M4 (PR #663 test plan) is unchecked.
 - **Path forward**: Client UAT of dial → open → cross with a second observer (Castle M4). Dial-rejection feedback via `onDHDReply` (#727; today a refused dial is silent, which breaks the first-press feedback rule). 18 of about 30 seeded gate worlds have no gate volume and still travel on the dial. No hidden-address list. No gate cooldown.
 
+- **Debug Area campaign (2026-10-05, [ledger](../analysis/debug-area/README.md))**: #1232 seeds gate 29 on the Debug Area's own gate prop as an outbound-only dial hub and makes template-1 DHDs clickable on nine worlds
+
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | DHD interaction | NT | -- | cell/interactions/dhd.rs | **IM → NT 2026-09-25.** `INT_DHD` interact arm emits `onDisplayDHD` with the origin address, range-checks `address_origin` (1-38) and refuses worlds with no gate (#662 H01). This fixes playtest finding H10. It has not been clicked in a client since. Re-verified 2026-09-25 |
@@ -90,6 +92,8 @@ companion_docs:
 | Multi-player gate sync | NT | -- | cell/gate_travel/sequences.rs | **KM → NT 2026-09-25.** 6100/6113 `onSequence` are sent to the dialer and every witness (#663; fan-out byte test in `gate_round_trip_tests/stargate_fanout.rs`). No two-client run (#663 UAT M4 unchecked; player-to-player AoI #737 is itself not two-client validated). Re-verified 2026-09-25 |
 | Return trips | IM | -- | base/world_entry/gate_travel/persist_arrival.rs | **KM → IM 2026-09-25.** A gate trip now teaches the traveller the origin gate too, so they can dial home (#682 H06). There is still no shared open-wormhole or return state: each direction is a fresh dial. Re-verified 2026-09-25 |
 | Gate cooldown | KM | -- | -- | No use-after-dial cooldown |
+| Outbound-only dial hub (Debug Area gate 29) | NT | -- | cell/gate_travel/dial_hub.rs, address_book.rs | **New 2026-10-05 (#1232).** `stargates.debug_dial_hub`: nobody can dial gate 29 or learn its address (refused before the address book, byte-identical to an unknown address). A GM opening its DHD gets every gate on a loaded world (13; Men'fa (SGU) is left out until its arrival is pinned) in memory only, sent as `updateStargateAddress` before `onDisplayDHD`. Mutation-checked unit and live-DB guards; not yet clicked in a client (DA-U45) |
+| Template-1 DHDs clickable | NT | -- | db/resources/Entities/Seed/entity_templates.sql | **New 2026-10-05 (#1232).** Template 1 (`GLB-DHD_00`) shipped `interaction_type = 0`, so every DHD but the Castle's was dead: Harset, Tollana, Lucia, Omega Site, Beta Site E1, Dakara E1, both Ihpet Craters and Men'fa (Praxis). Now `INT_DHD`. Not yet clicked in a client (DA-06 check 26) |
 
 ### 21. Chat --- NT
 

@@ -27,9 +27,10 @@ point.", and the base logs a WARN `gm_only_world_refused` naming the
 player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
-This page covers the zones from packets DA-02, DA-03 and DA-04, and the
-ring transports that link them (DA-08); DA-05
-completes it with the station index and the UAT mapping. Each packet's rows are
+This page covers the zones from packets DA-02, DA-03 and DA-04, the
+stargate (DA-07) and the ring transports that link them (DA-08).
+[Which station tests what](#which-station-tests-what) (DA-05) maps each
+restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
 
 - DA-02 (Z2 services plaza, Z3 training dummies): the `*_debug_area_plaza.sql`
