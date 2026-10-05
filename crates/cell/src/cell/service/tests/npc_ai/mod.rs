@@ -81,6 +81,10 @@
 //!   `.occ` and world-1300 cover: the Z6 arena fights and their spectators,
 //!   the Z8 riflemen's cover, the Z9 lethal squad and respawn targets, and
 //!   live-DB guards for the same seed.
+//! - [`debug_area`] — Debug Area DA-03 on the real `ihpet_crater_light.nav` /
+//!   `.occ`: the faction yard, AI behaviour slope and enemy gallery rows
+//!   stand on mesh and terrain, the gallery never pulls or rallies, the pen
+//!   and the assist trio engage as documented, and no station reaches another.
 //! - [`live_db_npc_vs_npc`] — #1009 live-DB smoke: a seeded standoff marine and
 //!   NID guard fight to a death with the seeded abilities; nobody is paid.
 //!
@@ -110,6 +114,7 @@ mod castle_standoff;
 mod combat_stance;
 mod crowd_control;
 mod dead_player_drop;
+mod debug_area;
 mod debug_area_combat;
 mod despawning_release;
 mod follow_resume;

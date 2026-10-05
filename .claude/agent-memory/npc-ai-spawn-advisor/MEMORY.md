@@ -24,3 +24,4 @@
 - [npc-vs-npc-1009.md](npc-vs-npc-1009.md) — #1009: reaction table with NPC as viewer, witness-gated grid scan, dormant seekers, NPC-only kills pay nothing, Castle standoff D-CP11 spots
 - [debug-area-combat-zones-da04.md](debug-area-combat-zones-da04.md) — DA-04 world 1300: pit SW ramp is in the 4 u band, west-wing LoS spots, Z9 terrain vs nav, 559 kill math, seed-file footer trap
 - [debug-area-map-survey.md](debug-area-map-survey.md) — cover-node counts per client map; Ihpet crater floor is one component; nav vs occluder terrain heights differ up to 3.3 m; player-safe NPC-vs-NPC faction pairs
+- [debug-area-da03-stations.md](debug-area-da03-stations.md) — DA-03 world 1300: factions 1/5/6/7/9 never fight (3 does), yard z shift, terrace trench z -602, gallery 99/101, 62 nameless

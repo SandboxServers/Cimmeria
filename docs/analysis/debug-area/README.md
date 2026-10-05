@@ -89,7 +89,7 @@ least 86 m apart with a wall between, against an 18 m default aggro radius and
 |---|---|
 | World 1300, respawners 130-131 | DA-01 |
 | Templates 1300-1329, spawns 13000-13199 | DA-02 |
-| Templates 1330-1369, spawns 13200-13599 | DA-03 |
+| Templates 1330-1369, spawns 13200-13599, point sets 13200-13209, points 13200-13299 | DA-03 |
 | Templates 1370-1399, spawns 13600-13799 | DA-04 |
 
 Check each range is free in the seed before using it; raise a clash with the
@@ -104,7 +104,7 @@ coordinator instead of moving into another packet's block.
 | DA-00 | This plan. | none | Review |
 | DA-01 | World plumbing: world row, `spaces.xml`/`cell_spaces.xml`, a table of Cimmeria-added worlds feeding `world_id_for_name`, `client_map_for_world` and `WORLD_INFO_OVERRIDES` (also closing the missing shipped names: 50, 61, 62, 69, 70, 72, 73, 78), fail-closed `resolve_space_id_fallback`, nav/occ fallback to the client map (D-DA5), advisory list, respawners 130/131, generated cover nodes for world 1300, `.gotolocation DebugArea`. | none | Review (#1223) |
 | DA-02 | Z2 services plaza (vendor, trainer, dialog NPC, terminal, loot crate, registrars, pet trainer, bankers, mail clerk, Black Market auctioneer, crafting stations) and an ability granter that gives the clicking player every ability of their archetype; Z3 non-retaliating dummies (D-DA7). | DA-01 | BlockedDependency |
-| DA-03 | Z4 faction yard, Z5 patrol/wander/leash/assist, Z7 enemy gallery with every hostile template (D-DA9). | DA-01 | BlockedDependency |
+| DA-03 | Z4 faction yard, Z5 patrol/wander/leash/assist, Z7 enemy gallery with every hostile template (D-DA9). Seeded: templates 1330-1333 and 1340-1343, spawns 13200-13245 and 13300-13398, patrol point set 13200 (points 13200-13201). Gallery: 99 of 101 hostile templates placed (140/141, children, excluded), 24 with an ability set, 75 on the 592 fallback, 62 with no display name. Yard rows moved to z -806..-794 where nav and terrain agree. See [debug-area.md](../../content/debug-area.md). | DA-01 | Review |
 | DA-04 | Z6 arena (D-DA8), Z8 cover course, Z9 death and respawn test. Templates 1370-1377, spawns 13600-13641 in `*_debug_area_combat.sql`; reference [debug-area.md](../../content/debug-area.md). | DA-01 | Review |
 | DA-05 | `docs/content/debug-area.md`, `docs/guides/uat-specs/debug-area.toml`, unified UAT section mapping every system to a station. | DA-02..04 | BlockedDependency |
 | DA-06 | Live-client check in the lab: the map loads as world 1300, spawn heights, doorway collision, map Kismet, every station answers. Fixes as `DA-F<n>`. | DA-01..04 deployed | BlockedDependency |

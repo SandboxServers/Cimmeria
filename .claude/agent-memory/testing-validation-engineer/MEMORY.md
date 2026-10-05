@@ -15,3 +15,4 @@
 - [project_live_db_marker_convention.md](project_live_db_marker_convention.md) — live-DB tests need `live_db` in fn/module name; N-way parallel on per-slot DB clones; guards in test-support live_db_group
 - [finding_tolua_native_arity_stubs.md](finding_tolua_native_arity_stubs.md) — SGW Lua natives are tolua shims that raise on extra args (0x00403280=isnoobj); permissive UAT stubs hid #1213 getAbilityList(2)
 - [finding_source_scan_lexer_masking.md](finding_source_scan_lexer_masking.md) — NT-03 scan masks literals/comments before parsing (load-bearing); Git Bash `sed -i` turns CRLF docs LF
+- [finding_station_bucket_hides_intra_zone_assist.md](finding_station_bucket_hides_intra_zone_assist.md) — tag-prefix station buckets skip intra-zone assist pairs; NID Guard 24 assist 26 u; seed y != runtime y (navmesh snap)
