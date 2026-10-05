@@ -27,9 +27,10 @@ point.", and the base logs a WARN `gm_only_world_refused` naming the
 player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
-This page covers the zones from packets DA-02, DA-03 and DA-04, and the
-ring transports that link them (DA-08); DA-05
-completes it with the station index and the UAT mapping. Each packet's rows are
+This page covers the zones from packets DA-02, DA-03 and DA-04, the
+stargate (DA-07) and the ring transports that link them (DA-08).
+[Which station tests what](#which-station-tests-what) (DA-05) maps each
+restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
 
 - DA-02 (Z2 services plaza, Z3 training dummies): the `*_debug_area_plaza.sql`
@@ -59,6 +60,36 @@ height and grounding does the rest.
 > **Placement is checked on the server's data, not in the client.** The rows
 > are tested on the real navmesh, occluder and cover markers (below), but
 > nobody has walked them in the client yet. That is packet DA-06.
+
+## Which station tests what
+
+DA-05's map from each restored system to the station that tests it. The step ids are the [unified UAT guide's Debug Area section](../guides/unified-uat.md#debug-area); the lab runs the same rows from [debug-area.toml](../guides/uat-specs/debug-area.toml). Systems tied to their own map (the Castle CellBlock tutorial, Castle, Harset, the historical CellBlocks and the Cellblock-to-Castle ring) stay tested in their own zones.
+
+| System (unified UAT section) | Station | Steps |
+|---|---|---|
+| Travel and GM-only access | Z1 arrival, respawner 130 | DA-U1, DA-U2 |
+| Ability trees, ability mechanics | Z2 ability granter and reset NPC, trainer; Z3 dummies; `.effects`, `.cooldowns` | DA-U3 to DA-U5, DA-U19 to DA-U21 |
+| Vendors, special ammo, consumables | Z2 vendor and munitions vendor | DA-U6 to DA-U8 |
+| Dialog UI | Z2 Airman Lance (dialog 5738) | DA-U9 |
+| Minigames | Z2 Livewire terminal | DA-U10 |
+| Loot | Z2 crate, any Z7 or Z9 kill | DA-U11, DA-U31, DA-U37 |
+| Bank and vault, organizations | Z2 Bankers and registrars | DA-U12, DA-U13, DA-U15 |
+| Mail | Z2 Sgt. Harriman | DA-U14 |
+| Black market | Z2 Machra | DA-U16 |
+| Crafting | Z2 supplies vendor and the four stations | DA-U17 |
+| Pets | Z2 Goa'uld Advanced Skills | DA-U18 |
+| NPC AI: factions, aggro radius, assist | Z4 faction yard, Z5 assist trio | DA-U22 to DA-U24, DA-U28 |
+| NPC AI: patrol, wander, leash | Z5 AI behaviour slope | DA-U25 to DA-U27 |
+| Combat against every hostile template | Z7 enemy gallery | DA-U29 to DA-U31 |
+| NPC-vs-NPC (#1009) | Z6 arena | DA-U32 to DA-U34 |
+| Cover and line of sight | Z8 cover course | DA-U35, DA-U36 |
+| Death and respawn | Z9 death yard, respawners 130 and 131 | DA-U37, DA-U38 |
+| Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
+| Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
+| Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
+| GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
+
+What only a live client can settle is the ordered [DA-06 checklist](../analysis/debug-area/README.md#da-06-live-client-checks).
 
 ## Heights in the DA-03 zones
 

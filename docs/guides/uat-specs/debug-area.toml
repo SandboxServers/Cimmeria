@@ -1,0 +1,1918 @@
+# Unified UAT, section "Debug Area" (world 1300, every station).
+# Guide: docs/guides/unified-uat.md#debug-area (DA-U1 to DA-U46).
+# Reference: docs/content/debug-area.md (zones, spawn tables, how each
+# station works). Campaign: docs/analysis/debug-area/README.md.
+#
+# Where it runs: any server with the Debug Area seeded (DA-01 to DA-04,
+# SA-01), with the GM lab account and a fresh SGU Soldier per run. A fresh
+# character carries the starter kit (SI 3 9mm Pistol in the bandolier, the
+# five starter abilities), so every shooting row has a loaded pistol, and
+# its access level is the GM account's, so world 1300 lets it in.
+#
+# How a row is built:
+# - Every row starts by moving to its own station with
+#   `.gotolocation DebugArea <x> <y> <z>` and waiting for world 1300
+#   (`client_wait_for`), so the rows run in any order. The coordinates are
+#   the station points in debug-area.md; heights are a little above the
+#   floor, so the player settles onto it.
+# - Clicks stand within 3.5 u of the NPC (interact range is 5 u) and use
+#   `@world_click` by name, which picks the nearest match: three Bankers are
+#   "Storage Officer" and two registrars are "Organization Registrar".
+#   A row that visits two neighbours walks between them with `@move_to`
+#   (N1), so the move is not a GM step.
+# - Shooting rows place 592 Pistol Shot on the bar in setup, before any
+#   target is selected, so the placement press hits nothing and the graded
+#   press in the steps is the bound key (N1).
+# - AI rows set `.aggro on` in setup (a GM with `.aggro off` is never
+#   acquired) and read the NPC side from SigNoz `npc_ai.aggro` rows, which
+#   carry the spawn's `tag` (`DebugArea_*`). The arena keeps cycling for
+#   anyone within 150 u (K25): filter on the tag, as these clauses do.
+# - Rows that kill an NPC on purpose use `/gmkilltarget <id>` with the id
+#   read from `@entity_find`, so they set `required_native = "G"`.
+# - Teardown returns to the Z1 arrival (respawner 130's point).
+# - The four character rows (DA-U39, DA-U40, DA-U42, DA-U44) make and
+#   delete their own character, like castle-cellblock T01/T02, because they
+#   test what a brand-new character starts with.
+#
+# Blocked rows say what they wait for: a non-GM account (DA-U2), the
+# store window's buttons (DA-U7) and a seeded account (DA-U44).
+#
+# Client patches: DA-U42 needs 009-starter-hotbar and DA-U46 needs
+# 007-castle-armory-ring and 010-debug-area-rings. All three are in the
+# signed content manifest (content-current, published 2026-10-05), so the
+# launcher's Update installs them on the lab client.
+
+schema = 1
+
+[section]
+id = "debug-area"
+system = "Debug Area"
+guide = "docs/guides/unified-uat.md#debug-area"
+ledger = "docs/analysis/debug-area/README.md#packets"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+# ================================================================ Arrival
+
+[[row]]
+id = "DA-U1"
+title = ".gotolocation DebugArea lands at the Z1 arrival in world 1300"
+expected = "The client loads Ihpet_Crater_Light as world 1300; you stand at the Z1 arrival (251, 8, -962) in the south compound; the reply ends in [stargate arrival] (the gate's arrival pin is the Z1 point; [respawner] on a build before DA-07)."
+known_issues = ["DA-06"]
+notes = "Leaves for Castle first, so the step is always a cross-world move."
+setup = [
+  { chat = ".gotolocation Castle", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 8", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { chat = ".gotolocation DebugArea", label = "go" },
+  { wait_ms = 20000 },
+]
+[[row.expect]]
+id = "reply"
+text = "the reply names world 1300's entry rule"
+source = "chat"
+since = "go"
+matches = 'Moving entity .* to DebugArea \(251, 8, -962\) \[(respawner|stargate arrival)\]'
+[[row.expect]]
+id = "world-1300"
+text = "the client's current world is 1300"
+source = "tool"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "wire-world"
+text = "setupWorldParameters went to the client (it carries worldId 1300)"
+source = "packet"
+message = "setupWorldParameters"
+direction = "to_client"
+[[row.expect]]
+id = "minimap"
+text = "the minimap and map show the Debug Area, not CombatSim"
+source = "human"
+question = "In final.png, does the minimap location text name the Debug Area world (not CombatSim), and are you standing on the ground in a walled compound courtyard?"
+[[row.expect]]
+id = "logged"
+text = "SigNoz records the move"
+source = "signoz"
+filter = "scope_name = 'console.feedback' AND body CONTAINS 'to DebugArea'"
+min_rows = 1
+
+[[row]]
+id = "DA-U2"
+title = "A non-GM never enters world 1300"
+expected = "A non-GM headed for world 1300 (login, gate, ring, summon, .gotolocation) lands at their faction's start instead and reads \"The Debug Area is for GMs only. You have been returned to your faction's starting point.\""
+blocked = "needs a non-GM lab account (matrix X2); covered by gm_only_worlds.rs, gate_travel/tests/gm_only_world.rs and live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start"
+[[row.expect]]
+id = "line"
+text = "the refusal line arrives once the home world has loaded"
+source = "chat"
+contains = "The Debug Area is for GMs only."
+[[row.expect]]
+id = "refused"
+text = "SigNoz: WARN gm_only_world_refused names the player and both worlds"
+source = "signoz"
+filter = "event = 'gm_only_world_refused' AND refused_world = 'DebugArea'"
+min_rows = 1
+
+# ================================================================ Z2 services plaza
+
+[[row]]
+id = "DA-U3"
+title = "The ability granter gives a GM the whole archetype tree"
+expected = "\"Ability granter: granting N abilities of your Soldier tree (all branches and capstones); M cooldown(s) cleared.\", then \"Ability granter: granted N abilities from your tree (saved; no points spent)\"; the Abilities window refreshes."
+notes = "Setup clicks the reset NPC first, so the granter always has abilities to give."
+setup = [
+  { chat = ".gotolocation DebugArea 256 7.2 -929", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@world_click", args = { name = "Jay Test Abilities", button = "right", expect = "any" }, optional = true },
+  { wait_ms = 3000 },
+  { chat = ".gotolocation DebugArea 254 7.2 -930", tier = "G" },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Train Testing Abilities", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 4000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 256 7.2 -929", optional = true },
+  { wait_ms = 1500 },
+  { tool = "@world_click", args = { name = "Jay Test Abilities", button = "right", expect = "any" }, optional = true },
+]
+[[row.expect]]
+id = "granting"
+text = "the first-click line counts the abilities and cleared cooldowns"
+source = "chat"
+since = "click"
+matches = 'Ability granter: granting [0-9]+ abilities of your .* tree'
+[[row.expect]]
+id = "granted"
+text = "the base confirms the grant was saved with no points spent"
+source = "chat"
+since = "click"
+matches = 'Ability granter: granted [0-9]+ abilities from your tree \(saved; no points spent\)'
+[[row.expect]]
+id = "wire-known"
+text = "the client gets onKnownAbilitiesUpdate"
+source = "packet"
+message = "onKnownAbilitiesUpdate"
+direction = "to_client"
+[[row.expect]]
+id = "audit"
+text = "SigNoz: one ability_granter row with source npc_granter, naming every ability"
+source = "signoz"
+filter = "event = 'ability_granter' AND change = 'grant_all' AND ability_count > 0"
+min_rows = 1
+max_rows = 1
+
+[[row]]
+id = "DA-U4"
+title = "The ability reset NPC returns you to the starter abilities"
+expected = "\"Ability reset: ...\"; only the five starter abilities stay known (592, 594, 597, 1646, 1218); spent tree points are refunded; cooldowns clear."
+setup = [
+  { chat = ".gotolocation DebugArea 254 7.2 -930", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@world_click", args = { name = "Train Testing Abilities", button = "right", expect = "any" }, optional = true },
+  { wait_ms = 3000 },
+  { chat = ".gotolocation DebugArea 256 7.2 -929", tier = "G" },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Jay Test Abilities", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 4000 },
+]
+[[row.expect]]
+id = "line"
+text = "the reset answers in chat"
+source = "chat"
+since = "click"
+contains = "Ability reset:"
+[[row.expect]]
+id = "wire-known"
+text = "the client gets onKnownAbilitiesUpdate"
+source = "packet"
+message = "onKnownAbilitiesUpdate"
+direction = "to_client"
+[[row.expect]]
+id = "audit"
+text = "SigNoz: one ability_granter row with change reset"
+source = "signoz"
+filter = "event = 'ability_granter' AND change = 'reset'"
+min_rows = 1
+max_rows = 1
+
+[[row]]
+id = "DA-U5"
+title = "The Archetype Skills Trainer opens the trainer window"
+expected = "The trainer window opens on the first right-click, listing your tree."
+setup = [
+  { chat = ".gotolocation DebugArea 257 7.2 -928", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Archetype Skills Trainer", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "wire-interact"
+text = "the click reached the server"
+source = "packet"
+message = "interact"
+direction = "to_server"
+[[row.expect]]
+id = "opened"
+text = "SigNoz: trainer_open for template 301"
+source = "signoz"
+filter = "event = 'trainer_open' AND trainer_template_id = 301"
+min_rows = 1
+[[row.expect]]
+id = "window"
+text = "the trainer window is open"
+source = "human"
+question = "In final.png, is the trainer window open with your archetype's abilities listed?"
+
+[[row]]
+id = "DA-U6"
+title = "The Basic Equipment Quartermaster opens its store"
+expected = "The store window opens on the first right-click, with buy, sell, buyback, repair and recharge tabs."
+setup = [
+  { chat = ".gotolocation DebugArea 259 7.2 -925", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Basic Equipment Quartermaster", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: store_opened for template 300"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'store_opened' AND vendor_template_id = 300"
+min_rows = 1
+[[row.expect]]
+id = "window"
+text = "the store window is open"
+source = "human"
+question = "In final.png, is the vendor's store window open?"
+
+[[row]]
+id = "DA-U7"
+title = "Buy, sell back, repair and recharge at the plaza vendor"
+expected = "Each answers on the first press: the item lands in the bag and cash drops by its price; selling it back pays sell list 2's price; repair and recharge charge and restore."
+blocked = "the store window's buy, sell, repair and recharge buttons need @window_click_row (lab backlog L9); a tester runs this one by hand"
+[[row.expect]]
+id = "transaction"
+text = "SigNoz: a vendor transaction row per action"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'transaction' AND vendor_template_id = 300"
+min_rows = 4
+
+[[row]]
+id = "DA-U8"
+title = "The munitions vendor sells 19 rows, none cheaper than it buys back"
+expected = "The Consumables store opens with 19 rows (15 special-ammo stacks, slappacks, the SI 3 pistol for 300, the SGHC 6 SMG for 1000, the CO2 dart gun); no row costs less than sell list 2 pays for it."
+setup = [
+  { chat = ".gotolocation DebugArea 259 7.2 -923", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Consumables", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: store_opened for template 1302 lists 19 buy rows"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'store_opened' AND vendor_template_id = 1302"
+field = "buy_count"
+op = "eq"
+value = 19
+[[row.expect]]
+id = "no-arbitrage"
+text = "no buy-list-1300 row is cheaper than sell list 2 pays for the same design"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM resources.item_list_items b JOIN resources.item_list_items s ON s.design_id = b.design_id AND s.item_list_id = 2 WHERE b.item_list_id = 1300 AND b.naquadah < s.naquadah * b.quantity" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 0
+[[row.expect]]
+id = "weapon-prices"
+text = "the pistol costs 300 and the SMG 1000"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT sum(naquadah) AS total FROM resources.item_list_items WHERE item_list_id = 1300 AND design_id IN (55, 21)" }
+pointer = "/rows/0/total"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "window"
+text = "the store lists the special ammo and the three weapons"
+source = "human"
+question = "In final.png, does the Consumables store list special-ammo stacks, Health Slappacks and three weapons (pistol 300, SMG 1000, dart gun 1)?"
+
+[[row]]
+id = "DA-U9"
+title = "Airman Lance shows dialog 5738, and its button answers"
+expected = "Dialog 5738 opens (two screens, Next pages, one Generic button); the button sends dialogButtonChoice(5738, 198) and Airman Lance says \"Dialog round trip complete\"; closing with X sends nothing."
+known_issues = ["DA-06"]
+setup = [
+  { chat = ".gotolocation DebugArea 257 7.2 -918", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Airman Lance", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+  { tool = "@finish_dialog", label = "finish" },
+  { wait_ms = 2000 },
+]
+teardown = [{ tool = "@finish_dialog", optional = true }]
+[[row.expect]]
+id = "dialog-open"
+text = "a dialog window is open after the click"
+source = "tool"
+at = "click"
+tool = "@ui_state"
+pointer = "/dialog"
+op = "exists"
+[[row.expect]]
+id = "displayed"
+text = "SigNoz: dialog.display shows 5738"
+source = "signoz"
+filter = "scope_name = 'dialog.display' AND dialog_id = 5738"
+min_rows = 1
+[[row.expect]]
+id = "wire-dialog"
+text = "the client gets onDialogDisplay"
+source = "packet"
+message = "onDialogDisplay"
+direction = "to_client"
+[[row.expect]]
+id = "round-trip"
+text = "the button press comes back as Airman Lance's line"
+source = "chat"
+since = "finish"
+contains = "Dialog round trip complete"
+required = false
+
+[[row]]
+id = "DA-U10"
+title = "The Livewire terminal starts the minigame"
+expected = "A right-click opens Livewire; a win prints \"Livewire round trip complete\" from the Terminal."
+notes = "Winning the Flash minigame is not driven: the row checks the start; a tester plays it."
+setup = [
+  { chat = ".gotolocation DebugArea 258 7.2 -919", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Terminal", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 4000 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "chain"
+text = "SigNoz: chain 13004 ran (start_minigame Livewire)"
+source = "signoz"
+filter = "chain_id = 13004"
+min_rows = 1
+[[row.expect]]
+id = "minigame"
+text = "the Livewire window opened"
+source = "human"
+question = "In final.png, is the Livewire minigame open?"
+
+[[row]]
+id = "DA-U11"
+title = "The plaza crate opens a loot window without a kill"
+expected = "A right-click opens the loot window on table 3; Loot All puts the items in your bags and the crate stays standing."
+known_issues = ["K22"]
+setup = [
+  { chat = ".gotolocation DebugArea 259 7.2 -921", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Crate", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 2500 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: loot.container_opened on table 3"
+source = "signoz"
+filter = "event = 'loot.container_opened' AND loot_table_id = 3"
+min_rows = 1
+[[row.expect]]
+id = "wire-loot"
+text = "the client gets onLootDisplay"
+source = "packet"
+message = "onLootDisplay"
+direction = "to_client"
+[[row.expect]]
+id = "window"
+text = "the loot window shows the rolled items"
+source = "human"
+question = "In final.png, is a loot window open on the crate with items listed?"
+
+[[row]]
+id = "DA-U12"
+title = "The Storage Officer opens your personal vault"
+expected = "The vault opens on the first right-click with 40 slots; no Expand vault dialog (K3)."
+known_issues = ["K3", "K17"]
+setup = [
+  { chat = ".gotolocation DebugArea 250 7.2 -930", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Storage Officer", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "vault-size"
+text = "the vault container holds 40 slots"
+source = "lua"
+chunk = "return getContainerSize(Container.Vault)"
+op = "gte"
+value = 40
+[[row.expect]]
+id = "opened"
+text = "SigNoz: vault_session_opened"
+source = "signoz"
+filter = "event = 'vault_session_opened'"
+min_rows = 1
+
+[[row]]
+id = "DA-U13"
+title = "The Team and Command Bankers answer a player with no organization"
+expected = "Each click answers: with no Team or Command you get a refusal line; with one, its vault opens (bank steps 15-25)."
+known_issues = ["K17"]
+notes = "The run's fresh character has no organization, so both clicks are refusals. The org-vault steps live in the Bank and vault section."
+setup = [
+  { chat = ".gotolocation DebugArea 248 7.2 -929", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Storage Officer", button = "right", expect = "any" }, label = "team" },
+  { wait_ms = 2000 },
+  { tool = "@move_to", args = { point = { x = 246, y = 7.2, z = -927 }, arrival_m = 1 }, label = "move" },
+  { tool = "@world_click", args = { name = "Storage Officer", button = "right", expect = "any" }, label = "command" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "refusals"
+text = "SigNoz: two org-vault refusals (no Team, no Command)"
+source = "signoz"
+filter = "event = 'org_vault_open_rejected'"
+min_rows = 2
+[[row.expect]]
+id = "feedback"
+text = "each click gave visible feedback"
+source = "human"
+question = "Did each of the two clicks show a line or window (not nothing)?"
+
+[[row]]
+id = "DA-U14"
+title = "Sgt. Harriman mails on the click, once per 10 minutes"
+expected = "One mail with 5 Health Slappack TC1 and 50 naquadah; a second click inside 10 minutes is refused with the time left."
+setup = [
+  { chat = ".gotolocation DebugArea 256 7.2 -917", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Sgt. Harriman", button = "right", expect = "any" }, label = "first" },
+  { wait_ms = 3000 },
+  { tool = "@world_click", args = { name = "Sgt. Harriman", button = "right", expect = "any" }, label = "second" },
+  { wait_ms = 3000 },
+]
+[[row.expect]]
+id = "sent"
+text = "SigNoz: the first click sends the mail (chain 13007)"
+source = "signoz"
+filter = "event = 'content.send_system_mail' AND chain_id = 13007 AND outcome EXISTS"
+min_rows = 1
+[[row.expect]]
+id = "refused"
+text = "SigNoz: the second click is refused inside the 10-minute window"
+source = "signoz"
+filter = "event = 'content.send_system_mail' AND chain_id = 13007 AND reason EXISTS"
+min_rows = 1
+
+[[row]]
+id = "DA-U15"
+title = "Both Organization Registrars answer"
+expected = "The Team registrar opens the found-a-Team window; the Command registrar opens the found-a-Command window."
+setup = [
+  { chat = ".gotolocation DebugArea 245 7.2 -926", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Organization Registrar", button = "right", expect = "any" }, label = "team" },
+  { wait_ms = 2000 },
+  { tool = "client_input_key", args = { key = "Escape" }, optional = true },
+  { tool = "@move_to", args = { point = { x = 245, y = 7.2, z = -924 }, arrival_m = 0.8 }, label = "move" },
+  { tool = "@world_click", args = { name = "Organization Registrar", button = "right", expect = "any" }, label = "command" },
+  { wait_ms = 2000 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: two org.registrar_open rows"
+source = "signoz"
+filter = "event = 'org.registrar_open'"
+min_rows = 2
+[[row.expect]]
+id = "windows"
+text = "each registrar opened its window"
+source = "human"
+question = "Did the first click open the found-a-Team window and the second the found-a-Command window?"
+
+[[row]]
+id = "DA-U16"
+title = "Machra opens the Black Market"
+expected = "The auctioneer's chat line works on any client; the auction window needs the black-market client patch (K16)."
+known_issues = ["K16"]
+setup = [
+  { chat = ".gotolocation DebugArea 254 7.2 -916", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Machra", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 2500 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: bm.open (or bm.open_without_client_call on an unpatched client) from chain 13008"
+source = "signoz"
+filter = "event IN ('bm.open', 'bm.open_without_client_call', 'bm.open_unwired')"
+min_rows = 1
+
+[[row]]
+id = "DA-U17"
+title = "The crafting supplies vendor and the four stations answer"
+expected = "Common Materials Components opens a store (1 naquadah each); standing within 5 u of a crafting station, J opens the crafting window with that station's discipline available."
+setup = [
+  { chat = ".gotolocation DebugArea 245 7.2 -922", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Common Materials Components", button = "right", expect = "window" }, label = "supplies" },
+  { wait_ms = 2000 },
+  { tool = "client_input_key", args = { key = "Escape" }, optional = true },
+  { tool = "@move_to", args = { point = { x = 245, y = 7.2, z = -920 }, arrival_m = 0.8 }, label = "move" },
+  { tool = "client_input_focus", args = { on = true } },
+  { tool = "client_input_key", args = { key = "J" }, label = "craft" },
+  { wait_ms = 2000 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "J" }, optional = true }]
+[[row.expect]]
+id = "supplies"
+text = "SigNoz: store_opened for template 314"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'store_opened' AND vendor_template_id = 314"
+min_rows = 1
+[[row.expect]]
+id = "station"
+text = "the crafting window shows the BioMedical station in reach"
+source = "human"
+question = "In final.png, is the crafting window open with the BioMedical station shown as in reach?"
+
+[[row]]
+id = "DA-U18"
+title = "Goa'uld Advanced Skills opens the pet trainer"
+expected = "The trainer window opens with the Goa'uld pet summons."
+setup = [
+  { chat = ".gotolocation DebugArea 258 7.2 -927", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Goa'uld Advanced Skills", button = "right", expect = "any" }, label = "click" },
+  { wait_ms = 2000 },
+]
+teardown = [{ tool = "client_input_key", args = { key = "Escape" }, optional = true }]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: trainer_open for template 360"
+source = "signoz"
+filter = "event = 'trainer_open' AND trainer_template_id = 360"
+min_rows = 1
+
+# ================================================================ Z3 training dummies
+
+[[row]]
+id = "DA-U19"
+title = "A hostile dummy takes damage and never fires back"
+expected = "Each Pistol Shot shows a damage number on the level-10 dummy; it never attacks, chases or leashes; your Health does not drop."
+known_issues = ["K25"]
+setup = [
+  { chat = ".gotolocation DebugArea 246 7.2 -880", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "Jaffa" }, label = "target" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press2" },
+  { wait_ms = 6000 },
+]
+[[row.expect]]
+id = "health-before"
+text = "your Health before the shots (baseline)"
+source = "tool"
+at = "target"
+tool = "@player_state"
+pointer = "/health/current"
+op = "exists"
+capture_var = "health_before"
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+since = "press"
+[[row.expect]]
+id = "number"
+text = "the client shows combat text for the hit"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "combat_text" }
+since = "press"
+[[row.expect]]
+id = "no-ai"
+text = "SigNoz: no dummy ever acquires a target"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Dummy_%'"
+max_rows = 0
+[[row.expect]]
+id = "health-after"
+text = "your Health did not drop"
+source = "tool"
+tool = "@player_state"
+pointer = "/health/current"
+op = "gte"
+value = "${health_before}"
+
+[[row]]
+id = "DA-U20"
+title = "A heal on the friendly dummy lands on it"
+expected = "Target the Injured SGC Guard (starts at half Health) and cast Health Heal: its bar rises; your own Health does not change."
+known_issues = ["DA-06"]
+setup = [
+  { chat = ".gotolocation DebugArea 264 7.2 -876", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1646 } },
+  { tool = "@target", args = { name = "Injured SGC Guard" }, label = "target" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [{ tool = "@cooldowns_reset" }]
+[[row.expect]]
+id = "dummy-before"
+text = "the friendly dummy's Health before the heal (baseline)"
+source = "tool"
+at = "target"
+tool = "@player_state"
+pointer = "/target/health/current"
+op = "lt"
+value = 1000000
+capture_var = "dummy_before"
+[[row.expect]]
+id = "dummy-after"
+text = "the friendly dummy's Health rose"
+source = "tool"
+tool = "@player_state"
+pointer = "/target/health/current"
+op = "gt"
+value = "${dummy_before}"
+[[row.expect]]
+id = "sent"
+text = "the heal left the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1646 }
+since = "press"
+[[row.expect]]
+id = "landed"
+text = "SigNoz: the cast resolved onto the dummy, not the caster"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
+field = "resolution"
+op = "ne"
+value = "self_ability"
+
+[[row]]
+id = "DA-U21"
+title = "A dummy refills 10 s after the last hit; combat ends; no XP"
+expected = "Ten seconds after your last hit you leave combat; the dummy's bar goes back to full; a dummy kill would pay no XP."
+setup = [
+  { chat = ".gotolocation DebugArea 240 7.2 -880", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "Jaffa" }, label = "target" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000, label = "hit" },
+  { wait_ms = 13000, label = "quiet" },
+]
+[[row.expect]]
+id = "xp-before"
+text = "your experience before the shot (baseline)"
+source = "tool"
+at = "target"
+tool = "@player_state"
+pointer = "/experience"
+op = "exists"
+capture_var = "xp_before"
+[[row.expect]]
+id = "damaged"
+text = "the dummy took the hit"
+source = "tool"
+at = "hit"
+tool = "@player_state"
+pointer = "/target/health/current"
+op = "lt"
+value = 1000000
+[[row.expect]]
+id = "refilled"
+text = "the dummy is back at full Health"
+source = "tool"
+at = "quiet"
+tool = "@player_state"
+pointer = "/target/health/current"
+op = "eq"
+value = 1000000
+[[row.expect]]
+id = "out-of-combat"
+text = "you are out of combat"
+source = "tool"
+at = "quiet"
+tool = "@player_state"
+pointer = "/in_combat"
+op = "falsy"
+[[row.expect]]
+id = "released"
+text = "SigNoz: the quiet sweep released you (reason training_dummy_quiet)"
+source = "signoz"
+filter = "reason = 'training_dummy_quiet'"
+min_rows = 1
+[[row.expect]]
+id = "no-xp"
+text = "your experience did not change"
+source = "tool"
+tool = "@player_state"
+pointer = "/experience"
+op = "eq"
+value = "${xp_before}"
+
+# ================================================================ Z4 faction yard
+
+[[row]]
+id = "DA-U22"
+title = "The friendly and neutral rows never aggro, and the neutral row cannot be shot"
+expected = "Standing between the friendly row (x 396) and the neutral row (x 412) for 20 s, nothing engages; a Pistol Shot at a Sewer Falls Resident is refused."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 404 -5.5 -800", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+]
+step = [
+  { wait_ms = 20000, label = "stand" },
+  { tool = "@target", args = { name = "Sewer Falls Resident" } },
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "no-aggro"
+text = "SigNoz: no yard NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Yard_%' AND target_name = '${character}'"
+max_rows = 0
+[[row.expect]]
+id = "neutral-refused"
+text = "the shot at a neutral NPC is refused (client or server)"
+source = "client_event"
+event = "client.ability.recv"
+match_fields = { method = "onErrorCode" }
+since = "press"
+required = false
+
+[[row]]
+id = "DA-U23"
+title = "The pinned neutral Jaffa can be shot and pulls nobody else"
+expected = "Shoot a Jaffa Non Combatant: only that Jaffa fights back; the hostile pen 24 u east never joins."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 400 -6 -796", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "Jaffa Non Combatant" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 8000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "pinned-fights"
+text = "SigNoz: a pinned Jaffa acquired you on damage"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Yard_NeutralPinned_%' AND cause = 'damage'"
+min_rows = 1
+[[row.expect]]
+id = "pen-stays"
+text = "SigNoz: no pen NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Yard_Hostile_%' AND target_name = '${character}'"
+max_rows = 0
+
+[[row]]
+id = "DA-U24"
+title = "The hostile pen engages at its aggro radius"
+expected = "Walking east from the neutral row, the pen engages at about x 418-422 (18 u); all three pen NPCs join."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 404 -5.5 -798", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@move_to", args = { point = { x = 424, y = -3.5, z = -796 }, arrival_m = 3 }, label = "walk" },
+  { wait_ms = 6000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "proximity"
+text = "SigNoz: a pen NPC acquired you by proximity"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Yard_Hostile_%' AND cause = 'proximity' AND target_name = '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "all-three"
+text = "SigNoz: all three pen NPCs engage (proximity or assist)"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Yard_Hostile_%' AND target_name = '${character}'"
+min_rows = 3
+required = false
+
+# ================================================================ Z5 AI behaviour slope
+
+[[row]]
+id = "DA-U25"
+title = "The patroller walks its route"
+expected = "The Jaffa Foot Soldier walks between A (28, 12.4, -760) and B (26, 21.8, -644), pausing 4 s at each end."
+known_issues = ["DA-06"]
+notes = "Watched from the AI-slope ring pad point, 57 u from the route: nothing there aggroes."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 81 1.5 -782", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@entity_find", args = { name = "Jaffa Foot Soldier", exact = true }, label = "first" },
+  { wait_ms = 20000 },
+  { tool = "@entity_find", args = { name = "Jaffa Foot Soldier", exact = true }, label = "second" },
+]
+[[row.expect]]
+id = "seen"
+text = "the client knows the patroller"
+source = "tool"
+at = "first"
+tool = "@entity_find"
+args = { name = "Jaffa Foot Soldier", exact = true }
+pointer = "/matches/0/position"
+op = "exists"
+capture_var = "patrol_first"
+[[row.expect]]
+id = "moved"
+text = "20 s later it stands somewhere else"
+source = "tool"
+at = "second"
+tool = "@entity_find"
+args = { name = "Jaffa Foot Soldier", exact = true }
+pointer = "/matches/0/position"
+op = "ne"
+value = "${patrol_first}"
+[[row.expect]]
+id = "height"
+text = "the patroller walks on the ground"
+source = "human"
+question = "Look at the patroller on the slope: does it walk on the ground, not floating up to 2.6 m above it between z -690 and -650?"
+required = false
+
+[[row]]
+id = "DA-U26"
+title = "The wanderer moves within its disc"
+expected = "The Lucian Scavenger stops and moves on within 8 u of (74, -0.25, -746), 3 to 8 s at each stop."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 81 1.5 -782", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@entity_find", args = { name = "Lucian Scavenger", exact = true }, label = "first" },
+  { wait_ms = 20000 },
+  { tool = "@entity_find", args = { name = "Lucian Scavenger", exact = true }, label = "second" },
+]
+[[row.expect]]
+id = "seen"
+text = "the client knows the wanderer"
+source = "tool"
+at = "first"
+tool = "@entity_find"
+args = { name = "Lucian Scavenger", exact = true }
+pointer = "/matches/0/position"
+op = "exists"
+capture_var = "wander_first"
+[[row.expect]]
+id = "moved"
+text = "20 s later it stands somewhere else"
+source = "tool"
+at = "second"
+tool = "@entity_find"
+args = { name = "Lucian Scavenger", exact = true }
+pointer = "/matches/0/position"
+op = "ne"
+value = "${wander_first}"
+
+[[row]]
+id = "DA-U27"
+title = "The leash Jaffa gives up past its leash and walks home"
+expected = "Pull the Svarog Jaffa (within 12 u) and run east past x 85: it turns back, walks to (60, 5.08, -680), ignores shots on the way, and does not re-aggro for 5 s."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 66 6 -684", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 4000 },
+]
+step = [
+  { tool = "@move_to", args = { point = { x = 98, y = 1, z = -680 }, arrival_m = 4, timeout_ms = 30000 }, label = "kite" },
+  { wait_ms = 15000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "pulled"
+text = "SigNoz: the leash Jaffa acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Slope_Leash'"
+min_rows = 1
+[[row.expect]]
+id = "leashed"
+text = "SigNoz: it entered the leash"
+source = "signoz"
+filter = "scope_name = 'npc_ai.leash' AND event = 'enter' AND tag = 'DebugArea_Slope_Leash'"
+min_rows = 1
+[[row.expect]]
+id = "home"
+text = "SigNoz: it arrived home"
+source = "signoz"
+filter = "scope_name = 'npc_ai.leash' AND event = 'arrived' AND tag = 'DebugArea_Slope_Leash'"
+min_rows = 1
+
+[[row]]
+id = "DA-U28"
+title = "The assist trio: shoot A and only B joins"
+expected = "From 12 u west of the trio, shoot Beleth Jaffa A: B (6 u from A) joins, C (14 u) stays."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 104 -6.5 -696", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "Beleth Jaffa" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 8000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "a-fights"
+text = "SigNoz: A acquired you on damage"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Slope_Assist_A' AND cause = 'damage'"
+min_rows = 1
+[[row.expect]]
+id = "b-assists"
+text = "SigNoz: B joined by assist"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Slope_Assist_B' AND cause = 'assist'"
+min_rows = 1
+[[row.expect]]
+id = "c-stays"
+text = "SigNoz: C never joined"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Slope_Assist_C' AND target_name = '${character}'"
+max_rows = 0
+
+# ================================================================ Z7 enemy gallery
+
+[[row]]
+id = "DA-U29"
+title = "Walking the gallery line pulls nothing"
+expected = "Walk the west half of the terrace between the two rows: no gallery NPC engages."
+known_issues = ["K26"]
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 55 23.6 -598", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@move_to", args = { waypoints = [{ x = 100, y = 23.6, z = -598 }, { x = 170, y = 23.6, z = -598 }], arrival_m = 3, timeout_ms = 90000 }, label = "walk" },
+  { wait_ms = 3000 },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "nothing-pulled"
+text = "SigNoz: no gallery NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Gallery_%' AND target_name = '${character}'"
+max_rows = 0
+[[row.expect]]
+id = "passive-sent"
+text = "the client was told the gallery NPCs are passive (onAggressionOverrideUpdate)"
+source = "packet"
+message = "onAggressionOverrideUpdate"
+direction = "to_client"
+required = false
+[[row.expect]]
+id = "looks"
+text = "the gallery reads as a line of standing NPCs"
+source = "human"
+question = "Walking the line: do the NPCs stand on the terrace (none sunk or floating), and how are the passive ones coloured? (K26: 62 nameplates are blank.)"
+required = false
+
+[[row]]
+id = "DA-U30"
+title = "Shoot one gallery NPC: only it engages"
+expected = "A single-target shot at the NID Guard (template 24) makes it fight back; its neighbours 4 u away never join."
+known_issues = ["K26"]
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 151 23.6 -598", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "NID Guard" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 8000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "it-fights"
+text = "SigNoz: DebugArea_Gallery_24 acquired you on damage"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Gallery_24' AND cause = 'damage'"
+min_rows = 1
+[[row.expect]]
+id = "only-it"
+text = "SigNoz: no other gallery NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Gallery_%' AND tag != 'DebugArea_Gallery_24' AND target_name = '${character}'"
+max_rows = 0
+
+[[row]]
+id = "DA-U31"
+title = "A gallery NPC respawns 20 s after death"
+expected = "Kill the Rat: it stands up again at its spawn 20 s later."
+required_native = "G"
+setup = [
+  { chat = ".gotolocation DebugArea 99 23.6 -598", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@entity_find", args = { name = "Rat", exact = true }, label = "find" },
+  { chat = "/gmkilltarget ${rat_id}", label = "kill", tier = "G" },
+  { wait_ms = 26000, label = "respawned" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "rat-id"
+text = "the client knows the Rat (its entity id)"
+source = "tool"
+at = "find"
+tool = "@entity_find"
+args = { name = "Rat", exact = true }
+pointer = "/matches/0/id"
+op = "exists"
+capture_var = "rat_id"
+[[row.expect]]
+id = "respawn-20"
+text = "SigNoz: the Rat respawned on its 20 s timer"
+source = "signoz"
+filter = "event = 'npc_respawn_recreate' AND template_id = 74"
+field = "respawn_secs"
+op = "eq"
+value = 20
+[[row.expect]]
+id = "back"
+text = "the Rat is back in the client"
+source = "tool"
+at = "respawned"
+tool = "@entity_find"
+args = { name = "Rat", exact = true }
+pointer = "/count"
+op = "gte"
+value = 1
+
+# ================================================================ Z6 NPC-vs-NPC arena
+
+[[row]]
+id = "DA-U32"
+title = "The Praxis-vs-NID fight runs while you watch, and never pulls you"
+expected = "From the west rim (26 u above the pit), the three Praxis and three NID guards fight within 40 s; nothing targets you; the round repeats after the 30 s respawns."
+known_issues = ["K20", "K25", "K27"]
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 176 -6 -702", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+]
+step = [{ wait_ms = 45000, label = "watch" }]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "fight"
+text = "SigNoz: a Praxis squad member acquired a NID guard"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Arena_Praxis%' AND target_tag LIKE 'DebugArea_Arena_NID%'"
+min_rows = 1
+[[row.expect]]
+id = "not-pulled"
+text = "SigNoz: no arena NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Arena_%' AND target_name = '${character}'"
+max_rows = 0
+[[row.expect]]
+id = "visuals"
+text = "the client draws the NPC-on-NPC hits (CP19)"
+source = "human"
+question = "Watching the pit: do the squads stand on the floor (K27: it is a water plane), fire with animations, and do the targets' health bars drop?"
+required = false
+
+[[row]]
+id = "DA-U33"
+title = "A player can join the arena fight on the Praxis side"
+expected = "Walk down into the pit behind the Praxis line: the NID guards take you (30 u radius); the Praxis never target you."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 214 -32 -725", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@move_to", args = { point = { x = 234, y = -32.4, z = -725 }, arrival_m = 2, timeout_ms = 30000 }, label = "walk" },
+  { wait_ms = 10000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "nid-takes-you"
+text = "SigNoz: a NID guard acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Arena_NID%' AND target_name = '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "praxis-never"
+text = "SigNoz: no Praxis or Lucia row targeted you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND (tag LIKE 'DebugArea_Arena_Praxis%' OR tag LIKE 'DebugArea_Arena_Green%' OR tag LIKE 'DebugArea_Arena_Yellow%') AND target_name = '${character}'"
+max_rows = 0
+
+[[row]]
+id = "DA-U34"
+title = "The spectator pair's kill pays nobody"
+expected = "Lucia Green and Lucia Yellow fight on the pit's west half; a kill rolls no loot, shows no loot cursor and pays no XP."
+known_issues = ["K25"]
+setup = [
+  { chat = ".gotolocation DebugArea 176 -6 -702", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+]
+step = [{ wait_ms = 75000, label = "watch" }]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "no-loot"
+text = "SigNoz: a Lucia kill skipped loot (reason npc_only_kill)"
+source = "signoz"
+filter = "scope_name = 'loot.drop' AND event = 'skipped' AND reason = 'npc_only_kill' AND (target_tag LIKE 'DebugArea_Arena_Green%' OR target_tag LIKE 'DebugArea_Arena_Yellow%')"
+min_rows = 1
+[[row.expect]]
+id = "no-xp"
+text = "SigNoz: no kill XP went to you"
+source = "signoz"
+filter = "event = 'kill_xp_granted' AND attacker_name = '${character}'"
+max_rows = 0
+[[row.expect]]
+id = "names"
+text = "the Lucia monikers and the female Yellow body render"
+source = "human"
+question = "Do the spectator pair show the names Green Sniper and Yellow Faction, with the Yellow pair's bodies drawn?"
+required = false
+
+# ================================================================ Z8 cover course
+
+[[row]]
+id = "DA-U35"
+title = "A shot rifleman walks to cover and takes Cover Stance"
+expected = "Shoot rifleman 1 from the hall (186, 6.7, -935): it walks to a free marker facing you, stops and takes Cover Stance."
+known_issues = ["DA-06"]
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 186 7.2 -935", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 592, place = true }, optional = true },
+  { wait_ms = 2000 },
+  { tool = "@target", args = { name = "NID Guard" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 12000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "stance"
+text = "SigNoz: a rifleman (template 1375) took Cover Stance"
+source = "signoz"
+filter = "scope_name = 'cover.stance' AND event = 'granted' AND template_id = 1375"
+min_rows = 1
+[[row.expect]]
+id = "crouch"
+text = "whether the client crouches the rifleman at its marker"
+source = "human"
+question = "Does the rifleman visibly crouch or lean at its cover marker? (No server-to-client pose message exists; record what you see.)"
+required = false
+
+[[row]]
+id = "DA-U36"
+title = "The x 151 wall blocks the riflemen's line of sight"
+expected = "Standing in the hall at (165, 6.7, -950), 24 u from rifleman 2 through the wall, rifleman 2 never acquires you; from the west room's doorway it does."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".gotolocation DebugArea 165 7.2 -950", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+]
+step = [
+  { wait_ms = 15000, label = "hall" },
+  { tool = "@move_to", args = { point = { x = 156, y = 7.2, z = -962 }, arrival_m = 1.5 }, label = "doorway" },
+  { wait_ms = 10000 },
+]
+teardown = [
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+  { chat = "/gmsetgodmode 0", optional = true },
+]
+[[row.expect]]
+id = "blocked"
+text = "SigNoz: rifleman 2 acquired you once at most (from the doorway, not through the wall)"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Cover_Rifleman2' AND target_name = '${character}'"
+max_rows = 1
+[[row.expect]]
+id = "doorway"
+text = "SigNoz: from the doorway, rifleman 2 acquires you with line of sight"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag = 'DebugArea_Cover_Rifleman2' AND target_name = '${character}' AND has_los = true"
+min_rows = 1
+
+# ================================================================ Z9 death and respawn
+
+[[row]]
+id = "DA-U37"
+title = "The respawn-timer guards stand up 10 s and 30 s after death"
+expected = "Kill the Fast guard: it respawns 10 s later; kill the Slow guard: 30 s later (spawnlist.respawn_secs overrides the template's 30)."
+required_native = "G"
+setup = [
+  { chat = ".gotolocation DebugArea 420 10.5 -912", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@entity_find", args = { name = "Cellblock Guard", exact = true }, label = "find-fast" },
+  { chat = "/gmkilltarget ${fast_id}", label = "kill-fast", tier = "G" },
+  { tool = "@move_to", args = { point = { x = 420, y = 10.5, z = -926 }, arrival_m = 1.5 }, label = "move" },
+  { tool = "@entity_find", args = { name = "Cellblock Guard", exact = true }, label = "find-slow" },
+  { chat = "/gmkilltarget ${slow_id}", label = "kill-slow", tier = "G" },
+  { wait_ms = 36000 },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "fast-id"
+text = "the nearest Cellblock Guard from the north spot is the Fast one"
+source = "tool"
+at = "find-fast"
+tool = "@entity_find"
+args = { name = "Cellblock Guard", exact = true }
+pointer = "/matches/0/id"
+op = "exists"
+capture_var = "fast_id"
+[[row.expect]]
+id = "slow-id"
+text = "the nearest Cellblock Guard from the south spot is the Slow one"
+source = "tool"
+at = "find-slow"
+tool = "@entity_find"
+args = { name = "Cellblock Guard", exact = true }
+pointer = "/matches/0/id"
+op = "ne"
+value = "${fast_id}"
+capture_var = "slow_id"
+[[row.expect]]
+id = "fast-10"
+text = "SigNoz: one respawn on the 10 s timer"
+source = "signoz"
+filter = "event = 'npc_respawn_recreate' AND template_id = 1377 AND respawn_secs = 10"
+min_rows = 1
+[[row.expect]]
+id = "slow-30"
+text = "SigNoz: one respawn on the 30 s timer"
+source = "signoz"
+filter = "event = 'npc_respawn_recreate' AND template_id = 1377 AND respawn_secs = 30"
+min_rows = 1
+
+[[row]]
+id = "DA-U38"
+title = "Die to the lethal squad, respawn at the nearest respawner, no death loop"
+expected = "The NID Operatives kill you in seconds; the Defeat Window lists respawners 130 and 131; the timer respawns you at 131 (nearest) with full Health; the squad walks home and you are not shot again."
+required_native = "G"
+known_issues = ["DA-06"]
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = "/gmsetgodmode 0", tier = "G" },
+  { chat = ".gotolocation DebugArea 438 11 -916", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@move_to", args = { point = { x = 460, y = 13.5, z = -914 }, arrival_m = 2, timeout_ms = 30000 }, label = "approach", optional = true },
+  { tool = "@die_and_respawn", args = { respawn = "auto", defeat_timeout_ms = 60000, respawn_timeout_ms = 120000 }, label = "die" },
+  { wait_ms = 40000, label = "after" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "lists-131"
+text = "the Defeat Window offers respawner 131"
+source = "tool"
+at = "die"
+tool = "@die_and_respawn"
+pointer = "/defeat_window/respawners"
+op = "len_gte"
+value = 2
+required = false
+[[row.expect]]
+id = "nearest"
+text = "SigNoz: the timer respawned you at 131, the nearest"
+source = "signoz"
+filter = "scope_name = 'player.respawn' AND reason = 'respawner_id_unset' AND player_name = '${character}'"
+field = "respawner_id"
+op = "eq"
+value = 131
+[[row.expect]]
+id = "wire-defeat"
+text = "the client got onBeginAidWait (the Defeat Window)"
+source = "packet"
+message = "onBeginAidWait"
+direction = "to_client"
+[[row.expect]]
+id = "alive"
+text = "40 s after the respawn you are still alive"
+source = "tool"
+at = "after"
+tool = "@player_state"
+pointer = "/health/current"
+op = "gt"
+value = 0
+[[row.expect]]
+id = "one-death"
+text = "SigNoz: exactly one death in the row"
+source = "signoz"
+filter = "scope_name = 'player.death' AND player_name = '${character}'"
+min_rows = 1
+max_rows = 1
+
+# ================================================================ Starter kit (SK1)
+
+[[row]]
+id = "DA-U39"
+title = "A new character starts with a loaded pistol and the five starter abilities"
+expected = "SI 3 9mm Pistol in the first bandolier slot with 15 rounds; abilities 592 Pistol Shot, 594 Strike, 597 Heal Focus, 1646 Health Heal and 1218 Recuperation known."
+state = "char_select"
+anchor = false
+known_issues = ["SK1"]
+setup = [
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
+  { tool = "lab_create_character", args = { first = "Uat", last = "K${run_id}", alignment = "sgu", archetype = "Soldier", gender = "male" } },
+]
+step = [
+  { tool = "lab_play_character", args = { name = "K${run_id}" }, label = "play" },
+  { wait_ms = 5000 },
+]
+teardown = [
+  { tool = "lab_logout", optional = true },
+  { tool = "lab_delete_character", args = { name = "K${run_id}" }, optional = true },
+]
+[[row.expect]]
+id = "pistol"
+text = "the active bandolier weapon is item 55"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 55
+[[row.expect]]
+id = "loaded"
+text = "the magazine holds 15 rounds"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/current"
+op = "eq"
+value = 15
+[[row.expect]]
+id = "created"
+text = "SigNoz: character_created says armed and lists the five abilities"
+source = "signoz"
+filter = "event = 'character_created' AND player_name CONTAINS 'K${run_id}' AND abilities CONTAINS '1218'"
+field = "armed"
+op = "eq"
+value = true
+
+[[row]]
+id = "DA-U40"
+title = "A new character's first Pistol Shot draws the pistol, then fires"
+expected = "At a dummy, the first Pistol Shot draws the holstered pistol (about 1 s), then fires; later presses fire at once; no out-of-ammo error."
+state = "char_select"
+anchor = false
+known_issues = ["SK1"]
+notes = "With patch 009 in the lab client, 592 is already on Alt+1; without it the press goes through the Ability window (still N1)."
+setup = [
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
+  { tool = "lab_create_character", args = { first = "Uat", last = "D${run_id}", alignment = "sgu", archetype = "Soldier", gender = "male" } },
+  { tool = "lab_play_character", args = { name = "D${run_id}" } },
+  { wait_ms = 5000 },
+  { chat = ".gotolocation DebugArea 246 7.2 -880", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+  { tool = "@target", args = { name = "Jaffa" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 592 }, label = "press" },
+  { wait_ms = 4000 },
+]
+teardown = [
+  { tool = "lab_logout", optional = true },
+  { tool = "lab_delete_character", args = { name = "D${run_id}" }, optional = true },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 592 }
+since = "press"
+[[row.expect]]
+id = "not-dropped"
+text = "the client did not drop the press"
+source = "client_event"
+event = "client.ability.press_dropped"
+since = "press"
+max_rows = 0
+timeout_ms = 1500
+[[row.expect]]
+id = "draw-queued"
+text = "SigNoz: the press queued a weapon draw"
+source = "signoz"
+filter = "event = 'weapon_draw_queued' AND ability_id = 592 AND player_name CONTAINS 'D${run_id}'"
+min_rows = 1
+[[row.expect]]
+id = "fired"
+text = "SigNoz: the shot fired as the pistol's 579 Pistol Auto Attack"
+source = "signoz"
+filter = "event = 'weapon_ability_redirect' AND original_ability_id = 592 AND player_name CONTAINS 'D${run_id}'"
+field = "weapon_ability_id"
+op = "eq"
+value = 579
+[[row.expect]]
+id = "number"
+text = "the client shows combat text for the hit"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "combat_text" }
+since = "press"
+
+[[row]]
+id = "DA-U41"
+title = "The starter heals land on you with nothing selected"
+expected = "Heal Focus restores your Focus, Health Heal your Health, Recuperation ticks your Health; nothing needs a target."
+known_issues = ["SK1", "B-15"]
+setup = [
+  { chat = ".gotolocation DebugArea 251 8 -962", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 2000 },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, optional = true },
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, optional = true },
+  { tool = "@use_ability", args = { ability_id = 1218, place = true }, optional = true },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset" },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { chat = "/gmsethealth 200 0", tier = "G" },
+  { wait_ms = 1000 },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "focus" },
+  { wait_ms = 2500 },
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "health" },
+  { wait_ms = 2500 },
+]
+teardown = [{ tool = "@cooldowns_reset" }]
+[[row.expect]]
+id = "focus-up"
+text = "your Focus is above the 100 it was set to"
+source = "tool"
+at = "focus"
+tool = "@player_state"
+pointer = "/focus/current"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "health-up"
+text = "your Health is above the 200 it was set to"
+source = "tool"
+at = "health"
+tool = "@player_state"
+pointer = "/health/current"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "self"
+text = "SigNoz: Health Heal resolved on the caster"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
+field = "resolution"
+op = "eq"
+value = "self_ability"
+required = false
+
+[[row]]
+id = "DA-U42"
+title = "Patch 009 puts the starter abilities on Alt+1 to Alt+5, once"
+expected = "On a new character's first login, buttons 11-15 hold 592, 594, 597, 1646, 1218 with icons; one chat line \"Your starting abilities are on your action bar.\"; after a relog the bar is unchanged and the line does not repeat."
+state = "char_select"
+anchor = false
+relog = "same"
+known_issues = ["SK1"]
+notes = "Needs client patch 009-starter-hotbar in the lab client. It is in the published content manifest (content-current, 2026-10-05): run the launcher's Update on the lab client. Without it every hotbar clause FAILs."
+setup = [
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
+  { tool = "lab_create_character", args = { first = "Uat", last = "H${run_id}", alignment = "sgu", archetype = "Soldier", gender = "male" } },
+]
+step = [
+  { tool = "lab_play_character", args = { name = "H${run_id}" }, label = "play" },
+  { wait_ms = 8000, label = "seeded" },
+  { tool = "lab_logout", label = "logout" },
+  { tool = "lab_play_character", args = { name = "H${run_id}" }, label = "relog" },
+  { wait_ms = 8000, label = "after-relog" },
+]
+teardown = [
+  { tool = "lab_logout", optional = true },
+  { tool = "lab_delete_character", args = { name = "H${run_id}" }, optional = true },
+]
+[[row.expect]]
+id = "button-11"
+text = "button 11 (Alt+1) holds 592 Pistol Shot"
+source = "tool"
+at = "seeded"
+tool = "@hotbar"
+pointer = "/buttons[button=11]/ability_id"
+op = "eq"
+value = 592
+[[row.expect]]
+id = "button-12"
+text = "button 12 holds 594 Strike"
+source = "tool"
+at = "seeded"
+tool = "@hotbar"
+pointer = "/buttons[button=12]/ability_id"
+op = "eq"
+value = 594
+[[row.expect]]
+id = "button-13"
+text = "button 13 holds 597 Heal Focus"
+source = "tool"
+at = "seeded"
+tool = "@hotbar"
+pointer = "/buttons[button=13]/ability_id"
+op = "eq"
+value = 597
+[[row.expect]]
+id = "button-14"
+text = "button 14 holds 1646 Health Heal"
+source = "tool"
+at = "seeded"
+tool = "@hotbar"
+pointer = "/buttons[button=14]/ability_id"
+op = "eq"
+value = 1646
+[[row.expect]]
+id = "button-15"
+text = "button 15 holds 1218 Recuperation"
+source = "tool"
+at = "seeded"
+tool = "@hotbar"
+pointer = "/buttons[button=15]/ability_id"
+op = "eq"
+value = 1218
+[[row.expect]]
+id = "line-once"
+text = "the feedback line shows exactly once on the first login"
+source = "chat"
+at = "seeded"
+since = "play"
+contains = "Your starting abilities are on your action bar."
+count = 1
+[[row.expect]]
+id = "kept"
+text = "after the relog, button 11 still holds 592"
+source = "tool"
+at = "after-relog"
+tool = "@hotbar"
+pointer = "/buttons[button=11]/ability_id"
+op = "eq"
+value = 592
+[[row.expect]]
+id = "no-repeat"
+text = "the feedback line does not repeat after the relog"
+source = "chat"
+at = "after-relog"
+since = "relog"
+contains = "Your starting abilities are on your action bar."
+absent = true
+
+[[row]]
+id = "DA-U43"
+title = "The seeded playtest characters are Praxis Commandos with the starter kit"
+expected = "Players 62-70 (Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972, Friendly, Annoying) are Praxis Commandos with the five starter abilities and a loaded SI 3 9mm Pistol in bandolier slot 0."
+known_issues = ["K24"]
+notes = "A server read: valid right after a deploy, before anyone plays the seeded characters (K4, K24)."
+step = [{ wait_ms = 100 }]
+[[row.expect]]
+id = "commandos"
+text = "all nine are Praxis Commandos holding the five starter abilities"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM sgw_player WHERE player_id BETWEEN 62 AND 70 AND alignment = 1 AND archetype = 2 AND abilities @> ARRAY[592, 594, 597, 1218, 1646]" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 9
+[[row.expect]]
+id = "armed"
+text = "all nine hold item 55 in bandolier slot 0 with 15 rounds"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM sgw_inventory WHERE character_id BETWEEN 62 AND 70 AND container_id = 3 AND slot_id = 0 AND type_id = 55 AND ammo = 15" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 9
+
+[[row]]
+id = "DA-U44"
+title = "A seeded character logs in at the tutorial start, armed"
+expected = "After a deploy, a seeded character logs in to the Castle_CellBlock stasis room with the intro movie (K6), level 1, the starter kit, and no known stargates."
+blocked = "needs a seeded playtest account (cady, jorsh, ...) in lab-account.json; the lab account owns no seeded character"
+known_issues = ["K24", "K6"]
+[[row.expect]]
+id = "world-12"
+text = "the client logs in to Castle_CellBlock (world 12)"
+source = "tool"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 12
+[[row.expect]]
+id = "pistol"
+text = "the active bandolier weapon is item 55"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 55
+
+# ================================================================ Stargate and rings
+
+[[row]]
+id = "DA-U45"
+title = "The Debug Area DHD offers a GM every loaded gate, and nobody dials in"
+expected = "As a GM, right-click the Debug Area DHD beside the gate: the dialling window lists the 13 gates on loaded worlds (The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1, Dakara E1); dialling Harset opens the gate and walking in loads Harset; /gmdhd 29 is refused like an unknown address."
+required_native = "N2"
+known_issues = ["DA-06"]
+notes = "The DHD (spawn 13800, template 1) stands at (245.4, 8.9, -983.4); the click aims at that point. Dialling from the window needs @window_click_row (L9), so the Harset dial is a human clause; /gmdhd 29 is the native GM dial (N2)."
+setup = [
+  { chat = ".gotolocation DebugArea 248 9.5 -980", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { point = { x = 245.4, y = 9.5, z = -983.4 }, button = "right", expect = "window" }, label = "dhd" },
+  { wait_ms = 2500 },
+  { tool = "client_input_key", args = { key = "Escape" }, optional = true },
+  { chat = "/gmdhd 29", label = "dial-in", tier = "N2" },
+  { wait_ms = 2500 },
+]
+[[row.expect]]
+id = "grant"
+text = "SigNoz: the DHD open granted the loaded gates (gm_dial_hub_grant)"
+source = "signoz"
+filter = "reason = 'gm_dial_hub_grant'"
+field = "unenterable_count"
+op = "eq"
+value = 14
+[[row.expect]]
+id = "addresses"
+text = "the new addresses went to the client (updateStargateAddress) before the window"
+source = "packet"
+message = "updateStargateAddress"
+direction = "to_client"
+min_rows = 1
+[[row.expect]]
+id = "window"
+text = "the server opened the dialling window (onDisplayDHD)"
+source = "packet"
+message = "onDisplayDHD"
+direction = "to_client"
+[[row.expect]]
+id = "dial-in-refused"
+text = "/gmdhd 29 is refused like an unknown address"
+source = "chat"
+since = "dial-in"
+contains = "Failed to dial"
+[[row.expect]]
+id = "outbound-only"
+text = "SigNoz: the dial into the Debug Area was refused (dial_hub_is_outbound_only)"
+source = "signoz"
+filter = "reason = 'dial_hub_is_outbound_only'"
+min_rows = 1
+[[row.expect]]
+id = "list"
+text = "the dialling window lists the 13 gates"
+source = "human"
+question = "In the screenshot taken after the click (evidence dhd-window), does the DHD window list The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1?"
+[[row.expect]]
+id = "dial-harset"
+text = "dialling Harset from the window opens the gate and walking in loads Harset"
+source = "human"
+question = "Dial Harset from the DHD window: does the map's gate open about 4 s later, and does walking into it load Harset?"
+required = false
+[[row.evidence]]
+name = "dhd-window"
+tool = "lab_screenshot"
+at = "dhd"
+
+[[row]]
+id = "DA-U46"
+title = "A ring trip from the Compound station to the Arena pit"
+expected = "Right-click the Compound ring console: the destination picker opens on world 1300's map with the other seven stations (regions 36-42); pick the Arena pit and step on the pad: the Compound rings rise, flash and drop with sound (sequence 10189), you arrive on the pit pad (210, -32.7, -725) as its rings drop (10198), and you can move about 5.5 s later."
+required_native = "N3"
+known_issues = ["DA-06", "K27"]
+notes = "Needs client patches 007 and 010 in the lab client: the launcher's Update installs them from the published content manifest (content-current, 2026-10-05). Without 010 the trip still works but no rig draws. The picker click is stood in for by the stock binding setRingTransporterDestination (N3): the lab cannot click world-map icons yet. Stations: regions 35-42, consoles 13810-13817 (template 3), sequences 10189-10204 (Teleport Out, Teleport In per station, in region order)."
+setup = [
+  { chat = ".gotolocation DebugArea 229 7.8 -934", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { point = { x = 226.88, y = 7.9, z = -936.68 }, button = "right", expect = "any" }, label = "console" },
+  { wait_ms = 2000 },
+  { tool = "client_lua_eval", args = { chunk = "return pcall(setRingTransporterDestination, 35, 39)" }, label = "pick", tier = "N3" },
+  { wait_ms = 500 },
+  { tool = "@move_to", args = { point = { x = 224, y = 7.44, z = -938 }, arrival_m = 1, timeout_ms = 20000 }, label = "pad" },
+  { wait_ms = 15000, label = "arrived" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "list"
+text = "the console sent the destination list (onRingTransporterList)"
+source = "packet"
+message = "onRingTransporterList"
+direction = "to_client"
+[[row.expect]]
+id = "pick"
+text = "the destination reached the server (setRingTransporterDestination 35 -> 39)"
+source = "packet"
+message = "setRingTransporterDestination"
+direction = "to_server"
+[[row.expect]]
+id = "sequences"
+text = "the client got both ring sequences (Teleport Out at the Compound, Teleport In at the pit)"
+source = "packet"
+message = "onSequence"
+direction = "to_client"
+min_rows = 2
+[[row.expect]]
+id = "not-dropped"
+text = "the client's SequenceManager dropped neither sequence"
+source = "client_event"
+event = "client.sequence.dropped"
+since = "pick"
+max_rows = 0
+timeout_ms = 2000
+required = false
+[[row.expect]]
+id = "sent-log"
+text = "SigNoz: the server sent the Compound's Teleport Out (10189) and the pit's Teleport In (10198)"
+source = "signoz"
+filter = "body CONTAINS 'Sent ring onSequence' AND seq_id IN (10189, 10198)"
+min_rows = 2
+required = false
+[[row.expect]]
+id = "still-1300"
+text = "you are still in world 1300 after the trip"
+source = "tool"
+at = "arrived"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "rings"
+text = "the rings animate with sound at both pads, and you stand on the pit pad"
+source = "human"
+question = "Did the Compound rings rise, flash and drop with the ring sound, and are you now on the arena pit pad (on the water plane, K27) after its rings dropped? Is the rig base lit, not black or flat?"
+[[row.evidence]]
+name = "picker"
+tool = "lab_screenshot"
+at = "console"
+[[row.evidence]]
+name = "arrival"
+tool = "lab_screenshot"
+at = "arrived"

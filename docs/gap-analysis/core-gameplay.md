@@ -29,6 +29,8 @@ companion_docs:
   - Confirm the starting hotbar on a fresh character.
   - Name filtering and a per-account slot limit are still missing.
 
+- **Debug Area and starter-kit campaign (2026-10-05, [ledger](../analysis/debug-area/README.md))**: #1218 gives every char_def a loaded SI 3 9mm Pistol in the active bandolier slot (new table `resources.char_creation_items`), makes creation atomic, and rebuilds the nine seeded playtest characters as Praxis Commandos identical to a created one; #1213 ships client patch `009-starter-hotbar`, published in the content manifest 2026-10-05. Code moved to [`crates/base/src/base/character_create/`](../../crates/base/src/base/character_create/). UAT: [unified UAT](../guides/unified-uat.md#debug-area) DA-U39 to DA-U44 and SK1
+
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Character list display | CW | -- | base/character/ | **Promoted 2026-09-25.** SELECT from sgw_player. In-client: P1 list count 1 → 2 → 3 across two creations, each character selected and played ([playtest README](../analysis/playtests/2026-09-18-colo-castle/README.md) §3, 6:58 PM). The typeID `0x07` guard (#704) protects this path. Re-verified 2026-09-25 |
@@ -42,6 +44,9 @@ companion_docs:
 | GM character creation | IM | -- | mercury/world_data/phases.rs:46 | **Corrected 2026-07-25.** SGWGmPlayer is ported: seed accounts get `access_level`, and a GM enters the world as entity class `0x03` instead of `0x02` (PRs #473 / #516 / #518, merged 2026-06-17). There is no GM-only *creation* UI |
 | Name filtering | KM | -- | -- | No profanity or reserved-name check. `validate_character_name` is format-only |
 | Character slot limit | KM | -- | -- | No per-account limit |
+| Starter weapon (loaded pistol) | NT | -- | base/character_create/starter_kit.rs | **New 2026-10-05 (#1218).** One `char_creation_items` row per char_def: item 55 lands in bandolier slot 0 with a full clip (15), written like a grant (durability 100, the design's ammo types). The kit and the player row commit in one transaction; a kit that cannot be placed rolls the character back. The first Pistol Shot draws the holstered pistol, then fires 579 through `weapon_redirect`. Live-DB guards for every char_def and the login loader; no in-client run yet (SK1, DA-U39, DA-U40) |
+| Starter hotbar (client patch 009) | NT | -- | data/client-patches/009-starter-hotbar/ | **New 2026-10-05 (#1213).** A Lua delta on `ActionProfileDefault1.lua` binds the five starter abilities to Alt+1 to Alt+5 (buttons 11-15) on a character's first login on a machine, once; the server cannot write the bar. 69/69 Lua logic UAT on stock and the v26 UI; published in the signed content manifest 2026-10-05. Not yet seen in a client (DA-U42) |
+| Seeded playtest characters match character creation | NT | -- | db/sgw/Players/Seed/sgw_player.sql | **New 2026-10-05 (#1218).** Players 62-70 are Praxis Commandos with the starter kit, pinned column for column against a freshly created character by a live-DB parity guard. The colo reseeds them on every deploy (UAT K24) |
 
 ### 6. World Entry and Spaces --- CW
 
@@ -66,6 +71,8 @@ companion_docs:
   - Log out and back in inside Castle.
   - Verify the other published spaces end to end. Castle_CellBlock and Castle are now routinely played; Harset has placements but no written in-client pass.
 
+- **Debug Area campaign (2026-10-05, [ledger](../analysis/debug-area/README.md))**: #1223 adds world 1300 `DebugArea` on the shipped Ihpet_Crater_Light map through one added-worlds table (`ADDED_WORLDS`, which also fixes `setupWorldParameters.worldId` for eight shipped worlds that reported CombatSim), a navmesh and occluder fallback to the client map, and fail-closed space fallback; #1230 enforces GM-only worlds at login and on every cross-world transfer. Reference: [debug-area.md](../content/debug-area.md)
+
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
 | Space loading | CW | -- | services/cell/space_manager | NavMesh + entity loading. A navmesh now loads for every world (#794). Castle has one since #709 |
@@ -80,6 +87,8 @@ companion_docs:
 | World-entry observability | CW | -- | base/world_entry/ | OTLP spans across the whole pipeline |
 | Cell dispatch arms | IM | -- | base/world_entry/cell_dispatch/ | tests_dispatch_arms/ has live-DB coverage. New arms `position.rs` (logout persist) and `player_ghost.rs` are not client-validated |
 | Same-world respawn client resync | NT | -- | base/world_entry/reanchor_player.rs; cell/respawn/resync.rs:89 | **New 2026-09-25.** The reanchor's `CREATE_BASE_PLAYER` wipes the client's per-entity caches. P1 finding H8: after respawning, the client sent zero region hints for 28 minutes. Main now replays inventory, region hints (#682), hotbar, active slot, journal and `state_field`, and keeps the auto-cycle bit (#756). Regression guards are `combat::tests::respawn_resync` and `base_messages::tests::disconnect_persist_position`. There is no in-client respawn record after the fix |
+| Cimmeria-added worlds (category-12 world info) | NT | -- | wire/mercury/world_data/added_worlds.rs, cell-world/space_manager/space_files.rs | **New 2026-10-05 (#1223).** One table feeds `world_id_for_name`, `client_map_for_world`, the category-12 push and `resolve_space_id_fallback` for the historical CellBlocks and world 1300. A world with no files of its own reads its client map's `.nav`/`.occ` as a pair. Same-map travel (73 and 1300) skips the client's load; the base already finishes the entry from `onClientReady`. No client has loaded world 1300 yet (DA-06) |
+| GM-only worlds | NT | -- | base-session/world_entry/gm_only_worlds.rs | **New 2026-10-05 (#1230).** An account below access level 2 headed for world 1300 (login, gate, ring, content teleport, respawner, summon, `.gotolocation`) goes to its faction's start, reads a chat line once the world loads, and leaves a WARN `gm_only_world_refused`. Unit and live-DB guards; needs a non-GM account to test in a client (DA-U2) |
 
 ### 7. Movement and Navigation --- IM
 

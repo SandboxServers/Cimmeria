@@ -2,10 +2,11 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-09-28
+last_updated: 2026-10-04
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
+  - ../content/debug-area.md
   - ../commands.md
   - ../analysis/zone-restoration-operator-guide.md
   - ../analysis/castle-cellblock-rebuild/uat-guide.md
@@ -17,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-09-28. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-04. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -48,6 +49,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
 | [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
+| [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -95,6 +97,9 @@ Read these before you start. None of them needs a new report.
 | K22 | **Loot windows on live objects are new (2026-09-28).** The debug-hub crate, the Cellblock weapon crate and the Castle chest now open the corpse loot window without being killed. Nothing in the client's `Loot.lua` checks for a dead target, but nobody has seen it work in the client yet. | If right-clicking one opens nothing, note it (with `.bug crate`) and tell the owner: that is the client refusing a live loot source, not a server fault. | [loot-system.md](../gameplay/loot-system.md#live-containers) |
 | K23 | **Special ammo limits known at release (2026-09-28).** Penetration does nothing yet, so Armor Piercing is just a 10 % damage cut and Hollow Point a 25 % raise. EMP rounds and darts drain but interrupt nothing. Support darts reach other players and yourself, never a friendly NPC or a pet. A heal shows as the bar moving, with no floating number. Nanites darts fire as plain darts. A loot or `/gmgiveitem` grant above 500 rounds can make one stack over the cap (#1045; `.giveammo` never does). | Record them; not new bugs. If a client crashes after a burn, poison, disease, tranquilizer or radioactive hit, that is new: note the time and the ammo type (AMMO-02). | [ammo ledger, Known issues and follow-ups](../analysis/ammo/README.md#known-issues-and-follow-ups) |
 | K24 | **The nine seeded characters are brand-new Praxis Commandos after every deploy (2026-10-04).** Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972 and the contact-list pair Friendly and Annoying all start in the Castle_CellBlock stasis room with the intro movie (K6), level 1, the starter kit (SK1) and **no known stargates**; they were SGU Soldiers in SGC_W1 with 14 gates before. Friendly and Annoying now go through the first-login flow too, including K5. | For SGC or gate-dialling checks, travel with `.gotolocation SGC_W1` (or `/gmgotolocation SGC_W1 0 0 0`), and dial with `/gmdhd <address>`. For contact-list QA with Friendly and Annoying, expect the intro movie on their first login after each deploy. | [character-creation.md § Seeded playtest characters](../gameplay/character-creation.md#seeded-playtest-characters) |
+| K25 | **The Debug Area arena never stops while anyone is near (2026-10-04).** Its Praxis-vs-NID and Lucia fights run whenever a player is within 150 u, and that includes the dummy range, the gallery and the AI slope. Every round writes NPC aggro and `loot.drop reason=npc_only_kill` rows. | Nothing in game. In SigNoz, filter on your station's `DebugArea_*` tag, or exclude `DebugArea_Arena_`. | [debug-area.md, NPC-vs-NPC arena](../content/debug-area.md#npc-vs-npc-arena) |
+| K26 | **Debug Area gallery cosmetics.** 62 of the gallery's 99 hostile NPCs have a blank nameplate (their template has no shipped name), and 75 fire the Pistol Shot fallback, so creatures and staff Jaffa play the pistol animation. | Find a nameless one by its tag `DebugArea_Gallery_<template id>` ([spawn tables](../content/debug-area.md#enemy-gallery)). Not a new bug. | [debug-area.md, Live-client risks](../content/debug-area.md#live-client-risks) |
+| K27 | **The Debug Area arena pit floor is a water plane.** The map's pit "floor" is a water collision surface; the navmesh lies on it, so the arena squads (and the pit ring pad) stand on what renders as water. | Report it only if an NPC is drawn swimming, sunk or floating. | [debug-area.md, Live-client risks](../content/debug-area.md#live-client-risks) |
 
 ## Common setup
 
@@ -156,6 +161,10 @@ The stasis room holds a row of NPCs, each for testing one system, a few seconds'
 
 The crafting group stands along the wall on the opposite side from the main row.
 
+### The Debug Area (world 1300)
+
+GMs also have a test map with a copy of every hub service, plus an ability granter, training dummies, NPCs of every faction and behaviour, an NPC-vs-NPC arena, a cover course and a death yard: `.gotolocation DebugArea`. Its steps are the [Debug Area](#debug-area) section.
+
 ### Reporting a failure
 
 1. **At the moment it happens**, type `.bug <what you see>`, for example `.bug pet did not follow me through the door`. Say what you were looking at: the note is the only record of what you saw, and the bookmark captures the server's side.
@@ -193,6 +202,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
 | 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
 | 11. Special ammo | GM, plus a second character for AMMO-02, AMMO-03 and AMMO-18 | AMMO-01 to AMMO-03 first (the risks of the flag being on), then the debug-hub crate (AMMO-19), reloads, picker and damage (AMMO-04 to AMMO-17) in Castle Cellblock, loot in Castle (AMMO-20, AMMO-21), GM commands (AMMO-22, AMMO-23) | 90 min |
+| 12. Debug Area | Fresh character, GM | Debug Area DA-U1 to DA-U41 in zone order: the plaza (DA-U3 to DA-U18), dummies, faction yard, AI slope, gallery, arena, cover course, death yard; DA-U39 to DA-U42 on a second new character | 90 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -625,7 +635,7 @@ Relog checks are part of almost every scenario: the full guide says what must co
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | T25 | New character: try to walk; check the boots slot; use the worn Prison Boots; win Livewire if it opens. Relog before and after | Mission 689 is hidden: no mission toast, sound, tracker entry or journal flash on load or on Livewire victory (#715). Prison Boots (3438) worn. Record whether you can walk, whether the client offers "use" on a worn item, and whether a Livewire opens. | K7: the lock is inert, so "I could walk" is not a fail. An item named "NO ITEM NAME" is seed data |
-| SK1 | New character (any class), and each seeded character after a colo deploy: open the inventory, the bandolier and the ability list; press Heal Focus, Health Heal and Recuperation with nothing selected; at the first hostile (T26's guard), press Pistol Shot | The SI 3 9mm Pistol is in the first bandolier slot with a full magazine (15); abilities Pistol Shot, Strike, Heal Focus, Health Heal and Recuperation are known; each heal lands on you; the first Pistol Shot draws the holstered pistol (about 1 s), then fires; later presses fire at once. No out-of-ammo error at any point. | New 2026-10-04 (starter kit). The seeded characters restart this tutorial after every deploy (K24). Log: `event=character_created` lists `abilities` and `items`, `armed=true` |
+| SK1 | New character (any class), and each seeded character after a colo deploy: open the inventory, the bandolier and the ability list; press Heal Focus, Health Heal and Recuperation with nothing selected; at the first hostile (T26's guard), press Pistol Shot | The SI 3 9mm Pistol is in the first bandolier slot with a full magazine (15); abilities Pistol Shot, Strike, Heal Focus, Health Heal and Recuperation are known; each heal lands on you; the first Pistol Shot draws the holstered pistol (about 1 s), then fires; later presses fire at once. No out-of-ammo error at any point. | New 2026-10-04 (starter kit). The seeded characters restart this tutorial after every deploy (K24). Log: `event=character_created` lists `abilities` and `items`, `armed=true`. [Debug Area](#debug-area) DA-U39 to DA-U42 run the same checks at the training dummies, plus the patch-009 hotbar |
 | T01/T02 | Enter the world; read the dialog; check the quest log and debuff bar | Dialog 2982 ("The last thing you remember..."); mission 622 on step 2113; Frost's body searchable, the Guard's not yet. | K7: no Stasis Sickness icon expected. Record whether one appears |
 | T03/T04 | Search Cpl. Frost's corpse; then the NID Guard's corpse; equip the SI 3 9mm Pistol | Dialog 3995; Frost's Letter (3730) in mission inventory; mission 1360 on step 4037; then dialog 3996, the pistol in your backpack, step 80622; equipping opens the stasis door and completes 622. | Guard corpse may be invisible (K5). Since 2026-10-04 you already hold a starter pistol in the bandolier: the looted one goes to the backpack, and dragging either pistol into the bandolier from another container completes 622 |
 | T05/T06 | Cross into Region2; right-click Prisoner 329; pick "Free Prisoner 329". Once per archetype | 638 accepted exactly once; exactly one topic: Tau'ri dialog 2300, Jaffa dialog 5021 ("My symbiote will cure me..."). Advances to 2115. | Two topics, or the other archetype's line, is a fail. The "uncomfotable" typo is 2009 data |
@@ -1000,6 +1010,82 @@ Special ammo is a finite bag resource: Hollow Point, Armor Piercing, Incendiary,
 **Things only a human can check:** the icons, names and tooltips (AMMO-01); that no client crashes and what the buff bar shows (AMMO-02); the bars moving and the chat lines (AMMO-03, AMMO-07, AMMO-09, AMMO-18); damage numbers on the target and its neighbours (AMMO-12, AMMO-15); the Tranquilizer slow (AMMO-16).
 
 Source: [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist); background in [weapon-ammo-reload.md](../gameplay/weapon-ammo-reload.md) and [the ammo ledger](../analysis/ammo/README.md).
+
+## Debug Area
+
+A GM-only test map, world 1300 `DebugArea` on the Ihpet_Crater_Light map, with one station per group of systems: the services plaza, training dummies, a faction yard, an AI slope, an enemy gallery, an NPC-vs-NPC arena, a cover course and a death yard. It is shared, so two testers can meet there, and its fights and respawn timers keep running. Map and spawn tables: [debug-area.md](../content/debug-area.md).
+
+**Status:** Partly works. Everything is merged and released: the world, every zone, the outbound stargate, the ring transports and the starter kit (DA-01 to DA-04, DA-07, DA-08, SA-01, SA-02). Client patches 009 (starter hotbar) and 010 (ring rigs, after 007) are in the launcher's content manifest since 2026-10-05: run the launcher's Update. Nobody has loaded world 1300 in a client yet: the live-client checks are [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks), and a station standing in a wall or floating is a finding. The lab runs the same rows from [uat-specs/debug-area.toml](uat-specs/debug-area.toml) ([automated UAT](automated-uat.md)).
+
+**Prerequisites:** a GM account (a non-GM never gets in: DA-U2). A fresh character is best: it carries the starter kit, so it can shoot from the start. Get there with `.gotolocation DebugArea` (or `/gmgotolocation DebugArea 0 0 0`); each step below gives a `.gotolocation DebugArea <x> <y> <z>` point beside its station, so you can run the steps in any order. Before any NPC AI step, type `.aggro on` (a GM with `.aggro off` is never noticed) and keep god mode off for the death step; `/gmsetgodmode 1` keeps you alive in the other fights. Filter SigNoz on the station's `DebugArea_*` tag: the arena fights run whenever anyone is within 150 u (K25).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| DA-U1 | From any other world, `.gotolocation DebugArea` | The client loads the crater map as world 1300; you stand in the south compound courtyard at (251, 8, -962). The reply ends in `[stargate arrival]`: the map's gate lands you on the Z1 point. The minimap names the Debug Area, not CombatSim | DA-06: first client load. From the live Ihpet Crater (world 73) there is no loading screen: same map |
+| DA-U2 | As a non-GM, try to reach world 1300 (log in where a GM left you, or be summoned) | You land at your faction's start instead and read "The Debug Area is for GMs only. You have been returned to your faction's starting point." | Needs a non-GM account; the lab cannot run it. Log: `event = 'gm_only_world_refused'` |
+| DA-U3 | At (254, 7.2, -930), right-click **Train Testing Abilities** (General Hammond's look) | "Ability granter: granting N abilities of your <archetype> tree (all branches and capstones); M cooldown(s) cleared.", then "...granted N abilities from your tree (saved; no points spent)". The Abilities window refreshes; no training points move | GM only: a non-GM gets "Only a GM can use this." The bar is not filled (the server cannot write it) |
+| DA-U4 | At (256, 7.2, -929), right-click **Jay Test Abilities** (Sam Carter's look) | You are back to the five starter abilities, spent tree points refunded, cooldowns cleared; a line starting "Ability reset:" | The clean slate before an ability step |
+| DA-U5 | At (257, 7.2, -928), right-click the **Archetype Skills Trainer** | The trainer window opens on the first click | |
+| DA-U6 | At (259, 7.2, -925), right-click the **Basic Equipment Quartermaster** | The store opens on the first click | |
+| DA-U7 | At the same vendor, buy an item, sell it back, repair a worn item and recharge one | Each answers on the first press; cash moves by the listed price | The lab cannot click the store's buttons yet: run it by hand |
+| DA-U8 | At (259, 7.2, -923), right-click **Consumables** (the munitions vendor); buy the SI 3 pistol and sell it back to the Quartermaster | 19 rows: 15 special-ammo stacks (100 rounds, 1 naquadah each), 5 Health Slappacks, the SI 3 9mm Pistol (300), SGHC 6 SMG (1000) and CO2 Pistol Dartgun (1). Selling the pistol back pays 300: no profit | The weapon prices equal what the vendors buy them back for (arbitrage guard) |
+| DA-U9 | At (257, 7.2, -918), right-click **Airman Lance**; page with Next; press the Generic button; open it again and close with X | Dialog 5738, two screens; the button makes Airman Lance say "Dialog round trip complete"; X sends nothing | Unlike the hub's Airman Lance (K2), this one shows a shipped dialog. Its text is a mission line out of context: the window is what is tested |
+| DA-U10 | At (258, 7.2, -919), right-click the **Terminal**; win the minigame | Livewire opens; a win prints "Livewire round trip complete" from the Terminal | |
+| DA-U11 | At (259, 7.2, -921), right-click the **Crate**; Loot All | A loot window on table 3 opens without a kill; the items reach your bags; the crate stays | K22 |
+| DA-U12 | At (250, 7.2, -930), right-click the **Storage Officer** nearest the south gap | Your personal vault opens, 40 slots, no "Expand vault" offer | K3, K17: three Bankers share the name |
+| DA-U13 | At (248, 7.2, -929) right-click the next **Storage Officer** (Team Banker); walk 2 u west and right-click the third (Command Banker) | Without a Team or Command each click answers with a refusal; with one, its vault opens | Org vault steps: [Bank and vault](#bank-and-vault) 15-25 |
+| DA-U14 | At (256, 7.2, -917), right-click **Sgt. Harriman**; click again | The first click mails you 5 Health Slappack TC1 and 50 naquadah; the second, inside 10 minutes, is refused | Unlike the hub clerk (K2), this one mails on the click |
+| DA-U15 | At (245, 7.2, -926) right-click the **Organization Registrar** in SGC uniform; walk 2 u north and right-click the one in armour | The found-a-Team window, then the found-a-Command window | Founding itself: [Organizations](#organizations) |
+| DA-U16 | At (254, 7.2, -916), right-click **Machra** | The auctioneer's chat line; the auction window only with the black-market patch | K16 |
+| DA-U17 | At (245, 7.2, -922) right-click **Common Materials Components**; then stand at (245, 7.2, -920) by the BioMedical station and press J | A store at 1 naquadah per item; the crafting window shows the station in reach | Crafting steps: [Crafting](#crafting) |
+| DA-U18 | At (258, 7.2, -927), right-click **Goa'uld Advanced Skills** | The pet trainer window with the Goa'uld pet summons | Pet steps: [Pets](#pets) |
+| DA-U19 | At (246, 7.2, -880), target the level-10 **Jaffa** dummy and fire Pistol Shot a few times | A damage number for each hit; the dummy never fires back, chases or moves; your Health does not drop | Four hostile dummies at levels 1, 10, 25 and 50, 6 u apart, x 240 to 258 |
+| DA-U20 | At (264, 7.2, -876), target the **Injured SGC Guard** and cast Health Heal | Its bar (it starts at half) rises; yours does not | DA-06: whether the client lets you target a friendly NPC for a heal |
+| DA-U21 | At (240, 7.2, -880), hit the level-1 dummy once, then wait 12 s | About 10 s after the hit you leave combat and the dummy's bar refills to full. Your XP does not change | A killed dummy respawns in 30 s and pays no XP |
+| DA-U22 | `.aggro on`; stand at (404, -5.5, -800) between the friendly and neutral rows for 20 s; then fire Pistol Shot at a **Sewer Falls Resident** | Nothing engages; the shot at the neutral is refused | Friendly rows: Airman, Op-CORE Soldier. Neutral: Sewer Falls Resident |
+| DA-U23 | At (400, -6, -796), shoot a **Jaffa Non Combatant** | Only that Jaffa fights back; the hostile pen 24 u east stays put | The pinned neutral: damageable, but passive until shot |
+| DA-U24 | From (404, -5.5, -798), walk east toward the pen | The pen engages at about x 418-422 (18 u); all three pen NPCs join | Pen: Ba'al's Jaffa, NID Guard, Straegis Fighter |
+| DA-U25 | At (81, 1.5, -782), watch the **Jaffa Foot Soldier** on the slope for 20 s | It walks between the slope's two ends, pausing 4 s at each | DA-06: it may float up to 2.6 m above the slope between z -690 and -650 |
+| DA-U26 | From the same spot, watch the **Lucian Scavenger** | It stops and moves on inside an 8 u circle | |
+| DA-U27 | `/gmsetgodmode 1`; at (66, 6, -684) let the **Svarog Jaffa** take you, then run east past x 85 | It gives up, walks home to (60, 5, -680) ignoring your shots, and does not take you again for 5 s | Leash 15 u |
+| DA-U28 | At (104, -6.5, -696), shoot the nearest **Beleth Jaffa** (A) | B (6 u from A) joins; C (14 u) stays. Shooting C alone pulls nobody | Assist never chains |
+| DA-U29 | At (55, 23.6, -598), walk east along the terrace between the two gallery rows to x 170 | Nothing engages | K26: 62 nameplates are blank; 75 NPCs play the pistol animation |
+| DA-U30 | At (151, 23.6, -598), shoot the **NID Guard** | Only it fights back; its neighbours 4 u away stay passive | An area ability wakes every gallery NPC it hits |
+| DA-U31 | At (99, 23.6, -598), kill the **Rat** (`/gmkilltarget <entityId>` is fine) | It stands up at its spawn 20 s later | |
+| DA-U32 | At the west rim (176, -6, -702), watch the pit for 45 s | Three Praxis (Op-CORE Soldier, Praxis Jaffa Guard) and three NID Guards fight; nothing targets you up here; after 30 s respawns the next round starts | K20 (NPC-on-NPC hit visuals), K25, K27 |
+| DA-U33 | `/gmsetgodmode 1`; at (214, -32, -725) walk into the pit behind the Praxis line | The NID Guards take you within 30 u; the Praxis never target you. Finish a NID Guard and you get its XP and loot; let a Praxis finish it and you get nothing | Kill credit goes to the killing blow (#1009) |
+| DA-U34 | From the west rim, watch **Green Sniper** against **Yellow Faction** on the pit's west half until one dies | The corpse has no loot cursor; nobody gets XP | K25. DA-06: the Lucia names and the female Yellow body |
+| DA-U35 | `/gmsetgodmode 1`; at (186, 7.2, -935) in the cover hall, shoot the nearest **NID Guard** | It walks to a cover marker facing you, stops and takes Cover Stance; close to within 2 m and it steps back about 5 m | DA-06: whether the client crouches it (no pose message exists) |
+| DA-U36 | At (165, 7.2, -950) in the hall, wait 15 s; then walk to the west room's doorway (156, 7.2, -962) | Rifleman 2 in the west room never takes you through the x 151 wall; from the doorway it does. Your own shot through the wall is refused with "You do not have Line of Sight to your target" | |
+| DA-U37 | At (420, 10.5, -912), kill the nearer **Cellblock Guard** (Fast); at (420, 10.5, -926) kill the other (Slow) | The Fast guard stands up 10 s after its death, the Slow one 30 s after | Spawn's own timer beats the template's |
+| DA-U38 | `.aggro on`, `/gmsetgodmode 0`; at respawner 131 (438, 11, -916) walk east over the rise to the **NID Operatives**; let the Defeat Window time out | You die in seconds; the Defeat Window lists respawners 130 and 131; the timer brings you back at 131 (nearest) with full Health and Focus, out of combat; nobody shoots you again | No death penalty. Log: `player.respawn reason=respawner_id_unset` |
+| DA-U39 | Create a new character (any class); open the bandolier and the ability list | The SI 3 9mm Pistol in the first bandolier slot with 15 rounds; Pistol Shot, Strike, Heal Focus, Health Heal and Recuperation known | Same as SK1. Log: `event = 'character_created'` with `armed = true` |
+| DA-U40 | With that new character, at (246, 7.2, -880), target the level-10 dummy and press Pistol Shot | The first press draws the holstered pistol (about 1 s), then fires; later presses fire at once; no out-of-ammo error | Same as SK1 |
+| DA-U41 | With nothing selected, press Heal Focus, Health Heal and Recuperation (`/gmsetfocus 100 0`, `/gmsethealth 200 0` first) | Each lands on you: Focus, then Health rise; Recuperation ticks | Same as SK1; AB-U1 and AB-U3 in [Ability mechanics](#ability-mechanics) |
+| DA-U42 | Client patch 009 installed: create a new character, log in, look at the bar right of the portrait (Alt+1 to Alt+5); relog | Pistol Shot, Strike, Heal Focus, Health Heal, Recuperation on buttons 11-15 with icons; one line "Your starting abilities are on your action bar."; after the relog the bar is the same and the line does not repeat | Needs patch 009 (the launcher's Update installs it since 2026-10-05); an existing character's bar is never touched |
+| DA-U43 | Right after a deploy, look at a seeded character at character select (Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972, Friendly, Annoying) | A Praxis Commando, level 1, exactly like one made through character creation | K24. The lab reads all nine seed rows instead (class, five abilities, loaded pistol): it has no seeded account |
+| DA-U44 | Log in with that seeded character | The Castle_CellBlock stasis room with the intro movie (K6); the SI 3 pistol loaded in the first bandolier slot; the five starter abilities; no known stargates | K24. The lab cannot run it (no seeded account) |
+| DA-U45 | At (248, 9.5, -980), right-click the DHD beside the map's stargate (28 m behind the arrival); dial Harset and walk into the gate; then `.gotolocation DebugArea`, `/gmdhd 29`, and from another world's DHD look for "Debug Area" | The dialling window lists 13 gates (The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1, Dakara E1); Harset's gate opens about 4 s after the dial and walking in loads Harset; `/gmdhd 29` reads "Failed to dial: ..."; no DHD elsewhere lists the Debug Area | Men'fa (SGU) is left out on purpose (its gate row is about 192 m below the level). SGC W1 lands you 3.4 m off the navmesh. Details: [debug-area.md, Stargate](../content/debug-area.md#stargate) |
+| DA-U46 | At the Compound station (229, 7.8, -934), right-click the ring console beside the pad; pick the Arena pit on the map; step onto the pad within 60 s. Try other pairs of the eight stations (Compound, Faction yard, AI slope, Arena rim, Arena pit, Gallery west, Gallery east, Death yard) | The other seven stations are offered on the world map; the rings rise, flash and drop with the ring sound; you arrive on the chosen pad as its rings drop and can move about 5.5 s later; a second player beside the source pad sees the rings | Needs patches 007 and 010 (the launcher's Update). DA-06: whether a watcher at the destination sees its rings drop, the ring sound, and whether the rig base looks black outdoors. K27 at the pit pad. Stations: [debug-area.md, Ring transports](../content/debug-area.md#ring-transports) |
+
+**SigNoz** (base `service.name = 'cimmeria-server'`; add `AND player_id = <id>`):
+
+| Question | Filter |
+|---|---|
+| Did I get in, or was someone refused (DA-U1, DA-U2) | `scope_name = 'console.feedback' AND body CONTAINS 'to DebugArea'`; `event = 'gm_only_world_refused'` (`refused_world`, `world`, `route`) |
+| The granter and reset (DA-U3, DA-U4) | `event = 'ability_granter'`: `change` (`grant_all`, `reset`), `decision_outcome`, `ability_count`, `ability_names`, `cooldowns_cleared` |
+| A plaza NPC answered (DA-U5 to DA-U18) | `event = 'trainer_open'` (`trainer_template_id` 301 trainer, 360 pet trainer); `scope_name = 'vendor' AND event IN ('store_opened','transaction','refused')` (`vendor_template_id` 300, 1302, 314); `scope_name = 'dialog.display' AND dialog_id = 5738`; `event = 'loot.container_opened' AND loot_table_id = 3`; `event = 'vault_session_opened'`; `event = 'org_vault_open_rejected'`; `event = 'content.send_system_mail' AND chain_id = 13007`; `event = 'org.registrar_open'`; `event LIKE 'bm.open%'` |
+| Dummies (DA-U19 to DA-U21) | `scope_name = 'npc_ai.aggro' AND tag LIKE 'DebugArea_Dummy_%'` must be empty; `reason = 'training_dummy_quiet'` (the 10 s release); `event = 'kill_xp_not_granted' AND reason = 'training_dummy'` |
+| Who noticed whom (DA-U22 to DA-U36) | `scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_<station>%'`: `cause` (`proximity`, `damage`, `assist`), `target_name`, `target_tag`, `npc_to_target`, `dy`, `has_los`. Stations: `Yard_`, `Slope_`, `Gallery_<template>`, `Arena_`, `Cover_`, `Death_` |
+| Leash (DA-U27) | `scope_name = 'npc_ai.leash' AND tag = 'DebugArea_Slope_Leash'`: `event` `enter`, `damage_ignored`, `arrived` |
+| NPC-only kills (DA-U32, DA-U34) | `scope_name = 'loot.drop' AND event = 'skipped' AND reason = 'npc_only_kill'` (`target_tag`, `attacker_tag`) |
+| Cover (DA-U35) | `scope_name IN ('cover.hold','cover.stance','cover.selection') AND template_id = 1375` |
+| Respawns (DA-U31, DA-U37, DA-U38) | `event = 'npc_respawn_recreate'` (`template_id`, `respawn_secs`); `scope_name = 'player.death'`; `scope_name = 'player.respawn'` (`respawner_id`, `reason`, `distance_m`) |
+| Starter kit (DA-U39 to DA-U41) | `event = 'character_created'` (`abilities`, `items`, `armed`); `event IN ('weapon_draw_queued','weapon_ability_redirect')` for the first Pistol Shot |
+
+**Things only a human can check:** that the map loads and every station stands on the floor, clear of walls (DA-06); the minimap text (DA-U1); the windows each plaza NPC opens; damage numbers and heal bars (DA-U19 to DA-U21); what the gallery and arena NPCs look like (DA-U29, DA-U32, DA-U34); whether a rifleman crouches in cover (DA-U35); the hotbar icons (DA-U42).
+
+Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-area.md](../content/debug-area.md), [character-creation.md, Starter kit](../gameplay/character-creation.md).
 
 ## Recording results
 
