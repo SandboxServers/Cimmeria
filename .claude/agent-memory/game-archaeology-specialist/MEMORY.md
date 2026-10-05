@@ -122,3 +122,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## Package name flags (DA-F1, 2026-10-05)
 
 - [Name flags read as NAME_None](name-flags-none-property-list.md) — **[documented in data/client-patches/README.md 011 + docs/engine/ue3-package-format.md]** — non-client name entry (loader 0x4bad20) reads as None and ends a tagged list; 0x4bc6a0 AV, 0xB5000000 signature; patch 010 freeze; upk_patch audit-names
+
+## World map art (2026-10-05)
+
+- [World map art layout](world-map-art-layout.md) — MapData.upk tiles + world__default_; Ihpet default texture is a 2x crop (stock defect); patch 013; lab watchdog and direct-entry pitfalls

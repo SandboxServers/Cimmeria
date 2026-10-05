@@ -1,0 +1,8 @@
+{
+  "id": "013-ihpet-world-map",
+  "title": "Ihpet Crater world map art",
+  "description": "Fixes the Ihpet Crater world map (the Debug Area and the live Ihpet Crater): the stock overview picture shows only a zoomed-in corner of the map, so ring stations, your own marker and every other icon sit on the wrong terrain. Rebuilds that picture from the map's own tiles. Changes one Ihpet Crater map data file.",
+  "ops": [
+    {"target": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk", "sources": [{"path": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk"}]}
+  ]
+}

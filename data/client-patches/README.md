@@ -32,6 +32,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `010-debug-area-rings` | **Retired 2026-10-05, superseded by 011: it hangs the client.** Eight ring transport rigs for the Debug Area, on the Ihpet_Crater_Light map (see below). | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
 | `011-debug-area-rings-fix` | **Supersedes 010.** The same eight rigs, rebuilt so the client loads them, with the arena station moved off the pit's water plane (see below). Needs 007 applied first, unless 010 already applied | 1 map op: a delta from the normalized stock map plus 007's Armory map, and an alternative delta from 010's output | 19 KB |
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
+| `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilds it from the map's own tiles (see below) | 1 delta (`Ihpet_Crater_Light_MapData.upk`) | 389 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -456,6 +457,122 @@ published patch changes nothing a player downloads. The launcher keeps
 the same text as a fallback for manifests published without it
 (`builtin_description` in `crates/launcher/src/client_changes.rs`), and
 the test `builtin_catalog_matches_every_patch_spec` keeps the two in step.
+
+### 013-ihpet-world-map
+
+The Debug Area's ring consoles open the world map with the other stations as
+transporter icons, and a tester found the icons on the wrong terrain: the
+Compound and Death yard stations drew beside the south compound's north wall,
+the Z1 arrival point on bare ground west of the compound, and the top 43% of
+the picture was flat blue. The pads are right. The stock map picture is wrong,
+in world 73 as well (same map data).
+
+- **Where the world map comes from.** The picture and its layout are in the
+  map's data package, `Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk`,
+  not in the map chunks, the Lua UI or anything the server sends. It holds a
+  `WorldMapCollection` called `Maps`, a `MapLayerCollection` called `Layers`,
+  154 Texture2D tiles `thumb_WorldMap_<hi16><lo16>` (256x256 DXT1, one per
+  100 m chunk, `hi` the north-south chunk row, `lo` the east-west column) and
+  one 1024x1024 texture, `world__default_`. The `_default_` map record
+  (`UWorldMapCollection__vfunc_12` at 0x008ba470, element `FUN_009e8a60`) holds
+  the chunk bounds (columns -3..7, rows -13..0), the layer name and two floats,
+  0.7857 and 1.0: the share of the texture the map occupies, 11 columns by 14
+  rows. Every icon, the player's marker and the coordinate readout go through
+  one linear transform (`FUN_00ad70b0` into `FUN_00de52a0`), so they all share
+  the pad coordinates' frame. In that frame px = 428 + 0.841 (x + 300) and
+  py = 98 + 0.841 (100 - z) on the tester's 1538x1319 screenshot, which fits all
+  seven icons to within 2 px and the art's bounds exactly.
+- **What the client draws.** Only `world__default_`. In the lab the map window
+  lists four layers (POI, Mission Waypoints, Player Location, Squad Locations),
+  all drawn by Lua over the picture, and no tile layer or zoom exists. The 154
+  tiles are never drawn. Decoded and stitched, the tiles are correct: blue
+  only in the top three of 14 rows, the compound in rows 5 to 13, and the Z1
+  arrival point (251, -962) inside the south compound building.
+- **What is wrong.** `world__default_` is a 1.99x zoom of the map's top-left,
+  anchored at the corner: its blue/brown border is at texel row 437 where
+  the tiles put it at 219, and the compound's north edge is at row 730 where
+  the tiles put it at 369. It looks like a 2048 bake stored at 1024 (the
+  cause is inferred, the 2x is measured), so only the top-left quarter of the
+  map is in it. The player's marker (Z1) therefore
+  shows on bare ground, as the tester's icons did. Other maps' default
+  textures are patchwork bakes too (Castle, Menfa); this patch does not touch
+  them.
+- **Nothing server-side fixes it.** The art is client data. Moving the pad
+  coordinates, or scaling the positions the server sends, would break the
+  marker, the POIs and the readout, and half the pads would fall outside the
+  texture.
+- **Fix.** `world__default_` is rebuilt from the 154 tiles: the 2816x3584
+  mosaic is scaled to 805x1024 and placed in the texture's top-left corner
+  (73.14 texels per chunk on both axes, as the map record says), and the rest
+  is magenta, which is what Harset's and Menfa's stock default textures use,
+  after an eight-texel carry of the last picture column so no DXT1 block or
+  bilinear tap mixes picture with magenta. Same format (DXT1), same size and
+  mip count (11), same LZO chunking as the stock export, with the export's serial
+  size and the one export after it (`Maps`) moved to match. Nothing else in the
+  package changes. The generator is
+  [tools/client-patches/ihpet_world_map.py](../../tools/client-patches/ihpet_world_map.py):
+  it reads the stock `Ihpet_Crater_Light_MapData.upk` (sha256
+  `ea86f7c32b6d8e230c86191b5f048e080fc979e80d584bbdc878e3db5404a1f4`, the
+  2009 file, 6,167,790 bytes), needs Pillow and lzallright, refuses any other
+  input, and is deterministic (two runs give the same bytes).
+- **Result.** 6,189,323 bytes, sha256
+  `14b5f65a4acdba2206a8ea2c4ad5273df82dc0cd7439823f20763b2305eb69d1`. The
+  zip holds one bsdiff delta of 397,851 bytes and is 398,603 bytes, sha256
+  `92a059abf2a03a351fb348c861b5ec0cfab6e0fcd6f4297775272a5a98ce28f5`.
+  `cimmeria-patchset apply` on a copy of the stock file gives the result's
+  hash.
+- **A maintainer call: the delta carries picture data.** Every other
+  patch's delta carries project-written bytes or records cloned inside the
+  same package. This one's delta carries the new texture's compressed bytes,
+  about 398 KB: our resampling of the stock tile art, not stock bytes, but
+  derived from it. The alternative that ships no CME-derived pixels is a
+  patchset transform that builds the picture on the player's machine from the
+  player's own tiles (a Rust port of this generator, with the same DXT1 and
+  LZO encoders). It was not built; ask before taking that on.
+- **Compatibility.** The source is the stock MapData file, which none of
+  001-012 touch, so there is no ordering constraint; the manifest `after` is
+  free. It does not touch the Ihpet chunk that 011 writes, or the new ninth
+  ring rig's chunk. Light only: `Ihpet_Crater_Dark` carries the same defect
+  (the same record and a 2x default texture) and is a follow-up.
+- **Rebuild.**
+
+  ```bash
+  python tools/client-patches/ihpet_world_map.py --stock <stock>/Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk       --out <patched>/Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk
+  cimmeria-patchset build data/client-patches/013-ihpet-world-map/patch.json       --stock <stock tree> --patched <patched tree> --out data/client-patches/013-ihpet-world-map.zip       --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/013-ihpet-world-map.zip
+  ```
+
+- **Lab check (2026-10-05, applied by hand).** The result file (sha256
+  `14b5f65a...`, made by `cimmeria-patchset apply` from the stock file) was
+  copied over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the
+  client had 007, 011 and 012). A fresh character entered `Castle_CellBlock`
+  and `.gotolocation DebugArea` took it to world 1300: the map loaded in about
+  the same time as with the stock file, with no crash or hang, and the world
+  map showed the new picture. The player's marker at the Z1 arrival point
+  (251, -962) is inside the south compound building (stock: bare ground west of
+  the compound), the blue is only the top fifth, and there is no pink edge at
+  the right-hand border. With the seven stations fed to the ring list's own
+  Lua (`RingTransporterWorldMapMode.onRingTransporterList`, positions from the
+  seed, converted the way the client's unit positions are) the icons sit on
+  their pads: Gallery west and east in the north compound building, Pit
+  overlook, Arena shelf and Faction yard on the green slope between the
+  compounds, AI slope at its west edge, and Death yard on the south compound's
+  east flank. The stock picture, captured the same way, is the zoomed corner
+  described above. The lab client's file was put back to stock afterwards.
+- **What the lab check did not cover.** (1) World 73 itself: it reads the same
+  file and was not entered. (2) A real click on a ring console: the lab's camera
+  tool could not aim at it, so the list was fed to the same Lua with the
+  server's own data instead of arriving as `onRingTransporterList`. (3) Logging
+  in directly into a character saved in the Debug Area: the lab client died
+  within about 50 s of Play on that path, six times out of six, with the stock
+  file (2) and with 013's file (4), so the patch is not the cause. The lab
+  watchdog kills a client whose heartbeat misses five polls in a row (a world
+  load blocks the main thread for 40 to 60 s), and in the same lab the colo's
+  own player was in the Debug Area throughout; the loads that completed all went
+  through the cellblock with the lab polling constantly. Earlier loads of this
+  patch's first build through the cellblock died twice and succeeded once, the
+  stock file died once and succeeded twice; the final bytes loaded on the first
+  try. Treat a hang report from a tester as real, and look for it in a
+  first-login entry before blaming the picture.
 
 Not here, on purpose:
 

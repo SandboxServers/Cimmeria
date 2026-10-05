@@ -248,6 +248,14 @@ RingTransporterWorldMapMode.bAllowWorldChange = false
 4. Each destination shows a `set:MinimapIcons image:Transporter` icon (17x18 pixels) with name label in `Verdana-10`
 5. On click, calls `setRingTransporterDestination(sourceRegionId, destRegionId)` and closes the map
 
+**The picture under the icons (Ihpet Crater).** The icons are placed with the
+world-to-map transform, so they are only as right as the map picture. The stock
+Ihpet Crater picture (`world__default_`, worlds 73 and 1300) is a 1.99x zoom of
+the map's top-left corner, so its icons looked misplaced although the seeded
+pad coordinates were correct. Client patch `013-ihpet-world-map` replaces the
+picture; see the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
+The other worlds' pictures were not checked.
+
 ### Kismet Sequences (UE3 Visual Effects)
 
 `USeqEvent_RegionTeleport` at `0x0069fc40` handles two event types:

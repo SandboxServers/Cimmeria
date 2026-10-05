@@ -122,6 +122,8 @@ mod debug_area_rings_tests;
 #[cfg(test)]
 mod gm_slash_commands_tests;
 #[cfg(test)]
+mod ihpet_world_map_tests;
+#[cfg(test)]
 mod starter_hotbar_tests;
 #[cfg(test)]
 mod supersede_tests;
