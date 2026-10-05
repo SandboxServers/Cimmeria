@@ -72,9 +72,9 @@ off for a player who opens the app normally.
 
 ## Open client problems this telemetry is for
 
-Recorded on the same machine on 2026-10-04, unresolved:
+Recorded on the same machine on 2026-10-04:
 
-- **Version 0 at every login.** After a full resync the 21 cache PAKs are valid
+- **Version 0 at every login (cause found, not fixed).** After a full resync the 21 cache PAKs are valid
   and stamped with real versions. A clean quit leaves all 22 files
   byte-identical. At the next start the game opens all 22 from the writable
   `Cache.en-US`, read-write, at full size, 14.7 s in, and they stay
@@ -83,9 +83,29 @@ Recorded on the same machine on 2026-10-04, unresolved:
   directory, and the client logs no "Error opening static cache archive" or
   "Non-existent source archive directory" line. Windows clients on the same
   server report real versions.
+
+  The first cooked-cache events (session of 2026-10-05 03:19 UTC, DLL at
+  `60731aa3f`) narrowed it: `client.cooked.versions_held` at login had 22
+  storages, all 0; `client.cooked.version_read` fired 43 times at start, with
+  `metadata_entry_not_found` for `covernodes_local.pak` (it has no `MetaData`)
+  and `outcome: read`, `version: 0` for the other 21, each read once from the
+  writable cache and once from the bundled `SourceCache` (Items at entry 6074
+  and 6059). `client.io.pak_open` never fired: the zip library opens through
+  the C runtime, not `CreateFile`. So the entry is found and extracted, and the
+  four bytes are lost after that.
+
+  What is after that is a `std::strstream`: the client writes the extracted
+  bytes into one and reads them straight back, and Wine's `msvcp80.dll` returns
+  end of file for a read that follows a write. The mechanism, the line in
+  Wine's source and the disassembly of the runtime's DLL are Finding 9 of
+  [cooked-data-pipeline.md](../../../../reverse-engineering/findings/cooked-data-pipeline.md).
+  The event now carries each hop (`zip_*`, `extract_*`, `stream_*`, `crt_*`)
+  and names this outcome `stream_read_short`.
 - **The resync looks like a freeze.** The server finishes pushing in about two
   minutes. The client then spends about eight more writing entries, rewriting
   `TextStrings.pak` (29,126 entries) as it grows, and neither draws nor sends
   game messages. Killing it then corrupts the PAK in progress.
 - **Create New Character does nothing** in a session that has just been
-  resynced, with no error and nothing sent to the server.
+  resynced, with no error and nothing sent to the server. Unresolved. The
+  client builds the same kind of stream at 22 places, so the Wine fault above
+  is the first thing to rule out.

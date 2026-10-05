@@ -1,6 +1,6 @@
 ---
 name: project_mac_client_cooked_version_zero
-description: "Open (2026-10-04): the client under Wine/Rosetta on macOS sends versionInfoRequest version 0 for all 21 cooked categories at every login although its cache PAKs hold real versions; full resync and a ~10-minute digest each time; ruled-out causes"
+description: "Cause found 2026-10-04: under Wine the client sends cooked version 0 at every login because Wine's msvcp80 strstreambuf::underflow returns EOF for a read that follows a write; every strstream round trip in the client is affected; not fixed yet"
 metadata:
   type: project
 ---
@@ -21,8 +21,12 @@ Found 2026-10-04 on a Mac mini (M4, macOS 27.0.1, pinned Wine runtime r17, stock
 - No "Non-existent source archive directory" and no cache-open error in the client log on a clean start.
 - Not line endings: the check compares one number per category, stored as 4 raw bytes.
 
-**Leading candidate (from the dumps, unconfirmed):** the version is read into `ServerSource+0x24` at the tail of `ZipStorageBase_OpenArchive` (`0x00479340`) by `FUN_00478f00`, whose body is not decompiled. A failed `MetaData` lookup there under Wine would leave 0 with the file open and intact.
+**Cause (2026-10-04, from disassembly and Wine's source; RE detail in `docs/reverse-engineering/findings/cooked-data-pipeline.md` Finding 9).** The version read (`0x00478f00`) writes the extracted `MetaData` bytes into a `std::strstream` over an empty dynamic `strstreambuf` and reads four back with no seek between. `strstreambuf::underflow` has to notice the put pointer moved. Wine's (`dlls/msvcp90/ios.c`, shared by `msvcp80.dll`) reads the get pointer where it means the put pointer, so it returns EOF; `istream::read` sets eof and fail, the client does not check, and the version stays 0. The pinned runtime's `msvcp80.dll` has it (`0x10074250`), and so did Wine `master` that day. The client loads Wine's builtin although the prerequisites install Microsoft's 8.0.50727.762, because Wine ships its own assembly as 8.0.50727.9672 and takes the highest.
 
-**Related, also open:** Create New Character does nothing (no error, nothing sent) in a session that was just resynced. Bundled `SourceCache` already matches the server for 16 of 21 categories including `TextStrings`, so seeding the writable cache at install would cut a first login's push to about 27%, but only once the version read works.
+**It is wider than the version.** The `strstream` constructor (`0x00478970`) has 22 call sites, and every cached element load goes archive → `strstream` → read. A fix that only repairs the version would stop the server pushes and leave the client unable to read its cache. Fix the stream.
 
-**How to apply:** start from the telemetry session of a Mac login (tags `desktop-launcher`, `macos`, `wine`) with `CIMMERIA_CLIENT_CAPTURE=unfilter,firehose`; the DLL hooks `CreateFileW/A`. Do not kill a client during the digest.
+**What `client.cooked.version_read` shows for it:** `outcome: stream_read_short`, `extract_version` real, `stream_held: 4`, `stream_read_count: 0`, `stream_state: eof|fail`, `version: 0`.
+
+**Related, also open:** Create New Character does nothing (no error, nothing sent) in a session that was just resynced; not checked whether one of the other `strstream` sites is behind it. Bundled `SourceCache` already matches the server for 16 of 21 categories including `TextStrings`, so seeding the writable cache at install would cut a first login's push to about 27%, but only once the version read works.
+
+**How to apply:** for any client-under-Wine symptom that involves reading data back (cache, saved settings, anything serialised through a `strstream`), suspect this first. Start from the telemetry session of a Mac login (tags `desktop-launcher`, `macos`, `wine`); the version read needs no capture switch. The zip library opens archives through `_wsopen_s`, not `CreateFile`. Do not kill a client during the digest.
