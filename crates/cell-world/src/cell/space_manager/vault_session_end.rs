@@ -71,20 +71,36 @@ mod tests {
     use crate::test_support::{make_space_manager, LogCapture};
 
     const PLAYER: u32 = 1;
+    const BANKER: u32 = 100_001;
+    /// The banker's `name_id` text in the stored NameBook.
+    const BANKER_TEXT: i64 = 77_001;
+    const ORG: i32 = 4_242;
 
+    /// A player with its log names stamped, a named banker NPC and a known
+    /// organization, with an open org vault session at the banker. Stores a
+    /// NameBook naming the banker; the caller puts an empty one back.
     fn staged() -> crate::cell::space_manager::SpaceManager {
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(cimmeria_names::Table::Texts, BANKER_TEXT, "Banker Bob");
+        cimmeria_names::global().store(book);
+        cimmeria_entity::known_names::remember_org(ORG, "NT28 Command");
         let mut mgr = make_space_manager();
+        mgr.create_entity(BANKER, "Agnos", [1.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.get_entity_mut(BANKER).unwrap().name_id = Some(BANKER_TEXT as i32);
         mgr.create_entity(PLAYER, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
         mgr.connect_entity(PLAYER);
+        let space_id = mgr.get_entity_space_id(PLAYER).unwrap();
         let p = mgr.get_entity_mut(PLAYER).unwrap();
         p.account_id = Some(6);
         p.player_id = Some(12);
+        p.stamp_log_names(Some("Vala Mal Doran"), Some("vala_login"));
         p.vault_session = Some(VaultSession {
-            org_id: None,
-            scope: VaultScope::Personal,
-            banker_id: Some(100_001),
-            space_id: 1,
+            org_id: Some(ORG),
+            scope: VaultScope::Command,
+            banker_id: Some(BANKER),
+            space_id,
             opened_at: std::time::Instant::now(),
             expansion_offer: None,
         });
@@ -103,7 +119,7 @@ mod tests {
         assert_eq!(row.level, Level::DEBUG);
         for (k, v) in [
             ("reason", reason),
-            ("scope", "personal"),
+            ("scope", "command"),
             ("account_id", "6"),
             ("player_id", "12"),
             ("entity_id", "1"),
@@ -113,6 +129,19 @@ mod tests {
             assert!(row.has_field(k, v), "{k}={v} missing: {row:#?}");
         }
         assert!(row.fields.contains_key("open_ms"), "open_ms: {row:#?}");
+        // Rule 6 (NT-28b): every id on the row is named. Fails with any of
+        // these name fields removed from `log_vault_session_closed`.
+        for (k, v) in [
+            ("account_name", "vala_login"),
+            ("player_name", "Vala Mal Doran"),
+            ("entity_name", "Vala Mal Doran"),
+            ("banker_name", "Banker Bob"),
+            ("org_name", "NT28 Command"),
+            ("world", "Agnos"),
+        ] {
+            assert!(row.has_field(k, v), "{k}={v} missing: {row:#?}");
+        }
+        cimmeria_names::global().store(cimmeria_names::NameBook::empty());
     }
 
     /// Logout: `disconnect_entity` logs `reason=logout` once (not again as

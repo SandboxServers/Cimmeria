@@ -232,7 +232,13 @@ impl SpaceManager {
                 player_id = id.player_id,
                 player_name = id.player_name,
                 pet_id = claimed,
-                pet_name = self.entity_label(claimed),
+                // The client picks `claimed`: name it only when it is a
+                // registered pet, never an arbitrary player or NPC.
+                pet_name = self
+                    .pets
+                    .is_pet(claimed)
+                    .then(|| self.entity_label(claimed))
+                    .flatten(),
                 owner_id,
                 owner_name,
                 "pet command names a pet the caller does not own"

@@ -162,9 +162,15 @@ pub async fn drain_arrivals(
                 // may belong to a new holder of a reused id), Rule 5.
                 let id = owner_identity(space_mgr, pet, Some(owner_id));
                 let registered_owner = space_mgr.pets.owner_of(pet);
-                // The pet itself may be gone (`pet_gone`): its name is then
-                // left off and the template captured at summon names it.
-                let names = space_mgr.entity_names(pet);
+                // Name the pet entity only while the registry still lists it:
+                // a `pet_gone` the registry already forgot may have its slot
+                // reused, and the row must not name the new occupant. The
+                // template captured at summon names it either way.
+                let names = if registered_owner.is_some() {
+                    space_mgr.entity_names(pet)
+                } else {
+                    Default::default()
+                };
                 let waited_ms = now.duration_since(arrival.queued_at).as_millis() as u64;
                 // A pet gone before its intro is ordinary (despawned at
                 // once): DEBUG. An owner who never saw its live pet means the

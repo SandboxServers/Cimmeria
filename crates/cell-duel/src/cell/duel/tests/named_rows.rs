@@ -92,3 +92,51 @@ async fn aborted_duel_end_leaves_winner_and_loser_names_off() {
         assert!(!row.fields.contains_key(k), "{k} on an abort: {row:#?}");
     }
 }
+
+/// The recycled-slot branch of `duelist_log_names` (#889 shape): B left and
+/// B's entity id now belongs to another player. A challenge that still
+/// names B's old entity is refused `target_gone`, and its row names B from
+/// `known_names`, with no `target_entity_name` and nothing of the slot's
+/// new occupant. Fails if the helper's `player_id` filter is removed (the
+/// row then names the impostor for both fields).
+#[tokio::test]
+async fn refused_challenge_names_a_departed_target_not_its_slots_new_occupant() {
+    let mut mgr = make_mgr();
+    name_duelists(&mut mgr);
+    cimmeria_entity::known_names::remember_player(B_PID, "Teal'c");
+    mgr.destroy_entity(B_EID);
+    add_player(&mut mgr, B_EID, 9_999, 900, "Agnos", [5.0, 0.0, 0.0]);
+    mgr.get_entity_mut(B_EID)
+        .unwrap()
+        .stamp_log_names(Some("Impostor"), Some("impostor_login"));
+    let (tx, _rx) = mpsc::channel(256);
+
+    let capture = LogCapture::install();
+    challenge(
+        &mut mgr,
+        &tx,
+        (A_EID, A_PID),
+        (B_EID, B_PID),
+        std::time::Instant::now(),
+    )
+    .await;
+
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "duel.challenge_refused"))
+        .expect("duel.challenge_refused");
+    assert!(row.has_field("reason", "target_gone"), "{row:#?}");
+    assert!(row.has_field("target_player_name", "Teal'c"), "{row:#?}");
+    assert!(row.has_field("player_name", "Jack O'Neill"), "{row:#?}");
+    assert!(
+        !row.fields.contains_key("target_entity_name"),
+        "a recycled slot is never named: {row:#?}"
+    );
+    assert!(
+        !row.fields
+            .values()
+            .any(|v| v.contains("Impostor") || v.contains("impostor")),
+        "the slot's new occupant is named: {row:#?}"
+    );
+}
