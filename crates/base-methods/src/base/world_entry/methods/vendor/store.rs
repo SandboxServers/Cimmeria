@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -55,6 +56,7 @@ pub async fn handle_open_vendor_store(
     let Some(pool) = db_pool else {
         send_store_open_to_client(
             entity_id,
+            player_id,
             vendor_entity_id,
             serialize_empty_store_open(vendor_entity_id),
             transport,
@@ -69,6 +71,7 @@ pub async fn handle_open_vendor_store(
     let Some(template_id) = vendor_template_id else {
         send_store_open_to_client(
             entity_id,
+            player_id,
             vendor_entity_id,
             serialize_empty_store_open(vendor_entity_id),
             transport,
@@ -137,6 +140,7 @@ pub async fn handle_open_vendor_store(
 
     send_store_open_to_client(
         entity_id,
+        player_id,
         vendor_entity_id,
         args,
         transport,
@@ -160,6 +164,8 @@ pub async fn handle_open_vendor_store(
 /// encoding: `[0xBD][word_len: u16][entity_id: u32][109 - 61 = 48][args]`.
 pub async fn send_store_open_to_client(
     entity_id: u32,
+    // Names the player on the trace line (Rule 6) without the session locks.
+    player_id: i32,
     vendor_entity_id: i32,
     args: Vec<u8>,
     transport: &Arc<dyn Transport>,
@@ -186,12 +192,7 @@ pub async fn send_store_open_to_client(
     .await;
     tracing::trace!(
         entity_id,
-        entity_name = crate::base::session_identity::identity_for_entity(
-            connected,
-            entity_to_addr,
-            entity_id
-        )
-        .player_name,
+        entity_name = known_names::player_name(player_id),
         vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
         "Sent onStoreOpen"
     );
@@ -302,6 +303,7 @@ mod tests {
 
         send_store_open_to_client(
             entity_id,
+            7,
             vendor_entity_id,
             args.clone(),
             &dyn_transport,

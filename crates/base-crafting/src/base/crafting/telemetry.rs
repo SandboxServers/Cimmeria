@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_cell_catalog::crafting::loaded_crafting_catalog;
+use cimmeria_cell_catalog::crafting::{loaded_crafting_catalog, CraftingCatalog};
 use cimmeria_wire::cell::client_methods::being::ON_TIMER_UPDATE;
 
 use super::session::InductionEnv;
@@ -84,10 +84,7 @@ pub fn account_id_of(
 /// once something has loaded it. `None` for an absent or unknown id, and
 /// before the first load.
 pub fn discipline_name(discipline_id: impl Into<Option<i32>>) -> Option<String> {
-    let id = discipline_id.into()?;
-    let catalog = loaded_crafting_catalog()?;
-    let name = catalog.disciplines.get(&id)?.name.trim();
-    (!name.is_empty()).then(|| name.to_owned())
+    discipline_name_in(&*loaded_crafting_catalog()?, discipline_id.into()?)
 }
 
 /// A blueprint's name for a log line (Rule 6). `blueprints` has no name
@@ -95,9 +92,16 @@ pub fn discipline_name(discipline_id: impl Into<Option<i32>>) -> Option<String> 
 /// named for its product. `None` for an absent or unknown id, a blueprint
 /// with no product, and before the catalog's first load.
 pub fn blueprint_name(blueprint_id: impl Into<Option<i32>>) -> Option<String> {
-    let id = blueprint_id.into()?;
-    let product = loaded_crafting_catalog()?.blueprints.get(&id)?.product_id;
-    cimmeria_names::owned::item(product)
+    blueprint_name_in(&*loaded_crafting_catalog()?, blueprint_id.into()?)
+}
+
+fn discipline_name_in(catalog: &CraftingCatalog, discipline_id: i32) -> Option<String> {
+    let name = catalog.disciplines.get(&discipline_id)?.name.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+fn blueprint_name_in(catalog: &CraftingCatalog, blueprint_id: i32) -> Option<String> {
+    cimmeria_names::owned::item(catalog.blueprints.get(&blueprint_id)?.product_id)
 }
 
 /// Why a single-message send to the player did not go out, as the `reason`
@@ -278,6 +282,73 @@ mod tests {
         assert_eq!(
             [Outcome::Accepted, Outcome::Rejected].map(Outcome::as_str),
             ["accepted", "rejected"]
+        );
+    }
+
+    /// NT-22 (Rule 6): a blueprint is named for its product item (the
+    /// blueprint id itself names a decoy, so looking it up as an item fails
+    /// this), and a discipline by `disciplines.name`.
+    #[test]
+    fn blueprint_and_discipline_names_come_from_the_catalog() {
+        use cimmeria_cell_catalog::crafting::{Blueprint, Discipline};
+        const BLUEPRINT: i32 = 0x7000_D250;
+        const PRODUCT: i32 = 0x7000_D251;
+        const DISCIPLINE: i32 = 0x7000_D252;
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(
+            cimmeria_names::Table::Items,
+            i64::from(PRODUCT),
+            "Kull Armor",
+        );
+        book.insert(
+            cimmeria_names::Table::Items,
+            i64::from(BLUEPRINT),
+            "Decoy: blueprint id",
+        );
+        cimmeria_names::global().store(book);
+        let mut catalog = CraftingCatalog::default();
+        catalog.blueprints.insert(
+            BLUEPRINT,
+            Blueprint {
+                blueprint_id: BLUEPRINT,
+                discipline_id: Some(DISCIPLINE),
+                is_alloy: false,
+                product_id: Some(PRODUCT),
+                quantity: 1,
+                requires_elementary_components: false,
+                component_sets: Vec::new(),
+            },
+        );
+        catalog.disciplines.insert(
+            DISCIPLINE,
+            Discipline {
+                discipline_id: DISCIPLINE,
+                applied_science_id: 1,
+                racial_paradigm_id: 1,
+                racial_paradigm_level: 1,
+                tech_competency: 1,
+                required_discipline_ids: Vec::new(),
+                name: "Armor Smithing".into(),
+            },
+        );
+
+        assert_eq!(
+            blueprint_name_in(&catalog, BLUEPRINT).as_deref(),
+            Some("Kull Armor")
+        );
+        assert_eq!(
+            discipline_name_in(&catalog, DISCIPLINE).as_deref(),
+            Some("Armor Smithing")
+        );
+        assert_eq!(
+            blueprint_name_in(&catalog, BLUEPRINT + 9),
+            None,
+            "unknown blueprint"
+        );
+        assert_eq!(
+            discipline_name_in(&catalog, DISCIPLINE + 9),
+            None,
+            "unknown discipline"
         );
     }
 }

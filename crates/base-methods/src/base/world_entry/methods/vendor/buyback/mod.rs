@@ -419,7 +419,7 @@ pub async fn handle_buyback_vendor_items(
         player_id,
         player_name = player_label,
         vendor_template_id,
-        vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+        vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
         item_count = items.len(),
         total_items,
         cash_spent = total_cash_cost,

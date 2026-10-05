@@ -320,7 +320,7 @@ CR-01 is the only bottleneck. It is kept small: catalog, constants, serializers,
 
 Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes the item from the corpse on the cell **before** the base accepts the grant, so a refused grant destroys the item. Remove from the corpse only after the base confirms, or restore it on refusal.
 
-**Telemetry:** under the grant path's existing target, `event=grant_container_chosen` with the full identity, `type_id`, `container_sets`, `skipped_storage`, the chosen `container_id` and slot, and the stack quantity before and after; `event=loot_restored` when a refused grant puts the item back on the corpse (`corpse_id`, `type_id`, `qty`). Add both to that target's row in `docs/architecture/observability.md`.
+**Telemetry:** under the grant path's existing target, `event=grant_container_chosen` with the full identity, `item_type_id`, `container_sets`, `skipped_storage`, the chosen `container_id` and slot, and the stack quantity before and after; `event=loot_restored` when a refused grant puts the item back on the corpse (`corpse_id`, `item_type_id`, `qty`). Add both to that target's row in `docs/architecture/observability.md`.
 
 **Acceptance:** a live-DB test that a `{17,15}` component granted by loot, by the content engine and by a GM lands in bag 15; a test that a refused loot grant leaves the item on the corpse; a guard that fails when the fall-through is removed; the BV-01 refusal test still passes for a storage-only item.
 
@@ -340,7 +340,7 @@ Also close the loot data-loss path: `cell-interactions/.../loot.rs:185` removes 
 
 **Scope:** research checks for an eligible discipline (one of the item's disciplines known with `0 < expertise < item tech competency`) at the request, and again at completion before the transaction consumes anything; with none, the request is refused with a visible line and the item and kickers stay. Today the item and kickers are consumed and the line says nothing was learned (CR-08, the legacy behaviour).
 
-**Telemetry:** `rejected` with the new enumerated `reason` `no_eligible_discipline`, with `item_id`, `type_id`, `applied_science_id`, `tech_comp`, `item_disciplines` and `known_disciplines` (`discipline_id:expertise,…`), counted on `crafting_rejections_total`; no `completed` row and nothing consumed. Add the reason to the `crafting` row of `observability.md`.
+**Telemetry:** `rejected` with the new enumerated `reason` `no_eligible_discipline`, with `item_id`, `item_type_id`, `applied_science_id`, `tech_comp`, `item_disciplines` and `known_disciplines` (`discipline_id:expertise,…`), counted on `crafting_rejections_total`; no `completed` row and nothing consumed. Add the reason to the `crafting` row of `observability.md`.
 
 **Acceptance:** a live-DB test that a research with no eligible discipline consumes nothing and sends the line, at the request and at completion (expertise raised during the bar); a guard that fails when the check is removed; the existing success and failure tests still pass.
 

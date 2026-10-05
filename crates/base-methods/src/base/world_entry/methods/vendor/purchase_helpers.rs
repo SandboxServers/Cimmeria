@@ -71,7 +71,7 @@ pub async fn load_vendor_template_lists(
         Ok(None) => {
             tracing::warn!(
                 vendor_template_id,
-                vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                 "{context}: vendor template not found"
             );
             None
@@ -79,7 +79,7 @@ pub async fn load_vendor_template_lists(
         Err(e) => {
             tracing::error!(
                 vendor_template_id,
-                vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                 "{context}: vendor template query failed: {e}"
             );
             None
@@ -104,7 +104,7 @@ pub async fn load_vendor_purchase_lines(
         // should be hidden behind debug-level filtering in production.
         tracing::warn!(
             vendor_template_id,
-            vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+            vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
             "PurchaseVendorItems: vendor has no buy list"
         );
         return None;
@@ -128,7 +128,7 @@ pub async fn load_vendor_purchase_lines(
         Err(e) => {
             tracing::error!(
                 vendor_template_id,
-                vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                 buy_item_list,
                 "PurchaseVendorItems: buy list query failed: {e}"
             );
@@ -151,7 +151,7 @@ pub async fn load_vendor_purchase_lines(
             Err(e) => {
                 tracing::error!(
                     vendor_template_id,
-                    vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                    vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                     buy_item_list,
                     "PurchaseVendorItems: item cost query failed: {e}"
                 );
@@ -176,7 +176,7 @@ pub async fn load_vendor_purchase_lines(
         if *requested_quantity <= 0 || *requested_quantity > MAX_VENDOR_PURCHASE_QUANTITY {
             tracing::warn!(
                 vendor_template_id,
-                vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                 buy_item_list,
                 index,
                 requested_quantity,
@@ -189,7 +189,7 @@ pub async fn load_vendor_purchase_lines(
         let Some(row) = rows_by_index.get(index) else {
             tracing::warn!(
                 vendor_template_id,
-                vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                 buy_item_list,
                 index,
                 "PurchaseVendorItems: requested index is not in vendor buy list"
@@ -202,7 +202,7 @@ pub async fn load_vendor_purchase_lines(
             Some(quantity) => {
                 tracing::warn!(
                     vendor_template_id,
-                    vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                    vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                     index,
                     row_quantity = row.quantity,
                     requested_quantity,
@@ -214,7 +214,7 @@ pub async fn load_vendor_purchase_lines(
             None => {
                 tracing::warn!(
                     vendor_template_id,
-                    vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                    vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                     index,
                     row_quantity = row.quantity,
                     requested_quantity,
@@ -229,7 +229,7 @@ pub async fn load_vendor_purchase_lines(
             Some(cost) => {
                 tracing::warn!(
                     vendor_template_id,
-                    vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                    vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                     index,
                     naquadah = row.naquadah,
                     requested_quantity,
@@ -241,7 +241,7 @@ pub async fn load_vendor_purchase_lines(
             None => {
                 tracing::warn!(
                     vendor_template_id,
-                    vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+                    vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
                     index,
                     naquadah = row.naquadah,
                     requested_quantity,
@@ -260,7 +260,7 @@ pub async fn load_vendor_purchase_lines(
                         tracing::warn!(
                             vendor_template_id,
                             vendor_template_name =
-                                cimmeria_names::book().template(vendor_template_id),
+                                cimmeria_names::owned::template(vendor_template_id),
                             index,
                             item_type_id = design_id,
                             item_name = cimmeria_names::book().item(*design_id),
@@ -275,7 +275,7 @@ pub async fn load_vendor_purchase_lines(
                         tracing::warn!(
                             vendor_template_id,
                             vendor_template_name =
-                                cimmeria_names::book().template(vendor_template_id),
+                                cimmeria_names::owned::template(vendor_template_id),
                             index,
                             item_type_id = design_id,
                             item_name = cimmeria_names::book().item(*design_id),

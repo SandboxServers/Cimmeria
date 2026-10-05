@@ -1,62 +1,16 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 1405
+# total 795
 crates/admin-api/src/routes/dev_session/handlers.rs 2
-crates/base-crafting/src/base/crafting/allcraft.rs 18
-crates/base-crafting/src/base/crafting/alloy/mod.rs 7
-crates/base-crafting/src/base/crafting/craft/mod.rs 7
-crates/base-crafting/src/base/crafting/feedback/mod.rs 15
-crates/base-crafting/src/base/crafting/gate.rs 3
-crates/base-crafting/src/base/crafting/gm_grant/craftkit.rs 10
-crates/base-crafting/src/base/crafting/gm_grant/learn_blueprint.rs 15
-crates/base-crafting/src/base/crafting/gm_grant/mod.rs 8
-crates/base-crafting/src/base/crafting/handlers.rs 20
-crates/base-crafting/src/base/crafting/induction_verb.rs 7
-crates/base-crafting/src/base/crafting/item_use/miss.rs 4
-crates/base-crafting/src/base/crafting/item_use/mod.rs 27
-crates/base-crafting/src/base/crafting/options.rs 15
-crates/base-crafting/src/base/crafting/persistence/mod.rs 5
-crates/base-crafting/src/base/crafting/request.rs 3
-crates/base-crafting/src/base/crafting/research/mod.rs 10
-crates/base-crafting/src/base/crafting/respec/mod.rs 18
-crates/base-crafting/src/base/crafting/session/engine.rs 28
-crates/base-crafting/src/base/crafting/spend/mod.rs 20
-crates/base-crafting/src/base/crafting/sync/mod.rs 12
-crates/base-crafting/src/base/crafting/telemetry.rs 10
-crates/base-crafting/src/base/crafting/transaction/client_sync.rs 5
-crates/base-crafting/src/base/crafting/transaction/failure.rs 15
 crates/base-methods/src/base/world_entry/methods/missions/mod.rs 10
 crates/base-methods/src/base/world_entry/methods/player_load/core/inventory_items.rs 1
 crates/base-methods/src/base/world_entry/methods/player_load/core/player_data.rs 11
 crates/base-methods/src/base/world_entry/methods/player_load/meta.rs 3
-crates/base-methods/src/base/world_entry/methods/progression/asp_earning.rs 3
-crates/base-methods/src/base/world_entry/methods/progression/gm_ability_bulk.rs 12
-crates/base-methods/src/base/world_entry/methods/progression/grant_ability.rs 52
-crates/base-methods/src/base/world_entry/methods/progression/grant_training_points.rs 17
-crates/base-methods/src/base/world_entry/methods/progression/mod.rs 20
-crates/base-methods/src/base/world_entry/methods/progression/respec.rs 20
-crates/base-methods/src/base/world_entry/methods/progression/train_ability.rs 25
-crates/base-methods/src/base/world_entry/methods/vendor/buyback/mod.rs 3
-crates/base-methods/src/base/world_entry/methods/vendor/data/mod.rs 6
-crates/base-methods/src/base/world_entry/methods/vendor/helpers.rs 18
-crates/base-methods/src/base/world_entry/methods/vendor/paid_recharge/mod.rs 3
-crates/base-methods/src/base/world_entry/methods/vendor/paid_repair/mod.rs 3
-crates/base-methods/src/base/world_entry/methods/vendor/purchase/mod.rs 10
-crates/base-methods/src/base/world_entry/methods/vendor/purchase_helpers.rs 15
-crates/base-methods/src/base/world_entry/methods/vendor/recharge.rs 15
-crates/base-methods/src/base/world_entry/methods/vendor/repair.rs 20
-crates/base-methods/src/base/world_entry/methods/vendor/sell/mod.rs 3
-crates/base-methods/src/base/world_entry/methods/vendor/store.rs 2
-crates/base-methods/src/base/world_entry/methods/vendor/telemetry.rs 26
 crates/base-methods/src/base/world_entry/methods/world_entry_db.rs 8
-crates/base-session/src/base/bank_dump/mod.rs 12
-crates/base-session/src/base/bank_expand/mod.rs 14
-crates/base-session/src/base/bank_expand/sends.rs 3
 crates/base/src/base/dispatch/organization.rs 3
 crates/base/src/base/dispatch/organization_squad.rs 4
 crates/cell-catalog/src/ability_tree/tree_info.rs 5
-crates/cell-catalog/src/crafting/catalog.rs 3
 crates/cell-methods/src/cell/cell_methods/ability_manager.rs 2
 crates/cell-methods/src/cell/cell_methods/being.rs 4
 crates/cell-methods/src/cell/cell_methods/black_market/mod.rs 19
@@ -104,7 +58,6 @@ crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/dispatch/ability_receipt.rs 3
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
-crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2
 crates/cell/src/cell/service/base_messages/respec.rs 5
 crates/cell/src/cell/service/ticks/auto_cycle.rs 13

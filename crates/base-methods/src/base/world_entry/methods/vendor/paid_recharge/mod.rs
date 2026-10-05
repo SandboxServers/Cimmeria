@@ -284,7 +284,7 @@ pub async fn handle_paid_recharge_inventory_items(
         player_id,
         player_name = player_label,
         vendor_template_id,
-        vendor_template_name = cimmeria_names::book().template(vendor_template_id),
+        vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
         item_count = item_ids.len(),
         total_cost,
         total_items,
