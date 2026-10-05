@@ -137,6 +137,10 @@ pub struct TimedEffect {
     /// removal logged after the invoker left still names them
     /// (instrumentation-discipline rule 5).
     pub invoker_identity: PlayerIdentity,
+    /// The invoker's name, snapshotted with the identity: an NPC's too, so
+    /// a mob's debuff rows name it after it died or its id was reused
+    /// (Rule 6).
+    pub invoker_name: Option<&'static str>,
     /// The invoker's cast that applied it (AB-T1), so its apply, absorb,
     /// expiry and removal rows join the launch row. `None` outside a cast (a
     /// consumable, a test).
@@ -192,6 +196,8 @@ pub struct TimedEffectSpec {
     pub stacking: TimedStacking,
     /// The invoker's identity; `SpaceManager::apply_timed_effect` fills it.
     pub invoker_identity: PlayerIdentity,
+    /// The invoker's name (a player's or an NPC's); filled with it.
+    pub invoker_name: Option<&'static str>,
     /// The resolving cast (AB-T1); `SpaceManager::apply_timed_effect` fills
     /// it from the cast scope.
     pub cast_id: Option<i32>,
@@ -356,6 +362,7 @@ impl CellEntity {
                 .map(|d| now + Duration::from_secs_f32(d.max(0.0))),
             timer_sent: false,
             invoker_identity: spec.invoker_identity,
+            invoker_name: spec.invoker_name,
             cast_id: spec.cast_id,
         };
         self.stat_buffs.entries.push(applied.clone());

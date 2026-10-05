@@ -48,6 +48,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32) -> TimedEffectSpec {
         stacking: TimedStacking::ReplaceSameStat,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 
@@ -66,6 +67,7 @@ fn aim(invoker_id: u32) -> TimedEffectSpec {
         stacking: TimedStacking::PerSource,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 
@@ -267,6 +269,7 @@ fn one_entry_moves_several_stats_and_restores_them_together() {
         stacking: TimedStacking::PerSource,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     };
     e.apply_timed_effect(spec, Instant::now()).unwrap();
     assert_eq!(e.stats.get(ACCURACY).unwrap().cur, -200);

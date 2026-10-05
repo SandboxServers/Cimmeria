@@ -77,6 +77,7 @@ fn spec() -> TimedEffectSpec {
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 
@@ -129,4 +130,28 @@ fn an_expired_effect_row_names_the_invoker_after_it_left() {
     let row = event(&logs.all(), "stat_buff_removed");
     assert!(row.has_field("reason", "expired"), "{row:#?}");
     assert_named(&row);
+}
+
+/// A mob's debuff: the expiry row names the NPC that applied it, from the
+/// entry's snapshot, after the NPC is gone.
+#[test]
+fn an_npc_debuff_names_its_invoker_after_it_died() {
+    let mut mgr = world();
+    let mut debuff = spec();
+    debuff.invoker_id = NPC;
+    mgr.apply_timed_effect(PLAYER, debuff, Instant::now())
+        .expect("the debuff applies");
+    mgr.destroy_entity(NPC);
+    let logs = LogCapture::install();
+    tracing::callsite::rebuild_interest_cache();
+    mgr.remove_timed_effects(PLAYER, StatBuffRemoval::Expired, |_| true);
+    cimmeria_names::global().store(cimmeria_names::NameBook::empty());
+    let row = event(&logs.all(), "stat_buff_removed");
+    for (key, want) in [
+        ("entity_name", "Jaffa Guard"),
+        ("source_name", "Jaffa Guard"),
+        ("target_name", "Teal'c"),
+    ] {
+        assert!(row.has_field(key, want), "{key} = {want} missing: {row:#?}");
+    }
 }

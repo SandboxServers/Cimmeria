@@ -255,19 +255,20 @@ pub async fn credit_ground_deaths(
                 None => {
                     let who = space_mgr.player_identity(entity_id);
                     tracing::warn!(
-                                target: "abilities",
-                                event = "kill_credit_no_player",
-                                account_id = who.account_id,
-                    account_name = who.account_name,
-                    player_id = who.player_id,
-                    player_name = who.player_name,
-                                entity_id,
-                    entity_name = space_mgr.entity_label(entity_id),
-                    npc_tag = %tag,
-                    dead_eid,
-                    reason = "no_credited_player",
-                                "Skipping entity_death event (ground target): killer entity has no player_id"
-                            );
+                        target: "abilities",
+                        event = "kill_credit_no_player",
+                        account_id = who.account_id,
+                        account_name = who.account_name,
+                        player_id = who.player_id,
+                        player_name = who.player_name,
+                        entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
+                        npc_tag = %tag,
+                        dead_eid,
+                        dead_name = space_mgr.entity_label(dead_eid),
+                        reason = "no_credited_player",
+                        "Skipping entity_death event (ground target): killer entity has no player_id"
+                    );
                 }
             }
         }

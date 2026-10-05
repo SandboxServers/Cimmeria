@@ -41,6 +41,7 @@ fn shielded(capacity: i32) -> SpaceManager {
             duration_secs: Some(30.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),
+            invoker_name: None,
         },
         Instant::now(),
     )
@@ -185,6 +186,7 @@ async fn a_dot_pulse_drains_the_shield_first() {
         .active_effects
         .push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,
@@ -215,6 +217,7 @@ async fn an_energy_pulse_leaves_a_physical_shield_alone() {
         .active_effects
         .push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,
@@ -256,6 +259,7 @@ fn due_pulse(mgr: &mut SpaceManager, invoker: u32) {
         .active_effects
         .push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,

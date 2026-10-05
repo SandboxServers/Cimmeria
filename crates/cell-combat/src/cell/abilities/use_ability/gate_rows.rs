@@ -237,8 +237,10 @@ pub(super) fn target_label(space_mgr: &SpaceManager, target_id: i32) -> Option<&
 impl LaunchRow<'_> {
     /// The launch resolved its target: record it with its name.
     pub(super) fn set_target(&mut self, space_mgr: &SpaceManager, target_id: i32) {
-        self.target_id = target_id;
-        self.target_name = target_label(space_mgr, target_id);
+        if target_id != self.target_id {
+            self.target_id = target_id;
+            self.target_name = target_label(space_mgr, target_id);
+        }
     }
 
     /// `player` or `npc`: the caster's kind, from its identity (an NPC has

@@ -606,7 +606,7 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 - `threat` `enter_combat` / `exit_combat` logged the player's **entity** id as `player_id`. It is now `entity_id` (with `entity_name`), and `player_id` / `account_id` carry the character's and account's ids per Rule 5.
 - The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. They now log `item_type_id` (a number; `item_id` is for instances) with `item_name`, and keep `design_id`, as a number, for the cell/base loot join.
 
-A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `TimedEffect::invoker_identity`), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
+A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
 ## Related
 

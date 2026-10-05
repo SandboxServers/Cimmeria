@@ -423,6 +423,7 @@ async fn channeller_death_cancels_active_channels() {
     if let Some(target) = mgr.get_entity_mut(2) {
         target.active_effects.push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id: 12345,
             ability_id: 9999,

@@ -66,6 +66,7 @@ fn pulsing(mgr: &mut SpaceManager, target: u32, effect_id: i32, invoker_id: u32)
         .active_effects
         .push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id,
             ability_id: 0,
@@ -103,6 +104,7 @@ fn timed(
             duration_secs: Some(15.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),
+            invoker_name: None,
         },
         Instant::now(),
     )

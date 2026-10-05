@@ -159,6 +159,7 @@ async fn a_timed_effect_logs_its_timer_start_clear_and_state_flag() {
             stacking: TimedStacking::PerSource,
             state_flags: BSF_MOVEMENT_LOCK,
             invoker_identity: Default::default(),
+            invoker_name: None,
         },
         now,
     );

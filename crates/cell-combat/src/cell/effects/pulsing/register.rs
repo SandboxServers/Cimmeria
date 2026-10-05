@@ -89,6 +89,9 @@ pub async fn register_active_effect(
     // Snapshot now: the pulse and end rows log it after the invoker may have
     // left and its entity id been reused (rule 5).
     let who = space_mgr.player_identity(invoker_id);
+    // The invoker's name (an NPC's too), snapshotted once per registration
+    // so the pulse and end rows name a mob after it is gone (Rule 6).
+    let invoker_name = space_mgr.entity_names(invoker_id).entity_name;
 
     let was_refresh = {
         if space_mgr.get_entity(target_id).is_none() {
@@ -122,6 +125,7 @@ pub async fn register_active_effect(
             existing.cast_id = cast_id;
             // The refreshing cast's invoker, snapshotted with its cast id.
             existing.invoker_identity = who;
+            existing.invoker_name = invoker_name;
             true
         } else {
             target.active_effects.push(ActiveEffectInstance {
@@ -135,6 +139,7 @@ pub async fn register_active_effect(
                 invoker_position_at_register: invoker_position_for_channel,
                 cast_id,
                 invoker_identity: who,
+                invoker_name,
             });
             false
         }

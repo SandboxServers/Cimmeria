@@ -31,6 +31,7 @@ fn spec(effect_id: i32, invoker_id: u32) -> TimedEffectSpec {
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 
@@ -71,6 +72,7 @@ fn seeded() -> (CellEntity, Instant) {
         invoker_position_at_register: None,
         cast_id: Some(12),
         invoker_identity: Default::default(),
+        invoker_name: None,
     });
     // A timed buff, a held stun (flag only) and a shield.
     e.apply_timed_effect(spec(700, 7), now).expect("buff");

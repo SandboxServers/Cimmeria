@@ -137,6 +137,7 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
         stacking,
         // `SpaceManager::apply_timed_effect` fills it from the invoker.
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 

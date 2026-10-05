@@ -45,6 +45,7 @@ fn world(victim_is_player: bool) -> SpaceManager {
             duration_secs: Some(15.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),
+            invoker_name: None,
         },
         Instant::now(),
     )

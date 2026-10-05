@@ -63,6 +63,7 @@ async fn pulse(mgr: &mut SpaceManager) {
         .active_effects
         .push(ActiveEffectInstance {
             invoker_identity: Default::default(),
+            invoker_name: None,
             cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,

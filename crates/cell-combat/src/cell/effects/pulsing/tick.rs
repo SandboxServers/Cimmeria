@@ -136,7 +136,13 @@ pub async fn effect_pulse_tick(
         // `onTimerUpdate` with `total_time = 0` so the client clears
         // the buff/debuff icon. Without the clear, the icon would
         // stick at "expiring in 0s" forever.
-        let cleared_ids: Vec<(i32, u32, i32, Option<i32>, PlayerIdentity)> = {
+        let cleared_ids: Vec<(
+            i32,
+            u32,
+            i32,
+            Option<i32>,
+            (PlayerIdentity, Option<&'static str>),
+        )> = {
             let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
                 continue;
             };
@@ -148,7 +154,7 @@ pub async fn effect_pulse_tick(
                         inst.invoker_id,
                         inst.ability_id,
                         inst.cast_id,
-                        inst.invoker_identity,
+                        (inst.invoker_identity, inst.invoker_name),
                     ));
                     false
                 } else {
@@ -157,7 +163,7 @@ pub async fn effect_pulse_tick(
             });
             cleared
         };
-        for (cleared_effect, invoker, ability_id, cast_id, who) in cleared_ids {
+        for (cleared_effect, invoker, ability_id, cast_id, (who, invoker_name)) in cleared_ids {
             // AB-T3: `pulse_ended` (was `active_effect_ended`), the natural
             // end. A strip (death, duel end, cleanse, channel cancel) logs
             // its own row where it removes the instance.
@@ -171,13 +177,13 @@ pub async fn effect_pulse_tick(
                 player_id = who.player_id,
                 player_name = who.player_name,
                 entity_id = invoker,
-                entity_name = who.player_name,
+                entity_name = invoker_name,
                 target_id = entity_id,
                 target_name = space_mgr.entity_label(entity_id),
                 target_player_id = space_mgr.player_identity(entity_id).player_id,
                 target_player_name = space_mgr.player_identity(entity_id).player_name,
                 invoker_id = invoker,
-                invoker_name = who.player_name,
+                invoker_name,
                 cast_id, // nt:id-only per-cast sequence number, no name exists
                 effect_id = cleared_effect,
                 effect_name = cimmeria_names::book().effect(cleared_effect),
@@ -194,7 +200,7 @@ pub async fn effect_pulse_tick(
                 if let Some(script_name) = effect_def.script_name.clone() {
                     // The cast's scope closed long ago: the removal names the
                     // instance's snapshotted cast and invoker (`cast_scope`).
-                    let outer = space_mgr.enter_effect_scope(cast_id, invoker, who);
+                    let outer = space_mgr.enter_effect_scope(cast_id, invoker, who, invoker_name);
                     let mut ctx = crate::cell::effects::EffectContext {
                         source_id: invoker,
                         target_id: entity_id,

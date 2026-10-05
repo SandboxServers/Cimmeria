@@ -354,6 +354,11 @@ async fn apply_hit(
             ability_id,
             qr_result.result_code,
             before,
+            combat::vitals::HitNames {
+                attacker: ids.actor,
+                attacker_name: ids.entity_name,
+                ability_name: ids.ability_name,
+            },
         );
     }
     let planned = &plan.planned;

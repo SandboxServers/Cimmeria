@@ -48,8 +48,12 @@ pub(super) async fn pulse_one(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let outer_cast =
-        space_mgr.enter_effect_scope(inst.cast_id, inst.invoker_id, inst.invoker_identity);
+    let outer_cast = space_mgr.enter_effect_scope(
+        inst.cast_id,
+        inst.invoker_id,
+        inst.invoker_identity,
+        inst.invoker_name,
+    );
     fire_pulse(target_id, inst, effect_def, tx, space_mgr).await;
     // Death first, threshold second: `dot_kill_credit` stamps `BSF_DEAD` on
     // a mob the pulse finished, which is exactly what
@@ -169,13 +173,13 @@ async fn fire_pulse(
             player_id = inst.invoker_identity.player_id,
             player_name = inst.invoker_identity.player_name,
             entity_id = inst.invoker_id,
-            entity_name = inst.invoker_identity.player_name,
+            entity_name = inst.invoker_name,
             target_id,
             target_name = space_mgr.entity_label(target_id),
             target_player_id = space_mgr.player_identity(target_id).player_id,
             target_player_name = space_mgr.player_identity(target_id).player_name,
             invoker_id = inst.invoker_id,
-            invoker_name = inst.invoker_identity.player_name,
+            invoker_name = inst.invoker_name,
             cast_id = inst.cast_id, // nt:id-only per-cast sequence number, no name exists
             ability_id = inst.ability_id,
             ability_name = cimmeria_names::book().ability(inst.ability_id),
@@ -376,7 +380,7 @@ async fn fire_pulse(
                         player_id = inst.invoker_identity.player_id,
                         player_name = inst.invoker_identity.player_name,
                         entity_id = inst.invoker_id,
-                        entity_name = inst.invoker_identity.player_name,
+                        entity_name = inst.invoker_name,
                         target_id,
                         target_name = space_mgr.entity_label(target_id),
                         target_player_id = target_who.player_id,
@@ -387,7 +391,7 @@ async fn fire_pulse(
                         effect_id = inst.effect_id,
                         effect_name = cimmeria_names::book().effect(inst.effect_id),
                         invoker_id = inst.invoker_id,
-                        invoker_name = inst.invoker_identity.player_name,
+                        invoker_name = inst.invoker_name,
                         "Pulse would have killed a surrendered NPC -- health floored at 1"
                     );
                 }
@@ -451,13 +455,13 @@ async fn fire_pulse(
         player_id = who.player_id,
         player_name = who.player_name,
         entity_id = inst.invoker_id,
-        entity_name = inst.invoker_identity.player_name,
+        entity_name = inst.invoker_name,
         target_id,
         target_name = space_mgr.entity_label(target_id),
         target_player_id = space_mgr.player_identity(target_id).player_id,
         target_player_name = space_mgr.player_identity(target_id).player_name,
         invoker_id = inst.invoker_id,
-        invoker_name = inst.invoker_identity.player_name,
+        invoker_name = inst.invoker_name,
         cast_id = inst.cast_id, // nt:id-only per-cast sequence number, no name exists
         effect_id = inst.effect_id,
         effect_name = cimmeria_names::book().effect(inst.effect_id),

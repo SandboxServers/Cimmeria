@@ -63,6 +63,7 @@ fn aim(invoker: u32) -> TimedEffectSpec {
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 

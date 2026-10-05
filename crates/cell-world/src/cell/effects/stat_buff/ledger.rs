@@ -134,6 +134,8 @@ impl SpaceManager {
         let who = self.player_identity(spec.invoker_id);
         // Snapshot now: a removal logged after the invoker left still names them.
         spec.invoker_identity = who;
+        // An NPC invoker's name too, so a mob's debuff rows name it (Rule 6).
+        spec.invoker_name = self.entity_names(spec.invoker_id).entity_name;
         // The cast resolving now (AB-T1): the entry's later rows (absorb,
         // expiry, removal) carry it after the scope has closed.
         spec.cast_id = self.current_cast_id();
@@ -470,16 +472,16 @@ pub(super) fn log_removed(
         player_id = who.player_id,
         player_name = who.player_name,
         entity_id = entry.invoker_id,
-        // The invoker as it was when the entry went on: by now an NPC
-        // invoker may be gone and its slot reused, so a live lookup could
-        // name the wrong entity. A player's snapshot carries the name.
-        entity_name = who.player_name,
+        // The invoker as it was when the entry went on: by now it may be
+        // gone and its slot reused, so a live lookup could name the wrong
+        // entity. The entry snapshotted the name (an NPC's too).
+        entity_name = entry.invoker_name,
         target_id = target,
         target_name,
         target_player_id = target_who.player_id,
         target_player_name = target_who.player_name,
         source_id = entry.invoker_id,
-        source_name = who.player_name,
+        source_name = entry.invoker_name,
         effect_id = entry.effect_id,
         effect_name = cimmeria_names::book().effect(entry.effect_id),
         ability_id = entry.ability_id,
