@@ -2,12 +2,12 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-10-03
+last_updated: 2026-10-05
 ---
 
 # Gameplay Systems Gap Analysis
 
-> **Last updated**: 2026-10-03 (token-usage close-out, TP-12: this file became the index and summary, and the per-system sections moved, unchanged, into one file per area under [gap-analysis/](gap-analysis/); see [Systems by area](#systems-by-area). §36 gains a note on the token profiler, which is development tooling and has no matrix row. No row changed.) Before that 2026-09-28 (ammo close-out, AM-12: §9, §12 and §14 gain the special-ammo rows; see "Since 2026-09-25"). Before that 2026-09-28 (#804: §10's clear-on-death row and path forward re-verified; no status changed). Before that 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
+> **Last updated**: 2026-10-05 (named-telemetry close-out, NT-50b: §33 and §35 each gain one NT row; see [Since 2026-09-25](#since-2026-09-25)). Before that 2026-10-03 (token-usage close-out, TP-12: this file became the index and summary, and the per-system sections moved, unchanged, into one file per area under [gap-analysis/](gap-analysis/); see [Systems by area](#systems-by-area). §36 gains a note on the token profiler, which is development tooling and has no matrix row. No row changed.) Before that 2026-09-28 (ammo close-out, AM-12: §9, §12 and §14 gain the special-ammo rows; see "Since 2026-09-25"). Before that 2026-09-28 (#804: §10's clear-on-death row and path forward re-verified; no status changed). Before that 2026-09-27 (social-systems close-out: §21, §24 and §27 and the matrix recount; then the organizations close-out: §21, §23 and §30 and a second recount; then the crafting close-out: §19, with the loot and trade rows that crafting changed in §14 and §22; see [Since 2026-09-25](#since-2026-09-25)). The last full re-verification pass was 2026-09-25, against `main` at `acbcc22e`, about 160 PRs after the 2026-07-25 edition.
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
@@ -129,9 +129,9 @@ Recomputed 2026-09-27 directly from the feature rows, by script: every matrix ro
 | 30 | Groups / Parties | 7 | 0 | 3 | 1 | 3 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
 | 32 | Mercury Bundle / ChannelBundle | 5 | 5 | 0 | 0 | 0 | 0 |
-| 33 | Observability Pipeline | 13 | 10 | 3 | 0 | 0 | 0 |
+| 33 | Observability Pipeline | 14 | 10 | 4 | 0 | 0 | 0 |
 | 34 | Wireclient + Network Chaos Testing | 7 | 3 | 0 | 3 | 1 | 0 |
-| 35 | Discord Notifications | 6 | 6 | 0 | 0 | 0 | 0 |
+| 35 | Discord Notifications | 7 | 6 | 1 | 0 | 0 | 0 |
 | 36 | Tauri Admin App + Tools | 13 | 2 | 2 | 6 | 3 | 0 |
 | 37 | Ring Transport | 9 | 3 | 4 | 2 | 0 | 0 |
 | -- | Session Management | 7 | 0 | 0 | 4 | 3 | 0 |
@@ -171,13 +171,15 @@ The TOTALS line above and every number in this section are generated from the ma
 | 2026-09-27 (bank close-out) | 167 | 112 | 109 | 95 | 3 | 486 |
 | 2026-09-27 (crafting close-out) | 167 | 121 | 101 | 94 | 3 | 486 |
 | 2026-09-28 (ammo close-out) | 167 | 125 | 102 | 94 | 3 | 491 |
-| **Delta** (2026-09-25 to now) | **-2** | **+67** | **+4** | **-48** | **-1** | **+20** |
+| 2026-10-05 (named-telemetry close-out) | 167 | 127 | 102 | 94 | 3 | 493 |
+| **Delta** (2026-09-25 to now) | **-2** | **+69** | **+4** | **-48** | **-1** | **+22** |
 
 - **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
 - **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
 - **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 - **Bank and vault.** The Bank and Vault campaign ([ledger](analysis/bank-vault/README.md), PRs #860 to #966) moved §23's two Bank rows, the treasury and the organization vault, from KM to NT (§23: 18 NT / 1 IM / 2 KM). The personal bank changed no row count: §12's bag row already counted the bank. Every one of these rows waits on the owner's bank UAT ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)).
 - **Crafting.** The crafting campaign ([ledger](analysis/crafting/README.md), PRs #851 to #979) moved every §19 row to NT: the eight IM rows (craft, research, reverse engineering, alloy, learning, expertise, paradigms, blueprints) and respec (KM). It also changed rows without moving their status: §14's loot take-all and table content (a refused pickup stays on the corpse; the debug crate drops guides and a Blueprint item, CR-16) and §22's item swap (trade from the crafting bag, CR-17). Every §19 row waits on the owner's [CR-14 UAT](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist).
+- **Named telemetry.** The named-telemetry campaign ([ledger](analysis/named-telemetry/README.md), PRs #1191 to #1238, close-out NT-50b) paired every logged ID with its name: unpaired ID fields went from 7,039 to 0, with 795 marked `// nt:id-only`, and a CI scan blocks new ones. It added two NT rows, both new features: §33 `Named telemetry` and §35 `Name (#id) pairs in every embed`. No existing row changed status. Both wait on a recorded session read in SigNoz and Discord; SigNoz was unreachable during the campaign.
 - **Token usage (no row change).** The token-usage campaign ([ledger](analysis/token-usage/README.md), PRs #1122 to #1140, close-out TP-12) built the token profiler in `tools/token-profile/`, which measures what AI-assisted work costs and posts a stats comment on every merged PR. It is development tooling, not a server feature, so it is noted under §36 without a matrix row. The same close-out split this file into the index and the per-area files.
 - **Ammo.** The ammo campaign ([ledger](analysis/ammo/README.md), PRs #1040 to #1069, close-out AM-12) added five rows, all new features rather than moves: §9 `Special ammo modifiers and on-hit effects` (IM: penetration is inert while `MITIGATION` is 0, and EMP has no interrupt) and `Support-dart ally shots` (NT); §12 `Special ammo reserve` and `Ammo-type validation` (NT); §14 `Special ammo drops` (NT). No existing row changed status. The feature ships on (`ammo.finite_special`, D-AM11) and awaits the owner's UAT ([unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)).
 

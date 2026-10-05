@@ -1,7 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
-**Last updated:** 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
+**Last updated:** 2026-10-05 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
 **Confidence:** High
 
 ## Context
@@ -329,6 +329,30 @@ Every event with a stable `target:` is a queryable surface in SigNoz. The catalo
 
 Moved to [observability-target-catalog.md](observability-target-catalog.md#npc_aidecision_outcome-enum).
 
+### Saved views for named telemetry
+
+Rule 6 ([instrumentation-discipline.md](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name)) puts a name next to every logged ID, so two saved Logs Explorer views read the result. Both live under the `named-telemetry` category, and their definitions are committed in the `signoz_create_view` shape used for the [NPC AI views](../operations/signoz/npc-ai-views.md#recreating-a-view):
+
+| View | Definition | What it is for |
+|---|---|---|
+| **Named telemetry — Logs with names** | [logs-with-names.view.json](../operations/signoz/logs-with-names.view.json) | Every `cimmeria-server` row, with the common name keys as columns: `player_name`, `account_name`, `entity_name`, `template_name`, `world`, `ability_name`, `item_name`, `mission_name`, `msg_name`, `method_name`. Start here and narrow with `AND <key> = <value>` |
+| **Named telemetry — Missing names** | [missing-names.view.json](../operations/signoz/missing-names.view.json) | Rows that carry a content ID with no name beside it: `template_id`, `item_type_id`, `ability_id`, `effect_id`, `mission_id`, `dialog_id` or `chain_id` without its `_name` key. A content name is absent only when the NameBook couldn't resolve it, so each row points at a seed hole or a placeholder (`NO ITEM NAME`) |
+
+Entity keys (`entity_id`, `target`, `player_id`) are left out of **Missing names** on purpose: a departed entity or an unloaded character is unnamed by design, not by bad data.
+
+A list view can't group, so to see *which* IDs have no name, run one count per key as a table query in Logs Explorer (or as a dashboard panel, in the `npc-ai-health.dashboard.json` table shape):
+
+```text
+Filter:    service.name = 'cimmeria-server' AND template_id EXISTS AND template_name NOT EXISTS
+Aggregate: count()
+Group by:  template_id
+```
+
+Swap the pair for each key in the table above (`item_type_id` / `item_name`, `ability_id` / `ability_name`, and so on). A row in the result is an ID the seed has no usable name for: fix it in `db/resources/`, or add it to the NameBook's pinned gaps (`crates/names/src/namebook_gaps.txt`) if the client has no name for it either.
+
+> [!NOTE]
+> SigNoz refuses a filter on a key it has never ingested (`key ... not found`; see [npc-ai-views.md](../operations/signoz/npc-ai-views.md)). Several name keys (`effect_name`, `chain_name`, `mission_name`) are new with the named-telemetry campaign, so create these views after the first session on a build that includes it (`1d032a500` or later). Neither view had been created on the colo when they were committed: SigNoz was unreachable during the campaign.
+
 ### Metrics
 
 A third OTLP signal — alongside traces and logs — ships counters,
@@ -352,7 +376,7 @@ the rest of the OTLP pipeline.
 
 The metrics provider uses a `PeriodicReader` with the default OTLP
 emit cadence (60s). The metric exporter shares the same OTLP endpoint
-+ protocol as the trace/log exporters — SigNoz ingests all three
+and protocol as the trace/log exporters — SigNoz ingests all three
 signals via one collector.
 
 **Label cardinality.** Per
@@ -549,6 +573,7 @@ unexpected entity-count spike. SigNoz supports alert rules; none are defined.
 - Deployment runbook: [signoz-deployment.md](../operations/signoz-deployment.md)
 - Remote access runbook: [signoz-remote-access.md](../operations/signoz-remote-access.md)
 - NPC AI telemetry runbook (post-session views + dashboard): [npc-ai-telemetry-runbook.md](../operations/npc-ai-telemetry-runbook.md); exported objects in [operations/signoz/](../operations/signoz/npc-ai-views.md)
+- Named-telemetry saved views: [logs-with-names.view.json](../operations/signoz/logs-with-names.view.json), [missing-names.view.json](../operations/signoz/missing-names.view.json) ([how to use them](#saved-views-for-named-telemetry)); campaign ledger: [analysis/named-telemetry/](../analysis/named-telemetry/README.md)
 - Instrumentation helpers: [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs)
 - OTLP exporter: [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)
 - Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry/`](../../crates/admin-api/src/routes/telemetry/)

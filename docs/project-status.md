@@ -2,14 +2,14 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-03
+last_updated: 2026-10-05
 ---
 
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **491 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **493 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
@@ -18,6 +18,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-09-28 update**: the headline and the Combat, Inventory and Loot rows follow the ammo close-out (AM-12, [ledger](analysis/ammo/README.md)), which added five new special-ammo rows to §9, §12 and §14 (four NT, one IM) and changed no existing row. Other rows keep their 2026-09-25 prose.
 >
 > **2026-10-03 update**: the token-usage close-out (TP-12, [ledger](analysis/token-usage/README.md)) adds [Development Tooling](#development-tooling) and changes no gameplay row. The same close-out split the gap analysis into an index and [one file per area](gap-analysis/); its numbers did not change.
+>
+> **2026-10-05 update**: the headline and the Observability pipeline, Discord notifications and Metrics / telemetry rows follow the named-telemetry close-out (NT-50b, [ledger](analysis/named-telemetry/README.md)), which added one NT row each to §33 and §35 of the gap analysis and changed no existing row. Every logged ID is now paired with its name (7,039 unpaired ID fields to 0), and Discord shows every object as `Name (#id)`.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -35,18 +37,18 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 167 | 34.0% |
-| Needs Test (NT) | 125 | 25.5% |
-| Implemented (IM) | 102 | 20.8% |
+| Confirmed Working (CW) | 167 | 33.9% |
+| Needs Test (NT) | 127 | 25.8% |
+| Implemented (IM) | 102 | 20.7% |
 | Known/Missing (KM) | 94 | 19.1% |
 | Needed/Unknown (NU) | 3 | 0.6% |
-| **Total** | **491** | |
+| **Total** | **493** | |
 
-**Code exists (CW + NT + IM)**: 394 features (80.2%)  
-**Missing (KM + NU)**: 97 features (19.8%)  
-**Tested end-to-end (CW)**: 167 features (34.0%)
+**Code exists (CW + NT + IM)**: 396 features (80.3%)  
+**Missing (KM + NU)**: 97 features (19.7%)  
+**Tested end-to-end (CW)**: 167 features (33.9%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged, and 125 on 2026-09-28 with the ammo campaign. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged, 125 on 2026-09-28 with the ammo campaign, and 127 on 2026-10-05 with named telemetry. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -114,9 +116,9 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 |--------|--------|----------|-------|
 | Content engine | CW | 11 (6 CW, 2 NT, 1 IM, 2 KM) | About 11,200 non-test lines in cell/content/ plus the content-engine crate, with about 960 tests. Drives missions / dialogs / triggers / conditions / actions. New: NPC barks (NT) |
 | Mercury bundle | CW | 5 (5 CW) | ChannelBundle accumulator, AoI-burst bundling, backpressure handling |
-| Observability pipeline | CW | 13 (10 CW, 3 NT) | OTLP exporter, SigNoz overlay, Mercury packet logging, dev-session telemetry, negative-logging convention. New and used in real sessions: the `.bug` playtest bookmark and the NPC AI telemetry and detectors. New and untested: stuck-player detectors, the NPC AI dashboard (#782), the `cimmeria-trace` log index (#792) |
+| Observability pipeline | CW | 14 (10 CW, 4 NT) | OTLP exporter, SigNoz overlay, Mercury packet logging, dev-session telemetry, negative-logging convention. New and used in real sessions: the `.bug` playtest bookmark and the NPC AI telemetry and detectors. New and untested: stuck-player detectors, the NPC AI dashboard (#782), the `cimmeria-trace` log index (#792), and **named telemetry** (2026-10-05, [ledger](analysis/named-telemetry/README.md)): every logged ID carries its name, a CI scan blocks new unpaired IDs, and two saved SigNoz views (**Logs with names**, **Missing names**) read the result |
 | Wireclient + chaos | IM | 7 (3 CW, 3 IM, 1 KM) | `crates/wireclient` has no UDP socket, no `connect()`, and no replay engine. What works: the SOAP auth leg, phase-3 handshake builders/parsers, and a JSONL trace loader with a diff policy. The 3 CW rows are the Mercury-side LossyTransport, loopback harness and chaos scenarios |
-| Discord notifications | CW | 6 (6 CW) | Event routing, channel toggles, embed formatting, panic-hook capture |
+| Discord notifications | CW | 7 (6 CW, 1 NT) | Event routing, channel toggles, embed formatting, panic-hook capture. New and untested in a live channel: every object renders as `Name (#id)`, and no embed links to SigNoz or another VPN-only host (#1199, #1208; [before/after](analysis/named-telemetry/discord-before-after.md)) |
 | Tauri admin app + tools | IM | 13 (2 CW, 2 NT, 6 IM, 3 KM) | Admin API, content editor, scene editor, sgw-launcher. New: the UPK patcher (CW, Phase 0 in-client 2026-09-19) and the live research lab. JWT auth for remote access and the WebSocket entity stream are still TODO stubs. Three.js space viewer pending |
 
 ### Server Infrastructure (Cross-Cutting)
@@ -130,7 +132,7 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 | World state | IM | 6 (1 CW, 1 NT, 1 IM, 3 KM) | Outbox CW. Player position on logout was never persisted until #756, which has no in-client relog test yet. Gate/door state + world-state table pending |
 | Scheduler | IM | 4 (1 IM, 3 KM) | Per-chain timers via content engine. No global cron |
 | Admin / GM | IM | 13 (4 CW, 2 NT, 5 IM, 2 KM) | Teleport and item-grant via the client's native `/` console (the SGWGmPlayer class flip, #518). About 6,070 lines of GM handlers plus a 12,730-line dev/authoring `.`-console with 89 commands (#523). The legacy command-parity campaign has integrated 12 of 49 packets. Access-level gate enforced server-side; GM surface confirmed working 2026-06-20. GM broadcast (`/gmshout`, `.announce`) and a chat mute (`.mute` / `.unmute`, not saved across a restart) landed with the social-systems campaign. **Ban is still missing** |
-| Metrics / telemetry | CW | 9 (4 CW, 3 NT, 2 IM) | Full OTLP pipeline. New: the NPC AI health dashboard (#782) and disk-to-SigNoz log parity (#792) |
+| Metrics / telemetry | CW | 9 (4 CW, 3 NT, 2 IM) | Full OTLP pipeline. New: the NPC AI health dashboard (#782) and disk-to-SigNoz log parity (#792). Named telemetry (2026-10-05) is counted under the observability pipeline: client-telemetry IDs are named at ingest, and the lab tools return names next to IDs |
 
 ## Development Tooling
 
@@ -206,7 +208,7 @@ The crafting campaign restored the whole activity layer on the Phase 1 state (#4
 
 ### September landings await client verification
 
-125 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the four special-ammo rows (the [unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)), the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
+127 rows are Needs Test: the named-telemetry rows (a first session read in SigNoz and Discord covers them), the NPC AI changes merged after the 2026-09-25 UAT, the four special-ammo rows (the [unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)), the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
 
 ## Critical Path for Playability
 

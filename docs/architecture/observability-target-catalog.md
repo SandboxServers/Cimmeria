@@ -552,6 +552,8 @@ Three Logs Explorer views live under the `playtest` category in SigNoz: **Playte
 
 Nine more views live under the `npc-ai` category (names prefixed **NPC AI —**), one per question an NPC AI playtest raises, beside the **Cimmeria — NPC AI health** dashboard that charts the `npc_*` metrics below. The [NPC AI telemetry runbook](../operations/npc-ai-telemetry-runbook.md) says which one answers which question; [operations/signoz/npc-ai-views.md](../operations/signoz/npc-ai-views.md) holds every filter and the dashboard JSON export for re-import.
 
+Two more views, under the `named-telemetry` category, read Rule 6's name pairs: **Named telemetry — Logs with names** and **Named telemetry — Missing names** (content IDs the NameBook couldn't name, so seed holes). Their definitions and the per-key "which IDs have no name" query are in [observability.md § Saved views for named telemetry](observability.md#saved-views-for-named-telemetry).
+
 ## `npc_ai.decision_outcome` enum
 
 The `npc_ai.decision` event carries a `decision_outcome` field with

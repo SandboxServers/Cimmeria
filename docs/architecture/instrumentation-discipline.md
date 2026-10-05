@@ -448,7 +448,7 @@ comes from, so every call site resolves it the same way.
 | `item_id` (instance), `item_type_id` | `item_name` | `items.name`, looked up by the item's type. A logged `item_id` is often an instance ID; resolve it to its type first |
 | `ability_id` | `ability_name` | `abilities.name` |
 | `effect_id` | `effect_name` | `effects.name` |
-| `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `missions.mission_label`; step and objective display text |
+| `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `missions.mission_defn` (the mission's name; `mission_label` is its zone or group, NT-01); step and objective display text |
 | `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name`, `dialog_sets.name`, `speakers.name` |
 | `space_id`, `world_id` | `world` | `SpaceManager` (a space's world) and the `Worlds` table |
 | `account_id` | `account_name` | The session's login name; where no session is in reach, `cimmeria_entity::known_names::account_name` (filled at login) |
