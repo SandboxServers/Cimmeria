@@ -178,6 +178,53 @@ fn each_rule_rejects_only_the_element_that_breaks_it() {
     }
 }
 
+/// **A positional array is not an object.** serde's derived structs also
+/// read from an array, taking the fields in declaration order, so a summary
+/// written as its twelve values in a row, or a `phases` entry written as
+/// `["starting", 12]`, would be typed as if it had named them. Neither is
+/// the payload: each rejects its element, beside the valid one.
+///
+/// The controls are the same values under their names: accepted.
+#[test]
+fn a_positional_array_is_rejected_where_an_object_belongs() {
+    let _env = Env::install();
+    let named = json!({
+        "event_id": id(0xe5, 2),
+        "attempt_id": id(0xa5, 2),
+        "operation": "install",
+        "phase": "download",
+        "outcome": "failed",
+        "error_code": "install_failed",
+        "duration_ms": 81234,
+        "retry_count": 0,
+        "phases": [{ "phase": "starting", "duration_ms": 12 }],
+        "launcher_version": "0.1.0",
+        "os": "windows",
+        "arch": "x86_64",
+    });
+    let positional = json!([
+        id(0xe5, 2),
+        id(0xa5, 2),
+        "install",
+        "download",
+        "failed",
+        "install_failed",
+        81234,
+        0,
+        [{ "phase": "starting", "duration_ms": 12 }],
+        "0.1.0",
+        "windows",
+        "x86_64",
+    ]);
+    assert_eq!(beside_a_control(named), [Accepted, Accepted], "control");
+    assert_eq!(beside_a_control(positional), [Accepted, Rejected]);
+
+    let named = phases(json!([{ "phase": "starting", "duration_ms": 12 }]));
+    assert_eq!(beside_a_control(named), [Accepted, Accepted], "control");
+    let positional = phases(json!([["starting", 12]]));
+    assert_eq!(beside_a_control(positional), [Accepted, Rejected]);
+}
+
 /// An integer too large for any machine integer (above `u64::MAX`, so well
 /// above `i64::MAX`) rejects its element and nothing else. `json!` cannot
 /// hold such a number, so it is spliced into the body text; the same body

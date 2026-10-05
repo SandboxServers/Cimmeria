@@ -9,6 +9,7 @@
 
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -152,15 +153,6 @@ pub(super) struct ClientDropped {
     pub rejected: u16,
 }
 
-/// A request that passed the envelope checks. The elements are still
-/// untyped JSON: each is validated alone, so one bad element is rejected
-/// without failing the others.
-#[derive(Debug)]
-pub(super) struct Envelope {
-    pub client_dropped: ClientDropped,
-    pub elements: Vec<Value>,
-}
-
 /// One timed phase of a validated summary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PhaseTiming {
@@ -215,12 +207,17 @@ pub(super) enum SummaryError {
     OverQuota(QuotaExceeded),
     /// `Content-Type` is not `application/json`: 415.
     UnsupportedMediaType,
-    /// The body is not the schema-1 envelope: 400.
+    /// The body is over 64 KiB: 413.
+    TooLarge,
+    /// The request is not a post of the schema-1 envelope to the bare
+    /// path: 400.
     BadRequest(&'static str),
 }
 
 impl SummaryError {
     pub(super) const CONTENT_TYPE: &'static str = "Content-Type must be application/json";
+    pub(super) const TOO_LARGE: &'static str = "Body is over 64 KiB";
+    pub(super) const QUERY: &'static str = "Query string not allowed";
 }
 
 impl From<QuotaExceeded> for SummaryError {
@@ -240,6 +237,9 @@ impl IntoResponse for SummaryError {
             SummaryError::OverQuota(e) => AuthError::QuotaExceeded(e).to_response(),
             SummaryError::UnsupportedMediaType => {
                 (StatusCode::UNSUPPORTED_MEDIA_TYPE, Self::CONTENT_TYPE).into_response()
+            }
+            SummaryError::TooLarge => {
+                (StatusCode::PAYLOAD_TOO_LARGE, Self::TOO_LARGE).into_response()
             }
             SummaryError::BadRequest(text) => (StatusCode::BAD_REQUEST, text).into_response(),
         }
@@ -268,41 +268,17 @@ pub(super) fn is_json_content_type(value: &HeaderValue) -> bool {
         })
 }
 
-/// Check the request envelope: a JSON object with exactly `schema_version`
-/// (the integer 1), `client_dropped` and 1 to 32 `summaries`. The element
-/// count is checked before any element is typed.
-pub(super) fn parse_envelope(body: &[u8]) -> Result<Envelope, SummaryError> {
-    let Ok(Value::Object(mut top)) = serde_json::from_slice::<Value>(body) else {
-        return Err(SummaryError::BadRequest("Body is not a JSON object"));
-    };
-    let (Some(schema_version), Some(client_dropped), Some(summaries)) = (
-        top.remove("schema_version"),
-        top.remove("client_dropped"),
-        top.remove("summaries"),
-    ) else {
-        return Err(SummaryError::BadRequest("Missing a required key"));
-    };
-    if !top.is_empty() {
-        return Err(SummaryError::BadRequest("Unknown top-level key"));
-    }
-    if schema_version.as_u64() != Some(SCHEMA_VERSION) {
-        return Err(SummaryError::BadRequest("Unsupported schema_version"));
-    }
-    let Ok(client_dropped) = serde_json::from_value::<ClientDropped>(client_dropped) else {
-        return Err(SummaryError::BadRequest("Invalid client_dropped"));
-    };
-    let elements = match summaries {
-        Value::Array(elements) if (1..=MAX_SUMMARIES).contains(&elements.len()) => elements,
-        _ => {
-            return Err(SummaryError::BadRequest(
-                "summaries must be an array of 1 to 32 elements",
-            ))
-        }
-    };
-    Ok(Envelope {
-        client_dropped,
-        elements,
-    })
+/// Type a JSON object as `T`; anything that is not an object is `None`.
+///
+/// serde's derived structs also read from an array, taking the fields in
+/// declaration order, so `[0,0,0]` would pass for a `client_dropped` and
+/// twelve values in a row for a summary. The contract names objects, so
+/// every struct of the payload is typed through this.
+pub(super) fn typed_object<T: DeserializeOwned>(value: Value) -> Option<T> {
+    value
+        .is_object()
+        .then(|| serde_json::from_value(value).ok())
+        .flatten()
 }
 
 /// An optional key that, when present, must hold a value: an explicit
@@ -337,8 +313,9 @@ struct RawSummary {
     #[serde(default, deserialize_with = "present")]
     duration_ms: Option<u64>,
     retry_count: u64,
+    /// Left untyped: each entry is typed alone, as an object.
     #[serde(default, deserialize_with = "present")]
-    phases: Option<Vec<RawPhase>>,
+    phases: Option<Vec<Value>>,
     launcher_version: String,
     os: Os,
     arch: Arch,
@@ -384,7 +361,7 @@ fn bounded_duration(ms: u64) -> Option<u32> {
 /// deliberately not kept, since the only honest description would quote
 /// the element.
 pub(super) fn validate(element: Value) -> Option<Summary> {
-    let raw: RawSummary = serde_json::from_value(element).ok()?;
+    let raw: RawSummary = typed_object(element)?;
     let event_id = parse_id(&raw.event_id)?;
     let attempt_id = parse_id(&raw.attempt_id)?;
     // `error_code` is required on a failure and forbidden otherwise.
@@ -404,6 +381,7 @@ pub(super) fn validate(element: Value) -> Option<Summary> {
     }
     let mut phases: Vec<PhaseTiming> = Vec::with_capacity(raw_phases.len());
     for entry in raw_phases {
+        let entry: RawPhase = typed_object(entry)?;
         if phases.iter().any(|seen| seen.phase == entry.phase) {
             return None;
         }

@@ -229,7 +229,7 @@ Three routes check the switch, and two do not:
 |---|---|
 | `/api/auth/dev-session` (every session kind) | 503 + `Retry-After: 60` |
 | `/api/auth/dev-session/refresh` | 503 + `Retry-After: 60` |
-| `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota is charged and before anything the caller sent is read |
+| `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota is charged and before anything the caller sent, the body included, is read |
 | `/api/telemetry/upload-chunk` | Not checked: answers as usual |
 | `/api/telemetry/upload-bundle` | Not checked: answers as usual |
 
@@ -281,7 +281,7 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
 | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
-| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per window. The route is anonymous, so this low default is its rate limit. Charged before anything is parsed, so malformed and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
+| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per window. The route is anonymous, so this low default is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
 
 Setting a quota to `0` disables that counter. A value that does not
@@ -454,25 +454,29 @@ code does when a summary arrives.
   most 64 KiB and 32 summaries per request.
 - **Only the payload gets in.** The server accepts the exact schema-1 JSON
   body and refuses everything else as a whole: 415 for another content
-  type, 400 for a body that is not the envelope (unparseable JSON, a gzip
-  or NDJSON body, a game-telemetry event, a wrong `schema_version`, 0 or
-  more than 32 summaries), 413 over 64 KiB. One invalid summary inside a
+  type, 400 for a URI with a query string, 413 over 64 KiB, 400 for a body
+  that is not the envelope (unparseable JSON, a gzip or NDJSON body, a
+  game-telemetry event, a wrong `schema_version`, a key written twice in
+  the envelope, 0 or more than 32 summaries). One invalid summary inside a
   valid body is answered `rejected` in its position, and the valid ones
-  beside it are still accepted.
+  beside it are still accepted; a summary that writes a key twice is
+  invalid.
 - **Rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` limits requests
   per peer address per window (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`,
   3600 s). The default is `12`, and `0` disables it. Over it the route
   answers 429 with `Retry-After`, and the launcher stops that export cycle
-  without retrying and keeps its rows for the next one. Every request that
-  reaches the handler is counted, the malformed ones too; a 413 and a 503
-  under the kill switch are not.
+  without retrying and keeps its rows for the next one. Every request is
+  counted, the malformed and the oversized (413) ones too; only a 503 under
+  the kill switch is not. An IPv4 peer seen as `::ffff:a.b.c.d` on a
+  dual-stack listener is counted as `a.b.c.d`.
 - **Kill switch.** The route answers 503 under
   [the kill switch](#kill-switch), before the quota is charged.
 - **Where the rows land.** `launcher.summary` rows go to
   `service.name = cimmeria-client`; the per-request `launcher_summary_batch`
   row goes to `cimmeria-server` under `launcher.ingest`. A request refused
-  as a whole (kill switch, rate limit, content type, malformed body) writes
-  neither, and the handler logs nothing about the refusal.
+  as a whole (kill switch, rate limit, content type, query string,
+  oversized or malformed body) writes neither, and the handler logs nothing
+  about the refusal.
 - **Duplicates.** The server remembers the last 16,384 accepted ids in
   memory. A restart forgets them, so a summary resent after one is accepted
   again.

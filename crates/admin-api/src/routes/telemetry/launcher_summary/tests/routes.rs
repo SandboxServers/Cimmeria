@@ -1,25 +1,31 @@
 //! The route on a real listener: it is mounted on the admin router, it
-//! takes the launcher's request with no token, and its body limit is
-//! 64 KiB to the byte. These are the only tests here that open a socket;
-//! the login-port mount is checked beside its merge, in `login_port.rs`.
+//! takes the launcher's request with no token, its body limit is 64 KiB to
+//! the byte, it refuses a query string before any row, and a paused ingest
+//! answers before the body arrives. These are the only tests here that
+//! open a socket; the login-port mount is checked beside its merge, in
+//! `login_port.rs`.
 //!
-//! They go through the process-wide ingest state and read the environment
-//! without the env lock. Under nextest each test has a process of its own
-//! and gets the handler's first answer. Under `cargo test` another test may
-//! be holding the kill switch on (503), or the tests in this process may
-//! together have used up loopback's allowance (429); either still comes
-//! from the handler, which is what these tests are about.
+//! They go through the process-wide ingest state, and all but the last read
+//! the environment without the env lock. Under nextest each test has a
+//! process of its own (nextest says so with `NEXTEST=1`) and must get the
+//! handler's first answer: a 503 or a 429 there is a failure. Under
+//! `cargo test` another test may be holding the kill switch on (503), or
+//! the tests in this process may together have used up loopback's
+//! allowance (429); either still comes from the handler, and the assertion
+//! it displaced is skipped.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use cimmeria_services::orchestrator::Orchestrator;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tracing_subscriber::layer::SubscriberExt;
 
 use super::super::{launcher_summary_routes, MAX_SUMMARY_BODY_BYTES};
-use super::{batch, element};
+use super::{batch, batch_rows, element, summary_rows, Env, Rows};
 
 const PATH: &str = "/api/telemetry/launcher-summary";
 
@@ -90,9 +96,16 @@ async fn status(addr: SocketAddr, method: &str, path: &str, body_len: usize) -> 
 }
 
 /// True if another test in this process got in the way: see the module
-/// comment. Only the handler answers 503 or 429 here.
+/// comment. Only the handler answers 503 or 429 here. In a process of its
+/// own no other test exists, so there the same status is a failure: a
+/// skipped assertion must never pass for a passed one.
 fn paused_or_over_quota(status: u16) -> bool {
-    status == 503 || status == 429
+    let displaced = status == 503 || status == 429;
+    assert!(
+        !(displaced && std::env::var_os("NEXTEST").is_some()),
+        "{status} from the summary handler in a process with no other test"
+    );
+    displaced
 }
 
 /// A body of spaces is not the envelope, so the handler's own answer to it
@@ -154,18 +167,124 @@ async fn an_anonymous_request_is_served_over_a_socket() {
     }
 }
 
-/// A body of exactly 64 KiB reaches the handler (which refuses it as not
-/// JSON); one byte more is a 413 from the body limit before the handler
-/// runs. The limit travels with `launcher_summary_routes`, so the router
-/// here is that alone, nested as both listeners nest it.
+/// A body of exactly 64 KiB is read whole by the handler (which refuses
+/// it as not JSON); one byte more is the handler's static 413. The limit
+/// travels with `launcher_summary_routes`, so the router here is that
+/// alone, nested as both listeners nest it.
 #[tokio::test]
 async fn the_body_limit_is_64_kib_to_the_byte() {
     assert_eq!(MAX_SUMMARY_BODY_BYTES, 65_536);
     let app = Router::new().nest("/api/telemetry", launcher_summary_routes());
     let addr = serve(app).await;
+    let json = Some("application/json");
 
     let at_limit = status(addr, "POST", PATH, MAX_SUMMARY_BODY_BYTES).await;
-    assert!(handler_ran(at_limit), "64 KiB: {at_limit}");
-    let over = status(addr, "POST", PATH, MAX_SUMMARY_BODY_BYTES + 1).await;
-    assert_eq!(over, 413, "64 KiB + 1");
+    if !paused_or_over_quota(at_limit) {
+        assert_eq!(at_limit, 400, "64 KiB");
+    }
+    let over = vec![b' '; MAX_SUMMARY_BODY_BYTES + 1];
+    let (status, text) = send(addr, "POST", PATH, json, &over).await;
+    if !paused_or_over_quota(status) {
+        assert_eq!(status, 413, "64 KiB + 1: {text}");
+        assert_eq!(text, "Body is over 64 KiB");
+    }
+}
+
+/// **A query string is refused before any row, on the admin router.** The
+/// admin listener's request span records the whole URI, so this is the
+/// listener where a query string could otherwise stand beside a row. A
+/// valid body posted to `…/launcher-summary?ZZMARKER` is a static 400 and
+/// no summary, phase or batch row is written; the same body to the bare
+/// path is then accepted as new and written, which is the control.
+///
+/// The recorder is this thread's default subscriber: `#[tokio::test]` runs
+/// the listener's tasks on this thread, so it sees the handler's rows.
+#[tokio::test]
+async fn the_admin_router_refuses_a_query_string_before_any_row() {
+    const MARKER: &str = "ZZMARKER";
+    let recorded = Rows::default();
+    // A second live subscriber, so that tracing asks every subscriber about
+    // a callsite instead of trusting an interest another test's thread may
+    // have cached as "nobody is listening" (see the same line in
+    // `login_port.rs`).
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let _default =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(recorded.clone()));
+
+    let orchestrator = Arc::new(Orchestrator::new(Default::default()));
+    let app = Router::new()
+        .nest("/api", crate::routes::api_routes())
+        .with_state(orchestrator);
+    let addr = serve(app).await;
+    let json = Some("application/json");
+    let body = batch(vec![element(0x9e1)]).to_string().into_bytes();
+
+    let with_query = format!("{PATH}?{MARKER}");
+    let (status, text) = send(addr, "POST", &with_query, json, &body).await;
+    if !paused_or_over_quota(status) {
+        assert_eq!(status, 400, "{text}");
+        assert_eq!(text, "Query string not allowed");
+    }
+    let rows = recorded.snapshot();
+    assert!(
+        summary_rows(&rows).is_empty() && batch_rows(&rows).is_empty(),
+        "a request with a query string wrote rows: {rows:#?}"
+    );
+    assert!(rows.iter().all(|row| !row.mentions(MARKER)), "{rows:#?}");
+
+    let (status, text) = send(addr, "POST", PATH, json, &body).await;
+    if !paused_or_over_quota(status) {
+        assert_eq!(status, 200, "control: {text}");
+        assert_eq!(text, r#"{"results":["accepted"]}"#);
+        let rows = recorded.snapshot();
+        assert_eq!(summary_rows(&rows).len(), 1, "control: {rows:#?}");
+        assert_eq!(batch_rows(&rows).len(), 1, "control: {rows:#?}");
+    }
+}
+
+/// **A paused ingest answers before the body arrives.** The request
+/// declares a 64 KiB body and sends none of it. With the kill switch on,
+/// the 503 comes back anyway: the handler answered without waiting for a
+/// byte it would have had to buffer. A handler that read the body first
+/// would wait for it, and this test would end at its timeout.
+///
+/// The test holds the env lock for the switch, so it is a plain `#[test]`
+/// that owns its runtime: the guard is never held across an `.await`.
+#[test]
+fn a_paused_ingest_answers_before_the_body_arrives() {
+    let env = Env::install();
+    env.set_kill_switch(true);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let response = runtime.block_on(async {
+        let app = Router::new().nest("/api/telemetry", launcher_summary_routes());
+        let addr = serve(app).await;
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        let head = format!(
+            "POST {PATH} HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\n\
+             Content-Length: {MAX_SUMMARY_BODY_BYTES}\r\n\r\n"
+        );
+        stream.write_all(head.as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        let mut chunk = [0u8; 1024];
+        let answered = tokio::time::timeout(Duration::from_secs(20), async {
+            while !response.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut chunk).await {
+                    Ok(n) if n > 0 => response.extend_from_slice(&chunk[..n]),
+                    _ => break,
+                }
+            }
+        })
+        .await;
+        assert!(answered.is_ok(), "no answer while the body was outstanding");
+        String::from_utf8_lossy(&response).into_owned()
+    });
+    let status_line = response.lines().next().unwrap_or_default();
+    assert!(status_line.contains(" 503 "), "{response:?}");
+    assert!(
+        response.to_ascii_lowercase().contains("retry-after: 60"),
+        "{response:?}"
+    );
 }

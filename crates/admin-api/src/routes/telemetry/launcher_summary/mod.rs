@@ -36,11 +36,15 @@
 //!
 //! | Status | When |
 //! |---|---|
-//! | 413 | The body is over 64 KiB (the router's body limit, before the handler). |
 //! | 503 + `Retry-After` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1`. |
-//! | 429 + `Retry-After` | The peer address is over its allowance (12 requests per 3600 s window by default, `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`). Charged before anything is parsed, so refused requests count. |
+//! | 429 + `Retry-After` | The peer address is over its allowance (12 requests per 3600 s window by default, `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`). Charged before the body is read or anything is parsed, so every refusal below counts, the 413 included. An IPv4-mapped IPv6 peer (`::ffff:a.b.c.d`) is counted as `a.b.c.d`. |
 //! | 415 | `Content-Type` is not `application/json` (a `charset` parameter is allowed). |
-//! | 400 | The body is not the envelope: unparseable JSON, a top level that is not an object, an unknown or missing top-level key, a wrong `schema_version`, a bad `client_dropped`, 0 or more than 32 summaries. A gzip body, an NDJSON body and a game-telemetry event all end here. |
+//! | 400 | The URI has a query string, an empty one (`?`) included. |
+//! | 413 | The body is over 64 KiB. Read by the handler, after the checks above, so a paused or over-quota caller is answered with nothing buffered. |
+//! | 400 | The body is not the envelope: unparseable JSON (nesting past `serde_json`'s 128 levels included), a top level that is not an object, a key written twice in the envelope, an unknown or missing top-level key, a wrong `schema_version`, a bad `client_dropped`, 0 or more than 32 summaries. A gzip body, an NDJSON body and a game-telemetry event all end here. |
+//!
+//! A key written twice inside an element (at any depth: the element
+//! itself, or an entry of its `phases`) rejects that element alone.
 //!
 //! The golden fixtures in
 //! `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/`
@@ -63,13 +67,19 @@
 //! ([`crate::login_port_telemetry_router`]) it records the method, the
 //! path and the HTTP version, never the query string. The admin listener's
 //! router (`build_router` in `lib.rs`) still uses tower-http's default
-//! span, which records the full URI: there a caller-chosen query string is
-//! a field of the span around every row of the request.
+//! span, which records the full URI. That is why the handler refuses a
+//! query string before it writes a row: on the admin listener a request
+//! with one still gets a span, with the query in its `uri` field, but that
+//! span holds the 400 and no row of this module. What `lib.rs` records is
+//! unchanged, and the query check here is the only thing that keeps it out
+//! of the rows' span.
 //!
 //! # Module layout
 //!
-//! - `dto` — the closed wire enums, the envelope and element validation,
-//!   the response and the error type.
+//! - `dto` — the closed wire enums, element validation, the response and
+//!   the error type.
+//! - `envelope` — the one pass over the body: the envelope checks and the
+//!   repeated-key detection.
 //! - `dedup` — the fixed-size set of accepted `event_id`s.
 //! - `rows` — the three log rows and the two tracing targets.
 //! - `handlers` — the axum handler and its synchronous, injectable core.
@@ -80,6 +90,7 @@
 
 mod dedup;
 mod dto;
+mod envelope;
 mod handlers;
 mod rows;
 
@@ -88,17 +99,15 @@ mod fixture_tests;
 #[cfg(test)]
 mod tests;
 
-use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
 use axum::Router;
 
 pub use rows::{LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET};
 
 /// Request-body cap. The launcher sends at most 48 KiB per request; the
-/// cap bounds what one request can make the server buffer before the kill
-/// switch and the quota are checked. A request over it is refused by the
-/// router's body limit and never reaches the handler, so it is not charged
-/// to the quota.
+/// cap bounds what one admitted request can make the server buffer. The
+/// handler enforces it while it reads the body, after the kill switch and
+/// the quota, so a request over it is charged to the quota like any other.
 pub const MAX_SUMMARY_BODY_BYTES: usize = 64 * 1024;
 
 /// The summary route alone. It is deliberately not part of
@@ -109,8 +118,10 @@ pub const MAX_SUMMARY_BODY_BYTES: usize = 64 * 1024;
 ///
 /// The handler reads the peer address for its quota, so the listener must
 /// serve with `into_make_service_with_connect_info::<SocketAddr>()`.
+///
+/// There is no `DefaultBodyLimit` layer: that limit applies to the body
+/// extractors, and the handler takes the raw request and enforces
+/// [`MAX_SUMMARY_BODY_BYTES`] itself.
 pub fn launcher_summary_routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
-    Router::new()
-        .route("/launcher-summary", post(handlers::ingest))
-        .layer(DefaultBodyLimit::max(MAX_SUMMARY_BODY_BYTES))
+    Router::new().route("/launcher-summary", post(handlers::ingest))
 }

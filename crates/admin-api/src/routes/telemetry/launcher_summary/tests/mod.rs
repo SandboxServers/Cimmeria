@@ -1,9 +1,10 @@
 //! Tests for the launcher-summary ingest.
 //!
-//! Almost all of them call `ingest_inner` synchronously with a fresh
-//! [`IngestState`] inside a field-recording layer, so a test sees exactly
-//! the rows and the verdicts its own request produced. Only `routes` uses a
-//! socket, for route exposure and the body limit.
+//! Almost all of them hand `ingest_inner` a request built in memory, with
+//! a fresh [`IngestState`], inside a field-recording layer, so a test sees
+//! exactly the rows and the verdicts its own request produced. Only
+//! `routes` uses a socket, for what needs a real listener: route exposure,
+//! the body limit on the wire, and an answer that arrives before the body.
 //!
 //! The route is anonymous, so the harness's request carries one header,
 //! `Content-Type: application/json`, and no `Authorization`. The tests in
@@ -14,6 +15,7 @@
 //! capture the rows of the golden request.
 
 mod anonymous;
+mod body;
 mod dedup;
 mod envelope;
 mod golden;
@@ -21,16 +23,22 @@ mod no_echo;
 mod order;
 mod quota;
 mod rejected;
+mod repeated_keys;
 mod routes;
 mod rows;
 mod validation;
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::net::IpAddr;
+use std::pin::pin;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::task::{Context as TaskContext, Poll, Waker};
 use std::time::{Duration, Instant};
 
-use axum::http::{HeaderMap, HeaderValue};
+use axum::body::Body;
+use axum::extract::Request;
+use axum::http::{HeaderMap, HeaderValue, Method};
 use axum::response::IntoResponse;
 use serde_json::{json, Value};
 use tracing::field::{Field, Visit};
@@ -252,12 +260,27 @@ fn session_token(kind: Option<&str>) -> String {
     .token
 }
 
+/// The request URI as the handler sees it: both listeners nest the route
+/// under `/api/telemetry`, and axum strips that prefix.
+const ROUTE: &str = "/launcher-summary";
+
+/// The output of a future that never has to wait. `ingest_inner` awaits
+/// only its request body, and a body built from bytes in memory is ready at
+/// once, so the tests run it with one poll and no runtime.
+fn ready<T>(future: impl Future<Output = T>) -> T {
+    match pin!(future).poll(&mut TaskContext::from_waker(Waker::noop())) {
+        Poll::Ready(output) => output,
+        Poll::Pending => panic!("the ingest waited on a body that was already in memory"),
+    }
+}
+
 /// One ingest under test: fresh state, a policy with the quota off, the
-/// launcher's headers. Fields are public to the tests so each varies only
-/// what it is about.
+/// launcher's headers and the bare route as the URI. Fields are public to
+/// the tests so each varies only what it is about.
 pub(super) struct Harness {
     state: IngestState,
     policy: IngestPolicy,
+    uri: String,
     headers: HeaderMap,
     peer: IpAddr,
     now: Instant,
@@ -272,6 +295,7 @@ impl Harness {
                 window: Duration::from_secs(3_600),
                 per_ip: 0,
             },
+            uri: ROUTE.to_string(),
             headers: json_headers(),
             peer: "203.0.113.77".parse().unwrap(),
             now: Instant::now(),
@@ -284,14 +308,17 @@ impl Harness {
     }
 
     pub(super) fn post(&self, body: &[u8]) -> Result<SummaryResponse, SummaryError> {
-        ingest_inner(
+        let mut request = Request::new(Body::from(body.to_vec()));
+        *request.method_mut() = Method::POST;
+        *request.uri_mut() = self.uri.parse().expect("a request URI");
+        *request.headers_mut() = self.headers.clone();
+        ready(ingest_inner(
             &self.state,
             &self.policy,
             self.peer,
-            &self.headers,
-            body,
+            request,
             self.now,
-        )
+        ))
     }
 
     fn post_json(&self, body: &Value) -> Result<SummaryResponse, SummaryError> {

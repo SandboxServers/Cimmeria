@@ -44,7 +44,7 @@ None of this tells a real launcher from a script that sends the same bytes. That
 
 | Piece | Path |
 |---|---|
-| Ingest route | `crates/admin-api/src/routes/telemetry/launcher_summary/`: `mod.rs` (router, body cap), `handlers.rs` (order of checks, the default allowance), `dto.rs` (wire types, the content-type rule, validation, error bodies), `dedup.rs`, `rows.rs` |
+| Ingest route | `crates/admin-api/src/routes/telemetry/launcher_summary/`: `mod.rs` (router, body cap), `handlers.rs` (order of checks, the body read, the default allowance), `envelope.rs` (the one pass over the body: envelope rules, repeated keys), `dto.rs` (wire types, the content-type rule, element validation, error bodies), `dedup.rs`, `rows.rs` |
 | Kill switch and quota table (shared with the mint) | `kill_switch_active` and `env_u32` in `crates/admin-api/src/routes/dev_session/handlers.rs`, `WindowTable` in `dev_session/quota.rs` |
 | Admin-listener mount | `api_routes` in `crates/admin-api/src/routes/mod.rs` |
 | Public login-listener mount | `login_port_telemetry_router` in `crates/admin-api/src/login_port.rs` |
@@ -89,6 +89,10 @@ The exporter sends `Content-Type: application/json` and the batch, and nothing e
 ```
 
 The body is plain UTF-8 JSON, not compressed. Every object is closed: an unknown key at the top level or in `client_dropped` fails the request, and an unknown key in an element rejects that element.
+
+No key may be written twice. `serde_json` alone would keep the later value and report nothing, while another reader of the same bytes might keep the first. A repeat at the top level or anywhere in `client_dropped` fails the request; a repeat anywhere inside an element (the element itself, or an entry of its `phases`) rejects that element. Keys are compared after JSON unescaping (`envelope.rs`, `tests/repeated_keys.rs`).
+
+Each structure must be a JSON object. serde's derived structs would also read a positional array (`[0,0,0]` for `client_dropped`, twelve values in a row for a summary, `["starting", 12]` for a `phases` entry); `typed_object` in `dto.rs` refuses those before typing.
 
 Envelope rules. Breaking one is a 400 for the whole request:
 
@@ -143,24 +147,29 @@ Anything that is not the payload is refused as a whole. No row is written and no
 
 | Status | When | Body |
 |---|---|---|
-| 413 | The body is over 64 KiB | axum's own text |
 | 503 + `Retry-After: 60` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1` | `Kill switch active — telemetry ingest is paused` |
 | 429 + `Retry-After` | The peer address has used its allowance. `Retry-After` is the rest of the window plus one second | `summary/ip quota exceeded — retry in Ns` |
 | 415 | `Content-Type` breaks the rule under [Request headers](#request-headers) | `Content-Type must be application/json` |
-| 400 | The body is not the envelope: see the list below | One of six fixed sentences, such as `Body is not a JSON object` |
+| 400 | The URI has a query string, an empty one (`?`) included | `Query string not allowed` |
+| 413 | The body is over 64 KiB | `Body is over 64 KiB` |
+| 400 | The body is not the envelope: see the list below | A fixed sentence, such as `Body is not a JSON object` or `Repeated key` |
+
+The first four are answered before any of the body is read.
 
 What ends as a 400, each sent as `application/json`:
 
 - an empty body, whitespace, a form body, XML, or anything else that does not parse as one JSON value, such as the envelope followed by more text;
 - JSON whose top level is not an object: an array (the valid envelope wrapped in `[ ]` included), a string, a number, `null`;
+- JSON nested past the 128 levels `serde_json` reads (`deep_nesting_is_a_400` in `tests/envelope.rs`);
+- a key written twice at the top level or inside `client_dropped`;
 - a missing or unknown top-level key;
 - a `schema_version` that is not the integer 1;
 - an invalid `client_dropped`;
-- `summaries` that is not an array of 1 to 32 elements;
+- `summaries` that is not an array of 1 to 32 elements. An array of 30,000 two-byte elements fits in 64 KiB; it is refused by its count, and only its first 33 elements are ever built;
 - a gzip body, with or without `Content-Encoding: gzip`;
 - an NDJSON body or a single game-telemetry event, which the chunk upload would accept (`the_game_telemetry_line_is_a_real_upload_event` proves the test's line is a real one).
 
-`SummaryError` in `dto.rs` has exactly those four refusals of its own (503, 429, 415, 400); the 413 comes from the router's body limit before the handler runs. Every body is the server's text. The 400, 415 and 503 bodies are fixed sentences, the 413 body is axum's, and the 429 body names the server's own counter and the seconds left. No response repeats anything the caller sent, and no serde error text leaves the server.
+`SummaryError` in `dto.rs` has exactly those five refusals (503, 429, 415, 413, 400), and the handler makes all of them: no extractor and no router layer answers for it. Every body is the server's text. The 400, 413, 415 and 503 bodies are fixed sentences, and the 429 body names the server's own counter and the seconds left. No response repeats anything the caller sent, and no serde error text leaves the server.
 
 ### What the exporter does with each status
 
@@ -177,14 +186,15 @@ The exporter makes one request per attempt, the `POST`. Its full handling is in 
 
 ## Anonymous access and the rate limit
 
-**No token.** The route takes no credential of any kind. `ingest_inner` receives the request's headers and reads `Content-Type` from them and nothing else. `tests/anonymous.rs` pins it: the golden requests are accepted with no `Authorization` header and with no HMAC secret configured, and a header that is sent anyway (garbage, or a real player or lab token) changes no verdict, no refusal and no row, and is no way past the quota or the kill switch.
+**No token.** The route takes no credential of any kind. `ingest_inner` receives the whole request and reads one header from it, `Content-Type`. `tests/anonymous.rs` pins it: the golden requests are accepted with no `Authorization` header and with no HMAC secret configured, and a header that is sent anyway (garbage, or a real player or lab token) changes no verdict, no refusal and no row, and is no way past the quota or the kill switch.
 
 **No summary session kind.** The dev-session mint has no part in this flow. A mint request with `"session_kind": "launcher_summary"` is refused like any other unknown kind, with the same 400 and the same body (`launcher_summary_is_refused_as_an_unknown_session_kind` in `dev_session/session_kind_tests.rs`). The value `launcher_summary` survives in one place only: as the `cimmeria.session_kind` label on the rows ([Emitted rows](#emitted-rows)), where it tells these rows from the `player` and `lab` rows in the same index. It names no session.
 
 **The rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` requests per peer address per window. The default is 12 (`DEFAULT_SUMMARY_PER_IP` in `handlers.rs`), `0` disables the limit, and a value that does not parse falls back to the default. The window is `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` (default 3,600 s), shared with the mint quotas, and starts at the address's first counted request.
 
-- **Every request that reaches the handler counts,** the refused ones too. The allowance is charged before anything the caller sent is looked at, so a wrong content type or a malformed body spends it like an accepted request (`malformed_requests_spend_the_allowance` in `tests/quota.rs`).
-- **Two refusals do not count.** A request over 64 KiB is answered by the router's body limit and never reaches the handler. A request under the kill switch is answered before the quota is charged.
+- **Every request shape counts,** the refused ones too. The allowance is charged before anything the caller sent is looked at and before the body is read, so a wrong content type, a query string, a malformed body or a body over 64 KiB spends it like an accepted request (`malformed_requests_spend_the_allowance` and `oversized_requests_spend_the_allowance` in `tests/quota.rs`).
+- **One refusal does not count.** A request under the kill switch is answered before the quota is charged.
+- **An IPv4-mapped address is counted as its IPv4 address.** On a dual-stack listener an IPv4 peer arrives as `::ffff:a.b.c.d`. The quota table folds IPv6 to its /64, and every mapped address is in the same one, so `peer_key` in `handlers.rs` takes the canonical form first: the mapped and the plain form of one address share an allowance, and two different mapped addresses do not (`an_ipv4_mapped_peer_is_counted_as_its_ipv4_address`).
 - **Why 12.** A launcher sends one request per export cycle, and a cycle runs when the launcher starts, when a tracked attempt ends and when a failure before admission is queued. That is a few requests an hour, so a low limit leaves a single launcher room, and it is the only thing between the route and anyone who can reach the port.
 - **The allowance belongs to the address, not to a machine.** Everyone behind one NAT, reverse proxy or tunnel shares it, and no forwarded-for header is read. Behind a shared address the default is too low for more than a few launchers, and an operator there has to raise it. See [Known limits](#known-limits).
 
@@ -197,15 +207,19 @@ The exporter makes one request per attempt, the `POST`. Its full handling is in 
 1. **Kill switch.** 503.
 2. **Per-address quota.** 429.
 3. **Content type.** 415.
-4. **Envelope.** 400.
-5. **Each element, alone.** A failing element becomes `rejected`; the others are unaffected.
-6. **Dedup.** Every verdict of the request is decided under one lock acquisition.
-7. **Rows.** One summary row and its phase rows per accepted summary, then one batch row.
-8. **Response.** 200.
+4. **Query string.** 400.
+5. **Body read, up to 64 KiB.** 413 past it.
+6. **Envelope.** 400.
+7. **Each element, alone.** A failing element becomes `rejected`; the others are unaffected.
+8. **Dedup.** Every verdict of the request is decided under one lock acquisition.
+9. **Rows.** One summary row and its phase rows per accepted summary, then one batch row.
+10. **Response.** 200.
 
-The quota comes before everything that reads the request, so a caller over its allowance costs no JSON parse. The cost of that order is in [Known limits](#known-limits): junk requests spend the address's allowance.
+The quota comes before everything that reads the request, so a caller over its allowance costs no body buffering and no JSON parse. The cost of that order is in [Known limits](#known-limits): junk requests spend the address's allowance.
 
-The 64 KiB cap is a `DefaultBodyLimit` on the route, so an oversized body is a 413 before the handler runs, ahead of step 1. A body up to the cap is buffered before the kill switch and the quota are checked. The handler takes the body as bytes, not through `Json<T>`: the extractor would answer a malformed body with serde's error text, and a wrong content type with its own 415, before the kill switch or the quota had been checked.
+The handler takes the raw request, body unread, and reads the body itself at step 5 (`read_body` in `handlers.rs`). A `Bytes` or `Json<T>` extractor, or a `DefaultBodyLimit` layer in front of one, would buffer the body and answer an oversized or malformed one before the kill switch or the quota had been checked. So a request over 64 KiB is charged like any other, and a caller who is paused or over quota is answered with nothing buffered: `a_paused_ingest_answers_before_the_body_arrives` in `tests/routes.rs` sends the headers of a 64 KiB request and no body, and gets its 503. The cap is exact, 65,536 bytes are read and 65,537 are a 413 (`tests/body.rs`), and there is no shortcut on `Content-Length`, so a length-prefixed body and a chunked one take the same path.
+
+The query string is refused because of where it would be logged. No code reads it, but the admin listener's request span records the whole URI and every row sits inside that span, so the request is refused before the first row ([Known limits](#known-limits)).
 
 A refused request writes no row of this module's.
 
@@ -265,6 +279,8 @@ The tests that pin this:
 | `an_authorization_header_changes_no_verdict_and_reaches_no_row`, `an_authorization_header_changes_no_refusal` | `launcher_summary/tests/anonymous.rs` |
 | `every_request_is_anonymous_and_nothing_a_server_issues_is_kept` | `crates/launcher/desktop/engine/src/storage/launcher_summary/tests/exporter/delivery.rs` |
 | `a_query_string_reaches_no_span_no_event_and_no_response` | `crates/admin-api/src/login_port.rs` |
+| `a_query_string_is_a_400_and_writes_no_row` | `launcher_summary/tests/order.rs` |
+| `the_admin_router_refuses_a_query_string_before_any_row` | `launcher_summary/tests/routes.rs` |
 | `no_path_url_or_operation_id_reaches_the_queue_or_a_request_body` | `crates/launcher/desktop/engine/src/storage/install_worker/summary_tests.rs` |
 
 These claims cover the rows this module writes and the login listener's request span. They do not cover everything a listener may log about a connection; see the request-span entries under [Known limits](#known-limits).
@@ -289,14 +305,14 @@ Compare the files as JSON values, never as bytes: a Windows checkout may convert
 - **At-least-once delivery.** The launcher resends until it gets an answer. The server drops a resend it remembers, so a duplicate row needs a server restart, or more than 16,384 accepted ids, between the two deliveries.
 - **In-memory dedup.** The set is per process and lost on restart. Nothing persists it.
 - **Approximate counters.** `client_dropped_*` and a pre-admission row's `retry_count` are at-least-once approximations: a request the launcher has to retry repeats the same counters, and the server does not deduplicate them. Do not sum them across batch rows as if each reported new drops.
-- **The request span on the admin listener records the full URI.** The admin router (`build_router` in `crates/admin-api/src/lib.rs`) uses tower-http's default span, so a caller-chosen query string is a field of the span around every row of that request. The login listener's span (`request_span` in `login_port.rs`) records the path alone. The admin listener is private; this matters if it is ever exposed.
+- **The request span on the admin listener records the full URI.** The admin router (`build_router` in `crates/admin-api/src/lib.rs`) uses tower-http's default span, and that is unchanged. The handler refuses a query string before it writes a row, so a query string is still a field of that request's span, beside the 400, but never of a span that holds a row of this module. The query is the only part of the request target the handler checks. The login listener's span (`request_span` in `login_port.rs`) records the path alone.
 - **The request span still records the caller's method and path** on both listeners. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
 - **Forged rows cannot be told from real ones.** The route is anonymous, and a script that sends the launcher's bytes is a launcher as far as the server can see. The rate limit bounds how many rows one address adds, not how many addresses add them.
-- **Junk spends a shared allowance.** Every request that reaches the handler is counted, the refused ones too. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the window ends.
+- **Junk spends a shared allowance.** Every request is counted, the refused and the oversized ones too. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the window ends.
 - **A shared address shares one allowance of 12.** No forwarded-for header is read, as for the dev-session quotas. Behind a reverse proxy or a tunnel every launcher arrives from one address, so the default limits the whole deployment to 12 requests per window until the operator raises `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
 - **A rate-limited launcher waits, and a row can age out while it does.** A 429 ends the exporter's cycle with the rows still queued, and nothing retries until the next trigger (the launcher starting, or another attempt ending). A row that is still queued after 24 hours expires on the launcher and is only counted in `client_dropped.expired`.
 - **A retried request spends allowance again.** A cycle makes up to three POSTs when the server answers with a transient failure, and each one that reaches the handler is counted.
-- **Oversized requests are not rate-limited by this route.** A request over 64 KiB is a 413 from the router's body limit, before the kill switch and before the quota, so it is not counted. A body up to 64 KiB is buffered before either is checked.
+- **An admitted request is buffered up to the cap.** A request inside the allowance with the right content type and no query string has up to 64 KiB of its body read into memory before it is parsed, and an oversized one is read up to the cap before its 413. The quota bounds how often one address can do that.
 - **A restart can misattribute one outcome.** If a process that never configured summaries (an older launcher, a tool) reconciled a tracked operation to a terminal state between two runs, the next run reports that terminal as observed (`tracker.rs`).
 - **The SigNoz fixtures are unimported.** Whether SigNoz accepts the dashboard and view JSON is untested ([launcher-summary-views.md](../operations/signoz/launcher-summary-views.md#status-fixtures-only-not-validated-against-a-live-signoz)).
 

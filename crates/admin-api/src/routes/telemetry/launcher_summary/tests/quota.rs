@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use super::super::dto::{SummaryError, Verdict::Accepted};
 use super::super::handlers::IngestPolicy;
+use super::super::MAX_SUMMARY_BODY_BYTES;
 use super::{batch, capture, content_type, element, refusal, Env, Harness, ENV_SUMMARY_QUOTA};
 
 const ENV_WINDOW: &str = "CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS";
@@ -86,6 +87,72 @@ fn malformed_requests_spend_the_allowance() {
     let r = refusal(h.post_json(&valid).unwrap_err());
     assert_eq!(r.status, 429, "{r:?}");
     assert_eq!(r.retry_after.as_deref(), Some("3601"));
+}
+
+/// **Oversized requests spend the allowance.** The quota is charged before
+/// the body is read, so two requests refused for their size (413) use up
+/// an allowance of two and the valid request after them is a 429. The
+/// control is the same valid request on a fresh ingest with the same
+/// allowance: accepted.
+///
+/// A handler that read the body before the quota would answer the two with
+/// a 413 it never charged, and then accept the valid request.
+#[test]
+fn oversized_requests_spend_the_allowance() {
+    let _env = Env::install();
+    let valid = batch(vec![element(1)]);
+    let oversized = vec![b' '; MAX_SUMMARY_BODY_BYTES + 1];
+    let mut h = Harness::new();
+    h.policy.per_ip = 2;
+    assert_eq!(h.verdicts(&valid), [Accepted], "control");
+
+    let mut h = Harness::new();
+    h.policy.per_ip = 2;
+    for attempt in 1..=2 {
+        let r = refusal(h.post(&oversized).unwrap_err());
+        assert_eq!(r.status, 413, "oversized request {attempt}: {r:?}");
+    }
+    let r = refusal(h.post_json(&valid).unwrap_err());
+    assert_eq!(r.status, 429, "{r:?}");
+    assert_eq!(r.retry_after.as_deref(), Some("3601"));
+}
+
+/// **An IPv4-mapped peer is counted as its IPv4 address.** On a dual-stack
+/// listener an IPv4 peer arrives as `::ffff:a.b.c.d`. With an allowance of
+/// one:
+///
+/// - the mapped form and the plain form of one address share a bucket, so
+///   the second of them is a 429;
+/// - two different mapped addresses do not, although as IPv6 they lie in
+///   one /64 (`::`), which is what the quota folds IPv6 to;
+/// - control: two native IPv6 addresses in one /64 still share a bucket.
+///
+/// Without the canonical form the second request is served (the two forms
+/// are different keys) and the third is a 429 (every mapped address is the
+/// same key).
+#[test]
+fn an_ipv4_mapped_peer_is_counted_as_its_ipv4_address() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy.per_ip = 1;
+    let mut post = |peer: &str, n: u32| {
+        h.peer = peer.parse().unwrap();
+        h.post_json(&batch(vec![element(n)]))
+            .map(|response| response.results)
+            .map_err(|e| refusal(e).status)
+    };
+
+    assert_eq!(post("::ffff:203.0.113.77", 1), Ok(vec![Accepted]));
+    assert_eq!(post("203.0.113.77", 2), Err(429), "the same host over IPv4");
+    assert_eq!(
+        post("::ffff:203.0.113.78", 3),
+        Ok(vec![Accepted]),
+        "another mapped address"
+    );
+    assert_eq!(post("203.0.113.78", 4), Err(429), "that host over IPv4");
+
+    assert_eq!(post("2001:db8:1:2::1", 5), Ok(vec![Accepted]), "control");
+    assert_eq!(post("2001:db8:1:2::2", 6), Err(429), "control: one /64");
 }
 
 /// With an allowance of two, the third request from an address inside the
