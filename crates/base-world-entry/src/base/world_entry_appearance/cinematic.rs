@@ -15,6 +15,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::mercury::{build_player_entity_method_packet, method_idx, write_wstring};
 
 use super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
+use super::super::session_identity::identity_for_addr;
 use super::super::ConnectedClientState;
 use super::builders::build_appearance_resend_bundle;
 
@@ -104,7 +105,7 @@ pub(crate) async fn send_cinematic(
         let Some(c) = clients.get(&addr) else {
             tracing::warn!(
                 %addr,
-                entity_id,
+                entity_id, // nt:id-only the session has just vanished, so nothing names it
                 "send_cinematic: client state vanished before spam armed -- skipping guard"
             );
             return;
@@ -118,8 +119,11 @@ pub(crate) async fn send_cinematic(
     let resend_entity_to_addr = Arc::clone(entity_to_addr);
     let cinematic_label = cinematic_asset.to_string();
     tokio::spawn(async move {
+        // One lookup for the task's three lines (Rule 6).
+        let entity_name = identity_for_addr(&resend_connected, addr).player_name;
         tracing::info!(
             entity_id,
+            entity_name,
             cinematic = %cinematic_label,
             resend_count,
             interval_ms = RESEND_INTERVAL.as_millis() as u64,
@@ -130,6 +134,7 @@ pub(crate) async fn send_cinematic(
             if cancel_flag.load(Ordering::Relaxed) {
                 tracing::info!(
                     entity_id,
+                    entity_name,
                     cinematic = %cinematic_label,
                     sent = i,
                     skipped = resend_count - i,
@@ -148,6 +153,7 @@ pub(crate) async fn send_cinematic(
         }
         tracing::info!(
             entity_id,
+            entity_name,
             cinematic = %cinematic_label,
             sent = resend_count,
             "Cinematic-guard appearance spam: complete (full duration elapsed)"
@@ -180,7 +186,12 @@ async fn resend_appearance_after_cinematic(
     };
 
     let Some((appearance_args, tint_args)) = cached else {
-        tracing::debug!(%addr, entity_id, "resend_appearance_after_cinematic: no cached appearance data -- skipping");
+        tracing::debug!(
+            %addr,
+            entity_id,
+            entity_name = identity_for_addr(connected, addr).player_name,
+            "resend_appearance_after_cinematic: no cached appearance data -- skipping"
+        );
         return;
     };
 
@@ -216,7 +227,12 @@ pub async fn handle_cancel_movie(
 
     resend_appearance_after_cinematic(transport, addr, entity_id, connected, entity_to_addr).await;
 
-    tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop");
+    tracing::info!(
+        %addr,
+        entity_id,
+        entity_name = identity_for_addr(connected, addr).player_name,
+        "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop"
+    );
 
     // The movie is over, so the entity introductions held for it can go —
     // after the appearance resend, which is what the client needs first.

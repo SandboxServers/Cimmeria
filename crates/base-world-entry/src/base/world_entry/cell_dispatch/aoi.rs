@@ -41,6 +41,13 @@ impl AoiNames<'_> {
         player_name_for_entity(self.connected, self.entity_to_addr, entity_id)
     }
 
+    /// An NPC observee's `name_id` text, with no session lock: for the
+    /// per-event DEBUG lines (hot-path rule). A player observee is left off.
+    pub(super) fn npc(&self) -> Option<&'static str> {
+        self.npc_name_id
+            .and_then(|n| cimmeria_entity::name_intern::intern_opt(cimmeria_names::book().text(n)))
+    }
+
     /// The observee's name: an NPC's `name_id` text, else a player's name.
     pub(super) fn observee(&self, entity_id: u32) -> Option<&'static str> {
         match self.npc_name_id {
@@ -76,10 +83,9 @@ fn log_create_emit(
             tracing::debug!(
                 target: "aoi.create_emit",
                 event = "create_emit",
-                witness_id,
-                witness_name = names.player(witness_id),
+                witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
                 entity_id,
-                entity_name = names.observee(entity_id),
+                entity_name = names.npc(),
                 class_id,
                 class_name = cimmeria_wire::names::class_name(class_id),
                 phase,
@@ -135,10 +141,9 @@ pub(super) async fn entered_aoi(
         npc_name_id: npc_data.as_ref().and_then(|n| n.name_id),
     };
     tracing::debug!(
-        witness_id,
-        witness_name = names.player(witness_id),
+        witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
         entity_id,
-        entity_name = names.observee(entity_id),
+        entity_name = names.npc(),
         class_id,
         class_name = cimmeria_wire::names::class_name(class_id),
         level,
@@ -221,11 +226,8 @@ pub(super) async fn left_aoi(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(
-        witness_id,
-        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
-        entity_id,
-        // The base has no NPC name once the entity has left: players only.
-        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+        entity_id,  // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
         "AoI: entity left witness range"
     );
     send_to_witness_reliable(
@@ -299,8 +301,7 @@ pub(super) async fn entity_method_call_batch(
         return;
     }
     tracing::debug!(
-        entity_id,
-        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        entity_id, // nt:id-only per method batch; naming it would take a session lock (hot-path rule)
         batch_size = calls.len(),
         "CellService->client entity method call batch"
     );
@@ -314,7 +315,7 @@ pub(super) async fn entity_method_call_batch(
     let outcome =
         send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle)
             .await;
-    method_delivery::log_batch_outcome(outcome, entity_id, &calls);
+    method_delivery::log_batch_outcome(outcome, entity_id, &calls, connected, entity_to_addr);
 }
 
 pub(super) async fn entity_method_call(
@@ -326,8 +327,7 @@ pub(super) async fn entity_method_call(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(
-        entity_id,
-        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        entity_id, // nt:id-only per method call; naming it would take a session lock (hot-path rule)
         method_index,
         method_name = cimmeria_wire::names::player_client_method(method_index),
         args_len = args.len(),
@@ -384,12 +384,8 @@ pub(super) async fn witness_entity_method(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(
-        witness_id,
-        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
-        entity_id,
-        entity_name = entity_is_player
-            .then(|| player_name_for_entity(connected, entity_to_addr, entity_id))
-            .flatten(),
+        witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+        entity_id,  // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
         method_index,
         method_name = if entity_is_player {
             cimmeria_wire::names::player_client_method(method_index)
@@ -457,10 +453,8 @@ pub(super) async fn entity_invisible(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(
-        witness_id,
-        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
-        entity_id,
-        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+        entity_id,  // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
         "Send ENTITY_INVISIBLE to witness"
     );
     // RELIABLE — visibility-state change. Loss leaves the entity rendered

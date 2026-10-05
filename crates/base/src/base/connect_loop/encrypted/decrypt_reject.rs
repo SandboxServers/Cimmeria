@@ -35,6 +35,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use super::super::super::login::{parse_baseapp_login, CONNECT_REPLY_SEQ};
+use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
 
 /// Stable `reason` for a datagram that failed to decrypt and is not a
@@ -86,6 +87,7 @@ pub(super) fn log_decrypt_reject(
         tracing::warn!(
             %addr,
             account_id,
+            account_name = session_identity::identity_for_addr(connected, addr).account_name,
             raw_len = raw.len(),
             reason = REASON_LOGIN_RETRY_ON_CHANNEL,
             reply_outstanding = reply_outstanding(connected, addr),
@@ -95,6 +97,7 @@ pub(super) fn log_decrypt_reject(
         tracing::warn!(
             %addr,
             account_id,
+            account_name = session_identity::identity_for_addr(connected, addr).account_name,
             raw_len = raw.len(),
             reason = REASON_DECRYPT_FAIL,
             error = %error,

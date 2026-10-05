@@ -16,6 +16,9 @@ use std::sync::{Arc, Mutex};
 
 use sqlx::PgPool;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
+use super::super::session_identity::{identity_for_entity, session_identity};
 use super::super::ConnectedClientState;
 
 /// Append `container_key` to the player's looted containers, exactly once.
@@ -52,10 +55,13 @@ pub(crate) async fn handle_container_looted(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let Some(pool) = db_pool else {
+        let who = identity_for_entity(connected, entity_to_addr, entity_id);
         tracing::warn!(
             target: "inventory",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             %container_key,
             reason = "looted_container_no_db_pool",
             "ContainerLooted: no DB pool -- the once-per-character flag holds for this \
@@ -64,18 +70,24 @@ pub(crate) async fn handle_container_looted(
         return;
     };
     let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
-    let account_id = addr.and_then(|addr| {
-        let clients = match connected.lock() {
-            Ok(c) => c,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        clients.get(&addr).map(|c| c.account_id)
-    });
-    let Some(account_id) = account_id else {
+    // The session's identity: its account gates the UPDATE, and its names
+    // pair the IDs on every line below (Rule 6).
+    let who = addr
+        .and_then(|addr| {
+            let clients = match connected.lock() {
+                Ok(c) => c,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            clients.get(&addr).map(session_identity)
+        })
+        .unwrap_or(PlayerIdentity::UNKNOWN);
+    let Some(account_id) = who.account_id else {
         tracing::warn!(
             target: "inventory",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             %container_key,
             reason = "looted_container_no_session",
             "ContainerLooted: no session for the entity -- cannot resolve the owning \
@@ -90,8 +102,11 @@ pub(crate) async fn handle_container_looted(
             target: "inventory",
             event = "container_looted_persisted",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             account_id,
+            account_name = who.account_name,
             %container_key,
             looted_count = keys.len(),
             "ContainerLooted: once-per-character flag persisted"
@@ -99,8 +114,11 @@ pub(crate) async fn handle_container_looted(
         Ok(None) => tracing::warn!(
             target: "inventory",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             account_id,
+            account_name = who.account_name,
             %container_key,
             rows_affected = 0,
             expected = 1,
@@ -111,8 +129,11 @@ pub(crate) async fn handle_container_looted(
         Err(e) => tracing::error!(
             target: "inventory",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             account_id,
+            account_name = who.account_name,
             %container_key,
             reason = "looted_container_persist_failed",
             "ContainerLooted: failed to persist the flag ({e}) -- it holds for this \

@@ -84,7 +84,21 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    tracing::debug!(entity_id, player_id, archetype_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
+    // The player's names for this function's lines (Rule 6): a plain copy of
+    // the entity's interned log names, stamped at `CreateEntity`.
+    let who = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        entity_id,
+        entity_name = who.player_name,
+        player_id,
+        player_name = who.player_name,
+        archetype_id,
+        archetype_name = cimmeria_names::archetype_name(archetype_id),
+        %world_name,
+        saved_count = saved_missions.len(),
+        ability_count = abilities.len(),
+        "InitPlayerState"
+    );
     // Reconstruct before the mutable entity borrow: hydration reads the
     // `mission_defs` / `step_objectives` caches off `space_mgr`.
     let restored_missions = mission_restore::build_restored_missions(&saved_missions, space_mgr);
@@ -152,7 +166,9 @@ pub(in crate::cell::service) async fn handle_init_player_state(
                 target: "stats",
                 event = "archetype_stats_seeded",
                 entity_id,
+                entity_name = who.player_name,
                 archetype_id,
+                archetype_name = cimmeria_names::archetype_name(archetype_id),
                 health = arch.health,
                 focus = arch.focus,
                 "Seeded cell-entity stats from archetype base values"
@@ -165,6 +181,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         }
         tracing::debug!(
             entity_id,
+            entity_name = who.player_name,
             count = abilities.len(),
             "Registered player abilities on cell entity"
         );
@@ -174,6 +191,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         entity.bandolier_items = bandolier_items.into_iter().collect();
         tracing::debug!(
             entity_id,
+            entity_name = who.player_name,
             active_bandolier_slot,
             bandolier_item_count = entity.bandolier_items.len(),
             "Applied bandolier state to cell entity"
@@ -187,6 +205,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         entity.system_options = system_options;
         tracing::debug!(
             entity_id,
+            entity_name = who.player_name,
             auto_reload = entity.system_options.auto_reload,
             reload_on_activate = entity.system_options.reload_on_activate,
             "Applied system options to cell entity"
@@ -207,7 +226,9 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         for mission in restored_missions {
             tracing::debug!(
                 entity_id,
+                entity_name = who.player_name,
                 mission_id = mission.mission_id,
+                mission_name = cimmeria_names::book().mission(mission.mission_id),
                 status = mission.status,
                 objectives = mission.active_objectives.len(),
                 "Restored saved mission"
@@ -318,7 +339,11 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         tracing::Span::current().record("regions", region_count);
         if region_count > 0 {
             tracing::info!(
-                entity_id, player_id, world = %world_name,
+                entity_id,
+                entity_name = who.player_name,
+                player_id,
+                player_name = who.player_name,
+                world = %world_name,
                 count = region_count,
                 burst_micros = burst_elapsed.as_micros() as u64,
                 packed_into_one_packet = true,
@@ -347,17 +372,11 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         .map_or(0, |e| e.missions.count());
     {
         let id = space_mgr.player_identity(entity_id);
-        let (name, archetype, level, access_level) =
-            space_mgr
-                .get_entity(entity_id)
-                .map_or_else(Default::default, |e| {
-                    (
-                        e.character_name.clone().unwrap_or_default(),
-                        e.archetype_id.unwrap_or(0),
-                        e.level,
-                        e.access_level,
-                    )
-                });
+        let (archetype, level, access_level) = space_mgr
+            .get_entity(entity_id)
+            .map_or_else(Default::default, |e| {
+                (e.archetype_id.unwrap_or(0), e.level, e.access_level)
+            });
         // Pair with `session.end`. Client telemetry (`launcher.ingest` /
         // `launcher.bundle`) is ingested by admin-api, which this crate cannot
         // see -- so liveness is a QUERY: a `session.start` for an account with
@@ -366,10 +385,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         tracing::info!(
             target: "session.start",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
-            character_name = %name,
+            player_name = id.player_name,
             archetype,
+            archetype_name = cimmeria_names::archetype_name(archetype),
             level,
             access_level,
             world = %world_name,

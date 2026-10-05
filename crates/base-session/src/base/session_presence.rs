@@ -31,6 +31,8 @@ pub struct EndedSession {
     pub player_id: i32,
     pub entity_id: u32,
     pub player_name: Option<String>,
+    /// The login name, for the skip line (Rule 6).
+    pub account_name: Option<&'static str>,
 }
 
 /// Tell the contact-list watchers and the organizations, now. The caller
@@ -87,8 +89,11 @@ pub fn spawn_offline(
             target: "org",
             event = "session.presence_skipped",
             account_id = ended.account_id,
+            account_name = ended.account_name,
             player_id = ended.player_id,
+            player_name = ended.player_name.as_deref(),
             entity_id = ended.entity_id,
+            entity_name = ended.player_name.as_deref(),
             disconnect_reason,
             reason,
             "offline presence not announced"

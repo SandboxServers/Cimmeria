@@ -108,6 +108,7 @@ A third, cheap: state is released on `destroy_entity`.
 | `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. Social sweep renames (NT-26): `type_id` on items is `item_type_id`, `item_def_id` is `item_type_id`, the chat `target` text is `chat_target`, and a Black Market `sequence_id` logged as an auction is `auction_id`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
 | `<key>_names` next to every bitflag word (`state_field_names`, `flags_names`, `interaction_flags_names`, `recipient_flags_names`, `from_mask_names`, …) | always, beside the raw word | The set bits' names joined `A\|B\|C` in the enum's order, from the flag set's one `FlagSet` table (`cimmeria_common::flag_names`): `STATE_FLAGS` (`cimmeria_wire::state_field`), `EFFECT_FLAGS` (cell-combat `cone_aoe`), `INTERACTION_FLAGS` (`cimmeria_entity::interaction_flags`), `MAIL_FLAGS` (`cimmeria_wire::cell::mail::codes::flags`), `ORG_PERMISSIONS` (`cimmeria_entity::organization`), `PACKET_FLAGS` (`cimmeria_mercury::packet`). Log it with `%`: `state_field, state_field_names = %STATE_FLAGS.render(state_field)`. Bits no token names render as one hex remainder (`BSF_Dead\|0x200`), and a zero word renders `0x0`. Each table is pinned to `entities/defs/enumerations.xml` by a test. A numeric enum code gets a name the same way: `error_code` pairs with `error_name` (`cimmeria_names::book().error_code`), and a code from another vocabulary logs its Rust enum with `?` under its domain's key (the Black Market's `bm_error = ?error`). Leave `_names` off rows exported per packet or per tick: the OTLP appender allocates a string per field per event. NT-31. |
 | `<domain>_arg` (`design_arg`, `mission_arg`, `template_arg`, `name_or_id_arg`), `target_raw` | GM console input that failed to parse | The raw text or out-of-range number a GM typed where an ID was expected. It is not an ID, so it has no name and never takes an `_id` key: a typed `DesignId` that isn't a number is logged as `mission_arg` / `template_arg` / `design_arg` (item), never `design_id`. A parsed one is logged under its domain key (`mission_id`, `template_id`, `item_type_id`) with its name (NT-27). |
+| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id` and keeps `user`: the name the client typed, which may name no account. Never a password, key or ticket (see [Credential fields](#credential-fields)). |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). An expected miss logs at DEBUG under its own reason: a witness-send miss for a witness whose session just ended is `"witness_session_ended"`, not a WARN. |
@@ -234,8 +235,8 @@ login). Both consumption seams log at `warn!`:
 
 | Seam | `reason` | Fields |
 |---|---|---|
-| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `user`, `account_id`, `sid_prefix`, `session_ip`, `client_ip` |
-| Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `ticket_ip`, `client_ip` |
+| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `account_id`, `account_name`, `sid_prefix`, `session_ip`, `client_ip` |
+| Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `account_name`, `ticket_ip`, `client_ip` |
 
 These are **warn-first** by design: NAT and IPv4/IPv6 dual-stack can
 surface a different IP for the same physical client, and the false
@@ -310,8 +311,8 @@ source address end the session with one garbage datagram. The seam is
 
 | `reason` | Meaning | Fields |
 |---|---|---|
-| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `raw_len`, `reply_outstanding` |
-| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `raw_len`, `error` |
+| `login_retry_on_channel` | The datagram is the client's **plaintext** `baseAppLogin` arriving after the server registered the encrypted channel. The client retries every 300 ms until its login reply handler finishes, so a train of these means the server replied and the client never completed the login. `reply_outstanding = true` means the server has not seen the client ACK the reply (seq 1): it was probably lost, and a resend is pending. `false` means the client acked it and is retrying anyway. Look client-side, not at the keys. | `addr`, `account_id`, `account_name`, `raw_len`, `reply_outstanding` |
+| `decrypt_fail` | Anything else that fails the length, HMAC, or padding check: a key mismatch, a stale session, or a forged or corrupted packet. | `addr`, `account_id`, `account_name`, `raw_len`, `error` |
 
 These rows carry `reason`, never `disconnect_reason`. That field is kept
 for rows that report a real teardown, such as `session.end` and
@@ -334,7 +335,7 @@ cap, the channel drops it from the TX window and
 
 | `event` | `reason` | Fields |
 |---|---|---|
-| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `seq`, `retransmit_count` |
+| `reliable_resend_abandoned` | `retransmit_cap_reached` | `addr`, `account_id`, `account_name`, `seq`, `retransmit_count` |
 
 A row with `seq = 1` means the client never acked the login reply
 through seven sends. If the login also stalled, look for
@@ -565,7 +566,8 @@ called from the base's single UDP receive loop (`client_disconnect`,
 (`inactivity_timeout`), so waiting on a cell round trip there would pause
 packet intake for every connected player whenever the cell is busy or the
 shared Base→Cell channel is backpressured. Either failure WARNs (no
-`target:` override) with `entity_id`, `account_id` and `disconnect_reason`:
+`target:` override) with `entity_id`, `entity_name`, `account_id`,
+`account_name` and `disconnect_reason`:
 
 | Level | Message | Meaning |
 |---|---|---|

@@ -178,7 +178,7 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
     .await;
     if let Err(e) = res {
         tracing::warn!(
-            outbox_id = id,
+            outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
             "outbox: failed to record dispatch failure: {e}"
         );
     }
@@ -294,14 +294,14 @@ pub async fn try_dispatch_now(
                 // must be idempotent. Logged because a chronic mark-delivered
                 // failure means the drainer is doing redundant sends.
                 tracing::warn!(
-                    outbox_id = id,
+                    outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
                     "outbox: dispatch succeeded but mark_delivered failed: {e}"
                 );
             }
         }
         Err(e) => {
             tracing::warn!(
-                outbox_id = id,
+                outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
                 "outbox: cell channel send failed; left for drainer retry: {e}"
             );
             record_failure(pool, id, &format!("send: {e}")).await;
@@ -375,12 +375,16 @@ pub(crate) async fn drain_undelivered(
             // spam.
             if row.attempts == 0 {
                 tracing::warn!(
-                    outbox_id = id, event_type = %row.event_type, attempts = row.attempts,
+                    outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
+                    event_type = %row.event_type,
+                    attempts = row.attempts,
                     "outbox: row event_type/payload mismatch — left undelivered for redeploy/rollback"
                 );
             } else {
                 tracing::debug!(
-                    outbox_id = id, event_type = %row.event_type, attempts = row.attempts,
+                    outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
+                    event_type = %row.event_type,
+                    attempts = row.attempts,
                     "outbox: row event_type/payload mismatch (already flagged)"
                 );
             }
@@ -395,7 +399,7 @@ pub(crate) async fn drain_undelivered(
             Ok(()) => {
                 if let Err(e) = mark_delivered(pool, id).await {
                     tracing::warn!(
-                        outbox_id = id,
+                        outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
                         "outbox: drainer dispatch succeeded but mark_delivered failed: {e}"
                     );
                 }
@@ -403,7 +407,7 @@ pub(crate) async fn drain_undelivered(
             }
             Err(e) => {
                 tracing::warn!(
-                    outbox_id = id,
+                    outbox_id = id, // nt:id-only outbox row id: a queue row with no name column
                     "outbox: drainer cell channel send failed (receiver dropped); will retry next pass: {e}"
                 );
                 record_failure(pool, id, &format!("drainer send: {e}")).await;

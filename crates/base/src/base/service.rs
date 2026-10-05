@@ -396,7 +396,10 @@ impl BaseService {
         if !self.is_running {
             return Err(BaseError::NotRunning);
         }
-        tracing::debug!(%entity_id, "Destroying base entity");
+        tracing::debug!(
+            %entity_id, // nt:id-only stub that holds no entity, so no name exists
+            "Destroying base entity"
+        );
         Ok(())
     }
 }

@@ -41,6 +41,15 @@ use super::super::super::ConnectedClientState;
 use super::method_join;
 use cimmeria_wire::names::entity_client_method;
 
+type Connected = Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>;
+type EntityToAddr = Arc<Mutex<HashMap<u32, SocketAddr>>>;
+
+/// The base's name for an entity ID on these rows (Rule 6): a player's
+/// character name; `None` for an NPC, which the base cannot name.
+fn name_of(connected: &Connected, entity_to_addr: &EntityToAddr, id: u32) -> Option<&'static str> {
+    session_identity::entity_name_for(connected, entity_to_addr, id)
+}
+
 /// The name of `method_index` on the entity, for the `method` field the
 /// cell's `wire_sent` row joins on: `"unknown"` where `method_name` is left
 /// out (a mob's or pet's 27-31, where the player table names another method).
@@ -69,6 +78,8 @@ pub(super) fn log_method_deferred(
     entity_is_player: bool,
     method_index: u16,
     why: &'static str,
+    connected: &Connected,
+    entity_to_addr: &EntityToAddr,
 ) {
     match outcome {
         DeferOutcome::Buffered { depth } => tracing::debug!(
@@ -77,8 +88,8 @@ pub(super) fn log_method_deferred(
             method = method_label(entity_is_player, method_index),
             method_index,
             method_name = entity_client_method(entity_is_player, method_index),
-            recipient_id,
-            entity_id,
+            recipient_id, // nt:id-only one row per buffered method at login; naming it would take the session lock
+            entity_id, // nt:id-only one row per buffered method at login; naming it would take the session lock
             depth,
             reason = why,
             "entity method buffered until the client is ready; the flush or discard is logged"
@@ -90,7 +101,9 @@ pub(super) fn log_method_deferred(
             method_index,
             method_name = entity_client_method(entity_is_player, method_index),
             recipient_id,
+            recipient_name = name_of(connected, entity_to_addr, recipient_id),
             entity_id,
+            entity_name = name_of(connected, entity_to_addr, entity_id),
             reason = "deferred_buffer_full",
             "entity method dropped at the base: the pre-ready buffer is full, so the client \
              never sees it"
@@ -101,8 +114,8 @@ pub(super) fn log_method_deferred(
             method = method_label(entity_is_player, method_index),
             method_index,
             method_name = entity_client_method(entity_is_player, method_index),
-            recipient_id,
-            entity_id,
+            recipient_id, // nt:id-only the recipient's session has ended, so nothing names it
+            entity_id, // nt:id-only the recipient's session has ended, so nothing names it
             reason = "client_disconnected",
             "entity method dropped at the base: the recipient's session has ended"
         ),
@@ -119,6 +132,7 @@ pub(super) fn log_deferred_flush(
     trigger: &'static str,
     buffered: &(usize, String),
     dispatched: usize,
+    witness_name: Option<&'static str>,
 ) {
     if buffered.0 == 0 {
         return;
@@ -129,6 +143,7 @@ pub(super) fn log_deferred_flush(
         event = "deferred_flushed",
         %addr,
         recipient_id = witness_id,
+        recipient_name = witness_name,
         methods = buffered.0,
         method_counts = buffered.1.as_str(),
         dispatched,
@@ -145,6 +160,8 @@ pub(super) fn log_batch_outcome(
     outcome: BundleSendOutcome,
     entity_id: u32,
     calls: &[(u16, Vec<u8>)],
+    connected: &Connected,
+    entity_to_addr: &EntityToAddr,
 ) {
     let mut counts: std::collections::BTreeMap<u16, usize> = std::collections::BTreeMap::new();
     for (m, _) in calls {
@@ -161,7 +178,7 @@ pub(super) fn log_batch_outcome(
         } => tracing::debug!(
             target: "base.entity_method",
             event = "batch_sent",
-            entity_id,
+            entity_id, // nt:id-only one row per method batch; naming it would take the session lock
             calls = calls.len(),
             method_counts = method_counts.as_str(),
             base_seq,
@@ -173,7 +190,9 @@ pub(super) fn log_batch_outcome(
             event = "client_send_dropped",
             method = "batch",
             entity_id,
+            entity_name = name_of(connected, entity_to_addr, entity_id),
             recipient_id = entity_id,
+            recipient_name = name_of(connected, entity_to_addr, entity_id),
             calls = calls.len(),
             method_counts = method_counts.as_str(),
             reason = "send_error",
@@ -183,8 +202,8 @@ pub(super) fn log_batch_outcome(
             target: "base.entity_method",
             event = "client_send_dropped",
             method = "batch",
-            entity_id,
-            recipient_id = entity_id,
+            entity_id, // nt:id-only the recipient's session has ended, so nothing names it
+            recipient_id = entity_id, // nt:id-only the recipient's session has ended, so nothing names it
             calls = calls.len(),
             method_counts = method_counts.as_str(),
             reason = failed.failure_reason().unwrap_or("unknown"),
@@ -222,20 +241,29 @@ pub(super) fn log_method_outcome(
                     method_index,
                     method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
+                    recipient_name = who.player_name,
                     entity_id,
+                    // The recipient's name is already in hand; another
+                    // entity would cost a lock, and the cell's row names it.
+                    entity_name = (entity_id == recipient_id).then_some(who.player_name).flatten(),
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     seq,
-                    source_id = j.source_id,
-                    timer_id = j.timer_id,
+                    source_id = j.source_id, // nt:id-only the cell's wire_sent row for this send names it
+                    timer_id = j.timer_id, // nt:id-only an ability or an effect by timer_type_code; the cell's wire_sent row names it
                     timer_type_code = j.timer_type_code,
-                    secondary_id = j.secondary_id,
+                    secondary_id = j.secondary_id, // nt:id-only meaning varies by timer type; the cell's wire_sent row names it
                     complete_at = j.complete_at,
                     ability_id = j.ability_id,
-                    effect_id = j.effect_id,
-                    target_id = j.target_id,
-                    system_id = j.system_id,
-                    instance_id = j.instance_id,
+                    ability_name = j
+                        .ability_id
+                        .and_then(|a| cimmeria_names::book().ability(a).map(str::to_owned)),
+                    effect_id = j.effect_id, // nt:id-only the cast's per-caster effect sequence, not an effects row
+                    target_id = j.target_id, // nt:id-only the cell's wire_sent row for this send names it
+                    system_id = j.system_id, // nt:id-only ERRORCODE_SYSTEM code; error_name names the refusal
+                    instance_id = j.instance_id, // nt:id-only an ability or other row by system_id; joined to the cell's row
                     error_code = j.error_code,
                     error_name = j.error_code.and_then(|c| cimmeria_names::book().error_code(c).map(str::to_owned)),
                     "entity method sent to the client"
@@ -257,9 +285,15 @@ pub(super) fn log_method_outcome(
                     method_index,
                     method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
+                    recipient_name = who.player_name,
                     entity_id,
+                    // The recipient's name is already in hand; another
+                    // entity would cost a lock, and the cell's row names it.
+                    entity_name = (entity_id == recipient_id).then_some(who.player_name).flatten(),
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     reason,
                     "entity method dropped at the base: the socket send failed, so the client \
                      never sees it"
@@ -272,9 +306,15 @@ pub(super) fn log_method_outcome(
                     method_index,
                     method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
+                    recipient_name = who.player_name,
                     entity_id,
+                    // The recipient's name is already in hand; another
+                    // entity would cost a lock, and the cell's row names it.
+                    entity_name = (entity_id == recipient_id).then_some(who.player_name).flatten(),
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     reason,
                     "entity method dropped at the base: the recipient's session has ended"
                 );

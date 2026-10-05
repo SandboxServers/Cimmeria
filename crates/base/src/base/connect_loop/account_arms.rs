@@ -27,6 +27,7 @@ use super::super::cooked_sync;
 use super::super::dispatch::{dispatch_sgw_player_base_method, sgw_player_base};
 use super::super::login::handle_log_off;
 use super::super::resources::ResourceCache;
+use super::super::session_identity;
 use super::super::world_entry::{handle_on_client_ready, handle_play_character};
 use super::super::ConnectedClientState;
 
@@ -130,7 +131,11 @@ pub(super) async fn dispatch_base_method(
             } else {
                 0
             };
-            tracing::info!(%addr, player_id, "Client requests playCharacter");
+            tracing::info!(
+                %addr,
+                player_id, // nt:id-only requested character; play_character names it once loaded
+                "Client requests playCharacter"
+            );
             if cooked_sync::holds_world_entry(connected, addr) {
                 hold_play_character(
                     transport,
@@ -165,7 +170,11 @@ pub(super) async fn dispatch_base_method(
             } else {
                 0
             };
-            tracing::info!(%addr, player_id, "Client requests deleteCharacter");
+            tracing::info!(
+                %addr,
+                player_id, // nt:id-only requested character; the delete handler names it from the row
+                "Client requests deleteCharacter"
+            );
             handle_delete_character(
                 transport, addr, key, account_id, player_id, connected, db_pool,
             )
@@ -177,7 +186,11 @@ pub(super) async fn dispatch_base_method(
             } else {
                 0
             };
-            tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
+            tracing::debug!(
+                %addr,
+                player_id, // nt:id-only requested character; select screen has no name cached
+                "Client sent requestCharacterVisuals"
+            );
             handle_request_character_visuals(transport, addr, key, player_id, connected, db_pool)
                 .await?;
         }
@@ -249,7 +262,9 @@ async fn hold_play_character(
                 tracing::warn!(
                     %addr,
                     account_id,
-                    player_id,
+                    account_name = session_identity::identity_for_addr(&connected_c, addr)
+                        .account_name,
+                    player_id, // nt:id-only requested character; the row failed to load
                     reason = "play_character_failed",
                     error = %e,
                     "Held playCharacter failed after the cooked-data resync"
@@ -262,7 +277,8 @@ async fn hold_play_character(
             tracing::info!(
                 %addr,
                 account_id,
-                player_id,
+                account_name = session_identity::identity_for_addr(connected, addr).account_name,
+                player_id, // nt:id-only requested character; play_character names it once loaded
                 event = "cooked_data.world_entry_held",
                 "playCharacter held until the held cooked-data categories are resynced"
             );

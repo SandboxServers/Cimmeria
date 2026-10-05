@@ -30,6 +30,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::{AssertSqlSafe, PgPool};
 
 use crate::base::gm_feedback::send_gm_feedback_to_client;
+use crate::base::session_identity::entity_name_for;
 use crate::base::ConnectedClientState;
 
 /// Max search hits reported per `.search*` command — keeps a broad query from
@@ -118,6 +119,7 @@ pub async fn handle_execute_authoring_sql(
     let Some(pool) = db_pool else {
         tracing::warn!(
             entity_id,
+            entity_name = entity_name_for(connected, entity_to_addr, entity_id),
             label,
             "authoring SQL: no DB pool — live write skipped (seed SQL still \
              recorded cell-side for commit)"
@@ -151,6 +153,7 @@ pub async fn handle_execute_authoring_sql(
                 // edit took effect when it didn't.
                 tracing::warn!(
                     entity_id,
+                    entity_name = entity_name_for(connected, entity_to_addr, entity_id),
                     label,
                     "authoring SQL affected 0 rows — live DB unchanged"
                 );
@@ -166,7 +169,13 @@ pub async fn handle_execute_authoring_sql(
                 )
                 .await;
             } else {
-                tracing::info!(entity_id, label, rows, "authoring SQL executed");
+                tracing::info!(
+                    entity_id,
+                    entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                    label,
+                    rows,
+                    "authoring SQL executed"
+                );
                 send_gm_feedback_to_client(
                     entity_id,
                     &format!("{label}: live DB write ok ({rows} row(s); wiped on next deploy)"),
@@ -178,7 +187,13 @@ pub async fn handle_execute_authoring_sql(
             }
         }
         Err(e) => {
-            tracing::warn!(entity_id, label, error = %e, "authoring SQL failed");
+            tracing::warn!(
+                entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                label,
+                error = %e,
+                "authoring SQL failed"
+            );
             send_gm_feedback_to_client(
                 entity_id,
                 &format!("{label}: live DB write FAILED ({e})"),
@@ -266,7 +281,13 @@ pub async fn handle_console_search(
             }
         }
         Err(e) => {
-            tracing::warn!(entity_id, label, error = %e, "console search query failed");
+            tracing::warn!(
+                entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                label,
+                error = %e,
+                "console search query failed"
+            );
             send_gm_feedback_to_client(
                 entity_id,
                 &format!("{label}: query failed ({e})"),

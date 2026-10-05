@@ -1,10 +1,8 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 3596
+# total 3266
 crates/admin-api/src/routes/dev_session/handlers.rs 2
-crates/auth/src/auth/credentials.rs 5
-crates/auth/src/auth/handlers.rs 2
 crates/base-crafting/src/base/crafting/allcraft.rs 18
 crates/base-crafting/src/base/crafting/alloy/mod.rs 7
 crates/base-crafting/src/base/crafting/craft/mod.rs 7
@@ -83,50 +81,8 @@ crates/base-methods/src/base/world_entry/methods/world_entry_db.rs 8
 crates/base-session/src/base/bank_dump/mod.rs 12
 crates/base-session/src/base/bank_expand/mod.rs 14
 crates/base-session/src/base/bank_expand/sends.rs 3
-crates/base-session/src/base/console_authoring/mod.rs 5
-crates/base-session/src/base/cooked_data.rs 6
-crates/base-session/src/base/cooked_sync/mod.rs 4
-crates/base-session/src/base/cooked_sync/task.rs 13
-crates/base-session/src/base/feedback.rs 4
-crates/base-session/src/base/gm_broadcast.rs 8
-crates/base-session/src/base/gm_feedback.rs 1
-crates/base-session/src/base/gm_spawn.rs 13
-crates/base-session/src/base/helpers/mod.rs 18
-crates/base-session/src/base/helpers/reliable_send.rs 6
-crates/base-session/src/base/helpers/witness_broadcast.rs 1
-crates/base-session/src/base/outbox/mod.rs 7
-crates/base-session/src/base/player_index/mod.rs 2
-crates/base-session/src/base/rate_limit/mod.rs 6
-crates/base-session/src/base/session_presence.rs 3
-crates/base-session/src/base/tick_sync.rs 1
-crates/base-world-entry/src/base/character/mod.rs 14
-crates/base-world-entry/src/base/world_entry/cell_dispatch/bandolier.rs 16
-crates/base-world-entry/src/base/world_entry/cell_dispatch/chat_dispatch.rs 3
-crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs 7
-crates/base-world-entry/src/base/world_entry/cell_dispatch/method_delivery.rs 32
-crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs 5
-crates/base-world-entry/src/base/world_entry/cell_dispatch/org_dispatch.rs 14
-crates/base-world-entry/src/base/world_entry/cell_dispatch/system_options.rs 3
-crates/base-world-entry/src/base/world_entry/enable_entities.rs 5
-crates/base-world-entry/src/base/world_entry/looted_containers.rs 13
-crates/base-world-entry/src/base/world_entry/map_loaded.rs 3
-crates/base-world-entry/src/base/world_entry/map_loaded_wire_rows.rs 4
-crates/base-world-entry/src/base/world_entry/play_character.rs 6
-crates/base-world-entry/src/base/world_entry_appearance/cinematic.rs 6
-crates/base-world-entry/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs 2
-crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs 19
-crates/base/src/base/character_create.rs 19
-crates/base/src/base/connect_loop/account_arms.rs 7
-crates/base/src/base/connect_loop/cell_arms.rs 2
-crates/base/src/base/connect_loop/encrypted/decrypt_reject.rs 2
-crates/base/src/base/connect_loop/encrypted/mod.rs 9
-crates/base/src/base/dispatch/communicator_unsupported.rs 3
-crates/base/src/base/dispatch/mod.rs 1
 crates/base/src/base/dispatch/organization.rs 3
 crates/base/src/base/dispatch/organization_squad.rs 4
-crates/base/src/base/dispatch/session.rs 4
-crates/base/src/base/login/mod.rs 3
-crates/base/src/base/service.rs 1
 crates/cell-catalog/src/ability_tree/tree_info.rs 5
 crates/cell-catalog/src/crafting/catalog.rs 3
 crates/cell-combat/src/cell/abilities/cone_aoe/fan_out.rs 6
@@ -270,8 +226,6 @@ crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
 crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2
-crates/cell/src/cell/service/base_messages/player_init/mission_restore.rs 6
-crates/cell/src/cell/service/base_messages/player_init/mod.rs 16
 crates/cell/src/cell/service/base_messages/respec.rs 5
 crates/cell/src/cell/service/ticks/auto_cycle.rs 13
 crates/cell/src/cell/service/ticks/cover.rs 3

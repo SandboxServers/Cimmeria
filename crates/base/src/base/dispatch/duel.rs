@@ -114,12 +114,7 @@ pub(super) async fn send_duel_challenge_at(
         };
         let decision = c.rate_limits.check(RateCategory::DuelChallenge, now);
         if let RateDecision::Limited { notify } = decision {
-            let rate_actor = RateActor {
-                addr,
-                player_id: c.active_player_id,
-                account_id: c.account_id,
-                entity_id: c.player_entity_id,
-            };
+            let rate_actor = RateActor::of(addr, c);
             log_exceeded(
                 RateCategory::DuelChallenge,
                 rate_actor,

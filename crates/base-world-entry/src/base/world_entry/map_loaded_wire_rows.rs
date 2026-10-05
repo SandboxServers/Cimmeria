@@ -64,6 +64,7 @@ fn stat_summary(args: &[u8]) -> (u32, String) {
 pub(super) fn log_world_entry_ability_sends(
     entity_id: u32,
     account_id: Option<u32>,
+    account_name: Option<&str>,
     data: &PlayerLoadData,
     seq_first: u32,
     seq_last: u32,
@@ -71,6 +72,8 @@ pub(super) fn log_world_entry_ability_sends(
     if !tracing::enabled!(target: "abilities.wire", tracing::Level::DEBUG) {
         return;
     }
+    // The entity is the player's own, so one name pairs all three IDs.
+    let player_name = Some(data.player_name.as_str()).filter(|n| !n.is_empty());
     for &(method_index, method) in WORLD_ENTRY_ABILITY_METHODS {
         macro_rules! row {
             ($($extra:tt)*) => {
@@ -83,9 +86,13 @@ pub(super) fn log_world_entry_ability_sends(
                     method_index,
                     method_name = cimmeria_wire::names::player_client_method(method_index),
                     entity_id,
+                    entity_name = player_name,
                     recipient_id = entity_id,
+                    recipient_name = player_name,
                     account_id,
+                    account_name,
                     player_id = data.player_id,
+                    player_name,
                     mercury_seq_first = seq_first,
                     mercury_seq_last = seq_last,
                     $($extra)*
@@ -155,7 +162,7 @@ mod tests {
         data.player_id = 77;
         data.abilities = vec![597, 1646];
         data.ability_tree.trees = [vec![1, 2, 3], vec![4], vec![]];
-        log_world_entry_ability_sends(9001, Some(5), &data, 120, 123);
+        log_world_entry_ability_sends(9001, Some(5), Some("sgc_login"), &data, 120, 123);
         let rows: Vec<_> = capture
             .all()
             .into_iter()

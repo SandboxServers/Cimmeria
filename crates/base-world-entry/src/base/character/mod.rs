@@ -13,6 +13,7 @@ use crate::mercury::{
 };
 
 use super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
+use super::session_identity::identity_for_addr;
 use super::ConnectedClientState;
 
 #[cfg(test)]
@@ -24,6 +25,7 @@ mod request_visuals_live_db_tests;
 pub async fn query_character_list(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
+    account_name: Option<&str>,
 ) -> Vec<CharacterInfo> {
     let pool = match db_pool {
         Some(p) => p,
@@ -46,7 +48,11 @@ pub async fn query_character_list(
         title: i32,
     }
 
-    tracing::debug!(account_id, "Querying sgw_player for character list");
+    tracing::debug!(
+        account_id,
+        account_name,
+        "Querying sgw_player for character list"
+    );
 
     match sqlx::query_as::<_, CharRow>(
         "SELECT player_id, player_name, extra_name, alignment, level, gender, \
@@ -60,6 +66,7 @@ pub async fn query_character_list(
         Ok(rows) => {
             tracing::info!(
                 account_id,
+                account_name,
                 count = rows.len(),
                 "Character list query result"
             );
@@ -80,7 +87,11 @@ pub async fn query_character_list(
                 .collect()
         }
         Err(e) => {
-            tracing::error!(account_id, "Failed to query character list: {e}");
+            tracing::error!(
+                account_id,
+                account_name,
+                "Failed to query character list: {e}"
+            );
             Vec::new()
         }
     }
@@ -137,27 +148,41 @@ pub async fn handle_delete_character(
     )
     .await;
 
+    let account_name = identity_for_addr(connected, addr).account_name;
     match result {
         Ok(deletion) => {
             if deletion.deleted {
                 tracing::info!(
                     %addr,
-                    player_id,
+                    player_id, // nt:id-only the row is gone; nothing left to name it from
                     account_id,
+                    account_name,
                     org_events = deletion.org_events.len(),
                     "Character deleted"
                 );
             } else {
-                tracing::warn!(%addr, player_id, account_id, "Character not found or not owned");
+                tracing::warn!(
+                    %addr,
+                    player_id, // nt:id-only requested character; the row that would name it did not load
+                    account_id,
+                    account_name,
+                    "Character not found or not owned"
+                );
             }
         }
         Err(e) => {
-            tracing::error!(%addr, player_id, "Failed to delete character: {e}");
+            tracing::error!(
+                %addr,
+                player_id, // nt:id-only requested character; the row that would name it did not load
+                account_id,
+                account_name,
+                "Failed to delete character: {e}"
+            );
             return Ok(());
         }
     }
 
-    let characters = query_character_list(db_pool, account_id).await;
+    let characters = query_character_list(db_pool, account_id, account_name).await;
     let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
     let enc_version = get_enc_version(connected, addr);
@@ -180,7 +205,11 @@ pub async fn handle_request_character_visuals(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::warn!(%addr, player_id, "requestCharacterVisuals: no DB pool");
+            tracing::warn!(
+                %addr,
+                player_id, // nt:id-only requested character; the row that would name it did not load
+                "requestCharacterVisuals: no DB pool"
+            );
             return Ok(());
         }
     };
@@ -193,8 +222,9 @@ pub async fn handle_request_character_visuals(
             .account_id
     };
 
-    let row = sqlx::query_as::<_, (String, Vec<String>, i32, i32)>(
-        "SELECT bodyset, components, skin_color_id, bandolier_slot \
+    // `player_name` is read for the log lines only (Rule 6).
+    let row = sqlx::query_as::<_, (String, Vec<String>, i32, i32, String)>(
+        "SELECT bodyset, components, skin_color_id, bandolier_slot, player_name \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -203,7 +233,7 @@ pub async fn handle_request_character_visuals(
     .await;
 
     match row {
-        Ok(Some((bodyset, mut components, skin_color_id, bandolier_slot))) => {
+        Ok(Some((bodyset, mut components, skin_color_id, bandolier_slot, player_name))) => {
             // Equipment containers + bandolier are defined alongside the
             // identical query in player_load/core.rs (CONTAINER_BANDOLIER and
             // EQUIPMENT_CONTAINERS). Bind them via ANY/parameter so the two
@@ -238,6 +268,7 @@ pub async fn handle_request_character_visuals(
                 Err(e) => {
                     tracing::error!(
                         player_id,
+                        player_name = %player_name,
                         "character visuals query failed (skipping appearance overlay): {e}"
                     );
                     Vec::new()
@@ -247,9 +278,12 @@ pub async fn handle_request_character_visuals(
             components.extend(item_visuals);
 
             tracing::debug!(
-                %addr, player_id, %bodyset,
+                %addr,
+                player_id,
+                player_name = %player_name,
+                %bodyset,
                 component_count = components.len(),
-                skin_color_id,
+                skin_color_id, // nt:id-only palette index into SKIN_TINTS, not a named row
                 "Sending character visuals"
             );
 
@@ -277,10 +311,19 @@ pub async fn handle_request_character_visuals(
             transport.send_to(&pkt, addr).await?;
         }
         Ok(None) => {
-            tracing::warn!(%addr, player_id, "requestCharacterVisuals: player not found");
+            tracing::warn!(
+                %addr,
+                player_id, // nt:id-only requested character; the row that would name it did not load
+                "requestCharacterVisuals: player not found"
+            );
         }
         Err(e) => {
-            tracing::error!(%addr, player_id, error = %e, "requestCharacterVisuals: DB error");
+            tracing::error!(
+                %addr,
+                player_id, // nt:id-only requested character; the row that would name it did not load
+                error = %e,
+                "requestCharacterVisuals: DB error"
+            );
         }
     }
 
@@ -363,7 +406,7 @@ mod query_character_list_tests {
     #[tokio::test]
     async fn no_pool_returns_empty() {
         // No `require_db_or_skip!()` — exercises the None branch.
-        let chars = query_character_list(&None, 0).await;
+        let chars = query_character_list(&None, 0, None).await;
         assert!(chars.is_empty());
     }
 
@@ -386,7 +429,7 @@ mod query_character_list_tests {
         insert_character(&pool, account_id, player_b, "alpha", 1, 7).await;
 
         let db_pool = Some(Arc::new(pool.clone()));
-        let chars = query_character_list(&db_pool, account_id as u32).await;
+        let chars = query_character_list(&db_pool, account_id as u32, None).await;
 
         assert_eq!(chars.len(), 2);
         assert_eq!(
@@ -421,7 +464,7 @@ mod query_character_list_tests {
         insert_character(&pool, account_other, player_other, "other", 2, 2).await;
 
         let db_pool = Some(Arc::new(pool.clone()));
-        let chars = query_character_list(&db_pool, account_mine as u32).await;
+        let chars = query_character_list(&db_pool, account_mine as u32, None).await;
 
         assert_eq!(chars.len(), 1);
         assert_eq!(

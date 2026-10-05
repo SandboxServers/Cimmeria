@@ -165,12 +165,7 @@ pub(super) async fn send_player_communication_at(
                 if let RateDecision::Limited { notify } = decision {
                     // Logged here, under the lock, so the event carries the
                     // bucket state the decision was made on.
-                    let actor = RateActor {
-                        addr,
-                        player_id: c.active_player_id,
-                        account_id: c.account_id,
-                        entity_id: c.player_entity_id,
-                    };
+                    let actor = RateActor::of(addr, c);
                     log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
                 }
                 (

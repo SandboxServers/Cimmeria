@@ -47,11 +47,14 @@ pub(super) async fn handle_log_off(
     } else {
         "logoff_character_select"
     };
-    let (entity_id, enc_version, ended, plugins) = {
+    let (entity_id, enc_version, ended, plugins, identity) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
                 cimmeria_base_session::base::player_index::log_unlisted(addr, c, path);
+                // Snapshotted before the reset below clears the names
+                // (Rule 5 § "Resolve late, and before teardown").
+                let identity = super::super::session_identity::session_identity(c);
                 // Only a character that was in the world is announced
                 // offline, and only here: clearing the flag stops the
                 // teardown of a full exit from announcing it again.
@@ -61,6 +64,7 @@ pub(super) async fn handle_log_off(
                         player_id,
                         entity_id,
                         player_name: c.player_name.clone(),
+                        account_name: identity.account_name,
                     }),
                     _ => None,
                 };
@@ -76,14 +80,28 @@ pub(super) async fn handle_log_off(
                         event = "invite_cleared",
                         reason = path,
                         account_id = c.account_id,
+                        account_name = c.account_name.as_deref(),
                         player_id = c.active_player_id,
+                        player_name = c.player_name.as_deref(),
                         dropped,
                         "held organization invites dropped on logOff"
                     );
                 }
-                (c.player_entity_id, c.enc_version, ended, c.plugins.clone())
+                (
+                    c.player_entity_id,
+                    c.enc_version,
+                    ended,
+                    c.plugins.clone(),
+                    identity,
+                )
             }
-            None => (None, Default::default(), None, Default::default()),
+            None => (
+                None,
+                Default::default(),
+                None,
+                Default::default(),
+                cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
+            ),
         }
     };
 
@@ -115,12 +133,22 @@ pub(super) async fn handle_log_off(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = identity.player_name,
+                    account_id = identity.account_id,
+                    account_name = identity.account_name,
+                    player_id = identity.player_id,
+                    player_name = identity.player_name,
                     "logOff: DisconnectEntity send failed -- cell may leak player state: {e}"
                 );
             }
             if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
                 tracing::warn!(
                     entity_id,
+                    entity_name = identity.player_name,
+                    account_id = identity.account_id,
+                    account_name = identity.account_name,
+                    player_id = identity.player_id,
+                    player_name = identity.player_name,
                     "logOff: DestroyEntity send failed -- cell may leak player entity: {e}"
                 );
             }
@@ -162,13 +190,27 @@ pub(super) async fn handle_log_off(
 
     if disconnect != 0 {
         // Full exit: send loggedOff system message (msg_id 0x06) and let client disconnect
-        tracing::info!(%addr, "logOff: full exit — sending loggedOff");
+        tracing::info!(
+            %addr,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
+            "logOff: full exit — sending loggedOff"
+        );
         let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;
         let pkt = crate::mercury::build_logged_off(&key, seq, &acks, enc_version);
         transport.send_to(&pkt, addr).await?;
     } else {
         // Return to character select: reset state and send RESET_ENTITIES + char list
-        tracing::info!(%addr, "logOff: returning to character select");
+        tracing::info!(
+            %addr,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
+            "logOff: returning to character select"
+        );
 
         // Reset client state for character select
         {

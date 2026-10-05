@@ -75,6 +75,7 @@ pub(crate) async fn handle_login(
     if !crate::auth::client_ips_match(login.client_ip, addr.ip()) {
         tracing::warn!(
             account_id = login.account_id,
+            account_name = %login.account_name,
             ticket_ip = %login.client_ip,
             client_ip = %addr.ip(),
             reason = "ticket_ip_mismatch",
@@ -108,6 +109,7 @@ pub(crate) async fn handle_login(
         if let Some((old_addr, old_key, old_version)) = evict_addr {
             tracing::warn!(
                 account_id = login.account_id,
+                account_name = %login.account_name,
                 %old_addr,
                 %addr,
                 "Duplicate login -- evicting old session"
@@ -146,6 +148,7 @@ pub(crate) async fn handle_login(
 
     tracing::info!(
         account_id = login.account_id,
+        account_name = %login.account_name,
         "Phase 3 authenticated; sending reply and time-sync"
     );
 

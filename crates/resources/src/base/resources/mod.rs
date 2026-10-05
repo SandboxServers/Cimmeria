@@ -144,6 +144,15 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (CATEGORY_BEHAVIOR_EVENTS, "CookedBehaviorEvents.pak"),
 ];
 
+/// A category's name for logs (Rule 6): its PAK file stem, such as
+/// `CookedDataItems`. `None` outside the client's 1-21.
+pub fn category_name(category_id: u32) -> Option<&'static str> {
+    CATEGORY_PAKS
+        .iter()
+        .find(|(id, _)| *id == category_id)
+        .map(|(_, pak)| pak.strip_suffix(".pak").unwrap_or(pak))
+}
+
 /// Category id for `CookedBehaviorEvents.pak` (see [`CATEGORY_PAKS`]).
 ///
 /// The client registers this as `BehaviorEventData` — the 21st and final

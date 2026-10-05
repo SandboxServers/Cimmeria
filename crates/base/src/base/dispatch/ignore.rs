@@ -112,12 +112,7 @@ pub(super) async fn handle_chat_ignore(
                     c.rate_limits.check(RateCategory::Chat, now)
                 };
                 if let RateDecision::Limited { notify } = decision {
-                    let actor = RateActor {
-                        addr,
-                        player_id: c.active_player_id,
-                        account_id: c.account_id,
-                        entity_id: c.player_entity_id,
-                    };
+                    let actor = RateActor::of(addr, c);
                     log_exceeded(RateCategory::Chat, actor, notify, &c.rate_limits, now);
                 }
                 (caller, decision)
