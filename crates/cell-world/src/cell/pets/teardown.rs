@@ -167,7 +167,7 @@ pub(super) async fn despawn_pet_via(
     // entry go away.
     let owner_id = space_mgr.pets.owner_of(pet_id);
     let id = owner_identity(space_mgr, pet_id, owner_id);
-    let template_id = space_mgr.get_entity(pet_id).and_then(|e| e.template_id);
+    let pet = space_mgr.entity_names(pet_id);
     if spares_owner_leave(space_mgr, pet_id, owner_id, reason, owner_leaving) {
         if let Some(owner) = owner_id.and_then(|o| space_mgr.get_entity_mut(o)) {
             owner.witnesses.remove(&EntityId(pet_id as i32));
@@ -181,11 +181,17 @@ pub(super) async fn despawn_pet_via(
             decision_outcome = "despawned",
             event = "despawned",
             entity_id = pet_id,
+            entity_name = pet.entity_name,
             pet_id,
+            pet_name = pet.entity_name,
             owner_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
-            template_id,
+            player_name = id.player_name,
+            template_id = pet.template_id,
+            template_name = pet.template_name,
             reason = reason.reason(),
             path,
             witnesses_notified,
@@ -198,11 +204,17 @@ pub(super) async fn despawn_pet_via(
             decision_outcome = "despawn_failed",
             event = "despawn_failed",
             entity_id = pet_id,
+            entity_name = pet.entity_name,
             pet_id,
+            pet_name = pet.entity_name,
             owner_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
-            template_id,
+            player_name = id.player_name,
+            template_id = pet.template_id,
+            template_name = pet.template_name,
             reason = reason.reason(),
             path,
             outcome = ?other,
@@ -239,9 +251,13 @@ pub async fn forget_owner(
         target: "pets.lifecycle",
         event = "owner_forgotten",
         entity_id = owner,
+        entity_name = id.player_name,
         owner_id = owner,
+        owner_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         pet_count = pets.len(),
         despawned,
         path = "disconnect",
@@ -342,21 +358,29 @@ pub async fn pet_owner_sweep_at(
             None => {}
             Some(SweepAction::StampCorpse) => {
                 let id = owner_identity(space_mgr, pet_id, Some(owner));
-                if let Some(pet) = space_mgr
+                let pet = space_mgr.entity_names(pet_id);
+                if let Some(state) = space_mgr
                     .get_entity_mut(pet_id)
                     .and_then(|e| e.extensions.get_mut::<PetState>())
                 {
-                    pet.despawn_at = Some(now + PET_CORPSE_DESPAWN);
+                    state.despawn_at = Some(now + PET_CORPSE_DESPAWN);
                 }
                 tracing::debug!(
                     target: "pets.lifecycle",
                     decision_outcome = "corpse_timer_started",
                     event = "corpse_timer_started",
                     entity_id = pet_id,
+                    entity_name = pet.entity_name,
                     pet_id,
+                    pet_name = pet.entity_name,
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
+                    template_id = pet.template_id,
+                    template_name = pet.template_name,
                     corpse_secs = PET_CORPSE_DESPAWN.as_secs(),
                     "pet died; its corpse despawns when the timer runs out"
                 );
@@ -370,11 +394,15 @@ pub async fn pet_owner_sweep_at(
                     target: "pets.lifecycle",
                     decision_outcome = "registry_scrubbed",
                     event = "registry_scrubbed",
-                    entity_id = pet_id,
-                    pet_id,
+                    // The pet entity is gone, so only its summoner is named.
+                    entity_id = pet_id, // nt:id-only the pet entity is gone, nothing left to name
+                    pet_id, // nt:id-only the pet entity is gone, nothing left to name
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     reason = "pet_entity_gone",
                     path = "sweep",
                     "pet registry entry without an entity dropped"
@@ -383,14 +411,22 @@ pub async fn pet_owner_sweep_at(
             Some(SweepAction::Despawn(reason)) => {
                 if reason == PetDespawnReason::CorpseExpired {
                     let id = owner_identity(space_mgr, pet_id, Some(owner));
+                    let pet = space_mgr.entity_names(pet_id);
                     tracing::debug!(
                         target: "pets.lifecycle",
                         event = "corpse_expired",
                         entity_id = pet_id,
+                        entity_name = pet.entity_name,
                         pet_id,
+                        pet_name = pet.entity_name,
                         owner_id = owner,
+                        owner_name = id.player_name,
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
+                        template_id = pet.template_id,
+                        template_name = pet.template_name,
                         corpse_secs = PET_CORPSE_DESPAWN.as_secs(),
                         "pet corpse timer ran out; despawning the corpse"
                     );

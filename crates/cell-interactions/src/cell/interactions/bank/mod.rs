@@ -69,7 +69,13 @@ pub fn pin_interaction_target(space_mgr: &mut SpaceManager, entity_id: u32, targ
     };
     let identity = player.identity();
     if let Some(ended) = player.pin_interaction_target(target) {
-        log_vault_session_closed(entity_id, identity, &ended, VaultCloseReason::RePin);
+        log_vault_session_closed(
+            space_mgr,
+            entity_id,
+            identity,
+            &ended,
+            VaultCloseReason::RePin,
+        );
     }
 }
 

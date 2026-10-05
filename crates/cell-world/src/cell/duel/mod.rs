@@ -92,8 +92,9 @@ pub use registry::{
 };
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::known_names;
 
-use super::space_manager::{SpaceManager, SpaceResources};
+use super::space_manager::{EntityNames, SpaceManager, SpaceResources};
 
 /// The duel registry as a `SpaceManager` resource (#962,
 /// `docs/architecture/plugin-architecture.md` §3.5): it lives in
@@ -222,4 +223,39 @@ pub fn find_player(space_mgr: &SpaceManager, player_id: i32) -> Option<PlayerAt>
             })
         })
     })
+}
+
+/// A duelist's names for a log row (instrumentation-discipline Rule 6).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DuelistLogNames {
+    /// The entity's character name, only while it still plays the duelist.
+    pub entity_name: Option<&'static str>,
+    /// The character name.
+    pub player_name: Option<&'static str>,
+    /// The login name.
+    pub account_name: Option<&'static str>,
+}
+
+/// The names a duel row puts next to a duelist's ids. Read from the entity
+/// while it still plays `player_id`; entity ids are recycled, so a duelist
+/// who has left is named from `known_names` instead and the entity name is
+/// left off, never the slot's new occupant. Two map lookups at most; call
+/// it in the branch that logs.
+pub fn duelist_log_names(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    player_id: i32,
+    account_id: Option<u32>,
+) -> DuelistLogNames {
+    let live = space_mgr
+        .get_entity(entity_id)
+        .filter(|e| e.player_id == Some(player_id));
+    let entity_name = live.and_then(|e| EntityNames::of(e).entity_name);
+    DuelistLogNames {
+        entity_name,
+        player_name: entity_name.or_else(|| known_names::player_name(player_id)),
+        account_name: live
+            .and_then(|e| e.identity().account_name)
+            .or_else(|| known_names::account_name(account_id)),
+    }
 }

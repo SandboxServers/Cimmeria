@@ -34,12 +34,14 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 
 use super::format::{format_record, split_line, MAX_LINE_UNITS};
 use super::record::{CastDebug, CastKind};
 use super::settings::DebugSettings;
+use crate::cell::effects::content_names::ability_name;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -187,9 +189,11 @@ fn drop_stale_watchers(mgr: &mut SpaceManager) {
             target: "abilities.debug",
             event = "combat_debug_watcher_dropped",
             reason = "watcher_left",
-            entity_id = id,
+            entity_id = id, // nt:id-only the watcher left this entity; player_name names the watcher
             account_id = s.as_ref().and_then(|s| s.account_id),
+            account_name = known_names::account_name(s.as_ref().and_then(|s| s.account_id)),
             player_id = s.as_ref().and_then(|s| s.player_id),
+            player_name = known_names::player_name(s.as_ref().and_then(|s| s.player_id)),
             "combat debug: watcher left; its toggles are cleared"
         );
     }
@@ -322,13 +326,22 @@ fn log_line(mgr: &SpaceManager, line: &Outgoing, delivery: &'static str) {
         event = "combat_debug_line",
         stage = "debug",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = line.recipient,
+        entity_name = who.player_name,
         caster_id = cast.map(|c| c.caster_id),
+        // A player caster is named from the record's snapshot; an NPC from
+        // the live entity, which the flush at the end of its cast still has.
+        caster_name = cast.and_then(|c| c.caster.player_name.or_else(|| mgr.entity_label(c.caster_id))),
         caster_account_id = cast.and_then(|c| c.caster.account_id),
+        caster_account_name = cast.and_then(|c| c.caster.account_name),
         caster_player_id = cast.and_then(|c| c.caster.player_id),
-        cast_id = cast.and_then(|c| c.cast_id),
+        caster_player_name = cast.and_then(|c| c.caster.player_name),
+        cast_id = cast.and_then(|c| c.cast_id), // nt:id-only per-cast sequence number, no name exists
         ability_id = cast.map(|c| c.ability_id),
+        ability_name = ability_name(cast.map(|c| c.ability_id)),
         line_kind = line.kind.as_str(),
         delivery,
         text = line.text.as_str(),
@@ -357,8 +370,11 @@ pub async fn send_feedback_line(
             target: "abilities.debug",
             event = "combat_debug_send_failed",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = recipient,
+            entity_name = who.player_name,
             error = %e,
             "combat debug line not queued: base channel closed"
         );

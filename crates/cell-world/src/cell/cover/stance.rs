@@ -43,24 +43,36 @@ const SPAWN_HOLD_MAX_DY: f32 = 2.0;
 /// a script ran. A missing def or script name is a seed problem and warns.
 fn run_stance_effect(space_mgr: &mut SpaceManager, npc_id: u32, effect_id: i32) -> bool {
     let Some(effect) = space_mgr.effect_defs.get(&effect_id).cloned() else {
+        let n = space_mgr.entity_names(npc_id);
         tracing::warn!(
             target: "cover.stance",
             event = "effect_missing",
             npc_id,
+            npc_name = n.entity_name,
+            template_id = n.template_id,
+            template_name = n.template_name,
             ability_id = COVER_STANCE_ABILITY,
+            ability_name = cimmeria_names::book().ability(COVER_STANCE_ABILITY),
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             reason = "no_effect_def",
             "Cover Stance effect has no server def -- the stance is tracked but no stat changes"
         );
         return false;
     };
     let Some(script) = effect.script_name.clone() else {
+        let n = space_mgr.entity_names(npc_id);
         tracing::warn!(
             target: "cover.stance",
             event = "effect_missing",
             npc_id,
+            npc_name = n.entity_name,
+            template_id = n.template_id,
+            template_name = n.template_name,
             ability_id = COVER_STANCE_ABILITY,
+            ability_name = cimmeria_names::book().ability(COVER_STANCE_ABILITY),
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             reason = "no_script_name",
             "Cover Stance effect row has no script_name -- check effects.sql"
         );
@@ -84,11 +96,16 @@ pub fn grant_cover_stance(space_mgr: &mut SpaceManager, npc_id: u32) -> bool {
         return false;
     }
     let applied = run_stance_effect(space_mgr, npc_id, COVER_STANCE_EFFECT);
+    let n = space_mgr.entity_names(npc_id);
     tracing::debug!(
         target: "cover.stance",
         event = "granted",
         npc_id,
+        npc_name = n.entity_name,
+        template_id = n.template_id,
+        template_name = n.template_name,
         ability_id = COVER_STANCE_ABILITY,
+        ability_name = cimmeria_names::book().ability(COVER_STANCE_ABILITY),
         applied,
         "Cover Stance granted on reaching the cover slot"
     );
@@ -103,11 +120,16 @@ pub fn revoke_cover_stance(space_mgr: &mut SpaceManager, npc_id: u32) -> bool {
         return false;
     }
     let applied = run_stance_effect(space_mgr, npc_id, COVER_STANCE_REMOVE_EFFECT);
+    let n = space_mgr.entity_names(npc_id);
     tracing::debug!(
         target: "cover.stance",
         event = "revoked",
         npc_id,
+        npc_name = n.entity_name,
+        template_id = n.template_id,
+        template_name = n.template_name,
         ability_id = COVER_STANCE_ABILITY,
+        ability_name = cimmeria_names::book().ability(COVER_STANCE_ABILITY),
         applied,
         "Cover Stance removed on leaving the cover slot"
     );
@@ -130,12 +152,16 @@ pub fn release_npc_cover(
     };
     let stance = revoke_cover_stance(space_mgr, npc_id);
     if let Some(slot) = slot {
+        let n = space_mgr.entity_names(npc_id);
         tracing::debug!(
             target: "cover.hold",
             event = "released",
             npc_id,
-            chunk_id = slot.chunk_id,
-            node_id = slot.node_id,
+            npc_name = n.entity_name,
+            template_id = n.template_id,
+            template_name = n.template_name,
+            chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+            node_id = slot.node_id, // nt:id-only cover nodes carry no names
             reason,
             stance,
             "NPC cover slot released"
@@ -179,14 +205,19 @@ pub fn hold_spawn_cover(
         .min_by(|a, b| a.1.total_cmp(&b.1))?;
     let slot = node.key();
     r.reserve_for_entity(id, slot).ok()?;
+    let n = space_mgr.entity_names(npc_id);
     tracing::info!(
         target: "cover.hold",
         event = "spawn_reserved",
         npc_id,
-        chunk_id = slot.chunk_id,
-        node_id = slot.node_id,
+        npc_name = n.entity_name,
+        template_id = n.template_id,
+        template_name = n.template_name,
+        chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
+        node_id = slot.node_id, // nt:id-only cover nodes carry no names
         dist,
         world_id,
+        world = cimmeria_names::book().world(world_id),
         cause,
         "NPC holds the cover slot it stands at"
     );

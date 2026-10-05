@@ -11,6 +11,7 @@
 //! the Banker arm in `cell::interactions::bank`.
 
 use cimmeria_entity::cell_entity::{PlayerIdentity, VaultCloseReason, VaultSession};
+use cimmeria_entity::known_names;
 
 use super::SpaceManager;
 
@@ -24,13 +25,16 @@ impl SpaceManager {
         let entity = self.get_entity_mut(entity_id)?;
         let identity = entity.identity();
         let session = entity.vault_session.take()?;
-        log_vault_session_closed(entity_id, identity, &session, reason);
+        log_vault_session_closed(self, entity_id, identity, &session, reason);
         Some(session)
     }
 }
 
-/// The `vault_session_closed` event (DEBUG, target `bank`).
+/// The `vault_session_closed` event (DEBUG, target `bank`). `space_mgr`
+/// names the banker and the world (Rule 6); call it after the session has
+/// been taken off the entity.
 pub fn log_vault_session_closed(
+    space_mgr: &SpaceManager,
     entity_id: u32,
     identity: PlayerIdentity,
     session: &VaultSession,
@@ -40,14 +44,20 @@ pub fn log_vault_session_closed(
         target: "bank",
         event = "vault_session_closed",
         account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = identity.player_id,
+        player_name = identity.player_name,
         entity_id,
+        entity_name = identity.player_name,
         reason = reason.as_str(),
         scope = session.scope.as_str(),
         org_id = session.org_id,
+        org_name = known_names::org_name(session.org_id),
         banker_id = session.banker_id,
+        banker_name = space_mgr.entity_label(session.banker_id),
         gm_override = session.banker_id.is_none(),
         space_id = session.space_id,
+        world = space_mgr.world_name_for_space(session.space_id),
         open_ms = session.opened_at.elapsed().as_millis() as u64,
         "vault_session_closed: the vault session ended"
     );

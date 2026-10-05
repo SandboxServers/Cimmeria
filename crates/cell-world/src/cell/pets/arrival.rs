@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
+use super::super::effects::content_names::{sequence_name, template_name};
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::teardown::owner_identity;
@@ -161,6 +162,9 @@ pub async fn drain_arrivals(
                 // may belong to a new holder of a reused id), Rule 5.
                 let id = owner_identity(space_mgr, pet, Some(owner_id));
                 let registered_owner = space_mgr.pets.owner_of(pet);
+                // The pet itself may be gone (`pet_gone`): its name is then
+                // left off and the template captured at summon names it.
+                let names = space_mgr.entity_names(pet);
                 let waited_ms = now.duration_since(arrival.queued_at).as_millis() as u64;
                 // A pet gone before its intro is ordinary (despawned at
                 // once): DEBUG. An owner who never saw its live pet means the
@@ -173,12 +177,19 @@ pub async fn drain_arrivals(
                         event = "arrival_vfx_dropped",
                         decision_outcome = "arrival_vfx_dropped",
                         entity_id = pet,
+                        entity_name = names.entity_name,
                         pet_id = pet,
+                        pet_name = names.entity_name,
                         owner_id,
+                        owner_name = id.player_name,
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
                         template_id = arrival.template_id,
+                        template_name = template_name(arrival.template_id),
                         sequence_id = arrival.sequence_id,
+                        sequence_name = sequence_name(arrival.sequence_id),
                         waited_ms,
                         reason,
                         "summon VFX dropped with its pet"
@@ -189,13 +200,23 @@ pub async fn drain_arrivals(
                         event = "arrival_vfx_dropped",
                         decision_outcome = "arrival_vfx_dropped",
                         entity_id = pet,
+                        entity_name = names.entity_name,
                         pet_id = pet,
+                        pet_name = names.entity_name,
                         owner_id,
+                        owner_name = id.player_name,
                         registered_owner_id = registered_owner,
+                        // The registry's owner is this pet's summoner: named
+                        // from the capture, not the id's current holder (#889).
+                        registered_owner_name = registered_owner.and(id.player_name),
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
                         template_id = arrival.template_id,
+                        template_name = template_name(arrival.template_id),
                         sequence_id = arrival.sequence_id,
+                        sequence_name = sequence_name(arrival.sequence_id),
                         waited_ms,
                         reason,
                         "summon VFX dropped before reaching the owner"
@@ -209,6 +230,7 @@ pub async fn drain_arrivals(
                 // The summoner as captured at summon (Rule 5), resolved
                 // before the sends so every row below names the same player.
                 let id = owner_identity(space_mgr, pet, Some(arrival.owner_id));
+                let names = space_mgr.entity_names(pet);
                 let mut delivered = 0usize;
                 for &witness_id in &witnesses {
                     if tx
@@ -229,12 +251,19 @@ pub async fn drain_arrivals(
                             event = "arrival_vfx_send_failed",
                             decision_outcome = "arrival_vfx_send_failed",
                             entity_id = pet,
+                            entity_name = names.entity_name,
                             pet_id = pet,
+                            pet_name = names.entity_name,
                             owner_id = arrival.owner_id,
+                            owner_name = id.player_name,
                             account_id = id.account_id,
+                            account_name = id.account_name,
                             player_id = id.player_id,
+                            player_name = id.player_name,
                             template_id = arrival.template_id,
+                            template_name = names.template_name,
                             witness_id,
+                            witness_name = space_mgr.entity_label(witness_id),
                             "summon VFX could not be queued (base channel closed)"
                         );
                     }
@@ -247,12 +276,19 @@ pub async fn drain_arrivals(
                         event = "arrival_vfx_undelivered",
                         decision_outcome = "arrival_vfx_undelivered",
                         entity_id = pet,
+                        entity_name = names.entity_name,
                         pet_id = pet,
+                        pet_name = names.entity_name,
                         owner_id = arrival.owner_id,
+                        owner_name = id.player_name,
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
                         template_id = arrival.template_id,
+                        template_name = template_name(arrival.template_id),
                         sequence_id = arrival.sequence_id,
+                        sequence_name = sequence_name(arrival.sequence_id),
                         witness_count = witnesses.len(),
                         reason = "cell_to_base_closed",
                         "summon VFX reached no witness (base channel closed)"
@@ -264,12 +300,19 @@ pub async fn drain_arrivals(
                     event = "arrival_vfx_sent",
                     decision_outcome = "arrival_vfx_sent",
                     entity_id = pet,
+                    entity_name = names.entity_name,
                     pet_id = pet,
+                    pet_name = names.entity_name,
                     owner_id = arrival.owner_id,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     template_id = arrival.template_id,
+                    template_name = names.template_name,
                     sequence_id = arrival.sequence_id,
+                    sequence_name = sequence_name(arrival.sequence_id),
                     witness_count = witnesses.len(),
                     delivered_count = delivered,
                     "summon VFX sent to the pet's witnesses"

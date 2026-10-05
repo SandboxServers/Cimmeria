@@ -15,9 +15,11 @@
 use super::DuelResources;
 use tokio::sync::mpsc;
 
+use cimmeria_entity::known_names;
 use cimmeria_entity::stats::HEALTH;
 use cimmeria_wire::cell::client_methods::duel::TEXT_DUEL_ABORTED;
 
+use crate::cell::effects::content_names::{ability_name, effect_name};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -114,11 +116,15 @@ async fn leave(
         tracing::debug!(
             target: "duel",
             event = "duel.withdrawn",
-            duel_id,
+            duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = pid,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             target_player_id = other,
+            target_player_name = known_names::player_name(other),
             stage,
             reason = reason.name(),
             "a duel challenge or countdown was withdrawn: its player is leaving"
@@ -208,19 +214,28 @@ pub fn clamp_partner_lethal(
         (before, account)
     };
     let attacker = mgr.player_identity(attacker_eid);
+    let target = mgr.player_identity(target_eid);
     tracing::debug!(
         target: "duel",
         event = "duel.lethal_clamped",
-        duel_id = duel.duel_id,
+        duel_id = duel.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
         account_id = attacker.account_id,
+        account_name = attacker.account_name,
         player_id = apid,
+        player_name = attacker.player_name,
         entity_id = attacker_eid,
+        entity_name = attacker.player_name,
         target_player_id = tpid,
+        target_player_name = target.player_name,
         target_account_id = target_account,
+        target_account_name = target.account_name,
         target_entity_id = target_eid,
+        target_entity_name = target.player_name,
         source = source.path,
         ability_id = source.ability_id,
+        ability_name = ability_name(source.ability_id),
         effect_id = source.effect_id,
+        effect_name = effect_name(source.effect_id),
         health_before = before,
         health_after = 1,
         "partner damage would have killed a duelist: held at 1 HP, the duel ends"
