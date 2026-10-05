@@ -242,7 +242,7 @@ the SEH/EH epilogue, not actual behavior. The function returns normally after fi
 Logic:
 1. If `this+0x20` (CZipArchive handle) is non-null and CZipArchive state at `+0x5E` is not -1 (closed):
    return true immediately (already open).
-2. Iterate path vector at `this+0x14..0x18` to find the PAK file on disk.
+2. Iterate the archive vector at `this+0x14..0x18` (**corrected 2026-10-04**: it holds `CZipArchive*`, not paths; the names are the vector at `this+0x00`; see [Finding 8](#finding-8--where-the-category-version-is-read-and-how-the-read-fails-silently)) and work out each PAK's path under the cache directory.
 3. If path doesn't exist: call `FUN_0139dfb0` to create the directory.
    - On failure: log error `"Error creating cache archive directory: ..."` via log4cxx and return false.
 4. Open the ZIP archive via CZipArchive API.
@@ -284,6 +284,42 @@ Globals:
 `CacheLibrary` is 12 bytes. The actual ctor body is `FUN_0157ce00` (thin wrapper at `CacheLibrary_Ctor`
 `0x00478840` sets up SEH and calls it). The CacheLibrary holds an internal sorted map (std::map-like
 red-black tree) of category ID → LibCategory pointer.
+
+---
+
+## Finding 8 — Where the category version is read, and how the read fails silently
+
+**Confidence**: HIGH for the code paths (disassembly of the QA `SGW.exe`, 2026-10-04: function entries, `ret N`, every `call rel32` to each function); the Wine failure itself is not explained.
+**Sources**: `0x00479340` (`ZipStorageBase::OpenArchive`), `0x00478f00`, `0x00478e10`, `0x01396900` (`CZipArchive::FindFile`), `0x01398af0` (`CZipArchive::ExtractFile` to a memory file), `0x00479e90`, `0x00479e10`.
+
+**Correction to Finding 6.** `this+0x10` is a `std::vector<CZipArchive*>` (begin `+0x14`, end `+0x18`), not a vector of paths. The PAK names are a `std::vector<std::wstring>` at `this+0x00` (begin `+0x04`, end `+0x08`, element size `0x1c`). `this+0x20` is the first archive once it is open, and the early return tests it and the archive's `+0x5e` (`0xffff` when closed).
+
+**The open mode.** For each archive, `OpenArchive` starts from mode 2 (create). It switches to 0 (open) only if `0x0139d3a0(path) == 1`, `0x0139de80(path, &size)` succeeds and `size > 0`; then to 1 (read-only) if `0x0139d2a0(path, &attributes)` succeeds and bit 0 is set. Then `0x01397ce0(path, mode, 0)`. A wrong answer from any of the three helpers opens an existing cache in create mode. The open sits in a `try`; the handler logs `Error opening static cache archive` and closes the archive.
+
+**The version read.** After the loop, if the archive vector is not empty, `OpenArchive` calls `0x00478f00(this, &this->version /* +0x24 */, archives[0])`:
+
+```text
+0x00478f00  thiscall(this, u32* out, CZipArchive* archive), ret 8
+  build a stream
+  if 0x00478e10(this, &stream, archive, L"MetaData"):     ; L"MetaData" at 0x017fe554
+      stream.read(out, 4)
+  ; otherwise *out is left as it was
+
+0x00478e10  thiscall(this, stream*, CZipArchive* archive, const wchar_t* name), ret 0xc, bool
+  index = archive->FindFile(name, 0, true)                ; 0x01396900, name-only search
+  if index == 0xffff: return false
+  CZipMemFile file(grow 0x400)
+  if !archive->ExtractFile(index, file, true, 0x10000): return false   ; 0x01398af0
+  if file.length == 0: return false
+  stream.write(file.data, file.length)
+  return true
+```
+
+A failed find or extraction leaves `this+0x24` at its previous value, 0 in a fresh process, and logs nothing. `0x00478f00` has three callers: `0x004798e6` (the tail of `OpenArchive`), `0x00479336` and `0x0047a36e` (the source-archive update). `FindFile` has two call sites in the client (`0x00478e3b`, `0x00478fc3`) and the memory `ExtractFile` one (`0x00478e70`).
+
+**The stamp.** `ServerSource_SetVersion` (`0x00479e90`, `thiscall(this, const u32*)`, `ret 4`) is `this->version = *arg; WriteMetaDataVersion(this)`, and has 21 call sites, one per category's `onVersionInfo` handler. The write path finds and replaces the existing `MetaData` entry: an archive written by a resync holds exactly one.
+
+**Under Wine on macOS (2026-10-04).** After a resync all 21 cache PAKs are valid, each with one `MetaData` entry holding the server's real version. A clean quit leaves them byte-identical. The next start opens all 22 cache PAKs read-write at full size and leaves them byte-identical, yet the client sends 0 for every category. So the archives are opened in mode 0 and the read at the tail fails for every one, or something clears `+0x24` before login. Which step fails is what `client.cooked.version_read` reports ([client-telemetry.md](../../architecture/client-telemetry.md#cooked-data-cache-clientcooked)).
 
 ---
 
