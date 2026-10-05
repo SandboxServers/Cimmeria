@@ -128,3 +128,4 @@ Sub-slot encoding details: now confirmed in `findings/entity-property-sync.md` (
 - Category 7 NOT in Account.py categoryMaps (lines 327-336) = no server-push for char_creation
 
 (The original `src/` and `python/base/` paths above were rewritten to `deprecated/cpp/src/` and `deprecated/python/base/` in the mechanical pass.)
+- [cell-gm-class-id-and-raw-bundle-blobs.md](cell-gm-class-id-and-raw-bundle-blobs.md) - **[NEW 2026-10-04]** Cell players are always class 0x02 (GMs too); raw bundle appends can hold several messages (createEntity+avatarUpdate, cascades).
