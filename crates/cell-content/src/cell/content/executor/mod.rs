@@ -3,6 +3,8 @@
 //!
 //! Each match arm forwards to a per-family handler in a sibling module:
 //!
+//! - [`ability_grant`] — `GrantAbility`, the non-GM content grant with a
+//!   recorded provenance (CS-01a), forwarded to the base
 //! - [`ability_granter`] — `GmAbilityBulk`, the Debug Area ability granter
 //!   and reset NPCs (GM-gated `gmGiveAllAbilities` / `gmResetAbilities`)
 //! - [`bark`]      — `NpcBark`, the non-modal companion line (client method 28)
@@ -36,6 +38,7 @@ use cimmeria_content_engine::chain::ResolvedActions;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod ability_grant;
 mod ability_granter;
 mod bark;
 mod black_market;

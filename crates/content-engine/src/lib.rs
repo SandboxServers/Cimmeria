@@ -25,6 +25,7 @@
 //! [`ChainEngine`]: chain::ChainEngine
 //! [`ExecutionContext`]: context::ExecutionContext
 
+pub mod ability_grant;
 pub mod actions;
 pub mod chain;
 pub mod conditions;

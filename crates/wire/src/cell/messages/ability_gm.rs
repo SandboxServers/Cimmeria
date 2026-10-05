@@ -34,13 +34,16 @@ impl GmAbilitySource {
 pub enum GmAbilityChange {
     /// `gmGiveAllAbilities`: append every id in `ability_ids` the character
     /// does not know yet. Not a trainer purchase, so no points move and
-    /// nothing goes into `trained_abilities` (a respec keeps them).
+    /// nothing goes into `trained_abilities` (a respec keeps them). Each
+    /// appended id gets a `gm` provenance row (CS-01a).
     GrantAll,
     /// `gmResetAbilities`: set the known abilities to the archetype's
-    /// character-creation starters, refund `tree_points_spent` into
+    /// character-creation starters plus every ability with a non-`gm`
+    /// provenance row (tutorial, racial core, signature, mission; CS-01a,
+    /// lock L6), delete the `gm` rows, refund `tree_points_spent` into
     /// `training_points` and clear `trained_abilities`, as the trainer
-    /// respec does, but with no trainer, no charge, and quest and GM grants
-    /// removed too.
+    /// respec does, but with no trainer, no charge, and GM grants and
+    /// legacy grants with no provenance removed too.
     Reset,
 }
 

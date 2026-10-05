@@ -24,6 +24,7 @@ mod bandolier_update_ammo;
 mod bank;
 mod bank_org;
 mod broadcast_to_witnesses;
+mod content_ability_grant;
 mod create_entity_instance;
 mod disconnect_ability_snapshot;
 mod disconnect_lab_dummy;

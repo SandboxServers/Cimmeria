@@ -1033,9 +1033,12 @@ every granted ability id and name.
 
 Right-click the reset NPC to go back to your archetype's character-creation
 starter abilities, with the tree points you spent refunded and every cooldown
-cleared, as `/gmresetabilities` does. It removes quest and GM grants too: it
-is the clean slate a repeatable ability UAT starts from. GM only, like the
-granter. Chain 13001, action `gm_ability_bulk` with change `reset`.
+cleared, as `/gmresetabilities` does. It removes trained abilities and GM
+grants (the granter's included), but keeps every ability play granted with a
+recorded provenance (tutorial, racial core, class signature, mission; the
+`grant_ability` content action, Class Start v6 CS-01a). It is the clean slate
+a repeatable ability UAT starts from. GM only, like the granter. Chain 13001,
+action `gm_ability_bulk` with change `reset`.
 
 ### Munitions vendor (template 1302)
 

@@ -114,7 +114,7 @@ pub use stat_buff::{
     TimedEffectApplied, TimedEffectSpec, TimedStacking, EFFECT_BAR_SLOTS_PER_SIDE,
 };
 pub use system_options::SystemOptions;
-pub use tree_progress::TreeProgress;
+pub use tree_progress::{AbilityGrantKind, TreeProgress};
 pub use vault_session::{ExpansionOffer, VaultCloseReason, VaultScope, VaultSession};
 pub use witness_aoi::{AOI_LEAVE_MARGIN, PLAYER_AOI_RADIUS};
 

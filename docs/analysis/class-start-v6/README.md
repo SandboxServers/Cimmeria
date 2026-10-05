@@ -210,7 +210,7 @@ the live UAT (CS-08).
 | Packet | Scope | Depends on | Status |
 |---|---|---|---|
 | CS-00 | This ledger: OD-CS01..12, L1-L6, preflight findings, B1-B4, matrices. D-SA1 and D-CB06 marked superseded where recorded. | none | Open |
-| CS-01a | Grant provenance and the content grant action: `sgw_player_ability_grants`; a non-GM `grant_ability` content action (persist, provenance, `onKnownAbilitiesUpdate`, visible chat feedback); branch credit in the trainer spend gate (trained points plus the cost of granted tree nodes; refunds stay trained-only); the GM / Debug NPC reset rebuilds from starters plus provenance; GM grants recorded as `gm`. | none | Dispatched |
+| CS-01a | Grant provenance and the content grant action: `sgw_player_ability_grants`; a non-GM `grant_ability` content action (persist, provenance, `onKnownAbilitiesUpdate`, visible chat feedback); branch credit in the trainer spend gate (trained points plus the cost of granted tree nodes; refunds stay trained-only); the GM / Debug NPC reset rebuilds from starters plus provenance; GM grants recorded as `gm`. | none | In review (PR open, 2026-10-05) |
 | CS-01b | Dialog triggers set the `archetype` parameter (every player trigger now does; a missing value still reads -1 on purpose, 701's Human-branch fallback). The bandolier ammo counter (`AmmoSlot{N}`) mirrors a granted gun's count. The content executor no longer writes a guessed weapon into the occupied active slot. Guards that a content, mission, loot, GM or vendor acquisition gives a gun 0 rounds, and that equip and swap keep the count (OD-CS13). PR #1263. | none | Review |
 | CS-02 | Data-driven start profile (world, spawn, level, gear, grants, `debug_kit`, holding-state label); fail closed on an unknown world (L3); universal kit removed for canonical profiles; OD-CS08/09 holding states; seeded characters and drift test updated. | CS-01a | Planned |
 | CS-03 | Persisted one-time tutorial state; triggers for 5882 and 5883. | CS-01a | Planned |
@@ -232,6 +232,32 @@ the live UAT (CS-08).
 
 A trained ability is never in this table; it lives in `trained_abilities`.
 Existing characters start with no provenance rows (D-AT11).
+
+As built in CS-01a (with the review fixes), rules the table above does not
+show:
+
+- **A bought node that content later grants is converted** (OD-CS06, "costs
+  no point"), in the grant's own locked transaction: removed from
+  `trained_abilities`, its tree node's `skill_point_cost` refunded to
+  `training_points` and taken off `tree_points_spent` (both floored at 0), and
+  the content row written. A respec afterwards keeps it. The player gets the
+  point counter and an "is now yours for free" line.
+- **`signature` and `racial_core` grants name their archetypes**
+  (`archetypes`, EArchetype ordinals), checked against the player's real
+  archetype by the cell and again by the base; a mismatch writes nothing and
+  sends no line. `tutorial` and `mission` may omit it.
+- **Starters earn no credit.** A grant of one of the archetype's
+  character-creation starters writes no row, and the world-entry credit read
+  skips starters, so an overlapping grant list gives no free branch credit.
+
+- A content grant of an ability that already has a `gm` row promotes the row
+  to its own kind, so the reset keeps it. Any other existing row is kept: the
+  first content source wins.
+- A GM grant of an ability that already has a content row leaves the row as it
+  is, so a GM can never downgrade a signature to `gm`.
+
+The author-facing reference is
+[`grant_ability` params](../../content/content-engine-vocabulary.md#grant_ability-params).
 
 ## Follow-up campaigns (outside v6)
 

@@ -10,16 +10,21 @@
 //! sends the GM the reason instead.
 //!
 //! - **Give all** appends every id the row lacks, in the order the cell
-//!   sent them (tree order). It is not a trainer purchase: `trained_abilities`,
+//!   sent them (tree order), and records a `gm` provenance row for each
+//!   (CS-01a). It is not a trainer purchase: `trained_abilities`,
 //!   `training_points` and `tree_points_spent` are untouched, so a respec
 //!   keeps the grants, as with `.giveability`.
 //! - **Reset** sets `abilities` to the archetype's character-creation
 //!   starters (`resources.char_creation_abilities` for every `char_creation`
-//!   row of the character's archetype, the set `createCharacter` granted),
-//!   refunds `tree_points_spent` into `training_points` and clears
+//!   row of the character's archetype, the set `createCharacter` granted)
+//!   plus every ability with a non-`gm` provenance row (tutorial, racial
+//!   core, signature, mission: lock L6), deletes the `gm` rows, refunds
+//!   `tree_points_spent` into `training_points` and clears
 //!   `trained_abilities`, as the trainer respec does. Unlike the respec it
-//!   needs no trainer, charges nothing, and also removes quest and GM
-//!   grants: it is the clean slate a test run starts from.
+//!   needs no trainer, charges nothing, and also removes GM grants and any
+//!   grant with no provenance row (characters older than CS-01a, D-AT11):
+//!   it is the clean slate a test run starts from, without undoing what
+//!   play granted.
 
 use cimmeria_entity::known_names;
 use std::collections::HashMap;
@@ -95,11 +100,16 @@ pub(super) async fn persist_bulk(
     let (after, training_points): (Vec<i32>, i32) = match change {
         GmAbilityChange::GrantAll => {
             let mut after = before.clone();
+            let mut added = Vec::new();
             for &id in ability_ids {
                 if !after.contains(&id) {
                     after.push(id);
+                    added.push(id);
                 }
             }
+            // One batch insert: every appended id is a GM grant (CS-01a),
+            // which the next reset removes and the spend gate never counts.
+            super::grant_provenance::record_gm_grants(&mut *txn, player_id, &added).await?;
             sqlx::query_as(
                 "UPDATE sgw_player SET abilities = $2 WHERE player_id = $1 \
                  RETURNING abilities, training_points",
@@ -117,6 +127,16 @@ pub(super) async fn persist_bulk(
             if starters.is_empty() {
                 return Ok(Err(BulkRefusal::NoStarters));
             }
+            // Starters plus every non-`gm` grant (tutorial, racial core,
+            // signature, mission): lock L6, a reset never takes back what
+            // play granted. The `gm` rows go with their abilities.
+            let mut kept = starters;
+            for id in super::grant_provenance::credited_grants(&mut *txn, player_id).await? {
+                if !kept.contains(&id) {
+                    kept.push(id);
+                }
+            }
+            super::grant_provenance::delete_gm_grants(&mut *txn, player_id).await?;
             sqlx::query_as(
                 "UPDATE sgw_player \
                     SET abilities = $2, \
@@ -127,7 +147,7 @@ pub(super) async fn persist_bulk(
                  RETURNING abilities, training_points",
             )
             .bind(player_id)
-            .bind(&starters)
+            .bind(&kept)
             .fetch_one(&mut *txn)
             .await?
         }

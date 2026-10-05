@@ -11,6 +11,8 @@
 //! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
 //! - [`gm_abilities`] — `GmAbilitiesChanged` (GM give-all / reset mirror +
 //!   burst, AB-N2)
+//! - [`content_ability_grant`] — `ContentAbilitiesGranted` (the content
+//!   `grant_ability` mirror: known set, branch credit, learned lines; CS-01a)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
 //! - `ItemUseConsumed` goes straight to `cell::content::apply_consumed_item`
@@ -38,9 +40,11 @@ use super::super::{chat, dispatch, spawner};
 mod ability_granted;
 mod bandolier;
 mod bank;
+mod content_ability_grant;
 mod gm_abilities;
 mod gm_spawn;
 mod ignore;
+mod init_grant_merge;
 mod inventory_events;
 mod lab_console;
 mod lab_query;
@@ -182,18 +186,26 @@ pub(super) async fn handle_base_message(
             world_name,
             archetype_id,
             saved_missions,
-            abilities,
+            mut abilities,
             active_bandolier_slot,
             bandolier_items,
             system_options,
             access_level,
             known_stargates,
-            tree_progress,
+            mut tree_progress,
             level,
             character_name,
             body_set,
             looted_containers,
         } => {
+            init_grant_merge::merge_into_snapshot(
+                entity_id,
+                player_id,
+                archetype_id,
+                &mut tree_progress,
+                &mut abilities,
+                space_mgr,
+            );
             // Cache the display name on the cell entity so cell-side seams (GM
             // `.`-console audit, mission/death/respawn Discord emits) can
             // attribute events to a name — the cell has no other source for it.
@@ -506,6 +518,10 @@ pub(super) async fn handle_base_message(
 
         BaseToCellMsg::GmAbilitiesChanged(changed) => {
             gm_abilities::handle_gm_abilities_changed(changed, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::ContentAbilitiesGranted(granted) => {
+            content_ability_grant::handle_content_abilities_granted(granted, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

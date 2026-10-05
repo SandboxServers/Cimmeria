@@ -42,6 +42,8 @@ fn fixture() -> SpaceManager {
             trained_abilities: vec![ROOT, NODE],
             tree_points_spent: 3,
             training_points: 0,
+            // A content grant (CS-01a): a respec must keep its credit.
+            credited_grants: vec![STARTER],
         };
         p.last_interaction_target = Some(TRAINER);
     }
@@ -162,7 +164,7 @@ async fn respec_mirrors_the_reset_onto_the_cell() {
     let p = mgr.get_entity(PLAYER).unwrap();
     assert!(
         p.abilities.has_ability(STARTER),
-        "non-trainer grants survive"
+        "non-trainer grants survive, and so does their branch credit"
     );
     assert!(!p.abilities.has_ability(ROOT));
     assert!(!p.abilities.has_ability(NODE));
@@ -172,6 +174,7 @@ async fn respec_mirrors_the_reset_onto_the_cell() {
             trained_abilities: vec![],
             tree_points_spent: 0,
             training_points: 3,
+            credited_grants: vec![STARTER],
         }
     );
 }

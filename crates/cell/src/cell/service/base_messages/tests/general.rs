@@ -151,6 +151,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
                 trained_abilities: vec![597, 646],
                 tree_points_spent: 2,
                 training_points: 5,
+                credited_grants: Vec::new(),
             },
             level: 12,
             character_name: Some("Daniel".into()),
@@ -201,6 +202,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             trained_abilities: vec![597, 646],
             tree_points_spent: 2,
             training_points: 5,
+            credited_grants: Vec::new(),
         },
         "InitPlayerState must carry the ability-tree provenance onto the cell entity",
     );

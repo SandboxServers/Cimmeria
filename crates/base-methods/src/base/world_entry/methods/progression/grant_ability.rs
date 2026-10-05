@@ -9,7 +9,9 @@
 //! A GM grant is not a trainer purchase: it touches `abilities` only, never
 //! `trained_abilities`, `training_points` or `tree_points_spent`. The respec
 //! `UPDATE` (`respec.rs`) removes only `trained_abilities` from `abilities`,
-//! so a granted ability survives a respec and refunds nothing.
+//! so a granted ability survives a respec and refunds nothing. The same
+//! transaction records a `gm` provenance row (CS-01a), so the GM / Debug
+//! NPC reset removes the ability again and the spend gate never counts it.
 
 use cimmeria_entity::known_names;
 use std::collections::HashMap;
@@ -57,11 +59,16 @@ pub(super) enum GrantWrite {
 /// check is only for a friendlier message. When the `UPDATE` matches no row,
 /// one cheap existence check tells "already known" from "no such player", so
 /// the GM is never told a missing character "already knows" the ability.
+///
+/// The append and its `gm` provenance row commit together (CS-01a). An
+/// already-known ability gets no row: it is a starter, a trained or a
+/// content grant.
 pub(super) async fn persist_ability_grant(
     pool: &PgPool,
     player_id: i32,
     ability_id: i32,
 ) -> sqlx::Result<GrantWrite> {
+    let mut txn = pool.begin().await?;
     let r = sqlx::query(
         "UPDATE sgw_player \
             SET abilities = abilities || $1::integer \
@@ -70,11 +77,14 @@ pub(super) async fn persist_ability_grant(
     )
     .bind(ability_id)
     .bind(player_id)
-    .execute(pool)
+    .execute(&mut *txn)
     .await?;
     if r.rows_affected() == 1 {
+        super::grant_provenance::record_gm_grants(&mut *txn, player_id, &[ability_id]).await?;
+        txn.commit().await?;
         return Ok(GrantWrite::Granted);
     }
+    txn.rollback().await?;
     let exists: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM sgw_player WHERE player_id = $1)")
             .bind(player_id)
@@ -88,7 +98,7 @@ pub(super) async fn persist_ability_grant(
 }
 
 /// The character `entity_id`'s session plays now, if any.
-fn active_player_of(
+pub(super) fn active_player_of(
     entity_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
