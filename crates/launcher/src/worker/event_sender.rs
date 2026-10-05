@@ -106,6 +106,13 @@ mod tests {
                 .expect("channel closed")
         });
         assert!(matches!(ev, Event::ManifestError(_)), "got {ev:?}");
+        // The wake follows the send on the worker's thread, so this thread
+        // can hold the event before the wake has run. Wait for it; a send
+        // path that never wakes still fails, after the deadline.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while count.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 
