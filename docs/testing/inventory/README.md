@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,802 |
-| Files with tests | 1,868 |
-| Gated in CI (every crate but CI's exclude list) | 9,177 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,570 |
-| Inventory threshold (5% of the tests) | 540 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,812 |
+| Files with tests | 1,872 |
+| Gated in CI (every crate but CI's exclude list) | 9,187 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,576 |
+| Inventory threshold (5% of the tests) | 541 |
 
 <!-- /gen:tests-totals -->
 
@@ -87,10 +87,10 @@ with no file in this directory yet.
 
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
-| `crates/cell-combat` | `cimmeria-cell-combat` | 885 | 157 | 45 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 887 | 158 | 47 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 835 | 123 | 477 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
-| `crates/base-methods` | `cimmeria-base-methods` | 611 | 133 | 433 | yes | none |
+| `crates/base-methods` | `cimmeria-base-methods` | 612 | 133 | 434 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 593 | 135 | 26 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 540 | 94 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 501 | 82 | 1 | yes | none |
@@ -106,7 +106,7 @@ with no file in this directory yet.
 | `crates/content-engine` | `cimmeria-content-engine` | 272 | 24 | 0 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 204 | 35 | 0 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 200 | 51 | 115 | yes | none |
-| `crates/base` | `cimmeria-base` | 183 | 33 | 10 | yes | none |
+| `crates/base` | `cimmeria-base` | 190 | 36 | 13 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 181 | 50 | 27 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 138 | 20 | 0 | yes | none |
