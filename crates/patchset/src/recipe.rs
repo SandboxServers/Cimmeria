@@ -38,10 +38,17 @@ pub struct Op {
 pub struct Source {
     /// Install-relative path, `/`-separated.
     pub path: String,
-    /// SHA-256 of the stock file as it sits on disk, before any transform.
+    /// SHA-256 of the file as it sits on disk, before any transform: the
+    /// stock file, or the output of patch [`Self::output_of`].
     pub sha256: String,
     #[serde(default, skip_serializing_if = "Transform::is_none")]
     pub transform: Transform,
+    /// The id of the earlier patch whose output this source is, when it is
+    /// not a stock file (`010-debug-area-rings` reads 007's Armory map). Only
+    /// changes the error a mismatch reports. Launchers that predate the field
+    /// ignore it: the recipe is not `deny_unknown_fields`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,11 +118,13 @@ mod tests {
                         path: "Working/a.umap".into(),
                         sha256: "aa".into(),
                         transform: Transform::UpkNormalize,
+                        output_of: None,
                     },
                     Source {
                         path: "Working/b.txt".into(),
                         sha256: "bb".into(),
                         transform: Transform::None,
+                        output_of: None,
                     },
                 ],
                 delta: "deltas/0.bsdiff".into(),

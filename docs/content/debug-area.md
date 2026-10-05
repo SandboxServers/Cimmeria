@@ -442,7 +442,9 @@ water collision plane at y -33.28, which the navmesh treats as ground.
    play, and you can move again about 5.5 s after arriving.
 
 Anyone standing on the pad when it fires travels too. Players who can see
-the traveller see the rings animate as well.
+the traveller see the source rings animate as well. A player watching only
+the destination pad may not see its rings drop: see the known limitation in
+[ring-transport-system.md](../gameplay/ring-transport-system.md#kismet-sequences-ue3-visual-effects).
 
 ### What needs the client patch
 
@@ -453,7 +455,26 @@ still work, but there is no ring hardware on the pads and no animation.
 
 World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
 ring platforms too. They do nothing there: world 73 has no pads, consoles or
-chains.
+chains. The platforms and rings block players on the client
+(`bBlockActors`) but not on world 73's navmesh, which is fine for scenery.
+None is within 50 m of the DHD or the gate region. The patched chunk is
+the first Ihpet chunk to reference `GLB-Global` (a 9 MB package), which
+loads on demand for anyone within 500 m of it.
+
+What only the live client can show (DA-06):
+
+- The cloned base platform has no lightmap (`LMT_None`) and no light
+  environment, in a map with baked outdoor light. 007's interior copy
+  rendered lit; outdoors it may look black or flat.
+- The ring sound is the FMOD event `prp_gen/rings/transport`. Its waveform
+  is in the stock `audio/genprp/prp_gen.fsb`, which patch 006 does not
+  copy (006 copies `prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI`).
+  Whether this map's copy of the event resolves is unproven. There is no
+  evidence yet that 007's Armory ring sound plays either: its phase 1
+  in-client test is still pending, and SigNoz has no client log naming
+  `rings/transport` or sequence 10187 (searched 2026-10-04, 30 days).
+- The arena pit pad sits on the lake's fluid plane; the chunk's
+  `SeqEvent_Touch` splash chain may splash on arrival.
 
 ### Seed and code
 

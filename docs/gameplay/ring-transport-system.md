@@ -265,7 +265,14 @@ if (this->sequenceEventType == this->teleportDirection + 8000)
 
 Sequences are per-ring-platform matinees baked into the client level packages. Only played for the first player to avoid animation conflicts (noted as FIXME in server code).
 
-**Witnesses see it too (Cimmeria, not 2009).** The Python sent `onSequence` to the first traveller's client only, so anyone watching saw the passengers fade out on a pad that never moved. Since DA-08 the dispatcher (`wire_helpers::send_play_sequence`) still sends the traveller its owner method and also sends the same frame, addressed to the traveller, to every witness of the traveller, as gate travel does for its stargate sequences. It is still one send per trip per client: the FSM only emits `PlaySequence` for the first player.
+**Witnesses see it too (Cimmeria, not 2009).** The Python sent `onSequence` to the first traveller's client only, so anyone watching saw the passengers fade out on a pad that never moved. Since DA-08 the dispatcher (`wire_helpers::send_play_sequence`) still sends the traveller its owner method and also sends the same frame, addressed to the traveller, to every witness of the traveller, as gate travel does for its stargate sequences. It is still one send per trip per client: the FSM only emits `PlaySequence` for the first player. The traveller's own frames are byte-identical to before (`the_travellers_own_sequences_are_unchanged_by_the_witness_fan_out`). This affects every ring: Castle CellBlock, Harset, Lucia, Omega Site and Menfa Dark as well as the Debug Area.
+
+**Known cosmetic limitation: destination witnesses may not see Teleport In.** Two things stand between a player watching the destination pad and its rings dropping:
+
+- The cell refreshes witness lists on its AoI tick, not inside the teleport, and Teleport In fires in the same tick as a same-world teleport. Its witness copies go to the clients that already saw the traveller (a player in AoI range of both pads); a player who only sees the destination pad gets none.
+- A witness that does get a copy may drop it. The client's `FUN_00d06f30` (`Event_Cache_ElementReady`) erases a sequence request whose source entity has no pawn unless the event is 5001 or the view type is 1 or 2. Ring frames use view type 3 (the rigs only wire Kismet output 0, which view types 0 and 3 select), and the traveller is hidden (`BASEMSG_ENTITY_INVISIBLE`) until `ShowPlayer`, 3 s after Teleport In. On the client this shows as `client.sequence.dropped` with `path=no_source_pawn`.
+
+There is no clean server hook to send a later copy that would survive: the traveller stays hidden for the whole destination matinee, and addressing the frame to another entity (the console) would need a region-to-console map the seed does not carry. Teleport Out is not affected, and the traveller's own client always plays both. DA-06 checks it on two clients.
 
 ### Slash Command
 

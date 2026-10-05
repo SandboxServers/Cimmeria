@@ -13,7 +13,14 @@ Facts from building `010-debug-area-rings` (2026-10-04, eight rigs in `Ihpet_Cra
   `1194` sits at base + game (2.88, 0.44, 1.32). 007's command reproduces byte-exact:
   `--roots 772,216,218,219,227,228 --map 764:764,220:226 --anchor 1192:1174`.
 - **Donor = 007's result, not stock.** 007 rewrites fffeffff, so a cross-map patch's
-  donor source must pin 007's result hash (`2f41a7e1…`) and be published after 007.
+  donor source must pin 007's result hash (`2f41a7e1…`), carry `"output_of"` (recipe
+  field, reports `PatchOutputMismatch`), and be published `after: 007` exactly
+  (`blocked_by_failure` checks only the named id). Superseding 007 means rebuilding 010.
+- **Witness Teleport In is fragile.** Cell witness lists refresh on the AoI tick, not in
+  the teleport, and the client erases view-type-3 sequences whose source has no pawn
+  (`FUN_00d06f30`); the traveller is hidden until ShowPlayer. Documented, not fixed.
+- **Test trap:** `patchset::tests::noisy(seed)` uses `seed | 1`, so seeds 22 and 23 give
+  identical bytes. Pick unrelated seeds for "a different file".
   The prefab-instanced rigs (fffefffe, Harset) carry archetype imports: avoid.
 - **Base 1192's component ends in `1,0,0,0`** (one empty LODInfo). The cloner refused it
   until `tail_copies_verbatim` (object_clone.rs) accepted all-zero LOD entries.

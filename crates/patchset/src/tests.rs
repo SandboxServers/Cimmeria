@@ -74,6 +74,7 @@ fn fixture() -> Fixture {
                 sources: vec![SpecSource {
                     path: "Working/SGWGame/UI/Dialog.lua".into(),
                     transform: Transform::None,
+                    output_of: None,
                 }],
             },
             SpecOp {
@@ -82,10 +83,12 @@ fn fixture() -> Fixture {
                     SpecSource {
                         path: "Working/SGWGame/Maps/cell.umap".into(),
                         transform: Transform::None,
+                        output_of: None,
                     },
                     SpecSource {
                         path: "Working/SGWGame/Maps/donor.umap".into(),
                         transform: Transform::None,
+                        output_of: None,
                     },
                 ],
             },
@@ -199,6 +202,7 @@ fn a_target_other_ops_read_is_written_last() {
         sources: vec![SpecSource {
             path: "Working/SGWGame/Maps/donor.umap".into(),
             transform: Transform::None,
+            output_of: None,
         }],
     };
     let mut spec = f.spec.clone();
@@ -318,6 +322,7 @@ fn a_target_spelled_in_another_case_keeps_the_stock_name() {
             sources: vec![SpecSource {
                 path: format!("{eula_dir}/eula.lua"),
                 transform: Transform::None,
+                output_of: None,
             }],
         }],
         files: vec![SpecFile {
@@ -394,6 +399,7 @@ fn real_client_ring_maps() {
     let norm = |p: String| SpecSource {
         path: p,
         transform: Transform::UpkNormalize,
+        output_of: None,
     };
     let spec = Spec {
         id: "ring".into(),

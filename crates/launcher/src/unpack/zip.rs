@@ -13,6 +13,12 @@ fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
             expected,
             actual,
         } => ("source_mismatch", path, expected, actual),
+        P::PatchOutputMismatch {
+            path,
+            expected,
+            actual,
+            ..
+        } => ("patch_output_mismatch", path, expected, actual),
         P::ResultMismatch {
             path,
             expected,

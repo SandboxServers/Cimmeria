@@ -77,6 +77,14 @@ pub fn apply(
             // `UpkNormalize` see `transform::load`).
             let (bytes, raw_sha) = transform::load(&path, s.transform)?;
             if raw_sha != s.sha256 {
+                if let Some(patch) = &s.output_of {
+                    return Err(PatchsetError::PatchOutputMismatch {
+                        path: s.path.clone(),
+                        patch: patch.clone(),
+                        expected: s.sha256.clone(),
+                        actual: raw_sha,
+                    });
+                }
                 return Err(PatchsetError::SourceMismatch {
                     path: s.path.clone(),
                     expected: s.sha256.clone(),

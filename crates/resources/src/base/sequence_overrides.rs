@@ -248,4 +248,54 @@ mod tests {
         paths.dedup();
         assert_eq!(paths.len(), 8);
     }
+
+    /// `(sequence_id, event_id, kismet_script_name)` from every
+    /// `INSERT INTO sequences` row of a seed file.
+    fn seeded_sequences(rel: &str) -> Vec<(u32, u32, String)> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../db/resources/Events/Seed")
+            .join(rel);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+            .lines()
+            .filter(|l| l.starts_with("INSERT INTO sequences ("))
+            .map(|l| {
+                let v = &l[l.find("VALUES (").unwrap() + 8..l.rfind(");").unwrap()];
+                let mut f = v.splitn(3, ", ");
+                let id = f.next().unwrap().parse().unwrap();
+                let event = f.next().unwrap().parse().unwrap();
+                (id, event, f.next().unwrap().trim_matches('\'').to_string())
+            })
+            .collect()
+    }
+
+    /// The client plays what `SEQUENCE_OVERRIDES` says; the server's event
+    /// sets resolve through the seeded `sequences` rows. Each override must
+    /// match its seed row exactly, or the server would fire one id while the
+    /// client plays another rig (a swapped pair passes every other test).
+    #[test]
+    fn every_override_matches_its_seeded_sequence_row() {
+        let mut seeded = seeded_sequences("sequences.sql");
+        seeded.extend(seeded_sequences("debug_area_ring_events.sql"));
+        for ov in SEQUENCE_OVERRIDES {
+            let rows: Vec<_> = seeded.iter().filter(|r| r.0 == ov.sequence_id).collect();
+            assert_eq!(
+                rows,
+                vec![&(
+                    ov.sequence_id,
+                    ov.event_id,
+                    ov.kismet_script_name.to_string()
+                )],
+                "sequence {} must be seeded once, as the override says",
+                ov.sequence_id
+            );
+        }
+        // And the Debug Area seed holds nothing the overrides do not deliver.
+        for (id, _, path) in seeded_sequences("debug_area_ring_events.sql") {
+            assert!(
+                SEQUENCE_OVERRIDES.iter().any(|o| o.sequence_id == id),
+                "seeded sequence {id} ({path}) never reaches a client"
+            );
+        }
+    }
 }

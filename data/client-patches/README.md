@@ -107,17 +107,37 @@ sequence took its own instance number, so the server plays one station
 at a time by object path. The console mesh is not cloned: the server's
 ring-switch entity (template 3) renders one.
 
-- **Depends on 007.** The rig's bytes come from
+- **Depends on 007, and only on 007.** The rig's bytes come from
   `Castle_CellBlock-fffeffff.umap`, which 007 rewrites, so the op's second
-  source is pinned to **007's result hash**, not the stock map's. Publish
-  010 with `"after": "007-castle-armory-ring"` (or later); if 007 did not
-  apply, the launcher skips 010 as a failed dependency instead of
-  refusing a non-stock source. `debug_area_rings_tests.rs` in
-  `crates/patchset` fails if the pin and 007's result ever disagree.
-- **No CME bytes.** The delta is 17 KB for a 2.26 MB map: the appended
-  objects are rebuilt from the player's own stock Ihpet chunk and 007's
-  Armory map. Its extra block (bytes not derived from either source) is
-  487 bytes compressed, 4.2 KB of short fragments.
+  source is pinned to **007's result hash**, not the stock map's, and
+  marked `"output_of": "007-castle-armory-ring"` in the spec and recipe.
+  Publish the manifest entry with `"after": "007-castle-armory-ring"`,
+  never "the previous entry": the launcher's `blocked_by_failure` checks
+  only the one id named.
+  - If 007 failed or was skipped on an install, the launcher skips 010 too
+    (`skipped, it builds on 007-castle-armory-ring, which did not apply`)
+    and carries on with the rest.
+  - If 007 is recorded as applied but its map was replaced since, 010
+    fails with "... does not match patch 007-castle-armory-ring's output
+    ... it cannot apply until 007-castle-armory-ring has applied", leaves
+    the Ihpet map untouched, and the install reports the failure.
+  - Keep 010 terminal: chain no later entry `after` 010, so a failed 010
+    (a GM-only world most players never enter) skips nothing else.
+  - `debug_area_rings_tests.rs` in `crates/patchset` fails if the pin,
+    the `output_of` marker and 007's result ever disagree.
+  - **Superseding 007 means rebuilding 010.** 010 freezes 007's result
+    hash. A future patch that changes the Armory map (as 007 superseded
+    002) changes the donor, so 010 needs a new patch id rebuilt against
+    the new result and chained after the new patch.
+- **What the delta carries.** 17,057 bytes for a 2.26 MB map, rebuilt
+  from the player's own stock Ihpet chunk and 007's Armory map. Its extra
+  block, the only bytes that reach the map verbatim, is 487 bytes
+  compressed (4,163 raw). Most of it is binary glue we chose (coordinates,
+  export and name indices). About 463 bytes are ASCII: short CME
+  identifier strings that also exist in the donor (`ring5ring4ring3ring2ring1`
+  eight times, `Bool`, `ource`); the longest run is 138 bytes. 007's extra
+  block is 31 bytes. `committed_010_delta_ships_no_verbatim_map_bytes`
+  fails above 520 compressed bytes, so growth is noticed.
 - **World 73 sees it too.** The live Ihpet Crater (world 73) loads the
   same map file, so it shows the eight platforms as scenery. Nothing is
   seeded for world 73, so none of them does anything there.
@@ -144,9 +164,10 @@ ring-switch entity (template 3) renders one.
 - **Check on a real client.** With `SGW_PATCHED_CLIENT` set to a client
   that has 007 applied:
   `cargo test -p cimmeria-patchset real_client_debug_area_rings -- --ignored`.
-- **Publishing** (coordinator): add the printed manifest entry after
-  007's, with `after` pointing at the previous entry, re-check the
-  `after` chain, sign the manifest offline and upload it with the zip.
+- **Publishing** (coordinator): add the printed manifest entry with
+  `"after": "007-castle-armory-ring"`, keep it the last link of its chain
+  (no entry `after` 010), re-check the `after` chain, sign the manifest
+  offline and upload it with the zip.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them
