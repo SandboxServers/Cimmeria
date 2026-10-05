@@ -3,7 +3,7 @@
 -- (harset_space_chains.sql, chains 6001-6005): `interact_tag` on the console's
 -- spawn tag -> `trigger_transporter` with the region id.
 --
--- Chain ID range: 13800-13807 (DA-08).
+-- Chain ID range: 13810-13817 (DA-08).
 --
 -- No condition: every click works, for every character. No
 -- `set_interaction_type`: template 3 already carries interaction_type 32
@@ -18,82 +18,82 @@
 
 SET search_path = resources, pg_catalog;
 
--- Chain 13800: DebugArea_Ring_Compound -> region 35.
+-- Chain 13810: DebugArea_Ring_Compound -> region 35.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13800, 'Debug Area - Ring console Compound: open destination list for region 35', 'space', 1300, true, 0);
+VALUES (13810, 'Debug Area - Ring console Compound: open destination list for region 35', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13800, 'interact_tag', 'DebugArea_Ring_Compound', 'player', false, 0);
+VALUES (13810, 'interact_tag', 'DebugArea_Ring_Compound', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13800, 'trigger_transporter', NULL, NULL, '{"regionId": 35}', 0, 0);
+VALUES (13810, 'trigger_transporter', NULL, NULL, '{"regionId": 35}', 0, 0);
 
--- Chain 13801: DebugArea_Ring_FactionYard -> region 36.
+-- Chain 13811: DebugArea_Ring_FactionYard -> region 36.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13801, 'Debug Area - Ring console Faction yard: open destination list for region 36', 'space', 1300, true, 0);
+VALUES (13811, 'Debug Area - Ring console Faction yard: open destination list for region 36', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13801, 'interact_tag', 'DebugArea_Ring_FactionYard', 'player', false, 0);
+VALUES (13811, 'interact_tag', 'DebugArea_Ring_FactionYard', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13801, 'trigger_transporter', NULL, NULL, '{"regionId": 36}', 0, 0);
+VALUES (13811, 'trigger_transporter', NULL, NULL, '{"regionId": 36}', 0, 0);
 
--- Chain 13802: DebugArea_Ring_AiSlope -> region 37.
+-- Chain 13812: DebugArea_Ring_AiSlope -> region 37.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13802, 'Debug Area - Ring console AI slope: open destination list for region 37', 'space', 1300, true, 0);
+VALUES (13812, 'Debug Area - Ring console AI slope: open destination list for region 37', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13802, 'interact_tag', 'DebugArea_Ring_AiSlope', 'player', false, 0);
+VALUES (13812, 'interact_tag', 'DebugArea_Ring_AiSlope', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13802, 'trigger_transporter', NULL, NULL, '{"regionId": 37}', 0, 0);
+VALUES (13812, 'trigger_transporter', NULL, NULL, '{"regionId": 37}', 0, 0);
 
--- Chain 13803: DebugArea_Ring_ArenaRim -> region 38.
+-- Chain 13813: DebugArea_Ring_ArenaRim -> region 38.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13803, 'Debug Area - Ring console Arena rim: open destination list for region 38', 'space', 1300, true, 0);
+VALUES (13813, 'Debug Area - Ring console Arena rim: open destination list for region 38', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13803, 'interact_tag', 'DebugArea_Ring_ArenaRim', 'player', false, 0);
+VALUES (13813, 'interact_tag', 'DebugArea_Ring_ArenaRim', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13803, 'trigger_transporter', NULL, NULL, '{"regionId": 38}', 0, 0);
+VALUES (13813, 'trigger_transporter', NULL, NULL, '{"regionId": 38}', 0, 0);
 
--- Chain 13804: DebugArea_Ring_ArenaPit -> region 39.
+-- Chain 13814: DebugArea_Ring_ArenaPit -> region 39.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13804, 'Debug Area - Ring console Arena pit: open destination list for region 39', 'space', 1300, true, 0);
+VALUES (13814, 'Debug Area - Ring console Arena pit: open destination list for region 39', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13804, 'interact_tag', 'DebugArea_Ring_ArenaPit', 'player', false, 0);
+VALUES (13814, 'interact_tag', 'DebugArea_Ring_ArenaPit', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13804, 'trigger_transporter', NULL, NULL, '{"regionId": 39}', 0, 0);
+VALUES (13814, 'trigger_transporter', NULL, NULL, '{"regionId": 39}', 0, 0);
 
--- Chain 13805: DebugArea_Ring_GalleryWest -> region 40.
+-- Chain 13815: DebugArea_Ring_GalleryWest -> region 40.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13805, 'Debug Area - Ring console Gallery west: open destination list for region 40', 'space', 1300, true, 0);
+VALUES (13815, 'Debug Area - Ring console Gallery west: open destination list for region 40', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13805, 'interact_tag', 'DebugArea_Ring_GalleryWest', 'player', false, 0);
+VALUES (13815, 'interact_tag', 'DebugArea_Ring_GalleryWest', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13805, 'trigger_transporter', NULL, NULL, '{"regionId": 40}', 0, 0);
+VALUES (13815, 'trigger_transporter', NULL, NULL, '{"regionId": 40}', 0, 0);
 
--- Chain 13806: DebugArea_Ring_GalleryEast -> region 41.
+-- Chain 13816: DebugArea_Ring_GalleryEast -> region 41.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13806, 'Debug Area - Ring console Gallery east: open destination list for region 41', 'space', 1300, true, 0);
+VALUES (13816, 'Debug Area - Ring console Gallery east: open destination list for region 41', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13806, 'interact_tag', 'DebugArea_Ring_GalleryEast', 'player', false, 0);
+VALUES (13816, 'interact_tag', 'DebugArea_Ring_GalleryEast', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13806, 'trigger_transporter', NULL, NULL, '{"regionId": 41}', 0, 0);
+VALUES (13816, 'trigger_transporter', NULL, NULL, '{"regionId": 41}', 0, 0);
 
--- Chain 13807: DebugArea_Ring_DeathYard -> region 42.
+-- Chain 13817: DebugArea_Ring_DeathYard -> region 42.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (13807, 'Debug Area - Ring console Death yard: open destination list for region 42', 'space', 1300, true, 0);
+VALUES (13817, 'Debug Area - Ring console Death yard: open destination list for region 42', 'space', 1300, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (13807, 'interact_tag', 'DebugArea_Ring_DeathYard', 'player', false, 0);
+VALUES (13817, 'interact_tag', 'DebugArea_Ring_DeathYard', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (13807, 'trigger_transporter', NULL, NULL, '{"regionId": 42}', 0, 0);
+VALUES (13817, 'trigger_transporter', NULL, NULL, '{"regionId": 42}', 0, 0);

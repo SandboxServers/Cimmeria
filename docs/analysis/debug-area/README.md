@@ -91,7 +91,7 @@ least 86 m apart with a wall between, against an 18 m default aggro radius and
 | Templates 1300-1329, spawns 13000-13199 | DA-02 |
 | Templates 1330-1369, spawns 13200-13599, point sets 13200-13209, points 13200-13299 | DA-03 |
 | Templates 1370-1399, spawns 13600-13799 | DA-04 |
-| Spawns 13800-13807, ring regions 35-42, event sets / point sets / points / chains 13800-13807, sequences 10189-10204 | DA-08 |
+| Spawns 13810-13817, ring regions 35-42, event sets / point sets / points / chains 13810-13817, sequences 10189-10204 (13800 is DA-07's) | DA-08 |
 
 Check each range is free in the seed before using it; raise a clash with the
 coordinator instead of moving into another packet's block.

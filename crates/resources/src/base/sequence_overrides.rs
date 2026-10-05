@@ -53,7 +53,7 @@ const ARMORY_RING_RIG: &str =
 /// Gallery west, Gallery east, Death yard. All eight are copies of region 3's
 /// rig, so each copy's root sequence took the next free instance number under
 /// `Main_Sequence.Prefabs`: the first has no suffix, the rest `_0` to `_6`.
-/// Seeded as event sets 13800-13807 in
+/// Seeded as event sets 13810-13817 in
 /// `db/resources/Events/Seed/debug_area_ring_events.sql`.
 pub const DEBUG_AREA_RING_RIGS: [&str; 8] = [
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq",

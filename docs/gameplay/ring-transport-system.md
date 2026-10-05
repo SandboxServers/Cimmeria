@@ -440,16 +440,16 @@ Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, whi
 
 | ID | `ring_transport_regions.tag` | Console spawn tag | Event set | Sequences (out / in) | Rig |
 |---|---|---|---|---|---|
-| 35 | `DebugArea_Ring_CompoundRegion` | `DebugArea_Ring_Compound` | 13800 | 10189 / 10190 | `…Pf0_Seq` |
-| 36 | `DebugArea_Ring_FactionYardRegion` | `DebugArea_Ring_FactionYard` | 13801 | 10191 / 10192 | `…Pf0_Seq_0` |
-| 37 | `DebugArea_Ring_AiSlopeRegion` | `DebugArea_Ring_AiSlope` | 13802 | 10193 / 10194 | `…Pf0_Seq_1` |
-| 38 | `DebugArea_Ring_ArenaRimRegion` | `DebugArea_Ring_ArenaRim` | 13803 | 10195 / 10196 | `…Pf0_Seq_2` |
-| 39 | `DebugArea_Ring_ArenaPitRegion` | `DebugArea_Ring_ArenaPit` | 13804 | 10197 / 10198 | `…Pf0_Seq_3` |
-| 40 | `DebugArea_Ring_GalleryWestRegion` | `DebugArea_Ring_GalleryWest` | 13805 | 10199 / 10200 | `…Pf0_Seq_4` |
-| 41 | `DebugArea_Ring_GalleryEastRegion` | `DebugArea_Ring_GalleryEast` | 13806 | 10201 / 10202 | `…Pf0_Seq_5` |
-| 42 | `DebugArea_Ring_DeathYardRegion` | `DebugArea_Ring_DeathYard` | 13807 | 10203 / 10204 | `…Pf0_Seq_6` |
+| 35 | `DebugArea_Ring_CompoundRegion` | `DebugArea_Ring_Compound` | 13810 | 10189 / 10190 | `…Pf0_Seq` |
+| 36 | `DebugArea_Ring_FactionYardRegion` | `DebugArea_Ring_FactionYard` | 13811 | 10191 / 10192 | `…Pf0_Seq_0` |
+| 37 | `DebugArea_Ring_AiSlopeRegion` | `DebugArea_Ring_AiSlope` | 13812 | 10193 / 10194 | `…Pf0_Seq_1` |
+| 38 | `DebugArea_Ring_ArenaRimRegion` | `DebugArea_Ring_ArenaRim` | 13813 | 10195 / 10196 | `…Pf0_Seq_2` |
+| 39 | `DebugArea_Ring_ArenaPitRegion` | `DebugArea_Ring_ArenaPit` | 13814 | 10197 / 10198 | `…Pf0_Seq_3` |
+| 40 | `DebugArea_Ring_GalleryWestRegion` | `DebugArea_Ring_GalleryWest` | 13815 | 10199 / 10200 | `…Pf0_Seq_4` |
+| 41 | `DebugArea_Ring_GalleryEastRegion` | `DebugArea_Ring_GalleryEast` | 13816 | 10201 / 10202 | `…Pf0_Seq_5` |
+| 42 | `DebugArea_Ring_DeathYardRegion` | `DebugArea_Ring_DeathYard` | 13817 | 10203 / 10204 | `…Pf0_Seq_6` |
 
-Rig paths are `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq[_N]`: each copy took the next free instance number. Every region lists the other seven. Consoles are template 3, like Harset's, and are wired the same way (`interact_tag` -> `trigger_transporter`, chains 13800-13807). The map patch clones no console mesh, because template 3 renders one. Pad rows are the base platform origin + 0.537 m, the offset regions 1 and 3 use. Station positions, what each serves and how to use them: [debug-area.md § Ring transports](../content/debug-area.md#ring-transports).
+Rig paths are `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq[_N]`: each copy took the next free instance number. Every region lists the other seven. Consoles are template 3, like Harset's, and are wired the same way (`interact_tag` -> `trigger_transporter`, chains 13810-13817). The map patch clones no console mesh, because template 3 renders one. Pad rows are the base platform origin + 0.537 m, the offset regions 1 and 3 use. Station positions, what each serves and how to use them: [debug-area.md § Ring transports](../content/debug-area.md#ring-transports).
 
 No cross-world destination. The FSM supports cross-world trips (regions 14 ↔ 17), but a ring in another world that listed a Debug Area pad would give ordinary players a way into a GM-only world, and a one-way ring out would reserve and animate a pad other players are using. GMs leave with `.gotolocation`.
 
