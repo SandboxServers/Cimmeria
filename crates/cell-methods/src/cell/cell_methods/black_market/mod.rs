@@ -48,7 +48,9 @@ fn resolve_player_id(id: PlayerIdentity, entity_id: u32, op: &str) -> Option<i32
     if id.player_id.is_none() {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             op,
             reason = "no_player_id",
             "black market op dropped: entity has no player_id"
@@ -69,8 +71,11 @@ async fn forward(
     if tx.send(CellToBaseMsg::BlackMarket(msg)).await.is_err() {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             reason = "base_channel_closed",
             "{op}: base channel closed, player action dropped"
         );
@@ -95,12 +100,15 @@ async fn refuse(
     tracing::info!(
         event = "bm.refused",
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         op = op_label(method),
         method = method.name(),
         reason = error.reason(),
-        error_id = error.id(),
+        error_id = error.id(), // nt:id-only wire id of the BMError, named by bm_error
         bm_error = ?error,
         access = access.map(BlackMarketReject::label),
         distance,
@@ -115,8 +123,11 @@ async fn refuse(
     if tx.send(msg).await.is_err() {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             reason = "base_channel_closed",
             "onBMError: base channel closed, refusal not shown to the player"
         );
@@ -181,8 +192,11 @@ async fn handle(
             tracing::warn!(
                 event = "bm.decode_failed",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 method = method.name(),
                 arg_len = args.len(),
                 reason = e.kind(),
@@ -265,10 +279,14 @@ pub fn on_disconnect(entity_id: u32, space_mgr: &mut SpaceManager) {
         tracing::info!(
             event = "bm.open_without_client_call",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             opens = session.opens,
             auctioneer_entity_id = session.auctioneer_id,
+            auctioneer_entity_name = space_mgr.entity_label(session.auctioneer_id),
             "Black Market opened this session but the client never called it: \
              the client patch is probably missing"
         );

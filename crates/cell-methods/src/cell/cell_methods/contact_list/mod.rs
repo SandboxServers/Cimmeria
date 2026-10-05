@@ -52,14 +52,23 @@ fn parse_wstring_array(args: &[u8], offset: usize) -> Option<(Vec<String>, usize
     Some((names, pos - offset))
 }
 
-/// Resolve player_id for a contact-list op, refusing to fall back to 0.
+/// Resolve player_id (and the character name its log lines carry) for a
+/// contact-list op, refusing to fall back to 0.
 /// Mirrors the pattern from `cell/mail.rs::resolve_mail_player_id`.
-fn resolve_player_id(entity_id: u32, space_mgr: &SpaceManager, op: &str) -> Option<i32> {
-    match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
-        Some(id) => Some(id),
+fn resolve_player_id(
+    entity_id: u32,
+    space_mgr: &SpaceManager,
+    op: &str,
+) -> Option<(i32, Option<&'static str>)> {
+    let found = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.player_id.map(|id| (id, e.log_names.player_name)));
+    match found {
+        Some(who) => Some(who),
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 op,
                 "contact list op dropped: entity has no player_id"
             );
@@ -81,11 +90,19 @@ pub async fn dispatch(
         CREATE => {
             // WSTRING name, UINT32 flags
             let Some((name, consumed)) = read_wstring(args, 0).ok() else {
-                tracing::warn!(entity_id, "contactListCreate: malformed WSTRING name");
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "contactListCreate: malformed WSTRING name"
+                );
                 return true;
             };
             if args.len() < consumed + 4 {
-                tracing::warn!(entity_id, "contactListCreate: missing flags field");
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "contactListCreate: missing flags field"
+                );
                 return true;
             }
             let flags = u32::from_le_bytes([
@@ -94,11 +111,20 @@ pub async fn dispatch(
                 args[consumed + 2],
                 args[consumed + 3],
             ]);
-            let Some(player_id) = resolve_player_id(entity_id, space_mgr, "contactListCreate")
+            let Some((player_id, player_name)) =
+                resolve_player_id(entity_id, space_mgr, "contactListCreate")
             else {
                 return true;
             };
-            tracing::debug!(entity_id, player_id, name, flags, "contactListCreate");
+            tracing::debug!(
+                entity_id,
+                entity_name = player_name,
+                player_id,
+                player_name,
+                name,
+                flags,
+                "contactListCreate"
+            );
             if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListCreate {
                     entity_id,
@@ -110,7 +136,9 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
+                    player_name,
                     error = %e,
                     "contactListCreate send to base failed — mutation dropped"
                 );
@@ -123,11 +151,19 @@ pub async fn dispatch(
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-            let Some(player_id) = resolve_player_id(entity_id, space_mgr, "contactListDelete")
+            let Some((player_id, player_name)) =
+                resolve_player_id(entity_id, space_mgr, "contactListDelete")
             else {
                 return true;
             };
-            tracing::debug!(entity_id, player_id, list_id, "contactListDelete");
+            tracing::debug!(
+                entity_id,
+                entity_name = player_name,
+                player_id,
+                player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
+                "contactListDelete"
+            );
             if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListDelete {
                     entity_id,
@@ -138,8 +174,10 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
-                    list_id,
+                    player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     error = %e,
                     "contactListDelete send to base failed — mutation dropped"
                 );
@@ -155,16 +193,26 @@ pub async fn dispatch(
             let Some((name, _)) = read_wstring(args, 4).ok() else {
                 tracing::warn!(
                     entity_id,
-                    list_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     "contactListRename: malformed name WSTRING"
                 );
                 return true;
             };
-            let Some(player_id) = resolve_player_id(entity_id, space_mgr, "contactListRename")
+            let Some((player_id, player_name)) =
+                resolve_player_id(entity_id, space_mgr, "contactListRename")
             else {
                 return true;
             };
-            tracing::debug!(entity_id, player_id, list_id, name, "contactListRename");
+            tracing::debug!(
+                entity_id,
+                entity_name = player_name,
+                player_id,
+                player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
+                name,
+                "contactListRename"
+            );
             if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListRename {
                     entity_id,
@@ -176,8 +224,10 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
-                    list_id,
+                    player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     error = %e,
                     "contactListRename send to base failed — mutation dropped"
                 );
@@ -191,14 +241,17 @@ pub async fn dispatch(
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
             let flags = u32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-            let Some(player_id) = resolve_player_id(entity_id, space_mgr, "contactListFlagsUpdate")
+            let Some((player_id, player_name)) =
+                resolve_player_id(entity_id, space_mgr, "contactListFlagsUpdate")
             else {
                 return true;
             };
             tracing::debug!(
                 entity_id,
+                entity_name = player_name,
                 player_id,
-                list_id,
+                player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 flags,
                 "contactListFlagsUpdate"
             );
@@ -213,8 +266,10 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
-                    list_id,
+                    player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     error = %e,
                     "contactListFlagsUpdate send to base failed — mutation dropped"
                 );
@@ -230,19 +285,23 @@ pub async fn dispatch(
             let Some((names, _)) = parse_wstring_array(args, 4) else {
                 tracing::warn!(
                     entity_id,
-                    list_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     "contactListAddMembers: malformed names array"
                 );
                 return true;
             };
-            let Some(player_id) = resolve_player_id(entity_id, space_mgr, "contactListAddMembers")
+            let Some((player_id, player_name)) =
+                resolve_player_id(entity_id, space_mgr, "contactListAddMembers")
             else {
                 return true;
             };
             tracing::debug!(
                 entity_id,
+                entity_name = player_name,
                 player_id,
-                list_id,
+                player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 count = names.len(),
                 "contactListAddMembers"
             );
@@ -257,8 +316,10 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
-                    list_id,
+                    player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     error = %e,
                     "contactListAddMembers send to base failed — mutation dropped"
                 );
@@ -274,20 +335,23 @@ pub async fn dispatch(
             let Some((names, _)) = parse_wstring_array(args, 4) else {
                 tracing::warn!(
                     entity_id,
-                    list_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     "contactListRemoveMembers: malformed names array"
                 );
                 return true;
             };
-            let Some(player_id) =
+            let Some((player_id, player_name)) =
                 resolve_player_id(entity_id, space_mgr, "contactListRemoveMembers")
             else {
                 return true;
             };
             tracing::debug!(
                 entity_id,
+                entity_name = player_name,
                 player_id,
-                list_id,
+                player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 count = names.len(),
                 "contactListRemoveMembers"
             );
@@ -302,8 +366,10 @@ pub async fn dispatch(
             {
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_name,
                     player_id,
-                    list_id,
+                    player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     error = %e,
                     "contactListRemoveMembers send to base failed — mutation dropped"
                 );

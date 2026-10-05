@@ -122,3 +122,39 @@ async fn authored_cost_purchase_does_not_warn() {
         .find_message(Level::WARN, "raw training_cost 0")
         .is_none());
 }
+
+/// NT-28a (Rule 6): the `train_requested` row names the player, the ability
+/// and the archetype next to their ids, so a training complaint reads in
+/// SigNoz without a seed lookup.
+///
+/// Revert-verifier: dropping `ability_name` (or any other name) from the row
+/// in `train.rs` fails the matching assertion.
+#[tokio::test]
+async fn train_requested_row_names_the_player_ability_and_archetype() {
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(cimmeria_names::Table::Abilities, NODE.into(), "Staff Blast");
+    cimmeria_names::global().store(book);
+    let mut mgr = fixture(2, 4, 7);
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .stamp_log_names(Some("Daniel"), None);
+
+    let capture = LogCapture::install();
+    assert!(buy(&mut mgr).await.is_some());
+    let row = capture
+        .find_message(Level::INFO, "validation passed")
+        .expect("train_requested row");
+    assert!(row.has_field("event", "train_requested"));
+    for (k, v) in [
+        ("entity_id", "1"),
+        ("entity_name", "Daniel"),
+        ("player_id", "100"),
+        ("player_name", "Daniel"),
+        ("ability_id", "5101"),
+        ("ability_name", "Staff Blast"),
+        ("archetype_id", "3"),
+        ("archetype_name", "Scientist"),
+    ] {
+        assert!(row.has_field(k, v), "field {k}={v}: {:?}", row.fields);
+    }
+}

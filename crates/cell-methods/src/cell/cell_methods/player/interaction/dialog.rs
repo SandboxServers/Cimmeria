@@ -21,7 +21,14 @@ pub(super) async fn handle_dialog_button_choice(
     }
     let dialog_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
     let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-    tracing::info!(entity_id, dialog_id, button_id, "dialogButtonChoice");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        dialog_id,
+        dialog_name = cimmeria_names::book().dialog(dialog_id),
+        button_id, // nt:id-only an authored dialog button ordinal; no name table holds it
+        "dialogButtonChoice"
+    );
 
     // Server-authority precondition (CAT-J-01 / #479): the dialog must
     // have been offered to THIS player. `send_dialog_display` records
@@ -55,8 +62,10 @@ pub(super) async fn handle_dialog_button_choice(
         if button_id == -1 && space_mgr.tutorial_dialog_ids.contains(&dialog_id) {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 dialog_id,
-                button_id,
+                dialog_name = cimmeria_names::book().dialog(dialog_id),
+                button_id, // nt:id-only an authored dialog button ordinal; no name table holds it
                 "dialogButtonChoice for a client-opened tutorial -- not offered by the \
                  server, no chain fired"
             );
@@ -68,8 +77,10 @@ pub(super) async fn handle_dialog_button_choice(
             .unwrap_or_default();
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             dialog_id,
-            button_id,
+            dialog_name = cimmeria_names::book().dialog(dialog_id),
+            button_id, // nt:id-only an authored dialog button ordinal; no name table holds it
             ?offered_dialog_ids,
             "dialogButtonChoice rejected -- dialog was never offered to this player \
              (forged/replayed choice or stale client state); chain not fired (#479)"
@@ -112,7 +123,14 @@ pub(super) async fn handle_initial_response(
 ) {
     if args.len() >= 4 {
         let interaction_set_map_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-        tracing::info!(entity_id, interaction_set_map_id, "initialResponse");
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            interaction_set_map_id,
+            interaction_set_map_name =
+                cimmeria_names::book().dialog_set_map(interaction_set_map_id),
+            "initialResponse"
+        );
 
         crate::cell::interactions::handle_initial_response(
             entity_id,
@@ -125,6 +143,7 @@ pub(super) async fn handle_initial_response(
     } else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             args_len = args.len(),
             "initialResponse: truncated args, dropping"
         );

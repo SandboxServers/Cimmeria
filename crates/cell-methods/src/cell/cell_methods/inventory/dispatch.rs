@@ -41,7 +41,7 @@ pub async fn dispatch(
             true
         }
         REPAIR_ITEM_REQUEST => {
-            handle_repair_item_request(entity_id, args).await;
+            handle_repair_item_request(entity_id, args, space_mgr).await;
             true
         }
         REQUEST_ACTIVE_SLOT_CHANGE => {

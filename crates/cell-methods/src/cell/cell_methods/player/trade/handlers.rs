@@ -64,7 +64,11 @@ async fn handle_trade_request(
 ) {
     // Wire: INT32 partnerEntityId + LocalTradeProposal
     if args.len() < 4 {
-        tracing::warn!(entity_id, "tradeRequest: truncated args");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "tradeRequest: truncated args"
+        );
         return;
     }
     let partner_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -74,7 +78,9 @@ async fn handle_trade_request(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 partner_entity_id,
+                partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                 "tradeRequest: malformed LocalTradeProposal"
             );
             return;
@@ -117,7 +123,11 @@ async fn handle_trade_request_cancel(
     space_mgr: &mut SpaceManager,
 ) {
     if args.len() < 4 {
-        tracing::warn!(entity_id, "tradeRequestCancel: truncated args");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "tradeRequestCancel: truncated args"
+        );
         return;
     }
     let partner_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -130,7 +140,9 @@ async fn handle_trade_request_cancel(
     if !actually_trading {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "tradeRequestCancel: no open session with that partner"
         );
         return;
@@ -180,7 +192,11 @@ async fn handle_trade_update_proposal(
     space_mgr: &mut SpaceManager,
 ) {
     if args.len() < 4 {
-        tracing::warn!(entity_id, "tradeUpdateProposal: truncated args");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "tradeUpdateProposal: truncated args"
+        );
         return;
     }
     let partner_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -190,7 +206,9 @@ async fn handle_trade_update_proposal(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 partner_entity_id,
+                partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                 "tradeUpdateProposal: malformed LocalTradeProposal"
             );
             return;
@@ -208,7 +226,9 @@ async fn handle_trade_update_proposal(
     if !already_trading {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "tradeUpdateProposal: no session open — applying QA-client workaround \
              (Python SGWPlayer.py:1785-1790): calling beginTrading() first"
         );
@@ -226,7 +246,9 @@ async fn handle_trade_update_proposal(
     if !partner_ok {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "tradeUpdateProposal: open session is with a different partner"
         );
         return;
@@ -238,7 +260,9 @@ async fn handle_trade_update_proposal(
     if !partners_in_range(entity_id, partner_entity_id, space_mgr) {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "tradeUpdateProposal: partners out of range — auto-cancelling"
         );
         cancel_session(
@@ -275,7 +299,11 @@ async fn handle_trade_lock_state(
     space_mgr: &mut SpaceManager,
 ) {
     if args.len() < 9 {
-        tracing::warn!(entity_id, "tradeLockState: truncated args (need 9 bytes)");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "tradeLockState: truncated args (need 9 bytes)"
+        );
         return;
     }
     let local_version = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -289,7 +317,11 @@ async fn handle_trade_lock_state(
     {
         Some(p) => p as i32,
         None => {
-            tracing::warn!(entity_id, "tradeLockState: no open trade session");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "tradeLockState: no open trade session"
+            );
             return;
         }
     };
@@ -298,7 +330,9 @@ async fn handle_trade_lock_state(
     if !(ETRADELOCKSTATE_NONE..=ETRADELOCKSTATE_LOCKED_AND_CONFIRMED).contains(&new_lock) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             new_lock,
             "tradeLockState: invalid lock state value — rejecting"
         );
@@ -309,7 +343,9 @@ async fn handle_trade_lock_state(
     if !partners_in_range(entity_id, partner_entity_id, space_mgr) {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "tradeLockState: partners out of range — auto-cancelling"
         );
         cancel_session(
@@ -335,7 +371,11 @@ async fn handle_trade_lock_state(
         let my_prop = match &me.trade_proposal {
             Some(p) => p,
             None => {
-                tracing::warn!(entity_id, "tradeLockState: missing own proposal state");
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "tradeLockState: missing own proposal state"
+                );
                 return;
             }
         };
@@ -344,7 +384,9 @@ async fn handle_trade_lock_state(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     partner_entity_id,
+                    partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                     "tradeLockState: partner entity missing"
                 );
                 return;
@@ -355,7 +397,9 @@ async fn handle_trade_lock_state(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     partner_entity_id,
+                    partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                     "tradeLockState: partner has no proposal state"
                 );
                 return;
@@ -367,7 +411,9 @@ async fn handle_trade_lock_state(
     if local_version != my_version {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             local_version,
             my_version,
             "tradeLockState: stale local version — rejecting"
@@ -382,7 +428,9 @@ async fn handle_trade_lock_state(
     if new_lock != ETRADELOCKSTATE_NONE && remote_version != partner_version {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             local_version,
             remote_version,
             partner_version,

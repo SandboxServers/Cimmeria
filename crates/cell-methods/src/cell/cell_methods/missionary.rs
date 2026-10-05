@@ -21,7 +21,13 @@ pub async fn dispatch(
         ABANDON_MISSION => {
             if args.len() >= 4 {
                 let mission_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, mission_id, "abandonMission");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    mission_id,
+                    mission_name = cimmeria_names::book().mission(mission_id),
+                    "abandonMission"
+                );
                 // Reference parity (#715, `MissionManager.py:293`): a hidden
                 // mission cannot be abandoned by the player. The client never
                 // lists one, so a request for it is forged or stale, and
@@ -34,8 +40,11 @@ pub async fn dispatch(
                 if let Some(player_id) = hidden {
                     tracing::warn!(
                         entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
                         player_id,
+                        player_name = space_mgr.player_identity(entity_id).player_name,
                         mission_id,
+                        mission_name = cimmeria_names::book().mission(mission_id),
                         reason = "hidden_mission",
                         "abandonMission refused: hidden missions cannot be abandoned by the client"
                     );
@@ -62,14 +71,25 @@ pub async fn dispatch(
         SHARE_MISSION => {
             if args.len() >= 4 {
                 let mission_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, mission_id, "UNIMPLEMENTED: shareMission");
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    mission_id,
+                    mission_name = cimmeria_names::book().mission(mission_id),
+                    "UNIMPLEMENTED: shareMission"
+                );
             }
             true
         }
         SHARE_MISSION_RESPONSE => {
             if !args.is_empty() {
                 let choice = args[0] as i8;
-                tracing::info!(entity_id, choice, "UNIMPLEMENTED: shareMissionResponse");
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    choice,
+                    "UNIMPLEMENTED: shareMissionResponse"
+                );
             }
             true
         }

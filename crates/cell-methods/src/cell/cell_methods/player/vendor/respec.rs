@@ -63,13 +63,14 @@ pub(crate) async fn handle_reset_my_abilities(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let (player_id, refusal) = {
+    let (player_id, player_name, refusal) = {
         let Some(entity) = space_mgr.get_entity(entity_id) else {
             return;
         };
         let Some(player_id) = entity.player_id else {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "resetMyAbilities: entity has no player_id — rejecting"
             );
             return;
@@ -95,7 +96,7 @@ pub(crate) async fn handle_reset_my_abilities(
             }
             TrainerPin::Trainer { in_range: true, .. } => None,
         };
-        (player_id, refusal)
+        (player_id, entity.log_names.player_name, refusal)
     };
 
     let now = Instant::now();
@@ -109,7 +110,9 @@ pub(crate) async fn handle_reset_my_abilities(
                 target: "abilities",
                 event = "respec_dropped",
                 entity_id,
+                entity_name = player_name,
                 player_id,
+                player_name,
                 "resetMyAbilities: a respec is already on its way — dropping the repeat"
             );
             return;
@@ -128,7 +131,9 @@ pub(crate) async fn handle_reset_my_abilities(
                 event = "respec_rejected",
                 reason,
                 entity_id,
+                entity_name = player_name,
                 player_id,
+                player_name,
                 "resetMyAbilities: not at a trainer — rejecting"
             );
             send_respec_rejection(
@@ -146,7 +151,9 @@ pub(crate) async fn handle_reset_my_abilities(
                 event = "respec_rejected",
                 reason = "nothing_trained",
                 entity_id,
+                entity_name = player_name,
                 player_id,
+                player_name,
                 "resetMyAbilities: nothing trainer-bought — no change, no charge"
             );
             send_respec_rejection(
@@ -163,7 +170,9 @@ pub(crate) async fn handle_reset_my_abilities(
                 target: "abilities",
                 event = "respec_requested",
                 entity_id,
+                entity_name = player_name,
                 player_id,
+                player_name,
                 cost = RESPEC_COST_NAQUADAH,
                 "resetMyAbilities: at a trainer, requesting base reset + charge"
             );
@@ -179,7 +188,9 @@ pub(crate) async fn handle_reset_my_abilities(
                     target: "abilities",
                     event = "respec_send_failed",
                     entity_id,
+                    entity_name = player_name,
                     player_id,
+                    player_name,
                     error = %e,
                     "ResetAbilities cell→base send failed — nothing reset"
                 );

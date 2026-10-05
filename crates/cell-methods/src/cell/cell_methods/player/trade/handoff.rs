@@ -47,7 +47,9 @@ pub(super) async fn request_execute_trade(
     if !partners_in_range(entity_id, partner_entity_id, space_mgr) {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
             "request_execute_trade: partners out of range at handoff — \
              auto-cancelling instead of committing"
         );
@@ -70,7 +72,11 @@ pub(super) async fn request_execute_trade(
         let me = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
             None => {
-                tracing::error!(entity_id, "request_execute_trade: caller entity gone");
+                tracing::error!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "request_execute_trade: caller entity gone"
+                );
                 return;
             }
         };
@@ -79,7 +85,9 @@ pub(super) async fn request_execute_trade(
             None => {
                 tracing::error!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     partner_entity_id,
+                    partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                     "request_execute_trade: partner entity gone"
                 );
                 return;
@@ -90,6 +98,7 @@ pub(super) async fn request_execute_trade(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     "request_execute_trade: caller has no player_id — refusing"
                 );
                 return;
@@ -100,6 +109,7 @@ pub(super) async fn request_execute_trade(
             None => {
                 tracing::warn!(
                     partner_entity_id,
+                    partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                     "request_execute_trade: partner has no player_id — refusing"
                 );
                 return;
@@ -115,6 +125,7 @@ pub(super) async fn request_execute_trade(
                 // surrounding handoff trace, then refuse.
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     "request_execute_trade: caller has no trade_proposal — refusing"
                 );
                 return;
@@ -125,7 +136,9 @@ pub(super) async fn request_execute_trade(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     partner_entity_id,
+                    partner_entity_name = space_mgr.entity_label(partner_entity_id as u32),
                     "request_execute_trade: partner has no trade_proposal — refusing"
                 );
                 return;
@@ -134,6 +147,8 @@ pub(super) async fn request_execute_trade(
         ExecuteTradeSnapshot {
             my_pid,
             p_pid,
+            my_name: me.log_names.player_name,
+            p_name: partner.log_names.player_name,
             my_items: my_prop.items.iter().map(|t| t.instance_id).collect(),
             my_cash: my_prop.cash,
             p_items: p_prop.items.iter().map(|t| t.instance_id).collect(),
@@ -165,7 +180,13 @@ pub(super) async fn request_execute_trade(
         // will linger. Surface loudly so operators can correlate.
         tracing::error!(
             entity_id,
+            entity_name = snapshot.my_name,
+            player_id = snapshot.my_pid,
+            player_name = snapshot.my_name,
             partner_entity_id,
+            partner_entity_name = snapshot.p_name,
+            partner_player_id = snapshot.p_pid,
+            partner_player_name = snapshot.p_name,
             error = %e,
             "request_execute_trade: cell→base channel closed mid-handoff — \
              trade was Locked&Confirmed on both sides but never committed",
@@ -195,7 +216,13 @@ pub(super) async fn request_execute_trade(
     } else {
         tracing::info!(
             entity_id,
+            entity_name = snapshot.my_name,
+            player_id = snapshot.my_pid,
+            player_name = snapshot.my_name,
             partner_entity_id,
+            partner_entity_name = snapshot.p_name,
+            partner_player_id = snapshot.p_pid,
+            partner_player_name = snapshot.p_name,
             p1_cash = snapshot.my_cash,
             p2_cash = snapshot.p_cash,
             "trade execute requested → base"
@@ -206,6 +233,9 @@ pub(super) async fn request_execute_trade(
 struct ExecuteTradeSnapshot {
     my_pid: i32,
     p_pid: i32,
+    /// The two character names, for the handoff's log lines (Rule 6).
+    my_name: Option<&'static str>,
+    p_name: Option<&'static str>,
     my_items: Vec<i32>,
     my_cash: i32,
     p_items: Vec<i32>,

@@ -25,8 +25,11 @@ pub(super) async fn handle_set_auto_cycle(
     if !enabled {
         tracing::info!(
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             enabled,
             "setAutoCycle"
         );
@@ -51,7 +54,7 @@ pub(super) async fn handle_set_auto_cycle(
         // is the simplest server-side proxy for "what
         // would the player fire?" since the wire payload
         // carries no ability id.
-        let (new_state, immediate_fire) = {
+        let (new_state, immediate_fire, armed) = {
             let entity = match space_mgr.get_entity_mut(entity_id) {
                 Some(e) => e,
                 None => return,
@@ -80,19 +83,38 @@ pub(super) async fn handle_set_auto_cycle(
             if let Some(ability_id) = loop_ability {
                 entity.abilities.auto_cycle_ability_id = Some(ability_id);
             }
+            let armed = ArmedLoop {
+                current_target_id,
+                last_fired_ability_id,
+                auto_cycle_ability_id: entity.abilities.auto_cycle_ability_id,
+            };
+            (new_state, immediate_fire, armed)
+        };
+        // Logged once the entity borrow is released, so the target can be
+        // named from `space_mgr`. The block keeps the NameBook guard off the
+        // awaits below.
+        {
+            let book = cimmeria_names::book();
             tracing::info!(
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 enabled,
-                current_target_id = current_target_id.unwrap_or(0),
-                last_fired_ability_id = last_fired_ability_id.unwrap_or(0),
+                current_target_id = armed.current_target_id.unwrap_or(0),
+                current_target_name =
+                    space_mgr.entity_label(armed.current_target_id.map(|t| t as u32)),
+                last_fired_ability_id = armed.last_fired_ability_id.unwrap_or(0),
+                last_fired_ability_name = armed.last_fired_ability_id.and_then(|a| book.ability(a)),
                 weapon_ability_id = weapon_ability.unwrap_or(0),
-                auto_cycle_ability_id = entity.abilities.auto_cycle_ability_id.unwrap_or(0),
+                weapon_ability_name = weapon_ability.and_then(|a| book.ability(a)),
+                auto_cycle_ability_id = armed.auto_cycle_ability_id.unwrap_or(0),
+                auto_cycle_ability_name = armed.auto_cycle_ability_id.and_then(|a| book.ability(a)),
                 "setAutoCycle"
             );
-            (new_state, immediate_fire)
-        };
+        }
         if let Some(new_state) = new_state {
             crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr)
                 .await;
@@ -131,8 +153,11 @@ pub(super) async fn handle_set_auto_cycle(
         };
         tracing::info!(
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             decision,
             "setAutoCycle: enable decision"
         );
@@ -141,10 +166,15 @@ pub(super) async fn handle_set_auto_cycle(
         {
             tracing::info!(
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id as u32),
                 "setAutoCycle: immediate fire on enable (loop ability + current_target ready)"
             );
             // A target behind a wall gets its one no-line-of-sight notice
@@ -190,6 +220,14 @@ pub(super) async fn handle_set_auto_cycle(
                 .await;
         }
     }
+}
+
+/// What the enable press left armed, read under the entity borrow and
+/// logged after it.
+struct ArmedLoop {
+    current_target_id: Option<i32>,
+    last_fired_ability_id: Option<i32>,
+    auto_cycle_ability_id: Option<i32>,
 }
 
 /// Whether the press left the loop with no ability to re-fire: nothing fired
