@@ -172,7 +172,6 @@ params = ["Boolean on/off"]
 [[command]]
 name = "/gmsetnoxp"
 event = "Event_SlashCmd_SetNoXP"
-params = ["Boolean on/off"]
 
 [[command]]
 name = "/gmsetnodamage"

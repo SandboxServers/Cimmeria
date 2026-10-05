@@ -309,7 +309,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetnoaggro` | Toggle NPC aggro | ❌ Not yet | `<on>` (0/1) | `/gmsetnoaggro` |
 | `/gmsetnodamage` | Toggle timed damage immunity | ❌ Not yet | `<on>` (0/1) | `/gmsetnodamage` |
 | `/gmsetnotarget` | Make yourself untargetable | ❌ Not yet | `<on>` (0/1) | `/gmsetnotarget` |
-| `/gmsetnoxp` | Toggle XP gain off | ❌ Not yet | `<on>` (0/1) | `/gmsetnoxp` |
+| `/gmsetnoxp` | Toggle XP gain off | ❌ Not yet | none (the client sends no argument; one typed is ignored) | `/gmsetnoxp` |
 | `/gmsetomnipotent` | Toggle all-powerful debug mode | ❌ Not yet | `<on>` (0/1) | `/gmsetomnipotent` |
 | `/gmsetpvp` | Toggle your PvP flag | ❌ Not yet | `<on>` (0/1) | `/gmsetpvp` |
 | `/gmsetspectator` | Toggle spectator mode | ❌ Not yet | `<on>` (0/1) | `/gmsetspectator` |
@@ -323,7 +323,7 @@ Spawn, kill, and despawn NPCs.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmdespawn` | Remove an NPC from the space (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmdespawn 5400` |
+| `/gmdespawn` | Remove an NPC from the space (NPC-only). The client sends no id, so the server removes the NPC you have selected; a player is refused | ✅ Yes | none (select the NPC first) | `/gmdespawn` |
 | `/gmdumpobjects` | Dump the object list to the log | ❌ Not yet | none | `/gmdumpobjects` |
 | `/gmkilltarget` | Kill an NPC via the canonical death sequence (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmkilltarget 5400` |
 | `/gmrespawn` | Respawn after death | ✅ Yes | none | `/gmrespawn` |

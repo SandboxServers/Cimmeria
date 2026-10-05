@@ -401,6 +401,112 @@ fn access_mask_follows_the_clients_find_quirk() {
     assert!(usable(0, 0), "no Access attribute: everyone");
 }
 
+// ---- the types agree with the server's defs --------------------------------
+
+/// Argument type lists of every `gm*` method in `SGWGmPlayer.def`, by
+/// lowercase method name (cell and base variants of one name are all kept).
+fn gm_player_def_methods() -> BTreeMap<String, Vec<Vec<String>>> {
+    let def = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../entities/defs/SGWGmPlayer.def"),
+    )
+    .unwrap();
+    let mut out: BTreeMap<String, Vec<Vec<String>>> = BTreeMap::new();
+    let mut open: Option<(String, Vec<String>)> = None;
+    for line in def.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("<Arg>") {
+            if let (Some((_, args)), Some(ty)) = (open.as_mut(), rest.split_whitespace().next()) {
+                args.push(ty.to_string());
+            }
+            continue;
+        }
+        let Some(tag) = l.strip_prefix('<').and_then(|r| r.split('>').next()) else {
+            continue;
+        };
+        if let Some(name) = tag.strip_prefix('/') {
+            if open.as_ref().is_some_and(|(n, _)| n == name) {
+                let (n, args) = open.take().unwrap();
+                out.entry(n.to_ascii_lowercase()).or_default().push(args);
+            }
+        } else if tag.starts_with("gm") && tag.chars().all(|c| c.is_ascii_alphanumeric()) {
+            if l.contains(&format!("</{tag}>")) {
+                out.entry(tag.to_ascii_lowercase())
+                    .or_default()
+                    .push(Vec::new());
+            } else {
+                open = Some((tag.to_string(), Vec::new()));
+            }
+        }
+    }
+    out
+}
+
+/// Whether a slash-command `PType` can feed a def argument type. `None`: a def
+/// type this check does not model (`ItemID`, `VECTOR3`, ...), which passes.
+fn ptype_feeds(ptype: &str, def_type: &str) -> Option<bool> {
+    Some(match def_type {
+        "INT8" | "UINT8" => ["Integer", "Boolean"].contains(&ptype),
+        "INT16" | "INT32" | "UINT16" | "UINT32" | "INT64" | "UINT64" => ptype == "Integer",
+        "FLOAT" => ptype == "Float",
+        "WSTRING" | "STRING" => ptype == "String",
+        _ => return None,
+    })
+}
+
+/// A parameter type the handler does not expect crashes the client: the QA
+/// file declared `/gmspawnbycmd`'s offsets Integer where `gmSpawnByCmd` takes
+/// FLOAT, and `/gmspawnbycmd 1310 5 5` raised an access violation before any
+/// cell method was sent (lab, DA-06, 2026-10-05). So for every command whose
+/// word is a `gm*` method of `SGWGmPlayer.def` and that declares as many
+/// parameters as some variant of that method has arguments, the declared types
+/// must feed the def's types in order. Commands whose parameter count differs
+/// (the client supplies the rest, such as a target id) are not comparable and
+/// are skipped.
+///
+/// Not cleared by this test, and not run in the lab: the two below, where the
+/// QA file's `Integer, Integer` meets a def of `WSTRING, INT64`. They keep the
+/// QA types because the binary was not traced for them.
+#[test]
+fn declared_types_feed_the_def_arguments_of_the_same_method() {
+    const UNVERIFIED: [&str; 2] = ["/gmgiveminigamecontact", "/gmremoveminigamecontact"];
+    let defs = gm_player_def_methods();
+    let mut compared = 0;
+    for c in &parsed().commands {
+        let Some(variants) = defs.get(c.word.trim_start_matches('/')) else {
+            continue;
+        };
+        let same_arity: Vec<&Vec<String>> = variants
+            .iter()
+            .filter(|v| v.len() == c.params.len())
+            .collect();
+        if same_arity.is_empty() {
+            continue;
+        }
+        compared += 1;
+        let fits = same_arity.iter().any(|v| {
+            c.params
+                .iter()
+                .zip(v.iter())
+                .all(|(p, d)| ptype_feeds(&p.ptype, d).unwrap_or(true))
+        });
+        if UNVERIFIED.contains(&c.word.as_str()) {
+            assert!(
+                !fits,
+                "{} now fits its def: drop it from UNVERIFIED",
+                c.word
+            );
+            continue;
+        }
+        let declared: Vec<&str> = c.params.iter().map(|p| p.ptype.as_str()).collect();
+        assert!(
+            fits,
+            "{}: declared {declared:?} but SGWGmPlayer.def has {same_arity:?}",
+            c.word
+        );
+    }
+    assert!(compared >= 60, "only {compared} commands were comparable");
+}
+
 // ---- the docs agree -------------------------------------------------------
 
 fn docs_command_rows() -> HashSet<String> {

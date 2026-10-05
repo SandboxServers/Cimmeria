@@ -95,8 +95,7 @@
   <scmd:Command scmd:CommandName="/gmsetgodmode" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_SetGodMode" scmd:Usage="/gmsetgodmode [on/off]">
     <scmd:MandatoryParam scmd:PType="Boolean" scmd:ParamName="on/off" scmd:ParamDescription=""/>
   </scmd:Command>
-  <scmd:Command scmd:CommandName="/gmsetnoxp" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_SetNoXP" scmd:Usage="/gmsetnoxp [on/off]">
-    <scmd:MandatoryParam scmd:PType="Boolean" scmd:ParamName="on/off" scmd:ParamDescription=""/>
+  <scmd:Command scmd:CommandName="/gmsetnoxp" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_SetNoXP" scmd:Usage="/gmsetnoxp">
   </scmd:Command>
   <scmd:Command scmd:CommandName="/gmsetnodamage" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_SetNoDamageTimedMode" scmd:Usage="/gmsetnodamage">
   </scmd:Command>

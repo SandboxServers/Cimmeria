@@ -251,13 +251,27 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   the Integer file raised an access violation reading `0x00000008` at
   `SGW.exe` `0x00561778` before any cell method was sent, and the typed line
   stayed in the chat box. Patch 012 declares them `Float`, like the def and
-  like `/gmgotoxyz`. The other 161 commands carry the QA file's types. A static
-  comparison against the exposed `SGWGmPlayer` methods found no other
-  same-arity type disagreement, but several commands take fewer typed
-  parameters than the cell method has arguments (the client fills in the target
-  id and similar), so that check cannot clear them; they are unverified beyond
-  the commands the lab ran (`/gmdhd`, `/gmgotolocation`, `/gmgotoxyz`,
-  `/gmgivexp`).
+  like `/gmgotoxyz` (lab: the server then spawned the NPC at the GM's position
+  plus the offsets). `/gmsetnoxp` is declared with no parameter, as its def
+  takes none: the client sends an empty payload with or without an argument
+  (lab), so a declared Boolean only made the bare command answer "Not enough
+  parameters.". The other commands carry the QA file's types. The test
+  `declared_types_feed_the_def_arguments_of_the_same_method` compares every
+  command whose word is a `gm*` method of `SGWGmPlayer.def` and whose parameter
+  count equals some variant's argument count, so a mismatch like the spawn
+  offsets fails CI. Commands that declare fewer parameters than the method has
+  arguments (the client supplies the rest) cannot be compared, and two
+  (`/gmgiveminigamecontact`, `/gmremoveminigamecontact`: QA `Integer, Integer`
+  against a def of `WSTRING, INT64`) disagree and were not traced; they keep
+  the QA types, listed in the test as unverified. Beyond those and the
+  commands the lab ran (`/gmdhd`, `/gmgotolocation`, `/gmgotoxyz`, `/gmgivexp`,
+  `/gmspawnbycmd`, `/gmsetnoxp`) the types are the QA file's, unexercised.
+- **The client never shows `Usage`.** A command with too few parameters prints
+  only "Not enough parameters." (lab), so the `[name]` brackets in the file are
+  cosmetic. They are there because the field is required.
+- **`/gmdespawn` needs a server-side fallback.** The client sends target id 0
+  and does not fill in its selection, so the server treats 0 as the GM's
+  selected target (`gm/world.rs`, `handle_despawn`).
 - **Verified in the lab (da06, 2026-10-05, colo build 86fe5dcab, GM
   character, world 1300).** With the file installed: map size `0x10A` (266);
   `/help` ends "266 commands found."; `/gmdhd 3` sends `gmDHD` and the server
