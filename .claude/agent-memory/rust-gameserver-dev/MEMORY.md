@@ -99,6 +99,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [seeds-and-content-chains-index](seeds-and-content-chains-index.md) — sub-index: template/cover/name seeds, chain conditions and edge triggers, dialog binds, inventory locks, pet and trainer seeds.
 
+## Debug Area
+
+- [debug-area-plaza-and-training-dummies.md](debug-area-plaza-and-training-dummies.md) — tags fire in any world; TrainingDummy mark; gm_ability_bulk; hub once-placed guards scoped to the hub.
+
 ## Base sessions
 
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
