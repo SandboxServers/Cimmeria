@@ -501,15 +501,21 @@ the ring switch beside the pad that you right-click.
 | Compound | (224.0, 7.44, -938.0) | Z1 arrival (36 m), Z2 services plaza (32 m), Z8 cover course entry (23 m); Z3 dummies are 74 m north in the same compound | `DebugArea_Ring_Compound` | 35 |
 | Faction yard | (394.0, -10.59, -738.0) | Z4 faction yard, 52 m south | `DebugArea_Ring_FactionYard` | 36 |
 | AI slope | (81.0, 0.59, -782.0) | Z5 wanderer (36 m) and patrol (57 m) | `DebugArea_Ring_AiSlope` | 37 |
-| Arena rim | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit. Since DA-F2 moved the arena to the east shelf, it is 167 to 205 m from the squads, outside the 150 m AoI: arriving here neither shows nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
-| Arena pit | (210.0, -32.74, -725.0) | The pit floor, on its water plane (K27). The arena left for the east shelf in DA-F2; DA-08's pad relocation moves this station beside it, at (331, -11.12, -693) | `DebugArea_Ring_ArenaPit` | 39 |
+| Pit overlook | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit (a water plane, K27). No longer an arena-viewing spot: since DA-F2 moved the arena to the east shelf it is 167 to 205 m from the squads, outside the 150 m AoI, so a GM who rings here neither sees nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
+| Arena shelf | (331.0, -10.58, -693.0) | Z6 arena, the east shelf, beside the fights: fight 2 (Lucia) is 12 to 33 m away, the fight 1 NID guards 50 m and its Praxis 65 m. The station to use for the arena | `DebugArea_Ring_ArenaPit` | 39 |
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
 
 No station is within 25 m of a hostile that can aggro (DA-03 and DA-04
-checked their seeded rows against these points). The pit "floor" is the
-water collision plane at y -33.28, which the navmesh treats as ground.
+checked their seeded rows against these points). Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
+and sequences (`DebugArea_Ring_ArenaPit`, `..._Seq_3`) when DA-F1 moved it
+off the pit: the pit "floor" is the water collision plane at y -33.28, which
+the navmesh treats as ground, so the first pad (210, -33.28, -725) rendered
+on the water surface and players who stepped off sank to y -52. The new pad
+is the largest clear disc on the east shelf (radius 6.5 m of flat Terrain at
+y -11.12, nothing solid up to 8 m above it, found by DA-F2 on the real
+occluder and navmesh data); the console is 3 m east and 1.3 m south of it.
 
 ### Using a ring
 
@@ -526,11 +532,25 @@ the destination pad may not see its rings drop: see the known limitation in
 
 ### What needs the client patch
 
-The rigs exist only in client patch `010-debug-area-rings`
+The rigs exist only in client patch `011-debug-area-rings-fix`
 ([data/client-patches](../../data/client-patches/README.md)), which needs
-`007-castle-armory-ring` applied first. Without it the consoles and the trip
-still work, but there is no ring hardware on the pads and no animation.
+`007-castle-armory-ring` applied first (or `010-debug-area-rings`, which it
+repairs). Without it the consoles and the trip still work, but there is no
+ring hardware on the pads and no animation.
 
+**010 is retired: it hung the client.** 010 was published for about half an
+hour on 2026-10-05 and pulled. Any client that loaded the Ihpet Crater map
+with it (world 1300, or world 73) took an access violation at `SGW.exe+0xbc6a0`
+and froze. The cause was one name flag, not the rig: the cloned
+`LightingChannels` struct names a property `Dynamic`; in Castle's name table
+that entry loads on the client, in Ihpet's it is editor-only, and the client
+reads an editor-only name as `None`, which ends the property list early.
+Everything after it in the object is read three bytes off, and the next tag
+name is garbage. The cloner now gives a name its own client-loadable entry
+when the target's entry is narrower. `011` ships the rebuilt chunk, and it
+upgrades a 010 install in place from 010's own output: see the
+[patch README](../../data/client-patches/README.md#011-debug-area-rings-fix),
+which also has the byte-level evidence.
 World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
 ring platforms too. They do nothing there: world 73 has no pads, consoles or
 chains. The platforms and rings block players on the client
@@ -551,8 +571,11 @@ What only the live client can show (DA-06):
   evidence yet that 007's Armory ring sound plays either: its phase 1
   in-client test is still pending, and SigNoz has no client log naming
   `rings/transport` or sequence 10187 (searched 2026-10-04, 30 days).
-- The arena pit pad sits on the lake's fluid plane; the chunk's
-  `SeqEvent_Touch` splash chain may splash on arrival.
+- The arena station (region 39, the Arena shelf) moved off the water in DA-F1:
+  its rig stands on flat terrain at (331, -11.12, -693), and nothing on the
+  shelf is a fluid volume, so the chunk's `SeqEvent_Touch` splash chain does
+  not apply there. Check in the client that the rig's rings clear the ruin
+  walls just behind its rear pillars (da06 saw them close, not touching).
 
 ### Seed and code
 
@@ -638,8 +661,9 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
 - The pit "floor" is a water collision plane (`WaterCollisionPrefab_Square`,
   y -33.28; the terrain is 10-25 m below it), found by DA-08. The navmesh lies
   on that plane, but a player sinks to the lakebed (DA-06: y -52). DA-F2 moved
-  the arena squads off it to the east shelf. The arena-pit ring pad (region 39)
-  still sits on the water until DA-08's pad relocation lands.
+  the arena squads off it to the east shelf, and DA-F1 moved the arena ring
+  pad (region 39) there too. Only the Pit overlook pad (region 38) and the
+  pit's west ledge look down on the water now.
 - The east shelf is a ruin floor, and its walls are checked only in the
   occluder. Check in the client that fight 1's two lines see each other and
   that the walk on from the east gap is open.

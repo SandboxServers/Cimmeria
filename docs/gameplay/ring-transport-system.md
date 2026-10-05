@@ -436,15 +436,15 @@ CREATE TABLE ring_transport_regions (
 
 #### Debug Area (world 1300) — 8 regions, fully connected (Cimmeria, DA-08)
 
-Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `010-debug-area-rings` clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
+Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `011-debug-area-rings-fix` (it replaces `010-debug-area-rings`, which hung the client and was pulled) clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
 
 | ID | `ring_transport_regions.tag` | Console spawn tag | Event set | Sequences (out / in) | Rig |
 |---|---|---|---|---|---|
 | 35 | `DebugArea_Ring_CompoundRegion` | `DebugArea_Ring_Compound` | 13810 | 10189 / 10190 | `…Pf0_Seq` |
 | 36 | `DebugArea_Ring_FactionYardRegion` | `DebugArea_Ring_FactionYard` | 13811 | 10191 / 10192 | `…Pf0_Seq_0` |
 | 37 | `DebugArea_Ring_AiSlopeRegion` | `DebugArea_Ring_AiSlope` | 13812 | 10193 / 10194 | `…Pf0_Seq_1` |
-| 38 | `DebugArea_Ring_ArenaRimRegion` | `DebugArea_Ring_ArenaRim` | 13813 | 10195 / 10196 | `…Pf0_Seq_2` |
-| 39 | `DebugArea_Ring_ArenaPitRegion` | `DebugArea_Ring_ArenaPit` | 13814 | 10197 / 10198 | `…Pf0_Seq_3` |
+| 38 (Pit overlook) | `DebugArea_Ring_ArenaRimRegion` | `DebugArea_Ring_ArenaRim` | 13813 | 10195 / 10196 | `…Pf0_Seq_2` |
+| 39 (Arena shelf) | `DebugArea_Ring_ArenaPitRegion` | `DebugArea_Ring_ArenaPit` | 13814 | 10197 / 10198 | `…Pf0_Seq_3` |
 | 40 | `DebugArea_Ring_GalleryWestRegion` | `DebugArea_Ring_GalleryWest` | 13815 | 10199 / 10200 | `…Pf0_Seq_4` |
 | 41 | `DebugArea_Ring_GalleryEastRegion` | `DebugArea_Ring_GalleryEast` | 13816 | 10201 / 10202 | `…Pf0_Seq_5` |
 | 42 | `DebugArea_Ring_DeathYardRegion` | `DebugArea_Ring_DeathYard` | 13817 | 10203 / 10204 | `…Pf0_Seq_6` |

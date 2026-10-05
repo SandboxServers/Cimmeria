@@ -6,7 +6,7 @@
 //! spawn -> `interact_tag` chain. These tests pin each link against the loaded
 //! database, plus the two map facts the seed depends on: every pad is on the
 //! navmesh (or the trip aborts with `ring_pad_off_navmesh`) and stands on the
-//! map's floor where client patch `010-debug-area-rings` put the rig.
+//! map's floor where client patch `011-debug-area-rings-fix` put the rig.
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -411,3 +411,197 @@ fn level_splice_refuses_inline_bulk_data_offsets() {
     assert!(e.to_string().contains("self-referential"), "{e}");
     let _ = [src_path, pkg_path].map(std::fs::remove_file);
 }
+
+/// Name entries carry load-for-client/server/edit bits, and the client reads
+/// an entry that does not load on the client as `NAME_None`. A property tag
+/// named `None` ends the list, so the rest of the object is read from the
+/// wrong offset: client patch 010 hung every client that loaded its map
+/// because Ihpet's `Dynamic` is editor-only there while Castle's, where the
+/// rig came from, is not, and the cloned `LightingChannels` struct names it.
+#[test]
+fn a_cloned_property_name_keeps_the_load_bits_it_had_in_the_source() {
+    const LOAD_BITS: u64 = 0x0007_0000_0000_0000;
+    const EDITOR_ONLY: u64 = 0x0004_0010_0000_0000;
+
+    let mut sb = Builder::default();
+    let actor_class = sb.import("Core", "Class", 0, "StaticMeshActor");
+    let level = level_package(&mut sb, &[]);
+    let mut actor = Vec::new();
+    Builder::i32s(&mut actor, &[actor_class, actor_class, -1, -1, 0, 0, -1, 9]);
+    sb.bool_prop(&mut actor, "Dynamic", true);
+    sb.vector_prop(&mut actor, "Location", [1.0, 2.0, 3.0]);
+    sb.none(&mut actor);
+    sb.export(actor_class, level, "StaticMeshActor", actor);
+    sb.mark_actor();
+    sb.mark_client_loaded();
+    let src_path = write_temp("flags-src", &sb.build());
+
+    let mut tb = Builder::default();
+    tb.name_flags.insert("Dynamic".into(), EDITOR_ONLY);
+    tb.name("Dynamic");
+    level_package(&mut tb, &[]);
+    let dst_path = write_temp("flags-dst", &tb.build());
+
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    let target_before = target.export_count();
+    clone_actors(&mut target, &source, &[1], Placement::Offset([0.0; 3])).unwrap();
+    let out = write_temp("flags-out", &target.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+
+    // The tool's own check agrees: nothing the clone names reads as None.
+    let new_objects = target_before..pkg.exports.len();
+    let audit = super::name_audit::audit_client_names(&pkg, new_objects).unwrap();
+    assert_eq!(audit.unloadable, vec![]);
+    assert_eq!(audit.audited, 1, "the audit must actually see the clone");
+
+    let cloned = pkg.exports.last().unwrap();
+    let data = pkg.read_export_data(cloned).unwrap();
+    // First tag of the cloned actor, after the 32-byte state frame prefix.
+    let tag_name = LittleEndian::read_i32(&data[32..]) as usize;
+    assert_eq!(pkg.names[tag_name].name, "Dynamic");
+    assert_eq!(
+        pkg.names[tag_name].flags & LOAD_BITS,
+        LOAD_BITS,
+        "the clone must name an entry the client loads as a real name"
+    );
+    // The stock entry is left as it was, and the table now holds both.
+    let dynamics: Vec<_> = pkg
+        .names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.name == "Dynamic")
+        .collect();
+    assert_eq!(dynamics.len(), 2);
+    assert_eq!(dynamics[0].1.flags, EDITOR_ONLY);
+    assert_ne!(dynamics[0].0, tag_name);
+    let _ = [src_path, dst_path, out].map(std::fs::remove_file);
+}
+
+/// A name the target already holds with the same load bits is reused, not
+/// duplicated: the fix must not bloat tables for the usual case.
+#[test]
+fn a_name_with_matching_load_bits_is_reused_not_duplicated() {
+    let src_path = write_temp("reuse-src", &source_package());
+    let dst_path = write_temp("reuse-dst", &target_package());
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    let before = target.package.names.len();
+    clone_actors(&mut target, &source, &[2], Placement::Offset([0.0; 3])).unwrap();
+    let out = write_temp("reuse-out", &target.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let mut seen = std::collections::HashSet::new();
+    for n in &pkg.names[before..] {
+        assert!(
+            seen.insert(n.name.to_lowercase()),
+            "{} was added twice",
+            n.name
+        );
+    }
+    for n in &pkg.names[before..] {
+        assert!(
+            !pkg.names[..before]
+                .iter()
+                .any(|o| o.name.eq_ignore_ascii_case(&n.name)),
+            "{} duplicates an entry the target already had",
+            n.name
+        );
+    }
+    let _ = [src_path, dst_path, out].map(std::fs::remove_file);
+}
+
+/// The audit itself must see the 010 shape: a tag named by an entry the
+/// client does not load, whether at the top of an object or nested in a
+/// struct property, and a clean object must pass. Without this the check in
+/// `upk_patch` could rot into a function that always returns nothing.
+#[test]
+fn the_name_audit_finds_a_tag_the_client_would_read_as_none() {
+    const EDITOR_ONLY: u64 = 0x0004_0010_0000_0000;
+    let mut b = Builder::default();
+    b.name_flags.insert("Dynamic".into(), EDITOR_ONLY);
+    let class = b.import("Core", "Class", 0, "StaticMeshComponent");
+    // A component (8-byte prefix): `LightingChannels { bInitialized, Dynamic }`,
+    // the struct the 010 clones carried.
+    let mut inner = Vec::new();
+    b.bool_prop(&mut inner, "bInitialized", true);
+    b.bool_prop(&mut inner, "Dynamic", true);
+    b.none(&mut inner);
+    let mut comp = vec![0u8; 8];
+    b.tag(
+        &mut comp,
+        "LightingChannels",
+        "StructProperty",
+        inner.len() as i32,
+    );
+    let s = b.name("LightingChannelContainer");
+    Builder::i32s(&mut comp, &[s, 0]);
+    comp.extend_from_slice(&inner);
+    b.none(&mut comp);
+    b.export(class, 0, "StaticMeshComponent", comp);
+    b.mark_client_loaded();
+    // A clean sibling.
+    let mut clean = vec![0u8; 8];
+    b.bool_prop(&mut clean, "bInitialized", true);
+    b.none(&mut clean);
+    b.export(class, 0, "StaticMeshComponent", clean);
+    b.mark_client_loaded();
+    // An editor-only object (no RF_LoadForClient) naming the same name: stock
+    // packages have these (a Brush, a DrawLightConeComponent) and the client
+    // never serializes them, so the audit must not report them.
+    let mut editor_object = vec![0u8; 8];
+    b.bool_prop(&mut editor_object, "Dynamic", true);
+    b.none(&mut editor_object);
+    b.export(class, 0, "StaticMeshComponent", editor_object);
+    // A client-loaded object whose list the audit cannot follow.
+    b.export(class, 0, "StaticMeshComponent", vec![0xFF; 16]);
+    b.mark_client_loaded();
+    let path = write_temp("audit", &b.build());
+    let pkg = Package::open(&path).unwrap();
+
+    let audit = super::name_audit::audit_client_names(&pkg, 0..4).unwrap();
+    let bad = &audit.unloadable;
+    assert_eq!(bad.len(), 1, "{bad:?}");
+    assert_eq!((bad[0].export, bad[0].name.as_str()), (0, "Dynamic"));
+    assert_eq!(pkg.names[bad[0].name_index].flags, EDITOR_ONLY);
+    assert_eq!(audit.audited, 2, "{audit:?}");
+    assert_eq!(
+        audit.not_audited,
+        vec![3],
+        "unwalkable objects are reported"
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+/// The remapper clones struct-array elements, so the audit has to look inside
+/// them too: an unloadable name there misreads the rest of the object just
+/// the same.
+#[test]
+fn the_name_audit_descends_struct_arrays() {
+    const EDITOR_ONLY: u64 = 0x0004_0010_0000_0000;
+    let mut b = Builder::default();
+    b.name_flags.insert("Dynamic".into(), EDITOR_ONLY);
+    let class = b.import("Core", "Class", 0, "StaticMeshComponent");
+    let mut element = Vec::new();
+    b.bool_prop(&mut element, "Dynamic", true);
+    b.none(&mut element);
+    let mut comp = vec![0u8; 8];
+    b.struct_array_prop(&mut comp, "Elements", &[element]);
+    b.none(&mut comp);
+    b.export(class, 0, "StaticMeshComponent", comp);
+    b.mark_client_loaded();
+    // A bare array of ints is not a struct array and must not be misread as one.
+    let mut ints = vec![0u8; 8];
+    b.tag(&mut ints, "Values", "ArrayProperty", 12);
+    Builder::i32s(&mut ints, &[2, 67, 68]);
+    b.none(&mut ints);
+    b.export(class, 0, "StaticMeshComponent", ints);
+    b.mark_client_loaded();
+    let path = write_temp("audit-array", &b.build());
+    let pkg = Package::open(&path).unwrap();
+
+    let audit = super::name_audit::audit_client_names(&pkg, 0..2).unwrap();
+    assert_eq!(audit.unloadable.len(), 1, "{audit:?}");
+    assert_eq!(audit.unloadable[0].export, 0);
+    assert!(audit.not_audited.is_empty(), "{audit:?}");
+    let _ = std::fs::remove_file(path);
+}

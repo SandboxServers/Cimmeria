@@ -1,0 +1,21 @@
+{
+  "id": "011-debug-area-rings-fix",
+  "title": "Debug Area ring transports (fix)",
+  "description": "Replaces the Debug Area ring transport patch (010), which hung the client whenever it loaded the Ihpet Crater map. Adds eight working ring transport stations to that map and changes one Ihpet Crater map file. Needs the Castle Armory ring patch (007) first, unless 010 already applied.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap", "transform": "upk_normalize"},
+        {"path": "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap", "output_of": "007-castle-armory-ring"}
+      ],
+      "alternatives": [
+        {
+          "sources": [
+            {"path": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap", "output_of": "010-debug-area-rings"}
+          ]
+        }
+      ]
+    }
+  ]
+}

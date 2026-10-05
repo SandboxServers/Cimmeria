@@ -2,6 +2,10 @@
 //!
 //! Usage:
 //!   upk-patch roundtrip <in> <out>
+//!   upk-patch audit-names <package> [--from FIRST_EXPORT_INDEX] [--strict]
+//!   (clone-objects also audits its new objects, and fails on a property name
+//!   the client would read as None; --strict also fails on an object whose
+//!   property list the audit could not follow)
 //!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
 //!             [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]
 //!
@@ -16,6 +20,7 @@
 //! sequence takes its own instance number (`_Seq`, `_Seq_0`, `_Seq_1`, ...).
 //! Both refuse to overwrite <in>, and both re-open the output to verify it.
 
+use cimmeria_upk::patcher::name_audit::audit_client_names;
 use cimmeria_upk::patcher::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
 use cimmeria_upk::{extract_actors, Package};
 use std::env;
@@ -29,7 +34,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
     );
     process::exit(1);
 }
@@ -136,6 +141,36 @@ fn verify(original: &str, output: &str, changed: &[usize]) {
         extract_actors(&after).len(),
         extract_actors(&before).len()
     );
+    // The client's name-table loader stores an entry that does not load on the
+    // client as `None`; a property tag named by one ends its list early and the
+    // rest of the object is misread. A structural parse cannot see that, so
+    // audit the names of the new objects.
+    let new_exports = before.exports.len()..after.exports.len();
+    let audit = audit_client_names(&after, new_exports)
+        .unwrap_or_else(|e| fail(&format!("name audit: {e}")));
+    for b in audit.unloadable.iter().take(10) {
+        eprintln!(
+            "  export {} names '{}' (name table entry {}), which the client reads as None",
+            b.export, b.name, b.name_index
+        );
+    }
+    if !audit.unloadable.is_empty() {
+        fail(&format!(
+            "{} property name(s) in new objects would read as None on the client",
+            audit.unloadable.len()
+        ));
+    }
+    if !audit.not_audited.is_empty() {
+        fail(&format!(
+            "{} new object(s) have a property list the name audit cannot follow (exports {:?})",
+            audit.not_audited.len(),
+            &audit.not_audited[..audit.not_audited.len().min(10)]
+        ));
+    }
+    println!(
+        "verify: every property name in the {} new client-loaded objects loads on the client",
+        audit.audited
+    );
 }
 
 /// One placement's clone summary.
@@ -187,6 +222,34 @@ fn main() {
             std::fs::write(output, &bytes).unwrap_or_else(|e| fail(&e.to_string()));
             println!("wrote {output} ({} bytes, uncompressed)", bytes.len());
             verify(input, output, &[]);
+        }
+        Some("audit-names") if args.len() >= 3 => {
+            // Property names, in client-loaded exports FROM.., that the client
+            // reads as None. An unmodified package audits clean.
+            let package = Package::open(&args[2]).unwrap_or_else(|e| fail(&e.to_string()));
+            let from: usize = flag(&args, "--from")
+                .map_or(0, |v| v.parse().unwrap_or_else(|_| fail("bad --from")));
+            let audit = audit_client_names(&package, from..package.exports.len())
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            for b in &audit.unloadable {
+                println!(
+                    "export {} names '{}' (name table entry {})",
+                    b.export, b.name, b.name_index
+                );
+            }
+            println!(
+                "{} unloadable property name(s); {} client-loaded export(s) audited, {} not audited",
+                audit.unloadable.len(),
+                audit.audited,
+                audit.not_audited.len()
+            );
+            if !audit.unloadable.is_empty() {
+                process::exit(2);
+            }
+            if !audit.not_audited.is_empty() && args.iter().any(|a| a == "--strict") {
+                eprintln!("not audited: exports {:?}", audit.not_audited);
+                process::exit(3);
+            }
         }
         Some("clone-objects") if args.len() >= 5 => {
             let (input, source, output) = (&args[2], &args[3], &args[4]);
