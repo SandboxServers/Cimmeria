@@ -238,6 +238,8 @@ This is the only place the DLL writes outside `SGW.exe`, and it uses no
 specific to the desktop launcher or to macOS: any launcher that injects this
 DLL into a client under Wine gets it.
 
+It has run once against the real client (2026-10-05, the pinned Wine runtime on macOS): the probe failed, the shim went in, all 42 version reads at start returned real versions, and the login that followed needed no resync. The detail is in Finding 9.
+
 It is a workaround for a fault that belongs upstream. The launcher's Wine
 runtime is a third-party release pinned by hash, so it cannot carry a patch;
 when a pinned runtime has the function fixed, the probe passes and the shim
