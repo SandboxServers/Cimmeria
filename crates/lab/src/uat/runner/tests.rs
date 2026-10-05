@@ -543,6 +543,12 @@ async fn committed_specs_plan_against_main_tools() {
         .expect("abilities.toml is committed")
         .spec
         .clone();
+    let debug_area = sections
+        .iter()
+        .find(|s| s.spec.section.id == "debug-area")
+        .expect("debug-area.toml is committed")
+        .spec
+        .clone();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
     let tmp = tempfile::tempdir().unwrap().keep();
@@ -613,6 +619,24 @@ async fn committed_specs_plan_against_main_tools() {
         }
     }
     assert!(abilities.rows.len() >= 33, "the section lost rows");
+    // Debug Area (DA-05), every row: a row with no standing reason plans as
+    // ready against today's tools, so a station row that picks up an
+    // unrouted tool fails here; a blocked row reports its own reason.
+    assert!(debug_area.rows.len() >= 46, "the section lost rows");
+    for row in &debug_area.rows {
+        let got = result("debug-area", &row.id);
+        match &row.blocked {
+            Some(why) => {
+                assert_eq!(got.result, "BLOCKED", "{}: {:?}", row.id, got.reasons);
+                assert!(
+                    got.reasons.iter().any(|x| x.contains(why.as_str())),
+                    "{}",
+                    row.id
+                );
+            }
+            None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
+        }
+    }
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");

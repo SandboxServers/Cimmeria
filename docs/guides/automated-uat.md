@@ -350,8 +350,9 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 | `cooked-data` | CD3, CD6 | CD1, CD5 (`@cache_files`), CD2 (owner-only files), CD4 (`@cache_files`, `@world_click`) |
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 25 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U20 and AB-U22 (`.dummy caster`), AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
+| `debug-area` (fresh Soldier, 2026-10-04) | 42 rows: DA-U1, DA-U3 to DA-U6, DA-U8 to DA-U43, DA-U45 (every Debug Area station, the outbound stargate, the starter kit, the patch-009 hotbar and a read of the seeded characters) | DA-U2 (non-GM account), DA-U7 (the store's buttons, L9), DA-U44 (a seeded account), DA-U46 (#1234, ring transports) |
 
-45 rows are ready (22 before `ability-mechanics`, which adds 23) and 22 are blocked (12, plus its 10). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
+87 rows are ready (22 before `ability-mechanics`, which adds 23, and `debug-area` 42) and 26 are blocked (12, plus its 10, plus `debug-area`'s 4). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
 
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
 2. `chat` 9a and 9c, `black-market` U1 and U22: exact-count clauses, refusals, teardown.
@@ -360,6 +361,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 5. `gm-parity` M4-1b: cross-world travel (the chat box across load screens).
 6. `bank` 1, 12 and 2 (the first world click), `crafting` 1-19, `castle-cellblock` T01/T02: fresh characters, Lua reads (the stock bindings named there are unproven: a read that errors is UNVERIFIED, and the spec is fixed from what the client shows).
 7. `consumables` I1 and `cooked-data` CD6.
+8. `debug-area` DA-U1 (the first world-1300 load, which DA-06 also needs), then the plaza rows DA-U3 to DA-U18 and the rest in zone order.
 
 The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists the tools the blocked rows wait for. When one lands, a spec that names it runs with no runner change. The colo also seeds `lab2` to `lab5` (#1093), and the runner drives a second lab instance for `players = 2` rows ([Two-player rows](#two-player-rows)). `Castle_CellBlock` is instanced per login, so both players move to Castle (world 8) first.
 
