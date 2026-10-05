@@ -1,49 +1,32 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 795
-crates/admin-api/src/routes/dev_session/handlers.rs 2
+# total 661
 crates/base-methods/src/base/world_entry/methods/missions/mod.rs 10
 crates/base-methods/src/base/world_entry/methods/player_load/core/inventory_items.rs 1
 crates/base-methods/src/base/world_entry/methods/player_load/core/player_data.rs 11
 crates/base-methods/src/base/world_entry/methods/player_load/meta.rs 3
 crates/base-methods/src/base/world_entry/methods/world_entry_db.rs 8
-crates/base/src/base/dispatch/organization.rs 3
-crates/base/src/base/dispatch/organization_squad.rs 4
-crates/cell-catalog/src/ability_tree/tree_info.rs 5
-crates/cell-methods/src/cell/cell_methods/ability_manager.rs 2
-crates/cell-methods/src/cell/cell_methods/being.rs 4
 crates/cell-methods/src/cell/cell_methods/black_market/mod.rs 19
-crates/cell-methods/src/cell/cell_methods/combatant.rs 2
 crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs 43
-crates/cell-methods/src/cell/cell_methods/gate_travel.rs 3
 crates/cell-methods/src/cell/cell_methods/inventory/item_ops.rs 34
 crates/cell-methods/src/cell/cell_methods/mail.rs 10
-crates/cell-methods/src/cell/cell_methods/minigame.rs 34
 crates/cell-methods/src/cell/cell_methods/missionary.rs 8
 crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs 26
-crates/cell-methods/src/cell/cell_methods/player/crafting/forward.rs 3
-crates/cell-methods/src/cell/cell_methods/player/crafting/mod.rs 3
 crates/cell-methods/src/cell/cell_methods/player/interaction/dialog.rs 12
 crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs 14
-crates/cell-methods/src/cell/cell_methods/player/interaction/mod.rs 1
-crates/cell-methods/src/cell/cell_methods/player/social.rs 2
 crates/cell-methods/src/cell/cell_methods/player/trade/handlers.rs 30
 crates/cell-methods/src/cell/cell_methods/player/trade/handoff.rs 14
 crates/cell-methods/src/cell/cell_methods/player/vendor/mod.rs 16
 crates/cell-methods/src/cell/cell_methods/player/vendor/respec.rs 11
 crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs 11
 crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs 41
-crates/cell-methods/src/cell/cell_methods/player/vendor/train_feedback.rs 2
 crates/cell-methods/src/cell/cell_methods/player/world/auto_cycle.rs 18
 crates/cell-methods/src/cell/cell_methods/player/world/mod.rs 10
-crates/cell-methods/src/cell/cell_methods/player/world/system_options.rs 4
-crates/cell-world/src/cell/combat_debug/commands.rs 3
 crates/cell-world/src/cell/combat_debug/deliver.rs 14
 crates/cell-world/src/cell/combat_debug/mod.rs 8
 crates/cell-world/src/cell/cover/stance.rs 17
 crates/cell-world/src/cell/duel/challenge.rs 23
-crates/cell-world/src/cell/duel/effects.rs 3
 crates/cell-world/src/cell/duel/end.rs 21
 crates/cell-world/src/cell/duel/gm.rs 9
 crates/cell-world/src/cell/duel/outbound.rs 11
@@ -55,21 +38,6 @@ crates/cell-world/src/cell/pets/owner_hooks.rs 46
 crates/cell-world/src/cell/pets/registry.rs 13
 crates/cell-world/src/cell/pets/teardown.rs 31
 crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
-crates/cell/src/cell/dispatch/ability_receipt.rs 3
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
-crates/cell/src/cell/service/base_messages/lab_console.rs 2
-crates/cell/src/cell/service/base_messages/respec.rs 5
 crates/cell/src/cell/service/ticks/auto_cycle.rs 13
-crates/cell/src/cell/service/ticks/cover.rs 3
-crates/cell/src/cell/service/ticks/crafting_stations.rs 3
-crates/cell/src/cell/service/ticks/reload_completion.rs 3
-crates/game/src/combat/damage.rs 1
-crates/mercury/src/instrumentation.rs 1
-crates/resources/src/base/dialog_overrides/patch.rs 5
-crates/resources/src/base/resources/apply_overrides.rs 17
-crates/wire-log/src/wire_log/mod.rs 2
-crates/wire/src/cell/player_journal.rs 1
-crates/wire/src/firehose/emit.rs 4
-crates/wire/src/mercury/aoi/create.rs 1
-crates/wire/src/mercury/world_data/map_loaded.rs 3

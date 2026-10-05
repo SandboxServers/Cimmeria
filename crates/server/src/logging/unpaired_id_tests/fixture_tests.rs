@@ -510,7 +510,10 @@ fn f() { w!(\"a\"); w!(\"b\"); }
 fn reset_records_the_old_total_in_the_file() {
     let counts: BTreeMap<String, usize> = [("crates/x/src/a.rs".to_string(), 5)].into();
     let text = render_reset(&counts, 3);
-    assert!(text.contains("# reset by NT_BASELINE_RESET: total 3 -> 5"), "{text}");
+    assert!(
+        text.contains("# reset by NT_BASELINE_RESET: total 3 -> 5"),
+        "{text}"
+    );
     assert_eq!(baseline_total(&text), Some(5));
     assert_eq!(parse_baseline(&text), counts);
 }

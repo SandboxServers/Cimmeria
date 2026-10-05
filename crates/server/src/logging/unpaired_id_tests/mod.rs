@@ -224,8 +224,10 @@ fn render_reset(counts: &BTreeMap<String, usize>, old: usize) -> String {
     let rendered = render_baseline(counts);
     let at = rendered.find(TOTAL_PREFIX).unwrap_or(rendered.len());
     let new: usize = counts.values().sum();
-    let note = format!("# reset by {RESET_VAR}: total {old} -> {new} (a scanner change)
-");
+    let note = format!(
+        "# reset by {RESET_VAR}: total {old} -> {new} (a scanner change)
+"
+    );
     format!("{}{note}{}", &rendered[..at], &rendered[at..])
 }
 
