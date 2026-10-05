@@ -2,6 +2,9 @@
 //! tests that also need `SpaceManager`, combat or the GM spawn handler stay
 //! in `cimmeria-services` (`cell::spawner_tests`).
 //!
+//! - [`live_db_ambient_chatter`]: live-DB guards for the ambient chatter seed
+//!   (DA-09, the System Lords' summit): complete scenes, and every speaker
+//!   tag one named, friendly NPC in the group's world.
 //! - [`live_db_ammo_catalog`]: live-DB guards for the ammo campaign's
 //!   foundation seed (AM-F): the `EAmmoType` ordinals against `pg_enum`,
 //!   `ammo_item_types`, the Standard Pistol / SMG widening and the catalog
@@ -90,6 +93,7 @@
 mod live_db_ability_animation_links;
 mod live_db_ability_ranges;
 mod live_db_ability_sets;
+mod live_db_ambient_chatter;
 mod live_db_ammo_catalog;
 mod live_db_ammo_loot;
 mod live_db_castle_loot;

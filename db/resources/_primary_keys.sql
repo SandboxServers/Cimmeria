@@ -20,6 +20,20 @@ ALTER TABLE ONLY cover_nodes
     ADD CONSTRAINT cover_nodes_pkey PRIMARY KEY (chunk_id, node_id);
 
 --
+-- Name: ambient_chatter_groups_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY ambient_chatter_groups
+    ADD CONSTRAINT ambient_chatter_groups_pkey PRIMARY KEY (group_id);
+
+--
+-- Name: ambient_chatter_lines_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY ambient_chatter_lines
+    ADD CONSTRAINT ambient_chatter_lines_pkey PRIMARY KEY (group_id, exchange_id, line_index);
+
+--
 -- TOC entry 2914 (class 2606 OID 63189)
 -- Name: abilities_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace:
 --

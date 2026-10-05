@@ -21,10 +21,14 @@
 //! - [`reach`]: no station is in reach of another (other packets' rows and
 //!   the world's respawners included), and no NPC that fights NPCs can reach a
 //!   DA-03 NPC it would target.
+//! - [`lords`]: the System Lords' summit (DA-09): the lords stand on the
+//!   terrace, a listener among them is out of every hostile's reach, and
+//!   every chatter line names a seated lord.
 //!
 //! Skips on a checkout without `data/spaces/ihpet_crater_light.nav` / `.occ`.
 
 mod isolation;
+mod lords;
 mod placement;
 mod reach;
 

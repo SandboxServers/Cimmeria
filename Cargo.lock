@@ -1045,6 +1045,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cell-chatter"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-world",
+ "cimmeria-common",
+ "cimmeria-entity",
+ "cimmeria-names",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "cimmeria-workspace-hack",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-cell-combat"
 version = "0.1.0"
 dependencies = [
@@ -1631,6 +1647,7 @@ dependencies = [
  "cimmeria-base-world-entry",
  "cimmeria-cell",
  "cimmeria-cell-catalog",
+ "cimmeria-cell-chatter",
  "cimmeria-cell-combat",
  "cimmeria-cell-console",
  "cimmeria-cell-content",

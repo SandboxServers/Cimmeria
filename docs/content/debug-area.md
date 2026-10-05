@@ -30,7 +30,8 @@ player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
-stargate (DA-07) and the ring transports that link them (DA-08).
+stargate (DA-07), the ring transports that link them (DA-08) and the
+System Lords' summit (DA-09).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -51,6 +52,11 @@ in their own seed files:
   1370-1377) and `db/resources/Worlds/Seed/spawnlist_debug_area_combat.sql`
   (spawns 13600-13641), inside DA-04's block (templates 1370-1399, spawns
   13600-13799).
+- DA-09 (the System Lords' summit): `entity_templates_debug_area_lords.sql`
+  (templates 1400-1406), `spawnlist_debug_area_lords.sql` (spawns
+  13850-13856) and `db/resources/Dialogs/Seed/ambient_chatter_lords.sql`
+  (chatter group 1), inside DA-09's block (templates 1400-1409, spawns
+  13850-13869). See [System Lords' summit](#system-lords-summit).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -89,6 +95,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
 | Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
+| NPC appearance, ambient chatter | The System Lords' summit (DA-09) | DA-U47 |
 | GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
 
 What only a live client can settle is the ordered [DA-06 checklist](../analysis/debug-area/README.md#da-06-live-client-checks).
@@ -1194,3 +1201,78 @@ granted, what was left out; `trigger` is `world_entry` or `dhd_open`),
 `reason = "dial_hub_not_gm"`, `reason = "dial_hub_is_outbound_only"` (a dial
 into the Debug Area was refused). Mechanism and design:
 [gate-travel.md § Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out).
+
+## System Lords' summit
+
+Packet DA-09. Six System Lords stand in a circle on the east side of the
+south compound's courtyard and squabble in say chat. Ra's Jaffa stands
+behind his lord and says "Indeed." It tests NPC appearance (the lords are
+dressed from the client's own Goa'uld costume packages) and
+[ambient chatter](ambient-chatter.md), the NPC-to-NPC say-chat system this
+packet adds.
+
+**Getting there.** `.gotolocation DebugArea 282 7.2 -953`, which lands you
+4.5 m behind Ba'al, looking across the circle at Ra. On foot it is 30 m east
+of the services plaza and 36 m north-east of the Z1 arrival.
+
+**Seating.** The centre is (282.0, 6.9, -944.0), on the courtyard's paving
+(occluder geometry at 6.9, the navmesh 0.2-0.3 m above it), with nothing at
+head height for 7.5 m round. The nearest other NPC is 26 m away. Each lord
+stands on a 4.5 m ring facing the centre:
+
+| Spawn | Template | Tag | Name | Position (x, z) | Dressed in |
+|---:|---:|---|---|---|---|
+| 13850 | 1400 | `DebugArea_Lords_Ra` | Ra | (282.0, -939.5), north | His NPC kit: cape, dress, crowned helmet, torso and armour |
+| 13851 | 1402 | `DebugArea_Lords_Anat` | Anat | (285.9, -941.75) | Her full NPC kit |
+| 13852 | 1405 | `DebugArea_Lords_Nerus` | Nerus | (285.9, -946.25) | His NPC robes (a human body, as shipped) |
+| 13853 | 1401 | `DebugArea_Lords_Baal` | Ba'al | (282.0, -948.5), south, facing Ra | The dark, gold-trimmed Yellow Trader robes with his own head |
+| 13854 | 1403 | `DebugArea_Lords_Athena` | Athena | (278.1, -946.25) | Anat's gown and bracer, a circlet, her own white hair and head |
+| 13855 | 1404 | `DebugArea_Lords_Morrigan` | Morrigan | (278.1, -941.75) | Anat's breastplate, pauldron and boots, war paint, a ribbon device and her own head |
+| 13856 | 1406 | `DebugArea_Lords_RaJaffa` | Ra's Jaffa | (282.0, -936.5), behind Ra | Ra's Jaffa armour and a staff |
+
+Every lord is faction 1 (friendly), level 50 (the Jaffa 30), with no
+ability set and no loot. Players cannot attack them, and they never fight.
+The shipped templates (41-45, 53) leave Ba'al, Athena and Morrigan as heads
+on a bare base body. The client ships no female Goa'uld armour beyond
+Anat's NPC kit, so Athena and Morrigan each wear a different part of it:
+no two lords wear the same outfit, though the three women share Anat's
+red-and-bronze palette. Every component name is a `BodyComponent` export of
+the client's packages (`query-index scan <package> BodyComponent`).
+
+**Two things the lab check found** (2026-10-05, a local server on this
+branch, [ledger](../analysis/debug-area/README.md#da-09-system-lords-summit)):
+
+- Adding `NPC_Goauld.NPC_Ra_Head_00` or `NPC_RaG_FingerNail_00` to Ra's kit
+  makes the client draw its placeholder cube (a purple box with a face)
+  instead of Ra. Template 41's kit already carries his crowned head.
+- The summit first stood on the palace terrace north of the enemy gallery
+  (218, 30.9, -532). The terrain there draws white with magenta streaks in
+  this client, and the terrace east of it is unfinished grey void, so the
+  summit moved to the paved courtyard. Outdoor terrain all over this map
+  draws white in this client; paving and buildings draw properly.
+
+**The chatter.** Ambient chatter group 1 holds 17 exchanges of petty
+squabbles over thrones, lunch, the sun's paperwork, the sarcophagus rota,
+reply-all and, mostly, the shol'va Teal'c. One exchange starts when you
+come within 18 m of a lord. Its lines follow 3 to 9 s apart, sized to read
+the line before, then the summit is quiet for 30 s before the next. From
+the landing spot and anywhere in the circle you hear every lord. Nobody at
+the services plaza or the arrival hears them. Each line shows in the chat
+window as `[Lord] says <line>`.
+
+| Step | Expect | Fail |
+|---|---|---|
+| `.gotolocation DebugArea 282 7.2 -953` | Seven NPCs stand in a circle on the courtyard paving, named Ra, Anat, Nerus, Ba'al, Athena, Morrigan and Ra's Jaffa, each in a different outfit | An NPC missing, floating, sunk or a purple cube; two dressed alike |
+| Wait by the circle | Within a second or two a scene starts in chat, each line from the lord who says it | No line in 5 s; lines from "?" or an empty name |
+| Wait for the scene to end | 30 s of quiet, then the next scene | Lines run on without a pause; scenes repeat at once |
+| Walk 30 m away | The lines stop | Lines still arrive far from the circle |
+| Right-click a lord | Nothing happens: they are scenery | An attack starts or an error shows |
+
+Seed: `entity_templates_debug_area_lords.sql` (templates 1400-1406),
+`spawnlist_debug_area_lords.sql` (spawns 13850-13856) and
+`db/resources/Dialogs/Seed/ambient_chatter_lords.sql` (group 1). Guards:
+`service::tests::npc_ai::debug_area::lords` in `cimmeria-cell` (the lords
+stand on the mesh and the paving, a listener is out of every hostile's
+reach, every line's speaker is seated and in earshot of the centre and of
+the landing spot, and neither the plaza nor a respawner hears the summit)
+and `live_db_ambient_chatter` in `cimmeria-cell-catalog`.

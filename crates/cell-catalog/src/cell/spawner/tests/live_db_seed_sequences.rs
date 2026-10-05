@@ -12,8 +12,9 @@ mod live_db {
 
     /// `(sequence, table, id column, floor)`, all in `resources`. The floor
     /// is the top of the highest reserved block (templates: the Debug Area
-    /// 1300-1399; spawns: the Debug Area 13000-13799, both reserved for
-    /// DA-02..DA-04 by the `entity_templates.sql` / `spawnlist.sql` footers;
+    /// 1300-1409, DA-02..DA-04 and DA-09's System Lords 1400-1409; spawns: the
+    /// Debug Area 13000-13869, DA-02..DA-04, DA-07/08 and DA-09's 13850-13869,
+    /// each reserved by its seed file's footer;
     /// item lists and list rows: the crafting blocks 310-329 and 3101-3299).
     /// Raise it with the footer when a block is reserved above it.
     const SEQUENCES: [(&str, &str, &str, i64); 4] = [
@@ -21,9 +22,9 @@ mod live_db {
             "entity_templates_template_id_seq",
             "entity_templates",
             "template_id",
-            1399,
+            1409,
         ),
-        ("spawnlist_spawn_id_seq", "spawnlist", "spawn_id", 13799),
+        ("spawnlist_spawn_id_seq", "spawnlist", "spawn_id", 13869),
         (
             "item_lists_item_list_id_seq",
             "item_lists",
