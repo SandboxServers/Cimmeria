@@ -58,6 +58,16 @@ suspended-process creation, ordered injection and `resume_running` primitives.
 The retained original Windows process handle avoids an OpenProcess race when
 SGW exits immediately. No legacy launcher source behavior changes.
 
+The helper starts the game under plain `C:\...` paths. A native launcher sends
+canonical paths, which on Windows carry the verbatim `\\?\` prefix. Windows does
+not resolve `..` under a verbatim working directory, and `SGW.exe` finds its
+config as `..\SGWGame\Config\`, so with the prefix it quits at startup with
+"Failed to find default engine .ini file". The helper strips the prefix from the
+exe and the working directory with `cimmeria_client_launch::launch::strip_verbatim`,
+the function the Windows launcher already uses. A Wine guest path is already
+plain. Changing the helper changes its SHA-256, so restage it and rebuild the
+shell with the new `CIMMERIA_LAUNCH_HELPER_SHA256`.
+
 ### Development resource staging
 
 Native Windows [run 37214723035](https://github.com/SandboxServers/Cimmeria/actions/runs/37214723035)

@@ -44,12 +44,15 @@ impl HeldDownload {
             let mut request = [0; 4096];
             let count = stream.read(&mut request).unwrap();
             assert!(request[..count].starts_with(b"GET /seed.zip "));
-            write!(
-                stream,
+            // One write: `write!` sends each formatted piece separately, and a
+            // client that hangs up after the status line resets the rest on Windows.
+            let header = format!(
                 "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len()
-            )
-            .unwrap();
+            );
+            if stream.write_all(header.as_bytes()).is_err() {
+                return;
+            }
             // Cross the production progress throttle while never sending EOF or
             // the full body. Cancellation therefore always happens precommit.
             let mut sent = 0;
