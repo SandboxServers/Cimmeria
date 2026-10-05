@@ -1,13 +1,30 @@
 # Navmeshes (`data/spaces/*.nav`)
 
-One XRC `.nav` per world, loaded at space creation by
-`crates/cell-world/src/cell/space_manager/lifecycle.rs`. The file name is the
-world name from `entities/spaces.xml`, lower-cased, with spaces turned into
-underscores. It is **not** `resources.worlds.client_map`: `SandBox` (world 2)
-plays on the `Harset_CmdCenter` client map but loads `sandbox.nav`, which is
-a byte copy of `harset_cmdcenter.nav`. A world with no file has no navmesh:
-NPCs path in straight lines and the position and line-of-sight checks fail
-open.
+One XRC `.nav` per map, loaded at space creation by
+`crates/cell-world/src/cell/space_manager/lifecycle.rs`. Which file a world
+loads is decided by `space_manager/space_files.rs`:
+
+1. **The world's own files.** The world name from `entities/spaces.xml`,
+   lower-cased, with spaces turned into underscores. A world that ships
+   either `.nav` or `.occ` of its own owns both kinds: a missing one stays
+   missing and is never taken from the client map, because a map's occluder
+   is only right beside a mesh built from the same geometry. `SandBox`
+   (world 2) plays on the `Harset_CmdCenter` client map but loads
+   `sandbox.nav`, a byte copy of `harset_cmdcenter.nav`, and no occluder.
+2. **Else its client map's files** (decision D-DA5,
+   [debug-area](../../docs/analysis/debug-area/README.md)). The client map is
+   the one `onClientMapLoad` names (`client_map_for_world` in
+   `cimmeria-wire`), lower-cased the same way. `DebugArea` (world 1300) plays
+   on `Ihpet_Crater_Light` and has no file of its own, so it loads
+   `ihpet_crater_light.nav`. The `navmesh_loaded` line carries
+   `file_source = client_map`, and an INFO `space_file_fallback` line names
+   the world id, the world and the file chosen.
+3. **Else nothing.** A world with neither file has no navmesh: NPCs path in
+   straight lines and the position and line-of-sight checks fail open. The
+   historical CellBlocks (1201–1207) are here: their client maps
+   (`C43485_CellBlock`, …) have no files.
+
+Add a file named after the world only when it must differ from its map's.
 
 How a mesh is built, and the Recast limits the parameters below are chosen
 around: [docs/engine/navmesh-build-pipeline.md](../../docs/engine/navmesh-build-pipeline.md)
@@ -202,8 +219,10 @@ without it Agnos had 1,262).
 
 ## Worlds without a mesh
 
-The server only creates spaces for the 24 worlds in `entities/spaces.xml`,
-and all 24 now have a file. The other 67 `resources.worlds` rows (mission
+The server only creates spaces for the worlds in `entities/spaces.xml`.
+The 24 shipped-map worlds there each have a file; `DebugArea` reads its
+client map's, and the seven historical CellBlocks have none (see the rule at
+the top). The other 67 `resources.worlds` rows (mission
 test maps, `Tol-Alpha` / `Ca-Alpha` pockets, and worlds whose map is not in
 the 2009 client such as Egypt, Pen-Lai, Pertho, SGC_W2 and Dakara_E2/E3)
 have no client map directory under `CookedPC/Maps`, so there is nothing to
@@ -220,9 +239,13 @@ file is `beta_site_evo_1.nav` at 13.4 MB; it loads in about 0.1 s.
 Each world in this directory also ships a `<world>.occ`, its
 collision-geometry occluder for server-side line of sight
 ([#784](https://github.com/SandboxServers/Cimmeria/issues/784), decision
-D-NA13). The file name follows the `.nav` rule: the world name lower-cased,
-with spaces replaced by underscores. A world with no `.occ` keeps the
-navmesh ray, so the file is optional.
+D-NA13). The file name follows the `.nav` rule, client-map fallback
+included, and resolved as a pair with the `.nav`: `DebugArea` loads
+`ihpet_crater_light.occ`, while `SandBox`, which ships its own `.nav`, loads
+no occluder (copy `harset_cmdcenter.occ` to `sandbox.occ` to give it one).
+The cell loads each `.occ` once and keys its cache and its residency gauges
+by the file, so two worlds on one map share one occluder. A world with no
+`.occ` keeps the navmesh ray, so the file is optional.
 
 ### Build
 

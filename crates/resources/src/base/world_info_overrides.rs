@@ -1,14 +1,16 @@
 //! Cimmeria-side additions to `CookedWorldInfo.pak` (category 12).
 //!
-//! The historical CellBlock worlds (1201–1207, see
-//! [`cimmeria_wire::mercury::world_data::historical_cellblocks`]) are world
-//! ids the shipped catalogue has never had. The client's world table comes
-//! from this catalogue, so the server adds the seven entries in memory at
+//! The Cimmeria-added worlds (the historical CellBlocks 1201–1207 and the
+//! Debug Area 1300, see
+//! [`cimmeria_wire::mercury::world_data::added_worlds`]) are world ids the
+//! shipped catalogue has never had. The client's world table comes from this
+//! catalogue, so the server adds one entry per added world in memory at
 //! startup and bumps the category's metadata, so a client holding the shipped
-//! table is resynced with them (`versionInfoRequest` →
-//! `onVersionInfo(InvalidateAll)` → one `resourceFragment` per world → the
-//! version stamp, #840). New ids for dialogs (3996) and Kismet sequences
-//! (10187/10188) reach clients the same way.
+//! table (or an older override set) is resynced with them
+//! (`versionInfoRequest` → `onVersionInfo(InvalidateAll)` → one
+//! `resourceFragment` per world → the version stamp, #840). New ids for
+//! dialogs (3996) and Kismet sequences (10187/10188) reach clients the same
+//! way.
 //!
 //! # Never edit the PAK on disk
 //!
@@ -25,7 +27,7 @@
 //! `MinToRealMin`, `ClientMap`, `World`, `WorldID`; an explicit end tag),
 //! since that is what the client demonstrably parses for this element type.
 
-use cimmeria_wire::mercury::world_data::historical_cellblocks::HISTORICAL_CELLBLOCKS;
+use cimmeria_wire::mercury::world_data::added_worlds::ADDED_WORLDS;
 
 /// One `COOKED_WORLD_INFO` entry the client must hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,22 +43,21 @@ pub struct WorldInfoOverride {
     pub min_to_real_min: u32,
 }
 
-/// `Flags`, `MinPerDay` and `MinToRealMin` of the stock `Castle_CellBlock`
-/// entry (`_12`). The historical worlds are older states of the same map, so
-/// they carry its values.
-const CELLBLOCK_FLAGS: u32 = 1;
-const CELLBLOCK_MIN_PER_DAY: u32 = 1440;
-const CELLBLOCK_MIN_TO_REAL_MIN: u32 = 1;
+/// `MinPerDay` and `MinToRealMin` of every shipped entry an added world plays
+/// on (`_12` Castle_CellBlock, `_73` Ihpet_Crater_Light). `Flags` differs per
+/// map, so it lives on the added-world table.
+const MIN_PER_DAY: u32 = 1440;
+const MIN_TO_REAL_MIN: u32 = 1;
 
-/// Every world Cimmeria adds to the catalogue: one per historical CellBlock
-/// world, built from the wire crate's table so the ids, names and client
-/// maps cannot drift from what `onClientMapLoad` sends.
+/// Every world Cimmeria adds to the catalogue, one per
+/// [`ADDED_WORLDS`] entry, built from the wire crate's table so the ids,
+/// names and client maps cannot drift from what `onClientMapLoad` sends.
 ///
 /// Ids must not collide with an entry the shipped PAK already has; the
 /// `on_disk_world_info_pak_is_the_client_shipped_file` test enforces that.
-pub const WORLD_INFO_OVERRIDES: &[WorldInfoOverride] = &historical_cellblock_world_info();
+pub const WORLD_INFO_OVERRIDES: &[WorldInfoOverride] = &added_world_info();
 
-const fn historical_cellblock_world_info() -> [WorldInfoOverride; HISTORICAL_CELLBLOCKS.len()] {
+const fn added_world_info() -> [WorldInfoOverride; ADDED_WORLDS.len()] {
     let mut out = [WorldInfoOverride {
         world_id: 0,
         world: "",
@@ -64,17 +65,17 @@ const fn historical_cellblock_world_info() -> [WorldInfoOverride; HISTORICAL_CEL
         flags: 0,
         min_per_day: 0,
         min_to_real_min: 0,
-    }; HISTORICAL_CELLBLOCKS.len()];
+    }; ADDED_WORLDS.len()];
     let mut i = 0;
     while i < out.len() {
-        let world = &HISTORICAL_CELLBLOCKS[i];
+        let world = &ADDED_WORLDS[i];
         out[i] = WorldInfoOverride {
             world_id: world.world_id as u32,
             world: world.world,
             client_map: world.client_map,
-            flags: CELLBLOCK_FLAGS,
-            min_per_day: CELLBLOCK_MIN_PER_DAY,
-            min_to_real_min: CELLBLOCK_MIN_TO_REAL_MIN,
+            flags: world.world_info_flags,
+            min_per_day: MIN_PER_DAY,
+            min_to_real_min: MIN_TO_REAL_MIN,
         };
         i += 1;
     }
@@ -169,28 +170,29 @@ mod tests {
         );
     }
 
-    /// The overrides are exactly the seven historical CellBlock worlds, each
-    /// with its own client map and the stock CellBlock time/flag values.
+    /// The overrides are exactly the seven historical CellBlock worlds, with
+    /// the stock CellBlock flag, and the Debug Area with Ihpet_Crater_Light's.
     #[test]
-    fn overrides_are_the_historical_cellblocks() {
-        let expected: [(u32, &str, &str); 7] = [
-            (1201, "CellBlock43", "C43485_CellBlock"),
-            (1202, "CellBlock55", "C55124_CellBlock"),
-            (1203, "CellBlock57", "C57050_CellBlock"),
-            (1204, "CellBlock58", "C58674_CellBlock"),
-            (1205, "CellBlock60", "C60130_CellBlock"),
-            (1206, "CellBlock62", "C62429_CellBlock"),
-            (1207, "CellBlock63", "C63682_CellBlock"),
+    fn overrides_are_the_added_worlds() {
+        let expected: [(u32, &str, &str, u32); 8] = [
+            (1201, "CellBlock43", "C43485_CellBlock", 1),
+            (1202, "CellBlock55", "C55124_CellBlock", 1),
+            (1203, "CellBlock57", "C57050_CellBlock", 1),
+            (1204, "CellBlock58", "C58674_CellBlock", 1),
+            (1205, "CellBlock60", "C60130_CellBlock", 1),
+            (1206, "CellBlock62", "C62429_CellBlock", 1),
+            (1207, "CellBlock63", "C63682_CellBlock", 1),
+            (1300, "DebugArea", "Ihpet_Crater_Light", 0),
         ];
-        let actual: Vec<(u32, &str, &str)> = WORLD_INFO_OVERRIDES
+        let actual: Vec<(u32, &str, &str, u32)> = WORLD_INFO_OVERRIDES
             .iter()
-            .map(|o| (o.world_id, o.world, o.client_map))
+            .map(|o| (o.world_id, o.world, o.client_map, o.flags))
             .collect();
         assert_eq!(actual, expected);
         for ov in WORLD_INFO_OVERRIDES {
             assert_eq!(
-                (ov.flags, ov.min_per_day, ov.min_to_real_min),
-                (1, 1440, 1),
+                (ov.min_per_day, ov.min_to_real_min),
+                (1440, 1),
                 "{}",
                 ov.world
             );

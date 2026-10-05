@@ -33,6 +33,7 @@ use crate::cell::console::exec;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod debug_area;
 mod entry_point;
 mod freeform;
 mod goto;

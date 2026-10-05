@@ -102,7 +102,7 @@ coordinator instead of moving into another packet's block.
 | SA-01 | Seeded playtest characters rebuilt as Praxis Commandos identical to normal creation; starter pistol and ammo for every char_def (D-SA1); live-DB guards that every char_def and seeded character holds 592, 597, 1646, 1218 and the pistol. | none | Writing |
 | SA-02 | Client patch `009-starter-hotbar` (D-SA2), Lua logic UAT against stock and v26 `ActionProfiles.lua`. Publishing the manifest is a coordinator step. | none | Writing |
 | DA-00 | This plan. | none | Review |
-| DA-01 | World plumbing: world row, `spaces.xml`/`cell_spaces.xml`, a table of Cimmeria-added worlds feeding `world_id_for_name`, `client_map_for_world` and `WORLD_INFO_OVERRIDES` (also closing the missing shipped names: 50, 61, 62, 69, 70, 72, 73, 78), fail-closed `resolve_space_id_fallback`, nav/occ fallback to the client map (D-DA5), advisory list, respawners 130/131, generated cover nodes for world 1300, `.gotolocation DebugArea`. | none | Ready |
+| DA-01 | World plumbing: world row, `spaces.xml`/`cell_spaces.xml`, a table of Cimmeria-added worlds feeding `world_id_for_name`, `client_map_for_world` and `WORLD_INFO_OVERRIDES` (also closing the missing shipped names: 50, 61, 62, 69, 70, 72, 73, 78), fail-closed `resolve_space_id_fallback`, nav/occ fallback to the client map (D-DA5), advisory list, respawners 130/131, generated cover nodes for world 1300, `.gotolocation DebugArea`. | none | Review (#1223) |
 | DA-02 | Z2 services plaza (vendor, trainer, dialog NPC, terminal, loot crate, registrars, pet trainer, bankers, mail clerk, Black Market auctioneer, crafting stations) and an ability granter that gives the clicking player every ability of their archetype; Z3 non-retaliating dummies (D-DA7). | DA-01 | BlockedDependency |
 | DA-03 | Z4 faction yard, Z5 patrol/wander/leash/assist, Z7 enemy gallery with every hostile template (D-DA9). | DA-01 | BlockedDependency |
 | DA-04 | Z6 arena (D-DA8), Z8 cover course, Z9 death and respawn test. | DA-01 | BlockedDependency |
@@ -136,3 +136,14 @@ transport, historical CellBlocks, gate travel) stay tested in their own zones.
 - NPC heights on open terrain (navmesh vs terrain gap).
 - Invisible walls or blockers at compound doorways.
 - The map's own Kismet or stargate prefab firing on load with no gate row seeded.
+- `.gotolocation DebugArea` from Ihpet_Crater_Light (world 73), and back. Both
+  send `mapPath = Ihpet_Crater_Light`, and the client skips the UE3 load when
+  `mapPath` equals the map it holds (SGW.exe `FUN_00df27f0`). Expected: no
+  loading screen, world 73's level state (Kismet, map actors) carries over,
+  and the entry still completes, because the client still sends
+  `onClientReady` and the base already finishes cross-world entries from it
+  (`handle_on_client_ready` synthesises `mapLoaded`). A stall would be fixed
+  server-side.
+- The minimap location text reads the world-1300 name
+  (`getWorldInfo(1300).Name`, from `setupWorldParameters.worldId`), and the
+  world map copes with an id that has no shipped map data.

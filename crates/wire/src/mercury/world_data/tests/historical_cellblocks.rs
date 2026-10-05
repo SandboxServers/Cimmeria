@@ -1,10 +1,11 @@
 //! The historical CellBlock world contract (worlds 1201–1207).
 //!
 //! Expected values are spelled out literally rather than read back from
-//! `HISTORICAL_CELLBLOCKS`, so a typo in the table fails here instead of
+//! `historical_cellblocks()`, so a typo in the table fails here instead of
 //! being echoed into the test.
 
-use super::super::historical_cellblocks::{historical_cellblock, HISTORICAL_CELLBLOCKS};
+use super::super::added_worlds::AddedWorldOrigin;
+use super::super::historical_cellblocks::{historical_cellblock, historical_cellblocks};
 use super::super::*;
 use super::{sample_world_entry, walk_entity_method_records, TEST_KEY};
 use crate::mercury::read_wstring;
@@ -43,21 +44,28 @@ fn client_map_for_world_resolves_every_historical_cellblock() {
 
 #[test]
 fn table_matches_the_contract_and_is_unique() {
-    let table: Vec<(&str, i32, &str)> = HISTORICAL_CELLBLOCKS
-        .iter()
+    let table: Vec<(&str, i32, &str)> = historical_cellblocks()
         .map(|w| (w.world, w.world_id, w.client_map))
         .collect();
     assert_eq!(table, CONTRACT);
 
-    let ids: HashSet<i32> = HISTORICAL_CELLBLOCKS.iter().map(|w| w.world_id).collect();
-    let names: HashSet<&str> = HISTORICAL_CELLBLOCKS.iter().map(|w| w.world).collect();
-    let maps: HashSet<&str> = HISTORICAL_CELLBLOCKS.iter().map(|w| w.client_map).collect();
+    let ids: HashSet<i32> = historical_cellblocks().map(|w| w.world_id).collect();
+    let names: HashSet<&str> = historical_cellblocks().map(|w| w.world).collect();
+    let maps: HashSet<&str> = historical_cellblocks().map(|w| w.client_map).collect();
     assert_eq!(ids.len(), 7);
     assert_eq!(names.len(), 7);
     assert_eq!(maps.len(), 7);
     // The build number is what the client folder is named after.
-    for w in &HISTORICAL_CELLBLOCKS {
-        assert_eq!(w.client_map, format!("C{}_CellBlock", w.build));
+    for w in historical_cellblocks() {
+        let AddedWorldOrigin::HistoricalCellBlock { build } = w.origin else {
+            panic!("{}: the filter returned a non-historical world", w.world);
+        };
+        assert_eq!(w.client_map, format!("C{build}_CellBlock"));
+        assert_eq!(
+            w.world_info_flags, 1,
+            "{}: the stock CellBlock's flag",
+            w.world
+        );
     }
 }
 
@@ -70,7 +78,7 @@ fn lookup_is_exact_and_leaves_stock_cellblock_alone() {
 }
 
 /// One `resources.worlds` seed row, keyed by column name.
-fn seed_rows() -> Vec<HashMap<String, String>> {
+pub(super) fn seed_rows() -> Vec<HashMap<String, String>> {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../db/resources/Worlds/Seed/worlds.sql"

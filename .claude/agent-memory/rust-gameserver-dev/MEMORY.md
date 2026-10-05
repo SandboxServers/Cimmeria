@@ -110,6 +110,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Cell systems
 
 - [cell-systems-index](cell-systems-index.md) — sub-index: grants and loot, per-session state, abilities and effects, NPC AI, missions, pets, crafting, black market, duels, respawn, and the ammo campaign (#1026) notes.
+- [adding-a-cimmeria-world-touchpoints](adding-a-cimmeria-world-touchpoints.md) — new world id = one ADDED_WORLDS row + seed/spaces data; nav/occ client-map fallback; bounds unused.
 
 ## Observability
 

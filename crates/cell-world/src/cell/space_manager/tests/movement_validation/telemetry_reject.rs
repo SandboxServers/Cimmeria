@@ -489,6 +489,8 @@ fn the_navmesh_load_line_identifies_the_mesh_build() {
     super::super::super::movement_telemetry::log_navmesh_loaded(
         4242,
         "Castle_CellBlock",
+        Some(12),
+        "world",
         mesh.fingerprint(),
     );
 
@@ -497,6 +499,10 @@ fn the_navmesh_load_line_identifies_the_mesh_build() {
         .expect("space creation must log the mesh it loaded");
     assert!(ev.has_field("world", "Castle_CellBlock"), "{ev:#?}");
     assert!(ev.has_field("space_id", "4242"), "{ev:#?}");
+    // Rule 6: the world id rides with the name, and the line says whether
+    // the mesh is the world's own or its client map's (D-DA5).
+    assert!(ev.has_field("world_id", "12"), "{ev:#?}");
+    assert!(ev.has_field("file_source", "world"), "{ev:#?}");
     for field in [
         "polys",
         "verts",

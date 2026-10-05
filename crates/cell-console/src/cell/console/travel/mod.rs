@@ -472,7 +472,12 @@ async fn move_subject(
     // happened (P45 handoff).
     match outcome {
         Ok(TransferOutcome::Transferred { space_id }) => {
+            // Rule 6: the destination's world id rides with its name.
+            let world_id = space_mgr
+                .canonical_world_name(world_name)
+                .and_then(|w| space_mgr.world_id_for_world(w));
             tracing::info!(
+                world_id,
                 caller_id,
                 caller_name = caller.player_name,
                 account_id = caller.account_id,

@@ -222,3 +222,18 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 -- client map and sandbox.nav is byte-identical to harset_cmdcenter.nav, so
 -- this is row 21's Command Center door arrival, reused.
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (29, 2, 'SandBox Respawn', 0, 0.355, -20);
+
+-- ── World 1300 DebugArea (2026-10-04, DA-01) ─────────────────────────
+-- The GM Debug Area on the Ihpet_Crater_Light map (docs/analysis/debug-area/README.md).
+-- Ids 130-131 are DA-01's block. Points are the plan's zone survey, provisional until
+-- the DA-06 live-client check. The table has no heading column, so the rows cannot face
+-- into the compound: a respawn faces yaw 0 and a .gotolocation arrival keeps the GM's
+-- facing, as in every other world.
+-- Row 130 is the lowest DebugArea id on purpose: with no stargate, ring pad or
+-- character start, `.gotolocation DebugArea` lands on the world's lowest respawner.
+-- Row 130: Z1 arrival, inside the south walled compound north of its gate prefab
+-- (~(251, 10.6, -990)); interior floor, where navmesh and occluder agree.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (130, 1300, 'Debug Area Arrival', 251, 8, -962);
+-- Row 131: Z9, the death-and-respawn test station (DA-04 seeds its lethal hostile).
+-- A death in the Debug Area respawns at whichever of 130/131 is nearer.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (131, 1300, 'Debug Area Respawn Test', 438, 10.4, -916);
