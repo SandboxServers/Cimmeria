@@ -35,8 +35,9 @@ DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual
 - **live-db-test.sh reloads the worktree DB first**, so manual psql inserts are wiped; do revert
   proofs by editing the seed file (spawnlist.tag is UNIQUE: a renamed tag must be new).
 - AoI: the lineup is within 150 m of Z1/plaza/lords, so every compound arrival creates 161 more
-  NPCs - client cost unmeasured. Lab 2026-10-05: the client hung loading world 1300 itself (before
-  any entity create) after the lab install's Ihpet fff80002 chunk was rewritten at 15:15; the
-  watchdog kills after ~5 s unreachable. Check that chunk's mtime before blaming seeds.
+  NPCs - client cost unmeasured. Lab 2026-10-05: the watchdog killed the client twice while
+  world 1300 loaded. The heartbeat is answered on the main thread, and 5 failed polls of 1 s + 5 s
+  timeout (about 30 s) terminate it; wait_for probes can't keep it alive. The fff80002 chunk was 011's
+  output (rz10). Enter via Castle_CellBlock then `.gotolocation`; direct login into 1300 dies.
 
 Related: [[debug-area-map-survey]], [[debug-area-da03-stations]], [[template-seed-column-traps]].
