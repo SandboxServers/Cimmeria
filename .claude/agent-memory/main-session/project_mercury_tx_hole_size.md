@@ -1,6 +1,6 @@
 ---
 name: project-mercury-tx-hole-size
-description: "A September 2026 transmit hole involved 1488-byte encrypted UDP payloads; the exact client receive or network drop point remains unproven. Read before changing packet size or retransmit policy."
+description: "Oversized reliable datagrams (>1472 B) wedge the client stream: cause 1 uncapped piggybacked ACKs (fixed 2026-10-03), cause 2 single-packet sends with data-sized bodies such as the NPC createOnClient cascade (fixed 2026-10-05). Read before changing packet size or retransmit policy."
 metadata:
   type: project
 ---
@@ -12,3 +12,5 @@ metadata:
 **Follow-up (2026-09-29).** Merged PR #1118 added vitals, vendor, Lua and sequence telemetry but no Mercury send/receive correlation. This work adds `mercury.reliable_send` and `tx_hole_stall` wire size, fingerprint and dispatch site, a client Winsock `recvfrom` event at the IAT slot identified through Ghidra's `recvfrom` thunk (`0x012f3d8c` jumps through `0x017eff60`), and client receive-gap lifecycle from `queueAckForPacket`. The fingerprint is FNV-1a over exact datagram bytes; it is diagnostic, not cryptographic. A repeat session is needed to prove the live socket outcome. See `docs/architecture/client-telemetry.md` and `docs/protocol/mercury-wire-format.md` for the event fields.
 
 **Update (2026-10-03).** The server-side cause, uncapped piggybacked ACKs, is fixed and documented in [docs/protocol/mercury-wire-format.md](../../../docs/protocol/mercury-wire-format.md#piggybacked-ack-budget) (PR #1141). Still unproven: whether the live client returns `WSAEMSGSIZE` for an oversized datagram. The next playtest with telemetry on should show it in `client.mercury.socket_recv`.
+
+**Second cause found and fixed (2026-10-05).** A lab session with 161 extra NPCs stalled on `seq=2744 wire_len=1504 send_kind="witness_single"`, first message `BeingAppearance`. The NPC `createOnClient` cascade is one packet of about 14 messages; template 221's body is 1427 bytes, and with the 10-ACK budget (which assumed bodies of at most 1406) it encrypts to exactly 1504. Single-packet sends now measure the packet before reserving a sequence number, size the ACKs to it, and send a body too big for one datagram as a fragmented bundle; the enter-world bundle and reanchor replay fragment through `build_fragmented_bundle`. Rule and the audited send sites: [mercury-wire-format.md § Reliable datagram size budget](../../../docs/protocol/mercury-wire-format.md#reliable-datagram-size-budget). Needs a live check: a dense-NPC arrival should log `event = "oversize_fragmented"` and no `tx_hole_stall`.

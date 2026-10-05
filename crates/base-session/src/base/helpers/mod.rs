@@ -456,6 +456,10 @@ where
 /// `REPLY_FLAGS_RELIABLE`; this helper closes the loop on the server's
 /// send-window tracking so the FLAG_RELIABLE promise is kept.
 ///
+/// `build_packet` is called twice, once to measure the packet and once to
+/// send it, and a packet whose body cannot fit one 1472-byte datagram goes
+/// out as a fragmented bundle instead: see [`send_reliable_to_addr`].
+///
 /// **Do NOT** use for `build_avatar_update` (position relay) — those
 /// are unreliable on the wire and should NOT be in the TX window.
 /// Use plain [`send_to_witness`] for that case.
@@ -469,90 +473,35 @@ pub async fn send_to_witness_reliable<F>(
     build_packet: F,
 ) -> WitnessSendOutcome
 where
-    F: FnOnce(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
+    F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
-    let send_data = {
-        // Read addr + map_size in one lock scope; see the unreliable
-        // variant above for the deadlock-on-re-lock rationale and the
-        // map_size snapshot caveat.
-        let (addr_opt, map_size) = {
-            let m = entity_to_addr.lock().unwrap();
-            (m.get(&witness_id).copied(), m.len())
-        };
-        let addr = match addr_opt {
-            Some(a) => a,
-            None => {
-                // DEBUG for a witness whose session just ended (the
-                // teardown race), WARN otherwise: `departed_witnesses`.
-                departed_witnesses::log_addr_miss(
-                    witness_id,
-                    map_size,
-                    departed_witnesses::AddrMissPath::Reliable,
-                    connected,
-                );
-                return WitnessSendOutcome::AddrUnresolved;
-            }
-        };
-
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
-            Some(c) => {
-                let key = c.key;
-                let version = c.enc_version;
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
-                    & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-                    &mut c.pending_acks.lock().unwrap(),
-                    c.enc_version,
-                );
-                Some((addr, key, version, seq, acks))
-            }
-            None => {
-                tracing::debug!(
-                    witness_id, // nt:id-only the session left mid-send, so nothing names it
-                    %addr,
-                    reason = "client_disconnected",
-                    "AoI reliable: client disconnected mid-send -- packet dropped"
-                );
-                None
-            }
-        }
+    // Read addr + map_size in one lock scope; see the unreliable variant
+    // above for the deadlock-on-re-lock rationale and the map_size
+    // snapshot caveat.
+    let (addr_opt, map_size) = {
+        let m = entity_to_addr.lock().unwrap();
+        (m.get(&witness_id).copied(), m.len())
     };
-
-    let Some((addr, key, version, seq, acks)) = send_data else {
-        return WitnessSendOutcome::ClientDisconnected;
-    };
-    let packet = build_packet(&key, version, seq, &acks);
-    let bytes = packet.len();
-    if let Err(e) = transport.send_to(&packet, addr).await {
-        tracing::warn!(
+    let Some(addr) = addr_opt else {
+        // DEBUG for a witness whose session just ended (the teardown race),
+        // WARN otherwise: `departed_witnesses`.
+        departed_witnesses::log_addr_miss(
             witness_id,
-            witness_name = crate::base::session_identity::entity_name_for(
-                connected,
-                entity_to_addr,
-                witness_id
-            ),
-            %addr,
-            "AoI reliable: failed to send packet: {e}"
+            map_size,
+            departed_witnesses::AddrMissPath::Reliable,
+            connected,
         );
-        return WitnessSendOutcome::SendError;
-    }
-    // Register the encrypted bytes with the per-session Channel so
-    // the retransmit driver in tick_sync re-sends on RTO expiry.
-    shadow_register_reliable_send_with_details(
+        return WitnessSendOutcome::AddrUnresolved;
+    };
+    send_reliable_to_addr(
+        transport,
         connected,
         addr,
-        seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
-        ReliableSendDetails {
-            kind: "witness_single",
-            fragment: None,
-            message_count: None,
-            // The closure encrypts the packet; its message is not seen here.
-            first_message: None,
-        },
-    );
-    WitnessSendOutcome::Sent { addr, seq, bytes }
+        witness_id,
+        "witness_single",
+        build_packet,
+    )
+    .await
 }
 
 /// Send a [`ChannelBundle`] of N messages to a witness's client as a
@@ -593,177 +542,42 @@ pub async fn send_bundle_to_witness_reliable(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
-    mut bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
+    bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
 ) -> BundleSendOutcome {
-    use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE, SEQUENCE_MASK};
-
-    let send_data = {
-        // Read addr + map_size in one lock scope; see the unreliable
-        // variant for the deadlock-on-re-lock rationale and the
-        // map_size snapshot caveat.
-        let (addr_opt, map_size) = {
-            let m = entity_to_addr.lock().unwrap();
-            (m.get(&witness_id).copied(), m.len())
-        };
-        let addr = match addr_opt {
-            Some(a) => a,
-            None => {
-                // DEBUG for a witness whose session just ended (the
-                // teardown race), WARN otherwise: `departed_witnesses`.
-                departed_witnesses::log_addr_miss(
-                    witness_id,
-                    map_size,
-                    departed_witnesses::AddrMissPath::Bundle,
-                    connected,
-                );
-                return BundleSendOutcome::AddrUnresolved;
-            }
-        };
-
-        let clients = connected.lock().unwrap();
-        let c = match clients.get(&addr) {
-            Some(c) => c,
-            None => {
-                tracing::debug!(
-                    witness_id, // nt:id-only the session left mid-send, so nothing names it
-                    %addr,
-                    reason = "client_disconnected",
-                    "AoI bundle: client disconnected mid-send -- bundle dropped"
-                );
-                return BundleSendOutcome::ClientDisconnected;
-            }
-        };
-
-        // Drain pending ACKs into the bundle so they ride the first
-        // finalized packet. Done under the same lock window as the seq
-        // reservation so a concurrent ACK-pumping send doesn't race.
-        let drained_acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-            &mut c.pending_acks.lock().unwrap(),
-            c.enc_version,
-        );
-        bundle.add_acks(&drained_acks);
-
-        // Now that ACKs are in, estimated_packet_count reflects the true
-        // emit count (empty body + empty acks → 0; empty body + acks → 1;
-        // otherwise ceil(body / FRAGMENT_BODY_SIZE)).
-        let packet_count = bundle.estimated_packet_count();
-        if packet_count == 0 {
-            return BundleSendOutcome::Empty;
-        }
-
-        // Atomically reserve `packet_count` consecutive sequence numbers.
-        // Mask the base to the 28-bit Mercury space; per-fragment seqs
-        // (base+1, base+2, ...) inherit the contiguous reservation and are
-        // re-masked by build_fragmented_bundle internally.
-        let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
-        let key = c.key;
-        let version = c.enc_version;
-        // For the flush line (Rule 6). Interning is a read-locked hash hit
-        // once the name has been seen, taken in this existing lock window.
-        let witness_name = cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref());
-        Some((addr, key, version, base_seq, packet_count, witness_name))
+    // Read addr + map_size in one lock scope; see the unreliable
+    // variant for the deadlock-on-re-lock rationale and the
+    // map_size snapshot caveat.
+    let (addr_opt, map_size) = {
+        let m = entity_to_addr.lock().unwrap();
+        (m.get(&witness_id).copied(), m.len())
     };
-
-    let Some((addr, key, version, base_seq, packet_count, witness_name)) = send_data else {
-        // Unreachable: every None path inside the block above early-returns
-        // a specific outcome. Defensive fallback keeps the match exhaustive.
-        return BundleSendOutcome::Empty;
-    };
-
-    let num_messages = bundle.num_messages();
-    let body_len = bundle.body_len();
-    // Fragment shape for the flush event: body bytes per packet and how many
-    // cuts were moved off a message header (the client aborts a bundle whose
-    // header straddles two packets).
-    let plan = bundle.fragment_plan();
-    let packet_bytes = format!("{:?}", plan.packet_sizes());
-    let header_guarded_cuts = plan.header_guarded_cuts;
-
-    // Finalize through the session encrypt closure. Use FLAG_RELIABLE +
-    // FLAG_ON_CHANNEL as base flags — the bundle adds FLAG_HAS_SEQUENCE,
-    // FLAG_FRAGMENTED, FLAG_HAS_ACKS internally as needed per fragment.
-    let base_flags = FLAG_RELIABLE | FLAG_ON_CHANNEL;
-    let (packets, seqs_consumed) = bundle.finalize(base_flags, base_seq, |plaintext| {
-        crate::mercury::encrypt_packet(plaintext, &key, version)
-    });
-
-    debug_assert_eq!(
-        seqs_consumed as usize, packet_count,
-        "estimated_packet_count contract violated — seq reservation overshoots finalize"
-    );
-
-    tracing::info!(
-        %addr,
-        witness_id,
-        witness_name,
-        messages = num_messages,
-        body_bytes = body_len,
-        packets = packets.len(),
-        fragmented = packets.len() > 1,
-        packet_bytes = %packet_bytes,
-        header_guarded_cuts,
-        base_seq,
-        "AoI bundle: flushed {num_messages} messages in {} packet(s)",
-        packets.len()
-    );
-
-    for (i, pkt) in packets.iter().enumerate() {
-        let frag_seq = base_seq.wrapping_add(i as u32) & SEQUENCE_MASK;
-        if let Err(e) = transport.send_to(pkt, addr).await {
-            // Abort the rest of the bundle on the first send failure.
-            // Continuing would push the trailing fragments onto the wire
-            // with no chance of client-side reassembly (the failed
-            // fragment's seq is already a gap in the reliable stream and
-            // the bundle's frag_begin/frag_end footers expect every
-            // fragment in [base_seq..base_seq+packet_count) to arrive).
-            // The retransmit driver in tick_sync re-sends the registered
-            // fragments [0..i); the unsent fragments [i..packet_count)
-            // remain a permanent gap until the inactivity timer reaps
-            // the channel — an outcome no worse than continuing, with
-            // less wasted bandwidth.
-            tracing::error!(
-                witness_id,
-                witness_name,
-                %addr,
-                frag_seq,
-                fragment = i + 1,
-                total = packets.len(),
-                already_sent = i,
-                "AoI bundle: failed to send fragment; aborting remainder of bundle. \
-                 Reliable seq stream now has gaps at [{}..{}); channel will be reaped \
-                 on inactivity timeout: {e}",
-                frag_seq,
-                base_seq.wrapping_add(packet_count as u32) & SEQUENCE_MASK,
-            );
-            return BundleSendOutcome::SendError;
-        }
-        shadow_register_reliable_send_with_details(
+    let Some(addr) = addr_opt else {
+        // DEBUG for a witness whose session just ended (the
+        // teardown race), WARN otherwise: `departed_witnesses`.
+        departed_witnesses::log_addr_miss(
+            witness_id,
+            map_size,
+            departed_witnesses::AddrMissPath::Bundle,
             connected,
-            addr,
-            frag_seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
-            ReliableSendDetails {
-                kind: "witness_bundle",
-                fragment: (packets.len() > 1).then_some((i + 1, packets.len())),
-                message_count: Some(num_messages),
-                // A later fragment starts inside the stream; the plan's walk
-                // recorded the message it starts in, for `mercury.tx_hole`.
-                first_message: plan.heads.get(i).copied().flatten().filter(|_| i > 0),
-            },
         );
-    }
-
-    BundleSendOutcome::Sent {
+        return BundleSendOutcome::AddrUnresolved;
+    };
+    reliable_fit::send_bundle_reliable_to_addr(
+        transport,
+        connected,
         addr,
-        base_seq,
-        packets: packets.len(),
-        bytes: body_len,
-    }
+        witness_id,
+        bundle,
+        "witness_bundle",
+    )
+    .await
 }
+
+mod reliable_fit;
+pub use reliable_fit::send_reliable_to_addr;
 
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;
-use reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
 
 mod departed_witnesses;
 pub use departed_witnesses::{
@@ -784,6 +598,9 @@ mod disconnect_teardown;
 
 #[cfg(test)]
 mod departed_witnesses_tests;
+
+#[cfg(test)]
+mod reliable_fit_tests;
 
 #[cfg(test)]
 mod sent_message_head_tests;

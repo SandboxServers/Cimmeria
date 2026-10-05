@@ -15,9 +15,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{
-    build_enter_world, build_map_loaded_body, fragment_count, fragment_map_loaded,
-};
+use crate::mercury::{build_map_loaded_body, fragment_count, fragment_map_loaded};
 
 use super::super::world_entry_appearance::{build_appearance_args, build_tint_args};
 use super::super::{ConnectedClientState, PendingClientReadyInfo};
@@ -90,21 +88,20 @@ pub async fn handle_map_loaded(
     let map_body = build_map_loaded_body(entry_info.player_entity_id, &player_data, &entry_info);
 
     let map_frags = fragment_count(&map_body);
-    // Reserve 1 seq for the standalone enter-world packet + N seqs for map fragments.
-    let total_seqs = 1 + map_frags;
-
-    // The enter-world packet carries the full appearance, so its body can
-    // pass the generic ACK budget's 1411-byte assumption: size its ACKs
-    // to the real plaintext (flags + body + seq).
-    let enter_world_plaintext =
-        1 + crate::mercury::build_enter_world_body(&entry_info, Some(&player_data)).len() + 4;
+    // The enter-world bundle carries the full appearance, so its body is
+    // data-sized: it is cut like any bundle (one packet up to 1300 body
+    // bytes, fragments past that) so no datagram outgrows the client's
+    // 1472-byte buffer, and its ACKs ride the first packet within the
+    // generic budget.
+    let enter_body = crate::mercury::build_enter_world_body(&entry_info, Some(&player_data));
+    let enter_frags = fragment_count(&enter_body);
+    let total_seqs = enter_frags + map_frags;
 
     let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-        let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
+        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
             &mut c.pending_acks.lock().unwrap(),
-            enter_world_plaintext,
             c.enc_version,
         );
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
@@ -116,34 +113,34 @@ pub async fn handle_map_loaded(
     // The appearance methods sit before createCellPlayer so the client's
     // cell-entity-creation handler picks up the bodyset during its internal
     // appearance evaluation, eliminating the dev-cube placeholder flash.
-    let enter_world_pkt = build_enter_world(
-        &key,
-        base_seq,
-        &acks,
-        &entry_info,
-        Some(&player_data),
-        enc_version,
-    );
-    tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
-        "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
-    transport.send_to(&enter_world_pkt, addr).await?;
-    // Register this reliable send with the per-session Channel's TX
-    // window. ACK consumption + RTO sampling are live, and the
-    // retransmit driver in `tick_sync.rs` will resend the cached bytes
-    // if the RTO fires before the client acks.
-    super::super::helpers::shadow_register_reliable_send(
-        connected,
-        addr,
-        base_seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&enter_world_pkt),
-    );
+    // Its own bundle (one client frame), never merged with the mapLoaded
+    // methods: CELL_PLAYER would hold same-player methods in its transaction.
+    let (enter_packets, enter_seqs) =
+        fragment_map_loaded(&key, base_seq, &acks, &enter_body, enc_version);
+    debug_assert_eq!(enter_seqs, enter_frags);
+    for (i, pkt) in enter_packets.iter().enumerate() {
+        let seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        tracing::debug!(%addr, len = pkt.len(), seq, part = i + 1, total = enter_packets.len(),
+            "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
+        transport.send_to(pkt, addr).await?;
+        // Register this reliable send with the per-session Channel's TX
+        // window. ACK consumption + RTO sampling are live, and the
+        // retransmit driver in `tick_sync.rs` will resend the cached bytes
+        // if the RTO fires before the client acks.
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+        );
+    }
 
     // Packet 2+: Entity methods (mapLoaded body, possibly fragmented).
     // Mask `map_base_seq` and each derived seq to the 28-bit space —
     // `base_seq + 1` (or `base_seq + i`) can land on `NULL_SEQUENCE`
     // when `base_seq` is near `SEQUENCE_MASK`, which would be rejected
     // by the peer's parser and break ACK draining.
-    let map_base_seq = base_seq.wrapping_add(1) & cimmeria_mercury::packet::SEQUENCE_MASK;
+    let map_base_seq = base_seq.wrapping_add(enter_frags) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let (map_packets, map_seqs) =
         fragment_map_loaded(&key, map_base_seq, &[], &map_body, enc_version);
     debug_assert_eq!(map_seqs, map_frags);
@@ -196,9 +193,12 @@ pub async fn handle_map_loaded(
             & cimmeria_mercury::packet::SEQUENCE_MASK,
     );
 
-    let total_bytes: usize =
-        enter_world_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
-    let pkt_count = 1 + map_packets.len();
+    let total_bytes: usize = enter_packets
+        .iter()
+        .chain(map_packets.iter())
+        .map(|p| p.len())
+        .sum();
+    let pkt_count = enter_packets.len() + map_packets.len();
     tracing::info!(
         %addr,
         account_id = who.account_id,
