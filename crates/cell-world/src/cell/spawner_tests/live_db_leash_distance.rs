@@ -86,16 +86,32 @@ async fn leash_distance_check_rejects_zero() {
     );
 }
 
-/// The shipped seed sets no radius, so every seeded spawn loads `None` and
-/// keeps the server default. Pins that the seeded-spawn loader reads the
-/// column without COALESCEing it to a number (which would hide "the
-/// template said nothing" from the leash logs).
+/// Outside the Debug Area the shipped seed sets no radius, so every seeded
+/// spawn loads `None` and keeps the server default. Pins that the
+/// seeded-spawn loader reads the column without COALESCEing it to a number
+/// (which would hide "the template said nothing" from the leash logs). The
+/// Debug Area's leash test NPC (template 1342, world 1300,
+/// `docs/content/debug-area.md`) sets 15 u on purpose and is pinned here too.
 #[tokio::test]
 async fn seeded_spawns_load_the_default_leash() {
     let pool = require_db_or_skip!();
-    let spawns = load_spawns_from_db(&pool)
+    let all = load_spawns_from_db(&pool)
         .await
         .expect("load_spawns_from_db must succeed");
+    let debug_area: Vec<_> = all
+        .iter()
+        .filter(|s| s.world_name == "DebugArea" && s.leash_distance.is_some())
+        .map(|s| (s.template_id, s.leash_distance))
+        .collect();
+    assert_eq!(
+        debug_area,
+        vec![(1342, Some(15.0))],
+        "in the Debug Area only the leash test NPC (template 1342) sets leash_distance"
+    );
+    let spawns: Vec<_> = all
+        .into_iter()
+        .filter(|s| s.world_name != "DebugArea")
+        .collect();
     assert!(!spawns.is_empty(), "the seed has spawns");
     let set: Vec<_> = spawns
         .iter()
