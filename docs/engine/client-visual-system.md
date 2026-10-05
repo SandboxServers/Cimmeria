@@ -106,8 +106,16 @@ A related delivery gap does remain open for *non-player* entities — see the Ao
 [0x8A: u8][word_len: u16 LE][entity_id: u32][primaryColorId: u32][secondaryColorId: u32][skinTint: u32]
 ```
 
-- `primaryColorId` and `secondaryColorId`: Armor/clothing dye indices (default 0 in C++)
-- `skinTint`: ARGB color value from the `SKIN_TINTS` lookup table (16 entries, indexed by `SkinTintColorID` 0-15)
+- All three are packed `0xRRGGBB__` colours, despite the `ColorId` names: the client's
+  `GameEntity_ApplySkinTintColors` (`0x00e6f8b0`) takes R, G and B from bits 24, 16 and 8,
+  drops the low byte and forces alpha to 0xFF. (This page used to call the first two dye
+  indices; the disassembly says otherwise.)
+- A player sends `0, 0` and a `skinTint` from the `SKIN_TINTS` lookup table (16 entries,
+  indexed by `SkinTintColorID` 0-15; their `FF` low byte is ignored).
+- An NPC sends `0, 0, 0` unless its template opts in with `entity_templates.send_tint`; then
+  it sends the template's colour columns, reinterpreting a negative `bigint` as its
+  two's-complement low 32 bits
+  ([dispatch table](../protocol/client-method-dispatch-table.md), `onEntityTint`).
 
 The skin tint values are defined in `deprecated/python/common/Constants.py:4-9` (mirrored in Rust as `SKIN_TINTS`, used by both `phases.rs` and `map_loaded.rs`):
 
