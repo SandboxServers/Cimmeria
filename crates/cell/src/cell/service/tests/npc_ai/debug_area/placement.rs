@@ -7,10 +7,13 @@ use cimmeria_entity::navigation::LineOfSight;
 use super::*;
 
 /// How far a spawn may sit from the navmesh surface under it. Spawns were
-/// authored at the occluder's terrain top where the two agree within 0.6 m
-/// (1.0 m at the wanderer), against a disagreement of up to 3.3 m elsewhere
-/// on open ground.
-const MAX_NAV_GAP: f32 = 1.0;
+/// authored at the occluder's terrain top where the two agree within 0.6 m,
+/// against a disagreement of up to 3.3 m elsewhere on open ground.
+const MAX_NAV_GAP: f32 = 0.6;
+
+/// The named exceptions to [`MAX_NAV_GAP`]: the wanderer's spot has no point
+/// within 0.6 m in reach of the plan's position, and it walks its disc anyway.
+const NAV_GAP_EXCEPTIONS: [(&str, f32); 1] = [("DebugArea_Slope_Wander", 1.0)];
 
 /// How far a spawn may sit from the top of a solid span of the occluder
 /// column under it: the y was taken from that top.
@@ -26,7 +29,6 @@ fn every_da03_spawn_stands_on_mesh_and_terrain() {
     let Some(mesh) = navmesh() else { return };
     let Some(occ) = occluder() else { return };
     let records = da03_records();
-    assert!(records.len() > 100, "parsed only {} rows", records.len());
     let mut bad = Vec::new();
     for r in &records {
         let p = pos(r);
@@ -35,8 +37,12 @@ fn every_da03_spawn_stands_on_mesh_and_terrain() {
             bad.push(format!("{tag} {p:?}: off the navmesh"));
             continue;
         }
+        let max_gap = NAV_GAP_EXCEPTIONS
+            .iter()
+            .find(|(t, _)| *t == tag)
+            .map_or(MAX_NAV_GAP, |(_, g)| *g);
         match mesh.get_height_near(p.x, p.y, p.z) {
-            Some(h) if (h - p.y).abs() <= MAX_NAV_GAP => {}
+            Some(h) if (h - p.y).abs() <= max_gap => {}
             other => bad.push(format!("{tag} {p:?}: navmesh surface at {other:?}")),
         }
         let on_terrain = occ
@@ -106,8 +112,14 @@ fn the_wanderer_disc_is_walkable() {
         };
         let to = Vector3::new(x, y, z);
         let outcome = mesh.find_path(&c, &to);
-        if outcome.status.label() != "ok" {
-            bad.push(format!("rim point {i} {to:?}: {}", outcome.status.label()));
+        let status = outcome.status.label();
+        let end = outcome
+            .into_waypoints()
+            .and_then(|w| w.last().map(|e| e.distance_to(&to)));
+        if status != "ok" || !end.is_some_and(|d| d < 2.0) {
+            bad.push(format!(
+                "rim point {i} {to:?}: {status}, ends {end:?} short"
+            ));
         }
     }
     assert!(bad.is_empty(), "wander disc: {bad:#?}");

@@ -26,6 +26,12 @@ docs/content/debug-area.md.
 - **Test seam.** `castle_standoff.rs`'s `parse_insert`/`seed` are now `pub(super)`;
   `tests/npc_ai/debug_area/` builds a world-1300 scene from the seed files through
   `spawn_npc_from_record` on the real nav+occ and runs `npc_idle_aggro_scan_for_test`.
+- **Review of #1222.** Template 24 (NID Guard) carries `assist_radius` 26: placed at the
+  front of the pen it was 24.1 u from the shootable pinned Jaffa and only the 4 u vertical
+  band (5 cm margin after the navmesh snap) kept it out. It now stands at the back (28 u).
+  Reach guards must split damageable rows from hostile ones and read every world-1300 seed
+  file (`reach.rs`), and a NEUTRAL pin narrows only what the pinned NPC seeks: it is still
+  an NPC-vs-NPC target for factions hostile to 10.
 - **Traps hit.** cell-world `live_db_aggression::seed_overrides_only_the_chain_armed_spawns`
   pins every `aggression_override` row and every template `aggro_radius`; a passive gallery
   trips it (DA-04 filters world DebugArea). A fresh worktree needs the `external/` junction

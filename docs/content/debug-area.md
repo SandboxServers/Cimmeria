@@ -62,7 +62,7 @@ x 396, neutral at x 412, and a hostile pen at x 436 to 440.
 | Friendly | Two factions the reaction table makes friendly to players: 1 (World Object, what every seeded friendly NPC uses) and 9 (Friendly_Ambient). | No | Never |
 | Neutral | Faction 7 (Neutral_Ambient): neutral to players. | No | Never |
 | Neutral, pinned | A faction-10 Jaffa with `aggression_override` 3 (NEUTRAL) on the spawn: passive, but damageable. | Yes | Only when shot |
-| Hostile pen | Three faction-10 templates as seeded elsewhere: 24 NID Guard (SMG set 3), 35 Ba'al's Jaffa (592 fallback), 78 Straegis Fighter (592 fallback). Hostile on sight. | Yes | On approach |
+| Hostile pen | Three faction-10 templates as seeded elsewhere: 35 Ba'al's Jaffa (592 fallback) at the front, 24 NID Guard (SMG set 3) at the back, 78 Straegis Fighter (592 fallback). Hostile on sight. | Yes | On approach |
 
 Players can damage only faction 10 (`player_may_attack_pve`), so the neutral
 row answers the plan's question "damageable or not" with **not**: a neutral
@@ -86,6 +86,10 @@ How to test:
   other two join (default assist radius 10 u; the NID Guard's template radius
   is 26 u). The pinned Jaffa never joins: NEUTRAL NPCs are refused by the
   assist gate.
+- **The converse.** Shoot a pinned Jaffa: only that Jaffa fights. The NID
+  Guard, the one pen NPC with a long assist radius, stands at the back of the
+  pen, 28 u from both pinned Jaffa, outside its 26 u radius whatever the
+  height difference.
 - **Line of sight and the vertical band** are not separately staged here: the
   yard is open ground and the pen is 6 to 7 m above the friendly row. The
   Castle Cellblock and Castle cover them (`aggro_castle`, `assist_barracks`).
@@ -222,26 +226,35 @@ Every gallery spawn (D-DA9):
 
 - is **passive**: `aggression_override` 3 (NEUTRAL), sent to the client as
   `onAggressionOverrideUpdate`. Walking the line pulls nothing, a gallery NPC
-  never looks for NPC targets, and the assist gate refuses NEUTRAL NPCs, so
-  shooting one never pulls its neighbours 4 m away;
+  never looks for NPC targets, and the assist gate refuses NEUTRAL NPCs, so a
+  single-target shot never pulls its neighbours 4 m away. An area ability
+  (ground AoE, cone) damages every gallery NPC it reaches, and each one it
+  hits fights back;
 - is still **damageable** (the damage gate is faction 10) and **fights back**
   when shot, then leashes home at the default 50 u;
 - **respawns after 20 s**, so the line refills;
 - has its own tag, `DebugArea_Gallery_<template_id>` (for example
   `DebugArea_Gallery_24` is the NID Guard).
 
+The override only narrows what a gallery NPC (or a pinned Jaffa) seeks. It is
+still a valid *target* for an NPC whose faction is hostile to 10 (factions 2,
+3, 11 and others), so such an NPC must never be placed within its scan radius
+of the gallery; the reach guards below check that.
+
 The Twilla Tree (80) and the Straegis Beacon (77) are `is_stationary`: a plant
 and a beacon that walked would be wrong.
 
-**Placed: 99 of the 101 hostile templates.** 24 carry an ability set (sets 2,
-3, 4 and 5: the drones, the NID and SGC humans, the named Jaffa and the
-Goa'uld); the other 75 fall back to 592 Pistol Shot, so a creature fires a
+**Placed: 99 of the 101 hostile templates.** 24 carry an ability set (sets 1
+to 5: the drones, the NID and SGC humans, the named Jaffa and the Goa'uld); the other 75 fall back to 592 Pistol Shot, so a creature fires a
 pistol until it gets its own kit. 62 have no display name (no `name_id`, or an
 empty moniker such as 4's): their nameplate is blank, which is why each one
 has a tag.
 
 **Excluded**, with the reason (the live-DB guard
-`live_db_debug_area_npcs` names them in `GALLERY_EXCLUSIONS`):
+`live_db_debug_area_npcs` names them in `GALLERY_EXCLUSIONS`). "Hostile"
+is every faction row 3 of the client's reaction table marks HOSTILE to players
+(10, 11, 13, 17, 21, 22, 24-26, 28, 30, 32, 34 and 41), derived from
+`enumerations.xml` at test time; only faction 10 is seeded on a mob today.
 
 | Template | Name | Why |
 |---:|---|---|
@@ -376,13 +389,21 @@ test.
 
 ## Reach between stations
 
-The plan keeps hostile zones apart. DA-03's guard
-(`no_station_reaches_another`) checks, for every pair of NPCs in different
-stations where one is hostile, that a player inside one's aggro radius is
-outside the other's and that neither is inside the other's assist radius,
-counting patrol routes and wander discs at their nearest point. A second
-guard keeps every DA-03 hostile more than twice its aggro radius plus 25 u
-from the other packets' zones (Z1, Z2, Z3, Z6, Z8, Z9).
+The plan keeps hostile zones apart. The guards in
+`service::tests::npc_ai::debug_area::reach` read every world-1300 row of every
+seed file, so another packet's NPCs take part as soon as they are seeded:
+
+- `no_station_reaches_another`: for every pair of NPCs in different stations
+  (at least one of them DA-03's) where one is hostile to players, a player
+  inside one's aggro radius is outside the other's, and neither is inside the
+  other's assist radius. Patrol routes and wander discs count at their nearest
+  point. The pinned Jaffa and the pen are separate stations.
+- `no_da03_hostile_reaches_a_respawner`: a player arriving at a world-1300
+  respawner is outside every DA-03 hostile's aggro radius with 25 u to spare.
+- `no_npc_fighter_reaches_a_da03_target`: no NPC that looks for NPC targets
+  (DA-04's faction 3, 27 and 29 squads, for example) has a DA-03 NPC it would
+  attack within twice its aggro radius (the scan's consider radius), and the
+  reverse.
 
 ## Tests
 
@@ -462,8 +483,8 @@ from the other packets' zones (Z1, Z2, Z3, Z6, Z8, Z9).
 | 13205 | 1332 | `DebugArea_Yard_Neutral_2` | Sewer Falls Resident | 7 Neutral_Ambient | (412.0, -5.44, -802.0) |
 | 13206 | 1333 | `DebugArea_Yard_NeutralPinned_1` | Jaffa Non Combatant | 10 Straegis | (412.0, -5.66, -798.0) |
 | 13207 | 1333 | `DebugArea_Yard_NeutralPinned_2` | Jaffa Non Combatant | 10 Straegis | (412.0, -6.00, -794.0) |
-| 13210 | 24 | `DebugArea_Yard_Hostile_1` | NID Guard | 10 Straegis | (436.0, -1.61, -800.0) |
-| 13211 | 35 | `DebugArea_Yard_Hostile_2` | Ba'al's Jaffa | 10 Straegis | (440.0, -1.11, -796.0) |
+| 13210 | 35 | `DebugArea_Yard_Hostile_1` | Ba'al's Jaffa | 10 Straegis | (436.0, -1.61, -800.0) |
+| 13211 | 24 | `DebugArea_Yard_Hostile_2` | NID Guard | 10 Straegis | (440.0, -1.11, -796.0) |
 | 13212 | 78 | `DebugArea_Yard_Hostile_3` | Straegis Fighter | 10 Straegis | (436.0, -1.86, -792.0) |
 | 13240 | 1340 | `DebugArea_Slope_Patrol` | Jaffa Foot Soldier | 10 Straegis | (28.0, 12.39, -760.0) |
 | 13241 | 1341 | `DebugArea_Slope_Wander` | Lucian Scavenger | 10 Straegis | (74.0, -0.25, -746.0) |

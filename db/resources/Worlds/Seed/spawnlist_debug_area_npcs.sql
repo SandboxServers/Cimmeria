@@ -2,17 +2,22 @@
 -- Debug Area (world 1300) packet DA-03: the faction yard (Z4), the AI
 -- behaviour slope (Z5) and the enemy gallery (Z7). Spawn block 13200-13599
 -- (docs/analysis/debug-area/README.md). Reference, with the spawn tables and
--- the gallery exclusions: docs/content/debug-area.md.
+-- the gallery exclusions: docs/content/debug-area.md. The yard rows stand at
+-- z -806..-792, south of the plan's centre (416, -786), where the navmesh and
+-- the terrain agree.
 --
 -- Heights: on open terrain the navmesh and the occluder terrain disagree by up
 -- to 3.3 m, so every y is the occluder's terrain top, and every point was
 -- checked to stand within 0.6 m of the navmesh (1.0 m for the wanderer). The
--- guard is crates/cell/src/cell/service/tests/npc_ai/debug_area_npcs.rs.
+-- guards are in crates/cell/src/cell/service/tests/npc_ai/debug_area/.
 --
--- Gallery rule (D-DA9): every faction-10 template, aggression_override 3
--- (NEUTRAL) so walking the line pulls nothing and no gallery NPC ever assists
--- a neighbour; still damageable (the damage gate is faction 10), still fights
--- back, respawns after 20 s. Tag DebugArea_Gallery_<template_id>.
+-- Gallery rule (D-DA9): every template hostile to players (faction 10 today),
+-- aggression_override 3 (NEUTRAL) so walking the line pulls nothing and no
+-- gallery NPC is ever recruited by assist; still damageable (the damage gate
+-- is faction 10), still fights back, respawns after 20 s. A single-target shot
+-- wakes one NPC; an area ability wakes every NPC it hits. Gallery NPCs are
+-- still valid targets for NPCs whose faction is hostile to 10.
+-- Tag DebugArea_Gallery_<template_id>.
 -- Excluded: 140 and 141 (NPC Child 1/2, children are not enemies).
 -- live_db_debug_area_npcs.rs fails when a new hostile template is neither
 -- placed nor excluded.
@@ -21,7 +26,7 @@
 -- sequence past the Debug Area's whole reserved block (spawns up to 13799).
 --
 
--- Z4 faction yard (416, -5.7, -786): friendly row x 396, neutral row x 412, hostile pen x 436-440.
+-- Z4 faction yard: friendly row x 396, neutral row x 412, hostile pen x 436-440, all at z -806..-792.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13200, 396.00, -7.97, -806.00, -1.5708, 1300, 1330, 'DebugArea_Yard_Friendly_1', NULL, false, 30, NULL, NULL, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13201, 396.00, -8.27, -802.00, -1.5708, 1300, 1330, 'DebugArea_Yard_Friendly_2', NULL, false, 30, NULL, NULL, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13202, 396.00, -8.16, -798.00, -1.5708, 1300, 1331, 'DebugArea_Yard_Friendly_3', NULL, false, 30, NULL, NULL, NULL);
@@ -30,8 +35,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13205, 412.00, -5.44, -802.00, -1.5708, 1300, 1332, 'DebugArea_Yard_Neutral_2', NULL, false, 30, NULL, NULL, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13206, 412.00, -5.66, -798.00, -1.5708, 1300, 1333, 'DebugArea_Yard_NeutralPinned_1', NULL, false, 30, NULL, NULL, 3);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13207, 412.00, -6.00, -794.00, -1.5708, 1300, 1333, 'DebugArea_Yard_NeutralPinned_2', NULL, false, 30, NULL, NULL, 3);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13210, 436.00, -1.61, -800.00, -1.5708, 1300, 24, 'DebugArea_Yard_Hostile_1', NULL, false, 30, NULL, NULL, NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13211, 440.00, -1.11, -796.00, -1.5708, 1300, 35, 'DebugArea_Yard_Hostile_2', NULL, false, 30, NULL, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13210, 436.00, -1.61, -800.00, -1.5708, 1300, 35, 'DebugArea_Yard_Hostile_1', NULL, false, 30, NULL, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13211, 440.00, -1.11, -796.00, -1.5708, 1300, 24, 'DebugArea_Yard_Hostile_2', NULL, false, 30, NULL, NULL, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs, patrol_path_id, patrol_point_delay, aggression_override) VALUES (13212, 436.00, -1.86, -792.00, -1.5708, 1300, 78, 'DebugArea_Yard_Hostile_3', NULL, false, 30, NULL, NULL, NULL);
 
 -- Z5 AI behaviour slope: patrol A <-> B (point set 13200), wanderer, leash test, assist trio.

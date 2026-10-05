@@ -9,9 +9,11 @@
 //! * every DA-03 row is in world 1300 and inside its zone, and loads with the
 //!   behaviour its station is for (patrol route, wander radius, leash, assist
 //!   and aggro radii, factions, the NEUTRAL pins);
-//! * the gallery holds every hostile (faction 10) template exactly once,
-//!   passive, so a hostile template added later fails here until it is placed
-//!   in the gallery or added to [`GALLERY_EXCLUSIONS`] with its reason.
+//! * the gallery holds every template hostile to players (the factions row 3
+//!   of the client's reaction table marks HOSTILE, faction 10 today) exactly
+//!   once, passive, so a hostile template added later fails here until it is
+//!   placed in the gallery or added to [`GALLERY_EXCLUSIONS`] with its reason;
+//! * the point-set footers leave both sequences past DA-03's block.
 //!
 //! Each was proven to fail with the DA-03 seed rows removed or a gallery row
 //! dropped.
@@ -107,7 +109,7 @@ mod live_db {
         .fetch_all(&pool)
         .await
         .expect("spawnlist query must succeed");
-        assert!(rows.len() > 100, "DA-03 spawns: {}", rows.len());
+        assert_eq!(rows.len(), 116, "DA-03 seeds 116 spawns");
         for (id, world, t) in &rows {
             assert_eq!(*world, WORLD_ID, "spawn {id} world");
             assert!(
@@ -139,7 +141,43 @@ mod live_db {
         }
     }
 
-    /// The gallery holds every hostile template exactly once, tagged
+    /// The factions players react to as HOSTILE: the cells of row 3 (Praxis,
+    /// what every player reacts as) of `FACTION_REACTION_TABLE` that hold 1,
+    /// read from the client's `entities/defs/enumerations.xml`, the table the
+    /// AI's `is_hostile_to_players` uses (`cell/combat/faction_reaction.rs`,
+    /// pinned to the same XML there). Derived, not hard-coded, so the gallery
+    /// guard follows the AI.
+    fn player_hostile_factions() -> Vec<i32> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../entities/defs/enumerations.xml");
+        let xml = std::fs::read_to_string(&path).expect("read enumerations.xml");
+        let start = xml
+            .find("<FACTION_REACTION_TABLE>")
+            .expect("FACTION_REACTION_TABLE in enumerations.xml");
+        let end = start
+            + xml[start..]
+                .find("</FACTION_REACTION_TABLE>")
+                .expect("closing tag");
+        let row3 = xml[start..end]
+            .split("<Data>")
+            .nth(1 + 3)
+            .expect("row 3 (Praxis)");
+        let row3 = &row3[..row3.find("</Data>").expect("</Data>")];
+        let hostile: Vec<i32> = row3
+            .split(',')
+            .enumerate()
+            .filter(|(_, v)| v.trim() == "1")
+            .map(|(i, _)| i as i32)
+            .collect();
+        assert!(
+            hostile.contains(&HOSTILE_FACTION),
+            "row 3 must be hostile to 10"
+        );
+        hostile
+    }
+
+    /// The gallery holds every template hostile to players (any faction the
+    /// reaction table makes HOSTILE to them, not only 10) exactly once, tagged
     /// `DebugArea_Gallery_<template_id>`, passive (NEUTRAL override, D-DA9),
     /// mobile apart from the plant and the beacon, and on a short respawn. A
     /// hostile template the gallery does not place and
@@ -147,12 +185,13 @@ mod live_db {
     #[tokio::test]
     async fn debug_area_npcs_live_db_gallery_covers_every_hostile_template() {
         let pool = require_db_or_skip!();
+        let factions = player_hostile_factions();
         let hostile: Vec<(i32, String)> = sqlx::query_as(
             "SELECT template_id, template_name FROM resources.entity_templates \
-             WHERE faction = $1 AND class = 'mob' AND template_id < 1879048192 \
+             WHERE faction = ANY($1) AND class = 'mob' AND template_id < 1879048192 \
              ORDER BY template_id",
         )
-        .bind(HOSTILE_FACTION)
+        .bind(&factions)
         .fetch_all(&pool)
         .await
         .expect("entity_templates query must succeed");
@@ -187,7 +226,11 @@ mod live_db {
         for r in &gallery {
             let t = tag(r);
             assert_eq!(t, format!("DebugArea_Gallery_{}", r.template_id), "tag");
-            assert_eq!(r.faction, Some(HOSTILE_FACTION), "{t}: faction 10 only");
+            assert!(
+                r.faction.is_some_and(|f| factions.contains(&f)),
+                "{t}: faction {:?} is not hostile to players",
+                r.faction
+            );
             assert_eq!(
                 r.aggression_override,
                 Some(MobAggression::Neutral),
@@ -228,7 +271,11 @@ mod live_db {
 
         // Z4: friendly and neutral rows that can never fight, a pinned
         // neutral Jaffa that can be shot, and a hostile pen.
-        for r in prefixed("DebugArea_Yard_Friendly_") {
+        let friendly = prefixed("DebugArea_Yard_Friendly_");
+        assert_eq!(friendly.len(), 4, "four friendlies");
+        let neutral = prefixed("DebugArea_Yard_Neutral_");
+        assert_eq!(neutral.len(), 2, "two faction-7 neutrals");
+        for r in friendly {
             assert!(
                 matches!(r.faction, Some(1) | Some(9)),
                 "{}: {:?}",
@@ -237,7 +284,7 @@ mod live_db {
             );
             assert_eq!(r.aggression_override, None);
         }
-        for r in prefixed("DebugArea_Yard_Neutral_") {
+        for r in neutral {
             assert_eq!(r.faction, Some(7), "{}: Neutral_Ambient", tag(r));
             assert_eq!(r.aggression_override, None);
         }
@@ -291,6 +338,45 @@ mod live_db {
             assert_eq!(r.faction, Some(HOSTILE_FACTION), "{}", tag(r));
             assert_eq!(r.aggression_override, None, "{}: hostile", tag(r));
             assert!(r.respawn_secs.is_some(), "{} respawns", tag(r));
+        }
+    }
+
+    /// The point-set footers in `point_sets_debug_area_npcs.sql`: after a load
+    /// the set and point sequences hand out ids past every seeded row and past
+    /// DA-03's reserved block (sets 13200-13209, points 13200-13299), so the
+    /// console's `.path_add` never takes a seeded or reserved id. The base
+    /// file's own footer is a fixed 2122 / 2551, which loads first; reverting
+    /// this file's footer leaves the sequences there and fails this guard.
+    #[tokio::test]
+    async fn debug_area_npcs_live_db_point_set_sequences_pass_the_block() {
+        let pool = require_db_or_skip!();
+        for (seq, table, column, floor) in [
+            ("point_sets_set_id_seq", "point_sets", "set_id", 13209_i64),
+            (
+                "point_set_points_point_id_seq",
+                "point_set_points",
+                "point_id",
+                13299,
+            ),
+        ] {
+            let sql = format!(
+                "SELECT CASE WHEN s.is_called THEN s.last_value + 1 ELSE s.last_value END, \
+                        (SELECT MAX({column}) FROM resources.{table} \
+                         WHERE {column} < 1879048192)::int8 \
+                 FROM resources.{seq} s"
+            );
+            let (next, max): (i64, Option<i64>) = sqlx::query_as(sqlx::AssertSqlSafe(sql))
+                .fetch_one(&pool)
+                .await
+                .unwrap_or_else(|e| panic!("{seq} query must succeed: {e}"));
+            assert!(
+                next > max.unwrap_or(0),
+                "{seq} would hand out {next}, but {table} holds {column} {max:?}"
+            );
+            assert!(
+                next > floor,
+                "{seq} would hand out {next}, inside DA-03's block up to {floor}"
+            );
         }
     }
 }

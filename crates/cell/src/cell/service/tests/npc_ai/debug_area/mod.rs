@@ -3,10 +3,11 @@
 //! behaviour slope (Z5) and the enemy gallery (Z7)
 //! (`docs/content/debug-area.md`).
 //!
-//! The scene is built from the seed files themselves
-//! (`spawnlist_debug_area_npcs.sql`, the two template files and the patrol
-//! point set), so moving a row, changing a template's faction or radius, or
-//! rebuilding the mesh or the occluder under a station fails here:
+//! The scene is built from the seed files themselves: every world-1300 row of
+//! every `spawnlist*.sql`, joined with every `entity_templates*.sql` and point
+//! set file. Moving a row, changing a template's faction or radius, another
+//! packet seeding an NPC within reach, or rebuilding the mesh or the occluder
+//! under a station fails here:
 //!
 //! - [`placement`]: every DA-03 spawn stands on the navmesh and on the
 //!   occluder's terrain (the 3.3 m nav-vs-terrain trap on open ground), the
@@ -15,13 +16,17 @@
 //! - [`isolation`]: through the production aggro and assist gates, the
 //!   gallery never pulls and never rallies, friendly and neutral rows never
 //!   engage, the pen engages only a player who walks up to it, the assist
-//!   trio rallies exactly one neighbour, and no station is in reach of
-//!   another.
+//!   trio rallies exactly one neighbour, and shooting a pinned Jaffa wakes
+//!   only that Jaffa.
+//! - [`reach`]: no station is in reach of another (other packets' rows and
+//!   the world's respawners included), and no NPC that fights NPCs can reach a
+//!   DA-03 NPC it would target.
 //!
 //! Skips on a checkout without `data/spaces/ihpet_crater_light.nav` / `.occ`.
 
 mod isolation;
 mod placement;
+mod reach;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -57,8 +62,58 @@ fn opt<T: std::str::FromStr>(v: Option<&String>) -> Option<T> {
         .and_then(|s| s.parse().ok())
 }
 
+/// The seed files in `dir` (relative to the repo root) whose name starts with
+/// `prefix`: the base file and every packet's own file, so rows another
+/// packet adds to world 1300 are read without listing them here.
+fn seed_files(dir: &str, prefix: &str) -> Vec<String> {
+    let abs = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(dir);
+    let mut out: Vec<String> = std::fs::read_dir(&abs)
+        .unwrap_or_else(|e| panic!("read {}: {e}", abs.display()))
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| n.starts_with(prefix) && n.ends_with(".sql"))
+        .map(|n| format!("../../{dir}/{n}"))
+        .collect();
+    out.sort();
+    assert!(!out.is_empty(), "no {prefix}*.sql in {dir}");
+    out
+}
+
+/// DA-03's spawn block.
+const DA03_SPAWNS: std::ops::RangeInclusive<i32> = 13200..=13599;
+
+fn is_da03(r: &SpawnRecord) -> bool {
+    DA03_SPAWNS.contains(&r.spawn_id)
+}
+
+/// Every DA-03 spawn row (the 13200-13599 block of world 1300).
+fn da03_records() -> Vec<SpawnRecord> {
+    let rows: Vec<SpawnRecord> = world_records().into_iter().filter(is_da03).collect();
+    assert_eq!(rows.len(), 116, "DA-03 seeds 116 spawns");
+    rows
+}
+
+/// Every world-1300 respawner position (`respawners.sql`, DA-01's 130/131).
+fn world_respawners() -> Vec<(String, Vector3)> {
+    seed_rows(
+        &seed_files("db/resources/Worlds/Seed", "respawners"),
+        "respawners",
+    )
+    .into_iter()
+    .filter(|r| r["world_id"] == WORLD_ID)
+    .map(|r| {
+        let f = |k: &str| r[k].parse::<f32>().expect("numeric respawner column");
+        (
+            unquote(&r["name"]),
+            Vector3::new(f("pos_x"), f("pos_y"), f("pos_z")),
+        )
+    })
+    .collect()
+}
+
 /// Every `INSERT INTO <table>` row of the seed files `files`.
-fn seed_rows(files: &[&str], table: &str) -> Vec<HashMap<String, String>> {
+fn seed_rows(files: &[String], table: &str) -> Vec<HashMap<String, String>> {
     files
         .iter()
         .flat_map(|f| {
@@ -70,15 +125,14 @@ fn seed_rows(files: &[&str], table: &str) -> Vec<HashMap<String, String>> {
         .collect()
 }
 
-/// Every DA-03 spawn row, as the loader would build its [`SpawnRecord`]
-/// (template columns joined, patrol path resolved, respawn and overrides
-/// normalised the way `load_spawns_from_db` does).
-fn da03_records() -> Vec<SpawnRecord> {
+/// Every world-1300 spawn row of every `spawnlist*.sql` seed file, as the
+/// loader would build its [`SpawnRecord`] (template columns joined from every
+/// `entity_templates*.sql`, patrol path resolved, overrides normalised the way
+/// `load_spawns_from_db` does). Other packets' rows (DA-02, DA-04, ...) come
+/// in as soon as they are seeded.
+fn world_records() -> Vec<SpawnRecord> {
     let templates: HashMap<String, HashMap<String, String>> = seed_rows(
-        &[
-            "../../db/resources/Entities/Seed/entity_templates.sql",
-            "../../db/resources/Entities/Seed/entity_templates_debug_area_npcs.sql",
-        ],
+        &seed_files("db/resources/Entities/Seed", "entity_templates"),
         "entity_templates",
     )
     .into_iter()
@@ -86,7 +140,7 @@ fn da03_records() -> Vec<SpawnRecord> {
     .collect();
     let mut paths: HashMap<String, Vec<(i32, Vector3)>> = HashMap::new();
     for p in seed_rows(
-        &["../../db/resources/Events/Seed/point_sets_debug_area_npcs.sql"],
+        &seed_files("db/resources/Events/Seed", "point_set"),
         "point_set_points",
     ) {
         let f = |k: &str| p[k].parse::<f32>().expect("numeric point");
@@ -96,12 +150,12 @@ fn da03_records() -> Vec<SpawnRecord> {
         ));
     }
     seed_rows(
-        &["../../db/resources/Worlds/Seed/spawnlist_debug_area_npcs.sql"],
+        &seed_files("db/resources/Worlds/Seed", "spawnlist"),
         "spawnlist",
     )
     .into_iter()
+    .filter(|s| s["world_id"] == WORLD_ID)
     .map(|s| {
-        assert_eq!(s["world_id"], WORLD_ID, "spawn {} world", s["spawn_id"]);
         let t = templates
             .get(&s["template_id"])
             .unwrap_or_else(|| panic!("template {} missing", s["template_id"]));
@@ -119,7 +173,10 @@ fn da03_records() -> Vec<SpawnRecord> {
             y: f("y"),
             z: f("z"),
             heading: f("heading"),
-            tag: Some(unquote(&s["tag"])),
+            tag: s
+                .get("tag")
+                .filter(|t| t.as_str() != "NULL")
+                .map(|t| unquote(t)),
             template_id: t["template_id"].parse().unwrap(),
             template_name: unquote(&t["template_name"]),
             class: unquote(&t["class"]),
