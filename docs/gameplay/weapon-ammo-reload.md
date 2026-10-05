@@ -54,6 +54,8 @@ Per-slot ammo lives in **two mirrored places** on the cell entity, both written 
 
 `BandolierItem` is the source of truth. `Stat[AMMO_SLOT_1+slot]` exists because the **client's UI subscribes to `Events.StatUpdated`** — it would not see a change to `BandolierItem` directly. Both are kept in sync through the single mutator [`set_slot_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L36); never write `current_ammo` directly. See [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L12), [`active_clip_size()`](../../crates/entity/src/cell_entity/bandolier.rs#L19), [`active_ammo_type()`](../../crates/entity/src/cell_entity/bandolier.rs#L26), and [`refill_active_slot()`](../../crates/entity/src/cell_entity/bandolier.rs#L50).
 
+**A new weapon starts loaded.** Character creation and every `GrantItem` (content chains and mission rewards, loot pickup, GM `gmGiveItem`) write `sgw_inventory.ammo = clip_size` for a design with `clip_size > 0`. A zero-clip design (Serpent Staff 2797, Serpent Ribbon Device 4565, ammo stacks, non-weapons) keeps `ammo = charges`. The grant's `UpdateBandolierItem` carries the same number (`BandolierItem::granted_ammo`), and the cell mirrors it into `AmmoSlot{N}` and sends `onStatUpdate`. A vendor purchase writes its own row and does not set `ammo`, so a bought firearm still arrives empty. Class Start v6 rules L4/L5 ([ledger](../analysis/class-start-v6/README.md)).
+
 Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-relative. The active slot's stat ID is computed as `AMMO_SLOT_1 + active_bandolier_slot`. This matches legacy [`SGWPlayer.py:1023`](../../deprecated/python/cell/SGWPlayer.py#L1023) (`getAmmoStat() = ammoSlot1 + activeSlotId`).
 
 ## Wire flow — fire

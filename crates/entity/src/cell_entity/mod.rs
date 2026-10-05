@@ -188,6 +188,26 @@ pub struct BandolierItem {
     pub cur_ammo_type: i32,
 }
 
+impl BandolierItem {
+    /// The magazine a freshly granted item starts with: a full `clip_size`
+    /// when the design has a clip, otherwise 0.
+    ///
+    /// Class Start v6 rules L4/L5 (OD-CS03): a granted firearm arrives
+    /// loaded, the way character creation already writes the starter
+    /// pistol (`ammo = clip_size`), so the first press of Pistol Shot is not
+    /// refused with NoAmmo. A zero-clip weapon (staff 2797, ribbon device
+    /// 4565) or a non-weapon keeps 0. Default-ammo reloads stay free and
+    /// special ammunition stays finite (D-AM02); this only decides the
+    /// starting clip.
+    pub const fn granted_ammo(clip_size: i32) -> i32 {
+        if clip_size > 0 {
+            clip_size
+        } else {
+            0
+        }
+    }
+}
+
 /// NPC AI state machine. Discriminants match `Atrea.enums.AI_STATE_*` in
 /// `deprecated/python/Atrea/enums.py:228-239` so an `as u8` cast yields
 /// the same byte the original SGW server would have produced.

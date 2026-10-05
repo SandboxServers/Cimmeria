@@ -297,7 +297,7 @@ pub struct SpaceManager {
     /// Weapon defs (clip_size + default_ammo_type) keyed by item_id.
     /// Loaded from `resources.items` at startup. Used by the content engine's
     /// GrantItem path to seed bandolier slots when a weapon is granted at
-    /// runtime, so the client renders the correct empty magazine.
+    /// runtime, so the client renders the loaded magazine.
     pub item_defs: HashMap<i32, super::spawner::WeaponDef>,
     /// Weapon reach in metres, keyed by item design id, for every item with a
     /// non-zero range (`spawner::load_weapon_ranges`). Read through

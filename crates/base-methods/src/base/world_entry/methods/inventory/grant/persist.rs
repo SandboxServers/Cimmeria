@@ -379,6 +379,13 @@ pub(super) async fn persist_grant(
     // ammo-persist TOCTOU guard. The design id is the `item_id` param; the
     // instance id is unique per physical row and is what distinguishes two copies
     // of the same weapon design occupying the bandolier over time.
+    //
+    // `ammo`: a firearm (`clip_size > 0`) arrives with a full magazine, the
+    // way character creation writes the starter pistol (Class Start v6 L4,
+    // OD-CS03). Every other design keeps `charges` exactly as before (L5:
+    // staff 2797 and ribbon device 4565 have clip 0, and ammo stacks are
+    // clip 0 too). `BandolierItem::granted_ammo` is the cell-side twin the
+    // equip epilogue sends, so the two never disagree for a firearm.
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_inventory \
             (character_id, type_id, stack_size, slot_id, container_id, \
@@ -386,7 +393,8 @@ pub(super) async fn persist_grant(
              ammo_type, ammo_types, ammo, flags) \
          SELECT $1, ri.item_id, $2, $3, $4, $7, 100, $5, \
                 COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
-                ri.ammo_types, ri.charges, 0 \
+                ri.ammo_types, \
+                CASE WHEN ri.clip_size > 0 THEN ri.clip_size ELSE ri.charges END, 0 \
          FROM resources.items ri WHERE ri.item_id = $6 \
          RETURNING item_id",
     )

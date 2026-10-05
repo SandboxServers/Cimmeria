@@ -36,6 +36,12 @@ pub async fn fire_dialog_open(
     populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
+        // Every player-scoped trigger carries `archetype`; without it an
+        // `archetype` condition reads -1, so `eq` never matches and
+        // `neq` / `lt` always pass (CS-01b).
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
     }
 
     // Discord gameplay-channel: dialog opened (off by default — high volume).
@@ -101,6 +107,12 @@ pub async fn fire_dialog_choice(
     populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
+        // Every player-scoped trigger carries `archetype`; without it an
+        // `archetype` condition reads -1, so `eq` never matches and
+        // `neq` / `lt` always pass (CS-01b).
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
     }
 
     // Discord gameplay-channel: dialog choice (off by default — high volume).

@@ -38,8 +38,8 @@ fn weapon_stats(
 }
 
 /// `Action::GrantItem` — add an item to the player's inventory; for weapons
-/// (container 3) also seeds the bandolier slot and clears the ammo stat so
-/// the client renders an empty mag until the player reloads.
+/// (container 3) also seeds the bandolier slot and the ammo stat with a full
+/// clip, so the client shows the loaded magazine the base writes (L4).
 pub(super) async fn grant(
     item_id: i32,
     count: i32,
@@ -65,13 +65,14 @@ pub(super) async fn grant(
         .unwrap_or_else(|| item_container(item_id, &space_mgr.item_containers));
 
     // If this is a weapon (bandolier), set ammo state on the entity.
-    // Weapons start unloaded — the player must press R to reload.
+    // Weapons start loaded (Class Start v6 L4, OD-CS03): the base writes
+    // `sgw_inventory.ammo = clip_size`, as character creation does.
     //
     // Stage C: insert a `BandolierItem` for the granted slot and seed
-    // the AmmoSlot{N} stat to (0, 0, clip_size) so subsequent fire /
+    // the AmmoSlot{N} stat to (0, clip_size, clip_size) so subsequent fire /
     // reload paths (which now read through `active_ammo()` and
     // `set_slot_ammo`) operate on a valid clamp range. We also send
-    // an `onStatUpdate` so the client renders the empty mag for the
+    // an `onStatUpdate` so the client renders the loaded mag for the
     // new weapon without waiting for the next fire.
     let mut ammo_stat_payload: Option<Vec<u8>> = None;
     if cid == 3 {
@@ -81,6 +82,7 @@ pub(super) async fn grant(
                 // the base will assign — content engine grants
                 // implicitly fill the active bandolier slot.
                 let slot_id = entity.active_bandolier_slot;
+                let loaded = cimmeria_entity::cell_entity::BandolierItem::granted_ammo(clip);
                 entity.bandolier_items.insert(
                     slot_id,
                     cimmeria_entity::cell_entity::BandolierItem {
@@ -96,14 +98,14 @@ pub(super) async fn grant(
                         item_id,
                         clip_size: clip,
                         default_ammo_type,
-                        current_ammo: 0,
+                        current_ammo: loaded,
                         cur_ammo_type: default_ammo_type,
                     },
                 );
                 entity.bandolier_ammo_dirty.insert(slot_id);
                 let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
                 if let Some(stat) = entity.stats.get_mut(stat_id) {
-                    stat.update(0, 0, clip);
+                    stat.update(0, loaded, clip);
                     let payload = entity.stats.serialize_dirty();
                     entity.stats.clear_dirty();
                     ammo_stat_payload = Some(payload);
@@ -115,7 +117,8 @@ pub(super) async fn grant(
                     item_name = cimmeria_names::book().item(item_id),
                     slot_id, // nt:id-only bandolier slot index, not a named object
                     clip,
-                    "Weapon granted unloaded"
+                    loaded,
+                    "Weapon granted loaded"
                 );
             }
         }

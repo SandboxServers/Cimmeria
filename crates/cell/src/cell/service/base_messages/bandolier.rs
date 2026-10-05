@@ -41,6 +41,30 @@ async fn emit_active_ammo_type(
     .await;
 }
 
+/// Send the entity's dirty stats as one `onStatUpdate` and clear them.
+async fn push_dirty_stats(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+        let payload = entity.stats.serialize_dirty();
+        entity.stats.clear_dirty();
+        // serialize_dirty always emits a 4-byte u32 count prefix, so gate on
+        // actual stat entries rather than is_empty (which is never true).
+        if payload.len() > 4 {
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STAT_UPDATE,
+                payload,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+    }
+}
+
 /// Processes a `UpdateBandolierItem` message — inserts the weapon into the
 /// bandolier, optionally draws it, arms the OOC holster timer, and fires
 /// the `Item_Equip` sequence for the equip animation.
@@ -71,6 +95,16 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
     let inserted_ammo_type = item.cur_ammo_type;
     let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+            // Mirror the slot's magazine into AmmoSlot{N}, as
+            // `SyncBandolierItems` does: the client's bandolier counter reads
+            // the stat, not the item. A chain grant seeds it optimistically
+            // before the base round-trip, but a GM give or a loot pickup into
+            // the bandolier reaches the cell only through here, so without
+            // this a granted (loaded, L4) weapon showed no rounds.
+            let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
+            if let Some(stat) = entity.stats.get_mut(stat_id) {
+                stat.update(0, item.current_ammo, item.clip_size);
+            }
             entity.bandolier_items.insert(slot_id, item);
             let is_player = entity.is_player;
             let player_id = entity.player_id;
@@ -147,6 +181,7 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         anim_path,
         "UpdateBandolierItem: equip-display decision"
     );
+    push_dirty_stats(entity_id, tx, space_mgr).await;
     if play_equip_anim {
         // Appearance refresh first so the weapon mesh is socket-
         // attached when the `Item_Equip` animation plays. Same
@@ -241,22 +276,7 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         };
 
     // Borrow released — push the dirty stats out.
-    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        let payload = entity.stats.serialize_dirty();
-        entity.stats.clear_dirty();
-        // serialize_dirty always emits a 4-byte u32 count prefix, so gate on
-        // actual stat entries rather than is_empty (which is never true).
-        if payload.len() > 4 {
-            crate::cell::abilities::send_entity_method(
-                entity_id,
-                crate::mercury::method_idx::ON_STAT_UPDATE,
-                payload,
-                tx,
-                space_mgr,
-            )
-            .await;
-        }
-    }
+    push_dirty_stats(entity_id, tx, space_mgr).await;
 
     // Re-borrow to make the equip-display decision.
     let active_slot_gained_weapon =
