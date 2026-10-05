@@ -85,6 +85,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [entity-method-stream-is-memory-ostream.md](entity-method-stream-is-memory-ostream.md) — onEntityMethod's live stream is a queued MemoryOStream subobject (cursor +0x14, end +0xc), not MemoryIStream.
 - [client-handler-abi-and-static-disassembly.md](client-handler-abi-and-static-disassembly.md) — CME handlers are `ret 8` (event, subject); verify `ret N` with capstone on the local QA exe; event-bag getters.
 - [lab-probe-traffic-starves-watchdog.md](lab-probe-traffic-starves-watchdog.md) — per-field mem_reads starved the lab heartbeat and killed a healthy client; keep bridge reads coarse.
+- [lab-watchdog-load-grace-main-thread-cpu.md](lab-watchdog-load-grace-main-thread-cpu.md) — bridge calls are all main-thread; a world load is seen only as main-thread CPU from outside; 120 s grace.
 - [lab-event-store-and-ui-lua-hooks.md](lab-event-store-and-ui-lua-hooks.md) — events_read drains; read via the supervisor store; one UI Lua subscription per window per event.
 - [lab-ui-reader-lua-traps.md](lab-ui-reader-lua-traps.md) — stock UI Lua facts behind the UI readers (right-click use, Ctrl-drag split, one chat capture via the events store; lupa offline check.
 - [client-patch-send-natives-traps.md](client-patch-send-natives-traps.md) — startEntityMessage sends even offline; microseh masks the ABI; no cpcall around C-function args.
