@@ -103,29 +103,6 @@ verified subset (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is implemented
 the full per-index table lives in
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#sgwgmplayer-extension-indices-109--473--cat-n-04).
 
-## The client's own filter, and patch 012
-
-The native `/gm*` slash commands are a client feature, and on a launcher
-install the client does not have them: the command map is built from XML
-files, and the stock 2009 seed lacks `InternalSlashCommands.xml`, which
-defines every `/gm*` word. Without it a GM typing `/gmdhd 3` gets "Invalid
-command." and nothing reaches this gate. Client patch
-[`012-gm-slash-commands`](../../data/client-patches/README.md#012-gm-slash-commands)
-adds a project-written copy of that file, so **native `/gm*` commands need
-patch 012 on launcher installs** (a client that already has the file, such
-as a QA copy, gets it replaced).
-
-The client applies a filter of its own before it sends anything: each
-command carries an `Access` mask and is usable only when the mask is 0 or
-shares a bit with the player's access level, which the server sends as
-`onEntityProperty(GENERICPROPERTY_AccessLevel = 7, level)`. Patch 012 gives
-every command `Access="p"`, which the client's parser turns into `0x2FF`
-(`SGW.exe` `0x00a4c530`, `0x00c789e0`), so access levels 1 to 4 pass and
-level 0 is refused with "Invalid command." and left out of `/help`. That
-filter is cosmetic: it is the client's, a modified client skips it, and it
-cannot tell level 1 from level 2. **This gate stays the authority** and
-requires GameMaster (2) for every restricted index.
-
 ## Why not per-call plumbing?
 
 The audit's literal suggestion was to widen `BaseToCellMsg::CellMethodCall`
@@ -187,13 +164,23 @@ things (static RE of SGW.exe, confirmed with lab memory reads in DA-06):
    2009 retail launcher install does not. Without it the map holds 104
    entries, none of them `/gm*`, and every one reads "Invalid command."
    (`FUN_00ae23f0`). The server cannot supply that file; it is client
-   content.
+   content. Client patch
+   [`012-gm-slash-commands`](../../data/client-patches/README.md#012-gm-slash-commands)
+   ships a project-written one (162 commands, no CME text), so **native
+   `/gm*` commands need patch 012 on launcher installs**; a client that already
+   has the file, such as a QA copy, gets it replaced.
 2. **The command's role mask must share a bit with the player's mask.**
    Each command has a required mask (`cmd+0xa8`) from its `Access` role
    letters (`g c C q Q a d D p m`; every `/gm*` command is `p`, Programmer).
    `SGWTextCommandMgr`'s check (vtable slot 1, `FUN_00c789e0`) refuses a
    command whose mask is non-zero and shares no bit with the global mask at
    `0x01df2d44`. A command with no `Access` has mask 0 and always passes.
+   The letters turn into a mask with an inverted test (`0x00a4c530` sets a
+   role's bit when `std::wstring::find` returns non-zero, and a letter at
+   position 0 returns 0), so `Access="p"` gives `0x2FF`: every role except
+   `p`. That passes access levels 1 to 4 and refuses 0. It is a cosmetic
+   client filter (a modified client skips it, and it cannot tell level 1 from
+   2); the gate above stays the authority and needs GameMaster (2).
 3. **That global mask is the `GENERICPROPERTY_AccessLevel` property.**
    `GameEntity`'s property handler (`FUN_00e6e9f0`, case 7) writes the value
    there through `FUN_00c73350`, for the bound player only. The mapLoaded
