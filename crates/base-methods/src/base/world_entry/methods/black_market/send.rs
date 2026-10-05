@@ -54,7 +54,6 @@ impl BmNet<'_> {
         &self,
         entity_id: u32,
         method: u16,
-        name: &'static str,
         args: &[u8],
         auction_id: Option<i32>,
         rows: Option<usize>,
@@ -79,7 +78,7 @@ impl BmNet<'_> {
                 entity_id
             )
             .player_name,
-            method_name = name,
+            method_name = cimmeria_wire::names::player_client_method(method),
             method_index = method,
             auction_id, // nt:id-only auctions have no name column; the send carries no item
             rows,
@@ -94,8 +93,7 @@ impl BmNet<'_> {
 /// `onBMError(errorId)`.
 pub async fn send_bm_error(net: BmNet<'_>, entity_id: u32, error: BMError) {
     let args = wire::serialize_on_bm_error(error);
-    net.send(entity_id, ON_BM_ERROR, "onBMError", &args, None, None)
-        .await;
+    net.send(entity_id, ON_BM_ERROR, &args, None, None).await;
 }
 
 /// `onBMAuctionUpdate(auctionItem)`.
@@ -110,7 +108,6 @@ pub async fn send_bm_auction_update(
     net.send(
         entity_id,
         ON_BM_AUCTION_UPDATE,
-        "onBMAuctionUpdate",
         &args,
         Some(row.sequence_id),
         None,
@@ -121,15 +118,8 @@ pub async fn send_bm_auction_update(
 /// `onBMAuctions(items, totalResults, clientKey)`; the payload was paged by
 /// the caller, `rows` is how many it carries.
 pub async fn send_bm_auctions(net: BmNet<'_>, entity_id: u32, args: &[u8], rows: usize) {
-    net.send(
-        entity_id,
-        ON_BM_AUCTIONS,
-        "onBMAuctions",
-        args,
-        None,
-        Some(rows),
-    )
-    .await;
+    net.send(entity_id, ON_BM_AUCTIONS, args, None, Some(rows))
+        .await;
 }
 
 /// `onBMAuctionRemove(sequenceId)`.
@@ -138,7 +128,6 @@ pub async fn send_bm_auction_remove(net: BmNet<'_>, entity_id: u32, sequence_id:
     net.send(
         entity_id,
         ON_BM_AUCTION_REMOVE,
-        "onBMAuctionRemove",
         &args,
         Some(sequence_id),
         None,
@@ -152,13 +141,6 @@ pub async fn send_bm_auction_remove(net: BmNet<'_>, entity_id: u32, sequence_id:
 pub async fn send_item_removed(net: BmNet<'_>, entity_id: u32, item_id: i32) {
     let mut args = 1u32.to_le_bytes().to_vec();
     args.extend_from_slice(&item_id.to_le_bytes());
-    net.send(
-        entity_id,
-        method_idx::ON_REMOVE_ITEM,
-        "onRemoveItem",
-        &args,
-        None,
-        Some(1),
-    )
-    .await;
+    net.send(entity_id, method_idx::ON_REMOVE_ITEM, &args, None, Some(1))
+        .await;
 }

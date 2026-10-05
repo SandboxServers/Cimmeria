@@ -212,7 +212,7 @@ async fn quarantine(pool: &PgPool, auction: &AuctionRow, e: &SettleError) -> Out
 /// The seller a settlement row is logged for: their account and the names
 /// (the sweep has no session). One query, the one that already fetched the
 /// account id. A failed lookup leaves the account and names off the line.
-async fn who_is(pool: &PgPool, player_id: i32) -> Who {
+pub(super) async fn who_is(pool: &PgPool, player_id: i32) -> Who {
     let row = sqlx::query_as::<_, (i32, String, Option<String>)>(
         "SELECT p.account_id, p.player_name, a.account_name            FROM sgw_player p LEFT JOIN account a ON a.account_id = p.account_id           WHERE p.player_id = $1",
     )

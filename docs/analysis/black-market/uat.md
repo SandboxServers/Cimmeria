@@ -41,7 +41,7 @@ Save this as the Logs Explorer view **Black Market**, in the category `black-mar
 service.name = 'cimmeria-server' AND (event LIKE 'bm.%' OR scope_name LIKE '%black_market%')
 ```
 
-Columns: `event, reason, role, mail_id, access, op, command, action, outcome, account_id, player_id, auction_id, seller_id, bidder_id, bid_before, bid_after, escrow_cash_before, escrow_cash_after, item_def_id, client_key, cursor, rows_returned, total_results, method, body`.
+Columns: `event, reason, role, mail_id, access, op, command, action, outcome, account_id, player_id, auction_id, seller_id, bidder_id, bid_before, bid_after, escrow_cash_before, escrow_cash_after, item_type_id, item_name, client_key, cursor, rows_returned, total_results, method_name, body`.
 
 To narrow it to one step, add the step's clause below. To narrow it to one tester, add `AND player_id = <P>`.
 
