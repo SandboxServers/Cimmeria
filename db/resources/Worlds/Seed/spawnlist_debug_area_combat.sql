@@ -64,8 +64,5 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs, aggression_override) VALUES (13640, 430, 9.86, -910, 2.2143, 1300, 1377, 'DebugArea_Respawn_Fast', NULL, 10, 3);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, aggression_override) VALUES (13641, 430, 10.03, -922, 0.9273, 1300, 1377, 'DebugArea_Respawn_Slow', NULL, 3);
 
--- Past every seeded row and the whole Debug Area spawn reservation
--- (DA-02..DA-04, 13000-13799); never lowered. This file loads after
--- spawnlist.sql's own footer, so it repeats it with the higher floor.
--- live_db_spawnlist_sequence.rs and live_db_seed_sequences.rs guard it.
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 13799), true);
+-- No sequence footer: the base file's footer already floors the sequence past
+-- the whole Debug Area reservation (DA-01).

@@ -57,8 +57,5 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- the pair shows spawnlist.respawn_secs taking precedence over the template.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs, use_cover, aggro_radius) VALUES (1377, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_Pistol_1A}', 0, 0, 570, 1, 0, 10, 6961, NULL, NULL, NULL, 'DebugArea Respawn Timer Target', 'mob', NULL, NULL, NULL, NULL, 1, 'Bullet_Default', 2, 0, 0, -256076032, 55, '{}', NULL, NULL, true, NULL, NULL, 30, false, NULL);
 
--- Past every seeded row and the whole Debug Area template reservation
--- (DA-02..DA-04, 1300-1399); never lowered. This file loads after
--- entity_templates.sql's own footer, so it repeats it with the higher floor.
--- live_db_seed_sequences.rs guards it.
-SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 1399), true);
+-- No sequence footer: the base file's footer already floors the sequence past
+-- the whole Debug Area reservation (DA-01).

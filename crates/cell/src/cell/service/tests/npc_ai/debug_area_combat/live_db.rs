@@ -27,7 +27,7 @@ const ZONES: [(&str, usize, [f32; 2], f32); 7] = [
     ("DebugArea_Arena_NID", 3, [250.0, -725.0], 50.0),
     ("DebugArea_Arena_Green", 2, [250.0, -725.0], 50.0),
     ("DebugArea_Arena_Yellow", 2, [250.0, -725.0], 50.0),
-    ("DebugArea_Cover_Rifleman", 3, [160.0, -940.0], 30.0),
+    ("DebugArea_Cover_Rifleman", 3, [165.0, -945.0], 30.0),
     ("DebugArea_Death_Operative", 4, [438.0, -916.0], 40.0),
     ("DebugArea_Respawn_", 2, [438.0, -916.0], 40.0),
 ];
