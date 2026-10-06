@@ -138,7 +138,7 @@ mail's own transaction, so deleting the mail does not reset it.
 | Archive mail | DONE | `archiveMailMessage` → `MailOp::Archive` → `onMailHeaderRemove` (CM 77). An unpaid COD is refused with a feedback line and stays in the inbox (SS-M3): archived mail cannot be returned and never expires, so it would strand the seller's item |
 | Server-generated mail | DONE | `send_system_mail` / `send_system_mail_tx` (SS-U1): cash, a minted item or a server-held instance, no postage, no COD, not returnable. See [Server and GM mail](#server-and-gm-mail-ss-u1) |
 | GM mail tools | DONE | `.mail`, `.mailbox`, `.mail_expire` (SS-U1, SS-M4) |
-| Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it. An online recipient is told (SS-M4) |
+| Content-engine mail | DONE | `send_system_mail` action with an optional per-player cooldown (SS-U3); the debug hub's Gate Mail Clerk uses it. An online recipient is told (SS-M4). With `quiet_cooldown` a repeat firing inside the window says nothing (Dakara DK-01's one-time arrival notice, chain 8002) |
 | Send mail (player compose) | DONE | `sendMailMessage` (CM 44) → `MailOp::Send` → one row per recipient → `sendMailResult` (CM 79). See [Sending a text mail](#sending-a-text-mail-ss-m1) |
 | Cash, item or COD attachment on send | DONE | One recipient; 25 naquadah postage; item into escrow (`sgw_gate_mail_item`); one transaction. See [Sending with an attachment](#sending-with-an-attachment-ss-m2) |
 | Return to sender | DONE | `returnMailMessage` (CM 47) → `MailOp::Return`. To the stored `sender_id`, once; not archived or server mail; COD cancelled. See [Taking attachments](#taking-attachments-paying-cod-returning-ss-m3) |

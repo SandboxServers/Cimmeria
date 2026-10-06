@@ -228,6 +228,7 @@ async fn live_db_mail_clerk_button_sends_exactly_one_mail() {
             cooldown: Some(ContentMailCooldown {
                 key: "send_system_mail/7011".into(),
                 secs: 600,
+                quiet: false,
             }),
         }
     );

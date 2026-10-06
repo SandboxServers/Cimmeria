@@ -269,7 +269,10 @@ just once, at map load), and asks the base to persist an idempotent append
 to `sgw_player.known_stargates`. A grant for an id with no `stargates` row,
 a grant by a non-player actor, and either failed send all warn. A second
 grant of an address the player already holds is a complete no-op: no write,
-no client method, no base round trip.
+no client method, no base round trip. That is what lets chain 8001 (Dakara
+rebuild DK-01) fire it from `player_loaded Dakara_E1` with no mission gate:
+a Free Jaffa learns Omega Site on the first entry and every later entry does
+nothing. Chain 1357 (Castle mission 708) is the mission-gated use.
 
 `move_entity` and `move_waypoint` are the two repositioning verbs.
 `move_entity` with `use_player: true` is a player-facing teleport that goes
@@ -423,7 +426,11 @@ minted, not taken from anyone. The base writes it through the one writer
 every server mail uses (`mail::system`, SS-U1), so the player takes the cash
 and the item from the mail window like any other attachment. The first user
 is the Gate Mail Clerk in the stasis-room debug hub (chain 7011,
-[debug-hub.md](debug-hub.md#gate-mail-clerk-template-390)).
+[debug-hub.md](debug-hub.md#gate-mail-clerk-template-390)). Chain 13007 is
+the same clerk in the Debug Area, and chain 8002 is the Free Jaffa's
+one-time arrival notice on Dakara_E1
+([Dakara rebuild DK-01](../analysis/dakara-e1-rebuild/work-packets.md#dk-01)),
+the one seeded use of `quiet_cooldown`.
 
 `target_id` and `target_key` are unused. Every param is in `params`:
 
@@ -435,12 +442,15 @@ is the Gate Mail Clerk in the stasis-room debug hub (chain 7011,
 | `cash` | no (0) | Naquadah, `0` to `2147483647` |
 | `item_id` | no | A `resources.items` id, minted into the mail's escrow row |
 | `qty` | no (1) | Stack size of the item, at least 1. The writer refuses more than the item's `max_stack_size` |
-| `cooldown_secs` | no | At least 1. Each player gets at most one mail from this chain per window |
+| `cooldown_secs` | no | At least 1. Each player gets at most one mail from this chain per window. The claim honours at most `2147483647` (about 68 years), which is how a chain says "once per character" |
+| `quiet_cooldown` | no (`false`) | `true` or `false`. `true` needs `cooldown_secs`. A firing inside the window then sends the player nothing, instead of the wait line. For a chain the player does not trigger by hand |
 
 A bad value drops the row at load with a `warn!` naming the chain, the same
 reject-not-default rule as `npc_bark`: the base would refuse the same mail
 on every firing, and the player would be told about an authoring mistake.
-`qty` without `item_id` is also rejected.
+`qty` without `item_id` is also rejected, and so are `quiet_cooldown` without
+`cooldown_secs` (it would do nothing) and a `quiet_cooldown` that is not a
+JSON boolean.
 
 The cell does not write the mail. The executor arm
 ([`executor/mail.rs`](../../crates/cell-content/src/cell/content/executor/mail.rs))
@@ -467,7 +477,20 @@ a `cooldown_secs` on any chain a player can re-trigger at will.
 
 Every firing sends the player one feedback line. A sent mail names the mail
 id and what it carries. A refusal gives the time left on the cooldown ("You
-can ask again in 7 minutes", rounded up), or the reason. Telemetry:
+can ask again in 7 minutes", rounded up), or the reason.
+
+`quiet_cooldown` is the one exception, and only for the cooldown refusal. Use
+it when the trigger is not a button press: a `player_loaded` chain fires at
+every world entry, and without it a character who already has the mail would
+be told "has already sent you mail" at every login. With it, a firing inside
+the window writes no mail, leaves the claim where it was, sends the client
+nothing and logs at DEBUG instead of WARN. The first firing still sends the
+"sent you mail" line, and every other refusal (no database, a mail the
+writer refuses) still sends its line and its WARN, because those are faults
+someone has to see. Do not put it on a chain a player can press: the first
+press of a button always gets an answer.
+
+Telemetry:
 
 | Event | Target | Level | When |
 |---|---|---|---|
@@ -475,6 +498,7 @@ can ask again in 7 minutes", rounded up), or the reason. Telemetry:
 | `content.send_system_mail` `outcome=sent` | `content` | INFO | the base committed the mail; carries `mail_id`, `item_id`, `cooldown_key` |
 | `mail.system_sent` | `mail` | INFO | the writer's own row, after the commit |
 | `content.send_system_mail` `reason=...` | `content` | WARN | nothing sent: `cooldown` (with `last_used_at`, `remaining_secs`), `no_player`, `base_channel_closed`, `no_db_pool`, or the writer's reason (`unknown_item_type`, `recipient_not_found`, ...) |
+| `content.send_system_mail` `reason=cooldown` `quiet=true` | `content` | DEBUG | a firing inside a `quiet_cooldown` window: nothing sent and nothing said (with `cooldown_key`, `last_used_at`, `remaining_secs`) |
 
 Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
 

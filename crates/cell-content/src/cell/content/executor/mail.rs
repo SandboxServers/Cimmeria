@@ -3,7 +3,8 @@
 //!
 //! The cell decides nothing about the mail itself: the base claims the
 //! cooldown and writes the mail in one transaction, and sends the player
-//! the result line (sent, or how long to wait). So one firing is exactly one
+//! the result line (sent, or how long to wait; nothing at all inside a
+//! `quiet_cooldown` window). So one firing is exactly one
 //! `CellToBaseMsg::ContentSystemMail`, and the recipient is always the
 //! chain's own player, taken from the cell entity.
 
@@ -36,6 +37,7 @@ pub(super) async fn send_system_mail(
         cash,
         item,
         cooldown_secs,
+        quiet_cooldown,
     } = action
     else {
         return;
@@ -97,6 +99,7 @@ pub(super) async fn send_system_mail(
             item_name = item.and_then(|(t, _)| names.item(t)),
             quantity = item.map(|(_, q)| q),
             cooldown_secs,
+            quiet_cooldown,
             "send_system_mail: forwarded to the base",
         );
     }
@@ -113,6 +116,7 @@ pub(super) async fn send_system_mail(
         cooldown: cooldown_secs.map(|secs| ContentMailCooldown {
             key: cooldown_key(chain_id),
             secs,
+            quiet: quiet_cooldown,
         }),
     };
     if let Err(e) = tx.send(CellToBaseMsg::ContentSystemMail(msg)).await {
