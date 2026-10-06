@@ -125,7 +125,7 @@ Details, inputs, tests and UAT are in [work-packets.md](work-packets.md).
 | DK-00 | This plan: audit, ledger, packets. | none | Written 2026-10-06 |
 | DK-01 | Dead end removed: `grant_stargate_address` on arrival, gate 25 arrival pin, one-time arrival notice, round-trip guards. Seed plus one small mail-action change. | #1273 for UAT; OD-DK02 default | Ready |
 | DK-02 | Zone evidence pack: landmark census, floor and navmesh checks, placement ledger. No seed change. | none | Complete 2026-10-06 (#1283): [placements](placements/README.md), [worknote](worknotes/DK-02.md) |
-| DK-03 | Cast templates and props (Loth'ta, Rak'nor, Jaffa Captain, tent flaps, drop location, SG-18 remains, terminals). | none | Review 2026-10-06 ([worknote](worknotes/DK-03.md)) |
+| DK-03 | Cast templates and props (Loth'ta, Rak'nor, Jaffa Captain, tent flaps, drop location, SG-18 remains, terminals). | none | Review 2026-10-06 (#1285; [worknote](worknotes/DK-03.md)) |
 | DK-04 | Named areas, tent flaps to and from world 62, Med Tent respawner. | DK-02, DK-03, OD-DK03, OD-DK04 | BlockedDependency |
 | DK-05 | Static population on worlds 61 and 62, with relog restores. | DK-02, DK-03 | BlockedDependency |
 | DK-06 | Radio dialog: evidence, then the smallest engine change that shows it. | none for the evidence step | Ready (evidence step) |
