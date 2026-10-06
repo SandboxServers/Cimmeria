@@ -1,0 +1,15 @@
+mesh	instances	tris_each	tris_total	footprint_m2	walkable_m2	bw_y_min	bw_y_max	sample_bw_x	sample_bw_y	sample_bw_z	archetype_paths
+JF-Props:JF-Brazier00	235	466	109510	180.307	33.046	-21.643	-1.400	299.927	-17.143	68.856	JF-Props.JF-Brazier00_Pf0.JF-Brazier00_Pf0_Arc0.StaticMeshComponent0
+JF-Props:JF-Torch00	72	390	28080	26.189	12.513	-21.675	-9.049	21.736	-18.035	118.480	JF-Props.JF-Torch00_Pf0.JF-Torch00_Pf0_Arc1.StaticMeshComponent0
+JF-Buildings:JF-Tent00	21	216	4536	721.216	403.962	-21.193	-10.830	320.473	-19.366	82.503	JF-Buildings.JF-Tent00_Pf0.JF-Tent00_Pf0_Arc3.StaticMeshComponent0
+JF-Props:JF-Brazier_OIL00	20	1251	25020	19.155	8.997	-55.133	-10.398	-261.839	-11.669	30.961	JF-Props.JF-Brazier_OIL00_Pf0.JF-Brazier_OIL00_Pf0_Arc2.StaticMeshComponent0
+JF-Props:JF-WallTorch00	19	332	6308	2.233	0.765	-15.315	7.278	199.103	-1.189	143.294	JF-Props.JF-WallTorch00_Pf0.JF-WallTorch00_Pf0_Arc0.StaticMeshComponent0
+JF-Buildings:JF-Tent00_Awaning_00	14	198	2772	497.052	246.938	-12.217	-10.870	442.754	-11.920	89.776	JF-Buildings.JF-Tent00_Awaning_00_Pf0.JF-TentAwning00_Pf0_Arc1.StaticMeshComponent0
+JF-Buildings:JF-MilitaryTent00	10	1302	13020	4584.897	2166.292	-11.985	-10.845	-379.229	-11.985	187.909	JF-Buildings.JF-MilitaryTent00_Pf0.JF-MilitaryTent00_Pf0_Arc5.StaticMeshComponent0;JF-Buildings.JF-MilitaryTent00_Pf1.JF-MilitaryTent00_Pf1_Arc5.StaticMeshComponent0;JF-Buildings.JF-MilitaryTent00_Pf2.JF-MilitaryTent00_Pf2_Arc5.StaticMeshComponent0
+JF-Buildings:JF-Tent02	6	610	3660	922.055	469.927	-11.234	-7.012	558.656	-7.134	252.188	JF-Buildings.JF-Tent02_Pf0.JF-Tent02_Pf0_Arc1.StaticMeshComponent0
+Em-Props:EM-StandingLight00	3	1968	5904	34.828	12.387	-21.050	-20.990	139.280	-21.050	262.480	Em-Props.EM-StandingLight00_Pf0.EM-StandingLight00_Pf0_Arc0.StaticMeshComponent0
+HB-Buildings:HB-Tent_small00	2	836	1672	93.115	42.520	-8.960	-4.960	484.851	-4.960	497.163	HB-Buildings.HB-Tent_small00_Pf0.HB-Tent_small00_Pf0_Arc0.StaticMeshComponent0
+GA-Building:GA-MerchantTent00	1	1615	1615	66.287	48.647	-17.120	-17.120	306.690	-17.120	129.580	GA-Building.GA-MerchantTent00_Pf0.GA-MerchantTent00_Pf0_Arc2.StaticMeshComponent0
+HB-Buildings:HB-Tent_Large00	1	1260	1260	104.182	96.797	-9.120	-9.120	503.889	-9.120	465.954	HB-Buildings.HB-Tent_Large00_Pf0.HB-Tent_Large00_Pf0_Arc0.StaticMeshComponent0
+JF-Buildings:JF-Tent01_Awaning_01	1	134	134	49.411	24.784	-9.080	-9.080	375.906	-9.080	447.910	JF-Buildings.JF-Tent01_Awaning_01_Pf0.JF-TentAwning01_Pf0_Arc1.StaticMeshComponent0
+JF-Buildings:JF-Tent03	1	396	396	47.213	25.434	-7.164	-7.164	559.975	-7.164	268.237	JF-Buildings.JF-Tent03_Pf0.JF-Tent03_Pf0_Arc1.StaticMeshComponent0

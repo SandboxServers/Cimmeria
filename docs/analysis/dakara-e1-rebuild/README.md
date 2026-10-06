@@ -67,7 +67,7 @@ All PROPOSED. Each has the options and a recommendation; confidence is in the ev
 | Id | Dependency | Rows blocked |
 |---|---|---|
 | B-DK1 | PR #1273 (CS-02) is not merged: on `main` no character starts on Dakara and world 61 has no respawner. | DK-01's UAT (its authoring is not blocked) |
-| B-DK2 | No coordinate for any story actor, object or area. | DK-04, DK-05 and every mission packet, until DK-02 delivers the placement ledger |
+| B-DK2 | No coordinate for any story actor, object or area. **Lifted 2026-10-06 by DK-02** as labelled map estimates ([placements](placements/README.md): 23 rows, mostly LOW; 12 items in its No idea list, notably the Repository, Loth'ta's camp and the five drop locations). | DK-04, DK-05 and the mission packets can start; the Repository, Loth'ta and the drop locations still need the owner |
 | B-DK3 | No hostile template, encounter, wave or count for Dakara. | 1647, 1653; DK-20, DK-21, DK-32 (OD-DK05, GDK1) |
 | B-DK4 | The SGC cannot be left: worlds 58 and 86 have no DHD and no Harriman dial chain, and gate 27's row is under the floor. | 1651's SGC steps, 1654, 1655; DK-30, DK-33 |
 | B-DK5 | Radio beats are NPC-speaker dialogs with no NPC present; `display_dialog` cannot show them from a non-interact chain. | 1570 step 4905, 1647 step 4916, 1649 step 4921, 1653 step 4937; DK-06 |
@@ -124,7 +124,7 @@ Details, inputs, tests and UAT are in [work-packets.md](work-packets.md).
 |---|---|---|---|
 | DK-00 | This plan: audit, ledger, packets. | none | Written 2026-10-06 |
 | DK-01 | Dead end removed: `grant_stargate_address` on arrival, gate 25 arrival pin, one-time arrival notice, round-trip guards. Seed plus one small mail-action change. | #1273 for UAT; OD-DK02 default | Ready |
-| DK-02 | Zone evidence pack: landmark census, floor and navmesh checks, placement ledger. No seed change. | none | Ready |
+| DK-02 | Zone evidence pack: landmark census, floor and navmesh checks, placement ledger. No seed change. | none | Complete 2026-10-06 (#1283): [placements](placements/README.md), [worknote](worknotes/DK-02.md) |
 | DK-03 | Cast templates and props (Loth'ta, Rak'nor, Jaffa Captain, tent flaps, drop location, SG-18 remains, terminals). | none | Ready |
 | DK-04 | Named areas, tent flaps to and from world 62, Med Tent respawner. | DK-02, DK-03, OD-DK03, OD-DK04 | BlockedDependency |
 | DK-05 | Static population on worlds 61 and 62, with relog restores. | DK-02, DK-03 | BlockedDependency |
