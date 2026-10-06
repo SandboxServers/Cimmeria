@@ -33,6 +33,7 @@ mod castle_702_704_executor;
 mod castle_loot_containers;
 mod cellblock_dialog_closes;
 mod class_start_cellblock_scope;
+mod class_start_sgc;
 mod debug_hub;
 mod debug_hub_mail_clerk;
 mod entity_health_below;

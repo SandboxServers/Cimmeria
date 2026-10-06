@@ -4,6 +4,16 @@
 --            mission_completed, dialog_set_open
 --
 -- Chain ID range: 3001-3050
+--
+-- Class Start v6 (CS-05, PROJECT_FINAL_S2C; ledger:
+-- docs/analysis/class-start-v6/README.md):
+--   * 3001, 3017, 3018 carry `archetype neq 7` (OD-CS09): a visiting Free
+--     Jaffa (ARCHETYPE_Sholva) is not pulled into the Human tutorial or M1561.
+--   * 3008 is the Human pistol pickup (core grant + tutorial 5882); 3029 is
+--     the same pickup for everyone else, unchanged (Asgard holding state).
+--   * 3030-3035 finish M1562 for the Human classes (Carter, SMG 21).
+--   * 3041-3044 deliver the M1569 class rewards and signatures on
+--     `mission_completed 1569`. M1569's own route is not authored (OD-CS10).
 
 SET search_path = resources, pg_catalog;
 
@@ -11,7 +21,9 @@ SET search_path = resources, pg_catalog;
 -- MISSION 1559 — Orientation (SGC_W1 primary mission)
 -- ============================================================
 
--- Chain 3001: player_loaded when 1559 not active → accept + show Gen Hammond
+-- Chain 3001: player_loaded when 1559 not active → accept + show Gen Hammond.
+-- Not for a Free Jaffa (`archetype neq 7`, OD-CS09): they start on Dakara and
+-- only visit SGC_W1. A player with no archetype reads -1 and still gets it.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (3001, 'SGC_W1 - Load: accept mission 1559, show Gen Hammond', 'space', NULL, true, 0);
 
@@ -19,7 +31,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3001, 'player_loaded', 'SGC_W1', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3001, 'mission_status', 1559, NULL, 'eq', 'not_active', 0);
+VALUES
+  (3001, 'mission_status', 1559, NULL, 'eq', 'not_active', 0),
+  (3001, 'archetype', NULL, NULL, 'neq', '7', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -118,21 +132,58 @@ VALUES
    '{"op": "|", "mask": 16777216}', 0, 2),
   (3007, 'play_sequence', 10013, NULL, '{}', 0, 3);
 
--- Chain 3008: interact firearm body when 1559 active → complete mission 1559, give item, show dialog
+-- Chain 3008: a Human class (Soldier 1, Commando 2, Scientist 3,
+-- Archaeologist 4) picks up the pistol while 1559 is active → complete 1559,
+-- pistol 55, the CORE_TUTORIAL abilities, the corpse line, then the one-time
+-- tutorial 5882 "Equipping a Weapon" (OD-CS04, L1). The abilities are sent
+-- before the tutorial that tells the player to place Pistol Shot; the base
+-- handles cell messages in order. 5883 "Combat" follows from chain 7101
+-- (tutorial_chains.sql) on the first hostile combat after 5882.
+-- `archetype lt 5` also admits a player with no archetype (-1), who gets the
+-- Human branch rather than a dead body that does nothing. The pistol arrives
+-- with 0 rounds (OD-CS13).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (3008, 'SGC_W1 - Pick up firearm: complete mission 1559', 'space', NULL, true, 0);
+VALUES (3008, 'SGC_W1 - Pick up firearm (Human): complete 1559, pistol, core abilities, tutorial 5882', 'space', NULL, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3008, 'interact_tag', 'SGC_W1_FirearmBody', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3008, 'mission_status', 1559, NULL, 'eq', 'active', 0);
+VALUES
+  (3008, 'mission_status', 1559, NULL, 'eq', 'active', 0),
+  (3008, 'archetype', NULL, NULL, 'lt', '5', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (3008, 'complete_mission', 1559, NULL, '{}', 0, 0),
   (3008, 'add_item', 55, NULL, '{"container": 1, "qty": 1}', 0, 1),
-  (3008, 'display_dialog', 5358, NULL, '{}', 0, 2);
+  (3008, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [592, 594, 597, 1218], "source_kind": "tutorial", "source_id": 1559}', 0, 2),
+  (3008, 'display_dialog', 5358, NULL, '{}', 0, 3),
+  (3008, 'show_tutorial', NULL, NULL, '{"tutorial_id": 5882}', 0, 4);
+
+-- Chain 3029: the same pickup for every other archetype, exactly as chain
+-- 3008 was before CS-05: complete 1559, pistol 55, the corpse line. No
+-- ability grant and no tutorial. This is the Asgard holding state (OD-CS09,
+-- NON_CANONICAL_BLOCKED_LEGACY): char_def 9 keeps the universal kit and
+-- today's M1559. Remove it with the holding state when the Asgard start
+-- exists (blockers B1-B3).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3029, 'SGC_W1 - Pick up firearm (non-Human, Asgard holding state): complete mission 1559', 'space', NULL, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3029, 'interact_tag', 'SGC_W1_FirearmBody', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3029, 'mission_status', 1559, NULL, 'eq', 'active', 0),
+  (3029, 'archetype', NULL, NULL, 'gte', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3029, 'complete_mission', 1559, NULL, '{}', 0, 0),
+  (3029, 'add_item', 55, NULL, '{"container": 1, "qty": 1}', 0, 1),
+  (3029, 'display_dialog', 5358, NULL, '{}', 0, 2);
 
 -- Chain 3009: mission_completed event for 1559 → play cinematic, move airman NPC
 --   Exercises: mission_completed event type
@@ -259,16 +310,23 @@ VALUES
 -- ============================================================
 
 -- Chain 3017: killing the bomb-carrying Jaffa opens Hammond radio dialog 5359.
+-- Not for a Free Jaffa (`archetype neq 7`, OD-CS09), so a visitor's kill does
+-- not offer M1561. The archetype is the killer's.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (3017, 'SGC_W1 - JaffaBomb death: show dialog 5359', 'space', NULL, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3017, 'entity_dead_tag', 'SGC_W1_JaffaBomb', 'player', false, 0);
 
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3017, 'archetype', NULL, NULL, 'neq', '7', 0);
+
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3017, 'display_dialog', 5359, NULL, '{}', 0, 0);
 
 -- Chain 3018: accepting Hammond's radio prompt starts mission 1561.
+-- Gated `archetype neq 7` as well (OD-CS09): 3017 alone would leave the
+-- accept open to a Free Jaffa who was shown 5359 some other way.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (3018, 'SGC_W1 - Dialog 5359: accept mission 1561', 'mission', 1561, true, 0);
 
@@ -276,7 +334,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3018, 'dialog_choice', '5359', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3018, 'mission_status', 1561, NULL, 'eq', 'not_active', 0);
+VALUES
+  (3018, 'mission_status', 1561, NULL, 'eq', 'not_active', 0),
+  (3018, 'archetype', NULL, NULL, 'neq', '7', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
