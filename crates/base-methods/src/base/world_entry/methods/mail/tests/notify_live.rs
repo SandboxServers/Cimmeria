@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use super::super::expiry::sweep_mailbox;
 use super::super::system::{send_system_mail, SystemItem, SystemMail};
-use super::packets::{decode, plain_send, Received};
+use super::packets::{decode_sent, plain_send, Received};
 use super::*;
 use crate::base::feedback::FeedbackCtx;
 use crate::cell::messages::{MailGmActor, MailGmCellToBase, MailOp};
@@ -85,12 +85,7 @@ impl Room {
         let sent = self.transport.drain();
         seats
             .iter()
-            .map(|seat| {
-                sent.iter()
-                    .filter(|(to, _)| *to == seat.addr)
-                    .map(|(_, p)| decode(p, seat.entity_id))
-                    .collect()
-            })
+            .map(|seat| decode_sent(&sent, seat.addr, seat.entity_id))
             .collect()
     }
 }

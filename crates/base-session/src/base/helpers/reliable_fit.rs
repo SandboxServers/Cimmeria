@@ -151,6 +151,8 @@ where
             event = "ack_overflow_rebuilt",
             peer = %addr,
             witness_id = log_id,
+            witness_name = crate::base::session_identity::identity_for_addr(connected, addr)
+                .player_name,
             send_kind = kind,
             seq,
             wire_len = packet.len(),
@@ -196,6 +198,8 @@ where
             event = "oversize_after_reserve",
             peer = %addr,
             witness_id = log_id,
+            witness_name = crate::base::session_identity::identity_for_addr(connected, addr)
+                .player_name,
             send_kind = kind,
             seq,
             wire_len = packet.len(),

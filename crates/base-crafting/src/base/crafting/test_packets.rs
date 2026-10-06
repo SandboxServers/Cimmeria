@@ -1,13 +1,16 @@
 //! Test-only decoding of the packets the crafting code sends to a player.
 //!
 //! The test sessions use the all-zero key of
-//! `test_default_connected_client_state`, so a sent packet decrypts to
-//! `[flags(1)][body][seq(4)]`, and the body is one entity-method call:
-//! `[0x80 | index][len(2)][entity(4)][args]` below the player's idbase, or
+//! `test_default_connected_client_state`. Each send is one entity-method
+//! call, in one datagram or, when it is too big for the client's buffer, in
+//! a fragmented bundle. Its body is `[0x80 | index][len(2)][entity(4)][args]`
+//! below the player's idbase, or
 //! `[0xBD][len(2)][entity(4)][index - idbase][args]` at or above it.
 
 use cimmeria_mercury::channel_bundle::{EXTENDED_ENCODING_MARKER, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::encryption::MercuryEncryption;
+
+use crate::test_support::reassembled_bodies;
 
 /// One decoded entity-method call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,10 +20,7 @@ pub(crate) struct MethodCall {
     pub args: Vec<u8>,
 }
 
-pub(crate) fn decode(packet: &[u8]) -> MethodCall {
-    let enc = MercuryEncryption::from_session_key([0u8; 32]);
-    let pt = enc.decrypt(packet).expect("decrypt test packet");
-    let body = &pt[1..pt.len() - 4];
+fn decode(body: &[u8]) -> MethodCall {
     let entity_id = u32::from_le_bytes(body[3..7].try_into().unwrap());
     if body[0] == EXTENDED_ENCODING_MARKER {
         MethodCall {
@@ -38,7 +38,11 @@ pub(crate) fn decode(packet: &[u8]) -> MethodCall {
 }
 
 pub(crate) fn decode_all(packets: &[Vec<u8>]) -> Vec<MethodCall> {
-    packets.iter().map(|p| decode(p)).collect()
+    let enc = MercuryEncryption::from_session_key([0u8; 32]);
+    reassembled_bodies(packets, &enc)
+        .iter()
+        .map(|body| decode(body))
+        .collect()
 }
 
 /// The text of a `CHAN_FEEDBACK` `onPlayerCommunication` call.
@@ -108,7 +112,7 @@ mod tests {
     /// Below the player's idbase the index rides the message id.
     #[test]
     fn decodes_a_direct_encoded_call() {
-        let call = decode(&build(12, &[1, 2, 3]));
+        let call = decode_all(&[build(12, &[1, 2, 3])]).remove(0);
         assert_eq!(
             call,
             MethodCall {
@@ -122,7 +126,7 @@ mod tests {
     /// At or above it the index rides the sub-index byte.
     #[test]
     fn decodes_an_extended_encoded_call() {
-        let call = decode(&build(method_idx::ON_UPDATE_DISCIPLINE, &[9, 8]));
+        let call = decode_all(&[build(method_idx::ON_UPDATE_DISCIPLINE, &[9, 8])]).remove(0);
         assert_eq!(call.method, method_idx::ON_UPDATE_DISCIPLINE);
         assert_eq!(call.entity_id, 0x0A0B_0C0D);
         assert_eq!(call.args, vec![9, 8]);

@@ -60,4 +60,4 @@ pub use log_capture::{Captured, LogCapture, LogCaptureGuard};
 /// [`cimmeria_mercury::transport::Transport`] that handler tests pass as
 /// `&Arc<dyn Transport>` in place of a real socket, then assert byte-exact,
 /// address-correct fan-out on.
-pub use cimmeria_mercury::test_transport::TestTransport;
+pub use cimmeria_mercury::test_transport::{reassembled_bodies, TestTransport};

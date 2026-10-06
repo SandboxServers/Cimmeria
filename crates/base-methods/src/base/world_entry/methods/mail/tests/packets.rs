@@ -83,12 +83,7 @@ impl Client {
 
     /// Everything sent to this client since the last call, decoded.
     pub(super) fn take(&self) -> Vec<Received> {
-        self.transport
-            .drain()
-            .into_iter()
-            .filter(|(to, _)| *to == self.addr)
-            .map(|(_, p)| decode(&p, self.entity_id))
-            .collect()
+        decode_sent(&self.transport.drain(), self.addr, self.entity_id)
     }
 }
 
@@ -126,11 +121,28 @@ pub(super) enum Received {
     Other(u16),
 }
 
-/// Decrypt one packet (all-zero test key) and decode its single method.
-pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
+/// Decrypt what `sent` holds for `addr` (all-zero test key) and decode one
+/// method per send. A reply too big for one datagram is sent as fragments
+/// and decodes as the one method it carries.
+pub(super) fn decode_sent(
+    sent: &[(SocketAddr, Vec<u8>)],
+    addr: SocketAddr,
+    entity_id: u32,
+) -> Vec<Received> {
+    let packets: Vec<Vec<u8>> = sent
+        .iter()
+        .filter(|(to, _)| *to == addr)
+        .map(|(_, p)| p.clone())
+        .collect();
     let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
-    let pt = enc.decrypt(packet).expect("decrypt test packet");
-    let body = &pt[1..pt.len() - 4];
+    crate::test_support::reassembled_bodies(&packets, &enc)
+        .iter()
+        .map(|body| decode(body, entity_id))
+        .collect()
+}
+
+/// Decode the single method of one bundle body.
+fn decode(body: &[u8], entity_id: u32) -> Received {
     assert_eq!(
         u32::from_le_bytes(body[3..7].try_into().unwrap()),
         entity_id,

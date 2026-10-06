@@ -18,6 +18,8 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
+use crate::encryption::MercuryEncryption;
+use crate::packet::parse_incoming;
 use crate::transport::Transport;
 
 /// Records every outbound `send_to` for later inspection. Used as a drop-in
@@ -118,6 +120,39 @@ impl Default for TestTransport {
     }
 }
 
+/// The bundle body of each send in `packets`, decrypted with `enc`: a
+/// single datagram's body as sent, or the bodies of a fragmented bundle
+/// joined in order. A send too big for the client's buffer goes out as
+/// fragments, so a test that decodes "one packet = one bundle" reads the
+/// recorded sends through this.
+///
+/// Panics on a packet that does not decrypt or parse, on a fragment whose
+/// range differs from the bundle it continues, and on a bundle whose last
+/// fragment was not sent.
+pub fn reassembled_bodies(packets: &[Vec<u8>], enc: &MercuryEncryption) -> Vec<Vec<u8>> {
+    let mut bodies = Vec::new();
+    let mut open: Option<((u32, u32), Vec<u8>)> = None;
+    for (i, wire) in packets.iter().enumerate() {
+        let plaintext = enc.decrypt(wire).expect("decrypt test packet");
+        let packet = parse_incoming(&plaintext).expect("parse test packet");
+        let (Some(begin), Some(end)) = (packet.frag_begin, packet.frag_end) else {
+            assert!(open.is_none(), "packet {i} interrupts a fragmented bundle");
+            bodies.push(packet.body.to_vec());
+            continue;
+        };
+        let (range, mut body) = open.take().unwrap_or(((begin, end), Vec::new()));
+        assert_eq!(range, (begin, end), "packet {i} is in another bundle");
+        body.extend_from_slice(&packet.body);
+        if packet.seq_id == Some(end) {
+            bodies.push(body);
+        } else {
+            open = Some((range, body));
+        }
+    }
+    assert!(open.is_none(), "the last fragmented bundle is incomplete");
+    bodies
+}
+
 #[async_trait]
 impl Transport for TestTransport {
     async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
@@ -137,6 +172,68 @@ mod tests {
 
     fn addr(s: &str) -> SocketAddr {
         s.parse().unwrap()
+    }
+
+    fn enc() -> MercuryEncryption {
+        MercuryEncryption::from_session_key([0u8; 32])
+    }
+
+    /// One encrypted single-datagram bundle at `seq`.
+    fn single(body: &[u8], seq: u32) -> Vec<u8> {
+        use crate::packet::{build_outgoing, FLAG_HAS_SEQUENCE, FLAG_RELIABLE};
+        let flags = FLAG_RELIABLE | FLAG_HAS_SEQUENCE;
+        enc()
+            .encrypt(&build_outgoing(flags, body, Some(seq), &[], None))
+            .unwrap()
+    }
+
+    /// One encrypted fragment at `seq` of the bundle `begin..=end`.
+    fn fragment(body: &[u8], seq: u32, begin: u32, end: u32) -> Vec<u8> {
+        use crate::packet::{build_outgoing_fragmented, FLAG_RELIABLE};
+        enc()
+            .encrypt(&build_outgoing_fragmented(
+                FLAG_RELIABLE,
+                body,
+                seq,
+                begin,
+                end,
+                &[],
+            ))
+            .unwrap()
+    }
+
+    /// A send that went out as fragments reads back as the one body it
+    /// carried, between the single-datagram sends around it.
+    #[test]
+    fn reassembled_bodies_joins_fragments_and_keeps_singles() {
+        let wire = vec![
+            single(b"one", 4),
+            fragment(b"two-", 5, 5, 7),
+            fragment(b"three-", 6, 5, 7),
+            fragment(b"four", 7, 5, 7),
+            single(b"five", 8),
+        ];
+        assert_eq!(
+            reassembled_bodies(&wire, &enc()),
+            vec![
+                b"one".to_vec(),
+                b"two-three-four".to_vec(),
+                b"five".to_vec()
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "the last fragmented bundle is incomplete")]
+    fn reassembled_bodies_refuses_a_bundle_without_its_last_fragment() {
+        reassembled_bodies(&[fragment(b"two-", 5, 5, 6)], &enc());
+    }
+
+    #[test]
+    #[should_panic(expected = "interrupts a fragmented bundle")]
+    fn reassembled_bodies_refuses_a_single_inside_a_bundle() {
+        let wire = vec![fragment(b"two-", 5, 5, 6), single(b"one", 7)];
+        reassembled_bodies(&wire, &enc());
     }
 
     #[tokio::test]

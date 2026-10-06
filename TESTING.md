@@ -152,6 +152,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - Build the expected bytes from the same serializer the handler uses, then assert byte-for-byte. A length-only assertion is a tautology (same lesson as wire-format tests).
 - If the handler reads `local_addr()`, construct with `TestTransport::with_local(addr)` — the default is a synthetic `127.0.0.1:0` placeholder.
 - `drain()` consumes the records (a second `drain()` is empty); `clear()` resets without returning; `filter_to(addr)` / `send_count_to(addr)` scope to one recipient.
+- One send is not always one datagram. A reliable send too big for the client's 1472-byte buffer goes out as a fragmented bundle (#1274), so a test that decodes what a handler sent reads the records through `crate::test_support::reassembled_bodies(&packets, &enc)`: one body per send, fragments joined. Decoding each datagram by hand breaks as soon as a fixture grows (a 101-item `onUpdateItem`, a long mail header list).
 
 **Examples**: `crates/base-world-entry/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `crates/base/src/base/login/` (phase 1→4 ordered sequence), `crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
 
