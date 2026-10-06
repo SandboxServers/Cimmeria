@@ -1,0 +1,13 @@
+{
+  "id": "014-debug-area-lineup-ring",
+  "title": "Debug Area Lineup ring transport",
+  "description": "Adds a ninth ring transport station, beside the NPC lineup, to the Ihpet Crater map that the GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Debug Area ring transport patch (011) first.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
+      "sources": [
+        {"path": "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap", "output_of": "011-debug-area-rings-fix"}
+      ]
+    }
+  ]
+}

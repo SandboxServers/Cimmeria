@@ -47,15 +47,16 @@ pub struct SequenceOverride {
 const ARMORY_RING_RIG: &str =
     "Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0";
 
-/// The eight ring rigs client patch `011-debug-area-rings-fix` clones into
-/// `Ihpet_Crater_Light-fff80002.umap` for the Debug Area (world 1300, DA-08),
-/// in station order: Compound, Faction yard, AI slope, Arena rim, Arena pit,
-/// Gallery west, Gallery east, Death yard. All eight are copies of region 3's
-/// rig, so each copy's root sequence took the next free instance number under
-/// `Main_Sequence.Prefabs`: the first has no suffix, the rest `_0` to `_6`.
-/// Seeded as event sets 13810-13817 in
+/// The nine Debug Area ring rigs in `Ihpet_Crater_Light-fff80002.umap` (world
+/// 1300), in station order: Compound, Faction yard, AI slope, Arena rim, Arena
+/// pit, Gallery west, Gallery east, Death yard (client patch
+/// `011-debug-area-rings-fix`, DA-08), then Lineup (patch
+/// `014-debug-area-lineup-ring`, cloned into 011's chunk, DA-11). All nine are
+/// copies of region 3's rig, so each copy's root sequence took the next free
+/// instance number under `Main_Sequence.Prefabs`: the first has no suffix, the
+/// rest `_0` to `_7`. Seeded as event sets 13810-13818 in
 /// `db/resources/Events/Seed/debug_area_ring_events.sql`.
-pub const DEBUG_AREA_RING_RIGS: [&str; 8] = [
+pub const DEBUG_AREA_RING_RIGS: [&str; 9] = [
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq",
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0",
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_1",
@@ -64,6 +65,7 @@ pub const DEBUG_AREA_RING_RIGS: [&str; 8] = [
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_4",
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_5",
     "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_6",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_7",
 ];
 
 /// Teleport Out / Teleport In for Debug Area station `n`: ids `10189 + 2n` and
@@ -111,6 +113,8 @@ pub const SEQUENCE_OVERRIDES: &[SequenceOverride] = &[
     debug_area_ring(6, 8001),
     debug_area_ring(7, 8000),
     debug_area_ring(7, 8001),
+    debug_area_ring(8, 8000),
+    debug_area_ring(8, 8001),
 ];
 
 fn escape_xml_attr(text: &str) -> String {
@@ -236,7 +240,7 @@ mod tests {
         }
     }
 
-    /// The eight copies have eight object paths. Two stations sharing one
+    /// The nine copies have nine object paths. Two stations sharing one
     /// path would make the second rig unreachable and fire the first.
     #[test]
     fn debug_area_rig_paths_are_distinct_and_in_the_patched_chunk() {
@@ -246,7 +250,7 @@ mod tests {
             .all(|p| p.starts_with("Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.")));
         paths.sort_unstable();
         paths.dedup();
-        assert_eq!(paths.len(), 8);
+        assert_eq!(paths.len(), 9);
     }
 
     /// `(sequence_id, event_id, kismet_script_name)` from every

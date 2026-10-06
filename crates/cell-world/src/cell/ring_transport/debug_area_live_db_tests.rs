@@ -1,12 +1,13 @@
-//! Live-DB guards on the Debug Area ring network (world 1300, DA-08).
+//! Live-DB guards on the Debug Area ring network (world 1300, DA-08, DA-11).
 //!
-//! The eight stations are seeded across three files (Events, Worlds and
+//! The nine stations are seeded across three files (Events, Worlds and
 //! Content seeds) and only work when every link holds: pad row -> point set
 //! (the trigger volume) -> event set -> Teleport Out / In sequences -> console
 //! spawn -> `interact_tag` chain. These tests pin each link against the loaded
 //! database, plus the two map facts the seed depends on: every pad is on the
 //! navmesh (or the trip aborts with `ring_pad_off_navmesh`) and stands on the
-//! map's floor where client patch `011-debug-area-rings-fix` put the rig.
+//! map's floor where client patches `011-debug-area-rings-fix` (regions 35-42)
+//! and `014-debug-area-lineup-ring` (region 43) put the rig.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,12 +22,25 @@ use crate::test_support::require_db_or_skip;
 const DEBUG_AREA: i32 = 1300;
 /// The live Ihpet Crater, which loads the same patched map.
 const IHPET_CRATER_LIGHT: i32 = 73;
-const REGIONS: std::ops::RangeInclusive<i32> = 35..=42;
+const REGIONS: std::ops::RangeInclusive<i32> = 35..=43;
+/// The Lineup station (DA-11), which serves the Z10 NPC lineup.
+const LINEUP: i32 = 43;
+/// The Z10 lineup's doorway into the south compound's east wing (DA-10).
+const LINEUP_DOORWAY: Vector3 = Vector3 {
+    x: 300.0,
+    y: 6.8,
+    z: -897.0,
+};
 /// Region rows sit this far above the rig's base platform origin (region 1
 /// and region 3 do; see `debug_area_rings.sql`).
 const PAD_LIFT: f32 = 0.537;
 /// The rig's rings rise this high above the base when they play.
 const RING_CLEARANCE: f32 = 3.5;
+/// How far round the pad the rig's platform, pillars and rings need clear
+/// ground: the 3.53 m trigger cylinder plus a margin. The narrowest shipped
+/// stations (Pit overlook, Death yard) have 4.4 m before the first solid
+/// column.
+const RIG_FOOTPRINT: f32 = 4.0;
 
 async fn debug_area_regions(pool: &sqlx::PgPool) -> BTreeMap<i32, RingRegion> {
     load_ring_regions(pool)
@@ -46,7 +60,7 @@ async fn debug_area_ring_network_is_fully_connected_live_db() {
     let pool = require_db_or_skip!();
     let regions = debug_area_regions(&pool).await;
     let ids: BTreeSet<i32> = regions.keys().copied().collect();
-    assert_eq!(ids, REGIONS.collect(), "world 1300 must hold regions 35-42");
+    assert_eq!(ids, REGIONS.collect(), "world 1300 must hold regions 35-43");
     for (id, r) in &regions {
         assert!(
             r.tag.starts_with("DebugArea_Ring_"),
@@ -59,7 +73,7 @@ async fn debug_area_ring_network_is_fully_connected_live_db() {
         assert_eq!(dests, others, "region {id} must list every other station");
         assert_eq!(
             r.destination_ids.len(),
-            7,
+            8,
             "region {id} lists a station twice"
         );
     }
@@ -70,7 +84,7 @@ async fn debug_area_ring_network_is_fully_connected_live_db() {
 async fn debug_area_ring_stations_are_wired_end_to_end_live_db() {
     let pool = require_db_or_skip!();
     let regions = debug_area_regions(&pool).await;
-    assert_eq!(regions.len(), 8);
+    assert_eq!(regions.len(), 9);
     let mut paths = BTreeSet::new();
     for (id, r) in &regions {
         // Trigger volume: a world-1300 cylinder centred on the pad.
@@ -196,7 +210,8 @@ fn map_file(rel: &str) -> std::path::PathBuf {
 /// Every pad is a valid arrival on world 1300's navmesh (the client map's,
 /// D-DA5), and the rig under it stands on the map's own floor: the occluder
 /// (built from the cooked map's collision) has a surface within 0.5 m of the
-/// base platform origin and nothing in the 3.5 m the rings rise through.
+/// base platform origin and nothing in the 3.5 m the rings rise through,
+/// anywhere within the rig's footprint.
 #[tokio::test]
 async fn debug_area_ring_pads_stand_on_the_map_floor_live_db() {
     let pool = require_db_or_skip!();
@@ -213,7 +228,7 @@ async fn debug_area_ring_pads_stand_on_the_map_floor_live_db() {
         .expect("ihpet_crater_light.occ loads");
 
     let regions = debug_area_regions(&pool).await;
-    assert_eq!(regions.len(), 8);
+    assert_eq!(regions.len(), 9);
     for (id, r) in &regions {
         assert!(
             mesh.is_point_valid(&Vector3::new(r.x, r.y, r.z)),
@@ -237,10 +252,60 @@ async fn debug_area_ring_pads_stand_on_the_map_floor_live_db() {
             "region {id} ({}): something hangs over the pad; column {column:?}",
             r.tag
         );
+        // The platform, pillars and rings: a wall, planter or statue inside
+        // the footprint would clip the rig or the rising rings. Sampled
+        // every 0.25 m.
+        let steps = (RIG_FOOTPRINT / 0.25) as i32;
+        for i in -steps..=steps {
+            for j in -steps..=steps {
+                let (dx, dz) = (i as f32 * 0.25, j as f32 * 0.25);
+                if dx.hypot(dz) > RIG_FOOTPRINT {
+                    continue;
+                }
+                let column = occ.column(r.x + dx, r.z + dz);
+                assert!(
+                    !column
+                        .iter()
+                        .any(|&(_, lo, hi)| hi > base + 0.3 && lo < base + RING_CLEARANCE),
+                    "region {id} ({}): solid ground {:.2} m from the pad at ({}, {}) \
+                     inside the rig's {RIG_FOOTPRINT} m footprint; column {column:?}",
+                    r.tag,
+                    dx.hypot(dz),
+                    r.x + dx,
+                    r.z + dz
+                );
+            }
+        }
     }
+
+    // The Lineup station is there to serve the Z10 lineup: its pad reaches
+    // the lineup's doorway on foot. The doorway is 21 m away as the crow
+    // flies; the walk is about 39 m, round the west end of the low wall that
+    // runs along z -905 north of the pad.
+    let lineup = &regions[&LINEUP];
+    let route = mesh
+        .find_path(&Vector3::new(lineup.x, lineup.y, lineup.z), &LINEUP_DOORWAY)
+        .into_waypoints()
+        .expect("the Lineup pad must have a walking route to the lineup doorway");
+    let length: f32 = route
+        .windows(2)
+        .map(|w| {
+            let (a, b) = (&w[0], &w[1]);
+            ((b.x - a.x).powi(2) + (b.y - a.y).powi(2) + (b.z - a.z).powi(2)).sqrt()
+        })
+        .sum();
+    let end = route.last().unwrap();
+    assert!(
+        (end.x - LINEUP_DOORWAY.x).hypot(end.z - LINEUP_DOORWAY.z) < 1.0,
+        "the route stops at {end:?}, short of the doorway"
+    );
+    assert!(
+        length < 45.0,
+        "the Lineup pad is {length:.1} m on foot from the lineup doorway"
+    );
 }
 
-/// World 73 loads the same patched map, so it renders the eight rigs. None
+/// World 73 loads the same patched map, so it renders the nine rigs. None
 /// of them may do anything there: no pad, no console, no chain that could
 /// open a ring list.
 #[tokio::test]

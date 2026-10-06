@@ -196,7 +196,11 @@ fn real_client_debug_area_rings_fix() {
 
         let built = rig_positions(&tree.path().join(IHPET));
         assert_eq!(built.len(), 8, "{start}: {built:?}");
-        for (path, x, z) in seeded_rigs() {
+        // 011 builds the first eight stations; the seed's ninth (Lineup,
+        // `_Seq_7`) comes with 014, on top of this chunk.
+        let rigs = seeded_rigs();
+        assert_eq!(rigs.len(), 9);
+        for (path, x, z) in rigs.into_iter().filter(|r| !r.0.ends_with("_Seq_7")) {
             let (_, bx, bz) = built
                 .iter()
                 .find(|b| b.0 == path)

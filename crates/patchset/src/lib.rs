@@ -122,6 +122,8 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod alternatives_tests;
 #[cfg(test)]
+mod debug_area_lineup_ring_tests;
+#[cfg(test)]
 mod debug_area_rings_fix_tests;
 #[cfg(test)]
 mod debug_area_rings_tests;

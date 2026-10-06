@@ -35,6 +35,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `011-debug-area-rings-fix` | **Supersedes 010.** The same eight rigs, rebuilt so the client loads them, with the arena station moved off the pit's water plane (see below). Needs 007 applied first, unless 010 already applied | 1 map op: a delta from the normalized stock map plus 007's Armory map, and an alternative delta from 010's output | 19 KB |
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
 | `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilt on the player's machine from the map's own tiles by a new source transform, so the zip holds no picture data; **needs a launcher that knows the transform** (see below) | 1 recipe + a 219-byte delta | 1.4 KB |
+| `014-debug-area-lineup-ring` | A ninth Debug Area ring rig, the Lineup station beside the NPC lineup, added to 011's Ihpet_Crater_Light chunk (see below). Needs 011 applied first | 1 map delta from 011's output | 1.4 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -451,6 +452,106 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   patch that fails to apply can't hold back the GM commands. Keep 012
   terminal: nothing builds on it. The lab re-check on v2026-10-05.2 ran
   `/gmspawnbycmd`, `/gmdespawn` and `/gmdhd 3` with it installed.
+
+### 014-debug-area-lineup-ring
+
+The Lineup ring station (DA-11, region 43,
+[debug-area.md § Ring transports](../../docs/content/debug-area.md#ring-transports)),
+which serves the Z10 NPC lineup. One op rebuilds
+`Ihpet_Crater_Light-fff80002.umap` from the chunk
+[011](#011-debug-area-rings-fix) writes, with a ninth copy of the same rig:
+region 3's Castle CellBlock rig (base platform, five rings, emitter and
+Kismet sequence), cloned by the same cloner with the same roots and the
+`Dynamic` name fix. It stands on the courtyard paving at game
+(287, 6.80, -914), the rig base; the seeded pad is 0.537 m above it.
+
+- **Starts from 011's output only.** The op has one source: the Ihpet chunk,
+  sha256 `52b4f3adc5cb7beb8f3e2728e90ea764603de0515e013b600f30a1c63199ede0`,
+  pinned `"output_of": "011-debug-area-rings-fix"`. 011 already takes every
+  other state (stock plus 007, or 010's broken chunk) to that file, so a
+  second start here would only duplicate it. The clone's donor is still
+  Castle's rig, but the delta does not read the Armory map: every byte the
+  ninth rig adds already sits in one of 011's eight copies, and a build with
+  the Armory map as a second source came out larger (629 bytes, extra block
+  39) than the one-source build (607, extra 14). So 014 does not pin 007,
+  and a later patch that supersedes 007 does not invalidate it.
+- **No stock or 010 alternative, on purpose.** Fresh installs get 011 first,
+  and 011 repairs a 010 install. A launcher that skips or fails 011 skips
+  014 with "it builds on 011-debug-area-rings-fix, which did not apply"; a
+  chunk that is not 011's output fails with "... does not match patch
+  011-debug-area-rings-fix's output ...", and the chunk is left as it was.
+  014 needs no `alternatives` support, so every launcher release applies it.
+- **Publish `"after": "011-debug-area-rings-fix"`, and keep 014 terminal.**
+  The launcher's `blocked_by_failure` checks only the id named, so a 014
+  that fails (a GM-only world most players never enter) holds back nothing,
+  and 012, which names `009-starter-hotbar`, is not behind either ring patch.
+  Chain no unrelated patch `after` 014. A later patch that rewrites this
+  chunk again (a tenth rig, or a replacement for 011) must accept 014's
+  output (sha256 `2c505a6a...`) as a starting point, as a primary source or
+  an `alternatives` entry, because installs that have 014 hold that file
+  and not 011's.
+- **Instance number.** 011's chunk holds `..._Pf0_Seq` and `_Seq_0` to
+  `_Seq_6`, so the ninth root sequence is
+  `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_7`,
+  which the seed's sequences 10205 / 10206 name and
+  `crates/resources/src/base/sequence_overrides.rs` delivers.
+- **Every name loads on the client.** The clone added no name entry (011's
+  table already has a client-loadable `Dynamic`, and the cloner picks the
+  entry whose load bits cover the source's). `upk_patch audit-names --strict`
+  on the result: 0 unloadable names, 831 client-loaded exports audited, 0 not
+  audited (011's chunk: 765). The cloner's own verify pass reports the same
+  for the 66 new objects, and all 776 of 011's exports stay byte-identical
+  apart from the two it extends (the level's actor list and
+  `Main_Sequence.Prefabs`'s sequence list).
+- **No new CME bytes.** The delta is 607 bytes; its extra block, the only
+  bytes that reach the map verbatim, is 14 compressed bytes.
+  `committed_014_delta_ships_no_verbatim_map_bytes` in
+  `crates/patchset/src/debug_area_lineup_ring_tests.rs` fails above 64.
+- **World 73 sees it too.** The live Ihpet Crater loads the same file, so it
+  shows nine platforms. The ninth is 81 m from the DHD and 84 m from the
+  gate and, like the rest, has nothing seeded for world 73.
+- **Rebuild.** Use the cloner built from this repo on 011's output, with
+  Castle's map as 007 leaves it as the donor:
+
+  ```bash
+  upk_patch clone-objects <011-applied>/.../Ihpet_Crater_Light-fff80002.umap \
+      <007-applied>/.../Castle_CellBlock-fffeffff.umap <patched>/.../Ihpet_Crater_Light-fff80002.umap \
+      --roots 772,1192,216,218,219,220,227,228 --map 764:104 \
+      --first-at -91400,28700,680
+  cimmeria-patchset build data/client-patches/014-debug-area-lineup-ring/patch.json \
+      --stock <tree holding 011's Ihpet chunk, sha256 52b4f3ad...> \
+      --patched <tree with the rebuilt chunk> --out data/client-patches/014-debug-area-lineup-ring.zip \
+      --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/014-debug-area-lineup-ring.zip
+  ```
+
+  The cloner run is reproducible (two runs, one hash). The chunk 014 writes
+  is sha256
+  `2c505a6a9b6b7d71923e1cf5e27a4ea02e1b575b808de5f009e36162b0505a25`
+  (2,393,722 bytes, uncompressed).
+- **Check on a real client.** With `SGW_011_CHUNK` set to 011's output
+  chunk: `cargo test -p cimmeria-patchset real_client_debug_area_lineup_ring -- --ignored`
+  applies the zip to a copy, audits every name, and finds all nine rigs where
+  the seed puts the pads.
+- **Lab check (2026-10-05).** A local server built from the DA-11 branch,
+  and the lab client with 014's chunk installed by hand over 011's: world
+  1300 and world 73 both loaded with no hang or crash, and the Lineup rig
+  stood lit on its pad in both. In world 1300 the Lineup console listed the
+  other eight stations and the Compound console listed the Lineup, its icon
+  where its coordinates put it on the world map. The trips Lineup to
+  Compound, Compound to Lineup, Lineup to Gallery east and back all
+  arrived, and the client ran both rigs' matinees for their full 6.05 s
+  every time. The client logs a `client.engine.load_failed` for each ring
+  sequence path it is sent, 011's as well as 014's, just before the matinee
+  plays, so that row is not a failure.
+- **Not published.** The entry to publish, as `cimmeria-patchset build`
+  printed it (with `blob` pinned to the merge commit, plus its `title` and
+  `description`):
+
+  ```json
+  {"id": "014-debug-area-lineup-ring", "after": "011-debug-area-rings-fix",
+   "size": 1414,
+   "sha256": "590bc6dc5b328eda50c9b461ab3e329ef63b6e3ba95a8320ca49fc7fa7bebbe4"}
+  ```
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them
