@@ -28,6 +28,7 @@ pub mod package;
 pub mod patcher;
 pub mod properties;
 pub mod reader;
+pub mod texture;
 
 pub use error::{Result, UpkError};
 pub use exports::ExportEntry;

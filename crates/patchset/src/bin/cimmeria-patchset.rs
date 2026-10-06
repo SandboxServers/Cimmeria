@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>] [--alt-stock <dir>]...
+//! cimmeria-patchset transform <patch.json> --stock <dir> --out <dir>
 //! cimmeria-patchset apply <zip> --install <dir>
 //! cimmeria-patchset sign <manifest.json> --key <private-key-file>
 //! cimmeria-patchset verify <manifest.json> --pubkey <hex>
@@ -20,6 +21,7 @@ use cimmeria_patchset::{apply, build, signing, Spec};
 
 const USAGE: &str = "usage:
   cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>] [--alt-stock <dir>]...
+  cimmeria-patchset transform <patch.json> --stock <dir> --out <dir>
   cimmeria-patchset apply <zip> --install <dir>
   cimmeria-patchset sign <manifest.json> --key <private-key-file>
   cimmeria-patchset verify <manifest.json> --pubkey <hex>
@@ -119,6 +121,19 @@ fn run(args: Args) -> Result<(), String> {
                 entry["description"] = description.clone().into();
             }
             println!("{}", serde_json::to_string_pretty(&entry).unwrap());
+        }
+        "transform" => {
+            let spec_path = PathBuf::from(args.arg(1, "<patch.json>")?);
+            let spec = Spec::load(&spec_path).map_err(e)?;
+            let written = build::transform_targets(
+                &spec,
+                Path::new(args.required("stock")?),
+                Path::new(args.required("out")?),
+            )
+            .map_err(e)?;
+            for target in written {
+                println!("wrote {target}");
+            }
         }
         "apply" => {
             let zip = PathBuf::from(args.arg(1, "<zip>")?);

@@ -53,6 +53,8 @@ pub const PATCH_TARGETS: &[&str] = &[
     // (the client reads the directory from `SlashCommandXMLPath` in
     // GameplayEngine.ini: `..\..\Common\xml\slash_commands`).
     "Common/xml/slash_commands/InternalSlashCommands.xml",
+    // 013-ihpet-world-map: the stock file's own spelling, `_MapData` in the file name.
+    "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk",
 ];
 
 /// One file [`restore`] renamed, as paths relative to the install.

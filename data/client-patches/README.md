@@ -14,6 +14,8 @@ zip holds a `cimmeria-patch.json` recipe, the deltas, and files we wrote
 ourselves. See [docs/client/sgw-launcher.md](../../docs/client/sgw-launcher.md#patch-sets-cimmeria-patchset)
 for the format and [crates/patchset](../../crates/patchset/) for the code.
 
+**Transforms keep derived bytes off the server too.** A patch whose new bytes would be derived from CME's art (a re-baked texture, say) cannot ship them as a delta either: the delta would carry a resampled copy of CME pixels. Such a patch uses a source transform that computes the bytes on the player's machine from the player's own files, with deterministic code so the recipe can pin the result hash (`world_map_rebake`, patch 013). The zip then holds a recipe and a delta of a few hundred bytes. A transform is new launcher code: publish the launcher release before the patch that uses it.
+
 **Exception, 2026-09-29: small UI files ship whole.** A delta only applies to the exact stock file, so it fails on the clients many players already have (Project Giza, or a colo client with the portrait fix installed by hand), and before #1114 that one failure stopped every later patch. `008-dialog-portraits` therefore carries its five small UI files whole, as the Black Market overlay (`crates/client-patches/overlay/`) already does. Large binaries (maps, cooked-data PAKs) stay deltas. This was a maintainer-side call that accepts the distribution risk for small UI files.
 
 ## The patches
@@ -32,6 +34,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `010-debug-area-rings` | **Retired 2026-10-05, superseded by 011: it hangs the client.** Eight ring transport rigs for the Debug Area, on the Ihpet_Crater_Light map (see below). | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
 | `011-debug-area-rings-fix` | **Supersedes 010.** The same eight rigs, rebuilt so the client loads them, with the arena station moved off the pit's water plane (see below). Needs 007 applied first, unless 010 already applied | 1 map op: a delta from the normalized stock map plus 007's Armory map, and an alternative delta from 010's output | 19 KB |
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
+| `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilt on the player's machine from the map's own tiles by a new source transform, so the zip holds no picture data; **needs a launcher that knows the transform** (see below) | 1 recipe + a 219-byte delta | 1.4 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -255,7 +258,7 @@ Ihpet Crater, which streams the same chunk).
   restore).
 - **Which launchers do what.** The 010 -> 011 upgrade path needs a launcher
   with `alternatives` support, which no release has yet (the newest,
-  `launcher-20260929-0d71e26`, predates it). A launcher without it parses
+  `launcher-20260929-0d71e26` when 011 was published, predates it). A launcher without it parses
   the recipe (`Op` is not `deny_unknown_fields`), ignores `alternatives` and
   applies the primary, which is 010's own stock + 007 source: **that is
   correct on every clean install**, so fresh installs and everyone who never
@@ -456,6 +459,159 @@ published patch changes nothing a player downloads. The launcher keeps
 the same text as a fallback for manifests published without it
 (`builtin_description` in `crates/launcher/src/client_changes.rs`), and
 the test `builtin_catalog_matches_every_patch_spec` keeps the two in step.
+
+### 013-ihpet-world-map
+
+The Debug Area's ring consoles open the world map with the other stations as
+transporter icons, and a tester found the icons on the wrong terrain: the
+Compound and Death yard stations drew beside the south compound's north wall,
+the Z1 arrival point on bare ground west of the compound, and the top 43% of
+the picture was flat blue. The pads are right. The stock map picture is wrong,
+in world 73 as well (same map data).
+
+- **Where the world map comes from.** The picture and its layout are in the
+  map's data package, `Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk`,
+  not in the map chunks, the Lua UI or anything the server sends. It holds a
+  `WorldMapCollection` called `Maps`, a `MapLayerCollection` called `Layers`,
+  154 Texture2D tiles `thumb_WorldMap_<hi16><lo16>` (256x256 DXT1, one per
+  100 m chunk, `hi` the north-south chunk row, `lo` the east-west column) and
+  one 1024x1024 texture, `world__default_`. The `_default_` map record
+  (`UWorldMapCollection__vfunc_12` at 0x008ba470, element `FUN_009e8a60`) holds
+  the chunk bounds (columns -3..7, rows -13..0), the layer name and two floats,
+  0.7857 and 1.0: the share of the texture the map occupies, 11 columns by 14
+  rows. Every icon, the player's marker and the coordinate readout go through
+  one linear transform (`FUN_00ad70b0` into `FUN_00de52a0`), so they all share
+  the pad coordinates' frame. In that frame px = 428 + 0.841 (x + 300) and
+  py = 98 + 0.841 (100 - z) on the tester's 1538x1319 screenshot, which fits all
+  seven icons to within 2 px and the art's bounds exactly.
+- **What the client draws.** Only `world__default_`. In the lab the map window
+  lists four layers (POI, Mission Waypoints, Player Location, Squad Locations),
+  all drawn by Lua over the picture, and no tile layer or zoom exists. The 154
+  tiles are never drawn. Decoded and stitched, the tiles are correct: blue
+  only in the top three of 14 rows, the compound in rows 5 to 13, and the Z1
+  arrival point (251, -962) inside the south compound building.
+- **What is wrong.** `world__default_` is a 1.99x zoom of the map's top-left,
+  anchored at the corner: its blue/brown border is at texel row 437 where
+  the tiles put it at 219, and the compound's north edge is at row 730 where
+  the tiles put it at 369. It looks like a 2048 bake stored at 1024 (the
+  cause is inferred, the 2x is measured), so only the top-left quarter of the
+  map is in it. The player's marker (Z1) therefore
+  shows on bare ground, as the tester's icons did. Other maps' default
+  textures are patchwork bakes too (Castle, Menfa); this patch does not touch
+  them.
+- **Nothing server-side fixes it.** The art is client data. Moving the pad
+  coordinates, or scaling the positions the server sends, would break the
+  marker, the POIs and the readout, and half the pads would fall outside the
+  texture.
+- **Fix, with zero CME bytes in the zip.** The patch ships no picture data at
+  all. A new source transform, `world_map_rebake`
+  (`crates/patchset/src/transform.rs`, code in `crates/upk/src/texture/`),
+  runs on the player's machine: it reads the player's own
+  `Ihpet_Crater_Light_MapData.upk`, decodes its 154 DXT1 tiles, stitches them,
+  resamples the mosaic to the scale the map record describes (73.14 texels per
+  chunk, 805x1024 in the top-left of the 1024x1024 texture, the rest magenta
+  as in Harset's and Menfa's stock default textures, after an eight-texel
+  carry of the last picture column so no DXT1 block or bilinear tap mixes
+  picture with magenta), encodes DXT1 with the same 11 mips as stock, packs
+  the LZO chunks as stock does, and writes the new texture through
+  `cimmeria-upk`'s append-only patcher (the old texture stays in the file as
+  dead space; only the export table's entry for it moves). The recipe's
+  bsdiff delta then covers only what the transform leaves out, which is
+  nothing: 219 bytes.
+- **The parameters are data, not code.** The recipe names the texture, the tile
+  name prefix, the chunk bounds (`lo` -3..7, `hi` -13..0), the output size
+  (1024), the pad colour and the carry, so another map needs a new recipe and
+  no new code. Which maps: `Ihpet_Crater_Dark` has the same record and the same
+  2x texture and is the follow-up (a second recipe, tested in the lab first);
+  Castle and Menfa have patchwork default textures that this transform could
+  rebuild once someone decides what they should show.
+- **Deterministic by construction.** A launcher on another machine has to
+  reproduce the pinned result hash, so the pixel path has no floating point and
+  no third-party codec whose output can change: an integer area-average
+  resampler (`texture/resample.rs`, exact overlap weights, round half up,
+  checked against an exact-rational reference), our own DXT1 encoder
+  (`texture/dxt1.rs`: per-channel min and max, inset by 1/16 of the range,
+  RGB565, nearest palette colour by squared distance, ties to the lowest
+  index) and `lzokay-native`, pinned with `=0.1.0` in `crates/upk/Cargo.toml`.
+  `crates/upk/src/texture/tests.rs` pins golden values on synthetic input (no
+  game bytes): the resampler's output, the encoder's bytes, the LZO output of a
+  fixed input and every byte of a rebuilt synthetic world-map package. A change
+  to any of them fails there before it changes a player's result. The real
+  result was also reproduced in a debug and a release build.
+- **Bounded input.** Every recipe parameter and every size read from the
+  package is checked before anything is allocated: `size` is a multiple of 4
+  in 8..=4096, `lo` and `hi` are ordered ranges inside `i16` of at most 256
+  chunks (so a tile name cannot alias another chunk's), `carry` is at most
+  `size`, tiles are square multiples of 4 up to 1024 texels, the mosaic is
+  capped at 256 MiB, an LZO payload may not claim more than its mip holds, and
+  a recipe that breaks a limit fails before the package is opened. A source file
+  whose SHA-256 is not the pinned one is refused before the transform runs, so a
+  non-stock `MapData` is never decoded. The tests that pin this are in
+  `crates/upk/src/texture/tests.rs` and `ihpet_world_map_tests.rs`.
+- **Result.** From the stock file (sha256
+  `ea86f7c32b6d8e230c86191b5f048e080fc979e80d584bbdc878e3db5404a1f4`, the 2009
+  file, 6,167,790 bytes) the transform gives 6,608,373 bytes, sha256
+  `856458c9998a88956f5a0573d5106f75d76e9389f661a7431d03e6ec29c6f1fe`. The zip
+  is 1,457 bytes (a 992-byte recipe and the 219-byte delta), sha256
+  `7a51dbf729c03fb4b903e9cc595b9699bf55aae94b6d6d100d504025a06d2a67`.
+  `committed_013_zip_carries_no_picture_data` fails if the zip grows past a few
+  KB, and the ignored `real_client_ihpet_world_map` test (run with the stock
+  file in `SGW_STOCK_MAPDATA`) checks that no 64-byte run of what the transform
+  appended appears in the zip and that applying the zip gives the pinned hash.
+- **Launcher requirement.** The recipe holds a one-key object where older
+  recipes hold a string. A launcher that predates the transform (the newest
+  release, `launcher-20261005-ba28f1a`, does) cannot parse the recipe: the
+  patch fails with an "unknown variant `world_map_rebake`" error, nothing is
+  written, the other patches apply (the launcher's one-failure-does-not-stop-the-rest
+  behaviour, tested by
+  `a_patch_with_a_transform_this_launcher_does_not_know_fails_alone`) and the
+  run ends reporting one failed patch every time, because the patch is never
+  recorded as applied. **Publish a launcher release containing this transform
+  before the manifest entry for 013**, and set the manifest's `min_launcher` to
+  that release so older launchers show the update banner instead of a standing
+  error. The patch needs no stock-file mapping change: `PATCH_TARGETS` already
+  lists the file.
+- **Compatibility.** The source is the stock MapData file, which none of
+  001-012 touch, so there is no ordering constraint; the manifest `after` is
+  free. It does not touch the Ihpet chunk that 011 writes, or the ninth ring
+  rig's chunk. A MapData file that is not the stock one fails the source hash
+  check and is left alone, like any other patch.
+- **Rebuild.**
+
+  ```bash
+  cimmeria-patchset transform data/client-patches/013-ihpet-world-map/patch.json \
+      --stock <stock tree> --out <patched tree>
+  cimmeria-patchset build data/client-patches/013-ihpet-world-map/patch.json \
+      --stock <stock tree> --patched <patched tree> \
+      --out data/client-patches/013-ihpet-world-map.zip \
+      --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/013-ihpet-world-map.zip
+  ```
+
+  `transform` writes what the transform makes of the stock file into the
+  `--patched` tree, so `build` diffs the two.
+- **Lab check of the pinned bytes (2026-10-05, applied by hand).** The result
+  file (sha256 `856458c9...`, the transform's output from the stock file) was
+  installed over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the
+  client also had 011), in a combined run with patch 014's chunk, then the lab
+  client was put back to stock. **World 1300**: loaded with no crash or hang;
+  the world map shows blue only in about the top fifth, the player marker
+  inside the south compound, and nothing drawn off the map edge. **World 73**:
+  the same, no crash or hang, same map. **A real ring-console click** worked:
+  a real mouse right-click on the console (hover verified) opened ring mode
+  from the server's own `onRingTransporterList` with all eight icons on the
+  corrected art, and a real left click on an icon sent
+  `setRingTransporterDestination` and the trip completed. The evidence
+  screenshots (`013-w1300-worldmap-player-marker`, `013-w73-worldmap-player-marker`,
+  `013-w1300-compound-ring-list-real-click`) were captured in the lab run and are
+  not committed. An earlier build of this patch (a Python-generated texture,
+  sha256 `14b5f65a...`) was checked the same way on both worlds first.
+- **Lab pitfalls.** Logging in directly into a character saved in the Debug
+  Area made the lab client die within about 50 s of Play every time, with the
+  stock file and with 013's, so the patch is not the cause; the lab watchdog
+  kills a client whose heartbeat misses five polls in a row, and a world load
+  blocks the main thread for 40 to 60 s. Entering through `Castle_CellBlock`
+  and `.gotolocation` worked. The relogin eviction saves the old world over a
+  character's location, so re-pin its database location after `lab_login`.
 
 Not here, on purpose:
 

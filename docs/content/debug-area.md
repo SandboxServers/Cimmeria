@@ -546,6 +546,22 @@ the traveller see the source rings animate as well. A player watching only
 the destination pad may not see its rings drop: see the known limitation in
 [ring-transport-system.md](../gameplay/ring-transport-system.md#kismet-sequences-ue3-visual-effects).
 
+### The ring list on the world map
+
+The ring list draws the other stations as transporter icons on the world map of
+the Ihpet Crater, at their pad coordinates through one linear transform: px =
+428 + 0.841 (x + 300) and py = 98 + 0.841 (100 - z) on a 1538x1319 screenshot,
+which put all seven icons within 2 px of the table above. **The pads are right.**
+A tester saw the icons on the wrong terrain (the Compound and Death yard icons
+beside the south compound's north wall, the Z1 arrival point on bare ground west
+of the compound) and the top 43% of the picture flat blue, because the stock
+overview picture, `world__default_` in `Ihpet_Crater_Light_MapData.upk`, is a
+1.99x zoom of the map's top-left corner. World 73 shows the same picture. The
+client draws only that picture, so nothing the server sends changes it; client
+patch `013-ihpet-world-map` rebuilds it from the map's own tiles. The evidence,
+the layout of the map data and how the patch rebuilds the picture on the
+player's machine, with no picture data in the zip, are in the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
+
 ### What needs the client patch
 
 The rigs exist only in client patch `011-debug-area-rings-fix`
