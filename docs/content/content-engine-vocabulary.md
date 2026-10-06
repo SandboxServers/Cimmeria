@@ -484,7 +484,7 @@ it when the trigger is not a button press: a `player_loaded` chain fires at
 every world entry, and without it a character who already has the mail would
 be told "has already sent you mail" at every login. With it, a firing inside
 the window writes no mail, leaves the claim where it was, sends the client
-nothing and logs at DEBUG instead of WARN. The first firing still sends the
+nothing and logs at DEBUG on target `mail` instead of a WARN on `content`. The first firing still sends the
 "sent you mail" line, and every other refusal (no database, a mail the
 writer refuses) still sends its line and its WARN, because those are faults
 someone has to see. Do not put it on a chain a player can press: the first
@@ -498,7 +498,7 @@ Telemetry:
 | `content.send_system_mail` `outcome=sent` | `content` | INFO | the base committed the mail; carries `mail_id`, `item_id`, `cooldown_key` |
 | `mail.system_sent` | `mail` | INFO | the writer's own row, after the commit |
 | `content.send_system_mail` `reason=...` | `content` | WARN | nothing sent: `cooldown` (with `last_used_at`, `remaining_secs`), `no_player`, `base_channel_closed`, `no_db_pool`, or the writer's reason (`unknown_item_type`, `recipient_not_found`, ...) |
-| `content.send_system_mail` `reason=cooldown` `quiet=true` | `content` | DEBUG | a firing inside a `quiet_cooldown` window: nothing sent and nothing said (with `cooldown_key`, `last_used_at`, `remaining_secs`) |
+| `content.send_system_mail` `reason=cooldown` `quiet=true` | `mail` | DEBUG | a firing inside a `quiet_cooldown` window: nothing sent and nothing said (with `cooldown_key`, `last_used_at`, `remaining_secs`) |
 
 Each row carries `entity_id`, `account_id`, `player_id` and `chain_id`.
 

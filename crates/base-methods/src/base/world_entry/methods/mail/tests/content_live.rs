@@ -331,12 +331,14 @@ async fn live_db_content_mail_quiet_cooldown_refusal_writes_nothing_and_sends_no
         .await
         .unwrap()
     };
-    let cooldown_rows = |level: tracing::Level| {
+    // The loud refusal is a WARN on `content`; the quiet one a DEBUG on
+    // `mail`, the target that ships at DEBUG.
+    let cooldown_rows = |target: &str, level: tracing::Level| {
         capture
             .all()
             .into_iter()
             .filter(|e| {
-                e.target == "content"
+                e.target == target
                     && e.level == level
                     && e.has_field("reason", "cooldown")
                     && e.has_field("player_id", &player.to_string())
@@ -373,10 +375,10 @@ async fn live_db_content_mail_quiet_cooldown_refusal_writes_nothing_and_sends_no
     );
     assert_eq!(claim().await, Some(claimed), "the claim is unmoved");
     assert!(
-        cooldown_rows(tracing::Level::WARN).is_empty(),
+        cooldown_rows("content", tracing::Level::WARN).is_empty(),
         "a quiet refusal is not a WARN"
     );
-    let quiet = cooldown_rows(tracing::Level::DEBUG);
+    let quiet = cooldown_rows("mail", tracing::Level::DEBUG);
     assert_eq!(quiet.len(), 1, "{quiet:#?}");
     for (k, v) in [
         ("event", "content.send_system_mail".to_string()),
@@ -401,7 +403,7 @@ async fn live_db_content_mail_quiet_cooldown_refusal_writes_nothing_and_sends_no
         told[0].starts_with("Dakara Gate Watch has already sent you mail. You can ask again in "),
         "{told:?}"
     );
-    assert_eq!(cooldown_rows(tracing::Level::WARN).len(), 1);
+    assert_eq!(cooldown_rows("content", tracing::Level::WARN).len(), 1);
 
     // The window is `i32::MAX` seconds: still shut ten years after a claim.
     let t0: i64 = 1_700_000_000;

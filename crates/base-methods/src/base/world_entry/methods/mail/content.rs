@@ -22,7 +22,7 @@
 //! what it carries, the time left on the cooldown, or why nothing was sent.
 //! The one exception is a cooldown the chain marked quiet
 //! ([`ContentMailCooldown::quiet`], Dakara DK-01): a firing inside its window
-//! sends the player nothing and logs at DEBUG, because the player did not
+//! sends the player nothing and logs at DEBUG on `mail`, because the player did not
 //! press anything (a `player_loaded` notice fires at every login). A quiet
 //! mail's first firing, and every other refusal, answer as usual.
 //! A sent mail is then announced like every other delivery (D-SS11, SS-M4):
@@ -164,9 +164,10 @@ pub async fn handle_content_system_mail(
         }) if msg.cooldown.as_ref().is_some_and(|c| c.quiet) => {
             // The window did its job and the player did not ask: no line,
             // and not a WARN, or every login of a notified character would
-            // write one.
+            // write one. `mail`, not `content`: the content target ships at
+            // INFO, and `mail` ships DEBUG.
             tracing::debug!(
-                target: "content",
+                target: "mail",
                 event = "content.send_system_mail",
                 reason = "cooldown",
                 quiet = true,
