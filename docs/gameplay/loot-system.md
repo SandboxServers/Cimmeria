@@ -155,7 +155,7 @@ Decision (@Cadacious, 2026-09-28). A chest or crate opens the corpse loot window
 | Container | Tag | Loot tables | Chains |
 |---|---|---|---|
 | Debug-hub crate (template 304) | `DebugHub_LootCrate` | 3, repeatable | 7020 |
-| Cellblock weapon/armor crate (template 13) | `Cellblock_WoodenCrate` | 10 (non-Jaffa), 11 (Jaffa), once per character | 1098, 1099, 1191 |
+| Cellblock weapon/armor crate (template 13) | `Cellblock_WoodenCrate` | One per class, once per character: 12 Soldier, 10 Commando, 13 Scientist, 14 Archaeologist, 11 Loyalist Jaffa; 10 for any other archetype ([mission 687](../content/mission-chains.md#mission-687-aftermath-confirmed)) | 1098, 1099, 1192-1195, 1191 |
 | Castle pre-Romney chest (template 410) | `Castle_PreRomneyChest` | 8 (non-Jaffa), 9 (Jaffa), once per character, 703 active | 1274, 1275, 1276 |
 
 Not client-verified yet: `Loot.lua` has no dead-target check, but a loot window on a live entity has not been seen in the client ([unified UAT guide](../guides/unified-uat.md), K22).

@@ -234,7 +234,7 @@ tutorial chain from "wake up in a cell" to "escape the facility."
 | 684 | Hallway 03 | Hallway03 guards | -- | -- | -- | Region5 (entry) | -- | -- |
 | 685 | Hallway 04 | Hallway04 guards | -- | -- | -- | -- | -- | -- |
 | 686 | Hallway 05 | Hallway05 guards | -- | -- | -- | Region6 (entry) | -- | -- |
-| 687 | Aftermath | Cellblock_WoodenCrate | 3942 (Human) / 3943 (Jaffa) | Human: 3347, 3359, 3372, 3387, 3401, 3325; Jaffa: 3482, 2797 | -- | -- | -- | -- |
+| 687 | Aftermath | Cellblock_WoodenCrate | Script: 3942 (Human) / 3943 (Jaffa). Cimmeria: also 2517, 4408, 4409 (per class) | Script: Human 3347, 3359, 3372, 3387, 3401, 3325; Jaffa 3482, 2797. Cimmeria: five class sets, see [mission-chains.md](mission-chains.md#mission-687-aftermath-confirmed) | -- | -- | -- | -- |
 
 **Confidence: HIGH** -- all connections traced directly from Python source files.
 

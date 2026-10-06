@@ -154,7 +154,8 @@ Step indices (XML order, which the client uses for sequential progression): `211
 | Chain | Trigger | Condition | Actions |
 |---|---|---|---|
 | 1003 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` | Clear Frost's search bit; grant Frost's letter (item 3730) → mission inventory; `add_dialog_set(5230 → template 21)` (unlock Guard); `advance_step(622, 80623)` |
-| 1005 | `dialog_open('3996')` (Guard body) | `step_status(622, 80623) = 'active'` | Clear Guard's search bit; grant pistol (item 55) → backpack (container 1); `advance_step(622, 80622)` |
+| 1005 | `dialog_open('3996')` (Guard body) | `step_status(622, 80623) = 'active'` AND `archetype` not 5, 6 or 7 | Clear Guard's search bit; grant pistol (item 55) → backpack (container 1); `advance_step(622, 80622)`; `grant_ability` 592, 594, 597, 1218 (`tutorial`, source 622, archetypes 1-4 and 8); `show_tutorial(5882)` |
+| 1010 | `dialog_open('3996')` (Guard body) | `step_status(622, 80623) = 'active'` AND `archetype` 5, 6 or 7 | The Goa'uld holding state (OD-CS08): clear Guard's search bit; grant pistol (item 55) → backpack; `advance_step(622, 80622)`. No grant, no tutorial |
 | 1004 | `item_equipped('55')` | `step_status(622, 80622) = 'active'` | `play_sequence(10000)` (open stasis door); `complete_mission(622)` |
 | 1006 | `player_loaded('Castle_CellBlock')` | `step_status(622, 2113) = 'active'` | `add_dialog_set(5229 → template 14)` — re-bind Frost on login |
 | 1007 | `player_loaded('Castle_CellBlock')` | `step_status(622, 80623) = 'active'` | `add_dialog_set(5230 → template 21)` — re-bind Guard on login |
@@ -162,7 +163,11 @@ Step indices (XML order, which the client uses for sequential progression): `211
 | 1009 | `player_loaded('Castle_CellBlock')` | `mission_status(622) = 'completed'` | `set_aggression(ArmYourself_NIDGuard, 1)` — re-arm the guard for a player who relogs past Region8 into a fresh instance (the guard is seeded NEUTRAL and 1008 is an entry edge) |
 | 1121 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` AND `mission_status(1360) = 'not_active'` | `accept_mission(1360)` — Frost's Letter |
 
-Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/resources/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/resources/src/base/dialog_overrides/mod.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1009, 1121). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
+**The first pistol is the core tutorial milestone (Class Start v6, CS-04)** [`PROJECT_FINAL_S2C`]. A normal character no longer starts with a pistol or a kit of abilities ([campaign ledger](../analysis/class-start-v6/README.md), OD-CS01 and OD-CS04). When a Human (archetypes 1-4) or a Loyalist Jaffa (8) searches the Guard, chain 1005 grants the pistol, then teaches 592 Pistol Shot, 594 Strike, 597 Heal Focus and 1218 Recuperation with provenance `tutorial` ([`grant_ability`](content-engine-vocabulary.md#grant_ability-params)), then shows tutorial 5882 "Equipping a Weapon" once per character ([`show_tutorial`](content-engine-vocabulary.md#show_tutorial-params)). The order matters: the base handles the cell's messages in order, so the client knows Pistol Shot before the tutorial asks the player to drag it to the bar. Tutorial 5883 "Combat" follows from the global chain 7101 (`tutorial_chains.sql`) on the first hostile combat after 5882. The pistol arrives with 0 rounds (OD-CS13); the player reloads once.
+
+Chains 1005 and 1010 split one trigger on `archetype`, and the two gates cover every value, so exactly one of them grants the pistol. Chain 1010 is the Goa'uld holding state (OD-CS08, `NON_CANONICAL_BLOCKED_LEGACY`): Goa'uld characters still start in the Cellblock while their Egypt start is blocked, and they keep the Guard search as it was before CS-04. A missing archetype reads -1 and takes chain 1005; the grant row checks the player's real archetype itself, on the cell and again on the base, so only archetypes 1-4 and 8 ever learn the abilities. Tests: `chain_replay_tests/mission_622_core_tutorial.rs`.
+
+Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/resources/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/resources/src/base/dialog_overrides/mod.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1010, 1121). Regression tests: `crates/cell-content/src/cell/content/chain_replay_tests/mission_622.rs`, `mission_1360.rs`.
 
 **Mission 1360 — Frost's Letter (C04, new content)** [CONFIRMED]
 
@@ -693,6 +698,25 @@ The Castle_CellBlock space script manages the hallway chain via region callbacks
 **Entity tags**: `Cellblock_WoodenCrate`
 
 **Dialog IDs**: 3943 (Jaffa), 3942 (Human)
+
+**Live data-driven shape (five-way class split, chains 1098, 1099, 1191-1195)** [`PROJECT_FINAL_S2C`]
+
+The flow above is the recovered script: a Human/Jaffa pair. Since Class Start v6 (CS-04, decisions OD-CS02, OD-CS06 and OD-CS12 in the [campaign ledger](../analysis/class-start-v6/README.md)) the crate is a five-way class split. That is our own authoring, not retail evidence. Searching the crate while step 2354 is active fires exactly one of six chains, by archetype:
+
+| Chain | Archetype | Dialog | Loot table | Items | Signature ability |
+|---|---|---|---|---|---|
+| 1192 | 1 Soldier | 2517 | 12 | 3260 SK37 LMG, 7373 Armored BDU Jacket | 598 Quick Burst |
+| 1098 | 2 Commando | 3942 | 10 | 3347, 3359, 3372, 3387, 3401 Covert Stealth set, 3325 Combat Knife | 646 Stealth I |
+| 1193 | 3 Scientist | 4408 | 13 | 4444 Deployment Belt, 7373 Armored BDU Jacket | 948 Medical Attention: Battlefield Heal |
+| 1194 | 4 Archaeologist | 4409 | 14 | 6843 Hologram Emitter, 7373 Armored BDU Jacket | 802 Reveal Mini-Games |
+| 1099 | 8 Loyalist Jaffa | 3943 | 11 | 4342 Standard Chestplate, 2797 Serpent Staff | 1984 Staff Swing |
+| 1195 | every other value | 3942 | 10 | the Commando set | none |
+
+Each chain shows its dialog, opens its loot table in a loot window (`open_loot`, once per character, key `Cellblock_WoodenCrate`; [loot-system.md](../gameplay/loot-system.md#live-containers)), advances to step 2355 and clears the crate highlight. The five class chains then grant the class's one free signature ability: `grant_ability` with kind `signature`, source 687 and the class's own archetype on the grant row, so it is permanent, survives a respec and counts as branch credit ([`grant_ability`](content-engine-vocabulary.md#grant_ability-params)). The signature is granted at the crate, with the gear, because the crate is this zone's class-identity milestone and the barracks fight of step 2355 is next. A gun from the crate arrives with 0 rounds (OD-CS13).
+
+Dialogs 2517, 4408 and 4409 are cooked rows of the same crate topic that no recovered script wired. Each one's text names the items its class now finds, which is why they are used. The Loyalist Jaffa armor piece is the Standard Chestplate (4342), the "plate armor for the chest" of dialog 3943, in place of the Armored Prison Jacket (3482) the script granted.
+
+Chain 1195 is the Goa'uld holding state (OD-CS08, `NON_CANONICAL_BLOCKED_LEGACY`): a Goa'uld keeps the reward the old non-Jaffa chain gave and gets no signature. Its gate is "none of the five classes", so an Asgard, a Shol'va or a player with no archetype also lands there and the crate is never a dead end. Chain 1191 answers every press outside step 2354 by reopening that character's pending loot or saying the crate is empty. Tests: `chain_replay_tests/mission_687_crate.rs`, `castle_loot_containers.rs`, `class_start_cellblock_scope.rs`.
 
 **Link to next**: **END OF CHAIN**. No subsequent mission is accepted. This is the final mission in the Castle_CellBlock tutorial. The player presumably transitions to the Castle persistent zone afterward.
 

@@ -323,6 +323,11 @@ dialog IDs: Jaffa gets dialog choice 5020, Human gets 2299.
 - Human (< 5): Display dialog 3942, receive items 3347, 3359, 3372, 3387, 3401, 3325 (6 items)
 - Both paths: Advance mission 687, step 2355
 
+Cimmeria's chains differ: since Class Start v6 (CS-04) the crate is a five-way
+class split with one free signature ability per class, and every other archetype
+gets the Commando set. See
+[mission-chains.md](mission-chains.md#mission-687-aftermath-confirmed).
+
 This is the most significant gameplay branch -- Jaffa receive different (fewer)
 equipment rewards than human archetypes, likely reflecting lore-appropriate gear
 differences.
