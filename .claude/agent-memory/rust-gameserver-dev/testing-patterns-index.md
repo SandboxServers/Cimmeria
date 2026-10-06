@@ -27,3 +27,4 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction) to keep the index under 
 - [live-db-lock-race-tests.md](live-db-lock-race-tests.md) — a lock-race test must see the waiter blocked first.
 - [forced-db-race-share-lock.md](forced-db-race-share-lock.md) — deterministic type-5 live-DB race with no code hook: hold `LOCK TABLE ... IN SHARE MODE`, release once `pg_stat_activity` shows N lock waiters.
 - [live-db-seed-iteration-without-reload.md](live-db-seed-iteration-without-reload.md) — the `ci-live-db` profile needs per-slot clones; iterate with `cargo test -- --test-threads=1`; re-apply one seed file in a transaction.
+- [chain-replay-single-loader-and-db-mutation-revert.md](chain-replay-single-loader-and-db-mutation-revert.md) — the single-chain loader skips the unknown-ability / unknown-tutorial refusals (add a `build_engine` test); revert-prove a seed guard by mutating the worktree database.
