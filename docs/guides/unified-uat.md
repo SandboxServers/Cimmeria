@@ -50,6 +50,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
+| [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -1090,6 +1091,29 @@ A GM-only test map, world 1300 `DebugArea` on the Ihpet_Crater_Light map, with o
 **Things only a human can check:** that the map loads and every station stands on the floor, clear of walls (DA-06); the minimap text (DA-U1); the windows each plaza NPC opens; damage numbers and heal bars (DA-U19 to DA-U21); what the gallery and arena NPCs look like (DA-U29, DA-U32, DA-U34); whether a rifleman crouches in cover (DA-U35); the hotbar icons (DA-U42).
 
 Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-area.md](../content/debug-area.md), [character-creation.md, Starter kit](../gameplay/character-creation.md).
+
+## Dakara_E1
+
+World 61, the Free Jaffa's world. Dakara rebuild DK-01 removes the dead end a new Free Jaffa hits there: the character learns the Omega Site address on arrival, the gate's return arrival is pinned on the plaza, and one mail says where things stand. There is no mission on Dakara yet, and that is intended for now. Design and evidence: [the Dakara_E1 ledger](../analysis/dakara-e1-rebuild/README.md#the-dead-end-fix-exactly).
+
+**Status:** Not ready for UAT. The steps need a Free Jaffa who starts on Dakara, which arrives with PR #1273 (Class Start v6 CS-02). No step has been run in a client.
+
+**Prerequisites:** a build with DK-01 and #1273. A brand-new Free Jaffa for DK-U1 to DK-U9; a GM character of another archetype for DK-U10.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| DK-U1 | Create a new Free Jaffa (SGU, Jaffa body) and enter the world | You stand on the Dakara gate plaza. Within a few seconds chat shows "Dakara Gate Watch sent you mail N. Open your mail to read it." and the new-mail notice | Needs #1273 for the Dakara start. Before it, `.gotolocation Dakara_E1` on an existing Free Jaffa fires the same chains |
+| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: no orders yet", three sentences (no orders yet; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item | Whether the mail window is the right place for the notice is an open question: say what you think |
+| DK-U3 | Right-click the DHD in front of the gate | The dialling window lists **Omega Site** with its name and glyphs | A row reading "Unknown" is a fail: note whether reopening the DHD fixes it |
+| DK-U4 | Dial Omega Site and walk into the gate | You arrive at Omega Site, standing, able to walk | |
+| DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Omega Site has no respawner: do not die there |
+| DK-U6 | Dial Dakara E1 and walk into the gate | You land on the plaza about 10 m in front of the gate, past the foot of its steps, facing away from the gate toward the DHD, and can walk at once | A landing inside the gate ring, on the steps, in the air or under the floor is a fail: say where you stood. The point is `(96.87, -16.75, 243.23)` |
+| DK-U7 | Log out and back in on Dakara | No second mail and no "has already sent you mail" line. The DHD still lists Omega Site | The repeat is silent on purpose |
+| DK-U8 | Delete the notice, then relog | Still no second mail | Once per character |
+| DK-U9 | Die on Dakara and respawn | You respawn on the gate plaza | Respawner 610 comes from #1273; this step checks it. Nothing on Dakara is hostile yet, so it needs a GM kill; if you cannot die, record the step as not run |
+| DK-U10 | As a Human or a Praxis Jaffa (a GM visitor), `.gotolocation Dakara_E1` | The reply ends in `[stargate arrival]` and you stand on the DK-U6 point. No mail arrives, and your DHD list has nothing new from this visit | The chains are for archetype 7 only |
+
+Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 
 ## Recording results
 

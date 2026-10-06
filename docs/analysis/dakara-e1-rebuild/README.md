@@ -3,7 +3,7 @@
 > Type: ledger. Audience: the owner, the coordinator, packet workers and reviewers.
 > Opened 2026-10-06 against `main` @ `ddd549797`. Packet prefix `DK-`. Companions: [audit](audit.md), [work packets](work-packets.md), [Class Start v6 ledger](../class-start-v6/README.md), [Harset rebuild](../harset-rebuild/README.md), [Castle rebuild](../castle-rebuild/README.md), [operator guide](../zone-restoration-operator-guide.md).
 >
-> **Campaign status (2026-10-06): planned. DK-00 (this plan) is written; nothing is implemented, built, tested or run in a client.** Every decision below is PROPOSED until the owner answers it.
+> **Campaign status (2026-10-06): planned, with DK-01 written. DK-00 (this plan) is written. DK-01 (the dead-end fix) is implemented and tested on its branch, not merged; nothing has been run in a client.** Every decision below is PROPOSED until the owner answers it.
 
 ## Why
 
@@ -100,9 +100,9 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 | System | Status | Packet |
 |---|---|---|
 | Free Jaffa start point and respawner 610 | Class Start v6 (#1273, in review) | CS-02 |
-| First stargate address for the Dakara start | BUILD | DK-01 |
-| Gate 25 arrival pin outside the gate volume | BUILD | DK-01 |
-| Arrival notice | BUILD | DK-01 |
+| First stargate address for the Dakara start | Written, UAT pending | DK-01 |
+| Gate 25 arrival pin outside the gate volume | Written, UAT pending | DK-01 |
+| Arrival notice | Written, UAT pending | DK-01 |
 | Landmark census and placement ledger | BUILD | DK-02 |
 | Cast templates and interactable props | BUILD | DK-03 |
 | Named areas, tent travel, Med Tent respawner | BUILD-INFRA | DK-04 |
@@ -123,7 +123,7 @@ Details, inputs, tests and UAT are in [work-packets.md](work-packets.md).
 | Packet | Scope | Depends on | Status |
 |---|---|---|---|
 | DK-00 | This plan: audit, ledger, packets. | none | Written 2026-10-06 |
-| DK-01 | Dead end removed: `grant_stargate_address` on arrival, gate 25 arrival pin, one-time arrival notice, round-trip guards. Seed plus one small mail-action change. | #1273 for UAT; OD-DK02 default | Ready |
+| DK-01 | Dead end removed: `grant_stargate_address` on arrival, gate 25 arrival pin, one-time arrival notice, round-trip guards. Seed plus one small mail-action change. | #1273 for UAT; OD-DK02 default | Review (written 2026-10-06; [worknote](worknotes/DK-01.md)) |
 | DK-02 | Zone evidence pack: landmark census, floor and navmesh checks, placement ledger. No seed change. | none | Complete 2026-10-06 (#1283): [placements](placements/README.md), [worknote](worknotes/DK-02.md) |
 | DK-03 | Cast templates and props (Loth'ta, Rak'nor, Jaffa Captain, tent flaps, drop location, SG-18 remains, terminals). | none | Ready |
 | DK-04 | Named areas, tent flaps to and from world 62, Med Tent respawner. | DK-02, DK-03, OD-DK03, OD-DK04 | BlockedDependency |
@@ -144,7 +144,7 @@ Details, inputs, tests and UAT are in [work-packets.md](work-packets.md).
 | GDK1 | Design gate: encounter shapes and level band for 1647, 1652, 1653. | OD-DK05, M2 playtest | BlockedDecision |
 | DK-99 | Close-out: status docs once, unified UAT section, final matrix. | all | Planned |
 
-**Ready with no owner decision:** DK-02, DK-03 and DK-06's evidence step. **Ready under a recommended default that is one seed row to change:** DK-01 (OD-DK02).
+**Ready with no owner decision:** DK-02, DK-03 and DK-06's evidence step. **Written under a recommended default that is one seed row to change:** DK-01 (OD-DK02).
 
 ## The Dead-End Fix, Exactly
 
@@ -189,6 +189,23 @@ Tests follow [TESTING.md](../../../TESTING.md): a chain-replay test (type 6) per
 | M3 Betrayal | GDK1, DK-06, DK-20, DK-21, DK-13 to DK-15 | The gate defence is winnable at the player's level; radio beats show; the terminal hack, the search and the decode work; the tent confrontation plays for one player without changing what another sees. |
 | M4 Climax | DK-30 to DK-32 | SGC round trip with the generators; both Ha'taks appear and explode for the acting player; courtyard objectives complete. |
 | M5 Exit | DK-33, DK-99 | 1654 hands off to the SGC once; final PASS / BLOCKED matrix. |
+
+### M1 checklist: dead end removed
+
+DK-01's lab steps, mirrored in the [unified UAT guide](../../guides/unified-uat.md#dakara_e1) under the same ids. All pending: they need a Free Jaffa who starts on Dakara (PR #1273).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| DK-U1 | Create a new Free Jaffa (SGU, Jaffa body) and enter the world | You stand on the Dakara gate plaza. Within a few seconds chat shows "Dakara Gate Watch sent you mail N. Open your mail to read it." and the new-mail notice | Needs #1273 for the Dakara start. Before it, `.gotolocation Dakara_E1` on an existing Free Jaffa fires the same chains |
+| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: no orders yet", three sentences (no orders yet; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item | Whether the mail window is the right place for the notice is an open question: say what you think |
+| DK-U3 | Right-click the DHD in front of the gate | The dialling window lists **Omega Site** with its name and glyphs | A row reading "Unknown" is a fail: note whether reopening the DHD fixes it |
+| DK-U4 | Dial Omega Site and walk into the gate | You arrive at Omega Site, standing, able to walk | |
+| DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Omega Site has no respawner: do not die there |
+| DK-U6 | Dial Dakara E1 and walk into the gate | You land on the plaza about 10 m in front of the gate, past the foot of its steps, facing away from the gate toward the DHD, and can walk at once | A landing inside the gate ring, on the steps, in the air or under the floor is a fail: say where you stood. The point is `(96.87, -16.75, 243.23)` |
+| DK-U7 | Log out and back in on Dakara | No second mail and no "has already sent you mail" line. The DHD still lists Omega Site | The repeat is silent on purpose |
+| DK-U8 | Delete the notice, then relog | Still no second mail | Once per character |
+| DK-U9 | Die on Dakara and respawn | You respawn on the gate plaza | Respawner 610 comes from #1273; this step checks it. Nothing on Dakara is hostile yet, so it needs a GM kill; if you cannot die, record the step as not run |
+| DK-U10 | As a Human or a Praxis Jaffa (a GM visitor), `.gotolocation Dakara_E1` | The reply ends in `[stargate arrival]` and you stand on the DK-U6 point. No mail arrives, and your DHD list has nothing new from this visit | The chains are for archetype 7 only |
 
 ## Handoff Validation Record
 
