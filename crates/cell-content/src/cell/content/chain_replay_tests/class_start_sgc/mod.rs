@@ -35,10 +35,11 @@ use cimmeria_entity::missions::{
     MissionInstance, MissionObjective, MISSION_ACTIVE, MISSION_COMPLETED, STATUS_ACTIVE,
 };
 
-use super::super::engine_loader::load_single_chain_for_test;
+use super::super::engine_loader::{build_engine, load_single_chain_for_test};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::WorldRow;
+use crate::test_support::require_db_or_skip;
 
 const PLAYER_EID: u32 = 7101;
 const PLAYER_ID: i32 = 42;
@@ -212,3 +213,43 @@ fn label(archetype: Option<i32>) -> String {
 /// Completed and active as the tests read them.
 const COMPLETED: Option<i8> = Some(MISSION_COMPLETED);
 const ACTIVE: Option<i8> = Some(MISSION_ACTIVE);
+
+/// Every chain CS-05 adds or edits, with its action count.
+const CS05_CHAINS: [(i64, usize); 15] = [
+    (3001, 2),
+    (3008, 5),
+    (3017, 1),
+    (3018, 2),
+    (3029, 3),
+    (3030, 1),
+    (3031, 1),
+    (3032, 2),
+    (3033, 1),
+    (3034, 1),
+    (3035, 4),
+    (3041, 3),
+    (3042, 7),
+    (3043, 3),
+    (3044, 3),
+];
+
+/// **Guard: every CS-05 chain survives the cell's real engine build.** The
+/// per-chain loader the other tests use skips the two whole-chain refusals
+/// (`refuse_chains_with_unknown_abilities`, `..._unknown_tutorials`), and a
+/// refused chain is gone with all its actions: a typo in a granted ability
+/// id would take the pistol and the mission completion with it. Each chain
+/// must also keep every action row (a malformed row is dropped, not
+/// refused).
+#[tokio::test]
+async fn live_db_every_cs05_chain_survives_the_full_engine_load() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    for (chain_id, actions) in CS05_CHAINS {
+        assert_eq!(
+            engine.get_chain_actions(chain_id).len(),
+            actions,
+            "chain {chain_id} must load with all {actions} of its actions",
+        );
+    }
+}
