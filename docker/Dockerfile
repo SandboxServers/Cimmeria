@@ -157,7 +157,14 @@ LABEL org.opencontainers.image.title="cimmeria-server" \
 # in weeks. The release-pipeline Trivy scan is gating on `CRITICAL`,
 # so any unpatched CVE in the inherited base layer fails the release;
 # the apt upgrade closes that window at build time.
-RUN apt-get update \
+#
+# APT_UPGRADE_DATE is today's UTC date in CI. Without it the buildx
+# cache reused a stale upgrade layer and missed Debian's perl fix
+# (deb12u4), and the scan failed. Changing the date once a day busts
+# only this layer and the ones after it, not the Rust build.
+ARG APT_UPGRADE_DATE=unset
+RUN echo "apt upgrade ${APT_UPGRADE_DATE}" \
+    && apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
         xz-utils \

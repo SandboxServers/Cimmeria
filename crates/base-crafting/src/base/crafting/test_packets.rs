@@ -8,6 +8,7 @@
 
 use cimmeria_mercury::channel_bundle::{EXTENDED_ENCODING_MARKER, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_mercury::packet::{parse_incoming, FLAG_FRAGMENTED};
 
 /// One decoded entity-method call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,9 +19,35 @@ pub(crate) struct MethodCall {
 }
 
 pub(crate) fn decode(packet: &[u8]) -> MethodCall {
+    let calls = decode_all(&[packet.to_vec()]);
+    assert_eq!(calls.len(), 1, "one whole call in one packet");
+    calls.into_iter().next().unwrap()
+}
+
+/// Decode every call the packets carry, joining fragments first: a body
+/// past one datagram goes out as a fragmented bundle (#1274), and its
+/// pieces only make a call once reassembled.
+pub(crate) fn decode_all(packets: &[Vec<u8>]) -> Vec<MethodCall> {
     let enc = MercuryEncryption::from_session_key([0u8; 32]);
-    let pt = enc.decrypt(packet).expect("decrypt test packet");
-    let body = &pt[1..pt.len() - 4];
+    let mut calls = Vec::new();
+    let mut fragments: Vec<u8> = Vec::new();
+    for packet in packets {
+        let pt = enc.decrypt(packet).expect("decrypt test packet");
+        let parsed = parse_incoming(&pt).expect("parse test packet");
+        if parsed.flags & FLAG_FRAGMENTED == 0 {
+            calls.push(decode_body(&parsed.body));
+            continue;
+        }
+        fragments.extend_from_slice(&parsed.body);
+        if parsed.seq_id == parsed.frag_end {
+            calls.push(decode_body(&std::mem::take(&mut fragments)));
+        }
+    }
+    assert!(fragments.is_empty(), "a fragmented bundle never completed");
+    calls
+}
+
+fn decode_body(body: &[u8]) -> MethodCall {
     let entity_id = u32::from_le_bytes(body[3..7].try_into().unwrap());
     if body[0] == EXTENDED_ENCODING_MARKER {
         MethodCall {
@@ -35,10 +62,6 @@ pub(crate) fn decode(packet: &[u8]) -> MethodCall {
             args: body[7..].to_vec(),
         }
     }
-}
-
-pub(crate) fn decode_all(packets: &[Vec<u8>]) -> Vec<MethodCall> {
-    packets.iter().map(|p| decode(p)).collect()
 }
 
 /// The text of a `CHAN_FEEDBACK` `onPlayerCommunication` call.

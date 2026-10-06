@@ -55,6 +55,8 @@ fn implemented_indices_are_in_gm_tail() {
         GM_RESPAWN,
         GM_KILL_TARGET,
         DESPAWN_MOB,
+        ACTIVATE_SPAWN_SET,
+        DEACTIVATE_SPAWN_SET,
         GM_USERS,
         GM_RELOAD_ORGANIZATIONS,
         TEST_LOS,
@@ -176,6 +178,7 @@ mod physics;
 mod query;
 mod shout;
 mod spawn;
+mod spawn_sets;
 mod stats;
 mod travel;
 mod travel_entry_point;

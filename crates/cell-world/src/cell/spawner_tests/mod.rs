@@ -17,6 +17,8 @@
 //!   NA13 aggro radius and aggression override and the NA14 assist radius.
 //! - [`live_db_eye_heights`]: live-DB guards for the NA31 body-set eye
 //!   heights line of sight casts between.
+//! - [`live_db_lineup_sets`]: live-DB guards for the DA-10 lineup's
+//!   switchable groups (one group per actor, size bound, off at boot).
 //! - [`live_db_leash_distance`]: live-DB guards that
 //!   `entity_templates.leash_distance` (NA12) loads without a COALESCE,
 //!   reaches the spawned NPC, and rejects `0`.
@@ -36,6 +38,7 @@ mod live_db_aggression;
 mod live_db_assist;
 mod live_db_eye_heights;
 mod live_db_leash_distance;
+mod live_db_lineup_sets;
 mod live_db_use_cover;
 mod live_db_vault_scope;
 mod spawn_behaviour_row;

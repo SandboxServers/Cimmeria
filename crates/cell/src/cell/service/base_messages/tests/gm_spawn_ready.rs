@@ -49,6 +49,7 @@ fn gm_record(template_id: i32, pos: [f32; 3]) -> spawner::SpawnRecord {
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
+        display_name: None,
     }
 }
 

@@ -38,9 +38,24 @@ async fn seeded_eye_heights_load_by_body_set() {
     assert!(!m.contains_key("GLB_Components.WorldObject_Small"));
 }
 
+/// Body sets a seeded spawn uses that have no reference mesh to measure, and
+/// why. They look from the 1.5 m default. Only the Debug Area NPC lineup
+/// (DA-10) spawns them: it places every body set once, these included.
+const UNMEASURABLE: [(&str, &str); 2] = [
+    (
+        "AR_J_Ra.BS_RaJaff",
+        "its reference mesh Ra_500 is not an export of AR_J_Ra (being-eye-heights.md)",
+    ),
+    (
+        "HM_Mesh.HM_BodySet",
+        "its body_sets row names no reference mesh",
+    ),
+];
+
 /// Every body set a seeded spawn uses that has a reference mesh has an eye
-/// height. `BS_JaffaMale` (50 templates) had no `body_sets` row at all
-/// until NA31; a new template on an unmeasured body set fails here.
+/// height, apart from the [`UNMEASURABLE`] ones. `BS_JaffaMale` (50
+/// templates) had no `body_sets` row at all until NA31; a new template on an
+/// unmeasured body set fails here.
 #[tokio::test]
 async fn every_spawned_being_body_set_has_an_eye_height() {
     let pool = require_db_or_skip!();
@@ -51,6 +66,7 @@ async fn every_spawned_being_body_set_has_an_eye_height() {
         .map(|s| s.body_set.as_str())
         // Props and terminals have no skeleton to measure.
         .filter(|b| !b.starts_with("GLB_Components."))
+        .filter(|b| !UNMEASURABLE.iter().any(|(u, _)| u == b))
         .filter(|b| !m.contains_key(*b))
         .collect();
     assert!(
