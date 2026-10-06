@@ -164,7 +164,7 @@ async fn live_db_m1562_still_stops_at_the_elevator_for_non_humans() {
 
 /// Chain 3031: a Human who relogs past the elevator finds Carter marked
 /// again (interaction bits do not survive a relog). Not before the elevator,
-/// not without the mission, and not for the Asgard.
+/// not without the mission, not once it is complete, and not for the Asgard.
 #[tokio::test]
 async fn live_db_chain_3031_restores_carters_marker_on_relog_for_a_human_past_the_elevator() {
     let pool = require_db_or_skip!();
@@ -196,4 +196,26 @@ async fn live_db_chain_3031_restores_carters_marker_on_relog_for_a_human_past_th
             label(archetype),
         );
     }
+
+    // A Human who finished M1562 and relogs: Carter stays unmarked. The gate
+    // is `mission_status 1562 eq active`; a completed mission has no active
+    // step, so the `step 4624 neq active` row alone would let it through.
+    let mut mgr = sgc_mgr(human);
+    spawn_tagged(&mut mgr, CARTER_EID, CARTER);
+    give_mission(&mut mgr, 1562, 4627);
+    mgr.get_entity_mut(PLAYER_EID)
+        .unwrap()
+        .missions
+        .get_mission_mut(1562)
+        .unwrap()
+        .complete();
+    assert_eq!(mission_status(&mgr, 1562), COMPLETED);
+    let (tx, _rx) = mpsc::channel(64);
+
+    fire_player_loaded(PLAYER_EID, PLAYER_ID, "SGC_W1", &engine, &tx, &mut mgr).await;
+
+    assert!(
+        !carter_marked(&mgr),
+        "chain 3031 must not re-mark Carter once M1562 is complete",
+    );
 }
