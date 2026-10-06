@@ -25,6 +25,9 @@
 //! Steps 80623 + 80622 are Cimmeria-introduced; their matching `<Steps>` rows
 //! are shipped to the client via two `mission_overrides` patches on `_622` in
 //! `CookedDataMissions.pak` (XML order 2113 → 80623 → 80622).
+//!
+//! Chain 1005's Class Start grant and tutorial, and the holding-state chain
+//! 1010, are in [`super::mission_622_core_tutorial`].
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;

@@ -53,6 +53,12 @@
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
+--   Class Start v6, CS-04 (2026-10-05, docs/analysis/class-start-v6/README.md):
+--     chain 1010 (the last free id of the Mission-622 range) and chains
+--     1192-1195, the rest of the 1191-1199 block work-packets.md reserved for
+--     GC2, the Aftermath per-class rewards gate this packet reopens (OD-CS02).
+--     1196-1199 remain free. Occupancy checked immediately before use: none of
+--     these ids existed anywhere under db/resources/Content/Seed/.
 --   Mission 639 (C05 addition, 2026-09-18): chains 1131-1133 (take-cover /
 --     drone-kill dual-objective gating for step 2144, replacing demo chain
 --     1035 -- see that section's comment for the auto-complete-trap
@@ -389,20 +395,70 @@ VALUES
 -- 80622, so a second dialog open can't re-grant (re-loot guard). The body's
 -- search bit is also cleared (client-side) so it stops being clickable. The
 -- Guard's dialog is bound by chain 1003 on the Frost search (relog: chain 1007).
+--
+-- PROJECT_FINAL_S2C (Class Start v6, CS-04; OD-CS01, OD-CS04): the first
+-- pistol is where a Human or Loyalist Jaffa learns the four CORE_TUTORIAL
+-- abilities (592 Pistol Shot, 594 Strike, 597 Heal Focus, 1218 Recuperation)
+-- and sees tutorial 5882 "Equipping a Weapon", once per character. The order
+-- is pistol, then abilities, then tutorial: the base handles the cell's
+-- messages in order, so the client knows Pistol Shot before the tutorial tells
+-- the player to drag it to the bar. 5883 "Combat" follows from chain 7101
+-- (tutorial_chains.sql) on the first hostile combat after 5882. The pistol
+-- arrives with 0 rounds (OD-CS13); nothing here loads it.
+--
+-- Chain 1005 is every archetype except Asgard (5), Goa'uld (6) and Shol'va
+-- (7); chain 1010 below is those three. The two archetype gates partition
+-- every value, so exactly one chain grants the pistol. A missing archetype
+-- reads -1 and takes this chain, and the grant row then checks the player's
+-- real archetype itself (`archetypes`, again on the base), so an archetype
+-- outside 1-4 and 8 never learns the abilities whatever the trigger carried.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1005, '622 - Dialog 3996 (loot Guard): grant pistol + advance to equip step', 'mission', 622, true, 0);
+VALUES (1005, '622 - Dialog 3996 (loot Guard): pistol, core tutorial abilities, tutorial 5882, advance to equip step', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1005, 'dialog_open', '3996', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1005, 'step_status', 622, '80623', 'eq', 'active', 0);
+VALUES
+  (1005, 'step_status', 622,  '80623', 'eq',  'active', 0),
+  (1005, 'archetype',   NULL, NULL,    'neq', '5',      1),
+  (1005, 'archetype',   NULL, NULL,    'neq', '6',      2),
+  (1005, 'archetype',   NULL, NULL,    'neq', '7',      3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1005, 'set_interaction_type', NULL, 'ArmYourself_GuardBody', '{"op": "~", "mask": 4194304}', 0, 0),
   (1005, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
-  (1005, 'advance_step', 622,  '80622', '{}',                          0, 2);
+  (1005, 'advance_step', 622,  '80622', '{}',                          0, 2),
+  (1005, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [592, 594, 597, 1218], "source_kind": "tutorial", "source_id": 622, "archetypes": [1, 2, 3, 4, 8]}', 0, 3),
+  (1005, 'show_tutorial', NULL, NULL, '{"tutorial_id": 5882}', 0, 4);
+
+-- Chain 1010: NON_CANONICAL_BLOCKED_LEGACY (Class Start v6, OD-CS08). The
+-- Goa'uld holding state: char_defs 10/19 still start here while Egypt is
+-- blocked (B4), and they keep the Guard search exactly as it was before
+-- CS-04: the pistol and the step, no grant and no tutorial (so chain 7101
+-- never shows them 5883 either). The gate is archetypes 5-7, so an Asgard or
+-- a Shol'va brought here, neither of whom has a Cellblock start profile, gets
+-- the same. Remove this chain and chain 1005's three `archetype` conditions
+-- together when Egypt becomes playable.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1010, '622 - Dialog 3996 (loot Guard), holding state (OD-CS08): pistol + advance to equip step only', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1010, 'dialog_open', '3996', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1010, 'step_status', 622,  '80623', 'eq', 'active', 0),
+  (1010, 'archetype',   NULL, NULL,    'gt', '4',      1),
+  (1010, 'archetype',   NULL, NULL,    'lt', '8',      2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1010, 'set_interaction_type', NULL, 'ArmYourself_GuardBody', '{"op": "~", "mask": 4194304}', 0, 0),
+  (1010, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
+  (1010, 'advance_step', 622,  '80622', '{}',                          0, 2);
 
 -- Chain 1006: player_loaded + step 2113 active → re-bind Frost's dialog set on
 -- login. interaction bindings (available_interactions) are not persisted across
@@ -2062,8 +2118,9 @@ VALUES (1190, 'increment_counter', NULL, 'hallway05_kills', '{"amount": 1}', 0, 
 --
 -- Final mission of the Castle_Cellblock escape. Two steps:
 --   2354 — "Search the crate for any useful items."
---          Right-click `Cellblock_WoodenCrate` → archetype-gated reward
---          (Tau'ri stealth set + knife / Jaffa armor + serpent staff)
+--          Right-click `Cellblock_WoodenCrate` → the class's reward set
+--          and free signature ability (five classes since Class Start
+--          v6, CS-04; see chains 1098, 1099 and 1192-1195)
 --          → advance to step 2355.
 --   2355 — "Eliminate the guards in the barracks."
 --          Three NID Guards tagged `Barracks_Guard1/2/3` (re-tagged from
@@ -2097,19 +2154,74 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1097, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
 
--- Chain 1098: search crate (Tau'ri / non-Jaffa) → display dialog 3942,
--- open a loot window on loot table 10 (the 5-piece Covert Stealth set + the
--- Combat Knife), advance to step 2355, clear crate highlight.
+-- Chains 1098, 1099 and 1192-1195: search the crate while step 2354 is
+-- active. PROJECT_FINAL_S2C (Class Start v6, CS-04; OD-CS02, OD-CS06,
+-- OD-CS12): a five-way class split, one chain per class, replacing the
+-- Human/Jaffa pair. The recovered Aftermath.script graph was Human/Jaffa
+-- only; that stays the historical record and this split is our own
+-- authoring, never retail evidence.
 --
--- Decision (@Cadacious, 2026-09-28): the crate opens a real loot window
--- (`open_loot`, once per character, key `Cellblock_WoodenCrate`) instead of
--- granting straight to the backpack. The player takes the items with Loot
--- All; anything left stays in the crate for that character. The step still
--- advances on open, as before, so the mission cannot stall on an unlooted
--- window. Items land in the bag each item's own container_sets names (the
--- loot pickup path), not the backpack Aftermath.py used.
+--   chain  archetype          dialog  loot table  items                               signature
+--   1192   1 Soldier          2517    12          3260 SK37 LMG, 7373 BDU Jacket      598 Quick Burst
+--   1098   2 Commando         3942    10          3347 3359 3372 3387 3401, 3325      646 Stealth I
+--   1193   3 Scientist        4408    13          4444 Deployment Belt, 7373          948 Battlefield Heal
+--   1194   4 Archaeologist    4409    14          6843 Hologram Emitter, 7373         802 Reveal Mini-Games
+--   1099   8 Loyalist Jaffa   3943    11          4342 Standard Chestplate, 2797      1984 Staff Swing
+--   1195   every other value  3942    10          the Commando set                    none (holding state)
+--
+-- Each class chain does what 1098/1099 did (dialog, loot window, advance to
+-- step 2355, clear the crate highlight) and then grants the class's one free
+-- signature ability (`grant_ability`, kind `signature`, source 687). The
+-- signature lands with the gear because the crate is the class-identity
+-- milestone of this zone and the ability is usable at once: the barracks
+-- fight of step 2355 is next. The grant row names its archetype as well as
+-- the chain, so the base refuses it for any other archetype whatever the
+-- trigger carried.
+--
+-- Dialogs 2517, 4408 and 4409 are cooked rows of the same crate topic that no
+-- recovered script wired; each one's text names exactly the items its class
+-- now finds ("a heavy weapon and a piece of body armor", "a deployment belt
+-- and some body armor", "an Asgard hologram emitter and a piece of body
+-- armor"). Like 3942/3943 they have no buttons.
+--
+-- Decision (@Cadacious, 2026-09-28), unchanged: the crate opens a real loot
+-- window (`open_loot`, once per character, key `Cellblock_WoodenCrate`)
+-- instead of granting straight to the backpack. The player takes the items
+-- with Loot All; anything left stays in the crate for that character. The
+-- step still advances on open, so the mission cannot stall on an unlooted
+-- window. Items land in the bag each item's own container_sets names. A gun
+-- from the crate arrives with 0 rounds (OD-CS13).
+--
+-- The six archetype gates partition every value (1, 2, 3, 4, 8, and
+-- everything else), so one press opens exactly one window.
+
+-- Chain 1192: Soldier.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1098, '687 - Search crate (non-Jaffa): grant stealth set', 'mission', 687, true, 0);
+VALUES (1192, '687 - Search crate (Soldier): heavy weapon + body armor, Quick Burst (598)', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1192, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1192, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1192, 'archetype',   NULL, NULL, 'eq', '1', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1192, 'display_dialog', 2517, NULL,   '{}',                         0, 0),
+  (1192, 'open_loot',      12,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1192, 'advance_step',   687,  '2355', '{}',                         0, 2),
+  (1192, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3),
+  (1192, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [598], "source_kind": "signature", "source_id": 687, "archetypes": [1]}', 0, 4);
+
+-- Chain 1098: Commando. Loot table 10 is the set chain 1098 always opened
+-- (OD-CS12, family A).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1098, '687 - Search crate (Commando): stealth set + knife, Stealth I (646)', 'mission', 687, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1098, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
@@ -2117,7 +2229,7 @@ VALUES (1098, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (1098, 'step_status', 687, '2354', 'eq', 'active', 0),
-  (1098, 'archetype',   NULL, NULL, 'neq', '8', 1);
+  (1098, 'archetype',   NULL, NULL, 'eq', '2', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -2126,13 +2238,59 @@ VALUES
    '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
   (1098, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1098, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
-   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3),
+  (1098, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [646], "source_kind": "signature", "source_id": 687, "archetypes": [2]}', 0, 4);
 
--- Chain 1099: search crate (Jaffa) → display dialog 3943, open a loot
--- window on loot table 11 (Armored Prison Jacket + Serpent Staff), advance
--- step, clear crate highlight. Same loot-window decision as 1098.
+-- Chain 1193: Scientist.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1099, '687 - Search crate (Jaffa): grant prison jacket + serpent staff', 'mission', 687, true, 0);
+VALUES (1193, '687 - Search crate (Scientist): deployment belt + body armor, Battlefield Heal (948)', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1193, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1193, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1193, 'archetype',   NULL, NULL, 'eq', '3', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1193, 'display_dialog', 4408, NULL,   '{}',                         0, 0),
+  (1193, 'open_loot',      13,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1193, 'advance_step',   687,  '2355', '{}',                         0, 2),
+  (1193, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3),
+  (1193, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [948], "source_kind": "signature", "source_id": 687, "archetypes": [3]}', 0, 4);
+
+-- Chain 1194: Archaeologist.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1194, '687 - Search crate (Archaeologist): hologram emitter + body armor, Reveal Mini-Games (802)', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1194, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1194, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1194, 'archetype',   NULL, NULL, 'eq', '4', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1194, 'display_dialog', 4409, NULL,   '{}',                         0, 0),
+  (1194, 'open_loot',      14,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1194, 'advance_step',   687,  '2355', '{}',                         0, 2),
+  (1194, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3),
+  (1194, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [802], "source_kind": "signature", "source_id": 687, "archetypes": [4]}', 0, 4);
+
+-- Chain 1099: Loyalist Jaffa.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1099, '687 - Search crate (Loyalist Jaffa): staff + chestplate, Staff Swing (1984)', 'mission', 687, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1099, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
@@ -2140,7 +2298,7 @@ VALUES (1099, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (1099, 'step_status', 687, '2354', 'eq', 'active', 0),
-  (1099, 'archetype',   NULL, NULL, 'eq',  '8', 1);
+  (1099, 'archetype',   NULL, NULL, 'eq', '8', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -2149,6 +2307,39 @@ VALUES
    '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
   (1099, 'advance_step',   687,  '2355', '{}',                         0, 2),
   (1099, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3),
+  (1099, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [1984], "source_kind": "signature", "source_id": 687, "archetypes": [8]}', 0, 4);
+
+-- Chain 1195: NON_CANONICAL_BLOCKED_LEGACY (Class Start v6, OD-CS08). The
+-- Goa'uld holding state: char_defs 10/19 keep the reward the non-Jaffa chain
+-- gave them before CS-04 (dialog 3942, loot table 10) and get no signature.
+-- The gate is "none of the five classes", so an Asgard, a Shol'va or a
+-- player whose archetype is missing (-1) also lands here and the crate is
+-- never a dead end. Once Egypt is playable no Goa'uld starts here and this
+-- chain is only that fallback.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1195, '687 - Search crate (holding state, OD-CS08): stealth set + knife, no signature)', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1195, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1195, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1195, 'archetype',   NULL, NULL, 'neq', '1', 1),
+  (1195, 'archetype',   NULL, NULL, 'neq', '2', 2),
+  (1195, 'archetype',   NULL, NULL, 'neq', '3', 3),
+  (1195, 'archetype',   NULL, NULL, 'neq', '4', 4),
+  (1195, 'archetype',   NULL, NULL, 'neq', '8', 5);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1195, 'display_dialog', 3942, NULL,   '{}',                         0, 0),
+  (1195, 'open_loot',      10,   NULL,
+   '{"once_per_character": true, "container_key": "Cellblock_WoodenCrate"}', 0, 1),
+  (1195, 'advance_step',   687,  '2355', '{}',                         0, 2),
+  (1195, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
    '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 3);
 
 -- Chain 1191: every other press on the crate (step 2354 not active: before
