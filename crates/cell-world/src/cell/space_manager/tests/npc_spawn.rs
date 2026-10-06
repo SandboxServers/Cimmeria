@@ -110,6 +110,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();
@@ -177,6 +178,7 @@ fn record_with_flags(interaction_type: i64) -> crate::cell::spawner::SpawnRecord
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }
 
@@ -255,6 +257,7 @@ fn spawn_npc_from_record_derives_banker_with_its_vault_scope() {
             vault_scope: scope,
             training_dummy: false,
             display_name: None,
+            tint: None,
             ..record_with_flags(INT_BANKER)
         };
         mgr.spawn_npc_from_record(600, &record).unwrap();
@@ -289,6 +292,7 @@ fn banker_bit_wins_over_vendor_bits_and_scope_needs_the_banker_bit() {
         vault_scope: VaultScope::Team,
         training_dummy: false,
         display_name: None,
+        tint: None,
         ..record_with_flags(INT_VENDOR_GENERAL)
     };
     mgr.spawn_npc_from_record(600, &record).unwrap();

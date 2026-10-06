@@ -115,6 +115,9 @@ pub struct NpcAoIData {
     /// Literal nameplate from `entity_templates.display_name`, sent as
     /// `onBeingNameUpdate` after the `name_id` text (Debug Area DA-10).
     pub display_name: Option<String>,
+    /// The template's opted-in `onEntityTint` colours
+    /// (`entity_templates.send_tint`); `None` sends `onEntityTint(0, 0, 0)`.
+    pub tint: Option<cimmeria_entity::cell_entity::EntityTint>,
     /// Faction ID (0=neutral, 1=Tau'ri, 3=SGC, 10=hostile).
     pub faction: u8,
     /// Alignment ID.
@@ -173,6 +176,7 @@ impl NpcAoIData {
         Self {
             name_id: entity.name_id,
             display_name: entity.display_name.clone(),
+            tint: entity.tint,
             faction: entity.faction,
             alignment: entity.alignment,
             entity_flags: entity.entity_flags,

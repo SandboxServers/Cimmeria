@@ -1944,7 +1944,7 @@ at = "arrived"
 id = "DA-U48"
 title = "The Visual NPC Lineup: a group shown from its attendant, one passive actor per look, none engages"
 expected = "Right-clicking the Show Humans (42) attendant answers in chat and fills the east wing's human rows with 42 passive display actors facing the walkways, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
-notes = "DA-10. Groups, rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The lineup is five spawn sets shown one at a time (all 161 at once ran the 32-bit client out of memory); the setup clears any group left on. HM_BodySet (a magenta box) and the Drone Tank (a magenta panel) are placeholders, not faults. No NPC is sent its colours or skin tint, so 70 actors draw untinted and NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-not-drawn)."
+notes = "DA-10. Groups, rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The lineup is five spawn sets shown one at a time (all 161 at once ran the 32-bit client out of memory); the setup clears any group left on. HM_BodySet (a magenta box) and the Drone Tank (a magenta panel) are placeholders, not faults. The lineup actors are sent their source's colours and skin tint (entity_templates.send_tint), but only the skin can show, so NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-sent-for-the-lineup-only)."
 setup = [
   { chat = ".aggro on", tier = "G" },
   { chat = ".gotolocation DebugArea 286 6.6 -899", tier = "G" },
@@ -1986,7 +1986,7 @@ max_rows = 0
 id = "looks"
 text = "the lineup reads as rows of different, standing NPCs"
 source = "human"
-question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Is every other row of the wing empty (one group at a time)?"
+question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Is every other row of the wing empty (one group at a time)? Facing Cellblock Guard #15 (x 307.25) and Op-CORE Soldier #174 (x 317.25), are their faces and hands a natural skin tone, not black, neon or washed out?"
 [[row.evidence]]
 name = "walkway"
 tool = "lab_screenshot"

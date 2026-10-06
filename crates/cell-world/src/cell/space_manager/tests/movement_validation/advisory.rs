@@ -411,6 +411,7 @@ fn spawn_row(world: &str, pos: [f32; 3]) -> crate::cell::spawner::SpawnRecord {
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }
 

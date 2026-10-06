@@ -420,7 +420,8 @@ fn build_npc_stats(npc_data: Option<&NpcAoIData>) -> Vec<u8> {
 /// Append appearance data for an NPC entity (BeingAppearance or onStaticMeshNameUpdate).
 ///
 /// Mirrors `SGWBeing.createAppearanceOnClient()` / `SGWSpawnableEntity.createAppearanceOnClient()`:
-/// - If bodySet + components (humanoid): `BeingAppearance(bodySet, componentList)` + `onEntityTint(0,0,0)`
+/// - If bodySet + components (humanoid): `BeingAppearance(bodySet, componentList)` + `onEntityTint`
+///   (the template's colours when it opts in with `send_tint`, else `0,0,0`)
 /// - Else if staticMesh + bodySet: `onStaticMeshNameUpdate(staticMesh, bodySet)`
 fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoIData) {
     if let Some(ref body_set) = d.body_set {
@@ -435,17 +436,16 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
             }
             append_entity_method(body, method_idx::BEING_APPEARANCE, idbase, entity_id, &args);
 
-            // onEntityTint(primaryColorId=0, secondaryColorId=0, skinTint=0)
-            let mut tint_args = Vec::with_capacity(12);
-            tint_args.extend_from_slice(&0u32.to_le_bytes());
-            tint_args.extend_from_slice(&0u32.to_le_bytes());
-            tint_args.extend_from_slice(&0u32.to_le_bytes());
+            // onEntityTint(primaryColorId, secondaryColorId, skinColorId):
+            // three packed 0xRRGGBB__ colours. A template that opts in with
+            // `entity_templates.send_tint` (the Visual NPC Lineup) sends its
+            // own; every other NPC sends 0, 0, 0, as it always has.
             append_entity_method(
                 body,
                 method_idx::ON_ENTITY_TINT,
                 idbase,
                 entity_id,
-                &tint_args,
+                &d.tint.unwrap_or_default().wire_args(),
             );
             return;
         }

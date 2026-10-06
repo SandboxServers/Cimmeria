@@ -133,6 +133,7 @@ fn record_from_request(
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }
 

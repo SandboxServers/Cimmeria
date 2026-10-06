@@ -215,6 +215,11 @@ pub struct CellEntity {
     /// DA-10), sent as `onBeingNameUpdate` after the `name_id` text.
     pub display_name: Option<String>,
 
+    /// The template's `onEntityTint` colours when it opts in with
+    /// `entity_templates.send_tint` (Debug Area DA-10); `None` sends
+    /// `onEntityTint(0, 0, 0)`, as every NPC did before.
+    pub tint: Option<super::EntityTint>,
+
     /// Speaker ID for dialog from `entity_templates.speaker_id`.
     pub speaker_id: Option<i32>,
 
