@@ -215,11 +215,11 @@ two zones' blocks; effect chains start at 2001.
 
 ```text
 Mission 1559:  3001-3017, 3029   Mission 1561:  3018-3025
-Mission 1562:  3026-3028, 3030-3035
+Mission 1562:  3026-3028, 3030-3037
 Mission 1569:  3041-3044 (rewards on mission_completed only)
 ```
 
-`3036-3040` and `3045-3050` are free. The starter chains 3001, 3017 and
+`3038-3040` and `3045-3050` are free. The starter chains 3001, 3017 and
 3018 carry `archetype neq 7` (Free Jaffa visitors), and the Human-only
 chains use `archetype lt 5`, which also admits a player with no archetype
 (-1). Do not widen 3029 (`archetype gte 5`): it is the Asgard holding
