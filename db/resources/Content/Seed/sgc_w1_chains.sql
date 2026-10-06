@@ -622,8 +622,19 @@ VALUES
 -- ============================================================
 -- PROJECT_FINAL_S2C. Keyed on `mission_completed 1569` and nothing else, so
 -- the SGU route campaign (OD-CS10) can author how 1569 is offered and how
--- its storage crates complete it without touching these chains. Until then
--- nothing accepts or completes 1569, so these chains do not fire in play.
+-- its storage crates complete it. Until then nothing accepts or completes
+-- 1569, so these chains do not fire in play.
+--
+-- ONE RULE FOR THAT ROUTE: its offer chain must gate on
+-- `mission_status 1569 eq not_active`. These chains are not one-shot. The
+-- offer guard refuses a completed mission only when `repeats > num_repeats`,
+-- and 1569's `num_repeats` is 1, so the server allows one re-accept after the
+-- first completion; a second completion would fire these chains again and
+-- grant every item twice (the signature grant is idempotent, the items are
+-- not). A completed mission is not `not_active`, so that gate closes it. No
+-- existing condition can make a `mission_completed` chain once-per-character
+-- by itself: counters reset on relog and `tutorial_shown` takes tutorial
+-- dialogs only.
 --
 -- One chain per Human class (conditions AND, so each `archetype eq N` needs
 -- its own chain). Each grants the Gear matrix's M1569 row and the class's
