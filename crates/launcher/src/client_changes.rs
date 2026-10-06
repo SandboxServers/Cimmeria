@@ -320,6 +320,20 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              ordinary players and the server refuses anyone below GM. Adds one file to \
              Common\\xml\\slash_commands.",
         ),
+        "013-ihpet-world-map" => (
+            "Ihpet Crater world map art",
+            "Fixes the Ihpet Crater world map (the Debug Area and the live Ihpet Crater): the \
+             stock overview picture shows only a zoomed-in corner of the map, so ring \
+             stations, your own marker and every other icon sit on the wrong terrain. \
+             Rebuilds that picture on your computer from the map's own tiles. Changes one \
+             Ihpet Crater map data file.",
+        ),
+        "014-debug-area-lineup-ring" => (
+            "Debug Area Lineup ring transport",
+            "Adds a ninth ring transport station, beside the NPC lineup, to the Ihpet \
+             Crater map that the GM-only Debug Area uses. Changes one Ihpet Crater map \
+             file and needs the Debug Area ring transport patch (011) first.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

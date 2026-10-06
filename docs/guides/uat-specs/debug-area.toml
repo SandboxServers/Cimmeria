@@ -44,9 +44,10 @@
 #
 # Client patches: DA-U42 needs 009-starter-hotbar and DA-U46 needs
 # 007-castle-armory-ring and 011-debug-area-rings-fix (010 was pulled: it
-# hung the client). 009 and 007 are in the signed content manifest
+# hung the client), plus 014-debug-area-lineup-ring for the Lineup
+# station. 009 and 007 are in the signed content manifest
 # (content-current, published 2026-10-05); 011 is published once the
-# coordinator signs it. The launcher's Update installs them on the lab client.
+# coordinator signs it, 014 likewise. The launcher's Update installs them on the lab client.
 
 schema = 1
 
@@ -1863,10 +1864,10 @@ at = "dhd"
 [[row]]
 id = "DA-U46"
 title = "A ring trip from the Compound station to the Arena shelf"
-expected = "Right-click the Compound ring console: the destination picker opens on world 1300's map with the other seven stations (regions 36-42); pick the Arena station and step on the pad: the Compound rings rise, flash and drop with sound (sequence 10189), you arrive on the shelf pad (331, -10.6, -693) as its rings drop (10198), and you can move about 5.5 s later."
+expected = "Right-click the Compound ring console: the destination picker opens on world 1300's map with the other eight stations (regions 36-43); pick the Arena station and step on the pad: the Compound rings rise, flash and drop with sound (sequence 10189), you arrive on the shelf pad (331, -10.6, -693) as its rings drop (10198), and you can move about 5.5 s later."
 required_native = "N3"
 known_issues = ["DA-06"]
-notes = "Needs client patches 007 and 011 in the lab client (010 was pulled because it hung the client): the launcher's Update installs them from the published content manifest. Without 011 the trip still works but no rig draws. The picker click is stood in for by the stock binding setRingTransporterDestination (N3): the lab cannot click world-map icons yet. Stations: regions 35-42, consoles 13810-13817 (template 3), sequences 10189-10204 (Teleport Out, Teleport In per station, in region order)."
+notes = "Needs client patches 007 and 011 in the lab client (010 was pulled because it hung the client), and 014 for the Lineup station's rig: the launcher's Update installs them from the published content manifest. Without 011 the trip still works but no rig draws. The picker click is stood in for by the stock binding setRingTransporterDestination (N3): the lab cannot click world-map icons yet. Stations: regions 35-43, consoles 13810-13818 (template 3), sequences 10189-10206 (Teleport Out, Teleport In per station, in region order)."
 setup = [
   { chat = ".gotolocation DebugArea 229 7.8 -934", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
