@@ -140,8 +140,24 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (61, 10, 3387, 1, 1, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (62, 10, 3401, 1, 1, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (63, 10, 3325, 1, 1, 1);
-INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (64, 11, 3482, 1, 1, 1);
+-- PROJECT_FINAL_S2C (Class Start v6, CS-04): table 11's armor piece is the
+-- Standard Chestplate (4342), the Loyalist Jaffa row of the campaign's Gear
+-- matrix and the "plate armor for the chest" of dialog 3943. It replaces the
+-- Armored Prison Jacket (3482) that Aftermath.py granted.
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (64, 11, 4342, 1, 1, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (65, 11, 2797, 1, 1, 1);
+
+-- PROJECT_FINAL_S2C (Class Start v6, CS-04, OD-CS02): the other three class
+-- sets of the Cellblock crate, every row certain. 12 Soldier: SK37 LMG +
+-- Armored BDU Jacket. 13 Scientist: Deployment Belt + Armored BDU Jacket.
+-- 14 Archaeologist: Hologram Emitter + Armored BDU Jacket. A looted gun
+-- arrives with 0 rounds (OD-CS13).
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (66, 12, 3260, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (67, 12, 7373, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (68, 13, 4444, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (69, 13, 7373, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (70, 14, 6843, 1, 1, 1);
+INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (71, 14, 7373, 1, 1, 1);
 
 --
 -- TOC entry 3323 (class 0 OID 0)
@@ -149,5 +165,5 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 -- Name: loot_loot_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_loot_id_seq', 65, true);
+SELECT pg_catalog.setval('loot_loot_id_seq', 71, true);
 

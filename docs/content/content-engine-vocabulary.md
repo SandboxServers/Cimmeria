@@ -608,6 +608,12 @@ one-time). 5883 "Combat" then fires from the seeded chain 7101
 (`player_entered_combat`, `tutorial_shown 5882 eq`, `tutorial_shown 5883
 neq`).
 
+As built at the Cellblock (CS-04): chain 1005, with the holding-state chain
+1010 beside it; see
+[mission 622](mission-chains.md#mission-622-arm-yourself-confirmed). The class
+signatures of mission 687's crate are the first seeded `signature` grants
+([mission 687](mission-chains.md#mission-687-aftermath-confirmed)).
+
 Telemetry (every row carries the player, the chain and the tutorial, each
 with its name):
 
