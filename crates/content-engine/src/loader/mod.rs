@@ -22,6 +22,10 @@
 //!   refuses its whole chain here, not just the row, and
 //!   [`refuse_chains_with_unknown_abilities`] refuses a chain whose ids are
 //!   not abilities once the caller has the ability table
+//! - [`action_tutorial`] — the `show_tutorial` verb (CS-03). A bad row
+//!   refuses its whole chain, and [`refuse_chains_with_unknown_tutorials`]
+//!   refuses a chain whose `show_tutorial` or `tutorial_shown` id is not a
+//!   tutorial dialog once the caller has the dialog table
 //!
 //! `mod.rs` keeps the orchestration ([`build_chains_from_rows`]),
 //! the JSON loader, and the public DB row structs.
@@ -41,6 +45,7 @@ mod action_bark;
 mod action_loot;
 mod action_mail;
 mod action_spawn;
+mod action_tutorial;
 mod condition;
 mod trigger;
 
@@ -48,6 +53,7 @@ mod trigger;
 mod tests;
 
 pub use action_ability::refuse_chains_with_unknown_abilities;
+pub use action_tutorial::refuse_chains_with_unknown_tutorials;
 
 /// Deserialize a list of chains from a JSON string.
 pub fn load_chains_from_json(json: &str) -> Result<Vec<Chain>, serde_json::Error> {
@@ -182,6 +188,29 @@ pub fn build_chains_from_rows(
                             chain_name,
                             params = %a_row.params,
                             "grant_ability: {why}; the chain is not loaded"
+                        );
+                        continue 'chains;
+                    }
+                }
+                continue;
+            }
+            // `show_tutorial` is all-or-nothing for its chain too (see
+            // `action_tutorial`).
+            if a_row.action_type == action_tutorial::ACTION_TYPE {
+                match action_tutorial::convert_show_tutorial(a_row) {
+                    Ok(action) => {
+                        actions.push(action);
+                        action_delays.push(a_row.delay_ms.max(0));
+                    }
+                    Err(why) => {
+                        tracing::error!(
+                            target: "content",
+                            event = "chain_refused",
+                            reason = "show_tutorial_invalid",
+                            chain_id,
+                            chain_name,
+                            params = %a_row.params,
+                            "show_tutorial: {why}; the chain is not loaded"
                         );
                         continue 'chains;
                     }

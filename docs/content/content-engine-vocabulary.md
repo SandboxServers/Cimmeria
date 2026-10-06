@@ -49,6 +49,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnPlayerInCoverDuration { cover_set_id?, seconds }` | Player has been continuously in a cover set for ≥ `seconds`. Debounced: leaving and re-entering resets the timer. Seed `event_key` convention is `"<seconds>"` or `"<seconds>:<set_id>"` ([loader/trigger.rs:87-100](../../crates/content-engine/src/loader/trigger.rs#L87-L100)) |
 | `OnNpcFlanked { npc_template? }` | An NPC occupying a cover slot was flanked — its top-threat target moved outside the cover's defensive arc (orientation ± π/2) |
 | `OnPlayerFlankedNpc { npc_template? }` | Player-perspective twin of `OnNpcFlanked`, fired from the same AI decision when the top-threat is a **player**. Unlike `OnNpcFlanked` (actions run on the NPC with player id 0), the chain's actions execute against the flanking player with that player's mission context, so mission-scoped chains (`objective_status`, `complete_objective`) work. Seed `event_type` = `player_flanked_npc`, `event_key` = the NPC template name (`entity_templates.template_name`, e.g. `NID Guard`) or `NULL` for any. Used by the Castle Cellblock flank objectives 2725/2731 (chains 1141/1142) |
+| `OnPlayerEnteredCombat` | A player enters hostile combat: their `BSF_InCombat` flag goes on because an NPC put them on its threat list (CS-03). Once per transition, not per mob; leaving combat and re-entering fires it again; a duel never fires it. The threat seam queues the entry and the 100 ms cell tick fires it (`fire_pending_combat_entries`). The player is the acting entity, with the standard player params (`archetype`, world, mission context, shown tutorials) plus `mob_id`. Seed `event_type` = `player_entered_combat`, `event_key` = `NULL` (a keyed row is dropped). Used by the combat tutorial, chain 7101 |
 
 Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](../../crates/content-engine/src/triggers/matching.rs#L43)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
 
@@ -130,8 +131,9 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 | `CustomExpression { expression }` | bool-key lookup, escape hatch |
 | `World { op, world_id }` | `ctx.world_id == world_id` (`eq`/`neq` only; ordered operators never match). Reads the typed `ExecutionContext.world_id`, not a param key. **Fail-closed** when unset — unlike the mission conditions, which fall back to `not_active` and can fail *open* |
 | `EntityTagState { tag, op, expected }` | Is any **living** entity in the acting player's space carrying spawn tag `tag`? `expected` is `alive` or `dead`; `eq`/`neq` only. Reads the typed `ExecutionContext.live_tags` set, which `populate_world_context` fills from `SpaceManager::live_tags_in_space_of` (a corpse with `BSF_DEAD`, zero health, a despawned entity and a tag that never spawned all read as dead). **Fail-closed** when unset. The *state* counterpart of the `entity_dead_tag` event, for backstops that must see a kill made before the chain was live (the Cellblock controllers 1181-1190, Decision (@Cadacious, 2026-09-28)). Use it only for tags the space spawns at creation: a tag a content action spawns later reads as dead until then |
+| `TutorialShown { tutorial_id, op }` | Has the acting player been shown the one-time tutorial `tutorial_id` (a `DUIST_DefaultTutorial` dialog id)? `eq` = seen, `neq` = not seen. Reads the typed `ExecutionContext.shown_tutorials` set, which `populate_world_context` fills from `CellEntity::shown_tutorials` (persisted in `sgw_player_tutorials`, so it survives relog and world change). **Fail-closed** when unset (no player behind the event) for every operator. `show_tutorial` adds the id as soon as it asks the base to record it (CS-03) |
 
-**Only eight are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, `stat_below_max`, `world` (`target_id` = `resources.worlds.world_id`, `operator` = `eq`/`neq`; `target_key` and `value` unused), and `entity_tag_state` (`target_key` = the spawn tag, `value` = `alive` or `dead`, `operator` = `eq`/`neq`; a malformed row still loads, as a condition that never matches, so it cannot publish its chain ungated). The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
+**Only nine are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, `stat_below_max`, `world` (`target_id` = `resources.worlds.world_id`, `operator` = `eq`/`neq`; `target_key` and `value` unused), `entity_tag_state` (`target_key` = the spawn tag, `value` = `alive` or `dead`, `operator` = `eq`/`neq`; a malformed row still loads, as a condition that never matches, so it cannot publish its chain ungated), and `tutorial_shown` (`target_id` = the tutorial's dialog id, `operator` = `eq`/`neq`; `target_key` and `value` unused; a malformed row likewise loads as a never-matching condition, and an id that is not a `DUIST_DefaultTutorial` dialog refuses the chain at load). The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
 
 ### Actions — *side effects*
 
@@ -184,6 +186,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `open_loot` | `OpenLoot` | 8 |
 | `gm_ability_bulk` | `GmAbilityBulk` | 2 |
 | `grant_ability` | `GrantAbility` | 0 |
+| `show_tutorial` | `ShowTutorial` | 1 |
 | `spawn_set` | `SpawnSet` | 6 |
 
 `gm_ability_bulk` is the GM bulk ability change, fired from an NPC (Debug
@@ -568,6 +571,54 @@ Telemetry:
 Each row carries `entity_id`, `account_id`, `player_id`, `chain_id`,
 `source_kind`, `source_id` (with `source_name` for a mission) and the
 ability ids with their names.
+
+##### `show_tutorial` params
+
+`show_tutorial` shows the acting player a one-time tutorial (Class Start
+v6, CS-03). Every param is in `params`; `target_id` and `target_key` stay
+empty:
+
+```json
+{"tutorial_id": 5882}
+```
+
+- `tutorial_id`: a `resources.dialogs` id whose `ui_screen_type` is
+  `DUIST_DefaultTutorial`. An unknown or non-tutorial id refuses the chain
+  at load (`refuse_chains_with_unknown_tutorials`, which also checks
+  `tutorial_shown` conditions); a malformed row refuses its whole chain.
+- The cell skips a tutorial already in the player's set
+  (`already_shown`). Otherwise it marks the id at once and asks the base to
+  insert `(player_id, tutorial_id)` into `sgw_player_tutorials` with
+  `ON CONFLICT DO NOTHING`. Only a new row answers `First`, and only then is
+  the dialog sent (`onDialogDisplay`, immediate, the player as speaker
+  entity). `AlreadyShown` shows nothing; `Refused` shows nothing and drops
+  the mark so a later trigger can retry.
+- A replayed chain, a relog and a world change never show it twice.
+
+**How CS-04 and CS-05 call it for 5882 "Equipping a Weapon".** Inside the
+chain that grants the first pistol (M622 at CellBlock, M1559 FirearmBody at
+SGC), Human and Loyalist Jaffa only, order the actions so the abilities
+land first: `grant_item 55`, then `grant_ability` with
+`{"ability_ids": [592, 594, 597, 1218], "source_kind": "tutorial"}`, then
+`show_tutorial` with `{"tutorial_id": 5882}`. The base handles cell
+messages in order on one task, so `onKnownAbilitiesUpdate` reaches the
+client before the tutorial. Gate the chain with `archetype` conditions as
+usual; `tutorial_shown 5882 neq` is optional (the action is already
+one-time). 5883 "Combat" then fires from the seeded chain 7101
+(`player_entered_combat`, `tutorial_shown 5882 eq`, `tutorial_shown 5883
+neq`).
+
+Telemetry (every row carries the player, the chain and the tutorial, each
+with its name):
+
+| Event | Target | Level | When |
+|---|---|---|---|
+| `content_show_tutorial` `decision_outcome=forwarded` | `cimmeria_cell_content::...` (module path) | DEBUG | the cell asked the base to record it |
+| `content_show_tutorial` `decision_outcome=already_shown` | `content` | INFO | nothing shown: `reason=cell_set` (the player's set had it) or `db_row` (the table had it) |
+| `content_show_tutorial` `decision_outcome=recorded` | `content` | INFO | the base inserted the row (first time) |
+| `content_show_tutorial` `decision_outcome=shown` | `content` | INFO | the cell displayed the dialog |
+| `content_show_tutorial` `decision_outcome=refused` | `content` | INFO / WARN / ERROR | nothing shown: `not_a_player`, `player_changed`, `not_recorded`, `cell_to_base_closed` (cell); `no_database`, `session_mismatch`, `player_row_missing`, `db_error` (base) |
+| `chain_refused` `reason=unknown_tutorial` / `show_tutorial_invalid` / `dialog_table_unavailable` | `content` | ERROR | at load |
 
 #### Entity-lifecycle verbs
 

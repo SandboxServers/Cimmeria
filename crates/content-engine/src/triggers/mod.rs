@@ -219,6 +219,20 @@ pub enum Trigger {
     /// "you outflanked the guard" objectives (Castle Cellblock C06,
     /// objectives 2725/2731). Only fires when the top-threat is a player.
     OnPlayerFlankedNpc { npc_template: Option<String> },
+
+    /// Fires when a player enters hostile combat: the moment their
+    /// `BSF_InCombat` flag goes on because an NPC put them on its threat
+    /// list (Class Start v6, CS-03). Once per transition, not per mob: a
+    /// second mob joining the fight does not fire it, and leaving combat
+    /// then re-entering fires it again. A duel is not hostile combat and
+    /// never fires it.
+    ///
+    /// The acting entity is the player, with the standard player params
+    /// (mission context, `archetype`, world) plus `mob_id`, the NPC whose
+    /// threat started the fight. Seed form: `event_type =
+    /// 'player_entered_combat'`, `event_key` NULL (a world filter is a
+    /// `world` condition).
+    OnPlayerEnteredCombat,
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -276,4 +290,5 @@ pub enum TriggerType {
     EntityHealthBelow,
     NpcFlanked,
     PlayerFlankedNpc,
+    PlayerEnteredCombat,
 }

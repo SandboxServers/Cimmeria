@@ -86,6 +86,7 @@ async fn init_with_book(
         character_name: Some("Tester".into()),
         body_set: None,
         looted_containers: vec![],
+        shown_tutorials: Vec::new(),
     };
     super::super::super::handle_base_message(msg, &tx, mgr, &engine, &[]).await;
     let mut granted = Vec::new();

@@ -186,6 +186,13 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "player_flanked_npc" => Some(Trigger::OnPlayerFlankedNpc {
             npc_template: key.map(|s| s.to_string()),
         }),
+        // No key. A non-empty `event_key` is an authoring mistake (there is
+        // nothing to filter on), so the row is dropped rather than read as
+        // the wildcard it was not meant to be.
+        "player_entered_combat" => match key {
+            None => Some(Trigger::OnPlayerEnteredCombat),
+            Some(_) => None,
+        },
         _ => None,
     }
 }

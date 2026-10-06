@@ -672,6 +672,12 @@ pub struct CellEntity {
     /// Stamped from `InitPlayerState`; the cell appends and asks the base to
     /// persist. Empty for NPCs.
     pub looted_containers: HashSet<String>,
+    /// The one-time tutorials (dialog ids) this character has been shown
+    /// (`sgw_player_tutorials`, CS-03), for the `tutorial_shown` condition and
+    /// the `show_tutorial` action. Merged from `InitPlayerState`; the
+    /// `show_tutorial` executor adds an id before it asks the base to record
+    /// it, and drops it again if the base refuses. Empty for NPCs.
+    pub shown_tutorials: HashSet<i32>,
 
     /// Entity ID of the NPC the player most recently interacted with
     /// (player entities only).
