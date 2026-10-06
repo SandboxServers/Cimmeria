@@ -36,6 +36,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
 | `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilt on the player's machine from the map's own tiles by a new source transform, so the zip holds no picture data; **needs a launcher that knows the transform** (see below) | 1 recipe + a 219-byte delta | 1.4 KB |
 | `014-debug-area-lineup-ring` | A ninth Debug Area ring rig, the Lineup station beside the NPC lineup, added to 011's Ihpet_Crater_Light chunk (see below). Needs 011 applied first | 1 map delta from 011's output | 1.4 KB |
+| `015-weapon-shot-bar` | An action button holding a weapon's basic shot (or Pistol Shot) follows the weapon: when the player switches weapons it switches to the new weapon's shot (see below). Needs 009 applied first | 1 delta from 009's output (`ActionProfileDefault1.lua`) | 4.7 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -726,6 +727,99 @@ Not here, on purpose:
   hand.
 - **`LoginInternal.lua` and ASLR**: the launcher writes those itself on every
   install and launch.
+
+### 015-weapon-shot-bar
+
+The server swaps a weapon's basic attacks in the known-abilities list when
+the player changes the active bandolier slot, but the action bar is client
+state: a button holding the old weapon's shot keeps it, and the server
+refuses that shot with the new weapon out. 015 appends
+[WeaponShotBar.lua](015-weapon-shot-bar/WeaponShotBar.lua) to
+`ActionProfileDefault1.lua`, after [009](#009-starter-hotbar)'s block, byte
+for byte.
+
+- **What it does.** It finds the active weapon's shot: the one ranged basic
+  attack in the known list (`WeaponShots` in the block: the twelve abilities
+  `resources.items_event_sets` binds as event 7; the server keeps only the
+  active weapon's in the list). Then every action of the current profile
+  that holds a shot this weapon cannot fire is pointed at the one it can,
+  with `setActionToAbility` on the same action id, which is what dropping an
+  ability on an occupied button does. Pistol Shot (592) is a trained ability
+  a pistol also fires: with a pistol out it stays, and a button returns to it
+  (or to the pistol's own basic attack, 579, when 592 is not known) when the
+  player comes back to a pistol.
+- **When it looks.** On the bandolier's active-slot event, on every
+  known-abilities update, when a profile loads (login), and, for 20 s after a
+  weapon switch or a profile load, on the player's own property updates at
+  most once a second, in case the list changes with no ability event.
+- **What it never does.** It never adds, moves, resizes or clears a button,
+  and it changes no profile data apart from one mark (below). It leaves a
+  button that holds anything but a shot, a bandolier-bound button (the stock
+  UI keeps one action per weapon on those), and everything when the known
+  list holds no weapon shot or more than one: a blade, bare hands, or a GM
+  who was given every ability. Two buttons that held different shots both
+  end up on the active weapon's shot.
+- **Beside 009, not instead of it.** 009's bytes are untouched: the delta's
+  only source is 009's output (`"output_of": "009-starter-hotbar"`, sha256
+  `159bf4e8...`), so a client without 009 is refused and keeps its file.
+  At run time 015 listens on its own window, `ActionButton_DragContainer`,
+  because 009 subscribes `ActionButtonsWin` to the same events and
+  unsubscribes it when it is done. That window is hidden, and a hidden
+  window only hears events when its layout sets `DeafWhenHidden=False`,
+  which the stock `ActionButtonDrag.layout` does. 015 wraps `loadProfile` on
+  top of 009's wrapper and calls it first. It also wraps the stock
+  `refreshCurrentProfile`, which the stock weapon-switch handler calls, so a
+  switch is followed even if the subscription never fires.
+- **One rule added to 009's seeding.** A Human never knows Health Heal
+  (1646), so 009 keeps seeding for the whole first session. Once 015 had
+  pointed the Pistol Shot button at another weapon's shot, 009 would have
+  put a second Pistol Shot on the bar. 015 wraps
+  `StarterHotbar.abilitiesOnBar` so a weapon shot on the bar counts as
+  Pistol Shot being there. 009's file and zip are not changed.
+- **One feedback line per character.** The first swap writes "Your weapon
+  shot button now follows the weapon you hold." and stores
+  `cimmeriaWeaponShotBar = 'told'` in the profile. Each swap is logged to
+  `Debug:log` with the action and both ability ids.
+- **Fails closed.** Every entry point runs under `pcall`. An error in a swap
+  is logged once and switches the block off for the session; the bar stays
+  as it was.
+- **What depends on the server.** The block reads the weapon from the known
+  list, so it follows the weapon only where the server sends the weapon's
+  shot: today on a slot-change request. After a login or a drag-equip with
+  a non-pistol weapon the server does not send it yet (a finding on PR
+  #1271), so the button follows on the next slot change.
+- **Sniper rifles.** `Rifle Auto Attack` (581) is bound to one item; 50
+  `ITEM_Rifle` rifles have no ranged binding, so the list holds no shot for
+  them and the bar is left alone. That is seed data, not this patch.
+- **If 009 is retired.** 015 starts from 009's output, so a manifest without
+  009 cannot apply 015 to a fresh install. Retiring 009 (Class Start v6 rule
+  L1) needs a successor to 015 that starts from the stock file.
+- **Rebuilding.** `--stock` is a client with 009 applied (a launcher-installed
+  client), `--patched` a tree whose `ActionProfileDefault1.lua` is that file
+  followed by `WeaponShotBar.lua`. `weapon_shot_bar_tests.rs` in
+  `crates/patchset` decodes the committed delta and fails when the bytes
+  after the stock part differ from 009's hook followed by the block, or when
+  `WeaponShots` differs from the seed. Its ignored test
+  `real_client_weapon_shot_bar` applies the zip to a real client's file and
+  compares every byte.
+- **Logic UAT.** `lua5.1 data/client-patches/015-weapon-shot-bar/test/run.lua`,
+  or `python .../test/run_lupa.py`. CI runs it against 009's clean-room model
+  with both blocks appended. Set `SGW_UI_DIR` to a client's
+  `Working/SGWGame/Content/UI` to also run it against the real scripts; a
+  stock file gets both blocks, a file that already carries 009 gets 015's
+  only, and the run checks the `DeafWhenHidden` property in the client's
+  layout.
+- **Not yet seen in a client** (run 2026-10-05 against the real scripts with
+  stubbed natives only):
+  1. With Pistol Shot on the bar, switch the active slot to an SMG. The
+     button's icon and tooltip become the SMG's basic attack, it fires on the
+     first press, and the feedback line shows once.
+  2. Switch back to the pistol: the button is Pistol Shot again.
+  3. Relog with the SMG active and press the button.
+  4. Switch to a blade or a rifle with no ranged binding: the button does not
+     change.
+  5. On a new character, switch weapons in the first session: no second
+     Pistol Shot appears on buttons 11-20.
 
 ## Rebuilding a patch
 

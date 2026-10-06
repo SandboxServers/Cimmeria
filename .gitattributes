@@ -39,6 +39,7 @@ data/client-patches/008-dialog-portraits/*.scheme -text
 data/client-patches/008-dialog-portraits/*.layout -text
 data/client-patches/008-dialog-portraits/*.lua -text
 data/client-patches/009-starter-hotbar/StarterHotbar.lua -text
+data/client-patches/015-weapon-shot-bar/WeaponShotBar.lua -text
 # Whole file shipped by patch 012: generated ASCII with CRLF; the zip is built from
 # these exact bytes and a test compares them, so never convert.
 data/client-patches/012-gm-slash-commands/InternalSlashCommands.xml -text

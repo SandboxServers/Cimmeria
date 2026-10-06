@@ -137,3 +137,5 @@ mod starter_hotbar_tests;
 mod supersede_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod weapon_shot_bar_tests;
