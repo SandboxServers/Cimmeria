@@ -35,6 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Reference
 - [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp
 - [reference_client_action_bar_events.md](reference_client_action_bar_events.md) — stock action bar Lua (2026-10-05): hidden windows are deaf without `DeafWhenHidden=False`, subscribe takes several handlers, bandolier-bound buttons, `InventoryUpdateContainerActiveSlot`; from patch 015
+- [reference_debug_area_map_selection_2026_10_06.md](reference_debug_area_map_selection_2026_10_06.md) — current QA/nav extraction and station layout for Castle, Tollana, Dakara_E1 and Agnos; Castle remains first pending client-memory and ring/clearance UAT
 - [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
 - [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps

@@ -1,5 +1,9 @@
 # Debug Area and Starter Kit
 
+The [permanent proving-ground map study](map-selection-study.md) compares
+Castle, Tollana, Dakara_E1 and Agnos against the current world 1300 stations.
+It recommends a prototype and client-memory benchmark before any migration.
+
 > Type: how-to and ledger. Audience: the coordinator, packet workers and the
 > playtesters. Opened 2026-10-04 against `main` @ `bd020cb95`. Prefix `DA-` for the
 > Debug Area, `SA-` for the starter kit. Same dispatch rules as the
