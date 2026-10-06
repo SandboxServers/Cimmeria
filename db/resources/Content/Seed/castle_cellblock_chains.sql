@@ -2319,7 +2319,7 @@ VALUES
 -- never a dead end. Once Egypt is playable no Goa'uld starts here and this
 -- chain is only that fallback.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1195, '687 - Search crate (holding state, OD-CS08): stealth set + knife, no signature)', 'mission', 687, true, 0);
+VALUES (1195, '687 - Search crate (holding state, OD-CS08): stealth set + knife, no signature', 'mission', 687, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1195, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
