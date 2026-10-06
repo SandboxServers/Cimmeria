@@ -4,7 +4,13 @@ Read before authoring any `content_*` seed rows. Every item here cost real
 investigation during the Castle 706/708 packet (2026-09-18) and none of it is
 visible from the seed SQL.
 
-## `archetype` is NOT populated on dialog chains — `neq` fails OPEN
+## `archetype` was NOT populated on dialog chains before CS-01b — `neq` fails OPEN on any missing value
+
+**Fixed 2026-10-05 (Class Start v6 CS-01b, #1263):** `fire_dialog_open` and
+`fire_dialog_choice` now set `archetype` from the entity, so an archetype gate
+on a dialog chain works (chains 1005/1010 rely on it). What stays true: a
+missing value still reads -1, so `eq` never matches and `neq` / `lt` pass.
+The history below is why older dialog chains carry no archetype gate.
 
 `crates/cell-content/src/cell/content/event_dispatch/dialog.rs` (`fire_dialog_open`
 / `fire_dialog_choice`) sets `dialog_id`, `button_id` and `populate_mission_context`
