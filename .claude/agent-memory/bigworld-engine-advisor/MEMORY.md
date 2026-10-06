@@ -11,6 +11,7 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [reliable-datagram-size-budget.md](reliable-datagram-size-budget.md) - **[NEW 2026-10-05]** No reliable datagram over 1472 B: measure before reserving seq, fragment oversize bodies (#1274).
 - [client-world-id-and-same-map-load.md](client-world-id-and-same-map-load.md) - **[NEW 2026-10-04]** onClientMapLoad skips the reload when mapPath is unchanged; getCurrentWorldID comes from setupWorldParameters.
 - [plugin-architecture-compat-boundary.md](plugin-architecture-compat-boundary.md) - **[NEW 2026-09-28]** #962 plugin rules: one FIFO channel, hooks at the inline line, cell/base index spaces separate; steps 2-3 seams; step 5 base core (crafting 95-100 are CELL methods).
 - [na38-client-orders-reliable-stream.md](na38-client-orders-reliable-stream.md) - **[NEW 2026-09-25]** Client orders reliable packets (512 window, adopts first seq), delivers unreliable on arrival, caches early msgs for unknown ids.
@@ -128,3 +129,4 @@ Sub-slot encoding details: now confirmed in `findings/entity-property-sync.md` (
 - Category 7 NOT in Account.py categoryMaps (lines 327-336) = no server-push for char_creation
 
 (The original `src/` and `python/base/` paths above were rewritten to `deprecated/cpp/src/` and `deprecated/python/base/` in the mechanical pass.)
+- [cell-gm-class-id-and-raw-bundle-blobs.md](cell-gm-class-id-and-raw-bundle-blobs.md) - **[NEW 2026-10-04]** Cell players are always class 0x02 (GMs too); raw bundle appends can hold several messages (createEntity+avatarUpdate, cascades).

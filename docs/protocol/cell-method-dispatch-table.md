@@ -491,17 +491,19 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 40 DONE · 0 REUSE · 35 ADAPT · 42 NEW.
+**Tally (of 117):** 42 DONE · 0 REUSE · 35 ADAPT · 40 NEW.
 
 > [!NOTE]
-> All 40 DONE methods are dispatched from the single `match` in
+> All 42 DONE methods are dispatched from the single `match` in
 > [crates/cell-console/src/cell/console/gm/mod.rs](../../crates/cell-console/src/cell/console/gm/mod.rs)
 > (the `dispatch` fn). A grep for `GM_*` constants finds only **37** of them --
-> the other three are declared without the prefix because the `.def` method
+> the other five are declared without the prefix because the `.def` method
 > names themselves have no `gm` prefix: `LIST_ABILITIES = 123`
 > (`listAbilities`, `SGWGmPlayer.def:135`), `DESPAWN_MOB = 213`
-> (`despawnMob`, `:605`), and `TEST_LOS = 216` (`testLOS`, `:619`).
-> The 40-vs-37 difference is a **naming artifact, not a dispatch gap** -- there
+> (`despawnMob`, `:605`), `ACTIVATE_SPAWN_SET = 214` (`activateSpawnSet`,
+> `:609`), `DEACTIVATE_SPAWN_SET = 215` (`deactivateSpawnSet`, `:613`), and
+> `TEST_LOS = 216` (`testLOS`, `:619`).
+> The 42-vs-37 difference is a **naming artifact, not a dispatch gap** -- there
 > is no second dispatch site.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
@@ -694,8 +696,8 @@ beyond the 3 verified handlers above.
 |-----|---------------|-----------|--------------------|--------|
 | 212 | `spawnEntityLoot(INT32 entity, LootTableID)` | — | `abilities/loot_drop.rs:29 generate_loot_on_death` (`pub(super)`) | ADAPT |
 | 213 | `despawnMob(INT32 entityID)` | — | `cell/console/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
-| 214 | `activateSpawnSet(INT32 id)` | — | — (no spawn-set runtime activation API) | NEW |
-| 215 | `deactivateSpawnSet(INT32 id)` | — | — | NEW |
+| 214 | `activateSpawnSet(INT32 id)` | — | **`gm/spawn_sets.rs` → `content::spawn_sets::show_spawn_set`** (id = `resources.spawn_sets.set_id`; clears the other sets of its kind in its world first; DA-10) | **DONE** |
+| 215 | `deactivateSpawnSet(INT32 id)` | — | **`gm/spawn_sets.rs` → `content::spawn_sets::hide_spawn_set`** (despawns with `LeftAoI` to every witness) | **DONE** |
 | 216 | `testLOS(INT32 source, INT32 target)` | — | **`gm/query.rs` → `has_line_of_sight` + feedback** | **DONE** |
 | 217 | `toggleCombatLOS()` | — | `bCombatLOS` def-only; no Rust enforcement toggle | NEW |
 | 218 | `trackMob()` | — | read `ai_state`; no debug-stream toggle | ADAPT |

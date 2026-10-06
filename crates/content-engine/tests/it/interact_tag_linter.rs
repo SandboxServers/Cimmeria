@@ -271,6 +271,7 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // reusable NPCs, no mission, so every cursor bit is a permanent
         // template default, as in the stasis hub.
         | ("debug_area_plaza_chains.sql", 13000) // DebugArea_AbilityGranter: template 1300 default INT_Trainer
+        | ("debug_area_lineup_chains.sql", 14090..=14095) // DebugArea_LineupAttendant_*: templates 1590-1595 default INT_Trainer
         | ("debug_area_plaza_chains.sql", 13001) // DebugArea_AbilityReset: template 1301 default INT_Trainer
         | ("debug_area_plaza_chains.sql", 13002) // DebugArea_DialogNpc: template 302 default INT_NonAStoryMissionAvaliable
         | ("debug_area_plaza_chains.sql", 13004) // DebugArea_LivewireTerminal: template 303 default INT_MinigameLivewire

@@ -39,6 +39,8 @@ mod cover;
 #[cfg(test)]
 mod cover_flank_tests;
 mod dialog;
+#[cfg(test)]
+mod dialog_archetype_tests;
 mod interaction;
 mod inventory;
 mod lifecycle;

@@ -112,6 +112,9 @@ impl MailSendReject {
 pub struct NpcAoIData {
     /// Localized name string ID from `entity_templates.name_id`.
     pub name_id: Option<i32>,
+    /// Literal nameplate from `entity_templates.display_name`, sent as
+    /// `onBeingNameUpdate` after the `name_id` text (Debug Area DA-10).
+    pub display_name: Option<String>,
     /// Faction ID (0=neutral, 1=Tau'ri, 3=SGC, 10=hostile).
     pub faction: u8,
     /// Alignment ID.
@@ -169,6 +172,7 @@ impl NpcAoIData {
         };
         Self {
             name_id: entity.name_id,
+            display_name: entity.display_name.clone(),
             faction: entity.faction,
             alignment: entity.alignment,
             entity_flags: entity.entity_flags,

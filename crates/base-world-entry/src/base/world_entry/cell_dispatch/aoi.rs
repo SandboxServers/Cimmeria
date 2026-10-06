@@ -79,7 +79,12 @@ fn log_create_emit(
     names: &AoiNames<'_>,
 ) {
     match outcome {
-        WitnessSendOutcome::Sent { seq, bytes, .. } => {
+        WitnessSendOutcome::Sent {
+            seq,
+            bytes,
+            packets,
+            ..
+        } => {
             tracing::debug!(
                 target: "aoi.create_emit",
                 event = "create_emit",
@@ -90,7 +95,10 @@ fn log_create_emit(
                 class_name = cimmeria_wire::names::class_name(class_id),
                 phase,
                 addr_resolved = true,
+                // Encrypted bytes on the wire, summed over the datagrams: a
+                // cascade too big for one datagram goes out as fragments.
                 bytes,
+                datagrams = packets,
                 seq,
                 "AoI create emit: {phase} packet delivered to witness"
             );

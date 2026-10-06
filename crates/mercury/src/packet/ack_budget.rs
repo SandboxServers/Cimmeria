@@ -45,6 +45,18 @@ pub const fn encrypted_len(len: usize, version: EncryptionVersion) -> usize {
     }
 }
 
+/// Largest plaintext that encrypts to `wire_len` bytes: the inverse of
+/// [`encrypted_len`], taking the top of the 16-byte padding window because a
+/// datagram's length alone does not say how much of its last block is
+/// padding. A send that measures a built packet sizes its ACKs from this.
+pub const fn max_plaintext_len(wire_len: usize, version: EncryptionVersion) -> usize {
+    let overhead = match version {
+        EncryptionVersion::V1 => MAC_LEN,
+        EncryptionVersion::V2 => V2_PREFIX_LEN + MAC_LEN,
+    };
+    wire_len.saturating_sub(overhead).saturating_sub(1)
+}
+
 /// Most ACKs that fit after `plaintext_before_acks` bytes while keeping the
 /// encrypted datagram within [`PACKET_MAX_SIZE`]. Also capped at 255, the
 /// most the one-byte ACK count footer can express.
@@ -184,6 +196,22 @@ mod tests {
             "one ACK would overflow: {}",
             wire.len()
         );
+    }
+
+    /// `max_plaintext_len` inverts `encrypted_len` to the top of each
+    /// padding window, so a plaintext no longer than it never encrypts
+    /// longer than the measured datagram.
+    #[test]
+    fn max_plaintext_len_inverts_encrypted_len() {
+        for version in VERSIONS {
+            for len in 0..200 {
+                let wire = encrypted_len(len, version);
+                let max = max_plaintext_len(wire, version);
+                assert!(max >= len, "{version:?} {len}: {max}");
+                assert_eq!(encrypted_len(max, version), wire, "{version:?} {len}");
+                assert!(encrypted_len(max + 1, version) > wire);
+            }
+        }
     }
 
     #[test]

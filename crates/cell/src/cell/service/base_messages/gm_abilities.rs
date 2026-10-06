@@ -118,7 +118,7 @@ pub(super) async fn handle_gm_abilities_changed(
             added.len()
         ),
         GmAbilityChange::Reset => format!(
-            "{cmd}: back to your starter abilities; removed {}, restored {}, \
+            "{cmd}: back to your starter and granted abilities; removed {}, restored {}, \
              training points now {training_points}",
             removed.len(),
             added.len()

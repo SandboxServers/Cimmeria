@@ -227,7 +227,12 @@ pub fn compose_create_entity_cascade_body(
     // corpses) or SGWDuelMarker dropped it (colo 2026-09-29: 7
     // `client.dispatch.method_dropped` rows, method 11, type_id 0).
     if let Some(d) = npc_data.filter(|_| class_binds_being_methods(class_id)) {
-        if let Some(name_id) = d.name_id {
+        let display_name = d.display_name.as_deref().filter(|n| !n.is_empty());
+        // A template with a literal nameplate sends no name id: the client's
+        // nameplate draws the `name_id` text whenever a mob has one, even
+        // after an `onBeingNameUpdate` (lab, 2026-10-05: lineup actors whose
+        // source had a name id read "Colonel Marsh", the rest their label).
+        if let Some(name_id) = d.name_id.filter(|_| display_name.is_none()) {
             if name_id != 0 {
                 append_entity_method(
                     &mut body,
@@ -237,6 +242,21 @@ pub fn compose_create_entity_cascade_body(
                     &name_id.to_le_bytes(),
                 );
             }
+        }
+        // 5b. onBeingNameUpdate(name): a template's literal nameplate
+        // (`entity_templates.display_name`, the Debug Area's Visual NPC
+        // Lineup), in place of the name id; the same SGWBeing method a
+        // player ghost's name rides.
+        if let Some(name) = display_name {
+            let mut args = Vec::with_capacity(4 + name.len() * 2);
+            write_wstring(&mut args, name);
+            append_entity_method(
+                &mut body,
+                method_idx::ON_BEING_NAME_UPDATE,
+                idbase,
+                entity_id,
+                &args,
+            );
         }
     }
 
@@ -462,146 +482,5 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
 }
 
 #[cfg(test)]
-mod cascade_idbase_tests {
-    use super::*;
-
-    /// NPC cascade — `npc_data` present → NPC idbase.
-    #[test]
-    fn cascade_idbase_npc_branch_returns_npc_default() {
-        let npc = NpcAoIData::default();
-        assert_eq!(cascade_idbase(Some(&npc)), IDBASE_NPC_DEFAULT);
-    }
-
-    /// Player-ghost cascade — `npc_data` absent → SGWPlayer idbase.
-    #[test]
-    fn cascade_idbase_player_branch_returns_sgw_player() {
-        assert_eq!(cascade_idbase(None), IDBASE_SGW_PLAYER);
-    }
-}
-
-#[cfg(test)]
-mod appearance_cascade_tests {
-    use super::*;
-
-    /// A cascade whose NPC has NO appearance data (no static_mesh, no
-    /// body_set/components) emits the `aoi.cascade_appearance_missing`
-    /// negative-log — the seam that surfaces an entity which will be
-    /// invisible to witnesses. Reverting the `warn!` in `append_appearance`
-    /// trips this. (`#[tokio::test]` because `LogCapture::install` requires
-    /// the current-thread runtime.)
-    #[tokio::test]
-    async fn no_appearance_data_emits_warn() {
-        let capture = crate::test_support::LogCapture::install();
-
-        let npc = NpcAoIData {
-            static_mesh: None,
-            body_set: None,
-            components: vec![],
-            ..NpcAoIData::default()
-        };
-        let _ = compose_create_entity_cascade_body(4242, 0x00, 1, Some(&npc));
-
-        let event = capture
-            .find_event(
-                tracing::Level::WARN,
-                "no appearance data",
-                "no_appearance_data",
-            )
-            .expect("missing appearance must emit the aoi.cascade_appearance_missing warn");
-        assert!(
-            event.has_field("entity_id", "4242"),
-            "warn must carry the entity_id field: {event:#?}"
-        );
-    }
-
-    /// Companion guard: an NPC WITH a static mesh (the real Castle_CellBlock
-    /// corpse shape — body_set present but components empty, so the
-    /// static-mesh branch fires) must NOT trip the appearance-missing warn.
-    /// Proves the seam doesn't false-positive on well-formed props.
-    #[tokio::test]
-    async fn static_mesh_present_does_not_warn() {
-        let capture = crate::test_support::LogCapture::install();
-
-        let npc = NpcAoIData {
-            static_mesh: Some("CA-Props.CA-GuardCorpse02".to_string()),
-            body_set: Some("GLB_Components.WorldObject_Small".to_string()),
-            components: vec![],
-            ..NpcAoIData::default()
-        };
-        let _ = compose_create_entity_cascade_body(4243, 0x00, 1, Some(&npc));
-
-        assert!(
-            capture
-                .find_event(
-                    tracing::Level::WARN,
-                    "no appearance data",
-                    "no_appearance_data",
-                )
-                .is_none(),
-            "a static-mesh NPC must not trip the appearance-missing warn"
-        );
-    }
-}
-
-#[cfg(test)]
-mod being_name_id_tests {
-    use super::*;
-
-    fn with_name_id() -> NpcAoIData {
-        NpcAoIData {
-            static_mesh: Some("CA-Props.CA-GuardCorpse02".to_string()),
-            body_set: Some("GLB_Components.WorldObject_Small".to_string()),
-            name_id: Some(4711),
-            ..NpcAoIData::default()
-        }
-    }
-
-    /// The `onBeingNameIDUpdate` message: direct msg id `0x80 + 11`, the
-    /// entity id, then the INT32 name id (NPC idbase 62 > 11, so direct).
-    fn name_id_message(entity_id: u32) -> Vec<u8> {
-        // 0x8B = 0x80 | 11; u16 LE payload length 8 (entity id + INT32).
-        let mut m = vec![0x8B, 0x08, 0x00];
-        m.extend_from_slice(&entity_id.to_le_bytes());
-        m.extend_from_slice(&4711i32.to_le_bytes());
-        m
-    }
-
-    fn contains(hay: &[u8], needle: &[u8]) -> bool {
-        hay.windows(needle.len()).any(|w| w == needle)
-    }
-
-    /// A class-0 prop with a name id gets no `onBeingNameIDUpdate`: the
-    /// client has no handler for it on `SGWSpawnableEntity`. Reverting the
-    /// class gate puts the message back and fails this.
-    #[test]
-    fn a_spawnable_entity_prop_gets_no_being_name_id() {
-        let body = compose_create_entity_cascade_body(100179, 0x00, 1, Some(&with_name_id()));
-        assert!(!contains(&body, &name_id_message(100179)));
-    }
-
-    /// An SGWMob with the same data still gets it, byte for byte.
-    #[test]
-    fn a_mob_still_gets_its_being_name_id() {
-        let msg = name_id_message(100010);
-        let body = compose_create_entity_cascade_body(
-            100010,
-            crate::mercury::SGWMOB_CLASS_ID,
-            1,
-            Some(&with_name_id()),
-        );
-        assert!(
-            contains(&body, &msg),
-            "the mob cascade carries onBeingNameIDUpdate"
-        );
-    }
-
-    #[test]
-    fn only_sgwbeing_descendants_bind_being_methods() {
-        for id in 0x01..=0x05 {
-            assert!(class_binds_being_methods(id), "class {id}");
-        }
-        for id in [0x00, 0x06, 0x07] {
-            assert!(!class_binds_being_methods(id), "class {id}");
-        }
-    }
-}
+#[path = "create_tests.rs"]
+mod tests;

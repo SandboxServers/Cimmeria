@@ -11,3 +11,4 @@
 - [reference_witnesses_field_is_observers_own_aoi.md](reference_witnesses_field_is_observers_own_aoi.md) — `entity.witnesses` = what THAT entity sees (not who sees it); chat.rs bug fixed 2026-09-26, audit of other sites
 - [project_838_request_entity_update_fix.md](project_838_request_entity_update_fix.md) — 0x07 wire fix `[u32 entityId][N×cacheStamp]`, corrected GameEntityManager vtable base, Leave-AoI Path A/B fix, PR #390 recovery path retired (never ran in prod)
 - [project_838_fragment_header_straddle.md](project_838_fragment_header_straddle.md) — #838 fragment header-straddle root cause candidate (PR #1087), guard location, client model for tests
+- [project_da_arena_no_witness_warn_boundary.md](project_da_arena_no_witness_warn_boundary.md) — 2026-10-05 DA arena no_witnesses WARN = false positive (counterpart-in-AoI branch)

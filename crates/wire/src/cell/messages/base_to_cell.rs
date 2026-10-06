@@ -330,6 +330,10 @@ pub enum BaseToCellMsg {
     /// [`super::GmAbilitiesChanged`].
     GmAbilitiesChanged(super::GmAbilitiesChanged),
 
+    /// The base's answer to `CellToBaseMsg::ContentGrantAbilities`
+    /// (CS-01a); see [`super::ContentAbilitiesGranted`].
+    ContentAbilitiesGranted(super::ContentAbilitiesGranted),
+
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
     /// The cell fires the `OnItemUse` content event with `type_id` (item

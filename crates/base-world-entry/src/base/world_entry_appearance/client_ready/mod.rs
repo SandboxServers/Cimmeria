@@ -276,6 +276,7 @@ pub async fn handle_on_client_ready(
                         trained_abilities: r.trained_abilities,
                         tree_points_spent: r.tree_points_spent,
                         training_points: r.training_points,
+                        credited_grants: r.credited_grants,
                     },
                     r.level,
                     r.looted_containers,

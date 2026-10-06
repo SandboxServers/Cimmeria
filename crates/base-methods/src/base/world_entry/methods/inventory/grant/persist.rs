@@ -379,6 +379,10 @@ pub(super) async fn persist_grant(
     // ammo-persist TOCTOU guard. The design id is the `item_id` param; the
     // instance id is unique per physical row and is what distinguishes two copies
     // of the same weapon design occupying the bandolier over time.
+    //
+    // `ammo` = `charges`, which is 0 for every firearm: a gun is acquired
+    // empty and the player reloads once (OD-CS13; default reloads are free,
+    // D-AM02). `grant::empty_on_acquire_tests` guards it.
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_inventory \
             (character_id, type_id, stack_size, slot_id, container_id, \

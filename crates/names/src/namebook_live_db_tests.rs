@@ -173,13 +173,12 @@ async fn live_db_namebook_resolves_known_seed_names() {
     // Mission 819 is really called "Unused Explosive"; it is no placeholder.
     assert_eq!(book.mission(819), Some("Unused Explosive"));
 
-    // `spawn_sets` has no seed rows at all; every other table names something.
+    // Every table names something; `spawn_sets` holds only the Debug Area's
+    // five Visual NPC Lineup groups (DA-10).
     for table in Table::ALL {
-        if table != Table::SpawnSets {
-            assert!(book.len(table) > 0, "{} loaded no names", table.as_str());
-        }
+        assert!(book.len(table) > 0, "{} loaded no names", table.as_str());
     }
-    assert_eq!(report.count(Table::SpawnSets).rows, 0);
+    assert_eq!(report.count(Table::SpawnSets).rows, 5);
 }
 
 /// The compiled-in archetype names are the seed's, by `EArchetype` ordinal,

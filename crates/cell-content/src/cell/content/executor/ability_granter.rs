@@ -167,7 +167,7 @@ pub(super) async fn run(
         },
         AbilityBulkChange::Reset => {
             let line = format!(
-                "Ability reset: back to your starter abilities; {} cooldown(s) cleared.",
+                "Ability reset: back to your starter and granted abilities; {} cooldown(s) cleared.",
                 cleared.abilities.len()
             );
             (GmAbilityChange::Reset, Vec::new(), Ok(line))

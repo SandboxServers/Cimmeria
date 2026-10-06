@@ -29,6 +29,7 @@ fn ctx<'a>(
         level: 1,
         known,
         tree_points_spent: 0,
+        credited_grants: &[],
         training_points: 1,
         trainer,
     }

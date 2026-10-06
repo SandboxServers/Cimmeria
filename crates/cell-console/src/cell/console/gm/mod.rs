@@ -25,6 +25,7 @@
 //! - [`travel`] — goto-xyz / goto-location / goto / summon / DHD dial.
 //! - [`world`] — kill / despawn / respawn / set-target.
 //! - [`spawn`] — spawn-by-cmd (cell↔base template round-trip).
+//! - [`spawn_sets`] — `activateSpawnSet` / `deactivateSpawnSet` (DA-10).
 //! - [`query`] — inspection/show + users + test-LOS (report via [`feedback`]).
 //! - [`organizations`] — `gmReloadOrganizations` (forwarded to the base).
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
@@ -61,6 +62,7 @@ mod query;
 pub(crate) mod set_infinite_ammo;
 pub(crate) mod shout;
 mod spawn;
+mod spawn_sets;
 mod stats;
 mod travel;
 mod world;
@@ -241,10 +243,16 @@ pub const GM_DEBUG_ABILITY_ON_MOB: u16 = 176;
 /// Dumps a mob's debug data via feedback.
 pub const GM_DEBUG_MOB_DATA: u16 = 180;
 
-// -- Test (213, 216) ----------------------------------------------------------
+// -- Test (213-216) -----------------------------------------------------------
 /// `despawnMob(INT32 entityID)` — def line 605. Offset 104. Test alias of
 /// gmDespawnByCmd (same `destroy_entity` primitive).
 pub const DESPAWN_MOB: u16 = 213;
+/// `activateSpawnSet(INT32)` — def line 609. Offset 105. Shows a spawn set
+/// (`resources.spawn_sets.set_id`) for its whole world, switching off the
+/// other sets of its kind first. See [`spawn_sets::handle_switch`].
+pub const ACTIVATE_SPAWN_SET: u16 = 214;
+/// `deactivateSpawnSet(INT32)` — def line 613. Offset 106. Hides a spawn set.
+pub const DEACTIVATE_SPAWN_SET: u16 = 215;
 /// `testLOS(INT32 source, INT32 target)` — def line 619. Offset 107. Reports
 /// navmesh line-of-sight between two entities via the feedback channel.
 pub const TEST_LOS: u16 = 216;
@@ -343,6 +351,10 @@ pub async fn dispatch(
         }
         GM_RESPAWN => world::handle_respawn_cmd(entity_id, tx, space_mgr).await,
         GM_SPAWN_BY_CMD => spawn::handle_spawn_by_cmd(entity_id, args, tx, space_mgr).await,
+        ACTIVATE_SPAWN_SET => spawn_sets::handle_switch(entity_id, args, true, tx, space_mgr).await,
+        DEACTIVATE_SPAWN_SET => {
+            spawn_sets::handle_switch(entity_id, args, false, tx, space_mgr).await
+        }
         // -- query (report text via the feedback channel) --
         GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
         // -- organizations --

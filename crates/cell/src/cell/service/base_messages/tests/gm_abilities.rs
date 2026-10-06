@@ -31,6 +31,7 @@ fn fixture() -> SpaceManager {
         trained_abilities: TRAINED.to_vec(),
         tree_points_spent: 2,
         training_points: 1,
+        credited_grants: Vec::new(),
     };
     crate::test_support::seed_ability_defs(&mut mgr, &[592, 597, 646, 1646, 2826, 700, 701]);
     mgr

@@ -147,18 +147,19 @@ Before 2026-10-04 the seeded characters were hand-written SGU Soldiers in SGC_W1
 
 ## Archetypes
 
-Eight archetypes are defined in `resources.archetypes`, split between two factions.
+The archetype ID is the 0-based position in the `resources."EArchetype"` enum ([EArchetype.sql](../../db/resources/Archetypes/Types/EArchetype.sql)). It is the value stored in `sgw_player.archetype`, sent on the wire, and compared by the content engine's `archetype` condition. ID 0 is a placeholder, not a playable class. Which alignments may pick an archetype comes from the char defs in [chardef.rs](../../crates/resources/src/base/chardef.rs): the four human classes exist for both Praxis and the SGU, the other four for one side only.
 
-| ID | Name | Alignment |
-|----|------|-----------|
-| 0 | Soldier | SGC |
-| 1 | Commando | SGC |
-| 2 | Scientist | SGC |
-| 3 | Archeologist | SGC |
-| 4 | Asgard | System Lords |
-| 5 | Goa'uld | System Lords |
-| 6 | Sholva | System Lords |
-| 7 | Jaffa | System Lords |
+| ID | Enum value | Name | Alignments |
+|----|------------|------|------------|
+| 0 | `ARCHETYPE_Any` | Any | none (placeholder) |
+| 1 | `ARCHETYPE_Soldier` | Soldier | Praxis, SGU |
+| 2 | `ARCHETYPE_Commando` | Commando | Praxis, SGU |
+| 3 | `ARCHETYPE_Scientist` | Scientist | Praxis, SGU |
+| 4 | `ARCHETYPE_Archeologist` | Archeologist | Praxis, SGU |
+| 5 | `ARCHETYPE_Asgard` | Asgard | SGU |
+| 6 | `ARCHETYPE_Goauld` | Goa'uld | Praxis |
+| 7 | `ARCHETYPE_Sholva` | Shol'va (Free Jaffa) | SGU |
+| 8 | `ARCHETYPE_Jaffa` | Jaffa | Praxis |
 
 Each archetype definition includes:
 

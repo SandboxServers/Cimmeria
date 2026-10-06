@@ -95,8 +95,8 @@ mod live_db {
     /// Bug shape this guards against: reverting `WHERE clip_size > 0`
     /// to `WHERE clip_size IS NOT NULL` would silently put every
     /// non-weapon back into the cache as a zero-clip `WeaponDef` —
-    /// confusing the equipment-grant code, which keys off the cache for
-    /// ammo seeding (see `cell/content/executor/inventory.rs::weapon_stats`).
+    /// confusing the code that treats a cache hit as "this is a gun"
+    /// (holster tick, active-slot swap, `requestAmmoChange`).
     #[tokio::test]
     async fn load_item_defs_excludes_zero_clip_consumables_like_slappack() {
         let pool = require_db_or_skip!();

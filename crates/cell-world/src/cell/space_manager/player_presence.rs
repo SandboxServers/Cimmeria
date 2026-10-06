@@ -15,13 +15,17 @@
 //! and `abilities.sequence outcome=no_witnesses`), which only run once the
 //! witness list came back empty. A player is present when:
 //!
-//! - **In range.** A player in the entity's space has the entity, or the
-//!   event's counterpart (an attack's target), within that player's AoI
-//!   radius. This is the case the WARN exists for: a player stands in
-//!   range, but the witness list says nobody sees the NPC (a stale or broken
-//!   witness set, #838's unrendered guard). It walks `Space::players`, the
-//!   same set `get_witnesses_of` has just walked, so it adds no new scan
-//!   shape to the hot path.
+//! - **In range.** A player in the entity's space has the entity within that
+//!   player's AoI radius. This is the case the WARN exists for: a player
+//!   stands in range, but the witness list says nobody sees the NPC (a stale
+//!   or broken witness set, #838's unrendered guard). It is the shooter
+//!   alone that counts, because the witness list that came back empty is
+//!   the shooter's: a player in range of only the event's counterpart (an
+//!   attack's target) cannot see the shooter, so an empty list is correct
+//!   (the Debug Area arena on the colo, 2026-10-05, a player 145 m from the
+//!   guards and past 150 m from the Soldier shooting them). It walks
+//!   `Space::players`, the same set `get_witnesses_of` has just walked, so
+//!   it adds no new scan shape to the hot path.
 //! - **Involved.** The entity itself, the counterpart, or anyone on the
 //!   entity's threat list is player side ([`SpaceManager::is_player_side`]):
 //!   a player, or an entity a player owns (a pet counts as its owner, a
@@ -71,15 +75,18 @@ impl SpaceManager {
     /// The DA-F2 rule: whether a player is present at an event on
     /// `entity_id` whose other party (an attack's target) is `counterpart`.
     ///
-    /// True when a player has `entity_id` or `counterpart` within their AoI
-    /// radius ([`Self::player_in_aoi_of`]), or when `entity_id`,
-    /// `counterpart` or anyone on `entity_id`'s threat list is
-    /// [player side](Self::is_player_side). A no-witness WARN on the NPC
+    /// True when a player has `entity_id` within their AoI radius
+    /// ([`Self::player_in_aoi_of`]; the counterpart's range is not tested,
+    /// since the witness list that came back empty is `entity_id`'s), or
+    /// when `entity_id`, `counterpart` or anyone on `entity_id`'s threat list
+    /// is [player side](Self::is_player_side). A no-witness WARN on the NPC
     /// path is written only when this is true; an NPC-only event with no
     /// player anywhere near writes nothing.
     pub fn player_present(&self, entity_id: u32, counterpart: Option<u32>) -> bool {
-        let party = |id: u32| self.is_player_side(id) || self.player_in_aoi_of(id);
-        if party(entity_id) || counterpart.is_some_and(party) {
+        if self.is_player_side(entity_id)
+            || self.player_in_aoi_of(entity_id)
+            || counterpart.is_some_and(|id| self.is_player_side(id))
+        {
             return true;
         }
         self.get_entity(entity_id).is_some_and(|e| {
@@ -183,15 +190,25 @@ mod tests {
         mgr.update_position_preserving_facing(PLAYER, [30.0, 0.0, 0.0], [0.0; 3]);
         assert!(mgr.get_witnesses_of(NPC_A).is_empty(), "fixture: stale");
         assert!(mgr.player_present(NPC_A, None));
-        // In range of the counterpart (NPC A, 5 u inside the player's AoI)
-        // but not of NPC B (15 u outside it): still present.
+    }
+
+    /// **Regression guard (colo 2026-10-05, Debug Area arena).** A player in
+    /// range of the counterpart only: NPC A (the target) 5 u inside the
+    /// player's AoI, NPC B (the shooter) 15 u outside it. The player cannot
+    /// see the shooter, so its empty witness list is correct and nothing is
+    /// present. Fails if the counterpart's AoI range is tested again.
+    #[test]
+    fn a_player_in_range_of_only_the_counterpart_is_not_present() {
+        let mut mgr = mgr();
         let r = mgr.get_entity(PLAYER).unwrap().aoi_radius;
         mgr.update_position_preserving_facing(PLAYER, [5.0 - r, 0.0, 0.0], [0.0; 3]);
         assert!(
-            !mgr.player_present(NPC_B, None),
-            "fixture: NPC B is outside the player's {r} u AoI"
+            mgr.player_in_aoi_of(NPC_A) && !mgr.player_in_aoi_of(NPC_B),
+            "fixture: the player sees A ({r} u AoI) and not B"
         );
-        assert!(mgr.player_present(NPC_B, Some(NPC_A)));
+        assert!(!mgr.player_present(NPC_B, Some(NPC_A)));
+        // The other way round, the shooter in range, is present.
+        assert!(mgr.player_present(NPC_A, Some(NPC_B)));
     }
 
     #[test]

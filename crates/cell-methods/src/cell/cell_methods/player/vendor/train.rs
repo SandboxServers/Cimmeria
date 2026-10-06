@@ -61,6 +61,7 @@ pub(super) async fn handle_train_ability(
             level: entity.level as i32,
             known: &entity.abilities,
             tree_points_spent: entity.tree_progress.tree_points_spent,
+            credited_grants: &entity.tree_progress.credited_grants,
             training_points: entity.tree_progress.training_points,
             trainer: trainer_pin(
                 space_mgr,

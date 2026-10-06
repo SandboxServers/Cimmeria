@@ -236,7 +236,7 @@ async fn the_reset_npc_forwards_a_reset_for_the_gm() {
         sent[0].ability_ids.is_empty(),
         "the base reads the starters"
     );
-    assert!(says(&msgs, "back to your starter abilities"));
+    assert!(says(&msgs, "back to your starter and granted abilities"));
 }
 
 /// Review F3: a second click on the same NPC inside a second is dropped, so

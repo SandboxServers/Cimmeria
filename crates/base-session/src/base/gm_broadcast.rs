@@ -11,10 +11,9 @@
 //! an entity their client does not have yet.
 
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
 
 use super::feedback::FeedbackCtx;
-use super::helpers::shadow_register_reliable_send;
+use super::helpers::send_reliable_to_addr;
 use super::player_index::OnlinePlayerIndex;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
@@ -52,9 +51,9 @@ pub async fn broadcast_to_online_players(
 ) -> GmBroadcastReport {
     let mut report = GmBroadcastReport::default();
 
-    // Snapshot the recipients and reserve each one's sequence number under
-    // one lock; send after releasing it (never hold the map across await).
-    let targets: Vec<(SocketAddr, i32, String, u32, [u8; 32], _, u32, Vec<u32>)> = {
+    // Snapshot the recipients under one lock; send after releasing it
+    // (never hold the map across await).
+    let targets: Vec<(SocketAddr, i32, String, u32)> = {
         let Ok(clients) = ctx.connected.lock() else {
             tracing::warn!(
                 target: "chat",
@@ -81,39 +80,40 @@ pub async fn broadcast_to_online_players(
                 report.not_in_world += 1;
                 continue;
             };
-            let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
-                & cimmeria_mercury::packet::SEQUENCE_MASK;
-            let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-                &mut c.pending_acks.lock().unwrap(),
-                c.enc_version,
-            );
             targets.push((
                 player.addr,
                 player.player_id,
                 // Owned for the failure line (Rule 6); a GM broadcast is rare.
                 name.to_owned(),
                 entity_id,
-                c.key,
-                c.enc_version,
-                seq,
-                acks,
             ));
         }
         targets
     };
 
-    for (addr, target_player_id, target_name, target_entity_id, key, version, seq, acks) in targets
-    {
-        let packet = build_player_entity_method_packet(
-            &key,
-            seq,
-            &acks,
+    for (addr, target_player_id, target_name, target_entity_id) in targets {
+        // The line is GM-typed text, so the body is data-sized: the fitted
+        // send keeps every datagram within the client's buffer.
+        let outcome = send_reliable_to_addr(
+            ctx.transport,
+            ctx.connected,
+            addr,
             target_entity_id,
-            method_idx::ON_PLAYER_COMMUNICATION,
-            args,
-            version,
-        );
-        if let Err(e) = ctx.transport.send_to(&packet, addr).await {
+            "gm_broadcast",
+            |key, version, seq, acks| {
+                build_player_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    target_entity_id,
+                    method_idx::ON_PLAYER_COMMUNICATION,
+                    args,
+                    version,
+                )
+            },
+        )
+        .await;
+        if let Some(reason) = outcome.failure_reason() {
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_broadcast_send_failed",
@@ -129,19 +129,12 @@ pub async fn broadcast_to_online_players(
                 target_entity_name = target_name.as_str(),
                 %addr,
                 scope = "global",
-                reason = "send_error",
-                error = %e,
+                reason,
                 "GM broadcast line send failed for one recipient",
             );
             report.failed += 1;
             continue;
         }
-        shadow_register_reliable_send(
-            ctx.connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
-        );
         report.delivered += 1;
     }
     report
@@ -245,6 +238,42 @@ mod tests {
                 .tx_window
                 .len();
             assert_eq!(in_flight, 1, "the broadcast is reliable");
+        }
+    }
+
+    /// A GM line too long for one datagram reaches every recipient as
+    /// fragments, none over the client's 1472-byte buffer.
+    #[tokio::test]
+    async fn a_long_gm_broadcast_is_fragmented_within_the_client_buffer() {
+        let a: SocketAddr = "127.0.0.1:54610".parse().unwrap();
+        let state = listed(Some(101), 1, "Alice");
+        state.pending_acks.lock().unwrap().extend(1..40);
+        let connected = Arc::new(Mutex::new(HashMap::from([(a, state)])));
+        let test_transport = Arc::new(TestTransport::default());
+        let transport: Arc<dyn Transport> = test_transport.clone();
+        let ctx = FeedbackCtx {
+            transport: &transport,
+            connected: &connected,
+        };
+        let args = serialize_gm_broadcast("Gm", &"y".repeat(900));
+        let actor = GmBroadcastActor {
+            entity_id: 9,
+            player_id: Some(5),
+            account_id: Some(6),
+            player_name: Some("Gm"),
+            account_name: Some("gm_login"),
+        };
+
+        let report = broadcast_to_online_players(&ctx, actor, &args).await;
+        assert_eq!(report.delivered, 1);
+        let sent = test_transport.filter_to(a);
+        assert!(sent.len() >= 2, "fragmented: {}", sent.len());
+        for (i, wire) in sent.iter().enumerate() {
+            assert!(
+                wire.len() <= cimmeria_mercury::consts::PACKET_MAX_SIZE,
+                "datagram {i} is {} bytes",
+                wire.len()
+            );
         }
     }
 }

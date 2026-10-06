@@ -20,3 +20,4 @@
 - [tiled-navmesh-seams.md](tiled-navmesh-seams.md) — NA28 tiled XRCT meshes: seam-island trap, grid-phase loss, 22-bit poly-ref budget, rebuild validation recipe
 - [debug-area-dial-hub.md](debug-area-dial-hub.md) — DA-07 gate 29 outbound-only hub: grant-not-bypass, hub filters, 14 unloadable gate worlds, gate 22 ~192 m under (excluded), off-mesh 27, template-1 DHD trap
 - [ring-rig-stacking-patches.md](ring-rig-stacking-patches.md) — DA-11/014: stack a rig on the prior rig patch's output (one source), _Seq_N continues, per-pad clear radii, walk vs crow-flies
+- [dhd-dial-telemetry-discriminators.md](dhd-dial-telemetry-discriminators.md) — Stock DHD window: first click eaten, row select auto-dials; 2026-10-05 hub report was not a grant/cache bug

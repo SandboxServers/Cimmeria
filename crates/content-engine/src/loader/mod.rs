@@ -18,6 +18,10 @@
 //!   `convert_action`'s `"open_loot"` arm
 //! - [`action_mail`] — the `send_system_mail` verb (SS-U3), delegated to
 //!   from `convert_action`'s `"send_system_mail"` arm
+//! - [`action_ability`] — the `grant_ability` verb (CS-01a). A bad row
+//!   refuses its whole chain here, not just the row, and
+//!   [`refuse_chains_with_unknown_abilities`] refuses a chain whose ids are
+//!   not abilities once the caller has the ability table
 //!
 //! `mod.rs` keeps the orchestration ([`build_chains_from_rows`]),
 //! the JSON loader, and the public DB row structs.
@@ -32,6 +36,7 @@ use crate::conditions::Condition;
 use crate::triggers::Trigger;
 
 mod action;
+mod action_ability;
 mod action_bark;
 mod action_loot;
 mod action_mail;
@@ -41,6 +46,8 @@ mod trigger;
 
 #[cfg(test)]
 mod tests;
+
+pub use action_ability::refuse_chains_with_unknown_abilities;
 
 /// Deserialize a list of chains from a JSON string.
 pub fn load_chains_from_json(json: &str) -> Result<Vec<Chain>, serde_json::Error> {
@@ -128,7 +135,7 @@ pub fn build_chains_from_rows(
 
     let mut chains = Vec::with_capacity(chain_rows.len());
 
-    for row in chain_rows {
+    'chains: for row in chain_rows {
         let chain_id = row.chain_id;
         // The description is the chain's name in logs (`chain_name`). A
         // chain without one gets an empty name, never a made-up
@@ -158,6 +165,29 @@ pub fn build_chains_from_rows(
         let mut actions: Vec<Action> = Vec::with_capacity(act_list.len());
         let mut action_delays: Vec<i32> = Vec::with_capacity(act_list.len());
         for a_row in &act_list {
+            // `grant_ability` is all-or-nothing for its chain (see
+            // `action_ability`): a malformed grant refuses the chain.
+            if a_row.action_type == action_ability::ACTION_TYPE {
+                match action_ability::convert_grant_ability(a_row) {
+                    Ok(action) => {
+                        actions.push(action);
+                        action_delays.push(a_row.delay_ms.max(0));
+                    }
+                    Err(why) => {
+                        tracing::error!(
+                            target: "content",
+                            event = "chain_refused",
+                            reason = "grant_ability_invalid",
+                            chain_id,
+                            chain_name,
+                            params = %a_row.params,
+                            "grant_ability: {why}; the chain is not loaded"
+                        );
+                        continue 'chains;
+                    }
+                }
+                continue;
+            }
             match action::convert_action(a_row) {
                 Some(action) => {
                     actions.push(action);

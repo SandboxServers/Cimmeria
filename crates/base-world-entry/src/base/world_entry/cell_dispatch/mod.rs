@@ -203,6 +203,16 @@ pub async fn route_cell_message(
             )
             .await
         }
+        CellToBaseMsg::ContentGrantAbilities(grant) => {
+            super::methods::progression::handle_content_grant_abilities(
+                grant,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await
+        }
         CellToBaseMsg::GmAbilityBulk(bulk) => {
             super::methods::progression::handle_gm_ability_bulk(
                 bulk,

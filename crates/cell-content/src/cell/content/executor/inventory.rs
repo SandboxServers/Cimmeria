@@ -1,5 +1,5 @@
-//! Inventory action handlers: `Action::GrantItem` (with bandolier seeding for
-//! weapons) and `Action::RemoveItem` (with by-instance vs by-type fork).
+//! Inventory action handlers: `Action::GrantItem` and `Action::RemoveItem`
+//! (with by-instance vs by-type fork).
 
 use std::collections::HashMap;
 
@@ -19,27 +19,16 @@ pub(in crate::cell::content) fn item_container(
     *item_containers.get(&item_id).unwrap_or(&1)
 }
 
-/// Return the clip size and default ammo type for a granted weapon item.
+/// `Action::GrantItem` — ask the base to add an item to the player's
+/// inventory.
 ///
-/// Reads from the `space_mgr.item_defs` cache loaded at startup from
-/// `resources.items` (see `spawner::load_item_defs`). The loader filters
-/// to `clip_size > 0`, so the cache only contains actual weapons —
-/// non-weapons return `None` here. Same `None` is returned when the
-/// cache wasn't populated (e.g. tests without a DB pool); callers skip
-/// the bandolier seeding in that case, and the player can still receive
-/// the item normally.
-fn weapon_stats(
-    item_id: i32,
-    item_defs: &HashMap<i32, crate::cell::spawner::WeaponDef>,
-) -> Option<(i32, i32)> {
-    item_defs
-        .get(&item_id)
-        .map(|d| (d.clip_size, d.default_ammo_type))
-}
-
-/// `Action::GrantItem` — add an item to the player's inventory; for weapons
-/// (container 3) also seeds the bandolier slot and clears the ammo stat so
-/// the client renders an empty mag until the player reloads.
+/// A weapon granted into the bandolier is NOT written into the cell's
+/// bandolier here. The base picks the slot (the first free one), so a guess
+/// at the active slot overwrote whatever weapon was already there, with no
+/// later correction (CS-01b review). The base's `UpdateBandolierItem`, sent
+/// after the row commits, is authoritative: it inserts the real slot,
+/// instance id and ammo (0: every gun is acquired empty, OD-CS13) and seeds
+/// the AmmoSlot{N} stat the client's counter reads.
 pub(super) async fn grant(
     item_id: i32,
     count: i32,
@@ -63,63 +52,6 @@ pub(super) async fn grant(
     let cid = container_id
         .filter(|&c| c > 0)
         .unwrap_or_else(|| item_container(item_id, &space_mgr.item_containers));
-
-    // If this is a weapon (bandolier), set ammo state on the entity.
-    // Weapons start unloaded — the player must press R to reload.
-    //
-    // Stage C: insert a `BandolierItem` for the granted slot and seed
-    // the AmmoSlot{N} stat to (0, 0, clip_size) so subsequent fire /
-    // reload paths (which now read through `active_ammo()` and
-    // `set_slot_ammo`) operate on a valid clamp range. We also send
-    // an `onStatUpdate` so the client renders the empty mag for the
-    // new weapon without waiting for the next fire.
-    let mut ammo_stat_payload: Option<Vec<u8>> = None;
-    if cid == 3 {
-        if let Some((clip, default_ammo_type)) = weapon_stats(item_id, &space_mgr.item_defs) {
-            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                // The weapon-grant chain doesn't tell us which slot
-                // the base will assign — content engine grants
-                // implicitly fill the active bandolier slot.
-                let slot_id = entity.active_bandolier_slot;
-                entity.bandolier_items.insert(
-                    slot_id,
-                    cimmeria_entity::cell_entity::BandolierItem {
-                        // Optimistic cell-side insert: the base hasn't run the
-                        // grant INSERT yet, so the `sgw_inventory.item_id` PK
-                        // instance id is unknown here. Seed 0 — any ammo persist
-                        // fired in this brief pre-round-trip window carries
-                        // instance_id 0, which the base-side bound check drops
-                        // (there's no committed row to write anyway). Base then
-                        // replays `UpdateBandolierItem` carrying the real
-                        // instance id, which overwrites this entry.
-                        instance_id: 0,
-                        item_id,
-                        clip_size: clip,
-                        default_ammo_type,
-                        current_ammo: 0,
-                        cur_ammo_type: default_ammo_type,
-                    },
-                );
-                entity.bandolier_ammo_dirty.insert(slot_id);
-                let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
-                if let Some(stat) = entity.stats.get_mut(stat_id) {
-                    stat.update(0, 0, clip);
-                    let payload = entity.stats.serialize_dirty();
-                    entity.stats.clear_dirty();
-                    ammo_stat_payload = Some(payload);
-                }
-                tracing::info!(
-                    entity_id,
-                    entity_name = entity.identity().player_name,
-                    item_id,
-                    item_name = cimmeria_names::book().item(item_id),
-                    slot_id, // nt:id-only bandolier slot index, not a named object
-                    clip,
-                    "Weapon granted unloaded"
-                );
-            }
-        }
-    }
 
     if let Err(e) = tx
         .send(CellToBaseMsg::GrantItem {
@@ -151,19 +83,6 @@ pub(super) async fn grant(
             error = %e,
             "GrantItem send to base failed -- item not persisted to inventory"
         );
-    }
-
-    if let Some(payload) = ammo_stat_payload {
-        if !payload.is_empty() {
-            crate::cell::abilities::send_entity_method(
-                entity_id,
-                crate::mercury::method_idx::ON_STAT_UPDATE,
-                payload,
-                tx,
-                space_mgr,
-            )
-            .await;
-        }
     }
 }
 

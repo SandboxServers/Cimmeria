@@ -12,7 +12,9 @@ use crate::mercury::{
     SKIN_TINTS,
 };
 
-use super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
+use super::helpers::{
+    drain_acks_and_seq, get_account_entity_id, get_enc_version, send_reliable_to_addr,
+};
 use super::session_identity::identity_for_addr;
 use super::ConnectedClientState;
 
@@ -194,10 +196,13 @@ pub async fn handle_delete_character(
 }
 
 /// Handle `requestCharacterVisuals` (0xC6).
+///
+/// `_key` matches the other character handlers' signature; the reply is
+/// built with the session's key, read with its sequence number.
 pub async fn handle_request_character_visuals(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
-    key: [u8; 32],
+    _key: [u8; 32],
     player_id: i32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
@@ -292,23 +297,36 @@ pub async fn handle_request_character_visuals(
                 .copied()
                 .unwrap_or(0x2F1308FF);
             let account_eid = get_account_entity_id(connected, addr)?;
-            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let enc_version = get_enc_version(connected, addr);
-            let pkt = build_character_visuals(
-                &key,
-                seq,
-                &acks,
-                player_id,
-                &bodyset,
-                &components,
-                0xFF,
-                0xFF,
-                skin_tint,
+            // The component list makes this body data-sized: the fitted send
+            // keeps every datagram within the client's 1472-byte buffer, and
+            // registers it for retransmit like every reliable packet.
+            let outcome = send_reliable_to_addr(
+                transport,
+                connected,
+                addr,
                 account_eid,
-                enc_version,
-            );
-            tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT onCharacterVisuals");
-            transport.send_to(&pkt, addr).await?;
+                "character_visuals",
+                |key, version, seq, acks| {
+                    build_character_visuals(
+                        key,
+                        seq,
+                        acks,
+                        player_id,
+                        &bodyset,
+                        &components,
+                        0xFF,
+                        0xFF,
+                        skin_tint,
+                        account_eid,
+                        version,
+                    )
+                },
+            )
+            .await;
+            tracing::trace!(%addr, ?outcome, "UDP_OUT onCharacterVisuals");
+            if let Some(reason) = outcome.failure_reason() {
+                return Err(format!("onCharacterVisuals not sent: {reason}").into());
+            }
         }
         Ok(None) => {
             tracing::warn!(

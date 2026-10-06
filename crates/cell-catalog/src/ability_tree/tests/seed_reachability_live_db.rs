@@ -37,6 +37,7 @@ fn ctx<'a>(
         level,
         known,
         tree_points_spent: spent,
+        credited_grants: &[],
         training_points: points,
         // At the seeded debug trainer (list 1 offers every node, D-AT06;
         // `seed_trainer_rows_and_tree_rows_match` proves it), in range, so

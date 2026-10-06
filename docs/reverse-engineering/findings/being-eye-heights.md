@@ -162,6 +162,10 @@ widget) has not been traced. The UAT for NA31 observes it.
   `inspect-export --props --hex` dump for the first self-consistent
   `FBoxSphereBounds`. `AR_J_Ra.BS_RaJaff` (`Ra_500`, no export) and
   `WP-Human.BS_Mine` (`WP_Invisible_00_psk`, no bounds) are left NULL.
+  `HM_Mesh.HM_BodySet` names no reference mesh at all. The Debug Area NPC
+  lineup (DA-10) spawns `BS_RaJaff` and `HM_BodySet`, so
+  `live_db_eye_heights` lists both in `UNMEASURABLE`; they look from the
+  1.5 m default.
 - **Error strings.** `ErrorStrings.pak` is a zip of XML members named `_<id>`.
 
 ## Open questions

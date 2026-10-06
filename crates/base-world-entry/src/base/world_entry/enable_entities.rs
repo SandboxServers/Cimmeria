@@ -23,7 +23,9 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_char_list, build_create_player};
 
 use super::super::character::query_character_list;
-use super::super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
+use super::super::helpers::{
+    drain_acks_and_seq, get_account_entity_id, get_enc_version, WitnessSendOutcome,
+};
 use super::super::session_identity::identity_for_addr;
 use super::super::ConnectedClientState;
 
@@ -75,8 +77,40 @@ pub async fn handle_enable_entities(
         // will load geometry and respond with `mapLoaded` (cell method index 25,
         // msg_id 0x99). The enter-world step (viewport + cell + position + entity data)
         // is sent in response to that message.
-        let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-
+        // The appearance pre-warm makes this body data-sized, so it goes
+        // through the fitted send: ACKs sized to the body, and a body too big
+        // for one datagram is fragmented instead of wedging the stream.
+        let outcome = super::super::helpers::send_reliable_to_addr(
+            transport,
+            connected,
+            addr,
+            entry_info.player_entity_id,
+            "create_player",
+            |key, version, seq, acks| {
+                build_create_player(key, seq, acks, &entry_info, load_data.as_ref(), version)
+            },
+        )
+        .await;
+        let seq = match outcome {
+            WitnessSendOutcome::Sent { seq, .. } => seq,
+            failed => {
+                // surface the failure before the early-return so
+                // ops can correlate against the staged `pending_map_loaded`
+                // state that won't be reached. Without this, a packet-send
+                // failure looked identical to a client that simply never
+                // ack'd `mapLoaded`.
+                tracing::error!(
+                    %addr,
+                    player_entity_id = entry_info.player_entity_id,
+                    player_entity_name = identity_for_addr(connected, addr).player_name,
+                    space_id = entry_info.space_id,
+                    world = %entry_info.world_name,
+                    reason = failed.failure_reason().unwrap_or("unknown"),
+                    "Create player: transport.send_to failed before staging pending_map_loaded"
+                );
+                return Err("create player send failed".into());
+            }
+        };
         tracing::info!(
             %addr,
             player_entity_id = entry_info.player_entity_id,
@@ -85,42 +119,7 @@ pub async fn handle_enable_entities(
             world = %entry_info.world_name,
             seq,
             appearance_prewarm = load_data.is_some(),
-            "Create player: sending CREATE_BASE_PLAYER + onClientMapLoad (waiting for mapLoaded)"
-        );
-
-        let enc_version = get_enc_version(connected, addr);
-        let pkt = build_create_player(
-            &key,
-            seq,
-            &acks,
-            &entry_info,
-            load_data.as_ref(),
-            enc_version,
-        );
-        if let Err(e) = transport.send_to(&pkt, addr).await {
-            // surface the failure before the early-return so
-            // ops can correlate against the staged `pending_map_loaded`
-            // state that won't be reached. Without this, a packet-send
-            // failure looked identical to a client that simply never
-            // ack'd `mapLoaded`.
-            tracing::error!(
-                %addr,
-                player_entity_id = entry_info.player_entity_id,
-                player_entity_name = identity_for_addr(connected, addr).player_name,
-                space_id = entry_info.space_id,
-                world = %entry_info.world_name,
-                seq,
-                "Create player: transport.send_to failed before staging pending_map_loaded: {e}"
-            );
-            return Err(e.into());
-        }
-        // Register this reliable send with the per-session Channel's TX
-        // window so it retransmits if the ACK doesn't land.
-        super::super::helpers::shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+            "Create player: sent CREATE_BASE_PLAYER + onClientMapLoad (waiting for mapLoaded)"
         );
 
         // Send succeeded — now commit: take pending state and stage map_loaded data.

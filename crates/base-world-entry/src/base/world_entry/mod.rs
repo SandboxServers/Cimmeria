@@ -32,6 +32,9 @@ mod teleport;
 
 #[cfg(test)]
 mod crafting_options_world_entry_tests;
+
+#[cfg(test)]
+mod datagram_size_tests;
 /// NT-24: the play-character path names the account, character and world.
 #[cfg(test)]
 mod named_world_entry_tests;

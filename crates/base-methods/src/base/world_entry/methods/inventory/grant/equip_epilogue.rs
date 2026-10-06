@@ -107,10 +107,9 @@ pub(super) async fn equip_epilogue(
                         item_id: row.item_id,
                         clip_size: row.clip_size,
                         default_ammo_type: row.default_ammo_type_id,
-                        // Stage A: a freshly-granted bandolier item starts
-                        // with an empty mag and the default ammo subtype.
-                        // Stages B/C will pick up these defaults; today the
-                        // shadow scalars on CellEntity still drive fire/reload.
+                        // A freshly granted gun is empty, as the grant
+                        // INSERT wrote it (OD-CS13): the player reloads
+                        // once. The cell mirrors this 0 into AmmoSlot{N}.
                         current_ammo: 0,
                         cur_ammo_type: row.default_ammo_type_id,
                     };

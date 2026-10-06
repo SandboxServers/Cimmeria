@@ -28,6 +28,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 mod authoring;
+mod sets;
 pub(super) use authoring::save_spawn;
 
 pub(super) async fn dispatch(
@@ -55,6 +56,7 @@ pub(super) async fn dispatch(
         "autosavespawn" => authoring::autosave(caller_id, args, tx, space_mgr).await,
         "respawnall" => respawn_all(caller_id, tx, space_mgr).await,
         "spawnrandom" => spawn_random(caller_id, args, tx, space_mgr).await,
+        "spawnset" => sets::spawn_set(caller_id, args, tx, space_mgr).await,
         _ => {}
     }
 }
