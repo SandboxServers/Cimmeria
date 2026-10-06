@@ -7,6 +7,17 @@ metadata:
 
 # Content-engine gaps (verified against main, 2026-09-17)
 
+> **Stale in part (checked 2026-10-06).** Since this was written the engine
+> gained executor arms for `apply_effect`, `launch_ability`, `move_entity`,
+> `grant_xp`, `spawn_entity`, `despawn_entity`, `spawn_set`, `open_loot`,
+> `grant_ability`, `grant_stargate_address`, `send_system_mail` and
+> `show_tutorial`; conditions `world`, `entity_tag_state` and `tutorial_shown`;
+> `delay_ms` deferred actions; and a witness-routed `set_visible`. Still true:
+> `dialog_set_open` and the effect triggers never dispatch; `qr_combat_damage`,
+> `remove_effect` and `fail_objective` have no arm; `system_message` only logs;
+> there is no `OnTimer`, no inventory condition and no per-player state on a
+> shared NPC. The current list is `docs/content/content-engine-vocabulary.md`.
+
 ## Triggers that parse but are NEVER dispatched
 
 `dialog_set_open`, `effect_init`, `effect_pulse_begin`, `effect_pulse_end`,

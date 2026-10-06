@@ -266,6 +266,9 @@ would fail.
 | Loot | 0 tables | **LOW** — No references |
 | Events | 0 event sets | **HIGH** — No script |
 
+> [!WARNING]
+> **Superseded in part (2026-10-06).** The table above predates the navmesh build and a mission search by name string. World 61 has a navmesh (`data/spaces/dakara_e1.nav`, advisory), one spawn (the DHD), and twelve missions that play on it (1570 from its third step, and 1645-1655, all labelled "General"), with twelve seeded dialog sets and event sets 10013, 1194 and 1195. It is still a shell: no chain, no population. Current facts and the restoration plan: [Dakara_E1 rebuild audit](../analysis/dakara-e1-rebuild/audit.md).
+
 **Verdict: SHELL**
 
 Dakara Episode 1 is a sizable zone (401 tiles) with a stargate entry. Notably, the DB has
