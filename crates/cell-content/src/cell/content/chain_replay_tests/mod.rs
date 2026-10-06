@@ -26,13 +26,16 @@
 //! executor arm from the `other =>` catch-all. [`debug_hub`] belongs to no
 //! mission either (the Cellblock stasis-room debug NPCs) and executes its
 //! chains the same way, as does [`debug_hub_mail_clerk`] (the hub's Gate
-//! Mail Clerk, SS-U3, the `send_system_mail` verb).
+//! Mail Clerk, SS-U3, the `send_system_mail` verb). [`dakara_e1_space`]
+//! (the Free Jaffa arrival grant and notice, Dakara DK-01) loads the whole
+//! seeded engine and fires the real `player_loaded` dispatcher.
 
 mod black_market_auctioneer;
 mod castle_702_704_executor;
 mod castle_loot_containers;
 mod cellblock_dialog_closes;
 mod class_start_cellblock_scope;
+mod dakara_e1_space;
 mod debug_hub;
 mod debug_hub_mail_clerk;
 mod entity_health_below;

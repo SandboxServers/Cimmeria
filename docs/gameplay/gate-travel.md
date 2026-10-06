@@ -22,7 +22,7 @@ Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../
 
 A `resources.stargates` row's `x_pos` / `y_pos` / `z_pos` / `yaw` is the **stargate prop's own transform** — the `GLB-Stargate_Prefab_Seq` origin lifted out of the cooked map. The 2009 server arrived travellers on exactly that point and never validated it (`deprecated/python/cell/SGWPlayer.py:2129`). On a navmesh-backed world the prefab origin is usually inside the prefab's own footprint carve-out: at Harset it sits ~1.5 units above the floor with the nearest walkable vertex ~5 units away in XZ, well outside the ±3.0 search extents. An arriving player therefore lands off-mesh, every position update they send is suppressed, and witnesses see a frozen avatar while the only log is a `CorrectionSuppressed` with no obvious cause.
 
-`resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. No gate is pinned today. Harset's gate 3 carried a pin placed from map data (PL-A-01) from 2026-09-19 until 2026-09-25, when NPC-AI NA29 dropped it: the NA26 `harset.nav` has the gate dais, so the gate row is standable and travellers arrive on it, the way the 2009 server did (see [the ledger](../analysis/harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29)).
+`resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. Three gates are pinned: 15 `Agnos` (its row is all zeros; the pin is the map's PlayerStart), 29 `Debug Area` (the Z1 arrival) and 25 `Dakara E1` (below). Harset's gate 3 carried a pin placed from map data (PL-A-01) from 2026-09-19 until 2026-09-25, when NPC-AI NA29 dropped it: the NA26 `harset.nav` has the gate dais, so the gate row is standable and travellers arrive on it, the way the 2009 server did (see [the ledger](../analysis/harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29)).
 
 [`cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core. (Ring transport calls the *validate-only* half, `check_arrival`, and never the respawner substitution — a ring pad is a pad the client is animating at, not a pin on a prop transform. See [ring-transport-system.md](ring-transport-system.md#bounded-aborts-cimmeria-not-2009).) The order is:
 
@@ -38,6 +38,19 @@ The outcome is reported as an `ArrivalSource`: `Validated`, `Respawner`, `Unreco
 The helper deliberately does **not** call `NavMesh::get_nearest_point`. That returns its input unchanged on a miss, so its output can never be trusted without re-validating it; and an arrival Detour *can* reproject is an authored pin that is a metre or two wrong and should be corrected at authoring time rather than papered over on every arrival.
 
 The yaw is carried through unchanged even when the position falls back to a respawner — respawner rows have no yaw of their own, and the authored gate facing is the only non-arbitrary answer.
+
+### Dakara E1 (gate 25)
+
+Gate 25's row is the gate prefab's origin on top of the gate dais, and it lies inside the gate's own volume (point set 1005 `Dakara_E1.Stargate`, radius 2.5). Landing there is inert on the server for the reasons the Harset row gives (the dial is per entity and no chain is keyed on the region), but nobody has seen what a client does when it arrives inside the volume it crosses to leave. Dakara rebuild DK-01 pins the arrival instead: `(96.87, -16.75, 243.23)`, yaw 3.072, 10 m out of the gate on its own facing axis, facing away from it.
+
+| Check | Result |
+|---|---|
+| Floor | `obj_slab` over the cooked chunk `00020000`: dais top at y -15.21, shallow steps down from about z 251 to z 246.1, then one flat slab at y -16.80. The pin is 2.9 m past the foot of the steps, 0.05 m above the slab, with nothing but floor in a 3 m box |
+| Navmesh | `dakara_e1.nav` component 279: the gate row, the DHD (spawn 38) and the Class Start v6 plaza point `(100, -17.4, 230)` are on it, and a path reaches each |
+| Gate volume | 10.5 m from the volume's axis |
+| DHD | 6.0 m further along the same line |
+
+Placement class MAP-GEOMETRY on an AUTHORED axis, confidence MEDIUM until a client has walked it; the 10 m is this project's choice. World 61 is `navmesh_mode = 'advisory'`, so step 2 above does not run and the pin is accepted as written. `.gotolocation Dakara_E1` with no coordinates lands on the same point. Guard: `gate_dakara_e1_tests.rs` in `cimmeria-cell-world`.
 
 ## Implementation Status
 
@@ -117,7 +130,7 @@ A committed gate arrival appends the addresses the trip taught the traveller, in
 
 Two ordering constraints hold this together. The write runs after every mid-transfer abort branch, so nothing is persisted for a transfer that did not happen, and before `query_player_load_data`, which fills the `setupStargateInfo` list the client is about to receive. Get the second wrong and the client renders an address book one hop out of date while the cell enforces the current one.
 
-**A newly created character still starts with an empty book.** `base::character_create` does not name `known_stargates`, so the column defaults to `'{}'`. That predates this work — the dial UI only ever offered known destinations — and Harset H55 decided to leave it that way: in 2009 the first address was always authored content, and content now has a verb that can author it. See *Address grants from content* below.
+**A newly created character still starts with an empty book.** `base::character_create` does not name `known_stargates`, so the column defaults to `'{}'`. That predates this work — the dial UI only ever offered known destinations — and Harset H55 decided to leave it that way: in 2009 the first address was always authored content, and content now has a verb that can author it. See *Address grants from content* below; the Free Jaffa's first address is granted that way, on arrival.
 
 ## Address grants from content
 
@@ -138,6 +151,10 @@ The grant is idempotent at both ends. A player who already holds the address get
 Refusals are never silent: an id with no `stargates` row, a non-player actor, and either failed send each warn with a `reason` field, and the grant is noted in the player journal so a `.bug` bookmark shows when the address was learned.
 
 **Castle mission 708 is the first consumer.** Chain 1357 (the Livewire victory that repairs the DHD) grants `stargate_id = 3`, Harset. Step 4462 — "Use the DHD to dial the Stargate to Harset" — was unreachable before that row existed.
+
+**The Free Jaffa's first address is the second consumer** (Dakara rebuild DK-01). Chain 8001 fires on `player_loaded Dakara_E1` for archetype 7 (`ARCHETYPE_Sholva`, the SGU Jaffa) and grants `stargate_id = 5`, Omega Site, so the DHD on the Dakara gate plaza has somewhere to dial. It has no mission gate and needs none: the grant is a no-op from the second entry on. The trip is two-way because Omega Site has a DHD and the arrival unlock teaches gate 25 on landing there. Which address is granted is owner decision OD-DK02 in the [Dakara ledger](../analysis/dakara-e1-rebuild/README.md#owner-decisions), and it is one seed row. `live_db_every_address_a_player_loaded_chain_grants_has_a_way_back` checks every such chain: the granted gate exists, is not a hub, is on a world this server can enter, and that world has a DHD.
+
+A grant on `player_loaded` reaches the client after `setupStargateInfo`, as the Debug Area top-up does: the base forwards `InitPlayerState` from `onClientReady`, which the client sends only after it has processed the map-load bundle that carries its address book.
 
 **There is no revoke verb.** 2009's node had a `Remove` port and no shipped content used it; `revoke_stargate_address` can be added when a chain needs one.
 

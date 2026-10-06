@@ -233,6 +233,25 @@ granter is gated inside its `gm_ability_bulk` action, not by a condition,
 so a non-GM's click still gets a refusal line; the Lineup attendants'
 `spawn_set` action is gated the same way.
 
+### Dakara_E1 (worlds 61 and 62) - 8001-8499, four files
+
+The Dakara_E1 rebuild reserves `8001-8499` and splits it across four seed
+files, one per theme, each included from `db/database.sql`.
+
+```text
+dakara_e1_space_chains.sql      space, travel, notice: 8001-8039 (8001-8002 used)
+dakara_e1_arrival_chains.sql    Missions 1570, 1645, 1646: 8040-8159
+dakara_e1_betrayal_chains.sql   Missions 1647-1650:        8160-8339
+dakara_e1_climax_chains.sql     Missions 1651-1654:        8340-8489
+```
+
+Allocation source: [docs/analysis/dakara-e1-rebuild/work-packets.md](../../docs/analysis/dakara-e1-rebuild/work-packets.md)
+"Worker Input And Ownership". Chains 8001 and 8002 are `player_loaded`
+chains gated on `archetype eq 7` only, with no mission gate. That is allowed
+there because each action is idempotent by itself (`grant_stargate_address`,
+and a `send_system_mail` behind a persisted `quiet_cooldown`). A new
+`player_loaded` chain without a mission gate needs the same property.
+
 ## Linked references
 
 - `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.
