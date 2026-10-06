@@ -19,6 +19,7 @@
 //! character already knows: those depend on whether the universal spawn kit
 //! still exists (CS-02), and these chains must be right either way.
 
+mod carter_smg;
 mod firearm_body;
 mod starter_gates;
 

@@ -491,3 +491,128 @@ VALUES
    '{"destination": "-53.86,1.311,62.136", "world": "SGC_W1", "use_player": true}', 0, 1),
   (3028, 'display_dialog', 5366, NULL, '{}', 0, 2),
   (3028, 'play_sequence', 10009, NULL, '{}', 0, 3);
+
+-- ============================================================
+-- MISSION 1562 - Col. Carter and the SGHC 6 (Class Start v6, CS-05)
+-- ============================================================
+-- PROJECT_FINAL_S2C, a reconstruction: the legacy script stopped at step
+-- 4625. What the seed still holds is Carter's spawn (spawnlist 56,
+-- `SGC_W1_SamCarter`), her line "There's another weapon on my lab desk"
+-- (dialog 5367), the pickup line "You take the submachinegun from Carter's
+-- desk." (dialog 5368) and steps 4626 / 4627. No desk actor or position
+-- survives, so Carter is the click target for the desk step; a desk
+-- interactable can replace her in chain 3035 when one is recovered.
+-- The two Jaffa of dialog 5366 and the lab-entry region are not authored.
+--
+-- Human classes only (`archetype lt 5`, which also admits a player with no
+-- archetype): for everyone else M1562 still stops at step 4625 with Carter
+-- unmarked, as before (Asgard holding state, OD-CS09). SGC_W1 is instanced,
+-- so the marker one player sets is never seen by another.
+
+-- Chain 3030: the same ElevatorButton2 press as chain 3028, for a Human →
+-- mark Carter as the active story contact.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3030, 'SGC_W1 - Interact ElevatorButton2 (Human): mark Col. Carter', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3030, 'interact_tag', 'SGC_W1_ElevatorButton2', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3030, 'step_status', 1562, '4624', 'eq', 'active', 0),
+  (3030, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3030, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
+        '{"op": "|", "mask": 16777216}', 0, 0);
+
+-- Chain 3031: re-login with 1562 past the elevator (step 4625, 4626 or 4627)
+-- restores Carter's marker.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3031, 'SGC_W1 - Load active 1562 past the elevator (Human): restore Col. Carter marker', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3031, 'player_loaded', 'SGC_W1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3031, 'mission_status', 1562, NULL, 'eq', 'active', 0),
+  (3031, 'step_status', 1562, '4624', 'neq', 'active', 1),
+  (3031, 'archetype', NULL, NULL, 'lt', '5', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3031, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
+        '{"op": "|", "mask": 16777216}', 0, 0);
+
+-- Chain 3032: reach Carter (step 4625) → step 4626 "Make certain that Col.
+-- Carter is ok." and her dialog 5367.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3032, 'SGC_W1 - Interact Col. Carter step 4625 (Human): advance to 4626, show dialog 5367', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3032, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3032, 'step_status', 1562, '4625', 'eq', 'active', 0),
+  (3032, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3032, 'advance_step', 1562, '4626', '{}', 0, 0),
+  (3032, 'display_dialog', 5367, NULL, '{}', 0, 1);
+
+-- Chain 3033: closing dialog 5367 (it has no buttons, so the close is the
+-- choice) → step 4627 "Take the sub-machine gun from Col. Carter's desk."
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3033, 'SGC_W1 - Dialog 5367 closed (Human): advance 1562 to 4627', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3033, 'dialog_choice', '5367', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3033, 'step_status', 1562, '4626', 'eq', 'active', 0),
+  (3033, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3033, 'advance_step', 1562, '4627', '{}', 0, 0);
+
+-- Chain 3034: Carter pressed again while step 4626 is still active (the
+-- close of 5367 was lost to a relog or an evicted dialog) → show 5367 again,
+-- so the press is never silent and the close can still advance the step.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3034, 'SGC_W1 - Interact Col. Carter step 4626 (Human): show dialog 5367 again', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3034, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3034, 'step_status', 1562, '4626', 'eq', 'active', 0),
+  (3034, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3034, 'display_dialog', 5367, NULL, '{}', 0, 0);
+
+-- Chain 3035: the desk step (4627) → complete 1562, SGHC 6 SMG (item 21) to
+-- the backpack with 0 rounds (OD-CS13), the pickup line, Carter unmarked.
+-- complete_mission closes the step gate, so a second press grants nothing.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3035, 'SGC_W1 - Interact Col. Carter step 4627 (Human): complete 1562, grant SMG 21', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3035, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3035, 'step_status', 1562, '4627', 'eq', 'active', 0),
+  (3035, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3035, 'complete_mission', 1562, NULL, '{}', 0, 0),
+  (3035, 'add_item', 21, NULL, '{"container": 1, "qty": 1}', 0, 1),
+  (3035, 'display_dialog', 5368, NULL, '{}', 0, 2),
+  (3035, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
+   '{"op": "~", "mask": 16777216}', 0, 3);
