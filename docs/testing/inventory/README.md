@@ -35,10 +35,10 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 11,838 |
-| Files with tests | 2,081 |
-| Gated in CI (every crate but CI's exclude list) | 9,582 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,627 |
+| Tests (`#[test]` / `#[tokio::test]`) | 11,847 |
+| Files with tests | 2,084 |
+| Gated in CI (every crate but CI's exclude list) | 9,591 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,631 |
 | Inventory threshold (5% of the tests) | 592 |
 
 <!-- /gen:tests-totals -->
@@ -96,15 +96,15 @@ with no file in this directory yet.
 | `crates/cell-world` | `cimmeria-cell-world` | 559 | 102 | 40 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 510 | 83 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 488 | 100 | 0 | no | none |
-| `crates/entity` | `cimmeria-entity` | 455 | 59 | 0 | yes | [entity.md](entity.md) |
+| `crates/entity` | `cimmeria-entity` | 458 | 60 | 0 | yes | [entity.md](entity.md) |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/base-session` | `cimmeria-base-session` | 439 | 80 | 187 | yes | none |
 | `crates/mercury` | `cimmeria-mercury` | 339 | 56 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
-| `crates/wire` | `cimmeria-wire` | 321 | 58 | 0 | yes | none |
+| `crates/wire` | `cimmeria-wire` | 323 | 59 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 283 | 47 | 8 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 282 | 26 | 0 | yes | [content-engine.md](content-engine.md) |
-| `crates/cell-catalog` | `cimmeria-cell-catalog` | 224 | 56 | 131 | yes | none |
+| `crates/cell-catalog` | `cimmeria-cell-catalog` | 228 | 57 | 135 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 215 | 37 | 1 | yes | none |
 | `crates/base` | `cimmeria-base` | 201 | 40 | 13 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 193 | 54 | 31 | yes | none |
