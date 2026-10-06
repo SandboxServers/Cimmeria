@@ -15,13 +15,19 @@
 //! patch set twice is a no-op. Zip entries other than the recipe and its
 //! deltas are plain overlay files (content that is entirely ours).
 //!
-//! The one [`Transform`], [`Transform::UpkNormalize`], exists because our
-//! patched maps are written uncompressed by `cimmeria-upk`'s append-only
-//! patcher while the stock maps are LZO-compressed: diffing against the
-//! stock bytes would drag the whole decompressed map into the delta.
-//! Normalizing the stock map first (open + write back, no changes) gives
-//! the patcher's own starting image, and the delta shrinks to what the
-//! patch appended.
+//! [`Transform::UpkNormalize`] exists because our patched maps are written
+//! uncompressed by `cimmeria-upk`'s append-only patcher while the stock maps
+//! are LZO-compressed: diffing against the stock bytes would drag the whole
+//! decompressed map into the delta. Normalizing the stock map first (open +
+//! write back, no changes) gives the patcher's own starting image, and the
+//! delta shrinks to what the patch appended.
+//!
+//! [`Transform::WorldMapRebake`] goes further: it computes the result itself
+//! on the player's machine (a world map's overview texture rebuilt from the
+//! map's own tiles, with integer-only code so the result hash holds on every
+//! machine), and the delta is nearly empty. A patch whose new bytes are
+//! derived from CME art can only ship this way. A launcher that predates a
+//! transform cannot parse the recipe and fails that patch alone.
 //!
 //! [`build`] makes a patch zip from a spec, [`apply`] applies one, and
 //! [`signing`] signs and verifies launcher manifests. The
@@ -37,7 +43,7 @@ pub mod transform;
 pub use apply::{apply, ApplyReport};
 pub use build::{build, Spec};
 pub use case_path::resolve_existing_case;
-pub use recipe::{Op, Recipe, Source, Transform, RECIPE_NAME};
+pub use recipe::{Op, Recipe, Source, Transform, WorldMapParams, RECIPE_NAME};
 
 use thiserror::Error;
 
@@ -123,6 +129,8 @@ mod debug_area_rings_fix_tests;
 mod debug_area_rings_tests;
 #[cfg(test)]
 mod gm_slash_commands_tests;
+#[cfg(test)]
+mod ihpet_world_map_tests;
 #[cfg(test)]
 mod starter_hotbar_tests;
 #[cfg(test)]
