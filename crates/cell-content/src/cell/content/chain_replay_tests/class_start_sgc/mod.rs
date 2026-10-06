@@ -21,6 +21,7 @@
 
 mod carter_smg;
 mod firearm_body;
+mod ordinance_rewards;
 mod starter_gates;
 
 use std::collections::HashMap;

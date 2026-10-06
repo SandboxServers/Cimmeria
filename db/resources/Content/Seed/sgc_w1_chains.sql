@@ -616,3 +616,95 @@ VALUES
   (3035, 'display_dialog', 5368, NULL, '{}', 0, 2),
   (3035, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
    '{"op": "~", "mask": 16777216}', 0, 3);
+
+-- ============================================================
+-- MISSION 1569 - Ordinance: class rewards and signatures (Class Start v6, CS-05)
+-- ============================================================
+-- PROJECT_FINAL_S2C. Keyed on `mission_completed 1569` and nothing else, so
+-- the SGU route campaign (OD-CS10) can author how 1569 is offered and how
+-- its storage crates complete it without touching these chains. Until then
+-- nothing accepts or completes 1569, so these chains do not fire in play.
+--
+-- One chain per Human class (conditions AND, so each `archetype eq N` needs
+-- its own chain). Each grants the Gear matrix's M1569 row and the class's
+-- one free signature ability (OD-CS06), `source_kind` signature, `source_id`
+-- 1569, with the grant's own `archetypes` list as the second gate. Items use
+-- container 0, the item's own default container, as a loot pickup does.
+-- Every gun arrives with 0 rounds (OD-CS13). Free Jaffa (7) get their gear
+-- at the Dakara start (CS-06) and the Asgard (5) is blocked (B1-B3): neither
+-- has a chain here.
+
+-- Chain 3041: Soldier → SK37 LMG 3260, Armored BDU Jacket 7373, Quick Burst 598.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3041, 'SGC_W1 - Mission 1569 completed (Soldier): LMG, jacket, signature 598', 'mission', 1569, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3041, 'mission_completed', '1569', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3041, 'archetype', NULL, NULL, 'eq', '1', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3041, 'add_item', 3260, NULL, '{"container": 0, "qty": 1}', 0, 0),
+  (3041, 'add_item', 7373, NULL, '{"container": 0, "qty": 1}', 0, 1),
+  (3041, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [598], "source_kind": "signature", "source_id": 1569, "archetypes": [1]}', 0, 2);
+
+-- Chain 3042: Commando → the Covert Stealth set (reward family A, OD-CS12:
+-- 3347, 3359, 3372, 3387, 3401), Combat Knife 3325, Stealth I 646.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3042, 'SGC_W1 - Mission 1569 completed (Commando): stealth set, knife, signature 646', 'mission', 1569, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3042, 'mission_completed', '1569', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3042, 'archetype', NULL, NULL, 'eq', '2', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3042, 'add_item', 3347, NULL, '{"container": 0, "qty": 1}', 0, 0),
+  (3042, 'add_item', 3359, NULL, '{"container": 0, "qty": 1}', 0, 1),
+  (3042, 'add_item', 3372, NULL, '{"container": 0, "qty": 1}', 0, 2),
+  (3042, 'add_item', 3387, NULL, '{"container": 0, "qty": 1}', 0, 3),
+  (3042, 'add_item', 3401, NULL, '{"container": 0, "qty": 1}', 0, 4),
+  (3042, 'add_item', 3325, NULL, '{"container": 0, "qty": 1}', 0, 5),
+  (3042, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [646], "source_kind": "signature", "source_id": 1569, "archetypes": [2]}', 0, 6);
+
+-- Chain 3043: Scientist → Deployment Belt 4444, Armored BDU Jacket 7373,
+-- Battlefield Heal 948.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3043, 'SGC_W1 - Mission 1569 completed (Scientist): belt, jacket, signature 948', 'mission', 1569, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3043, 'mission_completed', '1569', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3043, 'archetype', NULL, NULL, 'eq', '3', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3043, 'add_item', 4444, NULL, '{"container": 0, "qty": 1}', 0, 0),
+  (3043, 'add_item', 7373, NULL, '{"container": 0, "qty": 1}', 0, 1),
+  (3043, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [948], "source_kind": "signature", "source_id": 1569, "archetypes": [3]}', 0, 2);
+
+-- Chain 3044: Archaeologist → Hologram Emitter 6843, Armored BDU Jacket
+-- 7373, Reveal Mini-Games 802.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3044, 'SGC_W1 - Mission 1569 completed (Archaeologist): emitter, jacket, signature 802', 'mission', 1569, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3044, 'mission_completed', '1569', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3044, 'archetype', NULL, NULL, 'eq', '4', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (3044, 'add_item', 6843, NULL, '{"container": 0, "qty": 1}', 0, 0),
+  (3044, 'add_item', 7373, NULL, '{"container": 0, "qty": 1}', 0, 1),
+  (3044, 'grant_ability', NULL, NULL,
+   '{"ability_ids": [802], "source_kind": "signature", "source_id": 1569, "archetypes": [4]}', 0, 2);
