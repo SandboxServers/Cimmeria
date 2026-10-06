@@ -99,6 +99,26 @@ impl CellService {
         } else {
             vec![]
         };
+        // Switchable spawn sets (DA-10): their members stay out of the
+        // startup spawn (and out of every instance's) until a GM switches the
+        // set on.
+        let mut spawn_records = spawn_records;
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_spawn_sets(pool).await {
+                Ok(defs) => {
+                    space_mgr.spawn_sets =
+                        super::super::space_manager::partition_spawn_sets(&mut spawn_records, defs);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "spawner",
+                        event = "spawn_sets_load_failed",
+                        error = %e,
+                        "Failed to load spawn sets; every spawnlist row spawns at startup"
+                    );
+                }
+            }
+        }
 
         // Ability definitions load before the startup spawn: each NPC's
         // `spawner.npc_behaviour` row reads its abilities' event sets from

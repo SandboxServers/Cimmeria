@@ -211,6 +211,10 @@ pub struct CellEntity {
     /// Localized name string ID from `entity_templates.name_id`.
     pub name_id: Option<i32>,
 
+    /// A literal nameplate from `entity_templates.display_name` (Debug Area
+    /// DA-10), sent as `onBeingNameUpdate` after the `name_id` text.
+    pub display_name: Option<String>,
+
     /// Speaker ID for dialog from `entity_templates.speaker_id`.
     pub speaker_id: Option<i32>,
 

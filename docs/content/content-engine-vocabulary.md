@@ -187,6 +187,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `gm_ability_bulk` | `GmAbilityBulk` | 2 |
 | `grant_ability` | `GrantAbility` | 0 |
 | `show_tutorial` | `ShowTutorial` | 1 |
+| `spawn_set` | `SpawnSet` | 6 |
 
 `gm_ability_bulk` is the GM bulk ability change, fired from an NPC (Debug
 Area DA-02). Its one param, `change`, is `grant_all` or `reset`; a row
@@ -207,6 +208,24 @@ line. Every click gets a line on the first press. Each click writes one
 and every ability id with its name. The seeded uses are chains 13000 and
 13001, the Debug Area's ability granter and ability reset NPCs
 ([debug-area.md](debug-area.md)).
+
+`spawn_set` switches a spawn set (`resources.spawn_sets`, its members the
+`spawnlist` rows with that `set_name`) on or off for everyone in its
+world, fired from an NPC (Debug Area DA-10, the Lineup attendants). Its
+`op` param is `show` or `hide` with a `set_id`, or `clear` with a `kind`
+(`spawn_sets.type`) and a `world_id`; a row with anything else is dropped
+at load with a warn rather than switching the wrong set. `show` first
+hides the other sets of the same kind in the same world, so one set of a
+kind is on at a time; hiding despawns each member with `LeftAoI` to every
+player who sees it. The executor arm
+([`executor/spawn_set.rs`](../../crates/cell-content/src/cell/content/executor/spawn_set.rs))
+is GM-gated on the triggering player's access level, like
+`gm_ability_bulk`: a non-GM gets "Only a GM can switch the lineup. Nothing
+changed." Every click gets a line on the first press and writes one
+`event = "spawn_set.switched"` row (`door = "attendant"`). The native GM
+methods `activateSpawnSet` / `deactivateSpawnSet` and `.spawnset` call the
+same code. The seeded uses are chains 14090-14095
+([debug-area.md](debug-area.md#groups-and-the-lineup-attendants)).
 
 `open_black_market` sends `onBMOpen(auctioneerEntityId)` (client method 90)
 to open the client's Black Market window. It takes no params: the executor

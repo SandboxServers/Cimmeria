@@ -522,6 +522,33 @@ pub enum Action {
     /// chain, a relog or a world change never shows it again. Read back by
     /// the `tutorial_shown` condition.
     ShowTutorial { tutorial_id: i32 },
+    /// Switch a spawn set on or off for everyone in its world (Debug Area
+    /// DA-10: the Visual NPC Lineup attendants). GM-gated on the triggering
+    /// player's access level; a non-GM gets a refusal line. Showing a set
+    /// first switches off the other sets of its kind in its world.
+    SpawnSet(SpawnSetOp),
+}
+
+/// What an [`Action::SpawnSet`] does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpawnSetOp {
+    /// Show set `set_id` (exclusive within its kind and world).
+    Show { set_id: i32 },
+    /// Hide set `set_id`.
+    Hide { set_id: i32 },
+    /// Hide every set of `kind` in world `world_id`.
+    Clear { kind: String, world_id: i32 },
+}
+
+impl SpawnSetOp {
+    /// The `op` param value, for logs.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Show { .. } => "show",
+            Self::Hide { .. } => "hide",
+            Self::Clear { .. } => "clear",
+        }
+    }
 }
 
 /// What a [`Action::GmAbilityBulk`] does to the player's known abilities.

@@ -32,6 +32,10 @@
 //! - `CIMMERIA_LAB_UAT_P2`, `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` — the second
 //!   instance `lab_uat_run` drives for two-player rows (default `p2`, this
 //!   port + 1); its account is `lab-account.<name>.json`.
+//! - `CIMMERIA_LAB_LOAD_GRACE_SECS` — how long the watchdog tolerates a
+//!   stalled but busy client main thread (a world load) before it kills
+//!   the client; default 120, `0` turns it off, at most 3600
+//!   (`supervisor::stall_grace`).
 //!
 //! Modes:
 //!

@@ -19,3 +19,4 @@
 - [na26-all-worlds-navmesh.md](na26-all-worlds-navmesh.md) — Every spaces.xml world has a .nav, all advisory but Cellblock; no reject telemetry; 13-bit span trap (crops superseded by NA28)
 - [tiled-navmesh-seams.md](tiled-navmesh-seams.md) — NA28 tiled XRCT meshes: seam-island trap, grid-phase loss, 22-bit poly-ref budget, rebuild validation recipe
 - [debug-area-dial-hub.md](debug-area-dial-hub.md) — DA-07 gate 29 outbound-only hub: grant-not-bypass, hub filters, 14 unloadable gate worlds, gate 22 ~192 m under (excluded), off-mesh 27, template-1 DHD trap
+- [dhd-dial-telemetry-discriminators.md](dhd-dial-telemetry-discriminators.md) — Stock DHD window: first click eaten, row select auto-dials; 2026-10-05 hub report was not a grant/cache bug

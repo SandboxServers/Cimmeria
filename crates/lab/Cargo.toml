@@ -70,6 +70,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_LibraryLoader",
     # daemon/single_instance.rs: CreateMutexW takes SECURITY_ATTRIBUTES.
     "Win32_Security",
+    # supervisor/main_thread.rs: find the client's main thread (load grace).
+    "Win32_System_Diagnostics_ToolHelp",
 ] }
 
 [dev-dependencies]

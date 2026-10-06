@@ -6,7 +6,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (12/min per address), public login-port mount approved, inert (no endpoint); production endpoint is a later rollout
 - [project_mac_client_cooked_version_zero.md](project_mac_client_cooked_version_zero.md) — under Wine the client sent cooked version 0 at every login: Wine's msvcp80 `strstreambuf::underflow` returns EOF after a write; repaired in-process by the patches DLL (verified live 2026-10-05), which also made character creation work
-- [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — 2026-09-29 stall on 1488-byte datagrams (client reads 1472); cause was uncapped piggybacked ACKs, capped 2026-10-03; send/recv fingerprint telemetry
+- [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — >1472 B reliable datagrams wedge the client: uncapped ACKs (fixed 2026-10-03), data-sized single sends e.g. NPC cascade (fragmented 2026-10-05)
 - [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
 - [project_enemy_combat_runtime_blockers.md](project_enemy_combat_runtime_blockers.md) — enemy-combat v3 handoff not imported; blockers: MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR, DoT death
@@ -16,6 +16,9 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_named_telemetry_campaign.md](project_named_telemetry_campaign.md) — Named telemetry closed 2026-10-05: IDs paired with names, unpaired 7,039 to 0, 795 nt:id-only marks; not yet read in a live SigNoz session
 
 ## External handoffs reviewed, not imported
+- [project_class_start_v5_handoff.md](project_class_start_v5_handoff.md) — 2026-10-05 class-start/gear/abilities v5 handoff: reverses D-SA1 + M687 two-way split, wrong mission names, needs GrantAbility action/start-level/Asgard ship world; not imported
+- [project_pass21_implementation_package.md](project_pass21_implementation_package.md) — 2026-10-03 Pass 21 package (86 Beta Site E2/Dakara/SGC W2 missions): duplicates the seed exactly apart from whitespace/mojibake; mission→dialog pairing is moniker-derived, not proven
+- [project_lore_vo_handoff.md](project_lore_vo_handoff.md) — 2026-10-03 Castle lore VO handoff: no audio included; seed claims verified (EventSet 282 → dialog_castle/lore/*); playback needs dialog_castle.fev + client patch
 
 - [project_final_re_bundles.md](project_final_re_bundles.md) — 2026-10-02 SGW final RE ZIPs: useful build/world indexes, absent databases and raw sources, evidence boundaries
 - [project_character_editor_handoff.md](project_character_editor_handoff.md) — block CharDefs 9/10/19; no server allowlist exists; live-DB fixture uses CharDef 9; WQHD layout not available
@@ -23,6 +26,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
 - [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
 - [reference_desktop_game_telemetry_2026_10_04.md](reference_desktop_game_telemetry_2026_10_04.md) — desktop launcher game telemetry (PR #1241) proven under Wine; plan-digest trap; rosettax87 breaks launch supervision; engine tests run on Linux

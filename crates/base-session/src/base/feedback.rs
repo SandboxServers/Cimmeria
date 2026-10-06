@@ -8,12 +8,11 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
-use super::helpers::shadow_register_reliable_send;
+use super::helpers::{send_reliable_to_addr, WitnessSendOutcome};
 use super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 pub use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
@@ -201,29 +200,11 @@ async fn send_method(
                         e
                     }
                 };
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
-                    & cimmeria_mercury::packet::SEQUENCE_MASK;
-                // A feedback line echoes player input (a GM search, a
-                // /tell target), so its body can exceed the generic ACK
-                // budget's size assumption: size the ACKs to this packet.
-                let mut body = Vec::with_capacity(16 + payload.len());
-                crate::mercury::append_entity_method(
-                    &mut body,
-                    method_index,
-                    cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER,
-                    entity_id,
-                    payload,
-                );
-                let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
-                    &mut c.pending_acks.lock().unwrap(),
-                    1 + body.len() + 4,
-                    c.enc_version,
-                );
-                Some((entity_id, c.key, c.enc_version, seq, acks))
+                Some(entity_id)
             }
         }
     };
-    let Some((entity_id, key, version, seq, acks)) = session else {
+    let Some(entity_id) = session else {
         tracing::debug!(
             %addr,
             ?who,
@@ -235,35 +216,47 @@ async fn send_method(
         return (FeedbackOutcome::NoSession, None);
     };
 
-    let packet = build_player_entity_method_packet(
-        &key,
-        seq,
-        &acks,
-        entity_id,
-        method_index,
-        payload,
-        version,
-    );
-    if let Err(e) = ctx.transport.send_to(&packet, addr).await {
-        tracing::warn!(
-            %addr,
-            entity_id,
-            entity_name =
-                super::session_identity::identity_for_addr(ctx.connected, addr).player_name,
-            method_index,
-            method_name = cimmeria_wire::names::player_client_method(method_index),
-            reason = "send_error",
-            error = %e,
-            "player method send failed",
-        );
-        return (FeedbackOutcome::SendError, Some(entity_id));
-    }
-    shadow_register_reliable_send(
+    // A feedback line echoes player input (a GM search, a /tell target), so
+    // its body is data-sized: the fitted send sizes the ACKs to it and
+    // fragments a line too long for one datagram.
+    let outcome = send_reliable_to_addr(
+        ctx.transport,
         ctx.connected,
         addr,
-        seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
-    );
+        entity_id,
+        "player_method",
+        |key, version, seq, acks| {
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_index,
+                payload,
+                version,
+            )
+        },
+    )
+    .await;
+    match outcome {
+        WitnessSendOutcome::Sent { .. } => {}
+        WitnessSendOutcome::ClientDisconnected | WitnessSendOutcome::AddrUnresolved => {
+            return (FeedbackOutcome::NoSession, Some(entity_id));
+        }
+        WitnessSendOutcome::SendError => {
+            tracing::warn!(
+                %addr,
+                entity_id,
+                entity_name =
+                    super::session_identity::identity_for_addr(ctx.connected, addr).player_name,
+                method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
+                reason = "send_error",
+                "player method send failed",
+            );
+            return (FeedbackOutcome::SendError, Some(entity_id));
+        }
+    }
     (FeedbackOutcome::Sent, Some(entity_id))
 }
 
@@ -373,5 +366,45 @@ mod tests {
             FeedbackOutcome::NoSession
         );
         assert!(test_transport.is_empty());
+    }
+
+    /// A feedback line too long for one datagram (a long GM search result)
+    /// is fragmented: every datagram fits the client's 1472-byte buffer and
+    /// each one is in the TX window for retransmit.
+    #[tokio::test]
+    async fn a_long_feedback_line_is_fragmented_within_the_client_buffer() {
+        let addr: SocketAddr = "127.0.0.1:54501".parse().unwrap();
+        let mut state = test_default_connected_client_state();
+        state.player_entity_id = Some(4242);
+        state.pending_acks.lock().unwrap().extend(1..40);
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let test_transport = Arc::new(TestTransport::default());
+        let transport: Arc<dyn Transport> = test_transport.clone();
+        let ctx = FeedbackCtx {
+            transport: &transport,
+            connected: &connected,
+        };
+        let line = "x".repeat(900);
+
+        assert_eq!(
+            send_feedback_line(&ctx, addr, &line).await,
+            FeedbackOutcome::Sent
+        );
+        let sent = test_transport.filter_to(addr);
+        assert!(sent.len() >= 2, "fragmented: {}", sent.len());
+        for (i, wire) in sent.iter().enumerate() {
+            assert!(
+                wire.len() <= cimmeria_mercury::consts::PACKET_MAX_SIZE,
+                "datagram {i} is {} bytes",
+                wire.len()
+            );
+        }
+        let in_flight = connected.lock().unwrap()[&addr]
+            .channel
+            .lock()
+            .unwrap()
+            .tx_window
+            .len();
+        assert_eq!(in_flight, sent.len(), "every fragment is reliable");
     }
 }

@@ -53,6 +53,7 @@ impl CellEntity {
             spawn_id: None,
             tag: None,
             name_id: None,
+            display_name: None,
             speaker_id: None,
             event_set_id: None,
             interaction_type_flags: 0,

@@ -21,6 +21,10 @@
 //! - [`reach`]: no station is in reach of another (other packets' rows and
 //!   the world's respawners included), and no NPC that fights NPCs can reach a
 //!   DA-03 NPC it would target.
+//! - [`lineup`]: Z10, the Visual NPC Lineup (DA-10): every display actor
+//!   stands on the east wing's floor, can be walked up to from the Compound
+//!   ring, stands apart from its neighbours, and can neither fight nor be
+//!   fought.
 //! - [`lords`]: the System Lords' summit (DA-09): the lords stand on the
 //!   terrace, a listener among them is out of every hostile's reach, and
 //!   every chatter line names a seated lord.
@@ -28,6 +32,7 @@
 //! Skips on a checkout without `data/spaces/ihpet_crater_light.nav` / `.occ`.
 
 mod isolation;
+mod lineup;
 mod lords;
 mod placement;
 mod reach;
@@ -217,6 +222,7 @@ fn world_records() -> Vec<SpawnRecord> {
             use_cover: opt(t.get("use_cover")),
             vault_scope: VaultScope::Personal,
             training_dummy: false,
+            display_name: None,
         }
     })
     .collect()

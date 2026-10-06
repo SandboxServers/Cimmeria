@@ -331,6 +331,36 @@ mod tests {
         }
     }
 
+    /// A GM `.spawn` of a Visual NPC Lineup template (DA-10) keeps its
+    /// literal nameplate: the record carries `entity_templates.display_name`,
+    /// so the AoI introduction sends `onBeingNameUpdate` exactly as for the
+    /// seeded actor. Revert proof: drop `t.display_name` from
+    /// `entity_template_select!` or from `build_prototype` and the record
+    /// comes back without it (or not at all).
+    #[tokio::test]
+    async fn live_db_gm_spawn_keeps_the_lineup_display_name() {
+        let pool = require_db_or_skip!();
+        let row = sqlx::query(
+            "SELECT template_id, display_name FROM resources.entity_templates \
+             WHERE display_name IS NOT NULL ORDER BY template_id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("the DA-10 lineup seeds templates with a display_name");
+        let template_id: i32 = row.get("template_id");
+        let display_name: String = row.get("display_name");
+
+        let record = load_spawn_record_for_template(&pool, template_id, "DebugArea", [0.0; 3], 0.0)
+            .await
+            .expect("query")
+            .expect("template exists");
+        assert_eq!(
+            record.display_name.as_deref(),
+            Some(display_name.as_str()),
+            "a GM-spawned lineup actor keeps its nameplate"
+        );
+    }
+
     /// A template row whose non-Option column (`template_name`) is NULL must be
     /// dropped gracefully: `load_spawn_record_for_template` reads it via
     /// `try_get::<String, _>` + `?`, so a NULL decodes to an `sqlx::Error` →

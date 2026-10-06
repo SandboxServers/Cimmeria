@@ -47,6 +47,7 @@ mod npcs;
 mod pet_summons;
 mod regions;
 mod respawners;
+mod spawn_sets;
 mod stargates;
 mod templates;
 mod weapon_ranges;
@@ -95,6 +96,7 @@ pub use regions::region_contains_xz;
 // `region_dwell_no_hint` candidates.
 pub use regions::client_would_hint_region;
 pub use respawners::{load_respawners, offered_in_world, RespawnerDef};
+pub use spawn_sets::{load_spawn_sets, SpawnSetDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
 pub use weapon_ranges::load_weapon_ranges;

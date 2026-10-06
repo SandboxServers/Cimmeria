@@ -12,6 +12,9 @@
 //! - [`process`] — native launch/inject/status/terminate + window
 //!   resolution by PID.
 //! - [`heartbeat`] — the staleness watchdog decision (pure, tested).
+//! - [`stall_grace`] — the world-load grace on the watchdog's kill rules
+//!   (pure, tested), fed by [`main_thread`] — the client main thread's CPU
+//!   time, read from outside the process.
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
 //! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
@@ -36,10 +39,12 @@ pub mod input;
 pub mod instance;
 pub mod keys;
 pub mod login_servers;
+pub mod main_thread;
 pub mod process;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
+pub mod stall_grace;
 pub mod telemetry_session;
 pub mod ui;
 mod watchdog;
@@ -63,10 +68,12 @@ use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
 /// Heartbeat poll cadence for the background watchdog.
 const WATCHDOG_POLL: Duration = Duration::from_secs(1);
-/// No Tick advance for this long ⇒ hung/crash-dialog ⇒ terminate.
+/// No Tick advance for this long ⇒ hung/crash-dialog ⇒ terminate, unless
+/// the main thread is busy and inside the load grace ([`stall_grace`]).
 const HEARTBEAT_STALE_AFTER: Duration = Duration::from_secs(8);
 /// Consecutive failed heartbeat polls tolerated before we treat the
 /// client as dead (belt-and-braces alongside the direct liveness check).
+/// A busy main thread waits out the load grace first ([`stall_grace`]).
 const MAX_HEARTBEAT_FAILS: u32 = 5;
 /// Command-journal ring depth surfaced by `lab_crash_report`.
 const JOURNAL_CAP: usize = 64;

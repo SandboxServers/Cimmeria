@@ -73,6 +73,8 @@ mod space_files;
 mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
+mod spawn_sets;
+pub use spawn_sets::{partition_spawn_sets, SpawnSet, SpawnSetCatalog, SpawnSetError};
 mod step_region_replay;
 mod target_lifetime;
 mod training_dummy;
@@ -444,6 +446,9 @@ pub struct SpaceManager {
     /// keyed by the full body-set name (`BS_HumanMale.BS_HumanMale`).
     /// Loaded at startup; read through [`SpaceManager::eye_height_of`].
     pub body_set_eye_heights: HashMap<String, f32>,
+    /// Switchable spawn sets (DA-10): members that stay unspawned until a GM
+    /// switches their set on. Built at startup by [`partition_spawn_sets`].
+    pub spawn_sets: SpawnSetCatalog,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -615,6 +620,7 @@ impl SpaceManager {
             space_data_dir: std::path::PathBuf::from(space_files::SPACE_DATA_DIR),
             occluder_residency: HashMap::new(),
             body_set_eye_heights: HashMap::new(),
+            spawn_sets: SpawnSetCatalog::default(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

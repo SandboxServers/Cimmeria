@@ -199,6 +199,7 @@ fn parse_world_records() -> Vec<SpawnRecord> {
                 use_cover: text(t, "use_cover").map(|v| v == "true"),
                 vault_scope: VaultScope::Personal,
                 training_dummy: false,
+                display_name: None,
             })
         })
         .collect()

@@ -23,6 +23,7 @@ mod engine_loader;
 mod event_dispatch;
 mod executor;
 mod mission_context;
+pub mod spawn_sets;
 
 #[cfg(test)]
 mod chain_replay_tests;

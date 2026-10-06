@@ -513,6 +513,40 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 }
             }
         }
+        // Visual NPC Lineup attendants (DA-10). `op` is `show` / `hide` with
+        // a `set_id`, or `clear` with a `kind` and `world_id`. A malformed row
+        // is dropped with a warn rather than switching the wrong set.
+        "spawn_set" => {
+            let op = params.get("op").and_then(|v| v.as_str()).unwrap_or("");
+            let set_id = params
+                .get("set_id")
+                .and_then(|v| v.as_i64())
+                .and_then(|v| i32::try_from(v).ok());
+            let kind = params.get("kind").and_then(|v| v.as_str());
+            let world_id = params
+                .get("world_id")
+                .and_then(|v| v.as_i64())
+                .and_then(|v| i32::try_from(v).ok());
+            let parsed = match (op, set_id, kind, world_id) {
+                ("show", Some(set_id), _, _) => Some(crate::actions::SpawnSetOp::Show { set_id }),
+                ("hide", Some(set_id), _, _) => Some(crate::actions::SpawnSetOp::Hide { set_id }),
+                ("clear", _, Some(kind), Some(world_id)) => {
+                    Some(crate::actions::SpawnSetOp::Clear {
+                        kind: kind.to_string(),
+                        world_id,
+                    })
+                }
+                _ => None,
+            };
+            if parsed.is_none() {
+                warn!(
+                    chain_id = row.chain_id, // nt:id-only the loader holds no chain description
+                    op,
+                    "spawn_set: op must be show/hide with set_id, or clear with kind and world_id; action dropped"
+                );
+            }
+            parsed.map(Action::SpawnSet)
+        }
         // Entity lifecycle verbs live in a sibling module (see
         // `action_spawn`); it returns `None` for anything it doesn't own,
         // which lands us on the same "unknown action_type" path as before.

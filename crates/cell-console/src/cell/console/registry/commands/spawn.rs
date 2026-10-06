@@ -51,6 +51,14 @@ pub(super) const SPECS: &[Spec] = &[
         Target::None,
         "Respawn every NPC in your space",
     ),
+    // DA-10: the console door to `activateSpawnSet` / `deactivateSpawnSet`.
+    spec(
+        "spawnset",
+        0,
+        2,
+        Target::None,
+        "List spawn sets, or switch one for its whole world ([list | on <setId> | off <setId> | clear])",
+    ),
     spec(
         "spawnrandom",
         3,
