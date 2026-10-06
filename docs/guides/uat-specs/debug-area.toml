@@ -1779,19 +1779,26 @@ value = 55
 [[row]]
 id = "DA-U45"
 title = "The Debug Area DHD offers a GM every loaded gate, and nobody dials in"
-expected = "As a GM, right-click the Debug Area DHD beside the gate: the dialling window lists the 13 gates on loaded worlds (The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1, Dakara E1); dialling Harset opens the gate and walking in loads Harset; /gmdhd 29 is refused like an unknown address."
+expected = "As a GM, right-click the Debug Area DHD beside the gate: the dialling window lists the 13 gates on loaded worlds (The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1, Dakara E1); selecting Harset in the address book dials it (the client sends onDialGate about 2 s later), the gate opens and walking in loads Harset; /gmdhd 29 is refused like an unknown address."
 required_native = "N2"
 known_issues = ["DA-06"]
-notes = "The DHD (spawn 13800, template 1) stands at (245.4, 8.9, -983.4); the click aims at that point. Dialling from the window needs @window_click_row (L9), so the Harset dial is a human clause; /gmdhd 29 is the native GM dial (N2)."
+notes = "The DHD (spawn 13800, template 1) stands at (245.4, 8.9, -983.4); from (247, 9.5, -986.8) facing north it is on screen to the left of the character, and the click aims 0.9 m above its base, where the client's mouse-over finds it. The address book is a Flash movie, not CEGUI, so the dial is raw cursor clicks at UI pixels for the default 1024x768 layout: Harset is the third row (520, 449), the window's X is (821, 141). Stock window behaviour (unified UAT K29): the first left-click after the window opens is eaten, so Harset is clicked twice; selecting a row is the dial (onDialGate -1 as a reset, then the target about 2 s later); the orb only re-dials; the window reopens in its last state, so this row needs a client that has not opened a DHD this session. /gmdhd 29 is the native GM dial (N2)."
 setup = [
-  { chat = ".gotolocation DebugArea 248 9.5 -980", tier = "G" },
+  { chat = ".gotolocation DebugArea 247 9.5 -986.8", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
 ]
 step = [
-  { tool = "@world_click", args = { point = { x = 245.4, y = 9.5, z = -983.4 }, button = "right", expect = "window" }, label = "dhd" },
+  { tool = "@world_click", args = { point = { x = 245.44, y = 9.84, z = -983.39 }, button = "right", expect = "window", rotate_camera = false }, label = "dhd" },
   { wait_ms = 2500 },
-  { tool = "client_input_key", args = { key = "Escape" }, optional = true },
+  { tool = "client_cursor_move", args = { x = 520, y = 449 } },
+  { tool = "client_input_mouse", args = { button = 0 } },
+  { wait_ms = 1500 },
+  { tool = "client_input_mouse", args = { button = 0 }, label = "dial" },
+  { wait_ms = 4000 },
+  { tool = "client_cursor_move", args = { x = 821, y = 141 } },
+  { tool = "client_input_mouse", args = { button = 0 } },
+  { wait_ms = 1000 },
   { chat = "/gmdhd 29", label = "dial-in", tier = "N2" },
   { wait_ms = 2500 },
 ]
@@ -1817,6 +1824,15 @@ source = "packet"
 message = "onDisplayDHD"
 direction = "to_client"
 [[row.expect]]
+id = "dial-from-window"
+text = "selecting Harset in the window sends the dial: onDialGate -1 (reset) and then the target, from the client itself"
+source = "client_event"
+event = "client.net.out"
+match_fields = { method = "onDialGate" }
+since = "dial"
+min_rows = 2
+timeout_ms = 6000
+[[row.expect]]
 id = "dial-in-refused"
 text = "/gmdhd 29 is refused like an unknown address"
 source = "chat"
@@ -1834,10 +1850,10 @@ text = "the dialling window lists the 13 gates"
 source = "human"
 question = "In the screenshot taken after the click (evidence dhd-window), does the DHD window list The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1?"
 [[row.expect]]
-id = "dial-harset"
-text = "dialling Harset from the window opens the gate and walking in loads Harset"
+id = "walk-in-harset"
+text = "the dialled gate opens and walking in loads Harset"
 source = "human"
-question = "Dial Harset from the DHD window: does the map's gate open about 4 s later, and does walking into it load Harset?"
+question = "After the Harset dial: does the map's gate open about 4 s later, and does walking into it load Harset?"
 required = false
 [[row.evidence]]
 name = "dhd-window"
