@@ -11,7 +11,8 @@
 --     Jaffa (ARCHETYPE_Sholva) is not pulled into the Human tutorial or M1561.
 --   * 3008 is the Human pistol pickup (core grant + tutorial 5882); 3029 is
 --     the same pickup for everyone else, unchanged (Asgard holding state).
---   * 3030-3035 finish M1562 for the Human classes (Carter, SMG 21).
+--   * 3030-3037 finish M1562 for the Human classes (Carter, then the SMG
+--     on her desk, item 21).
 --   * 3041-3044 deliver the M1569 class rewards and signatures on
 --     `mission_completed 1569`. M1569's own route is not authored (OD-CS10).
 
@@ -499,20 +500,39 @@ VALUES
 -- 4625. What the seed still holds is Carter's spawn (spawnlist 56,
 -- `SGC_W1_SamCarter`), her line "There's another weapon on my lab desk"
 -- (dialog 5367), the pickup line "You take the submachinegun from Carter's
--- desk." (dialog 5368) and steps 4626 / 4627. No desk actor or position
--- survives, so Carter is the click target for the desk step; a desk
--- interactable can replace her in chain 3035 when one is recovered.
--- The two Jaffa of dialog 5366 and the lab-entry region are not authored.
+-- desk." (dialog 5368), steps 4626 / 4627, and the two Jaffa of dialog 5366
+-- (spawnlist 71 and 77, untagged, in the corridor outside the lab).
+--
+-- The desk is read from the cooked map: spawn 81 `SGC_W1_CarterDeskSMG`
+-- (template 411) lies on the centre desk of the lab's west wall; the
+-- evidence is on that spawn row. Carter's own heading (pi/2, facing +X) is
+-- right as seeded: she stands inside her U-shaped lab bench and faces across
+-- it to the lab's only doorway, 8 m east of her.
+--
+-- The lab doors: the map places them open, and chain 3028's
+-- `play_sequence 10009` is the Kismet event "Designer 0: Close Doors" of
+-- `CartersLabDoors` (event 6000; 10010 / 6001 is "Designer 1: Open Doors").
+-- The legacy script closed them on arrival and never opened them, so the
+-- lab was sealed. Chain 3030 opens them again for a Human. Opening them on
+-- the two Jaffa dying, which is what dialogs 5366 and 5367 suggest, is not
+-- authored: objective 5365 (the kill) is optional in the seed, and the fight
+-- is an owner decision. The lab-entry region (objective 6036) is not
+-- authored either.
 --
 -- Human classes only (`archetype lt 5`, which also admits a player with no
--- archetype): for everyone else M1562 still stops at step 4625 with Carter
--- unmarked, as before (Asgard holding state, OD-CS09). SGC_W1 is instanced,
--- so the marker one player sets is never seen by another.
+-- archetype): for everyone else M1562 still stops at step 4625 with the doors
+-- closed, Carter unmarked and the SMG unlit and unpressable, as before
+-- (Asgard holding state, OD-CS09). SGC_W1 is instanced, so the marker one
+-- player sets is never seen by another.
 
 -- Chain 3030: the same ElevatorButton2 press as chain 3028, for a Human →
--- mark Carter as the active story contact.
+-- mark Carter as the active story contact, and re-open the lab doors that
+-- chain 3028 has just closed. The close is a 2.0 s Matinee track (two keys,
+-- 4 m down), so the open is sent 3 s later, after it has finished. A relog
+-- needs no door action: the map loads with the doors open and chain 3028
+-- only fires on step 4624.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (3030, 'SGC_W1 - Interact ElevatorButton2 (Human): mark Col. Carter', 'mission', 1562, true, 0);
+VALUES (3030, 'SGC_W1 - Interact ElevatorButton2 (Human): mark Col. Carter, re-open her lab doors', 'mission', 1562, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3030, 'interact_tag', 'SGC_W1_ElevatorButton2', 'player', false, 0);
@@ -523,13 +543,15 @@ VALUES
   (3030, 'archetype', NULL, NULL, 'lt', '5', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (3030, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
-        '{"op": "|", "mask": 16777216}', 0, 0);
+VALUES
+  (3030, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
+   '{"op": "|", "mask": 16777216}', 0, 0),
+  (3030, 'play_sequence', 10010, NULL, '{}', 3000, 1);
 
--- Chain 3031: re-login with 1562 past the elevator (step 4625, 4626 or 4627)
--- restores Carter's marker.
+-- Chain 3031: re-login on step 4625 or 4626 restores Carter's marker. On
+-- step 4627 the marker is the SMG's (chain 3037).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (3031, 'SGC_W1 - Load active 1562 past the elevator (Human): restore Col. Carter marker', 'mission', 1562, true, 0);
+VALUES (3031, 'SGC_W1 - Load active 4625 or 4626 (Human): restore Col. Carter marker', 'mission', 1562, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3031, 'player_loaded', 'SGC_W1', 'player', false, 0);
@@ -538,7 +560,8 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3031, 'mission_status', 1562, NULL, 'eq', 'active', 0),
   (3031, 'step_status', 1562, '4624', 'neq', 'active', 1),
-  (3031, 'archetype', NULL, NULL, 'lt', '5', 2);
+  (3031, 'step_status', 1562, '4627', 'neq', 'active', 2),
+  (3031, 'archetype', NULL, NULL, 'lt', '5', 3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3031, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
@@ -563,9 +586,11 @@ VALUES
   (3032, 'display_dialog', 5367, NULL, '{}', 0, 1);
 
 -- Chain 3033: closing dialog 5367 (it has no buttons, so the close is the
--- choice) → step 4627 "Take the sub-machine gun from Col. Carter's desk."
+-- choice) → step 4627 "Take the sub-machine gun from Col. Carter's desk.":
+-- the marker moves from Carter to the SMG on her desk, which is lit as a
+-- mission object and becomes pressable.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (3033, 'SGC_W1 - Dialog 5367 closed (Human): advance 1562 to 4627', 'mission', 1562, true, 0);
+VALUES (3033, 'SGC_W1 - Dialog 5367 closed (Human): advance 1562 to 4627, light the desk SMG', 'mission', 1562, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3033, 'dialog_choice', '5367', 'player', false, 0);
@@ -576,7 +601,12 @@ VALUES
   (3033, 'archetype', NULL, NULL, 'lt', '5', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (3033, 'advance_step', 1562, '4627', '{}', 0, 0);
+VALUES
+  (3033, 'advance_step', 1562, '4627', '{}', 0, 0),
+  (3033, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
+   '{"op": "~", "mask": 16777216}', 0, 1),
+  (3033, 'set_interaction_type', NULL, 'SGC_W1_CarterDeskSMG',
+   '{"op": "|", "mask": 1073741824}', 0, 2);
 
 -- Chain 3034: Carter pressed again while step 4626 is still active (the
 -- close of 5367 was lost to a relog or an evicted dialog) → show 5367 again,
@@ -595,14 +625,16 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3034, 'display_dialog', 5367, NULL, '{}', 0, 0);
 
--- Chain 3035: the desk step (4627) → complete 1562, SGHC 6 SMG (item 21) to
--- the backpack with 0 rounds (OD-CS13), the pickup line, Carter unmarked.
--- complete_mission closes the step gate, so a second press grants nothing.
+-- Chain 3035: the desk step (4627), a press on the SMG on Carter's desk →
+-- complete 1562, SGHC 6 SMG (item 21) to the backpack with 0 rounds
+-- (OD-CS13), the pickup line, the SMG unlit. complete_mission closes the
+-- step gate, so a second press grants nothing; unlit, the prop is scenery
+-- again. Same shape as the CellBlock pickup of the same gun (chain 1055).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (3035, 'SGC_W1 - Interact Col. Carter step 4627 (Human): complete 1562, grant SMG 21', 'mission', 1562, true, 0);
+VALUES (3035, 'SGC_W1 - Interact desk SMG step 4627 (Human): complete 1562, grant SMG 21', 'mission', 1562, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (3035, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
+VALUES (3035, 'interact_tag', 'SGC_W1_CarterDeskSMG', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
@@ -614,8 +646,42 @@ VALUES
   (3035, 'complete_mission', 1562, NULL, '{}', 0, 0),
   (3035, 'add_item', 21, NULL, '{"container": 1, "qty": 1}', 0, 1),
   (3035, 'display_dialog', 5368, NULL, '{}', 0, 2),
-  (3035, 'set_interaction_type', NULL, 'SGC_W1_SamCarter',
-   '{"op": "~", "mask": 16777216}', 0, 3);
+  (3035, 'set_interaction_type', NULL, 'SGC_W1_CarterDeskSMG',
+   '{"op": "~", "mask": 1073741824}', 0, 3);
+
+-- Chain 3036: Carter pressed during the desk step (4627) → her dialog 5367
+-- again, whose last line is "There's another weapon on my lab desk." She is
+-- unmarked on this step, so the press may not be possible at all; if it is,
+-- it is answered with the pointer to the desk and grants nothing.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3036, 'SGC_W1 - Interact Col. Carter step 4627 (Human): show dialog 5367, the desk hint', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3036, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3036, 'step_status', 1562, '4627', 'eq', 'active', 0),
+  (3036, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3036, 'display_dialog', 5367, NULL, '{}', 0, 0);
+
+-- Chain 3037: re-login on the desk step (4627) lights the SMG again.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (3037, 'SGC_W1 - Load active 4627 (Human): restore the desk SMG marker', 'mission', 1562, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (3037, 'player_loaded', 'SGC_W1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (3037, 'step_status', 1562, '4627', 'eq', 'active', 0),
+  (3037, 'archetype', NULL, NULL, 'lt', '5', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (3037, 'set_interaction_type', NULL, 'SGC_W1_CarterDeskSMG',
+        '{"op": "|", "mask": 1073741824}', 0, 0);
 
 -- ============================================================
 -- MISSION 1569 - Ordinance: class rewards and signatures (Class Start v6, CS-05)

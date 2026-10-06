@@ -8,7 +8,10 @@
 //!   abilities and tutorial 5882 in that order; chain 3029 leaves every
 //!   other archetype (the Asgard holding state) with the pre-CS-05 pickup;
 //!   chain 7101 then shows 5883 to the Human only.
-//! - [`carter_smg`]: chains 3030-3035 finish M1562 for a Human with SMG 21.
+//! - [`carter_smg`]: chains 3030-3037 finish M1562 for a Human: Carter, then
+//!   the SMG on her desk (item 21), with her lab doors re-opened.
+//! - [`lab_placement`]: the desk SMG's spawn row and Carter's heading against
+//!   the numbers read from the cooked map.
 //! - [`ordinance_rewards`]: chains 3041-3044 deliver the M1569 class gear
 //!   and signature on `mission_completed 1569`.
 //!
@@ -21,6 +24,7 @@
 
 mod carter_smg;
 mod firearm_body;
+mod lab_placement;
 mod ordinance_rewards;
 mod starter_gates;
 
@@ -65,6 +69,8 @@ const NON_HUMANS: [i32; 4] = [ASGARD, GOAULD, FREE_JAFFA, LOYALIST_JAFFA];
 
 /// `INT_AStoryMissionActive`, the "!" the SGC chains mark a contact with.
 const STORY_ACTIVE: i64 = 16_777_216;
+/// `INT_MissionWorldObject`, the glow that makes a quest prop pressable.
+const MISSION_OBJECT: i64 = 1_073_741_824;
 
 /// An engine holding exactly `chain_ids`, each loaded from the seeded
 /// database through the cell's own loader.
@@ -215,18 +221,20 @@ const COMPLETED: Option<i8> = Some(MISSION_COMPLETED);
 const ACTIVE: Option<i8> = Some(MISSION_ACTIVE);
 
 /// Every chain CS-05 adds or edits, with its action count.
-const CS05_CHAINS: [(i64, usize); 15] = [
+const CS05_CHAINS: [(i64, usize); 17] = [
     (3001, 2),
     (3008, 5),
     (3017, 1),
     (3018, 2),
     (3029, 3),
-    (3030, 1),
+    (3030, 2),
     (3031, 1),
     (3032, 2),
-    (3033, 1),
+    (3033, 3),
     (3034, 1),
     (3035, 4),
+    (3036, 1),
+    (3037, 1),
     (3041, 3),
     (3042, 7),
     (3043, 3),

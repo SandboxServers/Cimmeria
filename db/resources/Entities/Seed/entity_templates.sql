@@ -1058,6 +1058,16 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 --   Interrogation Block.
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (410, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 0, 4611686018427387904, NULL, NULL, NULL, NULL, 7054, NULL, NULL, NULL, 'Castle supply chest', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
+-- SGC_W1 Col. Carter's desk SMG (Class Start v6 CS-05, PROJECT_FINAL_S2C,
+--   RECONSTRUCTION): a clone of 8 'SMG-1A', the Castle_CellBlock pickup prop
+--   for the same gun (item 21), with interaction_type 0 instead of 8's
+--   INT_RingNetwork (32). With no cursor bit the client treats it as scenery,
+--   so nobody can press it except while chain 3033 has lit it with
+--   INT_MissionWorldObject for M1562 step 4627. Spawn 81 lays it on the desk;
+--   chain 3035 answers the press. Name moniker 7553 'SGHC6', as on 8.
+--   Id 411: the next id after 410; no block is reserved for SGC_W1.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (411, 'WP-Human.WP_SMG_1A', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, NULL, NULL, NULL, 7553, NULL, NULL, NULL, 'SGC_W1 Carter desk SMG', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+
 -- moniker 27182 `DN_Cft_Ob_CraftingStation_Elec_001` ('Electronics Crafting Station').
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (311, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 30724, 0, NULL, 1, 0, 1, 27182, NULL, NULL, NULL, 'Debug Hub - Electronics Crafting Station', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
 
