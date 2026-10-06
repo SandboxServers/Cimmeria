@@ -334,6 +334,14 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              Crater map that the GM-only Debug Area uses. Changes one Ihpet Crater map \
              file and needs the Debug Area ring transport patch (011) first.",
         ),
+        "015-weapon-shot-bar" => (
+            "Action bar shot follows your weapon",
+            "When you switch weapons, an action button holding the old weapon's basic shot \
+             (or Pistol Shot) switches to the shot of the weapon you now hold, and back \
+             again. Buttons holding anything else, and buttons bound per weapon, are never \
+             changed. Changes ActionProfileDefault1.lua and needs the starting-abilities \
+             patch (009) first.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

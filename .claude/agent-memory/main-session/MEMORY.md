@@ -26,6 +26,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_client_action_bar_events.md](reference_client_action_bar_events.md) — stock action bar Lua (2026-10-05): hidden windows are deaf without `DeafWhenHidden=False`, subscribe takes several handlers, bandolier-bound buttons, `InventoryUpdateContainerActiveSlot`; from patch 015
 - [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
 - [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
