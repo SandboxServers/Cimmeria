@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 11,833 |
-| Files with tests | 2,080 |
-| Gated in CI (every crate but CI's exclude list) | 9,577 |
+| Tests (`#[test]` / `#[tokio::test]`) | 11,838 |
+| Files with tests | 2,081 |
+| Gated in CI (every crate but CI's exclude list) | 9,582 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,627 |
 | Inventory threshold (5% of the tests) | 592 |
 
@@ -117,7 +117,7 @@ with no file in this directory yet.
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/cell-org` | `cimmeria-cell-org` | 74 | 8 | 0 | yes | none |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
-| `crates/patchset` | `cimmeria-patchset` | 63 | 11 | 0 | yes | none |
+| `crates/patchset` | `cimmeria-patchset` | 68 | 12 | 0 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/auth` | `cimmeria-auth` | 55 | 11 | 9 | yes | none |
 | `crates/cell-duel` | `cimmeria-cell-duel` | 53 | 12 | 0 | yes | none |
