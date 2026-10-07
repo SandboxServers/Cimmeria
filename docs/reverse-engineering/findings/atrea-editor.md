@@ -272,7 +272,7 @@ The handler is best described as a **BigWorld streaming-sublevel save with navge
 | Cmd | Handler | Inferred name |
 |---|---|---|
 | `0x676E`–`0x6770` | `LAB_00FE9BE0`–`LAB_00FE9C20` | Unknown BigWorld cmds (3) |
-| `0x6771` | `FUN_00FE9CC0` | BigWorld build/export wizard (creates `wxWizard` at `FUN_01132690`) |
+| `0x6771` | `FUN_00FE9CC0` | RandomActorSettings wizard (`FUN_01132690` constructs it with that title); earlier BigWorld build/export label was wrong |
 | **`0x6774`** | **`WxMainFrame__OnSaveBigWorldChunks`** | **SaveBigWorldChunks (this section)** |
 | `0x6775` | `LAB_00FEB960` | Unknown BigWorld cmd |
 | `0x6776` | `FUN_00FF6770` | Unknown BigWorld cmd |
