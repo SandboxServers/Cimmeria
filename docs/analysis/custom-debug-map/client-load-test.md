@@ -44,6 +44,28 @@ around a failure. A parser reopening the package and a successful teleport
 packet do not establish that Unreal streamed the level or that its mesh has
 working collision.
 
+## First in-client result, 2026-10-06
+
+The player reached `CimmeriaLab`; the screenshot showed the world name and a
+black viewport with the avatar and HUD visible. The player stood, jumped and
+landed on an invisible surface, walked for several seconds, then fell off its
+edge. This proves that at least one collision surface loads at the test spawn.
+It does **not** prove the floor mesh renders or that all four copies have
+collision. The boundary and slight drop need a coordinate survey after the
+level is visible. The minimap displayed old artwork, as expected for a
+renamed scaffold.
+
+The persistent package has a `SkyLight` export (374) and component (375), but
+the stripped Level actor list retained only `WorldInfo`. That omission is a
+plausible cause of the black level, especially since the new floor components
+had their baked lightmaps stripped. An isolated `upk_patch clone-objects`
+experiment cloned that existing skylight into the persistent level at UE
+`(0,0,200)`. The candidate reopened, grew the actor list 1→2 and passed the
+new-object property-name audit. It was **not installed during the live test**:
+Windows held the persistent package open while `SGW.exe` was running. The
+rendering hypothesis remains unverified until the game exits, the candidate
+is installed, and the client is restarted.
+
 The local 2026-10-06 test uses a fresh `sgw_cimmeria_lab` database built from
 the current `db/database.sql` because the existing `sgw` database predates
 `resources.worlds.navmesh_mode`. The older database was left untouched.
