@@ -43,8 +43,9 @@ last_updated: 2026-10-06
 | Direct package scaffold | Tollana_Curia sublevel Level actor refs 27 → 1, 61 exports structurally preserved; installed as an experimental package scaffold, **not authored geometry** |
 | SGC floor lightmap tail | [CM-00b](lightmap-tail.md): type-2 lightmap with 12 GUIDs and three source-package texture refs; opt-in unlit clone places four floor actors; in-client screenshots now show floor material |
 | Local world wiring and package install | [CM-00c](client-load-test.md): world 1301 (`CimmeriaLab`) loads `Cimmeria_Lab1`; first client pass confirmed floor collision, skylight retest confirmed visible floor and cover mesh |
+| Ancient assembly visual/collision probe | [handoff](handoff-2026-10-06.md): one centered temporary slab, gate ring/spinners, Ancient terminal and a four-way `AN-Interior` hall render. User walked the hall after Ghost was disabled and movement validation restored. The slab-to-hall seam and open exits need finishing; gate remains visual only. This is cooked-actor assembly on a renamed scaffold, so CM-00 editor-to-client and CM-02 new authored geometry gates remain open. |
 | New package saved by editor | Pending isolated editor run |
 | New package loaded by clean game client | Pending isolated game run |
-| Collision and stock asset visible in game | **Passed for experimental scaffold only**; three screenshots show visible floor/cover and player standing; continuous floor, sky and authored-level acceptance pending |
+| Collision and stock asset visible in game | **Passed for experimental scaffold only**; screenshots show floor, gate, terminal and Ancient hall, with normal-mode hall walkability reported and shown; continuous authored floor, sky and authored-level acceptance pending |
 
 Do not silently substitute a copied/renamed Harset map for CM-00 or CM-02. Harset is a useful source of meshes, rigs and material dependencies, and its gate placement is a reference; the map geometry in this campaign must be newly authored.

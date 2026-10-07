@@ -9,16 +9,16 @@ last_updated: 2026-10-06
 
 The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [visual floor plan](janus-worldforge-plan.svg). It is a design target built around verified Agnos asset references; the client-load gate below still comes first.
 
-**Status: minimal client-load and visible collision gate passed.** The experimental `CimmeriaLab` package now shows its SGC floor and cover mesh, and the player can stand and jump on the floor after a skylight was activated. The sky is black, the arrival overlaps the cover mesh, and the floor edge remains unmeasured. This is a package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) keeps authored geometry, navigation and functional fixtures as later gates. The existing DebugArea (world 1300) remains the working proving ground.
+**Status: client-load and first Ancient module walkthrough passed on an experimental scaffold.** `CimmeriaLab` shows one temporary SGC floor, a stock gate ring, cover, an Ancient terminal, and an Ancient four-way hall assembled from cooked assets. Client screenshots show the player inside the hall after ghost mode was disabled and movement validation restored. The hall floor and the connection from the temporary slab are walkable; a dark seam, open exits into black space, missing sky and a visual-only gate remain. This is still a renamed package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) and [test handoff](handoff-2026-10-06.md) track the remaining gates. The existing DebugArea (world 1300) remains the working proving ground.
 
 The first [automation probe](automation-probe.md) found a command-file hook in
 `SGW.exe` and verified the editor byte patches against the local QA executable.
 The automated shell cannot get past the client's early startup modal. A direct
 package experiment produced three renamed scratch scaffolds and successfully
-cloned one cover mesh actor from another map; these have not loaded in the
-client and are not yet a constructed level. The [lightmap tail study](lightmap-tail.md)
-then identified baked texture references in an SGC floor component and proved
-an opt-in unlit clone of four floor actors at the package level.
+cloned cooked actors from several donor maps into the running world. The
+[lightmap tail study](lightmap-tail.md) identified baked texture references
+in an SGC floor component and proved an opt-in unlit clone. The initial four
+floors overlapped and were replaced with one centered temporary slab.
 The [first client-load test](client-load-test.md) records the installed
 package hashes, test world contract, and GM entry command.
 
