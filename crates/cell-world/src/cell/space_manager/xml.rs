@@ -33,7 +33,7 @@ impl SpaceManager {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e))
-                    if e.name().as_ref() == b"Space" =>
+                    if e.name().as_ref() == "Space" =>
                 {
                     let mut world_name = String::new();
                     let mut instanced = false;
@@ -46,11 +46,8 @@ impl SpaceManager {
                         let attr = attr_res.map_err(|err| {
                             format!("spaces.xml: malformed Space attribute: {err}")
                         })?;
-                        let key = std::str::from_utf8(attr.key.as_ref())
-                            .map_err(|err| format!("spaces.xml: non-UTF8 attribute key: {err}"))?;
-                        let val = std::str::from_utf8(&attr.value).map_err(|err| {
-                            format!("spaces.xml: non-UTF8 value for {key}: {err}")
-                        })?;
+                        let key = attr.key.as_ref();
+                        let val = attr.value.as_ref();
                         match key {
                             "WorldName" => world_name = val.to_string(),
                             "Instanced" => instanced = val == "true",
@@ -129,19 +126,15 @@ impl SpaceManager {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e))
-                    if e.name().as_ref() == b"Space" =>
+                    if e.name().as_ref() == "Space" =>
                 {
                     let mut world_name = String::new();
                     for attr_res in e.attributes() {
                         let attr = attr_res.map_err(|err| {
                             format!("cell_spaces.xml: malformed Space attribute: {err}")
                         })?;
-                        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|err| {
-                            format!("cell_spaces.xml: non-UTF8 attribute key: {err}")
-                        })?;
-                        let val = std::str::from_utf8(&attr.value).map_err(|err| {
-                            format!("cell_spaces.xml: non-UTF8 value for {key}: {err}")
-                        })?;
+                        let key = attr.key.as_ref();
+                        let val = attr.value.as_ref();
                         if key == "WorldName" {
                             world_name = val.to_string();
                         }

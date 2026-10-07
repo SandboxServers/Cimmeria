@@ -63,7 +63,7 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
         let structural = matches!(event, Event::Start(_) | Event::Empty(_) | Event::End(_));
         if structural
             && in_button
-            && !matches!(&event, Event::End(e) if e.name().as_ref() == b"Buttons")
+            && !matches!(&event, Event::End(e) if e.name().as_ref() == "Buttons")
         {
             return None;
         }
@@ -73,20 +73,20 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
         match event {
             // ── Elements with a body ────────────────────────────────
             Event::Start(e) => match e.name().as_ref() {
-                b"COOKED_DIALOG" => {
+                "COOKED_DIALOG" => {
                     if dialog.is_some() {
                         return None; // second root
                     }
                     dialog = Some(parse_root(&e)?);
                 }
-                b"Screens" => {
+                "Screens" => {
                     // Directly under the root, never nested.
                     if dialog.is_none() || open_screen.is_some() {
                         return None;
                     }
                     open_screen = Some(parse_screen(&e)?);
                 }
-                b"Buttons" => {
+                "Buttons" => {
                     // `?` on `None` here is the "button outside a screen"
                     // rejection.
                     open_screen.as_mut()?.buttons.push(parse_button(&e)?);
@@ -97,14 +97,14 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
 
             // ── Self-closing elements ───────────────────────────────
             Event::Empty(e) => match e.name().as_ref() {
-                b"Screens" => {
+                "Screens" => {
                     if open_screen.is_some() {
                         return None;
                     }
                     // No body, so no buttons and no matching `End`.
                     dialog.as_mut()?.screens.push(parse_screen(&e)?);
                 }
-                b"Buttons" => {
+                "Buttons" => {
                     open_screen.as_mut()?.buttons.push(parse_button(&e)?);
                 }
                 // A self-closing root would carry no screens at all; the
@@ -113,18 +113,18 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
             },
 
             Event::End(e) => match e.name().as_ref() {
-                b"Screens" => {
+                "Screens" => {
                     // `None` means a `</Screens>` with nothing open.
                     let screen = open_screen.take()?;
                     dialog.as_mut()?.screens.push(screen);
                 }
-                b"Buttons" => {
+                "Buttons" => {
                     if !in_button {
                         return None;
                     }
                     in_button = false;
                 }
-                b"COOKED_DIALOG" => {
+                "COOKED_DIALOG" => {
                     if dialog.is_none() || open_screen.is_some() {
                         return None;
                     }
@@ -137,7 +137,7 @@ pub fn parse_cooked_dialog(xml: &[u8]) -> Option<CookedDialog> {
             // declaration) is not content; any other character data is a
             // shape the emitter could not reproduce, so refuse it.
             Event::Text(t) => {
-                if !t.iter().all(u8::is_ascii_whitespace) {
+                if !t.chars().all(|c| c.is_ascii_whitespace()) {
                     return None;
                 }
             }
@@ -165,10 +165,10 @@ fn parse_root(e: &BytesStart<'_>) -> Option<CookedDialog> {
     for attr in e.attributes() {
         let attr = attr.ok()?;
         match attr.key.as_ref() {
-            b"DialogFlags" => dialog_flags = Some(attr_u32(&attr.value)?),
-            b"DialogID" => dialog_id = Some(attr_u32(&attr.value)?),
-            b"KismetEventSetID" => kismet_event_set_id = Some(attr_u32(&attr.value)?),
-            b"UIScreenType" => ui_screen_type = Some(attr_u32(&attr.value)?),
+            "DialogFlags" => dialog_flags = Some(attr_u32(&attr.value)?),
+            "DialogID" => dialog_id = Some(attr_u32(&attr.value)?),
+            "KismetEventSetID" => kismet_event_set_id = Some(attr_u32(&attr.value)?),
+            "UIScreenType" => ui_screen_type = Some(attr_u32(&attr.value)?),
             // The five `xmlns:*` declarations on a QA root, and anything
             // else a future cook adds, are dropped: Server-Build output
             // carries no namespaces.
@@ -195,10 +195,10 @@ fn parse_screen(e: &BytesStart<'_>) -> Option<CookedScreen> {
     for attr in e.attributes() {
         let attr = attr.ok()?;
         match attr.key.as_ref() {
-            b"SpeakerID" => speaker_id = Some(attr_u32(&attr.value)?),
-            b"ScreenID" => screen_id = Some(attr_u32(&attr.value)?),
+            "SpeakerID" => speaker_id = Some(attr_u32(&attr.value)?),
+            "ScreenID" => screen_id = Some(attr_u32(&attr.value)?),
             // Raw, still-escaped value — see the `emit` module docs.
-            b"Text" => text_escaped = Some(attr_raw(&attr.value)?),
+            "Text" => text_escaped = Some(attr_raw(&attr.value)),
             _ => {}
         }
     }
@@ -222,9 +222,9 @@ fn parse_button(e: &BytesStart<'_>) -> Option<CookedButton> {
     for attr in e.attributes() {
         let attr = attr.ok()?;
         match attr.key.as_ref() {
-            b"ButtonType" => button_type = Some(attr_u32(&attr.value)?),
-            b"ButtonID" => button_id = Some(attr_u32(&attr.value)?),
-            b"Text" => text_escaped = Some(attr_raw(&attr.value)?),
+            "ButtonType" => button_type = Some(attr_u32(&attr.value)?),
+            "ButtonID" => button_id = Some(attr_u32(&attr.value)?),
+            "Text" => text_escaped = Some(attr_raw(&attr.value)),
             _ => {}
         }
     }
@@ -237,14 +237,14 @@ fn parse_button(e: &BytesStart<'_>) -> Option<CookedButton> {
 }
 
 /// Numeric attribute value. Ids never carry entity references, so the raw
-/// bytes parse directly.
-fn attr_u32(value: &[u8]) -> Option<u32> {
-    std::str::from_utf8(value).ok()?.trim().parse::<u32>().ok()
+/// string parses directly.
+fn attr_u32(value: &str) -> Option<u32> {
+    value.trim().parse::<u32>().ok()
 }
 
 /// Text attribute value, kept in its escaped wire form.
-fn attr_raw(value: &[u8]) -> Option<String> {
-    Some(std::str::from_utf8(value).ok()?.to_string())
+fn attr_raw(value: &str) -> String {
+    value.to_string()
 }
 
 #[cfg(test)]

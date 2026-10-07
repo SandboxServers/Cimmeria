@@ -117,7 +117,7 @@ fn for_each_known_attribute(
 ) -> Result<(), SoapRequestError> {
     for attr in element.attributes() {
         let attr = attr.map_err(|_| SoapRequestError::MalformedAttributes)?;
-        let Some(&name) = known.iter().find(|k| k.as_bytes() == attr.key.as_ref()) else {
+        let Some(&name) = known.iter().find(|k| **k == attr.key.as_ref()) else {
             continue;
         };
         on_attr(name, decode_value(&attr, name)?);
@@ -136,7 +136,7 @@ fn with_request_element<T>(
     loop {
         match reader.read_event() {
             Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == local_name.as_bytes() =>
+                if e.local_name().as_ref() == local_name =>
             {
                 return with_element(&e);
             }

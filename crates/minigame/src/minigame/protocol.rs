@@ -157,13 +157,13 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let name_bytes = e.name();
-                let name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
+                let name = name_bytes.as_ref();
                 match name {
                     "msg" => {
                         saw_msg = true;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"t" {
-                                msg_type = String::from_utf8_lossy(&attr.value).to_string();
+                            if attr.key.as_ref() == "t" {
+                                msg_type = attr.value.to_string();
                             }
                         }
                     }
@@ -171,12 +171,11 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
                         in_body = true;
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"action" => {
-                                    body_action = String::from_utf8_lossy(&attr.value).to_string();
+                                "action" => {
+                                    body_action = attr.value.to_string();
                                 }
-                                b"r" => {
-                                    body_r =
-                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
+                                "r" => {
+                                    body_r = attr.value.parse().unwrap_or(0);
                                 }
                                 _ => {}
                             }
@@ -184,15 +183,15 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
                     }
                     "ver" if in_body => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"v" {
-                                ver_version = String::from_utf8_lossy(&attr.value).parse().ok();
+                            if attr.key.as_ref() == "v" {
+                                ver_version = attr.value.parse().ok();
                             }
                         }
                     }
                     "login" if in_body => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"z" {
-                                login_zone = String::from_utf8_lossy(&attr.value).to_string();
+                            if attr.key.as_ref() == "z" {
+                                login_zone = attr.value.to_string();
                             }
                         }
                     }
@@ -202,7 +201,7 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.decode().unwrap_or_default().to_string();
+                let text = e.as_ref().to_string();
                 if in_nick {
                     nick = text;
                 } else if in_pword {
@@ -212,7 +211,7 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
                 }
             }
             Ok(Event::CData(e)) => {
-                let text = String::from_utf8_lossy(e.as_ref()).to_string();
+                let text = e.as_ref().to_string();
                 if in_nick {
                     nick = text;
                 } else if in_pword {
@@ -223,7 +222,7 @@ pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
             }
             Ok(Event::End(e)) => {
                 let name_bytes = e.name();
-                let name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
+                let name = name_bytes.as_ref();
                 match name {
                     "nick" => in_nick = false,
                     "pword" => in_pword = false,
@@ -293,7 +292,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let name_bytes = e.name();
-                let name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
+                let name = name_bytes.as_ref();
                 match name {
                     "var" => {
                         in_var = true;
@@ -301,11 +300,11 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                         var_type.clear();
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"n" => {
-                                    var_name = String::from_utf8_lossy(&attr.value).to_string();
+                                "n" => {
+                                    var_name = attr.value.to_string();
                                 }
-                                b"t" => {
-                                    var_type = String::from_utf8_lossy(&attr.value).to_string();
+                                "t" => {
+                                    var_type = attr.value.to_string();
                                 }
                                 _ => {}
                             }
@@ -314,8 +313,8 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                     "obj" => {
                         in_obj = true;
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"o" {
-                                obj_name = String::from_utf8_lossy(&attr.value).to_string();
+                            if attr.key.as_ref() == "o" {
+                                obj_name = attr.value.to_string();
                             }
                         }
                     }
@@ -323,7 +322,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.decode().unwrap_or_default().to_string();
+                let text = e.as_ref().to_string();
                 if in_var && !in_obj {
                     if var_name == "cmd" {
                         cmd = text;
@@ -334,7 +333,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                 }
             }
             Ok(Event::CData(e)) => {
-                let text = String::from_utf8_lossy(e.as_ref()).to_string();
+                let text = e.as_ref().to_string();
                 if in_var && !in_obj {
                     if var_name == "cmd" {
                         cmd = text;
@@ -346,7 +345,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
             }
             Ok(Event::End(e)) => {
                 let name_bytes = e.name();
-                let name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
+                let name = name_bytes.as_ref();
                 match name {
                     "var" => in_var = false,
                     "obj" => {

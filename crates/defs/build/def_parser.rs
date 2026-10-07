@@ -78,7 +78,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
                 depth += 1;
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
 
                 if depth == 1 && tag == "root" {
                     // Entering root, do nothing special.
@@ -131,7 +131,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                 }
             }
             Ok(Event::Empty(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
 
                 if depth == 1 {
                     // Self-closing top-level sections (e.g. <ServerOnly/>).
@@ -144,11 +144,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                 }
             }
             Ok(Event::Text(ref e)) => {
-                let text = e
-                    .decode()
-                    .map_err(|err| format!("XML decode error: {}", err))?
-                    .trim()
-                    .to_string();
+                let text = e.trim().to_string();
                 if text.is_empty() {
                     continue;
                 }
@@ -177,7 +173,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                 }
             }
             Ok(Event::End(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let tag = e.name().as_ref().to_string();
 
                 if in_parent && tag == "Parent" {
                     in_parent = false;
