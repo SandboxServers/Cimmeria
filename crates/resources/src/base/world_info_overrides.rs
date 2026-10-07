@@ -1,7 +1,7 @@
 //! Cimmeria-side additions to `CookedWorldInfo.pak` (category 12).
 //!
-//! The Cimmeria-added worlds (the historical CellBlocks 1201–1207 and the
-//! Debug Area 1300, see
+//! The Cimmeria-added worlds (the historical CellBlocks 1201–1207,
+//! Debug Area 1300, and CimmeriaLab 1301; see
 //! [`cimmeria_wire::mercury::world_data::added_worlds`]) are world ids the
 //! shipped catalogue has never had. The client's world table comes from this
 //! catalogue, so the server adds one entry per added world in memory at
@@ -44,8 +44,9 @@ pub struct WorldInfoOverride {
 }
 
 /// `MinPerDay` and `MinToRealMin` of every shipped entry an added world plays
-/// on (`_12` Castle_CellBlock, `_73` Ihpet_Crater_Light). `Flags` differs per
-/// map, so it lives on the added-world table.
+/// on (`_12` Castle_CellBlock, `_73` Ihpet_Crater_Light, and `_88`
+/// Tollana_Curia as the lab scaffold). `Flags` differs per map, so it lives
+/// on the added-world table.
 const MIN_PER_DAY: u32 = 1440;
 const MIN_TO_REAL_MIN: u32 = 1;
 
@@ -170,11 +171,11 @@ mod tests {
         );
     }
 
-    /// The overrides are exactly the seven historical CellBlock worlds, with
-    /// the stock CellBlock flag, and the Debug Area with Ihpet_Crater_Light's.
+    /// The overrides are the seven historical CellBlock worlds, DebugArea,
+    /// and the locally installed CimmeriaLab test map.
     #[test]
     fn overrides_are_the_added_worlds() {
-        let expected: [(u32, &str, &str, u32); 8] = [
+        let expected: [(u32, &str, &str, u32); 9] = [
             (1201, "CellBlock43", "C43485_CellBlock", 1),
             (1202, "CellBlock55", "C55124_CellBlock", 1),
             (1203, "CellBlock57", "C57050_CellBlock", 1),
@@ -183,6 +184,7 @@ mod tests {
             (1206, "CellBlock62", "C62429_CellBlock", 1),
             (1207, "CellBlock63", "C63682_CellBlock", 1),
             (1300, "DebugArea", "Ihpet_Crater_Light", 0),
+            (1301, "CimmeriaLab", "Cimmeria_Lab1", 1),
         ];
         let actual: Vec<(u32, &str, &str, u32)> = WORLD_INFO_OVERRIDES
             .iter()

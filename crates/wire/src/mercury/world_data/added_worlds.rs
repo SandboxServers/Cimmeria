@@ -9,6 +9,8 @@
 //! - **DebugArea (1300)**, the GM test map: a new world on the shipped client
 //!   map `Ihpet_Crater_Light`, shared and always loaded, GM-only travel. See
 //!   `docs/analysis/debug-area/README.md` (decisions D-DA1..D-DA6).
+//! - **CimmeriaLab (1301)**, a temporary client-load test of a purpose-built
+//!   package set. See `docs/analysis/custom-debug-map/README.md`.
 //!
 //! This table is the only Rust copy of the contract. Everything else that
 //! names these worlds is data, checked against it by tests:
@@ -36,6 +38,8 @@ pub enum AddedWorldOrigin {
     HistoricalCellBlock { build: u32 },
     /// The Debug Area (D-DA1): a new world id on a map the client ships.
     DebugArea,
+    /// A locally installed, experimental map package set.
+    CimmeriaLab,
 }
 
 /// One Cimmeria-added world.
@@ -54,8 +58,8 @@ pub struct AddedWorld {
     /// keeps the loaded level (DA-06 checks the result).
     pub client_map: &'static str,
     /// `Flags` of the pushed `COOKED_WORLD_INFO` entry. Copied from the
-    /// shipped entry of the map the world plays on: 1 for the CellBlock
-    /// (`_12`), 0 for Ihpet_Crater_Light (`_73`).
+    /// shipped entry used as the world scaffold: 1 for the CellBlock
+    /// (`_12`) and Tollana_Curia (`_88`), 0 for Ihpet_Crater_Light (`_73`).
     pub world_info_flags: u32,
     pub origin: AddedWorldOrigin,
 }
@@ -70,6 +74,8 @@ impl AddedWorld {
 pub const DEBUG_AREA_WORLD_ID: i32 = 1300;
 /// World name of the Debug Area, as typed in `.gotolocation DebugArea`.
 pub const DEBUG_AREA_WORLD: &str = "DebugArea";
+pub const CIMMERIA_LAB_WORLD_ID: i32 = 1301;
+pub const CIMMERIA_LAB_WORLD: &str = "CimmeriaLab";
 
 const fn historical(
     build: u32,
@@ -92,7 +98,7 @@ const fn historical(
 /// with CME's own VPatch deltas; the other four are complete builds. The
 /// older 45032→49486 delta chain is not here because its source mapset is
 /// missing.
-pub const ADDED_WORLDS: [AddedWorld; 8] = [
+pub const ADDED_WORLDS: [AddedWorld; 9] = [
     historical(43485, 1201, "CellBlock43", "C43485_CellBlock"),
     historical(55124, 1202, "CellBlock55", "C55124_CellBlock"),
     historical(57050, 1203, "CellBlock57", "C57050_CellBlock"),
@@ -106,6 +112,13 @@ pub const ADDED_WORLDS: [AddedWorld; 8] = [
         client_map: "Ihpet_Crater_Light",
         world_info_flags: 0,
         origin: AddedWorldOrigin::DebugArea,
+    },
+    AddedWorld {
+        world_id: CIMMERIA_LAB_WORLD_ID,
+        world: CIMMERIA_LAB_WORLD,
+        client_map: "Cimmeria_Lab1",
+        world_info_flags: 1,
+        origin: AddedWorldOrigin::CimmeriaLab,
     },
 ];
 

@@ -17,6 +17,8 @@ cloned one cover mesh actor from another map; these have not loaded in the
 client and are not yet a constructed level. The [lightmap tail study](lightmap-tail.md)
 then identified baked texture references in an SGC floor component and proved
 an opt-in unlit clone of four floor actors at the package level.
+The [first client-load test](client-load-test.md) records the installed
+package hashes, test world contract, and GM entry command.
 
 ## Evidence and limits
 

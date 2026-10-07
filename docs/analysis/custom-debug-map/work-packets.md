@@ -42,6 +42,7 @@ last_updated: 2026-10-06
 | Direct editor bootstrap | 11 XML patch chunks match copied executable; baseline and patched executable both stop at an early modal in automated shell |
 | Direct package scaffold | Tollana_Curia sublevel Level actor refs 27 → 1, 61 exports structurally preserved; **no authored geometry or client load** |
 | SGC floor lightmap tail | [CM-00b](lightmap-tail.md): type-2 lightmap with 12 GUIDs and three source-package texture refs; opt-in unlit clone places four floor actors and passes structural audit; **client load/collision pending** |
+| Local world wiring and package install | [CM-00c](client-load-test.md): world 1301 (`CimmeriaLab`) maps to `Cimmeria_Lab1`; three package files installed in QA client with hashes recorded; client load and floor collision pending |
 | New package saved by editor | Pending isolated editor run |
 | New package loaded by clean game client | Pending isolated game run |
 | Collision and stock asset visible in game | Pending |
