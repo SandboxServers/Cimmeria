@@ -7,7 +7,7 @@ last_updated: 2026-10-06
 
 # Custom Debug Map campaign
 
-**Campaign status: research complete enough to dispatch CM-00; implementation and UAT pending.** This campaign's deliverable is a newly authored, locally playable SGW level built from existing client assets. [Design and evidence](README.md) explain the layout and the editor-output uncertainty. Record packet PRs, hashes, screenshots and UAT here as work lands. The current world 1300 is unaffected until the new world passes UAT.
+**Campaign status: CM-00 in progress; implementation and UAT pending.** This campaign's deliverable is a newly authored, locally playable SGW level built from existing client assets. [Design and evidence](README.md) explain the layout and the editor-output uncertainty. The [automation probe](automation-probe.md) records the first executable attempt. Record packet PRs, hashes, screenshots and UAT here as work lands. The current world 1300 is unaffected until the new world passes UAT.
 
 ## Dispatch contract
 
@@ -37,6 +37,10 @@ last_updated: 2026-10-06
 | New Level path located in executable | Static pass: `0x00ef6d30` → `0x00ef9970` → `0x00bf7d40` |
 | BigWorld save path located | Static pass: `0x00fede90` → `0x00efb650` |
 | Map/cover/thumbnail build paths located | Static pass: `0x00ff40b0`, `0x01035830` |
+| Startup command-file path located | Static pass: `FUN_00417fe0` accepts `EXEC=`; interactive execution pending |
+| Disposable QA copy | 7,977 files, byte totals match source; Atrea Editor patches initialize in loader log |
+| Direct editor bootstrap | 11 XML patch chunks match copied executable; baseline and patched executable both stop at an early modal in automated shell |
+| Direct package scaffold | Tollana_Curia sublevel Level actor refs 27 → 1, 61 exports structurally preserved; **no authored geometry or client load** |
 | New package saved by editor | Pending isolated editor run |
 | New package loaded by clean game client | Pending isolated game run |
 | Collision and stock asset visible in game | Pending |

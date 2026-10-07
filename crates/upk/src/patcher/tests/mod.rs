@@ -125,6 +125,31 @@ fn clone_remaps_refs_names_component_map_and_level_list() {
 }
 
 #[test]
+fn retain_level_actors_removes_discovery_refs_without_changing_exports() {
+    let src = write_temp("retain-src", &target_package());
+    let mut session = PatchSession::open(&src).unwrap();
+    assert_eq!(session.retain_level_actors(&["WorldInfo"]).unwrap(), (1, 0));
+    let out = write_temp("retain-out", &session.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    assert_eq!(pkg.exports.len(), 2, "actor export remains for audit");
+    let level = pkg.read_export_data(&pkg.exports[0]).unwrap();
+    assert_eq!(LittleEndian::read_i32(&level[16..]), 0);
+    assert_eq!(&level[20..], b"TAIL", "native tail is preserved");
+    let _ = [src, out].map(std::fs::remove_file);
+
+    let src = write_temp("retain-keep-src", &target_package());
+    let mut session = PatchSession::open(&src).unwrap();
+    assert_eq!(session.retain_level_actors(&["Trigger"]).unwrap(), (1, 1));
+    let out = write_temp("retain-keep-out", &session.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let level = pkg.read_export_data(&pkg.exports[0]).unwrap();
+    assert_eq!(LittleEndian::read_i32(&level[16..]), 1);
+    assert_eq!(LittleEndian::read_i32(&level[20..]), 2);
+    assert_eq!(&level[24..], b"TAIL");
+    let _ = [src, out].map(std::fs::remove_file);
+}
+
+#[test]
 fn ensure_import_reuses_an_existing_import() {
     let src_path = write_temp("imp-src", &source_package());
     let source = PatchSession::open(&src_path).unwrap();
@@ -157,6 +182,30 @@ fn clone_rejects_an_array_it_cannot_type() {
     let e = clone_actors(&mut target, &source, &[1], Placement::Offset([0.0; 3])).unwrap_err();
     assert!(e.to_string().contains("Touching"), "{e}");
     assert!(e.to_string().contains("not a known object array"), "{e}");
+    let _ = [src_path, dst_path].map(std::fs::remove_file);
+}
+
+#[test]
+fn clone_preserves_irrelevant_light_guids() {
+    let mut b = Builder::default();
+    let actor_class = b.import("Core", "Class", 0, "StaticMeshActor");
+    let level = level_package(&mut b, &[]);
+    let mut actor = Vec::new();
+    Builder::i32s(&mut actor, &[actor_class, actor_class, -1, -1, 0, 0, -1, 1]);
+    b.vector_prop(&mut actor, "Location", [0.0, 0.0, 1.0]);
+    b.guid_array_prop(&mut actor, "IrrelevantLights", &[[0x5a; 16], [0xa5; 16]]);
+    b.none(&mut actor);
+    b.export(actor_class, level, "StaticMeshActor", actor);
+    b.mark_actor();
+    let src_path = write_temp("guid-src", &b.build());
+    let dst_path = write_temp("guid-dst", &target_package());
+
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    clone_actors(&mut target, &source, &[1], Placement::Offset([0.0; 3])).unwrap();
+    let output = target.finish().unwrap();
+    assert!(output.windows(16).any(|bytes| bytes == [0x5a; 16]));
+    assert!(output.windows(16).any(|bytes| bytes == [0xa5; 16]));
     let _ = [src_path, dst_path].map(std::fs::remove_file);
 }
 

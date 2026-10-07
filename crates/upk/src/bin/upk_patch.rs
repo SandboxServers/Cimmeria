@@ -34,7 +34,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
     );
     process::exit(1);
 }
@@ -250,6 +250,32 @@ fn main() {
                 eprintln!("not audited: exports {:?}", audit.not_audited);
                 process::exit(3);
             }
+        }
+        Some("retain-level-actors") if args.len() >= 5 => {
+            let (input, output) = (&args[2], &args[3]);
+            refuse_in_place(input, output);
+            let classes: Vec<&str> = flag(&args, "--classes")
+                .unwrap_or_else(|| usage())
+                .split(',')
+                .filter(|name| !name.is_empty())
+                .collect();
+            if classes.is_empty() {
+                fail("at least one retained actor class is required");
+            }
+            let mut session = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
+            let level_index = session
+                .level_export_index()
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            let (before, after) = session
+                .retain_level_actors(&classes)
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            let bytes = session.finish().unwrap_or_else(|e| fail(&e.to_string()));
+            std::fs::write(output, bytes).unwrap_or_else(|e| fail(&e.to_string()));
+            println!(
+                "level actor refs: {before} -> {after}; retained classes: {}",
+                classes.join(",")
+            );
+            verify(input, output, &[level_index]);
         }
         Some("clone-objects") if args.len() >= 5 => {
             let (input, source, output) = (&args[2], &args[3], &args[4]);

@@ -9,6 +9,13 @@ last_updated: 2026-10-06
 
 **Status: design and editor-output gate. No playable custom map has been produced or loaded yet.** The requested target is a newly constructed level made from SGW's existing assets, not an alias, tile copy, or redecorated stock world. The [work-packet ledger](work-packets.md) makes the first playable artifact the campaign's entry gate. The existing DebugArea (world 1300) remains the working proving ground until that gate passes.
 
+The first [automation probe](automation-probe.md) found a command-file hook in
+`SGW.exe` and verified the editor byte patches against the local QA executable.
+The automated shell cannot get past the client's early startup modal. A direct
+package experiment produced three renamed scratch scaffolds and successfully
+cloned one cover mesh actor from another map; these have not loaded in the
+client and are not yet a constructed level.
+
 ## Evidence and limits
 
 | Finding | Evidence | Confidence |

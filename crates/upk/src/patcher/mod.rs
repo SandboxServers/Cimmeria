@@ -245,6 +245,14 @@ impl PatchSession {
         }
     }
 
+    /// Remove actor references from this package's Level except exports of
+    /// the listed classes. Exports are preserved but no longer discovered as
+    /// placed actors. The output must still be validated in the game client.
+    pub fn retain_level_actors(&mut self, classes: &[&str]) -> Result<(i32, i32)> {
+        let level = self.level_export_index()?;
+        host_splice::retain_level_actors(self, level, classes)
+    }
+
     /// `ClassPackage.ClassName|Outer.Path.Name`, lowercased: identifies an import
     /// independently of which package's tables it sits in.
     fn import_key(&self, index: usize) -> Result<String> {

@@ -78,6 +78,14 @@ impl Builder {
         Self::i32s(out, refs);
     }
 
+    pub(crate) fn guid_array_prop(&mut self, out: &mut Vec<u8>, name: &str, guids: &[[u8; 16]]) {
+        self.tag(out, name, "ArrayProperty", 4 + guids.len() as i32 * 16);
+        Self::i32s(out, &[guids.len() as i32]);
+        for guid in guids {
+            out.extend_from_slice(guid);
+        }
+    }
+
     pub(crate) fn struct_array_prop(
         &mut self,
         out: &mut Vec<u8>,

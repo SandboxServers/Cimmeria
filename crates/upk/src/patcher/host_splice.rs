@@ -63,6 +63,62 @@ pub(super) fn splice_level_actors(
     Ok((count, new_count))
 }
 
+/// Keep only level actor refs whose export class is in `classes`.
+///
+/// This changes the level's discovery array, not the export table: orphaned
+/// exports remain in the package as inert source data. Intended for local map
+/// authoring experiments before a fresh package writer exists.
+pub(super) fn retain_level_actors(
+    target: &mut PatchSession,
+    level_index: usize,
+    classes: &[&str],
+) -> Result<(i32, i32)> {
+    let level_ref = level_index as i32 + 1;
+    let serial_offset = target.raw_export(level_index)?.serial_offset as usize;
+    let data = target.export_data(level_index)?.to_vec();
+    let (_, props_end) = crate::parse_tagged_properties_with_end(&data, 4, &target.package.names);
+    if props_end + 8 > data.len() {
+        return err("Level export too short for an actor array".into());
+    }
+    let owner = LittleEndian::read_i32(&data[props_end..]);
+    if owner != level_ref {
+        return err(format!(
+            "Level actor array owner is {owner}, expected the level itself ({level_ref})"
+        ));
+    }
+    let count = LittleEndian::read_i32(&data[props_end + 4..]);
+    let refs_at = props_end + 8;
+    let refs_end = refs_at + count.max(0) as usize * 4;
+    if count < 0 || refs_end > data.len() {
+        return err(format!("Level actor count {count} is implausible"));
+    }
+    let mut retained = Vec::new();
+    for i in 0..count as usize {
+        let r = LittleEndian::read_i32(&data[refs_at + i * 4..]);
+        if r < 0 || r as usize > target.package.exports.len() {
+            return err(format!("Level actor slot {i} holds {r}, not an export ref"));
+        }
+        if r > 0 {
+            let class = target
+                .package
+                .export_class_name(&target.package.exports[r as usize - 1]);
+            if classes.contains(&class) {
+                retained.push(r);
+            }
+        }
+    }
+    refuse_self_offsets(&data, serial_offset, "Level")?;
+    let mut out = Vec::with_capacity(data.len());
+    out.extend_from_slice(&data[..refs_at]);
+    for r in &retained {
+        out.extend_from_slice(&r.to_le_bytes());
+    }
+    out.extend_from_slice(&data[refs_end..]);
+    LittleEndian::write_i32(&mut out[props_end + 4..], retained.len() as i32);
+    target.replace_export_data(level_index, out)?;
+    Ok((count, retained.len() as i32))
+}
+
 /// Moving an export breaks any inline bulk-data header inside it, since those
 /// store their own absolute file offset. Detect, do not guess.
 fn refuse_self_offsets(data: &[u8], serial_offset: usize, what: &str) -> Result<()> {
