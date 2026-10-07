@@ -65,6 +65,8 @@ pub enum Placement {
     Offset([f32; 3]),
     /// Translate the group so the first root that is an actor lands here.
     FirstActorAt([f32; 3]),
+    /// Place the first root at this point with an absolute UE rotator yaw.
+    FirstActorAtYaw { position: [f32; 3], yaw: i32 },
     /// Carry the group from one reference actor's frame to another's: the clone
     /// sits relative to `target` (an export in the target package) as the
     /// originals sit relative to `source`, including the yaw difference.
@@ -228,6 +230,17 @@ pub fn clone_objects_with_options(
                 from: actor_frame(source, index)?.0,
                 to,
                 yaw_delta: 0,
+            }
+        }
+        Placement::FirstActorAtYaw { position, yaw } => {
+            let Some(&(index, _)) = first_actor else {
+                return err("FirstActorAtYaw placement needs an actor among the roots".into());
+            };
+            let (from, source_yaw) = actor_frame(source, index)?;
+            Transform {
+                from,
+                to: position,
+                yaw_delta: yaw.wrapping_sub(source_yaw),
             }
         }
         Placement::Anchor {

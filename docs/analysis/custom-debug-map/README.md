@@ -11,6 +11,12 @@ The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforg
 
 **Status: client-load and first Ancient module walkthrough passed on an experimental scaffold.** `CimmeriaLab` shows one temporary SGC floor, a stock gate ring, cover, an Ancient terminal, and an Ancient four-way hall assembled from cooked assets. Client screenshots show the player inside the hall after ghost mode was disabled and movement validation restored. The hall floor and the connection from the temporary slab are walkable; a dark seam, open exits into black space, missing sky and a visual-only gate remain. This is still a renamed package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) and [test handoff](handoff-2026-10-06.md) track the remaining gates. The existing DebugArea (world 1300) remains the working proving ground.
 
+An [expanded four-hall assembly](lived-in-assembly-test.md) was loaded and
+photographed in the QA client. A [nine-zone shell candidate](worldforge-shell-test.md)
+now uses Ancient elbows and three-way intersections to close the interior
+perimeter, with an outdoor test slab and skydome. Its package audit passed;
+the new geometry awaits the user's client walkthrough.
+
 The first [automation probe](automation-probe.md) found a command-file hook in
 `SGW.exe` and verified the editor byte patches against the local QA executable.
 The automated shell cannot get past the client's early startup modal. A direct

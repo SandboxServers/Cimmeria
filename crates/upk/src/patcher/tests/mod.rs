@@ -505,6 +505,40 @@ fn mapped_source_objects_are_redirected_not_cloned() {
 }
 
 #[test]
+fn first_actor_at_yaw_sets_absolute_rotation_and_position() {
+    let path = write_temp("absolute-yaw", &rig_package());
+    let source = PatchSession::open(&path).unwrap();
+    let mut target = PatchSession::open(&path).unwrap();
+    let report = clone_objects(
+        &mut target,
+        &source,
+        &CloneRequest {
+            roots: &[5],
+            mapped: &[],
+            placement: Placement::FirstActorAtYaw {
+                position: [2000.0, 3000.0, -128.0],
+                yaw: 32768,
+            },
+        },
+    )
+    .unwrap();
+    assert_eq!(report.objects[0].location, Some([2000.0, 3000.0, -128.0]));
+    let out = write_temp("absolute-yaw-out", &target.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let index = report.objects[0].target_ref as usize - 1;
+    let data = pkg.read_export_data(&pkg.exports[index]).unwrap();
+    let rotation = crate::parse_tagged_properties(&data, 32, &pkg.names)
+        .into_iter()
+        .find(|prop| prop.name == "Rotation")
+        .unwrap();
+    assert!(matches!(
+        rotation.value,
+        crate::PropValue::Rotator { yaw: 32768, .. }
+    ));
+    let _ = [path, out].map(std::fs::remove_file);
+}
+
+#[test]
 fn level_splice_refuses_inline_bulk_data_offsets() {
     // A level whose tail holds its own absolute file offset, as an inline
     // FUntypedBulkData header would. Relocating it verbatim would corrupt it.

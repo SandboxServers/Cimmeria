@@ -61,3 +61,12 @@ identifies its three package-local texture refs. `clone-objects
 shape, discards the baked lighting and writes the known unlit LOD form.
 Four floor actors cloned into scratch and passed structural verification.
 There is still no client rendering or collision evidence.
+
+`clone-objects --first-at X,Y,Z --yaw-degrees 0|90|180|270` sets an
+absolute cardinal yaw on the first root actor, rotating any actors in its
+cloned group around that placement. The map shell probe uses it to align
+Ancient elbow and three-way corridor meshes into a closed 3 × 3 interior.
+The option has a serialized transform regression test in `cimmeria-upk`.
+Run `assemble_worldforge_probe.ps1` with explicit `-ClientRoot`, `-InputMap`,
+`-PreviousProbe` and `-OutputMap` paths to reproduce the package assembly.
+It refuses an existing output, and its result still requires client testing.

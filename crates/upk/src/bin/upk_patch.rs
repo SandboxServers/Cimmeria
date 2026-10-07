@@ -8,6 +8,7 @@
 //!   property list the audit could not follow)
 //!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
 //!             [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]
+//!             [--yaw-degrees 0|90|180|270 with --first-at]
 //!             [--strip-lightmaps]
 //!
 //! `roundtrip` rewrites a package uncompressed with no content change.
@@ -37,7 +38,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST] [--strip-lightmaps]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST] [--yaw-degrees 0|90|180|270] [--strip-lightmaps]"
     );
     process::exit(1);
 }
@@ -286,6 +287,13 @@ fn main() {
             let roots = parse_indices(flag(&args, "--roots").unwrap_or_else(|| usage()));
             let mapped = parse_pairs(flag(&args, "--map").unwrap_or(""));
             let first_at = flags(&args, "--first-at");
+            let yaw = flag(&args, "--yaw-degrees").map(|raw| match raw {
+                "0" => 0,
+                "90" => 16384,
+                "180" => 32768,
+                "270" => 49152,
+                _ => fail("--yaw-degrees must be 0, 90, 180 or 270"),
+            });
             let placements: Vec<Placement> = match (
                 first_at.is_empty(),
                 flag(&args, "--offset"),
@@ -293,7 +301,13 @@ fn main() {
             ) {
                 (false, None, None) => first_at
                     .iter()
-                    .map(|p| Placement::FirstActorAt(parse_vec3(p)))
+                    .map(|p| match yaw {
+                        Some(yaw) => Placement::FirstActorAtYaw {
+                            position: parse_vec3(p),
+                            yaw,
+                        },
+                        None => Placement::FirstActorAt(parse_vec3(p)),
+                    })
                     .collect(),
                 (true, Some(d), None) => vec![Placement::Offset(parse_vec3(d))],
                 (true, None, Some(a)) => match parse_pairs(a)[..] {
@@ -303,6 +317,9 @@ fn main() {
                 (true, None, None) => vec![Placement::Offset([0.0; 3])],
                 _ => usage(),
             };
+            if yaw.is_some() && first_at.is_empty() {
+                fail("--yaw-degrees requires --first-at");
+            }
 
             let src = PatchSession::open(source).unwrap_or_else(|e| fail(&e.to_string()));
             let mut dst = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
