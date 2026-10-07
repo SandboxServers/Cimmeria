@@ -76,6 +76,25 @@ yet been retested in the client.** Relaunch and use
 `.gotolocation CimmeriaLab 0 2 0`; look for a visible floor and cover object,
 then test the edge without assuming all four floor copies line up.
 
+## Skylight retest, 2026-10-06
+
+Three in-client screenshots after the skylight install show the SGC floor
+material and the cover mesh visibly rendered in `CimmeriaLab`. The avatar
+stands on or immediately over the cover at the test arrival point. This
+closes the minimal **client load + visible mesh + collision** gate for this
+experimental package. The background remains black because the scaffold has
+no finished sky or surrounding environment. The floor's curved edges and
+painted markings are plainly visible; the player's earlier edge fall is
+consistent with walking beyond this finite mesh footprint, but the exact
+edge position has not been surveyed.
+
+The screenshots do not prove that every floor copy has collision, that the
+floor is continuously walkable between pieces, or that the cover object has
+usable cover nodes. The arrival point needs to move off the cover mesh. Next
+construction passes should use newly authored continuous ground, an Ancient
+asset palette, an outdoor sky/light rig, and a measured safe spawn before
+adding rooms and interactions.
+
 The local 2026-10-06 test uses a fresh `sgw_cimmeria_lab` database built from
 the current `db/database.sql` because the existing `sgw` database predates
 `resources.worlds.navmesh_mode`. The older database was left untouched.

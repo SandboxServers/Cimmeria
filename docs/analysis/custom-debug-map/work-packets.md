@@ -40,11 +40,11 @@ last_updated: 2026-10-06
 | Startup command-file path located | Static pass: `FUN_00417fe0` accepts `EXEC=`; interactive execution pending |
 | Disposable QA copy | 7,977 files, byte totals match source; Atrea Editor patches initialize in loader log |
 | Direct editor bootstrap | 11 XML patch chunks match copied executable; baseline and patched executable both stop at an early modal in automated shell |
-| Direct package scaffold | Tollana_Curia sublevel Level actor refs 27 → 1, 61 exports structurally preserved; **no authored geometry or client load** |
-| SGC floor lightmap tail | [CM-00b](lightmap-tail.md): type-2 lightmap with 12 GUIDs and three source-package texture refs; opt-in unlit clone places four floor actors and passes structural audit; **client load/collision pending** |
-| Local world wiring and package install | [CM-00c](client-load-test.md): world 1301 (`CimmeriaLab`) maps to `Cimmeria_Lab1`; three package files installed in QA client with hashes recorded; client load and floor collision pending |
+| Direct package scaffold | Tollana_Curia sublevel Level actor refs 27 → 1, 61 exports structurally preserved; installed as an experimental package scaffold, **not authored geometry** |
+| SGC floor lightmap tail | [CM-00b](lightmap-tail.md): type-2 lightmap with 12 GUIDs and three source-package texture refs; opt-in unlit clone places four floor actors; in-client screenshots now show floor material |
+| Local world wiring and package install | [CM-00c](client-load-test.md): world 1301 (`CimmeriaLab`) loads `Cimmeria_Lab1`; first client pass confirmed floor collision, skylight retest confirmed visible floor and cover mesh |
 | New package saved by editor | Pending isolated editor run |
 | New package loaded by clean game client | Pending isolated game run |
-| Collision and stock asset visible in game | Pending |
+| Collision and stock asset visible in game | **Passed for experimental scaffold only**; three screenshots show visible floor/cover and player standing; continuous floor, sky and authored-level acceptance pending |
 
 Do not silently substitute a copied/renamed Harset map for CM-00 or CM-02. Harset is a useful source of meshes, rigs and material dependencies, and its gate placement is a reference; the map geometry in this campaign must be newly authored.

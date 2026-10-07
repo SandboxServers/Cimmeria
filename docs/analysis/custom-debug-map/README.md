@@ -9,7 +9,7 @@ last_updated: 2026-10-06
 
 The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [visual floor plan](janus-worldforge-plan.svg). It is a design target built around verified Agnos asset references; the client-load gate below still comes first.
 
-**Status: first client collision pass; rendering unresolved.** The experimental `CimmeriaLab` package loads enough for a player to stand and jump on an invisible floor, but the viewport is black and the floor edge remains unmeasured. This is a package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) keeps visual rendering and a genuinely authored map as gates. The existing DebugArea (world 1300) remains the working proving ground.
+**Status: minimal client-load and visible collision gate passed.** The experimental `CimmeriaLab` package now shows its SGC floor and cover mesh, and the player can stand and jump on the floor after a skylight was activated. The sky is black, the arrival overlaps the cover mesh, and the floor edge remains unmeasured. This is a package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) keeps authored geometry, navigation and functional fixtures as later gates. The existing DebugArea (world 1300) remains the working proving ground.
 
 The first [automation probe](automation-probe.md) found a command-file hook in
 `SGW.exe` and verified the editor byte patches against the local QA executable.
