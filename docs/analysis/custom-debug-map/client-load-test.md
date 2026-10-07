@@ -66,6 +66,16 @@ Windows held the persistent package open while `SGW.exe` was running. The
 rendering hypothesis remains unverified until the game exits, the candidate
 is installed, and the client is restarted.
 
+After SGW exited on 2026-10-06, the skylight candidate replaced only
+`Cimmeria_Lab1.umap` in the QA install. The original persistent package was
+backed up locally outside the repository. Installed SHA-256:
+`5ED2BA3875789EDBCE4C2759114332C91F75933A783B5DF086105A6DE9E14FB3`.
+The map parser sees the original SkyLight export and the newly cloned export
+382; the patcher's Level actor list check reported 1→2. **Rendering has not
+yet been retested in the client.** Relaunch and use
+`.gotolocation CimmeriaLab 0 2 0`; look for a visible floor and cover object,
+then test the edge without assuming all four floor copies line up.
+
 The local 2026-10-06 test uses a fresh `sgw_cimmeria_lab` database built from
 the current `db/database.sql` because the existing `sgw` database predates
 `resources.worlds.navmesh_mode`. The older database was left untouched.
