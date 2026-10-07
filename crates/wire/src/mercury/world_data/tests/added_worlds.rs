@@ -43,6 +43,16 @@ fn cimmeria_lab_resolves_to_its_installed_client_map() {
     assert_eq!(client_map_for_world(world.world), "Cimmeria_Lab1");
 }
 
+#[test]
+fn mapper_debug_resolves_to_separate_debug_package() {
+    let world = added_world("MapperDebug").expect("mapper QA world is registered");
+    assert_eq!(world.world_id, 1302);
+    assert_eq!(world.client_map, "Debug");
+    assert_eq!(world.origin, AddedWorldOrigin::MapperDebug);
+    assert_eq!(known_world_id(world.world), Some(1302));
+    assert_eq!(client_map_for_world(world.world), "Debug");
+}
+
 /// Ids, names and lookups are unique, and no added world reuses a shipped
 /// world's id or name (the shipped catalogue tops out at 92).
 #[test]
@@ -95,6 +105,7 @@ fn every_declared_space_resolves_to_its_seed_world_id_and_client_map() {
     assert!(spaces.len() >= 32, "parsed {} spaces", spaces.len());
     assert!(spaces.iter().any(|s| s == "DebugArea"));
     assert!(spaces.iter().any(|s| s == "CimmeriaLab"));
+    assert!(spaces.iter().any(|s| s == "MapperDebug"));
     for world in &spaces {
         let row = rows
             .iter()

@@ -46,7 +46,7 @@ fn world_info_takes_the_per_key_handshake_for_the_added_worlds() {
     let cache = ResourceCache::load_all(data_dir()).expect("committed PAKs load");
     assert_eq!(
         cache.overridden_elements(CATEGORY_WORLD_INFO),
-        [1201, 1202, 1203, 1204, 1205, 1206, 1207, 1300, 1301].as_slice()
+        [1201, 1202, 1203, 1204, 1205, 1206, 1207, 1300, 1301, 1302].as_slice()
     );
 
     let served = cache.category(CATEGORY_WORLD_INFO).expect("category 12");

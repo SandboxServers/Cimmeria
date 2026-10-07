@@ -370,6 +370,38 @@ fn is_baked_2d_tail(source: &PatchSession, tail: &[u8]) -> bool {
     })
 }
 
+/// One LOD with an FLightMap1D. In the SGW foliage donors this is a GUID
+/// array, a vertex bulk-data header, twelve bytes per vertex, then 36 bytes
+/// of scale/bias data. The source bulk-data offset is package-local, so copy
+/// neither it nor the vertex bytes into a different map. Require the bulk
+/// counts and the complete tail length to agree before replacing the LOD.
+fn is_baked_1d_tail(tail: &[u8]) -> bool {
+    if tail.len() < 76
+        || [0, 4, 8, 12].map(|at| LittleEndian::read_i32(&tail[at..at + 4])) != [1, 0, 0, 1]
+    {
+        return false;
+    }
+    let guid_count = LittleEndian::read_i32(&tail[16..20]);
+    if !(0..=16).contains(&guid_count) {
+        return false;
+    }
+    let header = 40 + guid_count as usize * 16;
+    if tail.len() < header + 36 {
+        return false;
+    }
+    let vertex_count = LittleEndian::read_i32(&tail[header - 12..]);
+    let bulk_bytes = LittleEndian::read_i32(&tail[header - 8..]);
+    vertex_count >= 0
+        && bulk_bytes >= 0
+        && (vertex_count as usize).checked_mul(12) == Some(bulk_bytes as usize)
+        && tail.len() == header + bulk_bytes as usize + 36
+}
+
+fn is_world_position(kind: Kind, name: &str) -> bool {
+    (kind == Kind::Actor && name == "Location")
+        || (kind == Kind::Component && name == "OldPosition")
+}
+
 fn clone_one(
     target: &mut PatchSession,
     source: &PatchSession,
@@ -451,10 +483,7 @@ fn clone_one(
         props_at,
         &mut rm,
         &mut |name, value_kind, value| {
-            if kind != Kind::Actor {
-                return Ok(());
-            }
-            if name == "Location" && value_kind == "Vector" && value.len() == 12 {
+            if is_world_position(kind, name) && value_kind == "Vector" && value.len() == 12 {
                 let from = [
                     LittleEndian::read_f32(&value[0..]),
                     LittleEndian::read_f32(&value[4..]),
@@ -464,8 +493,14 @@ fn clone_one(
                 for (i, c) in to.iter().enumerate() {
                     LittleEndian::write_f32(&mut value[i * 4..], *c);
                 }
-                location = Some(to);
-            } else if name == "Rotation" && value_kind == "Rotator" && value.len() == 12 {
+                if kind == Kind::Actor {
+                    location = Some(to);
+                }
+            } else if kind == Kind::Actor
+                && name == "Rotation"
+                && value_kind == "Rotator"
+                && value.len() == 12
+            {
                 let yaw = LittleEndian::read_i32(&value[4..]).wrapping_add(transform.yaw_delta);
                 LittleEndian::write_i32(&mut value[4..], yaw);
             }
@@ -481,7 +516,10 @@ fn clone_one(
         .export_class_name(&source.package.exports[index])
         .to_string();
     let tail = &data[end..];
-    if strip_lightmaps && class.ends_with("StaticMeshComponent") && is_baked_2d_tail(source, tail) {
+    if strip_lightmaps
+        && class.ends_with("StaticMeshComponent")
+        && (is_baked_2d_tail(source, tail) || is_baked_1d_tail(tail))
+    {
         data.truncate(end);
         data.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     } else if !tail_copies_verbatim(&class, tail) {
@@ -505,4 +543,29 @@ fn clone_one(
         location,
         is_root,
     })
+}
+
+#[cfg(test)]
+mod native_tail_tests {
+    use super::{is_baked_1d_tail, is_world_position, Kind};
+
+    #[test]
+    fn foliage_1d_lightmap_requires_consistent_vertex_bulk_length() {
+        let mut tail = vec![0u8; 56 + 50 * 12 + 36];
+        tail[0..4].copy_from_slice(&1i32.to_le_bytes());
+        tail[12..16].copy_from_slice(&1i32.to_le_bytes());
+        tail[16..20].copy_from_slice(&1i32.to_le_bytes());
+        tail[44..48].copy_from_slice(&50i32.to_le_bytes());
+        tail[48..52].copy_from_slice(&600i32.to_le_bytes());
+        assert!(is_baked_1d_tail(&tail));
+        tail[48..52].copy_from_slice(&588i32.to_le_bytes());
+        assert!(!is_baked_1d_tail(&tail));
+    }
+
+    #[test]
+    fn cloned_particle_component_cached_position_moves_with_actor() {
+        assert!(is_world_position(Kind::Actor, "Location"));
+        assert!(is_world_position(Kind::Component, "OldPosition"));
+        assert!(!is_world_position(Kind::Component, "Translation"));
+    }
 }

@@ -7,15 +7,19 @@ last_updated: 2026-10-06
 
 # Custom Debug Map
 
-The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [visual floor plan](janus-worldforge-plan.svg). It is a design target built around verified Agnos asset references; the client-load gate below still comes first.
+The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [visual floor plan](janus-worldforge-plan.svg) and a concise [functional requirements checklist](functional-requirements.md). The separate [human-authored Debug map import](mapper-debug-import.md) provides a QA comparison for terrain and fixture composition.
 
-**Status: client-load and first Ancient module walkthrough passed on an experimental scaffold.** `CimmeriaLab` shows one temporary SGC floor, a stock gate ring, cover, an Ancient terminal, and an Ancient four-way hall assembled from cooked assets. Client screenshots show the player inside the hall after ghost mode was disabled and movement validation restored. The hall floor and the connection from the temporary slab are walkable; a dark seam, open exits into black space, missing sky and a visual-only gate remain. This is still a renamed package scaffold with placed meshes, not the final newly constructed level requested here. The [work-packet ledger](work-packets.md) and [test handoff](handoff-2026-10-06.md) track the remaining gates. The existing DebugArea (world 1300) remains the working proving ground.
+**Status: the custom Worldforge is an experimental, client-loadable assembly.** Its original slab and gate ring remain temporary, while the Ancient room layout is built from individual cooked modules. The [work-packet ledger](work-packets.md) and [test handoff](handoff-2026-10-06.md) track the remaining systems. The existing DebugArea (world 1300) remains the working proving ground.
 
-An [expanded four-hall assembly](lived-in-assembly-test.md) was loaded and
-photographed in the QA client. A [nine-zone shell candidate](worldforge-shell-test.md)
-now uses Ancient elbows and three-way intersections to close the interior
-perimeter, with an outdoor test slab and skydome. Its package audit passed;
-the new geometry awaits the user's client walkthrough.
+An [expanded four-hall assembly](lived-in-assembly-test.md) and a
+[nine-zone Ancient shell](worldforge-shell-test.md) were loaded and photographed
+in the QA client. The user confirmed that the Ancient sections join and are
+walkable. A later unverified QA candidate adds an observation ramp and upper
+loop, an outdoor courtyard wall and ring assembly, foliage, lighting and
+particle effects. The exterior floor, functional gate and rings, NPC behavior,
+navigation and minimap still need client and server acceptance checks.
+The [v9 client checklist](worldforge-v9-test.md) records the installed package
+hash and the next walkthrough.
 
 The first [automation probe](automation-probe.md) found a command-file hook in
 `SGW.exe` and verified the editor byte patches against the local QA executable.

@@ -11,6 +11,8 @@
 //!   `docs/analysis/debug-area/README.md` (decisions D-DA1..D-DA6).
 //! - **CimmeriaLab (1301)**, a temporary client-load test of a purpose-built
 //!   package set. See `docs/analysis/custom-debug-map/README.md`.
+//! - **MapperDebug (1302)**, a separate QA world for the human-authored
+//!   `Debug` package set.
 //!
 //! This table is the only Rust copy of the contract. Everything else that
 //! names these worlds is data, checked against it by tests:
@@ -40,6 +42,8 @@ pub enum AddedWorldOrigin {
     DebugArea,
     /// A locally installed, experimental map package set.
     CimmeriaLab,
+    /// Human-authored Debug map supplied for local QA comparison.
+    MapperDebug,
 }
 
 /// One Cimmeria-added world.
@@ -76,6 +80,8 @@ pub const DEBUG_AREA_WORLD_ID: i32 = 1300;
 pub const DEBUG_AREA_WORLD: &str = "DebugArea";
 pub const CIMMERIA_LAB_WORLD_ID: i32 = 1301;
 pub const CIMMERIA_LAB_WORLD: &str = "CimmeriaLab";
+pub const MAPPER_DEBUG_WORLD_ID: i32 = 1302;
+pub const MAPPER_DEBUG_WORLD: &str = "MapperDebug";
 
 const fn historical(
     build: u32,
@@ -98,7 +104,7 @@ const fn historical(
 /// with CME's own VPatch deltas; the other four are complete builds. The
 /// older 45032→49486 delta chain is not here because its source mapset is
 /// missing.
-pub const ADDED_WORLDS: [AddedWorld; 9] = [
+pub const ADDED_WORLDS: [AddedWorld; 10] = [
     historical(43485, 1201, "CellBlock43", "C43485_CellBlock"),
     historical(55124, 1202, "CellBlock55", "C55124_CellBlock"),
     historical(57050, 1203, "CellBlock57", "C57050_CellBlock"),
@@ -119,6 +125,13 @@ pub const ADDED_WORLDS: [AddedWorld; 9] = [
         client_map: "Cimmeria_Lab1",
         world_info_flags: 1,
         origin: AddedWorldOrigin::CimmeriaLab,
+    },
+    AddedWorld {
+        world_id: MAPPER_DEBUG_WORLD_ID,
+        world: MAPPER_DEBUG_WORLD,
+        client_map: "Debug",
+        world_info_flags: 1,
+        origin: AddedWorldOrigin::MapperDebug,
     },
 ];
 

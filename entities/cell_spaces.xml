@@ -23,4 +23,5 @@
 	<Space WorldName="Beta_Site_Evo_1" />
 	<Space WorldName="DebugArea" />
 	<Space WorldName="CimmeriaLab" />
+	<Space WorldName="MapperDebug" />
 </Spaces>

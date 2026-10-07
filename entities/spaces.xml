@@ -21,6 +21,7 @@
 	<Space WorldName="DebugArea" Instanced="false" MinX="-400" MaxX="900" MinY="-1400" MaxY="200" />
 	<!-- Temporary custom-map package load test. Bounds cover the four placed floor actors (UE X/Y 0..2048). -->
 	<Space WorldName="CimmeriaLab" Instanced="false" MinX="-20" MaxX="50" MinY="-20" MaxY="50" />
+	<Space WorldName="MapperDebug" Instanced="false" MinX="-20" MaxX="250" MinY="-20" MaxY="250" />
 	<Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />
 	<Space WorldName="Harset_CmdCenter" Instanced="false" MinX="-400" MaxX="400" MinY="-400" MaxY="400" />
 	<Space WorldName="Harset_Market" Instanced="true" MinX="0" MaxX="0" MinY="0" MaxY="0" />

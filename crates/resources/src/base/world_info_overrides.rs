@@ -172,10 +172,10 @@ mod tests {
     }
 
     /// The overrides are the seven historical CellBlock worlds, DebugArea,
-    /// and the locally installed CimmeriaLab test map.
+    /// and the two locally installed custom QA maps.
     #[test]
     fn overrides_are_the_added_worlds() {
-        let expected: [(u32, &str, &str, u32); 9] = [
+        let expected: [(u32, &str, &str, u32); 10] = [
             (1201, "CellBlock43", "C43485_CellBlock", 1),
             (1202, "CellBlock55", "C55124_CellBlock", 1),
             (1203, "CellBlock57", "C57050_CellBlock", 1),
@@ -185,6 +185,7 @@ mod tests {
             (1207, "CellBlock63", "C63682_CellBlock", 1),
             (1300, "DebugArea", "Ihpet_Crater_Light", 0),
             (1301, "CimmeriaLab", "Cimmeria_Lab1", 1),
+            (1302, "MapperDebug", "Debug", 1),
         ];
         let actual: Vec<(u32, &str, &str, u32)> = WORLD_INFO_OVERRIDES
             .iter()
