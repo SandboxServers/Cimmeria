@@ -34,7 +34,9 @@ use crate::error::{Result, UpkError};
 use crate::package::Package;
 use raw_tables::{RawExport, RawImport, SummaryLayout, EXPORT_SERIAL_SIZE_AT, IMPORT_ENTRY_SIZE};
 
-pub use object_clone::{clone_objects, CloneReport, CloneRequest, ClonedObject, Placement};
+pub use object_clone::{
+    clone_objects, clone_objects_with_options, CloneReport, CloneRequest, ClonedObject, Placement,
+};
 
 /// `RF_LoadForClient | RF_LoadForServer | RF_LoadForEdit`, the bits of a name
 /// entry's flags that decide which builds read it as a real name.

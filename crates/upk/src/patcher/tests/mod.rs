@@ -5,7 +5,7 @@ pub(crate) mod fixtures;
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use super::{clone_objects, CloneRequest, PatchSession, Placement};
+use super::{clone_objects, clone_objects_with_options, CloneRequest, PatchSession, Placement};
 use crate::Package;
 use fixtures::{
     clone_actors, level_package, rig_package, source_package, source_package_with_lod_data,
@@ -251,6 +251,78 @@ fn a_lod_entry_with_baked_lighting_is_refused() {
             "{lod_data:?}: {e}"
         );
     }
+}
+
+#[test]
+fn baked_2d_lightmap_can_be_explicitly_stripped_without_copying_texture_refs() {
+    let mut b = Builder::default();
+    let actor_class = b.import("Core", "Class", 0, "StaticMeshActor");
+    let component_class = b.import("Core", "Class", 0, "StaticMeshComponent");
+    let texture_class = b.import("Core", "Class", 0, "LightMapTexture2D");
+    let level = level_package(&mut b, &[]);
+    let texture_refs: Vec<i32> = (0..3)
+        .map(|i| {
+            b.export(
+                texture_class,
+                0,
+                &format!("LightMapTexture2D_{i}"),
+                vec![0; 12],
+            )
+        })
+        .collect();
+    let actor_ref = 5;
+    let component_ref = 6;
+    let mut actor = Vec::new();
+    Builder::i32s(&mut actor, &[actor_class, actor_class, -1, -1, 0, 0, -1, 1]);
+    b.object_prop(&mut actor, "StaticMeshComponent", component_ref);
+    b.vector_prop(&mut actor, "Location", [0.0, 0.0, 1.0]);
+    b.none(&mut actor);
+    assert_eq!(
+        b.export(actor_class, level, "StaticMeshActor", actor),
+        actor_ref
+    );
+    b.mark_actor();
+    let mut component = Vec::new();
+    Builder::i32s(&mut component, &[0, -1]);
+    b.none(&mut component);
+    Builder::i32s(&mut component, &[1, 0, 0, 2, 1]);
+    component.extend_from_slice(&[0x5a; 16]);
+    for reference in texture_refs {
+        Builder::i32s(&mut component, &[reference, 0, 0, 0]);
+    }
+    Builder::i32s(&mut component, &[0, 0, 0, 0]);
+    assert_eq!(
+        b.export(component_class, actor_ref, "StaticMeshComponent", component),
+        component_ref
+    );
+    let src_path = write_temp("lightmap-src", &b.build());
+    let dst_path = write_temp("lightmap-dst", &target_package());
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    let request = CloneRequest {
+        roots: &[actor_ref as usize - 1],
+        mapped: &[],
+        placement: Placement::Offset([0.0; 3]),
+    };
+    assert!(clone_objects(
+        &mut PatchSession::open(&dst_path).unwrap(),
+        &source,
+        &request
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("post-property data"));
+    clone_objects_with_options(&mut target, &source, &request, true).unwrap();
+    let out_path = write_temp("lightmap-out", &target.finish().unwrap());
+    let output = Package::open(&out_path).unwrap();
+    let component = output
+        .read_export_data(output.exports.last().unwrap())
+        .unwrap();
+    assert_eq!(
+        &component[component.len() - 16..],
+        &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    );
+    let _ = [src_path, dst_path, out_path].map(std::fs::remove_file);
 }
 
 #[test]

@@ -53,7 +53,11 @@ appearance, collision and cover behavior still require a client test. The
 `upk_info --mesh-actors` inventory flag lists donor StaticMeshActor export
 indices, locations and mesh references.
 
-The first SGC floor candidate (`SGC-RoundRoom_Floor00`, export 1132 in
-`SGC-00000002.umap`) cannot yet be cloned: after a validated GUID-array
-remap, its component reaches 276 bytes of unknown native tail data. The
-patcher rejects that content rather than emitting an uncertain package.
+The SGC floor candidate (`SGC-RoundRoom_Floor00`, export 1132 in
+`SGC-00000002.umap`) carries a 276-byte baked 2D lightmap tail. The
+[CM-00b byte study](../../docs/analysis/custom-debug-map/lightmap-tail.md)
+identifies its three package-local texture refs. `clone-objects
+--strip-lightmaps` is an explicit opt-in that accepts the exact verified
+shape, discards the baked lighting and writes the known unlit LOD form.
+Four floor actors cloned into scratch and passed structural verification.
+There is still no client rendering or collision evidence.

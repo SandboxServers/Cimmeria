@@ -67,11 +67,13 @@ original map, rather than relying on mouse placement. **No playable, authored
 9. `upk_info --mesh-actors` found `SGC_Interior.SGC-RoundRoom_Floor00` at
    export 1132 in `SGC-00000002.umap`. A clone attempt identified a raw
    `IrrelevantLights` array as 16-byte GUIDs (196 and 36-byte observed
-   values); the remapper now accepts only this exact shape, with a regression
-   test. The next guarded failure is **276 bytes of unknown post-property
-   data** on export 1877. The floor has **not** been placed. That native
-   component tail needs format recovery before the direct route can use this
-   floor asset. No override or byte pass-through was used.
+   values); the remapper accepts only this exact shape, with a regression
+   test. The next guarded failure was 276 bytes of post-property data on
+   component export 1877. [CM-00b](lightmap-tail.md) recovered its 2D lightmap
+   layout and added an **opt-in** transform to discard the baked lightmap.
+   Four individual floor actors then cloned into the scratch sublevel; the
+   resulting package parses and passes its property-name audit. Rendering,
+   collision and client load remain untested.
 
 ## `EXEC` file format, recovered from the executable
 

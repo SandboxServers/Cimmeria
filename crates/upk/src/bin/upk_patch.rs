@@ -8,6 +8,7 @@
 //!   property list the audit could not follow)
 //!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
 //!             [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]
+//!             [--strip-lightmaps]
 //!
 //! `roundtrip` rewrites a package uncompressed with no content change.
 //! `clone-objects` copies each root (a 0-based export index in <source>) and
@@ -21,7 +22,9 @@
 //! Both refuse to overwrite <in>, and both re-open the output to verify it.
 
 use cimmeria_upk::patcher::name_audit::audit_client_names;
-use cimmeria_upk::patcher::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
+use cimmeria_upk::patcher::{
+    clone_objects_with_options, CloneReport, CloneRequest, PatchSession, Placement,
+};
 use cimmeria_upk::{extract_actors, Package};
 use std::env;
 use std::path::Path;
@@ -34,7 +37,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST] [--strip-lightmaps]"
     );
     process::exit(1);
 }
@@ -312,8 +315,13 @@ fn main() {
                     mapped: &mapped,
                     placement,
                 };
-                let report = clone_objects(&mut dst, &src, &request)
-                    .unwrap_or_else(|e| fail(&e.to_string()));
+                let report = clone_objects_with_options(
+                    &mut dst,
+                    &src,
+                    &request,
+                    args.iter().any(|arg| arg == "--strip-lightmaps"),
+                )
+                .unwrap_or_else(|e| fail(&e.to_string()));
                 print_report(&report);
                 if report.level_actor_count.is_some() {
                     changed.push(

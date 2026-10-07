@@ -158,6 +158,18 @@ pub fn clone_objects(
     source: &PatchSession,
     request: &CloneRequest,
 ) -> Result<CloneReport> {
+    clone_objects_with_options(target, source, request, false)
+}
+
+/// Clone while replacing only the precisely identified baked 2D lightmap
+/// component tail with an unlit LOD entry. This deliberately discards the
+/// source map's package-local lightmap texture references.
+pub fn clone_objects_with_options(
+    target: &mut PatchSession,
+    source: &PatchSession,
+    request: &CloneRequest,
+    strip_lightmaps: bool,
+) -> Result<CloneReport> {
     if request.roots.is_empty() {
         return err("nothing to clone".into());
     }
@@ -248,6 +260,7 @@ pub fn clone_objects(
             kind,
             is_root,
             &transform,
+            strip_lightmaps,
         )?;
         if kind == Kind::Actor {
             new_actor_refs.push(cloned.target_ref);
@@ -317,6 +330,33 @@ fn tail_copies_verbatim(class: &str, tail: &[u8]) -> bool {
     false
 }
 
+/// One LOD with no shadow maps/buffers and an FLightMap2D. The client's
+/// FLightMap2D serializer reads a GUID array, three texture object refs with
+/// three floats each, and four final floats. Refuse any other native shape.
+fn is_baked_2d_tail(source: &PatchSession, tail: &[u8]) -> bool {
+    if tail.len() < 84
+        || [0, 4, 8, 12].map(|at| LittleEndian::read_i32(&tail[at..at + 4])) != [1, 0, 0, 2]
+    {
+        return false;
+    }
+    let guid_count = LittleEndian::read_i32(&tail[16..20]);
+    if guid_count < 0 || tail.len() != 84 + guid_count as usize * 16 {
+        return false;
+    }
+    let texture_start = 20 + guid_count as usize * 16;
+    (0..3).all(|i| {
+        let reference = LittleEndian::read_i32(&tail[texture_start + i * 16..]);
+        reference > 0
+            && source
+                .package
+                .exports
+                .get(reference as usize - 1)
+                .is_some_and(|export| {
+                    source.package.export_class_name(export) == "LightMapTexture2D"
+                })
+    })
+}
+
 fn clone_one(
     target: &mut PatchSession,
     source: &PatchSession,
@@ -325,6 +365,7 @@ fn clone_one(
     kind: Kind,
     is_root: bool,
     transform: &Transform,
+    strip_lightmaps: bool,
 ) -> Result<ClonedObject> {
     let src = source.raw_export(index)?.clone();
     let mut data = source.export_data(index)?.to_vec();
@@ -427,7 +468,10 @@ fn clone_one(
         .export_class_name(&source.package.exports[index])
         .to_string();
     let tail = &data[end..];
-    if !tail_copies_verbatim(&class, tail) {
+    if strip_lightmaps && class.ends_with("StaticMeshComponent") && is_baked_2d_tail(source, tail) {
+        data.truncate(end);
+        data.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    } else if !tail_copies_verbatim(&class, tail) {
         return err(format!(
             "export {index} has {} bytes of post-property data the cloner does not understand",
             tail.len()

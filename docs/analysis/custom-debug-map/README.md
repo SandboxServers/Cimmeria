@@ -14,7 +14,9 @@ The first [automation probe](automation-probe.md) found a command-file hook in
 The automated shell cannot get past the client's early startup modal. A direct
 package experiment produced three renamed scratch scaffolds and successfully
 cloned one cover mesh actor from another map; these have not loaded in the
-client and are not yet a constructed level.
+client and are not yet a constructed level. The [lightmap tail study](lightmap-tail.md)
+then identified baked texture references in an SGC floor component and proved
+an opt-in unlit clone of four floor actors at the package level.
 
 ## Evidence and limits
 
