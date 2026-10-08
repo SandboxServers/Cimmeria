@@ -218,15 +218,15 @@ async fn live_db_no_dakara_e1_cast_or_prop_is_hostile_or_attackable() {
     }
 }
 
-/// Every template has something to draw, stays where its spawn row puts it,
-/// comes back if it is ever removed by a death, and carries no loot, vendor
-/// or trainer data (the campaign's seed rules). A cast row draws a body; a
-/// prop draws a static mesh.
+/// Every template names a body or mesh, has stationary spawn settings and
+/// carries no loot, vendor or trainer data (the campaign's seed rules).
+/// The server only applies `respawn_secs` to mobs; this test checks the seed
+/// column, not a death/respawn cycle or client rendering.
 ///
 /// Revert proof: null a prop's `static_mesh`, or `respawn_secs`, or give a
 /// row a `wander_radius`, and this names the template.
 #[tokio::test]
-async fn live_db_every_dakara_e1_cast_and_prop_renders_stands_and_respawns() {
+async fn live_db_every_dakara_e1_cast_and_prop_has_visual_and_spawn_settings() {
     let pool = require_db_or_skip!();
     for (id, r) in &block_templates(&pool).await {
         let name = &r.template_name;
