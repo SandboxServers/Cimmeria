@@ -112,7 +112,7 @@ Source: `resources.char_creation_abilities`, `resources.char_creation_items`
 | 11 | Praxis | Female | BS_HumanFemale |
 | 12 | SGU | Female | BS_HumanFemale |
 
-Starting world: Praxis -> Castle_CellBlock, SGU -> SGC_W1
+Starting world (start profiles, Class Start v6 CS-02): Praxis -> Castle_CellBlock, SGU humans and the Asgard holding state -> SGC_W1, Free Jaffa (Shol'va) -> Dakara_E1. Source: `resources.char_creation`; see docs/gameplay/character-creation.md#start-profiles-rust-server
 
 ### Trainer Access
 

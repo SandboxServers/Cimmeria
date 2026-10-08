@@ -68,3 +68,5 @@ cimmeria-cell-world = { workspace = true, features = ["test-support"] }
 # with. It moved to the duel plugin (#962); a dev-dependency only, since the
 # console never names a feature plugin.
 cimmeria-cell-duel = { workspace = true }
+# `start_profiles::fixture`: the new-character start rule of `.gotolocation`.
+cimmeria-resources = { workspace = true, features = ["test-support"] }

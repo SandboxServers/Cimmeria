@@ -18,9 +18,16 @@ cimmeria-wire = { workspace = true }
 # Override log lines name their item, dialog, mission and sequence (Rule 6).
 cimmeria-names = { workspace = true }
 quick-xml = { workspace = true }
+# `start_profiles::load_all` reads resources.char_creation (Class Start v6 CS-02).
+sqlx = { workspace = true }
 tracing = { workspace = true }
 zip = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# `start_profiles::fixture`: the seeded start profiles as a value, for other
+# crates' tests that cannot read the database.
+test-support = []
 
 [dev-dependencies]
 # `resources/tests/inventory_slots.rs` pins the bag table against the
@@ -31,3 +38,5 @@ cimmeria-entity = { workspace = true }
 # dev-dependency must be listed in tools/test-live-db.{sh,ps1};
 # `live_db_wrapper_lists_every_test_support_crate` enforces it.
 cimmeria-test-support = { workspace = true }
+# `#[tokio::test]` for the start-profile live-DB tests.
+tokio = { workspace = true }

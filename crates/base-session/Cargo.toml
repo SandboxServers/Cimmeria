@@ -53,3 +53,5 @@ serde_json = { workspace = true }
 cimmeria-test-support = { workspace = true }
 # `testing::install` / `counter_total`: the organization counter tests.
 cimmeria-observability = { workspace = true, features = ["testing"] }
+# `start_profiles::fixture`: the GM-only redirect's home tests.
+cimmeria-resources = { workspace = true, features = ["test-support"] }

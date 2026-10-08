@@ -151,6 +151,7 @@ async fn create_character_persists_session_access_level() {
 
     cleanup(&pool, account_id).await;
     insert_account(&pool, account_id, SESSION_ACCESS_LEVEL as i32).await;
+    register_start_worlds(&pool).await;
 
     let transport = Arc::new(TestTransport::new());
     let dyn_transport: Arc<dyn Transport> = transport.clone();
@@ -236,4 +237,17 @@ async fn create_character_persists_session_access_level() {
     );
 
     cleanup(&pool, account_id).await;
+}
+
+/// Tell the base that the cell can deliver a player to every seeded start
+/// world, as the cell's startup `EnterableWorlds` does. Creation refuses a
+/// start world the cell never announced (Class Start v6 lock L3), and these
+/// tests run with no cell. Additive and process-wide, so safe to repeat.
+pub(super) async fn register_start_worlds(pool: &PgPool) {
+    let worlds: Vec<String> =
+        sqlx::query_scalar("SELECT DISTINCT starting_world::text FROM resources.char_creation")
+            .fetch_all(pool)
+            .await
+            .expect("read start worlds");
+    cimmeria_base_session::base::world_entry::space_registry::register_enterable_worlds(worlds);
 }

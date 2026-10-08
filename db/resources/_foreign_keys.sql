@@ -145,6 +145,20 @@ ALTER TABLE ONLY char_creation_items
     ADD CONSTRAINT char_creation_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES items(item_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 --
+-- Name: char_creation_debug_kit_abilities_ability_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY char_creation_debug_kit_abilities
+    ADD CONSTRAINT char_creation_debug_kit_abilities_ability_id_fkey FOREIGN KEY (ability_id) REFERENCES abilities(ability_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
+-- Name: char_creation_debug_kit_items_item_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY char_creation_debug_kit_items
+    ADD CONSTRAINT char_creation_debug_kit_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES items(item_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
 -- TOC entry 3084 (class 2606 OID 63427)
 -- Name: char_creation_visgroups_char_def_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --

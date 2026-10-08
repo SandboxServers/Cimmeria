@@ -1,6 +1,9 @@
 //! Space registry: maps `world_name` -> `space_id`, populated by CellService
-//! `SpaceData` messages at startup. Provides a hardcoded fallback table for
-//! the cases where the CellService oneshot path is unavailable.
+//! `SpaceData` messages at startup, plus the set of worlds the cell can
+//! deliver a player to (`EnterableWorlds`, which also covers instanced
+//! worlds with no startup space). Provides the fallback for the cases where
+//! the CellService oneshot path is unavailable, failing closed for any world
+//! the cell never announced.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -39,36 +42,90 @@ pub fn world_for_space(space_id: u32) -> Option<&'static str> {
     cimmeria_entity::name_intern::intern_opt(world)
 }
 
-/// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).
+/// Worlds the cell can deliver a player to: a startup space or an instanced
+/// world (`SpaceManager::world_is_enterable`). Sent once by the cell at
+/// startup (`CellToBaseMsg::EnterableWorlds`). Character creation refuses a
+/// start profile whose world is not here (Class Start v6, lock L3).
+static ENTERABLE_WORLDS: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+/// Record the worlds the cell can deliver a player to. Additive: a second
+/// announcement (or a test) only adds names.
+pub fn register_enterable_worlds<I, S>(worlds: I)
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let mut guard = ENTERABLE_WORLDS.lock().unwrap_or_else(|p| p.into_inner());
+    let before = guard.len();
+    guard.extend(worlds.into_iter().map(Into::into));
+    tracing::debug!(
+        added = guard.len() - before,
+        total = guard.len(),
+        "Registered enterable worlds in BaseApp registry"
+    );
+}
+
+/// Whether the cell has a space (startup or instanced) for `world`: it
+/// announced the world as enterable, or a space of it is registered.
+/// Exact, case-sensitive match, like every space lookup.
+pub fn is_world_enterable(world: &str) -> bool {
+    if ENTERABLE_WORLDS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .contains(world)
+    {
+        return true;
+    }
+    SPACE_REGISTRY
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .contains_key(world)
+}
+
+/// Space ID fallback, used when the CellService oneshot fails or no cell is
+/// attached.
 ///
 /// `None` means there is no safe fallback and the caller must fail closed.
 /// That is the answer for every Cimmeria-added world (the historical
 /// CellBlocks 1201–1207 and the Debug Area 1300, see
-/// [`crate::mercury::world_data::added_worlds`]): the unknown-world default
-/// below is the stock `Castle_CellBlock` space, and a world-entry packet
-/// naming it for a player bound for `CellBlock43` or `DebugArea` would hand
-/// the client the stock map's space id for an entity the cell never placed
-/// there.
+/// [`crate::mercury::world_data::added_worlds`]) and, since Class Start v6
+/// CS-02 (lock L3), for every world the cell never announced: an unknown
+/// world used to default to the stock `Castle_CellBlock` space, which
+/// silently handed the client the Cellblock's space id for an entity the
+/// cell never placed there.
 ///
-/// Shipped worlds other than the three listed still take that default. It
-/// is just as wrong for them, but failing them closed too is not safe yet:
-/// the no-cell paths (`cell_tx = None`) the gate-travel round-trip tests
-/// drive (`services::gate_round_trip_tests`, travelling to Castle) depend on
-/// it, and the real fix is a failure channel on the `CreateEntity` reply
-/// (see the KNOWN GAP in the cell's `handle_create_entity`), not a longer
-/// refusal list.
+/// In order:
+/// 1. an added world: `None`;
+/// 2. a world whose startup space the cell announced (`SpaceData`): that
+///    space's real id;
+/// 3. the three historical fixed ids (`Castle_CellBlock`, `SGC_W1`,
+///    `CombatSim`, the no-cell smoke paths);
+/// 4. anything else: `None`, logged at ERROR.
 pub fn resolve_space_id_fallback(world_name: &str) -> Option<u32> {
     // The callers log the refusal (`reason = "no_safe_space_fallback"`).
     if added_world(world_name).is_some() {
         return None;
     }
-    Some(match world_name {
-        "Castle_CellBlock" => DEFAULT_SPACE_ID, // 65552
-        "SGC_W1" => DEFAULT_SPACE_ID + 1,       // 65553
-        "CombatSim" => DEFAULT_SPACE_ID + 2,    // 65554
+    if let Some(&space_id) = SPACE_REGISTRY
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(world_name)
+    {
+        return Some(space_id);
+    }
+    match world_name {
+        "Castle_CellBlock" => Some(DEFAULT_SPACE_ID), // 65552
+        "SGC_W1" => Some(DEFAULT_SPACE_ID + 1),       // 65553
+        "CombatSim" => Some(DEFAULT_SPACE_ID + 2),    // 65554
         _ => {
-            tracing::warn!("Unknown world_location: {world_name}, defaulting to Castle_CellBlock");
-            DEFAULT_SPACE_ID
+            tracing::error!(
+                world = world_name,
+                reason = "unknown_world_no_space",
+                "space fallback: the cell announced no space for this world; refusing \
+                 instead of defaulting to Castle_CellBlock"
+            );
+            None
         }
-    })
+    }
 }
