@@ -21,7 +21,7 @@ mod persist;
 mod placement;
 mod validation;
 
-pub use grant_item::{handle_grant_item, handle_loot_grant};
+pub use grant_item::{handle_content_grant_item, handle_grant_item, handle_loot_grant};
 pub use validation::{item_allows_container, normalize_item_ids};
 
 // Types used by the test module below via `use super::*`. Gated to `cfg(test)`
