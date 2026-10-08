@@ -614,6 +614,13 @@ As built at the Cellblock (CS-04): chain 1005, with the holding-state chain
 signatures of mission 687's crate are the first seeded `signature` grants
 ([mission 687](mission-chains.md#mission-687-aftermath-confirmed)).
 
+SGC_W1 seeds it this way (CS-05): chain 3008 is the FirearmBody pickup for
+the four Human classes, gated `archetype lt 5` (ordered operators work on
+`archetype`; `lt 5` also admits the -1 a missing archetype reads), with
+`"source_id": 1559` on the grant. Chain 3029, `archetype gte 5`, is the
+same pickup without the grant and the tutorial, for everyone else. Two
+chains, because conditions only AND.
+
 Telemetry (every row carries the player, the chain and the tutorial, each
 with its name):
 

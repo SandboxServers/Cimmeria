@@ -211,6 +211,21 @@ Allocation source: [docs/analysis/castle-rebuild/work-packets.md](../../docs/ana
 "Worker Input And Ownership". `1200` is left unused as a gap between the
 two zones' blocks; effect chains start at 2001.
 
+### SGC_W1 — `sgc_w1_chains.sql` (3001-3050)
+
+```text
+Mission 1559:  3001-3017, 3029   Mission 1561:  3018-3025
+Mission 1562:  3026-3028, 3030-3037
+Mission 1569:  3041-3044 (rewards on mission_completed only)
+```
+
+`3038-3040` and `3045-3050` are free. The starter chains 3001, 3017 and
+3018 carry `archetype neq 7` (Free Jaffa visitors), and the Human-only
+chains use `archetype lt 5`, which also admits a player with no archetype
+(-1). Do not widen 3029 (`archetype gte 5`): it is the Asgard holding
+state and must stay the pre-Class-Start pickup
+([docs/content/mission-chains.md](../../docs/content/mission-chains.md#sgc_w1-sgu-starting-zone)).
+
 ### Stasis-room debug hub — `debug_hub_chains.sql` (7001-7099)
 
 The Castle_CellBlock debug NPCs ([docs/content/debug-hub.md](../../docs/content/debug-hub.md)).

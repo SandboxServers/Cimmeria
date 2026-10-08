@@ -158,6 +158,53 @@ async fn live_db_full_crafting_bag_refuses_instead_of_using_the_vault() {
     cleanup(&pool, account_id, player_id, entity_id).await;
 }
 
+/// A content reward cannot disappear after its mission has already advanced:
+/// if its carried bag has no slot, the base persists one claimable mail item.
+/// This uses the same base handler as the SGC pistol and desk SMG chains.
+#[tokio::test]
+async fn live_db_full_bag_content_grant_is_escrowed_in_mail() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id, entity_id) = (0x7000_C42C, 0x7000_C42D, 0x7000_C4EE_u32);
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    let type_id = seeded_item(&pool, "{3,1,17}", false).await;
+    fill_bag(&pool, player_id, type_id, 1, 100).await;
+
+    let addr: SocketAddr = "127.0.0.1:54626".parse().unwrap();
+    let mut session = test_default_connected_client_state();
+    session.player_entity_id = Some(entity_id);
+    let conn = Arc::new(Mutex::new(HashMap::from([(addr, session)])));
+    let e2a = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let test_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = test_transport.clone();
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_content_grant_item(
+        entity_id, player_id, type_id, 1, 1, &db_pool, &None, &transport, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(bags(&pool, player_id).await, vec![(1, 100, 100)]);
+    let escrow: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT i.type_id, i.stack_size FROM sgw_gate_mail_item i \
+         JOIN sgw_gate_mail m ON m.mail_id = i.mail_id \
+         WHERE m.character_id = $1",
+    )
+    .bind(player_id)
+    .fetch_all(&pool)
+    .await
+    .expect("escrow query");
+    assert_eq!(escrow, vec![(type_id, 1)]);
+    assert!(
+        sent_texts(&test_transport)
+            .iter()
+            .any(|text| text.contains("Your item is in your mailbox")),
+        "the player must learn where the reward went"
+    );
+
+    cleanup(&pool, account_id, player_id, entity_id).await;
+}
+
 /// The same refusal on a loot pickup asked into the vault: the cell gets
 /// the item back (it stays on the corpse, and the cell tells the looter),
 /// and nothing lands in the vault.

@@ -170,6 +170,25 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (77, -5.03599977, 1.31099999, 47.5610008, 0, 58, 35, NULL, NULL);
 
+-- SGC_W1 Col. Carter's desk SMG (Class Start v6 CS-05, RECONSTRUCTION). The
+-- prop M1562 step 4627 "Take the sub-machine gun from Col. Carter's desk."
+-- is pressed on (chains 3033 / 3035 / 3037). Placed from the cooked map
+-- (SGC_W1 chunk 0000ffff, the room whose only moving doors belong to the
+-- Kismet sequence `CartersLabDoors` and which holds Carter's spawn 56):
+--   * the desk is the centre one of three desk peninsulas on the lab's west
+--     wall, on Carter's own axis (z 36.5) and under the main console: an
+--     EM-Counter02 run dressed with office chairs, lamps, planners, pens,
+--     phones and view screens (MAP-LANDMARK). No actor is named for the desk
+--     or the gun, so which of the three is "hers" is inferred.
+--   * its top is a flat up-facing collision surface at y 2.38 over
+--     x -50.5..-48.0, z 36.0..37.5; the floor is 1.28 (MAP-GEOMETRY).
+--   * (-49.2, 36.75) is the gap between the desk's two prop clusters, at
+--     least 0.4 m from every prop origin; y is the top + 0.03.
+-- Heading pi/2 as the CellBlock row for the same mesh (spawn 11); the mesh's
+-- own long axis has not been seen in a client. Id 81: the first unused id
+-- after SGC_W1's rows (52-77); no block is reserved for SGC_W1.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (81, -49.2, 2.41, 36.75, 1.57079637, 58, 411, 'SGC_W1_CarterDeskSMG', NULL);
+
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (80, -87.0400009, 46.2399979, -160.319992, 2.59664607, 12, 3, 'Cellblock_UnusedRingSwitch', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (87, 352.691986, 70.2720032, 952.320007, 0, 8, 48, 'Castle_Coppleman', NULL);

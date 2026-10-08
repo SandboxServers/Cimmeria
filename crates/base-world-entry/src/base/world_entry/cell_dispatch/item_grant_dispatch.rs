@@ -11,7 +11,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::super::super::ConnectedClientState;
-use super::super::methods::{handle_grant_item, handle_loot_grant};
+use super::super::methods::{handle_content_grant_item, handle_grant_item, handle_loot_grant};
 use crate::cell::messages::{BaseToCellMsg, LootGrantSource};
 
 /// `CellToBaseMsg::GrantItem`.
@@ -37,6 +37,21 @@ pub(super) async fn grant_item(
             container_id,
             count,
             source,
+            db_pool,
+            cell_tx,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
+    if !notify_gm {
+        return handle_content_grant_item(
+            entity_id,
+            player_id,
+            item_id,
+            container_id,
+            count,
             db_pool,
             cell_tx,
             transport,
