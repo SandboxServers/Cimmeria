@@ -3,7 +3,7 @@
 > Type: ledger. Audience: the owner, the coordinator, packet workers and reviewers.
 > Opened 2026-10-06 against `main` @ `ddd549797`. Packet prefix `DK-`. Companions: [audit](audit.md), [work packets](work-packets.md), [Class Start v6 ledger](../class-start-v6/README.md), [Harset rebuild](../harset-rebuild/README.md), [Castle rebuild](../castle-rebuild/README.md), [operator guide](../zone-restoration-operator-guide.md).
 >
-> **Campaign status (2026-10-07): DK-01, DK-02 and DK-03 merged; DK-04 built on a review branch, with M2 client UAT pending.** OD-DK03 and OD-DK04 were answered for DK-04 as map estimates and one shared tent interior. Other decisions below remain proposed. Nothing in DK-04 has been walked in a client.
+> **Campaign status (2026-10-07): DK-01, DK-02 and DK-03 merged; DK-04 implemented in PR #1287, with M2 client UAT pending.** OD-DK03 and OD-DK04 were answered for DK-04 as map estimates and one shared tent interior. Other decisions below remain proposed. Nothing in DK-04 has been walked in a client.
 
 ## Why
 
@@ -105,7 +105,7 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 | Arrival notice | Written, UAT pending | DK-01 |
 | Landmark census and placement ledger | BUILD | DK-02 |
 | Cast templates and interactable props | BUILD | DK-03 |
-| Named areas, tent travel, Med Tent respawner | Built on DK-04 branch; UAT pending | DK-04 |
+| Named areas, tent travel, Med Tent respawner | Implemented (#1287); UAT pending | DK-04 |
 | Static population and relog restores | BUILD-INFRA | DK-05 |
 | Radio dialog | BUILD-INFRA (evidence step first) | DK-06 |
 | Hostile roster, encounters, world-61 cover sets | BLOCKED (OD-DK05, GDK1) | DK-20 |
@@ -126,7 +126,7 @@ Details, inputs, tests and UAT are in [work-packets.md](work-packets.md).
 | DK-01 | Dead end removed: `grant_stargate_address` on arrival, gate 25 arrival pin, one-time arrival notice, round-trip guards. Seed plus one small mail-action change. | #1273 for UAT; OD-DK02 default | Integrated (#1284), UAT pending; [worknote](worknotes/DK-01.md) |
 | DK-02 | Zone evidence pack: landmark census, floor and navmesh checks, placement ledger. No seed change. | none | Complete 2026-10-06 (#1283): [placements](placements/README.md), [worknote](worknotes/DK-02.md) |
 | DK-03 | Cast templates and props (Loth'ta, Rak'nor, Jaffa Captain, tent flaps, drop location, SG-18 remains, terminals). | none | Integrated (#1285), UAT pending; [worknote](worknotes/DK-03.md) |
-| DK-04 | Four evidence-backed named areas, tent flaps both ways with one world-62 interior, Med Tent respawner. | DK-02, DK-03, OD-DK03, OD-DK04 | Built on branch; M2 UAT pending; [worknote](worknotes/DK-04.md) |
+| DK-04 | Four evidence-backed named areas, tent flaps both ways with one world-62 interior, Med Tent respawner. | DK-02, DK-03, OD-DK03, OD-DK04 | Implemented (#1287); M2 UAT pending; [worknote](worknotes/DK-04.md) |
 | DK-05 | Static population on worlds 61 and 62, with relog restores. | DK-02, DK-03 | BlockedDependency |
 | DK-06 | Radio dialog: evidence, then the smallest engine change that shows it. | none for the evidence step | Ready (evidence step) |
 | DK-10 | Mission 1570, Dakara half, Jaffa and Human dialogs. | DK-04, DK-05, OD-DK01; DK-06 for step 4905 | BlockedDependency |
