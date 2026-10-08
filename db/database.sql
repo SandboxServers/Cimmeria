@@ -317,6 +317,7 @@
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
+\ir resources/Entities/Seed/entity_templates_dakara_e1.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lineup.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
