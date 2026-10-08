@@ -45,7 +45,7 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Working/SGWGame/Content/audio/ui/prp_gen_gate.fsb",
     // 004-log-config: a new file, in the stock `binaries` directory.
     "Working/binaries/SGWLogConfig.xml",
-    // 009-starter-hotbar
+    // 009-starter-hotbar; 015-weapon-shot-bar writes the same file.
     "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
     // 010-debug-area-rings (retired); 011-debug-area-rings-fix writes the same file.
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
@@ -53,6 +53,8 @@ pub const PATCH_TARGETS: &[&str] = &[
     // (the client reads the directory from `SlashCommandXMLPath` in
     // GameplayEngine.ini: `..\..\Common\xml\slash_commands`).
     "Common/xml/slash_commands/InternalSlashCommands.xml",
+    // 013-ihpet-world-map: the stock file's own spelling, `_MapData` in the file name.
+    "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk",
 ];
 
 /// One file [`restore`] renamed, as paths relative to the install.

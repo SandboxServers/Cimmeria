@@ -31,6 +31,9 @@ pub(super) struct PlayerInitRow {
     // and a purchase cannot straddle the read. GM grants and the
     // archetype's character-creation starters never count (review F3, F4).
     pub(super) credited_grants: Vec<i32>,
+    // The one-time tutorials already shown (CS-03), so a relog or world
+    // change never replays one.
+    pub(super) shown_tutorials: Vec<i32>,
 }
 
 /// `Ok(None)` when no row has `player_id`.
@@ -52,7 +55,10 @@ pub(super) async fn load_player_init_row(
                               WHERE ca.source_kind = 'legacy_kit' \
                                 AND cc.archetype = \
                                     (enum_range(NULL::resources.\"EArchetype\"))[p.archetype + 1]) \
-                       ORDER BY g.granted_at, g.ability_id) AS credited_grants \
+                       ORDER BY g.granted_at, g.ability_id) AS credited_grants, \
+                ARRAY(SELECT t.tutorial_id FROM sgw_player_tutorials t \
+                       WHERE t.player_id = p.player_id \
+                       ORDER BY t.tutorial_id) AS shown_tutorials \
            FROM sgw_player p WHERE player_id = $1",
     )
     .bind(player_id)
@@ -276,5 +282,59 @@ mod tests {
             vec!["Castle_PreRomneyChest".to_string()],
             "the next world entry reads the flag back"
         );
+    }
+
+    /// **Guard (CS-03): a shown tutorial survives a relog.** What
+    /// `RecordTutorialShown` inserts is what the next world entry hydrates
+    /// into `InitPlayerState.shown_tutorials`, so `show_tutorial` sees it as
+    /// already shown and displays nothing. Drop the `shown_tutorials`
+    /// subquery and the relogged read is empty, which replays the tutorial.
+    #[tokio::test]
+    async fn live_db_shown_tutorial_survives_relog() {
+        use crate::base::world_entry::shown_tutorials::record_tutorial_shown;
+        const TUT_ID: i32 = 0x7030_0353;
+        let pool = require_db_or_skip!();
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(TUT_ID)
+            .execute(&pool)
+            .await;
+        sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+            .bind(TUT_ID)
+            .bind(format!("cs03-relog-{TUT_ID}"))
+            .execute(&pool)
+            .await
+            .expect("insert account");
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id\
+             ) VALUES ($1, $1, 1, 0, 1, 1, $2, '', 'Castle_CellBlock', \
+                       'BS_HumanMale.BS_HumanMale', 0.0, 0.0, 0.0, 0)",
+        )
+        .bind(TUT_ID)
+        .bind(format!("cs03-relog-{TUT_ID}"))
+        .execute(&pool)
+        .await
+        .expect("insert player");
+
+        let fresh = load_player_init_row(&pool, TUT_ID).await.unwrap().unwrap();
+        record_tutorial_shown(&pool, TUT_ID, TUT_ID, 5883)
+            .await
+            .expect("record 5883");
+        record_tutorial_shown(&pool, TUT_ID, TUT_ID, 5882)
+            .await
+            .expect("record 5882");
+        let relogged = load_player_init_row(&pool, TUT_ID).await.unwrap().unwrap();
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(TUT_ID)
+            .execute(&pool)
+            .await;
+
+        assert!(
+            fresh.shown_tutorials.is_empty(),
+            "a new character has seen none"
+        );
+        assert_eq!(relogged.shown_tutorials, vec![5882, 5883]);
     }
 }

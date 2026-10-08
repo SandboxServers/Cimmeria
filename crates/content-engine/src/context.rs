@@ -53,6 +53,13 @@ pub struct ExecutionContext {
     /// reading every tag as dead.
     pub live_tags: Option<HashSet<String>>,
 
+    /// The one-time tutorials (dialog ids) the acting player has been
+    /// shown, read by
+    /// [`Condition::TutorialShown`](crate::conditions::Condition::TutorialShown)
+    /// (Class Start v6, CS-03). `None` means no player is behind the event,
+    /// and the condition fails closed on it.
+    pub shown_tutorials: Option<HashSet<i32>>,
+
     /// Arbitrary key-value parameters carried through the chain. Triggers
     /// populate initial values; actions may add or modify them.
     pub params: HashMap<String, serde_json::Value>,
@@ -70,6 +77,7 @@ impl ExecutionContext {
             space_id: None,
             world_id: None,
             live_tags: None,
+            shown_tutorials: None,
             params: HashMap::new(),
             results: Vec::new(),
         }
@@ -110,6 +118,16 @@ impl ExecutionContext {
         S: Into<String>,
     {
         self.live_tags = Some(tags.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Set the shown-tutorial set and return `self` for builder-style
+    /// chaining.
+    pub fn with_shown_tutorials<I>(mut self, tutorial_ids: I) -> Self
+    where
+        I: IntoIterator<Item = i32>,
+    {
+        self.shown_tutorials = Some(tutorial_ids.into_iter().collect());
         self
     }
 

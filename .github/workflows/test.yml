@@ -233,6 +233,10 @@ jobs:
       # and run locally (data/client-patches/009-starter-hotbar/test/run.lua).
       - name: run the starter hotbar logic UAT
         run: lua5.1 data/client-patches/009-starter-hotbar/test/run.lua
+      # 015-weapon-shot-bar's block, appended after 009's hook, against the
+      # same clean-room model (it reads 009's stubs and model).
+      - name: run the weapon shot bar logic UAT
+        run: lua5.1 data/client-patches/015-weapon-shot-bar/test/run.lua
       # 012-gm-slash-commands: the committed XML must be what the generator
       # makes from commands.toml (the Rust tests pin the zip to that XML).
       - name: check the generated GM slash command XML is current

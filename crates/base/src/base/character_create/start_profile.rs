@@ -58,7 +58,7 @@ pub(super) async fn resolve_start(
             reason,
             %addr,
             char_def_id, // nt:id-only char_def rows carry the profile id below
-            profile_id = profile.map(|p| p.profile_id.as_str()),
+            profile_id = profile.map(|p| p.profile_id.as_str()), // nt:id-only profile key has no display name
             world = profile.map(|p| p.world.as_str()),
             detail = %detail,
             "character_create: start profile unusable; creation refused"

@@ -28,6 +28,7 @@ mod map_loaded;
 mod map_loaded_wire_rows;
 mod play_character;
 mod reanchor_player;
+pub(crate) mod shown_tutorials;
 mod teleport;
 
 #[cfg(test)]

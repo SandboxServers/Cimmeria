@@ -550,6 +550,11 @@ pub enum CellToBaseMsg {
     /// [`crate::cell::messages::BaseToCellMsg::ContentAbilitiesGranted`].
     ContentGrantAbilities(super::ContentGrantAbilities),
 
+    /// The content `show_tutorial` action (CS-03); see
+    /// [`super::RecordTutorialShown`]. Answered with
+    /// [`crate::cell::messages::BaseToCellMsg::TutorialRecorded`].
+    RecordTutorialShown(super::RecordTutorialShown),
+
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol
     /// authoring commands hand their `INSERT`/`UPDATE`/`DELETE` to the base,

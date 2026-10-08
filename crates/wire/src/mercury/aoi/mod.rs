@@ -26,6 +26,8 @@ mod npc_live_state_tests;
 mod pet_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tint_tests;
 
 pub use create::{build_create_entity_base, build_create_entity_cascade};
 pub use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};

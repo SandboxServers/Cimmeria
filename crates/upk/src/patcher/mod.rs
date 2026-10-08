@@ -56,6 +56,8 @@ pub struct PatchSession {
     /// table more than once: see [`PatchSession::ensure_name_with_flags`].
     name_lookup: HashMap<String, Vec<i32>>,
     original_name_count: usize,
+    /// Whether the depends table is one empty list per export.
+    depends_all_empty: bool,
     new_name_flags: u64,
     imports: Vec<RawImport>,
     original_import_count: usize,
@@ -84,15 +86,30 @@ impl PatchSession {
         let exports =
             raw_tables::read_exports(&image, h.export_offset as usize, h.export_count as usize)?;
 
-        let depends_len = (h.total_header_size - h.depends_offset) as usize;
-        if depends_len != exports.len() * 4 {
-            // Every QA chunk inspected has one empty list per export. A package
-            // with real dependency lists needs a proper walk, not an append.
-            return Err(UpkError::Parse(format!(
-                "depends table is {depends_len} bytes for {} exports; expected 4 each",
-                exports.len()
-            )));
+        // The depends table must start right after the export table and end
+        // inside the file at `total_header_size`: `finish` copies exactly that
+        // span, so any other layout would copy the wrong bytes (or panic).
+        let exports_end = exports
+            .last()
+            .map_or(h.export_offset as usize, |(_, range)| range.end);
+        let bad_depends = || {
+            UpkError::Parse(format!(
+                "depends table at {} (header ends at {}, image is {} bytes) is not at the end of the export table ({exports_end})",
+                h.depends_offset,
+                h.total_header_size,
+                image.len()
+            ))
+        };
+        let depends_start = usize::try_from(h.depends_offset).map_err(|_| bad_depends())?;
+        let header_end = usize::try_from(h.total_header_size).map_err(|_| bad_depends())?;
+        if depends_start != exports_end || depends_start > header_end || header_end > image.len() {
+            return Err(bad_depends());
         }
+        // Every QA map chunk has one empty list per export. A package with
+        // real dependency lists (a MapData package has one) is fine as long
+        // as no export is added: the table is copied as it is, and adding an
+        // export would need a proper walk, not an append (see `finish`).
+        let depends_all_empty = header_end - depends_start == exports.len() * 4;
 
         let all_names: Vec<String> = package.names.iter().map(|n| n.name.clone()).collect();
         let name_flags: Vec<u64> = package.names.iter().map(|n| n.flags).collect();
@@ -116,6 +133,7 @@ impl PatchSession {
 
         let mut session = Self {
             original_name_count: all_names.len(),
+            depends_all_empty,
             original_import_count: imports.len(),
             package,
             image,
@@ -361,6 +379,20 @@ impl PatchSession {
         Ok(())
     }
 
+    /// Where [`PatchSession::finish`] will place the replacement data of
+    /// export `index` in the output file. Replacement data is appended in
+    /// export order after the original image, so this is right only while no
+    /// export with a lower index is replaced afterwards: call it, build the
+    /// data (which may embed absolute file offsets), and replace it last.
+    pub fn replacement_offset(&self, index: usize) -> usize {
+        self.image.len()
+            + self
+                .replaced
+                .range(..index)
+                .map(|(_, d)| d.len())
+                .sum::<usize>()
+    }
+
     /// Number of names, imports and exports this session has added.
     pub fn additions(&self) -> (usize, usize, usize) {
         (
@@ -372,6 +404,12 @@ impl PatchSession {
 
     /// Serialize the patched, uncompressed package.
     pub fn finish(mut self) -> Result<Vec<u8>> {
+        if !self.depends_all_empty && !self.new_exports.is_empty() {
+            return Err(UpkError::Parse(
+                "the depends table holds real lists: adding exports needs a proper walk, not an append"
+                    .into(),
+            ));
+        }
         let h = self.package.header.clone();
         let mut out = std::mem::take(&mut self.image);
 
@@ -458,4 +496,4 @@ impl PatchSession {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

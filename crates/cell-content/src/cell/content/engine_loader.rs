@@ -9,8 +9,8 @@ use sqlx::PgPool;
 
 use cimmeria_content_engine::chain::{Chain, ChainEngine};
 use cimmeria_content_engine::loader::{
-    build_chains_from_rows, refuse_chains_with_unknown_abilities, DbActionRow, DbChainRow,
-    DbConditionRow, DbTriggerRow,
+    build_chains_from_rows, refuse_chains_with_unknown_abilities,
+    refuse_chains_with_unknown_tutorials, DbActionRow, DbChainRow, DbConditionRow, DbTriggerRow,
 };
 
 /// Build the content engine by loading chains from the database.
@@ -147,9 +147,33 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
                 None
             }
         };
-    Ok(refuse_chains_with_unknown_abilities(
+    let chains = refuse_chains_with_unknown_abilities(chains, known_abilities.as_ref());
+    // `show_tutorial` / `tutorial_shown` ids must be tutorial dialogs
+    // (CS-03), checked here for the same reason. A failed read refuses only
+    // the tutorial chains.
+    let tutorial_dialogs: Option<std::collections::HashSet<i32>> =
+        match sqlx::query_scalar::<_, i32>(
+            "SELECT dialog_id FROM resources.dialogs \
+              WHERE ui_screen_type::text = 'DUIST_DefaultTutorial'",
+        )
+        .fetch_all(pool)
+        .await
+        {
+            Ok(ids) => Some(ids.into_iter().collect()),
+            Err(e) => {
+                tracing::error!(
+                    target: "content",
+                    event = "dialog_table_unavailable",
+                    error = %e,
+                    "content engine: resources.dialogs unreadable; show_tutorial and \
+                     tutorial_shown chains are refused, every other chain loads"
+                );
+                None
+            }
+        };
+    Ok(refuse_chains_with_unknown_tutorials(
         chains,
-        known_abilities.as_ref(),
+        tutorial_dialogs.as_ref(),
     ))
 }
 
@@ -464,6 +488,47 @@ mod tests {
             vec![0; actions.len()],
             "a real seeded chain with no delay_ms rows must resolve with \
              action_delays all zero, index-aligned with actions"
+        );
+    }
+
+    /// Live-DB guard (CS-03): the seeded combat tutorial chain survives the
+    /// full loader, the real-dialog check included, with its two gates and
+    /// its one action. 5882 and 5883 are `DUIST_DefaultTutorial` rows, so
+    /// `refuse_chains_with_unknown_tutorials` keeps it; a seed that names a
+    /// non-tutorial id, or drops a gate, fails here.
+    #[tokio::test]
+    async fn live_db_the_combat_tutorial_chain_loads_gated_on_5882() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::context::ExecutionContext;
+        use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
+
+        let pool = crate::test_support::require_db_or_skip!();
+        let engine = build_engine(Some(&pool)).await;
+        let resolve = |shown: &[i32]| {
+            let ctx = ExecutionContext::new().with_shown_tutorials(shown.iter().copied());
+            let event = TriggerEvent {
+                trigger_type: TriggerType::PlayerEnteredCombat,
+                source_entity: None,
+                target_entity: None,
+                params: ctx.params.clone(),
+            };
+            engine.resolve_event(&event, &ctx).actions
+        };
+        let fired = resolve(&[5882]);
+        assert!(
+            fired
+                .iter()
+                .any(|(id, a)| *id == 7101
+                    && matches!(a, Action::ShowTutorial { tutorial_id: 5883 })),
+            "after 5882, the first combat entry shows 5883; got {fired:?}"
+        );
+        assert!(
+            resolve(&[]).iter().all(|(id, _)| *id != 7101),
+            "before 5882, chain 7101 must not fire"
+        );
+        assert!(
+            resolve(&[5882, 5883]).iter().all(|(id, _)| *id != 7101),
+            "once 5883 is shown, chain 7101 must not fire"
         );
     }
 

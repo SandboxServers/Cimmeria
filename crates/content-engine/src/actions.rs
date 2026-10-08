@@ -513,6 +513,15 @@ pub enum Action {
     /// Teach the acting player abilities for free, with a recorded
     /// provenance (Class Start v6 CS-01a); see [`AbilityGrant`].
     GrantAbility(AbilityGrant),
+    /// Show the acting player a one-time tutorial (Class Start v6, CS-03).
+    ///
+    /// `tutorial_id` is a `DUIST_DefaultTutorial` dialog id (checked at load,
+    /// [`crate::loader::refuse_chains_with_unknown_tutorials`]). The base
+    /// records `(player_id, tutorial_id)` in `sgw_player_tutorials` and the
+    /// dialog is displayed only when that record is new, so a replayed
+    /// chain, a relog or a world change never shows it again. Read back by
+    /// the `tutorial_shown` condition.
+    ShowTutorial { tutorial_id: i32 },
     /// Switch a spawn set on or off for everyone in its world (Debug Area
     /// DA-10: the Visual NPC Lineup attendants). GM-gated on the triggering
     /// player's access level; a non-GM gets a refusal line. Showing a set

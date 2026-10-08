@@ -471,6 +471,7 @@ async fn session_start_names_the_account_the_character_and_the_archetype() {
             character_name: Some(PLAYER_NAME.into()),
             body_set: None,
             looted_containers: Vec::new(),
+            shown_tutorials: Vec::new(),
         },
         &tx,
         &mut mgr,

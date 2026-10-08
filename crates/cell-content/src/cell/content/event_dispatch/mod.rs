@@ -18,6 +18,8 @@
 //! - [`dialog`]      — `fire_dialog_open`, `fire_dialog_choice`
 //! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`,
 //!   `fire_mission_abandoned`
+//! - [`combat`]      — `fire_player_entered_combat` and its tick drain
+//!   `fire_pending_combat_entries` (CS-03)
 //! - [`step_activation`] — `fire_step_activation_regions`, the H52 replay of
 //!   `enter_region` and `player_entered_cover` for volumes and cover sets the
 //!   player already stands in when a step activates
@@ -35,6 +37,9 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::executor;
 
+mod combat;
+#[cfg(test)]
+mod combat_tests;
 mod cover;
 #[cfg(test)]
 mod cover_flank_tests;
@@ -53,6 +58,7 @@ mod step_activation;
 #[cfg(test)]
 mod world_context_contract_tests;
 
+pub use combat::{fire_pending_combat_entries, fire_player_entered_combat};
 pub use cover::{
     fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked,
     fire_player_flanked_npc,

@@ -1,0 +1,13 @@
+{
+  "id": "015-weapon-shot-bar",
+  "title": "Action bar shot follows your weapon",
+  "description": "When you switch weapons, an action button holding the old weapon's basic shot (or Pistol Shot) switches to the shot of the weapon you now hold, and back again. Buttons holding anything else, and buttons bound per weapon, are never changed. Changes ActionProfileDefault1.lua and needs the starting-abilities patch (009) first.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
+      "sources": [
+        {"path": "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua", "output_of": "009-starter-hotbar"}
+      ]
+    }
+  ]
+}

@@ -62,6 +62,14 @@ pub(super) fn populate_world_context(
     // honours the contract above gets it too. `None` (no space) makes that
     // condition fail closed, as `world_id` does for `Condition::World`.
     ctx.live_tags = space_mgr.live_tags_in_space_of(entity_id);
+    // The one-time tutorials the acting player has seen (CS-03), for
+    // `Condition::TutorialShown`. Same contract: every dispatcher that
+    // populates the world populates this, and `None` (not a player) makes
+    // the condition fail closed.
+    ctx.shown_tutorials = space_mgr
+        .get_entity(entity_id)
+        .filter(|e| e.is_player)
+        .map(|e| e.shown_tutorials.clone());
 
     let world_name = space_mgr
         .get_entity_world_name(entity_id)

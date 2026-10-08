@@ -104,7 +104,7 @@ pub(super) async fn start_kit(
         tracing::error!(
             event = "starter_abilities_load_failed",
             reason = "db_error",
-            profile_id = %start.profile.profile_id,
+            profile_id = %start.profile.profile_id, // nt:id-only profile key has no display name
             error = %e,
             "character_create: starter ability names lookup failed"
         );
@@ -156,7 +156,7 @@ pub(super) async fn record_profile_grants(
                 event = "starter_grant_failed",
                 reason = "db_error",
                 %addr,
-                player_id,
+                player_id, // nt:id-only creation transaction has no committed player name lookup yet
                 ability_id = a.ability_id,
                 ability_name = cimmeria_names::book().ability(i64::from(a.ability_id)),
                 source_kind = kind,

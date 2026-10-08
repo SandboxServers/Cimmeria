@@ -62,6 +62,7 @@ pub fn pet_template_record(template_id: i32) -> SpawnRecord {
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }
 

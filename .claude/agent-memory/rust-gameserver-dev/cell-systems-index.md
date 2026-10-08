@@ -56,6 +56,7 @@ Moved out of MEMORY.md to keep the index under its read limit. One line per topi
 - [grantitem-overcap-and-process-wide-gm-switches.md](grantitem-overcap-and-process-wide-gm-switches.md) — GrantItem over-cap row (#1045), use return_rounds; player_id-keyed GM switches in cimmeria-entity.
 - [ability-grant-provenance-seams.md](ability-grant-provenance-seams.md) — CS-01a: every non-trainer ability append decides a provenance row; credit is cell-only; grant_ability id check skipped by test loaders.
 - [start-profile-seams.md](start-profile-seams.md) — CS-02: start profiles in resources.char_creation, registry + EnterableWorlds, starters = legacy_kit, debug_kit, load_all Send trap.
+- [one-time-tutorial-and-combat-entry-seams.md](one-time-tutorial-and-combat-entry-seams.md) — CS-03: DB insert decides "first"; tutorial_shown via populate_world_context; combat entry is a tick-drained queue.
 
 ## Ammo campaign (#1026)
 

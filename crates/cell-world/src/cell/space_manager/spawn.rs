@@ -251,6 +251,7 @@ impl SpaceManager {
         e.tag = record.tag.clone();
         e.name_id = record.name_id;
         e.display_name = record.display_name.clone();
+        e.tint = record.tint;
         e.speaker_id = record.speaker_id;
         e.event_set_id = record.event_set_id;
         e.interaction_type_flags = record.interaction_type;

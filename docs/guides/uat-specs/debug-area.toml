@@ -44,9 +44,10 @@
 #
 # Client patches: DA-U42 needs 009-starter-hotbar and DA-U46 needs
 # 007-castle-armory-ring and 011-debug-area-rings-fix (010 was pulled: it
-# hung the client). 009 and 007 are in the signed content manifest
+# hung the client), plus 014-debug-area-lineup-ring for the Lineup
+# station. 009 and 007 are in the signed content manifest
 # (content-current, published 2026-10-05); 011 is published once the
-# coordinator signs it. The launcher's Update installs them on the lab client.
+# coordinator signs it, 014 likewise. The launcher's Update installs them on the lab client.
 
 schema = 1
 
@@ -1863,10 +1864,10 @@ at = "dhd"
 [[row]]
 id = "DA-U46"
 title = "A ring trip from the Compound station to the Arena shelf"
-expected = "Right-click the Compound ring console: the destination picker opens on world 1300's map with the other seven stations (regions 36-42); pick the Arena station and step on the pad: the Compound rings rise, flash and drop with sound (sequence 10189), you arrive on the shelf pad (331, -10.6, -693) as its rings drop (10198), and you can move about 5.5 s later."
+expected = "Right-click the Compound ring console: the destination picker opens on world 1300's map with the other eight stations (regions 36-43); pick the Arena station and step on the pad: the Compound rings rise, flash and drop with sound (sequence 10189), you arrive on the shelf pad (331, -10.6, -693) as its rings drop (10198), and you can move about 5.5 s later."
 required_native = "N3"
 known_issues = ["DA-06"]
-notes = "Needs client patches 007 and 011 in the lab client (010 was pulled because it hung the client): the launcher's Update installs them from the published content manifest. Without 011 the trip still works but no rig draws. The picker click is stood in for by the stock binding setRingTransporterDestination (N3): the lab cannot click world-map icons yet. Stations: regions 35-42, consoles 13810-13817 (template 3), sequences 10189-10204 (Teleport Out, Teleport In per station, in region order)."
+notes = "Needs client patches 007 and 011 in the lab client (010 was pulled because it hung the client), and 014 for the Lineup station's rig: the launcher's Update installs them from the published content manifest. Without 011 the trip still works but no rig draws. The picker click is stood in for by the stock binding setRingTransporterDestination (N3): the lab cannot click world-map icons yet. Stations: regions 35-43, consoles 13810-13818 (template 3), sequences 10189-10206 (Teleport Out, Teleport In per station, in region order)."
 setup = [
   { chat = ".gotolocation DebugArea 229 7.8 -934", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
@@ -1943,7 +1944,7 @@ at = "arrived"
 id = "DA-U48"
 title = "The Visual NPC Lineup: a group shown from its attendant, one passive actor per look, none engages"
 expected = "Right-clicking the Show Humans (42) attendant answers in chat and fills the east wing's human rows with 42 passive display actors facing the walkways, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
-notes = "DA-10. Groups, rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The lineup is five spawn sets shown one at a time (all 161 at once ran the 32-bit client out of memory); the setup clears any group left on. HM_BodySet (a magenta box) and the Drone Tank (a magenta panel) are placeholders, not faults. No NPC is sent its colours or skin tint, so 70 actors draw untinted and NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-not-drawn)."
+notes = "DA-10. Groups, rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The lineup is five spawn sets shown one at a time (all 161 at once ran the 32-bit client out of memory); the setup clears any group left on. HM_BodySet (a magenta box) and the Drone Tank (a magenta panel) are placeholders, not faults. The lineup actors are sent their source's colours and skin tint (entity_templates.send_tint), but only the skin can show, so NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-sent-for-the-lineup-only)."
 setup = [
   { chat = ".aggro on", tier = "G" },
   { chat = ".gotolocation DebugArea 286 6.6 -899", tier = "G" },
@@ -1985,7 +1986,7 @@ max_rows = 0
 id = "looks"
 text = "the lineup reads as rows of different, standing NPCs"
 source = "human"
-question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Is every other row of the wing empty (one group at a time)?"
+question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Is every other row of the wing empty (one group at a time)? Facing Cellblock Guard #15 (x 307.25) and Op-CORE Soldier #174 (x 317.25), are their faces and hands a natural skin tone, not black, neon or washed out?"
 [[row.evidence]]
 name = "walkway"
 tool = "lab_screenshot"

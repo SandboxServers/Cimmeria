@@ -133,6 +133,11 @@ pub struct SpawnRecord {
     /// nameplate, sent as `onBeingNameUpdate` after the `name_id` text.
     /// `None` for every shipped template.
     pub display_name: Option<String>,
+    /// `entity_templates.send_tint` with the template's three colour
+    /// columns: `Some` only when the template opts in (the Visual NPC
+    /// Lineup), and then sent in `onEntityTint`. `None` keeps
+    /// `onEntityTint(0, 0, 0)`.
+    pub tint: Option<cimmeria_entity::cell_entity::EntityTint>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.

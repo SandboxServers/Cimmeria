@@ -421,7 +421,7 @@ pub(super) async fn create_character(
     tracing::debug!(
         %addr,
         char_def_id, // nt:id-only CharDef rows carry no name column to pair
-        profile_id = %start.profile.profile_id,
+        profile_id = %start.profile.profile_id, // nt:id-only profile key has no display name
         start_state = start.profile.start_state.as_str(),
         debug_kit = start.debug_kit.is_some(),
         components = ?body_components,
@@ -568,7 +568,7 @@ pub(super) async fn create_character(
                 archetype_name = cimmeria_names::archetype_name(archetype),
                 world_id = ?world_id,
                 world = world_location,
-                profile_id = %start.profile.profile_id,
+                profile_id = %start.profile.profile_id, // nt:id-only profile key has no display name
                 start_state = start.profile.start_state.as_str(),
                 debug_kit = start.debug_kit.is_some(),
                 level = start_level,

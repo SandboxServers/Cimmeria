@@ -30,7 +30,7 @@ player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
-stargate (DA-07), the ring transports that link them (DA-08), the
+stargate (DA-07), the ring transports that link them (DA-08, DA-11), the
 System Lords' summit (DA-09) and the Visual NPC Lineup (DA-10).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
@@ -98,7 +98,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Death and respawn | Z9 death yard, respawners 130 and 131 | DA-U37, DA-U38 |
 | Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
-| Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
+| Ring transport | The nine ring stations (DA-08, #1234; Lineup, DA-11) | DA-U46 |
 | NPC appearance, ambient chatter | The System Lords' summit (DA-09) | DA-U47 |
 | NPC appearance: every visual appearance | Z10 Visual NPC Lineup (DA-10) | DA-U48 |
 | GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
@@ -501,10 +501,10 @@ test.
 
 ## Ring transports
 
-DA-08. Eight ring stations let a tester travel between the Debug Area's zones
-the way rings work elsewhere in the game: the rings rise around the pad, flash
-and drop, and the travellers arrive on the destination pad as its rings drop
-there. Every station reaches every other one.
+DA-08 and DA-11. Nine ring stations let a tester travel between the Debug
+Area's zones the way rings work elsewhere in the game: the rings rise around
+the pad, flash and drop, and the travellers arrive on the destination pad as
+its rings drop there. Every station reaches every other one.
 
 ### Stations
 
@@ -522,9 +522,12 @@ the ring switch beside the pad that you right-click.
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
+| Lineup | (287.0, 7.34, -914.0) | Z10 NPC lineup (DA-10): its doorway (300, 6.8, -897) is 21 m north-east, about 39 m on foot round the west end of the low wall north of the pad. The System Lords' summit is 23 m south (DA-11) | `DebugArea_Ring_Lineup` | 43 |
 
 No station is within 25 m of a hostile that can aggro (DA-03 and DA-04
-checked their seeded rows against these points). Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
+checked their seeded rows against these points). From the Lineup pad the
+nearest hostile is a non-retaliating training dummy 51 m away, and the
+nearest NPC that aggroes, a Z8 rifleman, is 122 m away. Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
 and sequences (`DebugArea_Ring_ArenaPit`, `..._Seq_3`) when DA-F1 moved it
 off the pit: the pit "floor" is the water collision plane at y -33.28, which
 the navmesh treats as ground, so the first pad (210, -33.28, -725) rendered
@@ -533,10 +536,21 @@ is the largest clear disc on the east shelf (radius 6.5 m of flat Terrain at
 y -11.12, nothing solid up to 8 m above it, found by DA-F2 on the real
 occluder and navmesh data); the console is 3 m east and 1.3 m south of it.
 
+The Lineup pad (DA-11) is on the courtyard paving north of the Lords' circle:
+the rig base stands on the paving's top at y 6.80 (occluder Geometry; the
+terrain around it is at 6.58), the navmesh is 0.17 m above it, and no column
+within 7.6 m holds anything solid below 3.5 m above the base, the widest clear
+footprint of the nine. The low wall along z -905 (x 285-294, 0.3 to 0.9 m
+high) is 9 m north, the east wing's wall 12 m east and the nearest Lords 23 m
+south. Its console stands where every other station's does relative to its
+rig (+2.88, +0.44, +1.32), not at the (290, 6.58, -915.3) first proposed: the
+rig is cloned unrotated, so that offset is the spot beside the rig that
+region 3's console has in Castle.
+
 ### Using a ring
 
 1. Right-click the console beside a pad. The destination list opens on the
-   world map, with the other seven stations as transporter icons.
+   world map, with the other eight stations as transporter icons.
 2. Pick a destination, then step onto the pad within 60 s.
 3. The rings play for about 4 s, you are moved, the destination pad's rings
    play, and you can move again about 5.5 s after arriving.
@@ -546,13 +560,34 @@ the traveller see the source rings animate as well. A player watching only
 the destination pad may not see its rings drop: see the known limitation in
 [ring-transport-system.md](../gameplay/ring-transport-system.md#kismet-sequences-ue3-visual-effects).
 
+### The ring list on the world map
+
+The ring list draws the other stations as transporter icons on the world map of
+the Ihpet Crater, at their pad coordinates through one linear transform: px =
+428 + 0.841 (x + 300) and py = 98 + 0.841 (100 - z) on a 1538x1319 screenshot,
+which put all seven icons within 2 px of the table above. **The pads are right.**
+A tester saw the icons on the wrong terrain (the Compound and Death yard icons
+beside the south compound's north wall, the Z1 arrival point on bare ground west
+of the compound) and the top 43% of the picture flat blue, because the stock
+overview picture, `world__default_` in `Ihpet_Crater_Light_MapData.upk`, is a
+1.99x zoom of the map's top-left corner. World 73 shows the same picture. The
+client draws only that picture, so nothing the server sends changes it; client
+patch `013-ihpet-world-map` rebuilds it from the map's own tiles. The evidence,
+the layout of the map data and how the patch rebuilds the picture on the
+player's machine, with no picture data in the zip, are in the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
+
 ### What needs the client patch
 
-The rigs exist only in client patch `011-debug-area-rings-fix`
+The first eight rigs exist only in client patch `011-debug-area-rings-fix`
 ([data/client-patches](../../data/client-patches/README.md)), which needs
 `007-castle-armory-ring` applied first (or `010-debug-area-rings`, which it
-repairs). Without it the consoles and the trip still work, but there is no
-ring hardware on the pads and no animation.
+repairs). The Lineup rig is patch `014-debug-area-lineup-ring`, which
+rebuilds 011's chunk with a ninth copy of the same rig and applies only on
+top of 011
+([patch README](../../data/client-patches/README.md#014-debug-area-lineup-ring)).
+Without them the consoles and the trip still work, but there is no ring
+hardware on the pads and no animation (without 014 alone, only the Lineup pad
+is bare).
 
 **010 is retired: it hung the client.** 010 was published for about half an
 hour on 2026-10-05 and pulled. Any client that loaded the Ihpet Crater map
@@ -567,7 +602,7 @@ when the target's entry is narrower. `011` ships the rebuilt chunk, and it
 upgrades a 010 install in place from 010's own output: see the
 [patch README](../../data/client-patches/README.md#011-debug-area-rings-fix),
 which also has the byte-level evidence.
-World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
+World 73 (the live Ihpet Crater) uses the same map file, so it shows the nine
 ring platforms too. They do nothing there: world 73 has no pads, consoles or
 chains. The platforms and rings block players on the client
 (`bBlockActors`) but not on world 73's navmesh, which is fine for scenery.
@@ -605,7 +640,7 @@ What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the 
 | Sequences, event sets, trigger volumes | `db/resources/Events/Seed/debug_area_ring_events.sql` |
 | Console chains (`interact_tag` -> `trigger_transporter`) | `db/resources/Content/Seed/debug_area_ring_chains.sql` |
 | Sequence ids the client resolves | `crates/resources/src/base/sequence_overrides.rs` (`DEBUG_AREA_RING_RIGS`) |
-| Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--8-regions-fully-connected-cimmeria-da-08) |
+| Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--9-regions-fully-connected-cimmeria-da-08-da-11) |
 
 ## Reach between stations
 
@@ -1485,7 +1520,7 @@ height, so they look from the 1.5 m default.
 |---|---|---|
 | `.gotolocation DebugArea 286 6.6 -899` | Six Airmen north of you, labelled `Show Humans (42)` to `Clear lineup`; the wing behind them empty | An actor of the lineup already standing (a group on at startup); an attendant reading `Airman` |
 | Right-click `Show Humans (42)` from where you stand | The chat line `Visual NPC Lineup - Humans: showing 42 actors for everyone in DebugArea (one group at a time).`; the human rows fill in | No line; a line but no actors |
-| Walk the walkways of the group in the order above | Every actor stands on the floor facing the walkway, each one different, idling like its source | Two identical actors (NID Guard #146 and Opheltes #215 excepted: tint is not drawn); one facing a wall; one inside a wall; one frozen in a T-pose or not animating |
+| Walk the walkways of the group in the order above | Every actor stands on the floor facing the walkway, each one different, idling like its source | Two identical actors (NID Guard #146 and Opheltes #215 excepted: they differ only in colours their clothing does not read); one facing a wall; one inside a wall; one frozen in a T-pose or not animating |
 | Read the nameplates up close | Each reads `<name> #<id> <body set>`, matching the spawn tables | Blank, the source's bare name (the literal label did not take), or cut off (note where) |
 | Walk among them with `.aggro on`; shoot one | Nothing engages; the shot is refused (the target is not attackable); right-clicking starts nothing | An attack lands, an actor turns on you, or an error shows |
 | Show each other group in turn, waiting about a minute between switches | Each line names what it cleared first; the old group's actors vanish as the new ones appear | Actors of two groups at once; a ghost actor that stays after its group is cleared; the client stops responding or closes |
@@ -1537,30 +1572,61 @@ nameplate and tag names its source and body set; every row loads friendly
 and stationary). The wire test
 `a_display_name_replaces_the_name_id_as_being_name_update` in
 `cimmeria-wire` pins the `onBeingNameUpdate` bytes and that no name id is
-sent with them.
+sent with them. `live_db_debug_area_lineup_tint` in `cimmeria-cell-catalog`
+checks that every actor opts in with its source's colours, that no other
+template does, that both loaders carry the wire values, and that
+`NID Guard #146` and `Opheltes #215` are sent different tints; `aoi::tint_tests` in `cimmeria-wire` pins
+the `onEntityTint` bytes, opted in and not.
 
-### Colour and skin tint are not drawn
+### Colour and skin tint are sent for the lineup only
 
-A known limit, not a seed bug. The NPC AoI cascade sends every NPC
-`onEntityTint(0, 0, 0)` (`crates/wire/src/mercury/aoi/create.rs`), and no
-loader reads `primary_color_id`, `secondary_color_id` or `skin_tint`, so no
-NPC anywhere draws its seeded colours or skin tint. In the lineup:
+Every NPC outside the lineup is sent `onEntityTint(0, 0, 0)`, as it always
+has been, so none of them draws its seeded colours or skin tint. The lineup
+actors opt in with `entity_templates.send_tint`, true only on templates
+1410-1570 (not on the six attendants), and are sent their source's
+`primary_color_id`, `secondary_color_id` and `skin_tint` instead. The three
+values are packed `0xRRGGBB__` colours, not ids; a negative seed value is a
+colour with the top bit set and is sent as its two's complement (-256076032
+is `0xF0BC9700`, a light skin)
+([dispatch table](../protocol/client-method-dispatch-table.md), `onEntityTint`).
 
-- **70 of the 161 actors** carry a non-zero colour or tint in the data
-  (humans, male 25; humans, female 9; Jaffa, male 9; Goa'uld, male 8;
-  creatures 7; Goa'uld, female 6; machines 5; Jaffa, female 1). Each draws
-  untinted, exactly as its source NPC draws in its home zone. The spawn
-  tables mark them "yes, not drawn".
-- **Two actors draw identically:** `NID Guard #146 BS_HumanMale` (template
-  1426) and `Opheltes #215 BS_HumanMale` (template 1438) share body set and
-  components and differ only in colours (146 carries -65536 / -16777216,
-  215 carries 0 / 0; both tint -256076032). Every other actor differs from
-  every other in its body set, components or static mesh, so it still draws
-  differently.
+- **70 of the 161 actors** carry a non-zero colour or tint (humans, male
+  25; humans, female 9; Jaffa, male 9; Goa'uld, male 8; creatures 7;
+  Goa'uld, female 6; machines 5; Jaffa, female 1). The spawn tables mark
+  them "yes, sent". Their 115 source templates outside the lineup still
+  draw untinted in their home zones.
+- **Where it can show.** The client stores the three colours on the
+  entity and, when it composites the costume, sets them as the material
+  vector parameters `TintBase` (primary), `TintHighlight` (secondary) and
+  `TintSkin` (skin) on every composited material (`GameEntity::setTint`
+  `0x00e6df40`, compositing `0x00ebcfe3`). A colour changes nothing unless
+  the costume's materials read that parameter. Of the cooked packages, only
+  `AR_H_Ablative`, `AR_H_Ballistic00`, `AR_H_Hazmat00`, `AR_H_Lotar`,
+  `AR_J_Asian`, `AR_J_Bull`, `AR_J_Croc`, `AR_J_Demon`, `AR_J_Mayan`,
+  `AR_J_Praxis`, `BS_Asgard` and `ParentMaterials` name `TintBase` or
+  `TintHighlight`, and only `AR_H_Ablative`, `BS_Asgard`, `BS_HumanMale`,
+  `BS_HumanFemale` and `ParentMaterials` name `TintSkin`. No lineup actor
+  with a non-zero primary or secondary wears one of the armour packages
+  above, so on the lineup the visible channel is the skin, on actors with a
+  `BS_HumanMale` or `BS_HumanFemale` head or hands.
+- **The colour-only pair looks the same, as expected.** `NID Guard #146`
+  (template 1426) and `Opheltes #215` (template 1438) share body set and
+  components; 146 is sent `0xFFFF0000` / `0xFF000000`, 215 `0, 0`, and both
+  the skin `0xF0BC9700`. The lab A/B on 2026-10-05 (GM-spawned, with and
+  without `send_tint`) saw the same white winter clothing on both under
+  both servers, and the client logged `Event_NetIn_EntityTint` for each.
+  Their clothing package `AR_H_Clothing00` names no tint parameter, and
+  under the old `0, 0` tint the clothes are white, not black, so the
+  clothing does not read `TintBase` or `TintHighlight`. The skin check, from
+  the front, is still to do.
 
-The coverage guard keeps counting them as distinct looks, because the data
-says they are. Drawing the tint needs a server change to the cascade, which
-is raised with the owner separately.
+The coverage guard keeps counting #146 and #215 as distinct looks, because
+the data says they are. The colours are Project Giza's client-derived
+values; some look like placeholders (yellow and red on the "DO NOT USE"
+templates, white on white). Once a lab look at the skin shows they are
+right, `send_tint` goes on for the rest of the game
+([follow-up (t)](../analysis/debug-area/README.md#open-follow-ups)). The
+six template-less actors have no colours and still send `0, 0, 0`.
 
 ### Arrival load and client memory
 
@@ -1662,42 +1728,42 @@ Black Market Auctioneer"), (1405, "Debug Area - Nerus")]`.
 "Templates with this look" lists every template id outside the lineup that
 the actor stands for; the first is the one it was cloned from and is named
 after. "Tint in the data" marks the 70 actors whose look carries a
-colour or skin tint the client is not sent (see
-[Colour and skin tint are not drawn](#colour-and-skin-tint-are-not-drawn)).
+colour or skin tint, which the lineup sends (see
+[Colour and skin tint are sent for the lineup only](#colour-and-skin-tint-are-sent-for-the-lineup-only)).
 
 #### Humans, male (33)
 
 | Spawn | Template | Nameplate | Row (x, z) | Tint in the data | Templates with this look |
 |---:|---:|---|---|---|---|
 | 13870 | 1410 | Colonel Marsh #10 BS_HumanMale | N1 (305, -888) | none | 10 |
-| 13871 | 1411 | Cellblock Guard #15 BS_HumanMale | N1 (307.25, -888) | yes, not drawn | 15, 1377 |
-| 13872 | 1412 | NID Guard #24 BS_HumanMale | N1 (309.5, -888) | yes, not drawn | 24, 148, 169, 181, 182, 183, 212, 213, 214, 216, 217, 222, 223, 1302, 1372, 1375, 1376 |
+| 13871 | 1411 | Cellblock Guard #15 BS_HumanMale | N1 (307.25, -888) | yes, sent | 15, 1377 |
+| 13872 | 1412 | NID Guard #24 BS_HumanMale | N1 (309.5, -888) | yes, sent | 24, 148, 169, 181, 182, 183, 212, 213, 214, 216, 217, 222, 223, 1302, 1372, 1375, 1376 |
 | 13873 | 1413 | Interaction Debug NPC #25 BS_HumanMale | N1 (311.75, -888) | none | 25, 301, 331 |
-| 13874 | 1414 | TestAvatar #26 BS_HumanMale | N1 (314, -888) | yes, not drawn | 26 |
+| 13874 | 1414 | TestAvatar #26 BS_HumanMale | N1 (314, -888) | yes, sent | 26 |
 | 13875 | 1415 | test avatar set - DO NO #28 BS_HumanMale | N1 (316.25, -888) | none | 28 |
-| 13876 | 1416 | General Hammond #29 BS_HumanMale | N1 (318.5, -888) | yes, not drawn | 29, 1300 |
-| 13877 | 1417 | Airman #31 BS_HumanMale | N2 (323, -893) | yes, not drawn | 31, 1330 |
-| 13878 | 1418 | Mr. Woolsey #47 BS_HumanMale | N2 (325.25, -893) | yes, not drawn | 47 |
-| 13879 | 1419 | Dr. Daniel Jackson #51 BS_HumanMale | N2 (327.5, -893) | yes, not drawn | 51 |
-| 13880 | 1420 | Placeholder Gen. Jack O #52 BS_HumanMale | N2 (329.75, -893) | yes, not drawn | 52 |
-| 13881 | 1421 | Nerus #53 BS_HumanMale | N2 (332, -893) | yes, not drawn | 53, 166, 305, 1405 |
-| 13882 | 1422 | Warrick #55 BS_HumanMale | N2 (334.25, -893) | yes, not drawn | 55 |
+| 13876 | 1416 | General Hammond #29 BS_HumanMale | N1 (318.5, -888) | yes, sent | 29, 1300 |
+| 13877 | 1417 | Airman #31 BS_HumanMale | N2 (323, -893) | yes, sent | 31, 1330 |
+| 13878 | 1418 | Mr. Woolsey #47 BS_HumanMale | N2 (325.25, -893) | yes, sent | 47 |
+| 13879 | 1419 | Dr. Daniel Jackson #51 BS_HumanMale | N2 (327.5, -893) | yes, sent | 51 |
+| 13880 | 1420 | Placeholder Gen. Jack O #52 BS_HumanMale | N2 (329.75, -893) | yes, sent | 52 |
+| 13881 | 1421 | Nerus #53 BS_HumanMale | N2 (332, -893) | yes, sent | 53, 166, 305, 1405 |
+| 13882 | 1422 | Warrick #55 BS_HumanMale | N2 (334.25, -893) | yes, sent | 55 |
 | 13883 | 1423 | Goldam #56 BS_HumanMale | N2 (336.5, -893) | none | 56 |
-| 13884 | 1424 | Major Davis #57 BS_HumanMale | N2 (338.75, -893) | yes, not drawn | 57 |
-| 13885 | 1425 | Sgt. Harriman #58 BS_HumanMale | N2 (341, -893) | yes, not drawn | 58, 390 |
-| 13886 | 1426 | NID Guard #146 BS_HumanMale | N2 (343.25, -893) | yes, not drawn | 146, 171, 184, 185, 186, 1373 |
-| 13887 | 1427 | Sgt. Gerschon #149 BS_HumanMale | N2 (345.5, -893) | yes, not drawn | 149 |
-| 13888 | 1428 | HumanMale - Not For Us #150 BS_HumanMale | N3 (306, -902) | yes, not drawn | 150 |
-| 13889 | 1429 | Blue Faction Scientist #151 BS_HumanMale | N3 (308.25, -902) | yes, not drawn | 151 |
-| 13890 | 1430 | Lucian Slum Dweller #152 BS_HumanMale | N3 (310.5, -902) | yes, not drawn | 152, 1332, 1341 |
-| 13891 | 1431 | Dr. Zuritska #168 BS_HumanMale | N3 (312.75, -902) | yes, not drawn | 168 |
-| 13892 | 1432 | NID Guard #172 BS_HumanMale | N3 (315, -902) | yes, not drawn | 172, 371, 1314 |
-| 13893 | 1433 | Op-CORE Soldier #174 BS_HumanMale | N3 (317.25, -902) | yes, not drawn | 174, 187, 1331, 1370 |
-| 13894 | 1434 | Op-CORE Soldier #175 BS_HumanMale | N3 (319.5, -902) | yes, not drawn | 175 |
-| 13895 | 1435 | Op-CORE Soldier #176 BS_HumanMale | N3 (321.75, -902) | yes, not drawn | 176 |
-| 13896 | 1436 | Sgt. Stanton #178 BS_HumanMale | N3 (324, -902) | yes, not drawn | 178, 188 |
-| 13897 | 1437 | Ogilvie #179 BS_HumanMale | N3 (326.25, -902) | yes, not drawn | 179 |
-| 13898 | 1438 | Opheltes #215 BS_HumanMale | N3 (328.5, -902) | yes, not drawn | 215, 218, 220 |
+| 13884 | 1424 | Major Davis #57 BS_HumanMale | N2 (338.75, -893) | yes, sent | 57 |
+| 13885 | 1425 | Sgt. Harriman #58 BS_HumanMale | N2 (341, -893) | yes, sent | 58, 390 |
+| 13886 | 1426 | NID Guard #146 BS_HumanMale | N2 (343.25, -893) | yes, sent | 146, 171, 184, 185, 186, 1373 |
+| 13887 | 1427 | Sgt. Gerschon #149 BS_HumanMale | N2 (345.5, -893) | yes, sent | 149 |
+| 13888 | 1428 | HumanMale - Not For Us #150 BS_HumanMale | N3 (306, -902) | yes, sent | 150 |
+| 13889 | 1429 | Blue Faction Scientist #151 BS_HumanMale | N3 (308.25, -902) | yes, sent | 151 |
+| 13890 | 1430 | Lucian Slum Dweller #152 BS_HumanMale | N3 (310.5, -902) | yes, sent | 152, 1332, 1341 |
+| 13891 | 1431 | Dr. Zuritska #168 BS_HumanMale | N3 (312.75, -902) | yes, sent | 168 |
+| 13892 | 1432 | NID Guard #172 BS_HumanMale | N3 (315, -902) | yes, sent | 172, 371, 1314 |
+| 13893 | 1433 | Op-CORE Soldier #174 BS_HumanMale | N3 (317.25, -902) | yes, sent | 174, 187, 1331, 1370 |
+| 13894 | 1434 | Op-CORE Soldier #175 BS_HumanMale | N3 (319.5, -902) | yes, sent | 175 |
+| 13895 | 1435 | Op-CORE Soldier #176 BS_HumanMale | N3 (321.75, -902) | yes, sent | 176 |
+| 13896 | 1436 | Sgt. Stanton #178 BS_HumanMale | N3 (324, -902) | yes, sent | 178, 188 |
+| 13897 | 1437 | Ogilvie #179 BS_HumanMale | N3 (326.25, -902) | yes, sent | 179 |
+| 13898 | 1438 | Opheltes #215 BS_HumanMale | N3 (328.5, -902) | yes, sent | 215, 218, 220 |
 | 13899 | 1439 | Basic Equipment Quarte #300 BS_HumanMale | N3 (330.75, -902) | none | 300 |
 | 13900 | 1440 | Airman Lance #302 BS_HumanMale | N3 (333, -902) | none | 302, 330 |
 | 13901 | 1441 | Common Materials Compo #314 BS_HumanMale | N3 (335.25, -902) | none | 314, 372 |
@@ -1707,15 +1773,15 @@ colour or skin tint the client is not sent (see
 
 | Spawn | Template | Nameplate | Row (x, z) | Tint in the data | Templates with this look |
 |---:|---:|---|---|---|---|
-| 13903 | 1443 | Samantha Carter #33 BS_HumanFemale | N3 (339.75, -902) | yes, not drawn | 33, 1301 |
-| 13904 | 1444 | Capt. Copplemann #48 BS_HumanFemale | N3 (342, -902) | yes, not drawn | 48 |
-| 13905 | 1445 | Oma Desala #49 BS_HumanFemale | N3 (344.25, -902) | yes, not drawn | 49 |
-| 13906 | 1446 | Vala Mal Doran #50 BS_HumanFemale | N3 (346.5, -902) | yes, not drawn | 50 |
-| 13907 | 1447 | HumanFemale Template #153 BS_HumanFemale | N3 (348.75, -902) | yes, not drawn | 153 |
-| 13908 | 1448 | Warden Muelbach #170 BS_HumanFemale | N3 (351, -902) | yes, not drawn | 170 |
-| 13909 | 1449 | Castle Medic #177 BS_HumanFemale | N3 (353.25, -902) | yes, not drawn | 177 |
-| 13910 | 1450 | Storage Lotaur #219 BS_HumanFemale | N4 (312, -909) | yes, not drawn | 219, 1374 |
-| 13911 | 1451 | Storage Officer #370 BS_HumanFemale | N4 (314.25, -909) | yes, not drawn | 370 |
+| 13903 | 1443 | Samantha Carter #33 BS_HumanFemale | N3 (339.75, -902) | yes, sent | 33, 1301 |
+| 13904 | 1444 | Capt. Copplemann #48 BS_HumanFemale | N3 (342, -902) | yes, sent | 48 |
+| 13905 | 1445 | Oma Desala #49 BS_HumanFemale | N3 (344.25, -902) | yes, sent | 49 |
+| 13906 | 1446 | Vala Mal Doran #50 BS_HumanFemale | N3 (346.5, -902) | yes, sent | 50 |
+| 13907 | 1447 | HumanFemale Template #153 BS_HumanFemale | N3 (348.75, -902) | yes, sent | 153 |
+| 13908 | 1448 | Warden Muelbach #170 BS_HumanFemale | N3 (351, -902) | yes, sent | 170 |
+| 13909 | 1449 | Castle Medic #177 BS_HumanFemale | N3 (353.25, -902) | yes, sent | 177 |
+| 13910 | 1450 | Storage Lotaur #219 BS_HumanFemale | N4 (312, -909) | yes, sent | 219, 1374 |
+| 13911 | 1451 | Storage Officer #370 BS_HumanFemale | N4 (314.25, -909) | yes, sent | 370 |
 
 #### Jaffa, male (44)
 
@@ -1724,20 +1790,20 @@ colour or skin tint the client is not sent (see
 | 13912 | 1452 | Teal'c #30 BS_JaffaMale | N4 (316.5, -909) | none | 30 |
 | 13913 | 1453 | Jaffa #34 BS_JaffaMale | N4 (318.75, -909) | none | 34, 35 |
 | 13914 | 1454 | Bra'tac #59 BS_JaffaMale | N4 (321, -909) | none | 59 |
-| 13915 | 1455 | Bull Jaffa #82 BS_JaffaMale | N4 (323.25, -909) | yes, not drawn | 82 |
+| 13915 | 1455 | Bull Jaffa #82 BS_JaffaMale | N4 (323.25, -909) | yes, sent | 82 |
 | 13916 | 1456 | Asian Jaffa #83 BS_JaffaMale | N4 (325.5, -909) | none | 83 |
 | 13917 | 1457 | Cat Jaffa #84 BS_JaffaMale | N4 (327.75, -909) | none | 84 |
 | 13918 | 1458 | Cobra Jaffa #85 BS_JaffaMale | N4 (330, -909) | none | 85 |
-| 13919 | 1459 | Croc Jaffa #86 BS_JaffaMale | N4 (332.25, -909) | yes, not drawn | 86 |
-| 13920 | 1460 | Demon Jaffa #87 BS_JaffaMale | N5 (302, -914) | yes, not drawn | 87 |
+| 13919 | 1459 | Croc Jaffa #86 BS_JaffaMale | N4 (332.25, -909) | yes, sent | 86 |
+| 13920 | 1460 | Demon Jaffa #87 BS_JaffaMale | N5 (302, -914) | yes, sent | 87 |
 | 13921 | 1461 | Dragon Jaffa #88 BS_JaffaMale | N5 (304.25, -914) | none | 88 |
 | 13922 | 1462 | Eagle Jaffa #89 BS_JaffaMale | N5 (306.5, -914) | none | 89 |
 | 13923 | 1463 | Falcon Jaffa #90 BS_JaffaMale | N5 (308.75, -914) | none | 90 |
 | 13924 | 1464 | Horse Jaffa #91 BS_JaffaMale | N5 (311, -914) | none | 91 |
 | 13925 | 1465 | Hyena Jaffa #92 BS_JaffaMale | N5 (313.25, -914) | none | 92 |
-| 13926 | 1466 | Jackal Jaffa #93 BS_JaffaMale | N5 (315.5, -914) | yes, not drawn | 93, 1343 |
-| 13927 | 1467 | Mayan Jaffa #94 BS_JaffaMale | N5 (317.75, -914) | yes, not drawn | 94 |
-| 13928 | 1468 | Morrigan Jaffa #95 BS_JaffaMale | N5 (320, -914) | yes, not drawn | 95 |
+| 13926 | 1466 | Jackal Jaffa #93 BS_JaffaMale | N5 (315.5, -914) | yes, sent | 93, 1343 |
+| 13927 | 1467 | Mayan Jaffa #94 BS_JaffaMale | N5 (317.75, -914) | yes, sent | 94 |
+| 13928 | 1468 | Morrigan Jaffa #95 BS_JaffaMale | N5 (320, -914) | yes, sent | 95 |
 | 13929 | 1469 | Naga Jaffa #96 BS_JaffaMale | N5 (322.25, -914) | none | 96 |
 | 13930 | 1470 | Praxis Jaffa #97 BS_JaffaMale | N5 (324.5, -914) | none | 97, 159, 352 |
 | 13931 | 1471 | Praxis Jaffa 2 #98 BS_JaffaMale | N5 (326.75, -914) | none | 98 |
@@ -1754,14 +1820,14 @@ colour or skin tint the client is not sent (see
 | 13942 | 1482 | Viking Jaffa #111 BS_JaffaMale | S1 (319.5, -937) | none | 111 |
 | 13943 | 1483 | Ra Jaffa 2 #142 BS_JaffaMale | S1 (321.75, -937) | none | 142 |
 | 13944 | 1484 | Ra's Officer #143 BS_JaffaMale | S1 (324, -937) | none | 143 |
-| 13945 | 1485 | JaffaMale Template - D #155 BS_JaffaMale | S1 (326.25, -937) | yes, not drawn | 155 |
+| 13945 | 1485 | JaffaMale Template - D #155 BS_JaffaMale | S1 (326.25, -937) | yes, sent | 155 |
 | 13946 | 1486 | Praxis Jaffa Guard #160 BS_JaffaMale | S1 (328.5, -937) | none | 160, 189, 351 |
-| 13947 | 1487 | Petbe #163 BS_JaffaMale | S1 (330.75, -937) | yes, not drawn | 163 |
+| 13947 | 1487 | Petbe #163 BS_JaffaMale | S1 (330.75, -937) | yes, sent | 163 |
 | 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | none | 200, 201, 209 |
 | 13949 | 1489 | Bra'hin #202 BS_JaffaMale | S1 (335.25, -937) | none | 202 |
 | 13950 | 1490 | Ra's Jaffa #203 BS_JaffaMale | S1 (337.5, -937) | none | 203, 204, 205, 1406 |
 | 13951 | 1491 | Angry Jaffa #206 BS_JaffaMale | S2 (316, -942) | none | 206, 207, 208 |
-| 13952 | 1492 | Petbe #221 BS_JaffaMale | S2 (318.25, -942) | yes, not drawn | 221 |
+| 13952 | 1492 | Petbe #221 BS_JaffaMale | S2 (318.25, -942) | yes, sent | 221 |
 | 13953 | 1493 | Jaffa #1310 BS_JaffaMale | S2 (320.5, -942) | none | 1310, 1311, 1312, 1313 |
 | 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | none | 1371 |
 | 13955 | 1495 | (no template) BS_RaJaff | S2 (325, -942) | none | none |
@@ -1799,37 +1865,37 @@ colour or skin tint the client is not sent (see
 | 13982 | 1522 | Unas 6 Female #137 BS_JaffaFemale | S4 (335.25, -952) | none | 137 |
 | 13983 | 1523 | Viking Jaffa Female #138 BS_JaffaFemale | S5 (307, -956) | none | 138 |
 | 13984 | 1524 | Clothed Jaffa Female #139 BS_JaffaFemale | S5 (309.25, -956) | none | 139 |
-| 13985 | 1525 | JaffaFemale Template #154 BS_JaffaFemale | S5 (311.5, -956) | yes, not drawn | 154 |
+| 13985 | 1525 | JaffaFemale Template #154 BS_JaffaFemale | S5 (311.5, -956) | yes, sent | 154 |
 
 #### Goa'uld, male (14)
 
 | Spawn | Template | Nameplate | Row (x, z) | Tint in the data | Templates with this look |
 |---:|---:|---|---|---|---|
-| 13986 | 1526 | Prisoner 329 #17 BS_GoauldMale | S5 (313.75, -956) | yes, not drawn | 17, 46, 360 |
+| 13986 | 1526 | Prisoner 329 #17 BS_GoauldMale | S5 (313.75, -956) | yes, sent | 17, 46, 360 |
 | 13987 | 1527 | Ra #41 BS_GoauldMale | S5 (316, -956) | none | 41 |
-| 13988 | 1528 | Ba'al #42 BS_GoauldMale | S5 (318.25, -956) | yes, not drawn | 42 |
+| 13988 | 1528 | Ba'al #42 BS_GoauldMale | S5 (318.25, -956) | yes, sent | 42 |
 | 13989 | 1529 | Ra #60 BS_GoauldMale | S5 (320.5, -956) | none | 60 |
 | 13990 | 1530 | Ra #61 BS_GoauldMale | S5 (327, -956) | none | 61 |
 | 13991 | 1531 | Ra #62 BS_GoauldMale | S5 (329.25, -956) | none | 62 |
 | 13992 | 1532 | Ra #63 BS_GoauldMale | S5 (331.5, -956) | none | 63 |
-| 13993 | 1533 | GoauldMale Template #158 BS_GoauldMale | S5 (333.75, -956) | yes, not drawn | 158 |
-| 13994 | 1534 | Ba'al #167 BS_GoauldMale | S5 (336, -956) | yes, not drawn | 167 |
-| 13995 | 1535 | Haughty Goa'uld #210 BS_GoauldMale | S5 (338.25, -956) | yes, not drawn | 210 |
-| 13996 | 1536 | Ashrak Assassin #211 BS_GoauldMale | S5 (340.5, -956) | yes, not drawn | 211 |
-| 13997 | 1537 | Lo'Taur Servant #353 BS_GoauldMale | S6 (326, -961) | yes, not drawn | 353 |
+| 13993 | 1533 | GoauldMale Template #158 BS_GoauldMale | S5 (333.75, -956) | yes, sent | 158 |
+| 13994 | 1534 | Ba'al #167 BS_GoauldMale | S5 (336, -956) | yes, sent | 167 |
+| 13995 | 1535 | Haughty Goa'uld #210 BS_GoauldMale | S5 (338.25, -956) | yes, sent | 210 |
+| 13996 | 1536 | Ashrak Assassin #211 BS_GoauldMale | S5 (340.5, -956) | yes, sent | 211 |
+| 13997 | 1537 | Lo'Taur Servant #353 BS_GoauldMale | S6 (326, -961) | yes, sent | 353 |
 | 13998 | 1538 | Ra #1400 BS_GoauldMale | S6 (328.25, -961) | none | 1400 |
-| 13999 | 1539 | Ba'al #1401 BS_GoauldMale | S6 (330.5, -961) | yes, not drawn | 1401 |
+| 13999 | 1539 | Ba'al #1401 BS_GoauldMale | S6 (330.5, -961) | yes, sent | 1401 |
 
 #### Goa'uld, female (6)
 
 | Spawn | Template | Nameplate | Row (x, z) | Tint in the data | Templates with this look |
 |---:|---:|---|---|---|---|
-| 14000 | 1540 | Anat #43 BS_GoauldFemale | S6 (332.75, -961) | yes, not drawn | 43, 1402 |
-| 14001 | 1541 | Athena #44 BS_GoauldFemale | S6 (335, -961) | yes, not drawn | 44 |
-| 14002 | 1542 | Morrigan #45 BS_GoauldFemale | S6 (337.25, -961) | yes, not drawn | 45 |
-| 14003 | 1543 | GoauldFemale Templa #157 BS_GoauldFemale | S6 (339.5, -961) | yes, not drawn | 157 |
-| 14004 | 1544 | Athena #1403 BS_GoauldFemale | S6 (341.75, -961) | yes, not drawn | 1403 |
-| 14005 | 1545 | Morrigan #1404 BS_GoauldFemale | S6 (344, -961) | yes, not drawn | 1404 |
+| 14000 | 1540 | Anat #43 BS_GoauldFemale | S6 (332.75, -961) | yes, sent | 43, 1402 |
+| 14001 | 1541 | Athena #44 BS_GoauldFemale | S6 (335, -961) | yes, sent | 44 |
+| 14002 | 1542 | Morrigan #45 BS_GoauldFemale | S6 (337.25, -961) | yes, sent | 45 |
+| 14003 | 1543 | GoauldFemale Templa #157 BS_GoauldFemale | S6 (339.5, -961) | yes, sent | 157 |
+| 14004 | 1544 | Athena #1403 BS_GoauldFemale | S6 (341.75, -961) | yes, sent | 1403 |
+| 14005 | 1545 | Morrigan #1404 BS_GoauldFemale | S6 (344, -961) | yes, sent | 1404 |
 
 #### Asgard (3)
 
@@ -1853,14 +1919,14 @@ colour or skin tint the client is not sent (see
 
 | Spawn | Template | Nameplate | Row (x, z) | Tint in the data | Templates with this look |
 |---:|---:|---|---|---|---|
-| 14014 | 1554 | Rat #74 BS_MOB_Rat | E1 (348, -909) | yes, not drawn | 74 |
-| 14015 | 1555 | ScavDog #76 BS_MOB_ScavDog | E1 (352, -909) | yes, not drawn | 76 |
-| 14016 | 1556 | Lenny #73 BS_MOB_Lenny | E1 (356, -909) | yes, not drawn | 73 |
+| 14014 | 1554 | Rat #74 BS_MOB_Rat | E1 (348, -909) | yes, sent | 74 |
+| 14015 | 1555 | ScavDog #76 BS_MOB_ScavDog | E1 (352, -909) | yes, sent | 76 |
+| 14016 | 1556 | Lenny #73 BS_MOB_Lenny | E1 (356, -909) | yes, sent | 73 |
 | 14017 | 1557 | (no template) BS_MOB_LennyBaby | E1 (360, -909) | none | none |
-| 14018 | 1558 | Horden #72 BS_MOB_Horden | E1 (366, -909) | yes, not drawn | 72 |
-| 14019 | 1559 | Carnosaur #71 BS_MOB_Carnosaur | E1 (374, -909) | yes, not drawn | 71 |
-| 14020 | 1560 | Rhinolion #75 BS_MOB_Rhinolion00 | E1 (382, -909) | yes, not drawn | 75 |
-| 14021 | 1561 | Twilla Vines #80 BS_MOB_TwillaTree | E3 (362, -937) | yes, not drawn | 80 |
+| 14018 | 1558 | Horden #72 BS_MOB_Horden | E1 (366, -909) | yes, sent | 72 |
+| 14019 | 1559 | Carnosaur #71 BS_MOB_Carnosaur | E1 (374, -909) | yes, sent | 71 |
+| 14020 | 1560 | Rhinolion #75 BS_MOB_Rhinolion00 | E1 (382, -909) | yes, sent | 75 |
+| 14021 | 1561 | Twilla Vines #80 BS_MOB_TwillaTree | E3 (362, -937) | yes, sent | 80 |
 
 #### Machines (9)
 
@@ -1870,8 +1936,8 @@ colour or skin tint the client is not sent (see
 | 14023 | 1563 | (no template) BS_MOB_DroneTank | E4 (351, -942) | none | none |
 | 14024 | 1564 | Prisoner retrieval #4 BS_MOB_DroneFlyer | E4 (355, -942) | none | 4, 145 |
 | 14025 | 1565 | Malfunctioning Dron #69 MOB_Goauld_Drone | E4 (359, -942) | none | 69 |
-| 14026 | 1566 | Agnos Drone #81 MOB_AncientDrone_BS | E3 (368, -937) | yes, not drawn | 81 |
-| 14027 | 1567 | Straegis Figh #78 BS_MOB_StraegisFighter | E3 (372, -937) | yes, not drawn | 78, 350 |
-| 14028 | 1568 | Straegis Beaco #77 BS_MOB_StraegisBeacon | E3 (376, -937) | yes, not drawn | 77 |
-| 14029 | 1569 | BattleWalker #70 BS_MOB_BattleWalker | E3 (382, -937) | yes, not drawn | 70 |
-| 14030 | 1570 | Straegis Titan #79 BS_MOB_StraegisTitan | E2 (368.5, -922) | yes, not drawn | 79 |
+| 14026 | 1566 | Agnos Drone #81 MOB_AncientDrone_BS | E3 (368, -937) | yes, sent | 81 |
+| 14027 | 1567 | Straegis Figh #78 BS_MOB_StraegisFighter | E3 (372, -937) | yes, sent | 78, 350 |
+| 14028 | 1568 | Straegis Beaco #77 BS_MOB_StraegisBeacon | E3 (376, -937) | yes, sent | 77 |
+| 14029 | 1569 | BattleWalker #70 BS_MOB_BattleWalker | E3 (382, -937) | yes, sent | 70 |
+| 14030 | 1570 | Straegis Titan #79 BS_MOB_StraegisTitan | E2 (368.5, -922) | yes, sent | 79 |

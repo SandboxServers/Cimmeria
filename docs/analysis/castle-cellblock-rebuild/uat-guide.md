@@ -176,7 +176,7 @@ Two things are explicitly unverified and this test is what resolves them:
 
 ### T03 / T04 — Frost, the Guard, and Frost's Letter (C04)
 
-**Packets:** C04. **Chains:** 1003, 1005, 1004, 1121. **Missions:** 622, 1360.
+**Packets:** C04; Class Start v6 CS-04 for the Guard search. **Chains:** 1003, 1005, 1010, 1004, 1121; 7101 for the combat tutorial. **Missions:** 622, 1360.
 
 **Preconditions:** T01 passed; on step 2113.
 
@@ -195,6 +195,8 @@ Two things are explicitly unverified and this test is what resolves them:
 - Mission **1360 "Frost's Letter"** appears in the log on step **4037** "Find a way to get Cpl. Frost's Letter to his family." This is C04's whole deliverable.
 - Mission 622 advances to step **80623** "Search the NID Guard's body for a weapon" and the Guard becomes searchable.
 - Searching the Guard shows dialog **3996**, grants the pistol to your backpack, and advances to step **80622** "Equip the pistol from your inventory."
+- **Human or Loyalist Jaffa (Class Start v6, CS-04):** the same search then prints four chat lines, "You have learned Pistol Shot.", "…Strike.", "…Heal Focus." and "…Medical Attention: Recuperation.", the four appear in the Abilities window (**T**), and tutorial **5882** "Equipping a Weapon" opens (three pages). The pistol has 0 rounds: reload once after equipping it. The first time an NPC attacks you afterwards (T26's guard), tutorial **5883** "Combat" opens (seven pages), once. A character that still starts with these four abilities (one created before the universal kit was removed, CS-02) gets no "You have learned" line for them; the tutorials open all the same.
+- **Goa'uld (holding state, OD-CS08):** the pistol and the step only. No "You have learned" lines, no tutorial, and no Combat tutorial later.
 - Equipping the pistol plays sequence **10000** (the stasis-room door opens) and completes mission 622.
 
 **Must NOT happen:**
@@ -202,11 +204,13 @@ Two things are explicitly unverified and this test is what resolves them:
 - Mission 1360 being accepted twice, or re-accepted on a second click of Frost's body. Chain 1121 gates on both `step_status 622/2113 = active` and `mission_status 1360 = not_active`.
 - Frost's corpse re-granting the letter on a re-click.
 - The Guard re-granting the pistol on a re-click.
+- Tutorial 5882 or 5883 opening a second time for the same character: on a re-click, after a relog, or in another world.
+- The tutorial opening before the four abilities are in the Abilities window.
 - Mission 622 completing before you manually equip the pistol.
 
 **Relog check:** relog while on step 80623 — the Guard's dialog binding must come back (chain 1007, dialog set 5230 to template 21). Mission 1360 must still be active and stay active for the rest of the zone.
 
-**Server evidence:** `logs\content.log`, `Content: accepting mission` `mission_id=1360 chain_id=1121`; `Content: granting item` for 3730 then 55; `Content: advancing step` `mission_id=622 step_id=80623` then `80622`; `Content: playing sequence` `sequence_id=10000`.
+**Server evidence:** `logs\content.log`, `Content: accepting mission` `mission_id=1360 chain_id=1121`; `Content: granting item` for 3730 then 55; `Content: advancing step` `mission_id=622 step_id=80623` then `80622`; `Content: playing sequence` `sequence_id=10000`. For the grant and the tutorial: `event=content_grant_ability` with `chain_id=1005 source_kind=tutorial` (`decision_outcome=granted` per new ability, or `starter_kept` for one the character already started with), then `event=content_show_tutorial` `decision_outcome=recorded` and `shown` for 5882, and later for 5883 with `chain_id=7101`.
 
 ### T05 / T06 — Prisoner 329, one dialog per archetype (C01)
 
@@ -755,9 +759,9 @@ Four chains fire on the same `mission_completed 686` event. They are ordered by 
 
 ### T18 / T19 — Aftermath crate and the barracks (687)
 
-**Chains:** 1097, 1098, 1099, 1100-1103, 1104.
+**Chains:** 1097, 1098, 1099, 1192-1195, 1191, 1100-1103, 1104.
 
-Run **once per archetype** — the reward branches on Jaffa vs everyone else.
+Run **once per class** — since Class Start v6 (CS-04, OD-CS02) the reward is a five-way class split, plus the Goa'uld holding state.
 
 **Preconditions:** mission 687 accepted on step **2354** "Search the crate for any useful items."
 
@@ -771,20 +775,26 @@ Run **once per archetype** — the reward branches on Jaffa vs everyone else.
 **Expected:**
 
 - The crate is highlighted on mission accept.
-- **Tau'ri (and Goa'uld):** dialog **3942** "You search through the Crate and discover a stealth suit and a nasty-looking serrated knife.", and a loot window (loot table 10) with six items — Covert Stealth Helmet (3347), Vest (3359), Pants (3372), Gloves (3387), Boots (3401) and a Combat Knife (3325). Loot All puts them in your bags (each item's own bag, not always the backpack).
-- **Jaffa:** dialog **3943** "…a staff weapon and a piece of plate armor for the chest.", and a loot window (table 11) with two items — Armored Prison Jacket (3482) and Serpent Staff (2797).
+- **Soldier:** dialog **2517** "…a heavy weapon and a piece of body armor that protects the chest.", a loot window (table 12) with the SK37 LMG (3260) and the Armored BDU Jacket (7373), and the chat line "You have learned Quick Burst." (598). Quick Burst is an automatic-weapon ability: it is meant for the SGHC 6 SMG from mission 641, and once the weapon requirement is enforced (Class Start v6, CS-07) it is refused with the LMG.
+- **Commando:** dialog **3942** "You search through the Crate and discover a stealth suit and a nasty-looking serrated knife.", a loot window (table 10) with six items — Covert Stealth Helmet (3347), Vest (3359), Pants (3372), Gloves (3387), Boots (3401) and a Combat Knife (3325) — and "You have learned Stealth I." (646).
+- **Scientist:** dialog **4408** "In the crate you find a deployment belt and some body armor for your chest.", a loot window (table 13) with the Deployment Belt (4444) and the Armored BDU Jacket (7373), and "You have learned Medical Attention: Battlefield Heal." (948).
+- **Archaeologist:** dialog **4409** "In the crate you find an Asgard hologram emitter and a piece of body armor for your chest.", a loot window (table 14) with the Hologram Emitter (6843) and the Armored BDU Jacket (7373), and "You have learned Reveal Mini-Games." (802).
+- **Loyalist Jaffa:** dialog **3943** "…a staff weapon and a piece of plate armor for the chest.", a loot window (table 11) with the Standard Chestplate (4342) and the Serpent Staff (2797), and "You have learned Staff Swing." (1984).
+- **Goa'uld (holding state, OD-CS08):** dialog **3942** and the Commando's six items (table 10), with no "You have learned" line.
+- Loot All puts the items in your bags (each item's own bag, not always the backpack). The signature ability is in the Abilities window at once, costs no training point, and is still there after a respec. A gun from the crate has 0 rounds until you reload it.
 - Step advances to **2355** "Eliminate the guards in the barracks." as soon as the window opens (so the mission cannot stall on an unlooted window); the crate highlight clears.
 - The second right-click reopens anything you left in the window; once it is empty it says "You have already taken everything from this." The crate stays standing.
 - The **third** guard's death completes 687 and auto-accepts **688 "Secure the Armory"**.
 
-Goa'uld taking the Tau'ri branch is intentional — Cimmeria's chains gate on `archetype neq 8` where the 2009 Python used `archetype < 5` and gave Goa'uld nothing at all.
+Goa'uld getting the Commando's set is intentional: before CS-04 the non-Jaffa chain gave it to them (the legacy Python used `archetype < 5` and gave Goa'uld nothing at all), and OD-CS08 keeps that until their own start exists. Chain 1195 also catches any archetype without a class row, so the crate is never a dead end.
 
 **Must NOT happen:**
 
 - Both reward sets being granted, or the wrong archetype's set.
 - The crate re-granting on a second click, or after a relog or a death (the once-per-character flag is saved on the character).
 - 687 completing before all three guards are down.
-- Per-class variants (dialogs 2517 / 4408 / 4409) appearing. Those were never wired to this graph in any revision we have evidence of; GC2 is closed with no packet.
+- A class getting another class's dialog, items or ability, or a Goa'uld learning anything here.
+- The signature ability being granted twice, or a second "You have learned" line on a later press.
 
 **Relog check:** relog on step 2354 — the crate highlight must return (chain 1104).
 

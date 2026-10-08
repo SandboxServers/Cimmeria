@@ -248,6 +248,14 @@ RingTransporterWorldMapMode.bAllowWorldChange = false
 4. Each destination shows a `set:MinimapIcons image:Transporter` icon (17x18 pixels) with name label in `Verdana-10`
 5. On click, calls `setRingTransporterDestination(sourceRegionId, destRegionId)` and closes the map
 
+**The picture under the icons (Ihpet Crater).** The icons are placed with the
+world-to-map transform, so they are only as right as the map picture. The stock
+Ihpet Crater picture (`world__default_`, worlds 73 and 1300) is a 1.99x zoom of
+the map's top-left corner, so its icons looked misplaced although the seeded
+pad coordinates were correct. Client patch `013-ihpet-world-map` replaces the
+picture; see the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
+The other worlds' pictures were not checked.
+
 ### Kismet Sequences (UE3 Visual Effects)
 
 `USeqEvent_RegionTeleport` at `0x0069fc40` handles two event types:
@@ -434,9 +442,9 @@ CREATE TABLE ring_transport_regions (
 | 31 | MenfaDark_Ring_00040000 | {30} | Paired |
 | 32 | MenfaDark_Ring_ffff0003 | {} | Dead end — receive only |
 
-#### Debug Area (world 1300) — 8 regions, fully connected (Cimmeria, DA-08)
+#### Debug Area (world 1300) — 9 regions, fully connected (Cimmeria, DA-08, DA-11)
 
-Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `011-debug-area-rings-fix` (it replaces `010-debug-area-rings`, which hung the client and was pulled) clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
+Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `011-debug-area-rings-fix` (it replaces `010-debug-area-rings`, which hung the client and was pulled) clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. Patch `014-debug-area-lineup-ring` (DA-11) clones a ninth copy, for the Lineup station, into the chunk 011 writes. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
 
 | ID | `ring_transport_regions.tag` | Console spawn tag | Event set | Sequences (out / in) | Rig |
 |---|---|---|---|---|---|
@@ -448,12 +456,13 @@ Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, whi
 | 40 | `DebugArea_Ring_GalleryWestRegion` | `DebugArea_Ring_GalleryWest` | 13815 | 10199 / 10200 | `…Pf0_Seq_4` |
 | 41 | `DebugArea_Ring_GalleryEastRegion` | `DebugArea_Ring_GalleryEast` | 13816 | 10201 / 10202 | `…Pf0_Seq_5` |
 | 42 | `DebugArea_Ring_DeathYardRegion` | `DebugArea_Ring_DeathYard` | 13817 | 10203 / 10204 | `…Pf0_Seq_6` |
+| 43 (Lineup, DA-11) | `DebugArea_Ring_LineupRegion` | `DebugArea_Ring_Lineup` | 13818 | 10205 / 10206 | `…Pf0_Seq_7` (patch 014) |
 
-Rig paths are `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq[_N]`: each copy took the next free instance number. Every region lists the other seven. Consoles are template 3, like Harset's, and are wired the same way (`interact_tag` -> `trigger_transporter`, chains 13810-13817). The map patch clones no console mesh, because template 3 renders one. Pad rows are the base platform origin + 0.537 m, the offset regions 1 and 3 use. Station positions, what each serves and how to use them: [debug-area.md § Ring transports](../content/debug-area.md#ring-transports).
+Rig paths are `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq[_N]`: each copy took the next free instance number. Every region lists the other eight. Consoles are template 3, like Harset's, and are wired the same way (`interact_tag` -> `trigger_transporter`, chains 13810-13818). The map patch clones no console mesh, because template 3 renders one. Pad rows are the base platform origin + 0.537 m, the offset regions 1 and 3 use. Station positions, what each serves and how to use them: [debug-area.md § Ring transports](../content/debug-area.md#ring-transports).
 
 No cross-world destination. The FSM supports cross-world trips (regions 14 ↔ 17), but a ring in another world that listed a Debug Area pad would give ordinary players a way into a GM-only world, and a one-way ring out would reserve and animate a pad other players are using. GMs leave with `.gotolocation`.
 
-World 73 (the live Ihpet Crater) loads the same patched map file, so it renders the eight platforms as scenery. Nothing is seeded for it: no pad row, console, chain or sequence, so nothing there opens a ring list or plays a rig. `the_live_ihpet_crater_gets_no_ring_stations_live_db` pins that.
+World 73 (the live Ihpet Crater) loads the same patched map file, so it renders the nine platforms as scenery. Nothing is seeded for it: no pad row, console, chain or sequence, so nothing there opens a ring list or plays a rig. `the_live_ihpet_crater_gets_no_ring_stations_live_db` pins that.
 
 > **Note:** Region IDs 9, 13, 15, 23 are unused gaps in the sequence (max=32).
 > All regions use `display_name_id = 7508` (shared "Ring Transporter" text).

@@ -59,5 +59,6 @@ pub fn npc_spawn_record(
         vault_scope,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }

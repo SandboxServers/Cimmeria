@@ -146,6 +146,22 @@ CREATE TABLE entity_templates (
     -- client shows it instead. NULL (every shipped template) sends nothing
     -- and the nameplate is the `name_id` text alone.
     display_name character varying(200),
+    -- Opt in to sending this template's three colours (primary_color_id,
+    -- secondary_color_id, skin_tint) in `onEntityTint` (Debug Area DA-10).
+    -- None of them is an id: the client unpacks each as a packed 0xRRGGBB__
+    -- colour and ignores the low byte. A colour with the top bit set is
+    -- stored as its signed 32-bit value (-52773120 is 0xFCDABF00), and the
+    -- server sends the two's-complement low 32 bits. false (every template
+    -- outside the Visual NPC Lineup, whose colours are unproven on screen)
+    -- sends onEntityTint(0, 0, 0). See
+    -- crates/entity/src/cell_entity/entity_tint.rs.
+    send_tint boolean DEFAULT false NOT NULL,
+    CONSTRAINT entity_templates_colours_fit_32_bits
+        CHECK (
+            primary_color_id BETWEEN -2147483648 AND 4294967295
+            AND secondary_color_id BETWEEN -2147483648 AND 4294967295
+            AND skin_tint BETWEEN -2147483648 AND 4294967295
+        ),
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive

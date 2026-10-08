@@ -72,6 +72,7 @@ fn init_msg(abilities: Vec<i32>) -> BaseToCellMsg {
         character_name: None,
         body_set: None,
         looted_containers: Vec::new(),
+        shown_tutorials: Vec::new(),
     }
 }
 

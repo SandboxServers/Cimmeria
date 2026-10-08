@@ -32,6 +32,8 @@
 //! - `ability_content` — `ContentGrantAbilities` and
 //!   `ContentAbilitiesGranted`, the content `grant_ability` round trip
 //!   (Class Start v6, CS-01a).
+//! - `tutorial_content` — `RecordTutorialShown` and `TutorialRecorded`, the
+//!   content `show_tutorial` round trip (Class Start v6, CS-03).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
 //! - `entity_labels` — `EntityLabelsRequest`, sent on its own ingest-to-cell
@@ -59,6 +61,7 @@ mod mail_gm_cell_to_base;
 mod org_base_to_cell;
 mod org_cell_to_base;
 mod plugin_msg;
+mod tutorial_content;
 
 pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
@@ -93,6 +96,7 @@ pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;
 pub use org_cell_to_base::OrgCellToBase;
 pub use plugin_msg::PluginMsg;
+pub use tutorial_content::{RecordTutorialShown, TutorialRecordOutcome, TutorialRecorded};
 
 #[cfg(test)]
 mod tests;

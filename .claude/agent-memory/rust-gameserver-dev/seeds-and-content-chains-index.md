@@ -14,7 +14,8 @@ metadata:
 - [cell-startup-caches-vs-base-roundtrip](cell-startup-caches-vs-base-roundtrip.md) — the cell has a DB pool and ~20 caches; no base round-trips mid-chain.
 - [content-chain-authoring-traps](content-chain-authoring-traps.md) — `display_dialog` needs an interact.
 - [content-chain-dispatch-traps](content-chain-dispatch-traps.md) — `dialog_choice` has no archetype.
-- [content-chain-condition-context-gaps](content-chain-condition-context-gaps.md) — `archetype neq` fails open on dialog chains; `delay_ms > 0` queues.
+- [content-chain-condition-context-gaps](content-chain-condition-context-gaps.md) — a missing `archetype` reads -1 (`neq` passes; dialog chains set it since CS-01b); `delay_ms > 0` queues.
+- [class-split-chain-authoring](class-split-chain-authoring.md) — no OR in a chain: partition `archetype` with a fallback; grant rows carry `archetypes`; cooked per-class crate dialogs; CRLF seed.
 - [player-loaded-edge-trigger-race](player-loaded-edge-trigger-race.md) — a gated `player_loaded` chain never fires for a player already inside.
 - [edge-trigger-replay-and-abandon](edge-trigger-replay-and-abandon.md) — H52 `enter_region` replay and H54 `mission_abandoned` wiring.
 - [chain-replay-trigger-param-vacuity](chain-replay-trigger-param-vacuity.md) — a `TriggerEvent` missing its key param matches nothing.

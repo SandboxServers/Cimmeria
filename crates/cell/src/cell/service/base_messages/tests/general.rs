@@ -157,6 +157,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             character_name: Some("Daniel".into()),
             body_set: Some("BS_JaffaMale.BS_JaffaMale".into()),
             looted_containers: Vec::new(),
+            shown_tutorials: Vec::new(),
         },
         &tx,
         &mut mgr,

@@ -107,6 +107,16 @@ ALTER TABLE ONLY sgw_player_ability_grants
     ADD CONSTRAINT sgw_player_ability_grants_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: sgw_player_tutorials_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- One-time tutorials shown (Class Start v6, CS-03); a deleted character takes
+-- its rows with it.
+--
+
+ALTER TABLE ONLY sgw_player_tutorials
+    ADD CONSTRAINT sgw_player_tutorials_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- Name: sgw_contact_list_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 -- ON DELETE CASCADE ensures all lists (and via FK below, all members) are

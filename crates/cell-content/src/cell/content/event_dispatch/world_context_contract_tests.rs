@@ -33,7 +33,8 @@ use cimmeria_content_engine::triggers::Trigger;
 
 use super::{
     fire_dialog_choice, fire_dialog_open, fire_mission_abandoned, fire_mission_accepted,
-    fire_mission_completed, fire_player_flanked_npc, fire_stargate_crossed, fire_stargate_dialed,
+    fire_mission_completed, fire_player_entered_combat, fire_player_flanked_npc,
+    fire_stargate_crossed, fire_stargate_dialed,
 };
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::WorldRow;
@@ -154,6 +155,7 @@ enum Dispatcher {
     MissionAbandoned,
     DialogOpen,
     DialogChoice,
+    PlayerEnteredCombat,
 }
 
 impl Dispatcher {
@@ -181,6 +183,7 @@ impl Dispatcher {
             Self::DialogChoice => Trigger::OnDialogChoice {
                 dialog_id: DIALOG_ID,
             },
+            Self::PlayerEnteredCombat => Trigger::OnPlayerEnteredCombat,
         }
     }
 
@@ -211,6 +214,9 @@ impl Dispatcher {
             Self::DialogChoice => {
                 fire_dialog_choice(PLAYER_EID, PLAYER_ID, DIALOG_ID, 1, engine, &tx, mgr).await;
             }
+            Self::PlayerEnteredCombat => {
+                fire_player_entered_combat(PLAYER_EID, NPC_EID, engine, &tx, mgr).await;
+            }
         }
     }
 }
@@ -218,7 +224,7 @@ impl Dispatcher {
 /// Every player-scoped dispatcher this contract covers. A new player
 /// trigger belongs here, so it inherits both the `world` and the
 /// `archetype` guard below.
-const ALL: [Dispatcher; 8] = [
+const ALL: [Dispatcher; 9] = [
     Dispatcher::StargateDialed,
     Dispatcher::StargateCrossed,
     Dispatcher::PlayerFlankedNpc,
@@ -227,6 +233,7 @@ const ALL: [Dispatcher; 8] = [
     Dispatcher::MissionAbandoned,
     Dispatcher::DialogOpen,
     Dispatcher::DialogChoice,
+    Dispatcher::PlayerEnteredCombat,
 ];
 
 /// A `world eq 57` chain fires for a player standing in Harset, through
@@ -283,6 +290,43 @@ async fn archetype_gated_chain_fires_only_for_that_archetype() {
                 "{dispatcher:?}: an `archetype eq 7` chain for a player of archetype \
                  {archetype}: a Shol'va-only miss means the dispatcher did not set the \
                  `archetype` param",
+            );
+        }
+    }
+}
+
+/// The `tutorial_shown` contract (CS-03): every player-scoped dispatcher
+/// hands the acting player's shown tutorials to the condition. A
+/// `tutorial_shown 5882 eq` chain fires for a player who has seen 5882 and
+/// not for one who has not. The positive half goes red when a dispatcher
+/// stops populating `shown_tutorials` (the condition then fails closed).
+#[tokio::test]
+async fn tutorial_gated_chain_fires_only_after_the_tutorial() {
+    const TUTORIAL: i32 = 5882;
+    for (i, dispatcher) in ALL.into_iter().enumerate() {
+        for (seen, expected) in [(true, true), (false, false)] {
+            let engine = gated_engine(
+                0x7007_0130 + i as i64,
+                dispatcher.trigger(),
+                Condition::TutorialShown {
+                    tutorial_id: TUTORIAL,
+                    operator: ComparisonOp::Eq,
+                },
+            );
+            let mut mgr = make_mgr("Harset");
+            if seen {
+                if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
+                    p.shown_tutorials.insert(TUTORIAL);
+                }
+            }
+            dispatcher.fire(&engine, &mut mgr).await;
+            assert_eq!(
+                fired(&mgr),
+                expected,
+                "{dispatcher:?}: a `tutorial_shown 5882 eq` chain for a player who has \
+                 {}seen 5882: a miss on the seen side means the dispatcher did not \
+                 populate shown_tutorials",
+                if seen { "" } else { "not " },
             );
         }
     }

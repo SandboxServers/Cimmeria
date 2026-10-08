@@ -238,7 +238,7 @@ pub(super) fn resolve_respawn_target_in(
                         entity_id,
                         entity_name = space_mgr.entity_names(entity_id).entity_name,
                         world = %p.world,
-                        profile_id = %p.profile_id,
+                        profile_id = %p.profile_id, // nt:id-only profile key has no display name
                         reason = "no_world",
                         "Respawn: the entity is in no world; sending it to its start profile's home"
                     );

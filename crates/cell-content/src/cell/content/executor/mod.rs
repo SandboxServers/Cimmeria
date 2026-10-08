@@ -24,6 +24,8 @@
 //! - [`loot`]      — `OpenLoot`, a loot window on a live container
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //! - [`once_gate`] — `content_triggers.once`: fire once per entity, then disarm
+//! - [`tutorial`]  — `ShowTutorial`, the one-time tutorial (CS-03): recorded
+//!   by the base, displayed only on the first record
 //!
 //! - [`dispatch`]  — [`execute_one`], the per-action `match`; single-arm
 //!   actions with no shared helpers (PlaySequence, StartMinigame,
@@ -56,6 +58,7 @@ mod spawn_set;
 mod stargate;
 mod stats;
 mod transport;
+mod tutorial;
 mod world;
 
 use dispatch::execute_one;
@@ -77,6 +80,9 @@ pub(super) use inventory::item_container;
 // `crate::cell::content::<fn>` depth as `build_engine` and the `fire_*`
 // dispatchers.
 pub use deferred::deferred_content_action_tick;
+// The base's answer to `show_tutorial` (`BaseToCellMsg::TutorialRecorded`),
+// handled by `cell::service::base_messages`.
+pub use tutorial::apply_tutorial_recorded;
 
 /// Execute resolved actions from the content engine against the game state.
 ///

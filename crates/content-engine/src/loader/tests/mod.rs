@@ -11,3 +11,4 @@ mod grant_ability_conversion;
 mod npc_bark_conversion;
 mod send_system_mail_conversion;
 mod trigger_conversion;
+mod tutorial_conversion;

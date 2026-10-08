@@ -412,6 +412,23 @@ Consequences for the server:
   `onBeingNameUpdate(WSTRING)` in its AoI cascade in place of `onBeingNameIDUpdate`, the same
   method a player ghost's name rides. Same class gate. The name id is left out because the
   client's nameplate draws a mob's name-id text over any `onBeingNameUpdate` (lab, 2026-10-05).
+- **`onEntityTint` (10) carries three packed colours, not ids.** The client handler
+  `GameEntity_ApplySkinTintColors` (`0x00e6f8b0`) reads `primaryColorId`, `secondaryColorId`
+  and `skinColorId` from the event and unpacks each `UINT32` as `0xRRGGBB__`: R, G and B from
+  bits 24, 16 and 8, the low byte dropped, alpha forced to 0xFF (verified by disassembly
+  2026-10-05). A player's skin is a `SKIN_TINTS` entry (`0x..FF`, low byte ignored). An NPC
+  sends `0, 0, 0` unless its template opts in with `entity_templates.send_tint` (only the
+  Visual NPC Lineup, DA-10); then it sends `primary_color_id`, `secondary_color_id` and
+  `skin_tint`. Those `bigint` columns hold a colour with the top bit set as its signed 32-bit
+  value (-52773120 is `0xFCDABF00`, a pale skin), so the wire value is the two's-complement low
+  32 bits. The legacy Python loader negated them instead (`EntityTemplate.py:35-43`), which
+  sends that skin as `0x03254100`, a dark blue. Conversion and evidence:
+  `crates/entity/src/cell_entity/entity_tint.rs`. The client keeps the three on the entity
+  (`GameEntity::setTint`, `0x00e6df40`, flag at entity `+0xa0`, colours at `+0xa4`) and, when it
+  composites a being's costume, sets them as the material vector parameters `TintBase`,
+  `TintHighlight` and `TintSkin` on every composited material (`0x00ebcfe3`); a costume whose
+  materials do not read a parameter shows no change (lab A/B, 2026-10-05: none on the lineup's
+  coloured clothing).
 - A method in the *bound nowhere* row always shows up in the drop oracle. Seen on the colo on
   2026-09-29: `onPlayerTeleport` (116) and `giveXPForLevel` (119). Sending them does nothing on
   a stock client; the six `onBM*` need the client patch in

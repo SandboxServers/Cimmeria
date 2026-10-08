@@ -31,11 +31,21 @@ INSERT INTO loot_tables (loot_table_id, description) VALUES (7, 'Castle hall NID
 -- Decision (@Cadacious, 2026-09-28): live containers opened by the content
 -- `open_loot` action, every row at probability 1. 8/9 are the Castle chest
 -- before the Interrogation Block (chains 1274/1275), 10/11 the Cellblock
--- weapon/armor crate (chains 1098/1099).
+-- weapon/armor crate (chains 1098/1099; see the CS-04 note below).
 INSERT INTO loot_tables (loot_table_id, description) VALUES (8, 'Castle pre-Romney chest (non-Jaffa)');
 INSERT INTO loot_tables (loot_table_id, description) VALUES (9, 'Castle pre-Romney chest (Jaffa)');
-INSERT INTO loot_tables (loot_table_id, description) VALUES (10, 'Cellblock crate (non-Jaffa)');
-INSERT INTO loot_tables (loot_table_id, description) VALUES (11, 'Cellblock crate (Jaffa)');
+INSERT INTO loot_tables (loot_table_id, description) VALUES (10, 'Class reward crate (Commando; Cellblock holding state)');
+INSERT INTO loot_tables (loot_table_id, description) VALUES (11, 'Class reward crate (Loyalist Jaffa)');
+
+-- PROJECT_FINAL_S2C (Class Start v6, CS-04, OD-CS02): the Cellblock crate is a
+-- five-way class split. 10 is the Commando set (OD-CS12, family A) and stays
+-- the reward of every archetype without a class row (the OD-CS08 holding
+-- state); 11 is the Loyalist Jaffa set; 12-14 are new. The recovered
+-- Aftermath.script was Human/Jaffa only; this split is our own authoring.
+-- Opened by chains 1098, 1099 and 1192-1195.
+INSERT INTO loot_tables (loot_table_id, description) VALUES (12, 'Class reward crate (Soldier)');
+INSERT INTO loot_tables (loot_table_id, description) VALUES (13, 'Class reward crate (Scientist)');
+INSERT INTO loot_tables (loot_table_id, description) VALUES (14, 'Class reward crate (Archaeologist)');
 
 --
 -- TOC entry 3324 (class 0 OID 0)
@@ -43,5 +53,5 @@ INSERT INTO loot_tables (loot_table_id, description) VALUES (11, 'Cellblock crat
 -- Name: loot_tables_loot_table_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('loot_tables_loot_table_id_seq', 11, true);
+SELECT pg_catalog.setval('loot_tables_loot_table_id_seq', 14, true);
 

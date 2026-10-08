@@ -177,7 +177,7 @@ pub async fn load_at_boot(pool: &sqlx::PgPool) {
                         event = "start_profile_invalid",
                         reason = problem.reason(),
                         char_def_id = p.char_def_id, // nt:id-only char_def rows carry the profile id below
-                        profile_id = %p.profile_id,
+                        profile_id = %p.profile_id, // nt:id-only profile key has no display name
                         world = %p.world,
                         detail = ?problem,
                         "start profile has a problem; character creation refuses it"

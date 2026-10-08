@@ -79,7 +79,7 @@ pub(super) fn audit_start_profiles(space_mgr: &SpaceManager) {
                 event = "start_profile_invalid",
                 reason = "start_world_not_enterable",
                 char_def_id, // nt:id-only char_def rows carry the profile id below
-                profile_id = %profile_id,
+                profile_id = %profile_id, // nt:id-only profile key has no display name
                 world = %world,
                 "start profile names a world this cell cannot deliver a player to; \
                  character creation refuses it"
@@ -93,7 +93,7 @@ pub(super) fn audit_start_profiles(space_mgr: &SpaceManager) {
                 event = "start_profile_invalid",
                 reason = "start_spawn_off_mesh",
                 char_def_id, // nt:id-only char_def rows carry the profile id below
-                profile_id = %profile_id,
+                profile_id = %profile_id, // nt:id-only profile key has no display name
                 world = %world,
                 ?position,
                 "start profile's spawn point is off its world's navmesh"

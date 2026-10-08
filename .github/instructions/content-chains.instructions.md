@@ -187,6 +187,7 @@ Mission 622:  1001-1010   Mission 638:  1011-1030
 Mission 639:  1031-1040   Mission 640:  1041-1050
 Mission 641:  1051-1070   Mission 680:  1071-1080
 Missions 681-687: 1081-1130
+Mission 687 crate (reopen press, class rewards): 1191-1199 (1191-1195 used)
 ```
 
 ### Castle (World 8) — 1201-1400, split one file per mission family

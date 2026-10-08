@@ -239,6 +239,7 @@ async fn init_player_state_replays_the_squad() {
             character_name: Some("Bob".into()),
             body_set: None,
             looted_containers: Vec::new(),
+            shown_tutorials: Vec::new(),
         },
         &tx,
         &mut mgr,

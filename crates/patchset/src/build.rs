@@ -235,12 +235,12 @@ fn delta_from(
     let mut sources = Vec::new();
     for s in specs {
         let path = root.join(safe_relative(&s.path)?);
-        let (bytes, sha256) = transform::load(&path, s.transform)?;
+        let (bytes, sha256) = transform::load(&path, &s.transform)?;
         image.extend_from_slice(&bytes);
         sources.push(Source {
             path: s.path.clone(),
             sha256,
-            transform: s.transform,
+            transform: s.transform.clone(),
             output_of: s.output_of.clone(),
         });
     }
@@ -260,6 +260,33 @@ fn delta_from(
         });
     }
     Ok((sources, delta))
+}
+
+/// Write the targets of the ops whose result is the output of a source
+/// transform alone (one source, a transform that rebuilds the file) into
+/// `out_root`: the `--patched` tree for such a patch. The patch then ships a
+/// delta that only carries what the transform leaves out.
+pub fn transform_targets(spec: &Spec, stock_root: &Path, out_root: &Path) -> Result<Vec<String>> {
+    let mut written = Vec::new();
+    for op in &spec.ops {
+        let [source] = op.sources.as_slice() else {
+            continue;
+        };
+        if source.transform.is_none() || source.transform == Transform::UpkNormalize {
+            continue;
+        }
+        let (bytes, _) = transform::load(
+            &stock_root.join(safe_relative(&source.path)?),
+            &source.transform,
+        )?;
+        let to = out_root.join(safe_relative(&op.target)?);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(io_err(parent))?;
+        }
+        std::fs::write(&to, bytes).map_err(io_err(&to))?;
+        written.push(op.target.clone());
+    }
+    Ok(written)
 }
 
 /// Refuse a spec path whose existing part the stock tree spells in

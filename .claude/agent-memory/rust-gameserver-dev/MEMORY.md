@@ -63,6 +63,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cooked-item-additions-shape.md](cooked-item-additions-shape.md) — real shipped COOKED_ITEM shape (not alphabetical); new ids via ITEM_ADDITIONS; AmmoType_Icons = EAmmoType labels.
 - [client-gm-slash-xml-and-dhd-address-resolution.md](client-gm-slash-xml-and-dhd-address-resolution.md) — /gm* need InternalSlashCommands.xml; property 7 = command mask; updateStargateAddress resolves async (open DHD shows "Unknown").
 - [ability-telemetry-coverage-gate.md](ability-telemetry-coverage-gate.md) — AB-C7: script set + four scanned code tables + client declaration; AB-C6 timing tables are process-global.
+- [entity-tint-packed-colours.md](entity-tint-packed-colours.md) — onEntityTint args are packed 0xRRGGBB__ colours; seed bigints = signed i32, send low 32 bits; opt-in send_tint.
 
 ## Lab supervisor
 

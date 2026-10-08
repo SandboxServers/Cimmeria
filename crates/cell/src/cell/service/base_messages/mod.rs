@@ -197,6 +197,7 @@ pub(super) async fn handle_base_message(
             character_name,
             body_set,
             looted_containers,
+            shown_tutorials,
         } => {
             init_grant_merge::merge_into_snapshot(
                 entity_id,
@@ -240,6 +241,11 @@ pub(super) async fn handle_base_message(
                 // not merged, for the same reason as the address book: a
                 // gate arrival replays world entry from the DB row.
                 entity.looted_containers = looted_containers.into_iter().collect();
+                // The one-time tutorials (CS-03). Merged, not replaced: the
+                // rows are append-only, and a `show_tutorial` whose record
+                // is still in flight (the base read this snapshot first)
+                // must not lose its mark, or the same tick could ask again.
+                entity.shown_tutorials.extend(shown_tutorials);
                 // Body set, for the line-of-sight eye height (NA31). Only NPC
                 // AoI data reads `body_set` on the wire side, so setting it on
                 // a player changes no packet.
@@ -522,6 +528,10 @@ pub(super) async fn handle_base_message(
 
         BaseToCellMsg::ContentAbilitiesGranted(granted) => {
             content_ability_grant::handle_content_abilities_granted(granted, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::TutorialRecorded(recorded) => {
+            crate::cell::content::apply_tutorial_recorded(recorded, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

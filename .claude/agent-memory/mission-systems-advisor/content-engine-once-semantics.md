@@ -1,11 +1,28 @@
 ---
 name: content-engine-once-semantics
-description: The content_triggers.once column is dead code — loaded but never enforced. One-shot guards must come from conditions, not `once`.
+description: content_triggers.once fires once per player per cell-entity life since #802 (resets on relog and world change); it is not persisted. Persistent one-shots still need a condition.
 metadata:
   type: project
 ---
 
-# `once` is NOT enforced — confirmed dead code (2026-06)
+# `once` is enforced per cell-entity life since #802 (corrected 2026-10-06)
+
+`crates/cell-content/src/cell/content/executor/once_gate.rs`: a chain loaded
+with `once` fires once per `(entity the actions run for, chain id)` and then
+disarms until that cell entity is destroyed, so it re-arms on relog and on
+every world change. A once-chain whose conditions fail is not recorded and
+stays armed. Deferred actions do not re-enter the gate.
+
+It is still **not persisted**. For "once per character" use a state that
+survives: `mission_status` / `step_status`, the `tutorial_shown` condition
+(`sgw_player_tutorials`, CS-03), `open_loot`'s `once_per_character`, or
+`send_system_mail`'s persisted `cooldown_secs` (which answers a repeat firing
+with a refusal chat line).
+
+The section below is the pre-#802 analysis, kept for the history of why seed
+comments that lean on `once` for re-loot protection are wrong.
+
+## Before #802: `once` was dead code (2026-06)
 
 The `once` boolean on `content_triggers` is loaded into `DbTriggerRow.once`
 (`crates/content-engine/src/loader/mod.rs:58`, SELECTed in

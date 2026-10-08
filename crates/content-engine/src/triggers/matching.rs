@@ -41,6 +41,7 @@ impl Trigger {
             Trigger::OnEntityHealthBelow { .. } => TriggerType::EntityHealthBelow,
             Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
             Trigger::OnPlayerFlankedNpc { .. } => TriggerType::PlayerFlankedNpc,
+            Trigger::OnPlayerEnteredCombat => TriggerType::PlayerEnteredCombat,
         }
     }
 
@@ -261,6 +262,8 @@ impl Trigger {
                     .is_some_and(|actual| actual == expected),
                 None => true,
             },
+            // No filter: the type match above is the whole test.
+            Trigger::OnPlayerEnteredCombat => true,
         }
     }
 }
