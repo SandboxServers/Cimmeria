@@ -107,37 +107,41 @@ Entry point: `createCharacter(name, extraName, charDefId, visualChoices, skinTin
 
 6. **Insert starting items** - Iterates the starting equipment list from `charDef` and inserts each item into `sgw_inventory`. Slot placement follows the `BagFillOrder` priority rules.
 
-### Starter kit (Rust server)
+### Start profiles (Rust server)
 
-The Rust handler is `crates/base/src/base/character_create/` (`mod.rs` parses and validates, `starter_kit.rs` grants). Every class starts with:
+The Rust handler is `crates/base/src/base/character_create/` (`mod.rs` parses, validates and writes; `start_profile.rs` loads and checks the profile; `starter_kit.rs` grants). Since Class Start v6 CS-02 ([ledger](../analysis/class-start-v6/README.md)) everything a new character starts with comes from one data-driven **start profile** per char_def: a row of `resources.char_creation` plus its `char_creation_abilities` and `char_creation_items` rows. Rust reads only this; `crates/resources/src/base/chardef.rs` keeps just the char_def's identity (alignment, archetype, gender, bodyset), which a live-DB test checks against the table. The universal spawn kit is gone.
 
-| What | Source | Notes |
-|---|---|---|
-| Abilities 592 Pistol Shot, 594 Strike, 597 Heal Focus, 1218 Medical Attention: Recuperation, 1646 Health Heal | `resources.char_creation_abilities` | Written to `sgw_player.abilities` in ability-id order. 597 restores Focus; 1646 and 1218 restore Health. With nothing selected they land on the caster (AB-01). |
-| Item 55, SI 3 9mm Pistol | `resources.char_creation_items` | Placed by the same bag fill order as the clothing, so it lands in bandolier (container 3) slot 0, the active slot. Its magazine is loaded: `sgw_inventory.ammo` = `items.clip_size` (15 Bullet_Default rounds). Reloads of default ammo are free. The row is written the way the item-grant path writes one (durability 100, `ammo_type` / `ammo_types` / `charges` from the design, bound only if the design is bind-on-acquire), so it repairs and loads like the tutorial's copy of item 55. |
-| Clothing and accessories | `char_creation_choices.item_id` of the chosen (or forced) visual choices | Praxis characters get the prison set (3440 jacket, 3437 legs, 3438 boots); glasses and accessories follow the choices. |
+| Profile | char_defs | Start world | Level | Abilities (provenance kind) | Items | State |
+|---|---|---|---|---|---|---|
+| `PRA_OPCORE_SOLDIER` / `_COMMANDO` / `_SCIENTIST` / `_ARCHAEOLOGIST` | 1, 11 / 3, 13 / 20, 22 / 5, 15 | Castle_CellBlock (-334.231, 73.472, -228.026) | 1 | none | none | `CANONICAL` |
+| `PRA_LOYALIST_JAFFA` | 7, 17 | Castle_CellBlock | 1 | none | none | `CANONICAL` |
+| `SGU_HUMAN_SOLDIER` / `_COMMANDO` / `_SCIENTIST` / `_ARCHAEOLOGIST` | 2, 12 / 4, 14 / 21, 23 / 6, 16 | SGC_W1 (201.5, 1.31, 49.724) | 1 | none | none | `CANONICAL` |
+| `SGU_FREE_JAFFA` | 8, 18 | Dakara_E1 (100, -17.4, 230), the gate plaza | 1 | 597 Heal Focus, 1218 Recuperation (`racial_core`); 1984 Staff Swing (`signature`) | 2797 Serpent Staff, 4342 Standard Chestplate | `CANONICAL` |
+| `PRA_GOAULD` | 10, 19 | Castle_CellBlock | 1 | 592, 594, 597, 1218, 1646 (`legacy_kit`) | 55 SI 3 9mm Pistol | `NON_CANONICAL_BLOCKED_LEGACY` (OD-CS08) |
+| `SGU_ASGARD` | 9 | SGC_W1 | 1 | 592, 594, 597, 1218, 1646 (`legacy_kit`) | 55 | `NON_CANONICAL_BLOCKED_LEGACY` (OD-CS09) |
 
-Item 55 is the starter pistol because it is the lowest-grade pistol in the seed (tier 1, tech_comp 1), it is the pistol both tutorials hand out (Castle Cellblock chain 1005, SGC chain 3008), and buy list 1 sells it. With it drawn, Pistol Shot (592) fires the pistol's RANGED binding, 579 Pistol Auto Attack (`use_ability/weapon_redirect.rs`). Without a loaded weapon, 592 (`required_ammo = 1`) is refused with NoAmmo, which is what new characters got before 2026-10-04.
+The visual-choice clothing (the Praxis prison set, glasses, accessories) is placed as before, first, then the profile's items, then the debug kit's.
 
-Every class gets the 9mm pistol, the Jaffa, Goa'uld and Asgard char_defs included: `items.discipline_ids` does not gate equipping. A per-class weapon is one `char_creation_items` row per char_def.
+- **Level.** `start_level` (1 everywhere), with one training point and one Applied Science Point per level. It never comes from a mission's seeded level (the Dakara missions are level 3; the Free Jaffa start is level 1).
+- **Provenance.** Every profile ability with a kind other than `legacy_kit` gets an `sgw_player_ability_grants` row in the creation transaction, so it survives respec and the GM / Debug NPC reset and counts as branch credit ([grant provenance](../analysis/class-start-v6/README.md#grant-provenance-contract-cs-01a)). `legacy_kit` abilities get no row and no credit, as every starter did before.
+- **Guns start empty.** Every gun placed at creation has 0 rounds (OD-CS13 amendment, 2026-10-05); default reload is free, so the player reloads once. The holding states' pistol 55 is empty too: the one intended change to their otherwise literal behaviour.
+- **Debug kit (lock L2).** `char_creation.debug_kit = true` adds the debug kit, `resources.char_creation_debug_kit_abilities` / `_items` (592, 594, 597, 1218, 1646 and an empty pistol 55), with no provenance rows, and sets `sgw_player.debug_kit` so the GM / Debug NPC reset gives the kit back. It is never derived from access level. No profile sets it today; the seeded playtest characters below are debug-kit characters.
+- **Holding states.** `NON_CANONICAL_BLOCKED_LEGACY` rows keep today's runtime literally while their real start is blocked (Goa'uld B4, Asgard B1-B3) and are removed as one unit. A canonical profile carrying a `legacy_kit` ability is refused.
+- **Fail closed (lock L3).** Creation refuses, with `onCharacterCreateFailed` code 10001 (`ERROR_CharacterCreationInvalidCharacterType`) and an ERROR `event = "character_create_failed"`, a char_def with no profile (`no_start_profile`), a profile with a problem (`empty_world`, `origin_position`, `start_level_out_of_range`, `legacy_kit_on_canonical_profile`, ...), a world missing from `resources.worlds` (`start_world_unknown`), or a world the cell announced no space for (`start_world_not_loaded`; the cell sends `EnterableWorlds` at startup). The cell also audits every profile at boot (`event = "start_profile_invalid"`).
 
-Visual groups resolve in group-id order, so the components array and the item placement are the same on every run. Two item choices can compete for one bag: the first choice's glasses (3497) and accessory (4343) both want the Face slot (5), so the accessory overflows to the backpack (container 1).
+The other start-world readers use the same profiles: the GM-only world redirect sends a refused player to their own profile's home (a Free Jaffa to Dakara_E1), `.gotolocation <world>` lands on a start world's profile point, and a death in a start world with no respawner respawns at its profile point. Dakara_E1 also has respawner 610 at the plaza point. The base's space fallback no longer lands an unknown world in Castle_CellBlock: it fails closed with an ERROR (`unknown_world_no_space`).
 
-**Deviation from the tutorial design.** Castle Cellblock mission 622 ("arm yourself") is built around the prisoner finding a pistol: chain 1005 gives a second item 55 to the backpack when the Guard's body is searched, and chain 1004 completes the mission and opens the stasis-room door when an item 55 arrives in the bandolier (`item_equipped`). Both still work. The player ends up with two pistols, and the equip step is met by dragging either pistol into the bandolier from another container, the looted one or the starter one moved out and back. The narrative of an unarmed prisoner no longer holds; the maintainer asked for every class to spawn able to fire.
+One INFO line per creation, `event = "character_created"`, names everything the character starts with: `profile_id`, `start_state`, `debug_kit`, `level`, `abilities` ("597 Heal Focus, 1218 ...") and `items` ("3440 Prison Jacket @7/0, ..., 2797 Serpent Staff @3/0", container/slot after the `@`), plus `armed` (true when a weapon is in the bandolier).
 
-One INFO line per creation, `event = "character_created"`, names everything the character starts with: `abilities` ("592 Pistol Shot, 594 Strike, ...") and `items` ("3440 Prison Jacket @7/0, ..., 55 SI 3 9mm Pistol @3/0 ammo 15", container/slot after the `@`), plus `armed` (true when a loaded weapon is in the bandolier).
-
-The `sgw_player` row and the starter inventory are written in one transaction. If the starter abilities or items can't be read, or an item can't be placed or written, nothing is kept and the client gets the DB-error code (3); the ERROR line is `starter_abilities_load_failed`, `starter_items_load_failed` or `starter_item_failed`, with a `reason` (`db_error`, `unknown_item`, `no_valid_container`, `all_valid_containers_full`). A char_def with no `char_creation_items` row is still created, unarmed, with a WARN `starter_kit_empty` (`starter_abilities_empty` for no abilities).
+The `sgw_player` row, the starter inventory and the provenance rows are written in one transaction. If an item can't be placed or written, nothing is kept and the client gets the DB-error code (3); the ERROR line is `starter_item_failed` or `starter_grant_failed` with a `reason` (`db_error`, `unknown_item`, `no_valid_container`, `all_valid_containers_full`).
 
 ### Seeded playtest characters
 
-`db/sgw/Players/Seed/sgw_player.sql` seeds one character per dev account (player ids 62-70: Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972, Friendly, Annoying). The colo rebuilds its database from this seed on every deploy. Each is the Praxis Commando (char_def 3, male human) that `createCharacter` makes for an account at access level 2 that takes the first choice in every optional visual group and skin tint 0: the same five abilities, the same inventory (`db/sgw/Inventory/Seed/sgw_inventory.sql`, starter pistol loaded), level 1, the Praxis start in Castle_CellBlock, `first_login = 1` and every other column at the table default. The seed's column list is the handler's INSERT plus `player_id`, so a column the handler leaves to its default stays at the default.
+`db/sgw/Players/Seed/sgw_player.sql` seeds one character per dev account (player ids 62-70: Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972, Friendly, Annoying). The colo rebuilds its database from this seed on every deploy. Each is a **debug-kit** Praxis Commando (char_def 3, male human): what `createCharacter` makes with the debug kit applied for an account at access level 2 that takes the first choice in every optional visual group and skin tint 0. They are tester GMs, and OD-CS01 lets debug profiles keep the pistol: the legacy kit abilities, pistol 55 with 0 rounds in bandolier slot 0 (`db/sgw/Inventory/Seed/sgw_inventory.sql`), `debug_kit = true`, level 1, the Praxis start in Castle_CellBlock, `first_login = 1` and every other column at the table default.
 
-The live-DB guard `character_create::seed_parity_live_db_tests::seeded_characters_match_a_fresh_praxis_commando_live_db` creates a fresh char_def-3 character through the real handler and fails when a seeded row (ids, names and account aside) or its inventory differs. A change to character creation therefore fails it until the seed is updated to match. Columns with a clock default (`now()` and the like) are left out of the comparison, since a seed can't match the reference's creation time; a column the handler fills from the clock itself must be excluded in the test by hand.
+The live-DB guard `character_create::seed_parity_live_db_tests::seeded_characters_match_a_fresh_praxis_commando_live_db` creates a fresh char_def-3 character through the real handler with the debug kit forced on (a test-only parameter of `create_character`, never access level) and fails when a seeded row (ids, names and account aside) or its inventory differs. Columns with a clock default (`now()` and the like) are left out of the comparison. `profile_live_db_tests` creates every char_def and checks it against its matrix row, and checks that a start world with no cell space refuses and rolls back.
 
-What testers notice: the colo rebuilds its database on every start, so after each deploy the seeded characters are new level-1 characters again. They wake in the Castle_CellBlock stasis room with the intro movie (`first_login = 1`) and know no stargates (they used to know 14). That includes Friendly and Annoying, the contact-list fixtures. The UAT guide lists this as known issue K24.
-
-Before 2026-10-04 the seeded characters were hand-written SGU Soldiers in SGC_W1 with only 592, 594 and 597, no weapon and access level 0, so the playtesters' characters had no health regen and could not fire Pistol Shot.
+What testers notice: the colo rebuilds its database on every start, so after each deploy the seeded characters are new level-1 characters again. They wake in the Castle_CellBlock stasis room with the intro movie (`first_login = 1`), know no stargates, and must reload the pistol once before Pistol Shot fires. The UAT guide lists the rebuild as known issue K24.
 
 ### Completion
 
@@ -147,7 +151,7 @@ Before 2026-10-04 the seeded characters were hand-written SGU Soldiers in SGC_W1
 
 ## Archetypes
 
-The archetype ID is the 0-based position in the `resources."EArchetype"` enum ([EArchetype.sql](../../db/resources/Archetypes/Types/EArchetype.sql)). It is the value stored in `sgw_player.archetype`, sent on the wire, and compared by the content engine's `archetype` condition. ID 0 is a placeholder, not a playable class. Which alignments may pick an archetype comes from the char defs in [chardef.rs](../../crates/resources/src/base/chardef.rs): the four human classes exist for both Praxis and the SGU, the other four for one side only.
+The archetype ID is the 0-based position in the `resources."EArchetype"` enum ([EArchetype.sql](../../db/resources/Archetypes/Types/EArchetype.sql)). It is the value stored in `sgw_player.archetype`, sent on the wire, and compared by the content engine's `archetype` condition. ID 0 is a placeholder, not a playable class. Which alignments may pick an archetype comes from the char defs in [chardef.rs](../../crates/resources/src/base/chardef.rs) (where each starts is the start profile above): the four human classes exist for both Praxis and the SGU, the other four for one side only.
 
 | ID | Enum value | Name | Alignments |
 |----|------------|------|------------|
@@ -275,7 +279,7 @@ CREATE TABLE sgw_player (
 - Visual choice validation against character definition data
 - Starting equipment assignment with `BagFillOrder` slot placement
 - Starting ability assignment from character definition
-- Starter pistol, loaded, in the active bandolier slot for every class (`char_creation_items`)
+- Data-driven start profiles (world, point, level, kit, provenance, debug kit, holding states), fail-closed on an unloadable world (Class Start v6 CS-02)
 - Seeded playtest characters identical to a created Praxis Commando, guarded by a live-DB parity test
 - Character list display with lazy-loaded equipment visuals for preview
 - Character deletion with proper foreign key cascade handling

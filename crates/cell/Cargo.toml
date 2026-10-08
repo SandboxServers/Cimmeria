@@ -34,6 +34,9 @@ cimmeria-cell-world = { workspace = true }
 # The spawner's records and loaders the startup and GM spawn read, and the
 # ability trees.
 cimmeria-cell-catalog = { workspace = true }
+# The start profiles (Class Start v6 CS-02): loaded at boot and audited
+# against the cell's worlds.
+cimmeria-resources = { workspace = true }
 # The Base<->Cell message contract, the Mercury method indices and builders,
 # the client method indices and the player journal.
 cimmeria-wire = { workspace = true }
@@ -51,6 +54,8 @@ tracing = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
+# `start_profiles::fixture`: the start-profile audit test.
+cimmeria-resources = { workspace = true, features = ["test-support"] }
 # The effect scripts (#962 step 4), installed on the managers of the tests
 # that dispatch one. A dev-dependency only: the scripts crate depends on
 # cell-world alone, so there is no cycle.

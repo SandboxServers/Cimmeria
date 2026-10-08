@@ -448,13 +448,13 @@ mod tests {
     }
 
     /// A seeded playtest character logs in armed: the login bandolier query
-    /// reads Test Soldier's (player 62) starter pistol from the seed in the
-    /// active slot 0, loaded, with its default ammo type. Reverting the
-    /// seeded pistol row in `db/sgw/Inventory/Seed/sgw_inventory.sql` (or
-    /// its `ammo = 15`) fails here, which is what the colo playtesters get
-    /// after every deploy.
+    /// reads Test Soldier's (player 62) debug-kit pistol from the seed in the
+    /// active slot 0, empty (OD-CS13 amendment: guns given at creation start
+    /// at 0 rounds and the first reload is free), with its default ammo type.
+    /// Removing the seeded pistol row in `db/sgw/Inventory/Seed/sgw_inventory.sql`
+    /// fails here, which is what the colo playtesters get after every deploy.
     #[tokio::test]
-    async fn live_db_seeded_character_logs_in_with_the_loaded_starter_pistol() {
+    async fn live_db_seeded_character_logs_in_with_the_empty_debug_kit_pistol() {
         let pool = require_db_or_skip!();
         const SEEDED_PLAYER: i32 = 62;
         const STARTER_PISTOL: i32 = 55;
@@ -484,10 +484,7 @@ mod tests {
             });
         assert_eq!(pistol.item_id, STARTER_PISTOL, "the starter pistol");
         assert_eq!(pistol.clip_size, clip_size);
-        assert_eq!(
-            pistol.current_ammo, clip_size,
-            "loaded: the first Pistol Shot fires"
-        );
+        assert_eq!(pistol.current_ammo, 0, "created empty (OD-CS13)");
         assert_eq!(pistol.cur_ammo_type, default_ammo, "its default ammo type");
     }
 }

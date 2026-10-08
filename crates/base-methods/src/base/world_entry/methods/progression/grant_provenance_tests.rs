@@ -14,7 +14,7 @@ use cimmeria_entity::cell_entity::AbilityGrantKind;
 
 use super::content_grant_tests::{grants, row};
 use super::content_grant_write::persist_content_grant;
-use super::gm_ability_bulk::{persist_bulk, starter_abilities};
+use super::gm_ability_bulk::persist_bulk;
 use super::grant_ability::persist_ability_grant;
 use super::respec::persist_respec;
 use super::tests::{cleanup, insert_test_account, insert_test_player};
@@ -36,16 +36,20 @@ async fn setup(pool: &sqlx::PgPool, id: i32) -> Vec<i32> {
     cleanup(pool, id).await;
     insert_test_account(pool, id).await;
     insert_test_player(pool, id, id, 5_000).await;
-    let starters = starter_abilities(pool, 1).await.expect("starters");
-    assert!(
-        !starters.is_empty(),
-        "fixture: the seed gives a Soldier starters"
-    );
+    // Since Class Start v6 CS-02 a canonical Soldier has no starters, so the
+    // fixture is a debug-kit Soldier: its reset set is the debug kit.
+    let starters: Vec<i32> = sqlx::query_scalar(
+        "SELECT ability_id FROM resources.char_creation_debug_kit_abilities ORDER BY 1",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("debug kit");
+    assert!(!starters.is_empty(), "fixture: the seed has a debug kit");
     let mut held = starters.clone();
     held.extend([LEGACY, TRAINED]);
     sqlx::query(
         "UPDATE sgw_player SET abilities = $1, trained_abilities = $2, \
-                training_points = 3, tree_points_spent = 1 WHERE player_id = $3",
+                training_points = 3, tree_points_spent = 1, debug_kit = true           WHERE player_id = $3",
     )
     .bind(&held)
     .bind(vec![TRAINED])

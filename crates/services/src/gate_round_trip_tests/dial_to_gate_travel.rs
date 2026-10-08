@@ -221,7 +221,14 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
         m.insert(ENTITY_ID, addr);
         m
     }));
-    // No cell_tx — handle_gate_travel falls back to resolve_space_id_fallback.
+    // No cell_tx — handle_gate_travel falls back to resolve_space_id_fallback,
+    // which since Class Start v6 L3 refuses a world the cell never announced
+    // (it used to default to Castle_CellBlock). Announce Castle the way the
+    // cell's startup SpaceData does.
+    cimmeria_base_session::base::world_entry::space_registry::register_space(
+        "Castle".to_string(),
+        0x0001_0005,
+    );
     // No db_pool — the persist UPDATE branch is skipped.
     handle_gate_travel(
         captured.0,

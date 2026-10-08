@@ -16,11 +16,16 @@
 //!   stargate, ring, content teleport, respawn into another world and GM
 //!   `.summon` / `.gotolocation` across worlds.
 //!
-//! A refused player is sent to their faction's character-creation start
-//! point (Praxis: the Castle_CellBlock stasis room; SGU: SGC_W1), told why
-//! in chat once the world has loaded, and logged at WARN with player and
-//! world names. Movement inside a world never changes the world, so it
-//! needs no check.
+//! A refused player is sent to their start profile's world and point
+//! (`cimmeria_resources::base::start_profiles`, Class Start v6 CS-02): the
+//! profile of their alignment and archetype, so a Free Jaffa goes to
+//! Dakara_E1, an SGU human to SGC_W1 and Praxis to the Castle_CellBlock
+//! stasis room. They are told why in chat once the world has loaded, and
+//! logged at WARN with player and world names. With no start profile loaded
+//! the entry is refused instead (lock L3: never a guessed world). Movement
+//! inside a world never changes the world, so it needs no check.
+
+use cimmeria_resources::base::start_profiles::{self, StartProfiles};
 
 /// Worlds only an account at GameMaster level or above may enter.
 pub const GM_ONLY_WORLDS: &[&str] = &["DebugArea"];
@@ -45,40 +50,93 @@ pub struct GmOnlyRedirect {
     pub position: [f32; 3],
 }
 
+/// What the GM-only rule says about one entry.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GmOnlyDecision {
+    /// Not a GM-only world, or a GM.
+    Allowed,
+    /// Refused; go to the start profile's home instead.
+    Redirect(GmOnlyRedirect),
+    /// Refused, and no start profile names a home (the boot load failed).
+    /// The caller refuses the entry outright, logged at ERROR.
+    NoHome { refused_world: &'static str },
+}
+
+/// A start profile's world and point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StartHome {
+    pub world: &'static str,
+    pub position: [f32; 3],
+}
+
 /// Whether `world` is GM-only.
 pub fn is_gm_only_world(world: &str) -> bool {
     GM_ONLY_WORLDS.contains(&world)
 }
 
-/// `Some(redirect)` when a player at `access_level` may not enter `world`:
-/// a GM-only world and a level below [`GM_ACCESS_LEVEL`]. `alignment` is
-/// `sgw_player.alignment` (2 = SGU, anything else Praxis).
-pub fn gm_only_redirect(world: &str, access_level: u32, alignment: i32) -> Option<GmOnlyRedirect> {
-    if access_level >= GM_ACCESS_LEVEL {
-        return None;
-    }
-    let refused_world = GM_ONLY_WORLDS.iter().copied().find(|w| *w == world)?;
-    let (home, position) = home_for_alignment(alignment);
-    Some(GmOnlyRedirect {
-        refused_world,
-        world: home,
-        position,
-    })
+/// Whether a player at `access_level` may enter `world`: a GM-only world
+/// and a level below [`GM_ACCESS_LEVEL`] is refused, and the player goes to
+/// the home of their `alignment` and `archetype` (`sgw_player` ordinals)
+/// from the process start profiles.
+pub fn gm_only_redirect(
+    world: &str,
+    access_level: u32,
+    alignment: i32,
+    archetype: i32,
+) -> GmOnlyDecision {
+    gm_only_redirect_in(
+        start_profiles::installed().as_deref(),
+        world,
+        access_level,
+        alignment,
+        archetype,
+    )
 }
 
-/// The character-creation start point of `alignment`: the Praxis start in
-/// the Castle_CellBlock stasis room, or the SGU start in SGC_W1. The same
-/// points `cimmeria_resources::base::chardef` hands a new character.
-pub fn home_for_alignment(alignment: i32) -> (&'static str, [f32; 3]) {
-    const SGU: i32 = 2;
-    let world = if alignment == SGU {
-        "SGC_W1"
-    } else {
-        "Castle_CellBlock"
+/// [`gm_only_redirect`] against an explicit profile set (`None`: none
+/// loaded).
+pub fn gm_only_redirect_in(
+    profiles: Option<&StartProfiles>,
+    world: &str,
+    access_level: u32,
+    alignment: i32,
+    archetype: i32,
+) -> GmOnlyDecision {
+    if access_level >= GM_ACCESS_LEVEL {
+        return GmOnlyDecision::Allowed;
+    }
+    let Some(refused_world) = GM_ONLY_WORLDS.iter().copied().find(|w| *w == world) else {
+        return GmOnlyDecision::Allowed;
     };
-    let position = cimmeria_resources::base::chardef::starting_position(world)
-        .unwrap_or([-334.231, 73.472, -228.026]);
-    (world, position)
+    match profiles.and_then(|p| home_in(p, alignment, archetype)) {
+        Some(home) => GmOnlyDecision::Redirect(GmOnlyRedirect {
+            refused_world,
+            world: home.world,
+            position: home.position,
+        }),
+        None => GmOnlyDecision::NoHome { refused_world },
+    }
+}
+
+/// The start of a character of `alignment` and `archetype`, from the
+/// process start profiles: Praxis to the Castle_CellBlock stasis room, SGU
+/// humans (and the Asgard holding state) to SGC_W1, Free Jaffa to Dakara_E1.
+/// `None` when no profile is loaded or none matches.
+pub fn home_for(alignment: i32, archetype: i32) -> Option<StartHome> {
+    home_in(
+        start_profiles::installed().as_deref()?,
+        alignment,
+        archetype,
+    )
+}
+
+/// [`home_for`] against an explicit profile set.
+pub fn home_in(profiles: &StartProfiles, alignment: i32, archetype: i32) -> Option<StartHome> {
+    let p = profiles.home_for(alignment, archetype)?;
+    Some(StartHome {
+        world: cimmeria_entity::name_intern::intern(&p.world)?,
+        position: p.position,
+    })
 }
 
 /// Characters redirected away from a GM-only world whose home world has
@@ -133,22 +191,73 @@ pub fn take_redirect_line(player_id: i32) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_resources::base::start_profiles::fixture;
 
+    const PRAXIS: i32 = 1;
+    const SGU: i32 = 2;
+
+    fn redirect(world: &str, level: u32, alignment: i32, archetype: i32) -> GmOnlyDecision {
+        gm_only_redirect_in(Some(&fixture::seeded()), world, level, alignment, archetype)
+    }
+
+    /// A refused player goes to their own start profile's home. The Free
+    /// Jaffa case is the CS-02 change: the old alignment-only rule sent an
+    /// SGU Shol'va to SGC_W1.
     #[test]
-    fn a_player_is_refused_a_gm_only_world_and_sent_home() {
-        let r = gm_only_redirect("DebugArea", 0, 1).expect("a player is refused");
+    fn a_player_is_refused_a_gm_only_world_and_sent_to_their_profile_start() {
+        let GmOnlyDecision::Redirect(r) = redirect("DebugArea", 0, PRAXIS, 2) else {
+            panic!("a player is refused");
+        };
         assert_eq!(r.refused_world, "DebugArea");
         assert_eq!(r.world, "Castle_CellBlock");
-        assert_eq!(r.position, [-334.231, 73.472, -228.026]);
-        let r = gm_only_redirect("DebugArea", 1, 2).expect("a moderator is refused");
-        assert_eq!(r.world, "SGC_W1");
+        assert_eq!(r.position, fixture::CELLBLOCK_START);
+        let GmOnlyDecision::Redirect(r) = redirect("DebugArea", 1, SGU, 1) else {
+            panic!("a moderator is refused");
+        };
+        assert_eq!((r.world, r.position), ("SGC_W1", fixture::SGC_W1_START));
+        let GmOnlyDecision::Redirect(r) = redirect("DebugArea", 0, SGU, 7) else {
+            panic!("a Free Jaffa is refused");
+        };
+        assert_eq!(
+            (r.world, r.position),
+            ("Dakara_E1", fixture::DAKARA_E1_START)
+        );
+    }
+
+    /// Lock L3: with no start profile loaded, the entry is refused outright
+    /// rather than guessed into Castle_CellBlock.
+    #[test]
+    fn no_loaded_profile_refuses_instead_of_guessing() {
+        assert_eq!(
+            gm_only_redirect_in(None, "DebugArea", 0, PRAXIS, 1),
+            GmOnlyDecision::NoHome {
+                refused_world: "DebugArea"
+            }
+        );
+        assert_eq!(
+            gm_only_redirect_in(None, "Harset", 0, PRAXIS, 1),
+            GmOnlyDecision::Allowed,
+            "the profiles are only read for a refusal"
+        );
+    }
+
+    #[test]
+    fn home_in_follows_the_profile() {
+        let profiles = fixture::seeded();
+        let home = |a, b| home_in(&profiles, a, b).map(|h| h.world);
+        assert_eq!(home(SGU, 7), Some("Dakara_E1"));
+        assert_eq!(home(SGU, 5), Some("SGC_W1"));
+        assert_eq!(home(PRAXIS, 6), Some("Castle_CellBlock"));
+        assert_eq!(home(PRAXIS, 8), Some("Castle_CellBlock"));
     }
 
     #[test]
     fn a_redirect_owes_the_player_one_line() {
         // A player id no other test uses: the store is process-wide.
         const PLAYER: i32 = 0x7DA0_0001;
-        let r = gm_only_redirect("DebugArea", 0, 1).unwrap();
+        let GmOnlyDecision::Redirect(r) = redirect("DebugArea", 0, PRAXIS, 1) else {
+            panic!("refused");
+        };
         assert_eq!(take_redirect_line(PLAYER), None);
         note_gm_only_redirect("login", PLAYER, Some("Tester"), Some(1), None, 0, &r);
         assert_eq!(take_redirect_line(PLAYER), Some(REDIRECT_LINE));
@@ -159,13 +268,17 @@ mod tests {
     fn a_gm_or_any_other_world_passes() {
         for level in [2, 3, 4, 99] {
             assert_eq!(
-                gm_only_redirect("DebugArea", level, 1),
-                None,
+                redirect("DebugArea", level, PRAXIS, 1),
+                GmOnlyDecision::Allowed,
                 "level {level}"
             );
         }
         for world in ["Castle_CellBlock", "SGC_W1", "Harset", "debugarea", ""] {
-            assert_eq!(gm_only_redirect(world, 0, 1), None, "{world}");
+            assert_eq!(
+                redirect(world, 0, PRAXIS, 1),
+                GmOnlyDecision::Allowed,
+                "{world}"
+            );
         }
     }
 }

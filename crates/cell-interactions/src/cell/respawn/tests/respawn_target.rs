@@ -20,7 +20,7 @@ fn resolve_respawn_target_uses_matching_respawner_id() {
         name: "Hub".to_string(),
         pos: [10.0, 20.0, 30.0],
     });
-    let (world, pos) = resolve_respawn_target(42, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(42, 1, &mgr).expect("a respawn target");
     assert_eq!(world, "Castle_CellBlock");
     assert_eq!(pos, [10.0, 20.0, 30.0]);
 }
@@ -39,7 +39,7 @@ fn resolve_respawn_target_falls_back_to_world_respawner_on_id_miss() {
         pos: [-5.0, 5.0, -5.0],
     });
     // respawner_id 999 doesn't exist.
-    let (world, pos) = resolve_respawn_target(999, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(999, 1, &mgr).expect("a respawn target");
     assert_eq!(world, "Agnos_test");
     assert_eq!(pos, [-5.0, 5.0, -5.0]);
 }
@@ -52,9 +52,33 @@ fn resolve_respawn_target_falls_back_to_world_respawner_on_id_miss() {
 #[test]
 fn resolve_respawn_target_returns_castle_default_when_no_respawners() {
     let mgr = make_mgr_with_player("Castle_CellBlock");
-    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(-1, 1, &mgr).expect("a respawn target");
     assert_eq!(world, "Castle_CellBlock");
     assert_eq!(pos, [-334.231, 73.472, -228.026]);
+}
+
+/// **Class Start v6 CS-02.** Every start world's no-respawner fallback is
+/// its start profile's point, read from the profiles rather than a
+/// hard-coded Castle constant: Dakara_E1 (the Free Jaffa start) lands on
+/// the plaza, where it used to respawn in place. With no profile loaded the
+/// Cellblock respawns in place too (never a guessed point).
+#[test]
+fn a_start_worlds_fallback_is_its_start_profile_point() {
+    use super::super::target::resolve_respawn_target_in;
+    use cimmeria_resources::base::start_profiles::fixture;
+
+    let profiles = fixture::seeded();
+    let mgr = make_mgr_with_player("Dakara_E1");
+    assert_eq!(
+        resolve_respawn_target_in(Some(&profiles), -1, 1, &mgr),
+        Some(("Dakara_E1".to_string(), fixture::DAKARA_E1_START))
+    );
+    let mgr = make_mgr_with_player("Castle_CellBlock");
+    assert_eq!(
+        resolve_respawn_target_in(None, -1, 1, &mgr),
+        Some(("Castle_CellBlock".to_string(), [42.0, 1.0, 17.0])),
+        "no profile loaded: in place"
+    );
 }
 
 /// `resolve_respawn_target` for non-Castle worlds with no respawner
@@ -65,7 +89,7 @@ fn resolve_respawn_target_returns_castle_default_when_no_respawners() {
 #[test]
 fn resolve_respawn_target_uses_in_place_for_other_worlds_without_respawners() {
     let mgr = make_mgr_with_player("Agnos_test");
-    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(-1, 1, &mgr).expect("a respawn target");
     assert_eq!(world, "Agnos_test");
     assert_eq!(
         pos,
@@ -114,7 +138,7 @@ fn resolve_respawn_target_skips_origin_respawner_on_explicit_id() {
         pos: [0.0, 0.0, 0.0],
     });
 
-    let (world, pos) = resolve_respawn_target(3, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(3, 1, &mgr).expect("a respawn target");
 
     assert_eq!(
         world, "Agnos_test",
@@ -156,7 +180,7 @@ fn resolve_respawn_target_skips_origin_row_for_a_later_authored_one() {
     });
 
     // No explicit id — priority 2 (first respawner for the player's world).
-    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(-1, 1, &mgr).expect("a respawn target");
 
     assert_eq!(world, "Agnos_test");
     assert_eq!(
@@ -185,7 +209,7 @@ fn resolve_respawn_target_honours_a_respawner_just_off_the_origin() {
         pos: [0.0, 0.05, 0.0],
     });
 
-    let (world, pos) = resolve_respawn_target(4, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(4, 1, &mgr).expect("a respawn target");
 
     assert_eq!(world, "Agnos_test");
     assert_eq!(
@@ -223,7 +247,7 @@ fn origin_respawner_warn_fires_once_on_the_explicit_id_path() {
     });
 
     let capture = LogCapture::install();
-    let _ = resolve_respawn_target(3, 1, &mgr);
+    let _ = resolve_respawn_target(3, 1, &mgr).expect("a respawn target");
 
     let hits: Vec<_> = capture
         .all()
@@ -299,7 +323,7 @@ fn origin_respawner_warn_fires_once_on_the_world_scan_path() {
 
     let capture = LogCapture::install();
     // No explicit id — straight to priority 2.
-    let _ = resolve_respawn_target(-1, 1, &mgr);
+    let _ = resolve_respawn_target(-1, 1, &mgr).expect("a respawn target");
 
     let hits: Vec<_> = capture
         .all()
@@ -350,7 +374,7 @@ fn origin_respawner_warn_fires_once_on_the_world_scan_path() {
     });
 
     let quiet = LogCapture::install();
-    let (_, pos) = resolve_respawn_target(9, 1, &ok_mgr);
+    let (_, pos) = resolve_respawn_target(9, 1, &ok_mgr).expect("a respawn target");
     assert_eq!(
         pos,
         [-5.0, 5.0, -5.0],
@@ -400,7 +424,7 @@ fn respawner_zero_resolves_to_the_respawner_nearest_the_death_position() {
     });
 
     let capture = LogCapture::install();
-    let (world, pos) = resolve_respawn_target(0, 1, &mgr);
+    let (world, pos) = resolve_respawn_target(0, 1, &mgr).expect("a respawn target");
 
     assert_eq!(world, "Castle_CellBlock");
     assert_eq!(
@@ -446,6 +470,6 @@ fn an_unknown_respawner_id_also_resolves_to_the_nearest() {
             pos,
         });
     }
-    let (_, pos) = resolve_respawn_target(999, 1, &mgr);
+    let (_, pos) = resolve_respawn_target(999, 1, &mgr).expect("a respawn target");
     assert_eq!(pos, [40.0, 1.0, 20.0]);
 }

@@ -240,6 +240,9 @@ impl BaseService {
         // service starts first reads the database.
         if let Some(pool) = db_pool.as_deref() {
             cimmeria_names::load_at_boot(pool).await;
+            // The start profiles (Class Start v6 CS-02), for the GM-only
+            // world redirect's home. Character creation reads them fresh.
+            cimmeria_resources::base::start_profiles::load_at_boot(pool).await;
         }
 
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {

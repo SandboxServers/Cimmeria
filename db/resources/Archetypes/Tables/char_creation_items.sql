@@ -5,8 +5,9 @@
 -- visual choices carry (char_creation_choices.item_id). createCharacter
 -- places each row with the same bag fill order as the choice items
 -- (crates/base/src/base/character_create/starter_kit.rs), so a weapon lands
--- in the bandolier, and loads a weapon's magazine (sgw_inventory.ammo =
--- items.clip_size) so it fires on the first press.
+-- in the bandolier. A gun starts empty (sgw_inventory.ammo = 0): every gun is
+-- acquired empty and the player reloads once (OD-CS13 and its 2026-10-05
+-- amendment for creation kits).
 --
 
 CREATE TABLE char_creation_items (

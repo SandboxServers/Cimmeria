@@ -52,7 +52,8 @@ pub(super) async fn load_player_init_row(
                              SELECT ca.ability_id \
                                FROM resources.char_creation_abilities ca \
                                JOIN resources.char_creation cc USING (char_def_id) \
-                              WHERE cc.archetype = \
+                              WHERE ca.source_kind = 'legacy_kit' \
+                                AND cc.archetype = \
                                     (enum_range(NULL::resources.\"EArchetype\"))[p.archetype + 1]) \
                        ORDER BY g.granted_at, g.ability_id) AS credited_grants, \
                 ARRAY(SELECT t.tutorial_id FROM sgw_player_tutorials t \
@@ -148,14 +149,18 @@ mod tests {
         const SIGNATURE: i32 = 0x7030_0340;
         const GM_GRANT: i32 = 0x7030_0341;
         let pool = require_db_or_skip!();
-        let starter: i32 = sqlx::query_scalar(
-            "SELECT MIN(ca.ability_id) FROM resources.char_creation_abilities ca \
-               JOIN resources.char_creation cc USING (char_def_id) \
-              WHERE cc.archetype = 'ARCHETYPE_Soldier'",
+        // Since Class Start v6 CS-02 only the holding states carry plain
+        // (`legacy_kit`) starters, so the test gives the Soldier one for its
+        // run and removes it at the end.
+        let starter: i32 = 592;
+        sqlx::query(
+            "INSERT INTO resources.char_creation_abilities (char_def_id, ability_id, source_kind) \
+             VALUES (1, $1, 'legacy_kit') ON CONFLICT DO NOTHING",
         )
-        .fetch_one(&pool)
+        .bind(starter)
+        .execute(&pool)
         .await
-        .expect("the seed gives a Soldier a starter");
+        .expect("add a Soldier legacy starter");
         let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
             .bind(CREDIT_ID)
             .execute(&pool)
@@ -199,6 +204,13 @@ mod tests {
             .bind(CREDIT_ID)
             .execute(&pool)
             .await;
+        let _ = sqlx::query(
+            "DELETE FROM resources.char_creation_abilities \
+              WHERE char_def_id = 1 AND ability_id = $1 AND source_kind = 'legacy_kit'",
+        )
+        .bind(starter)
+        .execute(&pool)
+        .await;
         assert_eq!(row.credited_grants, vec![SIGNATURE]);
     }
 

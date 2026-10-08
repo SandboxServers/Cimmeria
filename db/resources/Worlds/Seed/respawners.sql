@@ -237,3 +237,14 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 -- Row 131: Z9, the death-and-respawn test station (DA-04 seeds its lethal hostile).
 -- A death in the Debug Area respawns at whichever of 130/131 is nearer.
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (131, 1300, 'Debug Area Respawn Test', 438, 10.4, -916);
+
+-- ── World 61 Dakara_E1 (2026-10-05, Class Start v6 CS-02) ─────────────
+-- Ids 610-619 are the CS-02 block. Before CS-02 Dakara_E1 had no respawner,
+-- so a death there respawned in place. Row 610 is the Free Jaffa start
+-- (SGU_FREE_JAFFA, resources.char_creation 8/18): the gate plaza, 7.6 m south
+-- of the DHD (spawn 38, (98.09, -16.77, 237.34)) and 23 m from the gate
+-- (stargate 25), outside the gate volume (point set 1005, radius 2.5).
+-- dakara_e1.nav component 279, the one the gate and the DHD stand on; floor
+-- -17.45 by nav_inspect, so y is floor + 0.05. Guarded by
+-- dakara_free_jaffa_start_is_on_the_gate_plaza_live_db (cell-world).
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (610, 61, 'Dakara Gate Plaza', 100, -17.4, 230);

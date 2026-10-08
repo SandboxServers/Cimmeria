@@ -97,6 +97,20 @@ impl SpaceManager {
         self.world_spaces.contains_key(world_name) || self.is_world_instanced(world_name)
     }
 
+    /// Every world [`Self::world_is_enterable`] accepts, sorted. Sent to the
+    /// base at startup (`CellToBaseMsg::EnterableWorlds`), where character
+    /// creation checks a start profile's world against it.
+    pub fn enterable_worlds(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .worlds
+            .keys()
+            .filter(|w| self.world_is_enterable(w))
+            .cloned()
+            .collect();
+        out.sort_unstable();
+        out
+    }
+
     /// Look up the space_id for a world name.
     pub fn space_id_for_world(&self, world_name: &str) -> Option<u32> {
         self.world_spaces.get(world_name).copied()

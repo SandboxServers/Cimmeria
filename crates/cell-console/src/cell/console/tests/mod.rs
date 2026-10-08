@@ -91,6 +91,11 @@ mod target_in_view;
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.
 fn setup() -> (SpaceManager, u32, u32) {
+    // The seeded start profiles: `.gotolocation <world>`'s new-character
+    // start rule reads the process copy (Class Start v6 CS-02).
+    cimmeria_resources::base::start_profiles::install(
+        cimmeria_resources::base::start_profiles::fixture::seeded(),
+    );
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
