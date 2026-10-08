@@ -5,7 +5,7 @@
 //! It lives here, below `cimmeria-cell-interactions` (which re-exports it
 //! beside the Banker), so the content executor can take the verdict too.
 
-use cimmeria_entity::cell_entity::{CellEntity, VaultScope};
+use cimmeria_entity::cell_entity::{CellEntity, NpcInteractionType, VaultScope};
 use cimmeria_wire::cell::vault::VaultAccess;
 
 use super::interact_range::{interact_range, InteractRangeFail};
@@ -21,7 +21,7 @@ pub enum VaultReject {
     /// A space change destroys the entity that held it, so this is a
     /// belt-and-braces check.
     SessionInOtherSpace,
-    /// The pinned Banker no longer exists (despawned).
+    /// The pinned Banker despawned or its entity id now names another NPC.
     BankerGone,
     /// The pinned Banker is in another space than the player.
     BankerInOtherSpace,
@@ -52,8 +52,9 @@ impl VaultReject {
 ///
 /// Pure: no logging, no sends. The rule (D-BV05):
 /// - a vault session must be open, opened in the space the player is in;
-/// - with a Banker (`banker_id` is `Some`), the Banker must still exist, be
-///   in the player's space, and be within `MAX_INTERACT_DISTANCE`: the same
+/// - with a Banker (`banker_id` is `Some`), the entity must still have the
+///   Banker role and session scope, share the player's space, and be within
+///   `MAX_INTERACT_DISTANCE`: the same
 ///   [`interact_range`] rule the opening `interact` passed;
 /// - a GM `.bank` session (`banker_id` is `None`) skips the proximity check.
 ///
@@ -79,7 +80,14 @@ pub fn vault_move_allowed(
         InteractRangeFail::TargetMissing => VaultReject::BankerGone,
         InteractRangeFail::OtherSpace => VaultReject::BankerInOtherSpace,
         InteractRangeFail::TooFar { dist } => VaultReject::BankerOutOfRange { dist },
-    })
+    })?;
+    match space_mgr
+        .get_entity(banker_id)
+        .and_then(|e| e.interaction_type.as_ref())
+    {
+        Some(NpcInteractionType::Banker { scope }) if *scope == session.scope => Ok(()),
+        _ => Err(VaultReject::BankerGone),
+    }
 }
 
 /// The verdict for one forwarded inventory request by `entity_id`: a fresh

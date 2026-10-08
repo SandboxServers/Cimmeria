@@ -3,7 +3,7 @@
 > Type: how-to. Audience: the owner (UAT) and any later session.
 > Updated: 2026-09-27. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
-## State: every packet merged; BV-10 (the org close-out) in review, then release 2
+## State: every packet merged; release 2 dispatched, owner UAT pending
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | BV-10a | Done | #960 (`07f27ce19`) | The Team Banker (371/471) and Command Banker (372/472) in the debug hub |
 | BV-08 | Done | #963 (`acb43359c`) | Org cash: treasury deposits and withdrawals, the cash log |
 | BV-09 | Done | #966 (`6d7d43149`) | Team vault expansion from the treasury, GM `.orgvaultexpand`, leader only |
-| BV-10 | Review | #968 | Org close-out docs and UAT steps 15-25. The coordinator posts `/release` after it merges (release 2) |
+| BV-10 | Done | #968 (`9e9e91f0d`) | Org close-out docs and UAT steps 15-25. `/release` was posted and the workflow dispatched (release 2) |
 
 Coordinator: session cimmeria-79 (formerly cimmeria-97), worktree `.claude/worktrees/bank-ledger`. Worker rules: `%TEMP%\cimmeria-castle\BANK-WORKER-RULES.md`.
 
@@ -45,9 +45,8 @@ Cross-campaign agreements:
 ## Resuming
 
 1. Read the status lines above and in [work-packets.md](../work-packets.md).
-2. For any packet in Review, check its PR's CI. If the CI is older than `main`, rebase and re-test before merging.
-3. Once BV-10 merges, post `/release` on it from PowerShell (D-BV11), then hand the owner the [UAT checklist](#uat-checklist): steps 1-14 for the personal bank, 15-25 for the org vaults, the treasury and the Team vault expansion.
-4. Open work after release 2 is in [Known gaps](#known-gaps-carried-forward): the vault mail aliases (D-BV29), the player-facing Expand button (pending #967, the #943 quarantine), and the follow-ups the owner's UAT turns up. Retire the campaign's worktrees the day each PR merges.
+2. Hand the owner the [UAT checklist](#uat-checklist): steps 1-14 for the personal bank, 15-25 for the org vaults, the treasury and the Team vault expansion. Confirm the release workflow and deployment before running it.
+3. Open work after release 2 is in [Known gaps](#known-gaps-carried-forward): the vault mail aliases (D-BV29), the player-facing Expand button (pending #967, the #943 quarantine), and the follow-ups the owner's UAT turns up. Retire the campaign's worktrees the day each PR merges.
 
 ## Lifting the #943 quarantine
 
@@ -88,7 +87,7 @@ Org vaults, the treasury and the Team expansion (BV-07 to BV-10a):
 
 Personal bank (BV-01 to BV-06):
 
-- **`vault_access` trusts a recycled Banker id.** It checks only that the pinned Banker entity id exists, is in the same space and is in range, not that it is still a Banker. Entity ids can be recycled, so if the Banker despawns and its id is reused by another NPC standing within 5 m, a move or an expansion passes the proximity check against that NPC. The fix is to check the entity's `NpcInteractionType::Banker` (and its scope) inside `vault_move_allowed`. It dates from BV-02 and BV-03, and the BV-05 server-authority review named it as out of scope.
+- **A same-scope Banker can inherit a recycled entity id.** The vault verdict now refuses a nearby replacement NPC that is not a Banker or has a different vault scope, but `VaultSession` stores only the numeric entity id. A new Banker of the same scope reusing that id still passes. Closing this fully requires a spawn identity on the session and the entity, checked on every verdict.
 - **Guard audit (BV-06).** Every catalog event and reason from BV-01 to BV-05 has a `LogCapture` guard on `main`, except these:
   - `bank_feedback_send_failed` with `reason` `no_session`, `not_in_world` or `send_error` (BV-05, `bank_expand/sends.rs`): only `no_client_address` is pinned (`a_player_with_no_client_address_logs_the_dropped_sends`, `a_recycled_entity_id_receives_nothing`).
   - `expand_offer_dropped` with `reason` `entity_missing` or `vault_scope_mismatch`: `a_stale_offer_shows_no_dialog` pins the other three reasons.
