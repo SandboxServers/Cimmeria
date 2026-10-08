@@ -167,7 +167,7 @@ async fn live_db_full_bag_content_grant_is_escrowed_in_mail() {
     let (account_id, player_id, entity_id) = (0x7000_C42C, 0x7000_C42D, 0x7000_C4EE_u32);
     cleanup(&pool, account_id, player_id, entity_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
-    let type_id = seeded_item(&pool, "{1}", false).await;
+    let type_id = seeded_item(&pool, "{3,1,17}", false).await;
     fill_bag(&pool, player_id, type_id, 1, 100).await;
 
     let addr: SocketAddr = "127.0.0.1:54626".parse().unwrap();
