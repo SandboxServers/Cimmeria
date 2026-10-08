@@ -5,8 +5,8 @@ metadata:
   type: reference
 ---
 
-A full `tools/build-lane/reload-db.sh` took about 10 minutes on the WSL host
-(2026-10-05), and `live-db-test.sh` reloads every time. For iteration:
+A full `tools/build-lane/reload-db.sh` takes 4 to 10 minutes on the WSL host
+(2026-10-05 and 2026-10-06), and `live-db-test.sh` reloads every time. For iteration:
 
 - **Do not call `cargo nextest run --profile=ci-live-db` yourself.** Each
   live-DB test connects to its group slot's clone, `<db>_<slot>`, and only
@@ -25,5 +25,12 @@ A full `tools/build-lane/reload-db.sh` took about 10 minutes on the WSL host
 - **Mutating the loaded rows is a fast teeth check** (swap two
   `sort_order`s, delete a condition row, rerun, restore). The reported
   revert proof still needs the seed reverted and a real reload.
+- **Or run the real profile against a mutated template, no reload** (DK-03,
+  2026-10-06): mutate `sgw_<worktree>` with `psql`, then
+  `bash tools/build-lane/lane.sh bash -c 'DATABASE_URL=postgres://.../sgw_<worktree>
+  bash tools/test-live-db.sh <filter> --test-threads=4 --no-fail-fast'`.
+  `test-live-db.sh` re-clones the slots from the template each run, so this is
+  the `ci-live-db` profile in about 10 s. One mutation per guard, all applied
+  at once, shows each guard failing for its own reason.
 - Finish with one real `live-db-test.sh <filter>` run: it is the only run
   that proves the seed files load from scratch.

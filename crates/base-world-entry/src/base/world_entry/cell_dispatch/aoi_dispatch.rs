@@ -30,6 +30,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             space_id,
             world_name,
         } => space_data(world_name, space_id),
+        CellToBaseMsg::EnterableWorlds { worlds } => enterable_worlds(worlds),
         CellToBaseMsg::EntityCreated {
             entity_id,
             space_id,
@@ -166,6 +167,13 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
 /// `CellToBaseMsg::SpaceData` — register the world-name → space-id mapping.
 pub(super) fn space_data(world_name: String, space_id: u32) {
     super::super::space_registry::register_space(world_name, space_id);
+}
+
+/// `CellToBaseMsg::EnterableWorlds` — record the worlds the cell can deliver
+/// a player to; character creation refuses a start world outside them.
+pub(super) fn enterable_worlds(worlds: Vec<String>) {
+    tracing::info!(count = worlds.len(), "Cell announced its enterable worlds");
+    super::super::space_registry::register_enterable_worlds(worlds);
 }
 
 /// `CellToBaseMsg::EntityCreated` — debug-trace only; the AoI tick drives the

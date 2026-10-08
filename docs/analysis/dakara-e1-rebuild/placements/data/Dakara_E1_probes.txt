@@ -1,0 +1,21 @@
+# nav_inspect --probes file for dakara_e1.nav (world 61): NAME X Y Z, one per ledger row.
+# Run: nav_inspect data/spaces/dakara_e1.nav --probes Dakara_E1_probes.txt --h-tol 1.2 --v-tol 4.0
+gate_row 96.174 -15.164 253.206
+dhd_row 98.087 -16.769 237.335
+start_cs02 100.0 -17.4 230.0
+PL-DK-A-01 121.50 -19.04 265.20
+PL-DK-A-02 121.60 -21.08 283.20
+PL-DK-A-03 164.00 -21.33 276.00
+PL-DK-A-04 141.00 -20.80 288.00
+PL-DK-A-05 137.10 -21.38 274.20
+PL-DK-A-06 103.50 -16.80 238.50
+PL-DK-A-07 483.90 -9.10 460.60
+PL-DK-A-08 503.90 -9.10 462.00
+PL-DK-A-09 440.10 -9.10 497.80
+PL-DK-A-10 -205.00 -16.97 135.70
+PL-DK-A-11 405.00 -16.97 202.80
+PL-DK-A-12 -139.33 -16.17 48.95
+PL-DK-A-13 358.03 -16.02 102.07
+PL-DK-A-14 129.40 -21.53 -66.50
+PL-DK-A-15 56.50 -12.36 -73.70
+PL-DK-A-16 202.20 -12.36 -59.40

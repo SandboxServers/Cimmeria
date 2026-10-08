@@ -28,12 +28,16 @@
 //! - [`live_db_vault_scope`]: live-DB guards that `entity_templates.vault_scope`
 //!   (bank-vault BV-02) defaults to `personal`, rejects an unknown scope, and
 //!   reaches a spawned Banker.
+//! - [`dakara_e1`]: live-DB guards for the Dakara_E1 rebuild's seed, starting
+//!   with DK-03's cast and prop templates (a name on each, nothing hostile or
+//!   attackable, no unproven look).
 //!
 //! The Harset template guards (`harset/`) drive the NPC AI's ability
 //! selector, so they are `cimmeria-cell-combat`'s `cell::spawner_tests`; the
 //! template-vs-GM-spawn parity guard drives the base's GM spawn handler and
 //! stays in `cimmeria-services`.
 
+mod dakara_e1;
 mod live_db_aggression;
 mod live_db_assist;
 mod live_db_eye_heights;

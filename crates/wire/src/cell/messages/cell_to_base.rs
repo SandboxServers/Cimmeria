@@ -18,6 +18,13 @@ pub enum CellToBaseMsg {
     /// Notification that a space exists (sent at startup and on dynamic creation).
     SpaceData { space_id: u32, world_name: String },
 
+    /// Every world the cell can deliver a player to (a startup space or an
+    /// instanced world), sent once at startup after the `SpaceData` burst.
+    /// Character creation refuses a start profile whose world is not in it
+    /// (Class Start v6, lock L3); an instanced world such as
+    /// `Castle_CellBlock` has no `SpaceData` until someone enters it.
+    EnterableWorlds { worlds: Vec<String> },
+
     /// Response to `CreateEntity` — entity placed in a space.
     EntityCreated {
         entity_id: u32,

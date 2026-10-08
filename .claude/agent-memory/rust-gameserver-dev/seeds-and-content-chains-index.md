@@ -8,6 +8,7 @@ metadata:
 # Seeds and content chains
 
 - [entity-template-seed-authoring](entity-template-seed-authoring.md) — one ability per set; faction 10 is immutable.
+- [template-look-copy-and-client-evidence](template-look-copy-and-client-evidence.md) — copy a look from a LOWER template id (lineup tags by lowest wearer); named props must be `being`; reading PAKs and `.upk` export tables as evidence.
 - [cover-seed-ids-and-orient-convention](cover-seed-ids-and-orient-convention.md) — cover set ids `world*100000+n`; cover `orient` is not entity yaw.
 - [seed-name-id-and-asset-naming](seed-name-id-and-asset-naming.md) — new `texts.sql` moniker ids never render; monikers name UE3 asset families.
 - [content-engine-condition-gotchas](content-engine-condition-gotchas.md) — a rejected condition row UNGATES its chain.

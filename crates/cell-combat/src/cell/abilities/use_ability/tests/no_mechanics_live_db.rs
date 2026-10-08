@@ -106,11 +106,14 @@ async fn abilities_that_work_today_have_mechanics_live_db() {
     )
     .await;
     let summons = ids(&pool, "SELECT ability_id FROM resources.pet_summons").await;
-    // What Pistol Shot (592) fires once the starter pistol is drawn: the
-    // RANGED binding (event 7) of every `char_creation_items` weapon.
+    // What Pistol Shot (592) fires once a starter pistol is drawn: the
+    // RANGED binding (event 7) of every `char_creation_items` and debug-kit
+    // weapon.
     let starter_weapon_shots = ids(
         &pool,
-        "SELECT DISTINCT ies.ability_id FROM resources.char_creation_items ci \
+        "SELECT DISTINCT ies.ability_id FROM \
+           (SELECT item_id FROM resources.char_creation_items \
+            UNION SELECT item_id FROM resources.char_creation_debug_kit_items) ci \
          JOIN resources.items_event_sets ies ON ies.item_id = ci.item_id AND ies.event_id = 7",
     )
     .await;

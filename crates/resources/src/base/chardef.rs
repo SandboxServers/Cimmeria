@@ -1,268 +1,71 @@
-/// Given a CharDefId (1-23), return (alignment, archetype, gender, bodyset, world_location, pos_x, pos_y, pos_z).
-/// Returns None for unknown IDs.
-///
-/// Derived from `db/resources/Archetypes/Seed/char_creation.sql`.
-///
-/// Starting coordinates:
-/// - Praxis (Castle_CellBlock): (-334.231, 73.472, -228.026)
-/// - SGU (SGC_W1): (201.5, 1.31, 49.724)
-pub fn chardef_lookup(
-    id: i32,
-) -> Option<(i32, i32, i32, &'static str, &'static str, f32, f32, f32)> {
-    // (alignment, archetype, gender, bodyset, starting_world, pos_x, pos_y, pos_z)
-    // Alignment: 1=Praxis, 2=SGU
-    // Gender: 0=Male, 1=Female (EGender enum: GENDER_Male=0, GENDER_Female=1)
-    //   DB constraint requires 1-3, so we store gender+1: 1=Male, 2=Female
-    // Bodyset uses doubled format: "BS_X.BS_X" (matches DB varchar(64) column)
-    const PRAXIS_POS: (f32, f32, f32) = (-334.231, 73.472, -228.026);
-    const SGU_POS: (f32, f32, f32) = (201.5, 1.31, 49.724);
+//! The CharDef identity table: what a client's `CharDefId` (1-23) means.
+//!
+//! The client's character creator sends a `CharDefId`, and this table turns
+//! it into the four identity values the `sgw_player` row stores: alignment,
+//! archetype, gender and bodyset. It is the client contract (the ids are the
+//! client's cooked CharDef rows), so it stays in code.
+//!
+//! **Where a character starts is not here.** World, spawn point, start
+//! level, kit and the debug-kit flag are the data-driven start profile
+//! (`resources.char_creation`, [`super::start_profiles`], Class Start v6
+//! CS-02). The identity columns of that table must agree with this one; the
+//! live-DB test `chardef_identity_matches_the_start_profile_rows_live_db`
+//! (in `start_profiles`) fails when they drift.
 
-    match id {
-        1 => Some((
-            1,
-            1,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Soldier Male
-        2 => Some((
-            2,
-            1,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Soldier Male
-        3 => Some((
-            1,
-            2,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Commando Male
-        4 => Some((
-            2,
-            2,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Commando Male
-        5 => Some((
-            1,
-            4,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Archeologist Male
-        6 => Some((
-            2,
-            4,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Archeologist Male
-        7 => Some((
-            1,
-            8,
-            1,
-            "BS_JaffaMale.BS_JaffaMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Jaffa Male
-        8 => Some((
-            2,
-            7,
-            1,
-            "BS_JaffaMale.BS_JaffaMale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Shol'va Male
-        9 => Some((
-            2,
-            5,
-            1,
-            "BS_Asgard.BS_Asgard",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Asgard Male
-        10 => Some((
-            1,
-            6,
-            1,
-            "BS_GoauldMale.BS_GoauldMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Goa'uld Male
-        11 => Some((
-            1,
-            1,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Soldier Female
-        12 => Some((
-            2,
-            1,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Soldier Female
-        13 => Some((
-            1,
-            2,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Commando Female
-        14 => Some((
-            2,
-            2,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Commando Female
-        15 => Some((
-            1,
-            4,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Archeologist Female
-        16 => Some((
-            2,
-            4,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Archeologist Female
-        17 => Some((
-            1,
-            8,
-            2,
-            "BS_JaffaFemale.BS_JaffaFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Jaffa Female
-        18 => Some((
-            2,
-            7,
-            2,
-            "BS_JaffaFemale.BS_JaffaFemale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Shol'va Female
-        19 => Some((
-            1,
-            6,
-            2,
-            "BS_GoauldFemale.BS_GoauldFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Goa'uld Female
-        20 => Some((
-            1,
-            3,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Scientist Male
-        21 => Some((
-            2,
-            3,
-            1,
-            "BS_HumanMale.BS_HumanMale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Scientist Male
-        22 => Some((
-            1,
-            3,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "Castle_CellBlock",
-            PRAXIS_POS.0,
-            PRAXIS_POS.1,
-            PRAXIS_POS.2,
-        )), // Praxis Scientist Female
-        23 => Some((
-            2,
-            3,
-            2,
-            "BS_HumanFemale.BS_HumanFemale",
-            "SGC_W1",
-            SGU_POS.0,
-            SGU_POS.1,
-            SGU_POS.2,
-        )), // SGU Scientist Female
-        _ => None,
-    }
+/// What a `CharDefId` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CharDefIdentity {
+    /// `sgw_player.alignment`: 1 = Praxis, 2 = SGU (`EAlignment` ordinal).
+    pub alignment: i32,
+    /// `sgw_player.archetype`: the `EArchetype` ordinal (1 = Soldier).
+    pub archetype: i32,
+    /// `sgw_player.gender`: `EGender` + 1 (1 = male, 2 = female), because
+    /// the column's constraint requires 1-3.
+    pub gender: i32,
+    /// The bodyset in the doubled `BS_X.BS_X` form the varchar(64) column
+    /// stores.
+    pub bodyset: &'static str,
 }
 
-/// Where a brand-new character is placed in `world`, if `world` is a
-/// character-creation starting world. Matched case-insensitively, the way
-/// the GM console's world names are.
-///
-/// Read off [`chardef_lookup`] rather than restated, so a starting position
-/// changed there changes here too.
-pub fn starting_position(world: &str) -> Option<[f32; 3]> {
-    (1..=23)
-        .filter_map(chardef_lookup)
-        .find(|entry| entry.4.eq_ignore_ascii_case(world))
-        .map(|entry| [entry.5, entry.6, entry.7])
+/// The identity of `CharDefId` `id`, or `None` for an id the client never
+/// sends.
+pub fn chardef_lookup(id: i32) -> Option<CharDefIdentity> {
+    const PRAXIS: i32 = 1;
+    const SGU: i32 = 2;
+    const MALE: i32 = 1;
+    const FEMALE: i32 = 2;
+    let (alignment, archetype, gender, bodyset) = match id {
+        1 => (PRAXIS, 1, MALE, "BS_HumanMale.BS_HumanMale"), // Praxis Soldier
+        2 => (SGU, 1, MALE, "BS_HumanMale.BS_HumanMale"),    // SGU Soldier
+        3 => (PRAXIS, 2, MALE, "BS_HumanMale.BS_HumanMale"), // Praxis Commando
+        4 => (SGU, 2, MALE, "BS_HumanMale.BS_HumanMale"),    // SGU Commando
+        5 => (PRAXIS, 4, MALE, "BS_HumanMale.BS_HumanMale"), // Praxis Archeologist
+        6 => (SGU, 4, MALE, "BS_HumanMale.BS_HumanMale"),    // SGU Archeologist
+        7 => (PRAXIS, 8, MALE, "BS_JaffaMale.BS_JaffaMale"), // Praxis (Loyalist) Jaffa
+        8 => (SGU, 7, MALE, "BS_JaffaMale.BS_JaffaMale"),    // SGU Shol'va (Free Jaffa)
+        9 => (SGU, 5, MALE, "BS_Asgard.BS_Asgard"),          // SGU Asgard
+        10 => (PRAXIS, 6, MALE, "BS_GoauldMale.BS_GoauldMale"), // Praxis Goa'uld
+        11 => (PRAXIS, 1, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        12 => (SGU, 1, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        13 => (PRAXIS, 2, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        14 => (SGU, 2, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        15 => (PRAXIS, 4, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        16 => (SGU, 4, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        17 => (PRAXIS, 8, FEMALE, "BS_JaffaFemale.BS_JaffaFemale"),
+        18 => (SGU, 7, FEMALE, "BS_JaffaFemale.BS_JaffaFemale"),
+        19 => (PRAXIS, 6, FEMALE, "BS_GoauldFemale.BS_GoauldFemale"),
+        20 => (PRAXIS, 3, MALE, "BS_HumanMale.BS_HumanMale"), // Praxis Scientist
+        21 => (SGU, 3, MALE, "BS_HumanMale.BS_HumanMale"),    // SGU Scientist
+        22 => (PRAXIS, 3, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        23 => (SGU, 3, FEMALE, "BS_HumanFemale.BS_HumanFemale"),
+        _ => return None,
+    };
+    Some(CharDefIdentity {
+        alignment,
+        archetype,
+        gender,
+        bodyset,
+    })
 }
 
 #[cfg(test)]
@@ -270,87 +73,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn starting_position_names_both_starting_worlds_and_nothing_else() {
-        assert_eq!(
-            starting_position("Castle_CellBlock"),
-            Some([-334.231, 73.472, -228.026])
-        );
-        assert_eq!(starting_position("sgc_w1"), Some([201.5, 1.31, 49.724]));
-        assert_eq!(starting_position("Harset"), None);
-    }
-
-    #[test]
     fn chardef_lookup_alignment_values() {
-        // id 20 = Praxis Scientist Male -> alignment 1
-        let entry20 = chardef_lookup(20).unwrap();
-        assert_eq!(entry20.0, 1, "chardef 20 should be Praxis (alignment=1)");
-
-        // id 22 = Praxis Scientist Female -> alignment 1
-        let entry22 = chardef_lookup(22).unwrap();
-        assert_eq!(entry22.0, 1, "chardef 22 should be Praxis (alignment=1)");
-
-        // id 21 = SGU Scientist Male -> alignment 2
-        let entry21 = chardef_lookup(21).unwrap();
-        assert_eq!(entry21.0, 2, "chardef 21 should be SGU (alignment=2)");
-
-        // id 23 = SGU Scientist Female -> alignment 2
-        let entry23 = chardef_lookup(23).unwrap();
-        assert_eq!(entry23.0, 2, "chardef 23 should be SGU (alignment=2)");
+        for (id, alignment) in [(20, 1), (22, 1), (21, 2), (23, 2)] {
+            assert_eq!(chardef_lookup(id).unwrap().alignment, alignment, "{id}");
+        }
     }
 
     #[test]
     fn chardef_lookup_bodyset_doubled_format() {
         // All bodysets use "BS_X.BS_X" doubled format for the DB varchar(64) column.
-        for id in [1, 9, 19] {
-            let entry = chardef_lookup(id).unwrap();
-            assert!(
-                entry.3.contains('.'),
-                "chardef {id} bodyset '{}' should contain a dot",
-                entry.3
-            );
+        for id in 1..=23 {
+            let bodyset = chardef_lookup(id).unwrap().bodyset;
+            let (a, b) = bodyset.split_once('.').expect("doubled form");
+            assert_eq!(a, b, "chardef {id} bodyset '{bodyset}'");
         }
     }
 
     #[test]
-    fn chardef_lookup_has_starting_coordinates() {
-        // Every valid chardef should have at least one non-zero coordinate.
+    fn chardef_lookup_covers_exactly_the_client_ids() {
         for id in 1..=23 {
-            let entry = chardef_lookup(id).unwrap();
-            let (x, y, z) = (entry.5, entry.6, entry.7);
-            assert!(
-                x != 0.0 || y != 0.0 || z != 0.0,
-                "chardef {id} should have non-zero coordinates, got ({x}, {y}, {z})"
-            );
+            assert!(chardef_lookup(id).is_some(), "chardef_lookup({id})");
+        }
+        for id in [0, 24, -1] {
+            assert_eq!(chardef_lookup(id), None, "{id}");
         }
     }
 
     #[test]
-    fn chardef_lookup_praxis_starting_pos() {
-        // Praxis entries spawn near (-334.2, 73.5, -228.0) in Castle_CellBlock.
-        let entry = chardef_lookup(1).unwrap(); // Praxis Soldier Male
-        assert_eq!(entry.0, 1, "should be Praxis alignment");
-        assert!((entry.5 - (-334.231)).abs() < 1.0, "pos_x off: {}", entry.5);
-        assert!((entry.6 - 73.472).abs() < 1.0, "pos_y off: {}", entry.6);
-        assert!((entry.7 - (-228.026)).abs() < 1.0, "pos_z off: {}", entry.7);
-    }
-
-    #[test]
-    fn chardef_lookup_sgu_starting_pos() {
-        // SGU entries spawn near (201.5, 1.3, 49.7) in SGC_W1.
-        let entry = chardef_lookup(2).unwrap(); // SGU Soldier Male
-        assert_eq!(entry.0, 2, "should be SGU alignment");
-        assert!((entry.5 - 201.5).abs() < 1.0, "pos_x off: {}", entry.5);
-        assert!((entry.6 - 1.31).abs() < 1.0, "pos_y off: {}", entry.6);
-        assert!((entry.7 - 49.724).abs() < 1.0, "pos_z off: {}", entry.7);
-    }
-
-    #[test]
-    fn chardef_lookup_all_ids_valid() {
-        for id in 1..=23 {
-            assert!(
-                chardef_lookup(id).is_some(),
-                "chardef_lookup({id}) should return Some"
-            );
+    fn free_jaffa_asgard_and_goauld_identities() {
+        // The three non-human SGU/Praxis races the start profiles single out.
+        for (id, archetype, alignment) in [(8, 7, 2), (18, 7, 2), (9, 5, 2), (10, 6, 1), (19, 6, 1)]
+        {
+            let c = chardef_lookup(id).unwrap();
+            assert_eq!((c.archetype, c.alignment), (archetype, alignment), "{id}");
         }
     }
 }

@@ -14,9 +14,10 @@
 //!   (CS-01a). It is not a trainer purchase: `trained_abilities`,
 //!   `training_points` and `tree_points_spent` are untouched, so a respec
 //!   keeps the grants, as with `.giveability`.
-//! - **Reset** sets `abilities` to the archetype's character-creation
-//!   starters (`resources.char_creation_abilities` for every `char_creation`
-//!   row of the character's archetype, the set `createCharacter` granted)
+//! - **Reset** sets `abilities` to the archetype's start-profile abilities
+//!   (`resources.char_creation_abilities` for every `char_creation` row of
+//!   the character's archetype, the set `createCharacter` granted, plus the
+//!   debug kit when `sgw_player.debug_kit`; Class Start v6 CS-02)
 //!   plus every ability with a non-`gm` provenance row (tutorial, racial
 //!   core, signature, mission: lock L6), deletes the `gm` rows, refunds
 //!   `tree_points_spent` into `training_points` and clears
@@ -55,15 +56,18 @@ pub(super) struct BulkWrite {
 pub(super) enum BulkRefusal {
     /// No `sgw_player` row.
     PlayerRowMissing,
-    /// Reset: the archetype has no starter abilities in the seed, and an
-    /// empty set would leave the character with no attack.
+    /// Reset: no start profile has the character's archetype, so there is
+    /// no starter set to return to (an empty canonical set is a valid one).
     NoStarters,
 }
 
-/// The archetype's character-creation starters, ascending. `archetype` is
-/// the `sgw_player.archetype` ordinal, the `EArchetype` enum position, as
-/// `player_load` reads the ability tree. Takes any executor so the reset
-/// reads it on its own transaction's connection.
+/// The archetype's plain character-creation starters, ascending: the
+/// `legacy_kit` rows of its start profiles (Class Start v6 CS-02), which get
+/// no provenance row and no branch credit. Canonical profiles have none; a
+/// profile's `racial_core` / `signature` grants carry their own rows.
+/// `archetype` is the `sgw_player.archetype` ordinal, the `EArchetype` enum
+/// position, as `player_load` reads the ability tree. Takes any executor so
+/// the reset reads it on its own transaction's connection.
 pub(super) async fn starter_abilities<'e, E>(executor: E, archetype: i32) -> sqlx::Result<Vec<i32>>
 where
     E: sqlx::PgExecutor<'e>,
@@ -73,6 +77,7 @@ where
            FROM resources.char_creation_abilities ca \
            JOIN resources.char_creation cc USING (char_def_id) \
           WHERE cc.archetype = (enum_range(NULL::resources.\"EArchetype\"))[$1 + 1] \
+            AND ca.source_kind = 'legacy_kit' \
           ORDER BY 1",
     )
     .bind(archetype)
@@ -88,13 +93,13 @@ pub(super) async fn persist_bulk(
     ability_ids: &[i32],
 ) -> sqlx::Result<Result<BulkWrite, BulkRefusal>> {
     let mut txn = pool.begin().await?;
-    let row: Option<(Vec<i32>, i32)> = sqlx::query_as(
-        "SELECT abilities, archetype FROM sgw_player WHERE player_id = $1 FOR UPDATE",
+    let row: Option<(Vec<i32>, i32, bool)> = sqlx::query_as(
+        "SELECT abilities, archetype, debug_kit FROM sgw_player WHERE player_id = $1 FOR UPDATE",
     )
     .bind(player_id)
     .fetch_optional(&mut *txn)
     .await?;
-    let Some((before, archetype)) = row else {
+    let Some((before, archetype, debug_kit)) = row else {
         return Ok(Err(BulkRefusal::PlayerRowMissing));
     };
     let (after, training_points): (Vec<i32>, i32) = match change {
@@ -123,10 +128,18 @@ pub(super) async fn persist_bulk(
             // On the transaction's connection: a second pool connection
             // while this one holds the row lock can starve the pool when
             // several resets run at once.
-            let starters = starter_abilities(&mut *txn, archetype).await?;
-            if starters.is_empty() {
+            // The start profile's own set (Class Start v6 CS-02): the
+            // holding states' legacy kit, a canonical profile's grants, and
+            // the debug kit for a debug-kit character (lock L2).
+            let profiles = cimmeria_resources::base::start_profiles::load_all(&mut txn)
+                .await
+                .map_err(|e| match e {
+                    cimmeria_resources::base::start_profiles::LoadError::Db(e) => e,
+                    other => sqlx::Error::Protocol(other.to_string()),
+                })?;
+            let Some(starters) = profiles.reset_abilities(archetype, debug_kit) else {
                 return Ok(Err(BulkRefusal::NoStarters));
-            }
+            };
             // Starters plus every non-`gm` grant (tutorial, racial core,
             // signature, mission): lock L6, a reset never takes back what
             // play granted. The `gm` rows go with their abilities.
@@ -256,9 +269,8 @@ pub async fn handle_gm_ability_bulk(
             return;
         }
         Ok(Err(BulkRefusal::NoStarters)) => {
-            let text = format!(
-                "{cmd}: no starter abilities are seeded for your archetype; nothing changed"
-            );
+            let text =
+                format!("{cmd}: no start profile is seeded for your archetype; nothing changed");
             refuse("no_starters", text).await;
             return;
         }

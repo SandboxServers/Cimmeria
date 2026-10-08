@@ -10,9 +10,11 @@
 //! "Where a player first arrives" is answered from the same data the real
 //! arrival paths use, in this order:
 //!
-//! 1. **Character-creation start** — `Castle_CellBlock` and `SGC_W1` are
-//!    where new characters begin ([`starting_position`]). The historical
-//!    CellBlocks (1201–1207) share the stock Cellblock's start.
+//! 1. **Character-creation start** — a world some start profile begins in
+//!    (`Castle_CellBlock`, `SGC_W1`, `Dakara_E1` for the Free Jaffa;
+//!    `cimmeria_resources::base::start_profiles`, Class Start v6 CS-02).
+//!    The historical CellBlocks (1201–1207) share the stock Cellblock's
+//!    start.
 //! 2. **Story arrival pad** — a world the story first delivers the player to
 //!    by ring transport ([`STORY_ARRIVAL_PADS`]): Castle is reached from the
 //!    Cellblock by mission 688's ring ceremony (chain 1109's
@@ -32,7 +34,7 @@
 //! rather than guessing the origin.
 
 use cimmeria_cell_world::cell::arrival::{check_arrival, validate_gate_arrival, ArrivalCheck};
-use cimmeria_resources::base::chardef::starting_position;
+use cimmeria_resources::base::start_profiles::{self, StartProfiles};
 use cimmeria_wire::mercury::world_data::historical_cellblocks::historical_cellblock;
 
 use crate::cell::space_manager::SpaceManager;
@@ -65,14 +67,25 @@ pub(crate) fn world_entry_point(
     space_mgr: &SpaceManager,
     world: &str,
 ) -> Option<([f32; 3], EntrySource)> {
-    if let Some(pos) = starting_position(world) {
+    world_entry_point_in(start_profiles::installed().as_deref(), space_mgr, world)
+}
+
+/// [`world_entry_point`] against an explicit start-profile set (`None`: none
+/// loaded, so the character-start rule is skipped and the other rules
+/// decide).
+pub(crate) fn world_entry_point_in(
+    profiles: Option<&StartProfiles>,
+    space_mgr: &SpaceManager,
+    world: &str,
+) -> Option<([f32; 3], EntrySource)> {
+    if let Some(pos) = profiles.and_then(|p| p.start_position(world)) {
         return Some((pos, EntrySource::CharacterStart));
     }
     // The historical CellBlocks (1201–1207) are earlier builds of the same
     // cellblock, and a player goes in where a new character starts in the
     // stock one (owner, 2026-09-27). Exact match: `world` is canonical here.
     if historical_cellblock(world).is_some() {
-        if let Some(pos) = starting_position("Castle_CellBlock") {
+        if let Some(pos) = profiles.and_then(|p| p.start_position("Castle_CellBlock")) {
             return Some((pos, EntrySource::CharacterStart));
         }
     }

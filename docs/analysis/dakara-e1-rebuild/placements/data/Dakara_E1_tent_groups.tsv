@@ -1,0 +1,40 @@
+group	tents	centroid_bw_x	centroid_bw_y	centroid_bw_z	dist_to_gate_m	kinds	nav_component_at_centroid	nav_floor_y	nav_dy_m
+G01	3	138.3	-21.4	281.9	51	JF-MilitaryTent00 x3	279	-21.15	-0.22
+G02	3	45.5	-21.5	269.5	54	JF-MilitaryTent00 x3	279	-21.41	-0.14
+G03	2	80.5	-15.4	357.8	106	JF-Tent03 x2	none		
+G04	7	0.7	-21.6	200.7	109	GA-MerchantTent01 x1, GA-MerchantTent02 x2, JF-MilitaryTent00 x3, JF-Tent03 x1	279	-21.62	-0.12
+G05	7	207.0	-21.5	207.1	120	GA-MerchantTent01 x1, GA-MerchantTent02 x2, JF-MilitaryTent00 x2, JF-Tent00_Awaning_00 x1, JF-Tent03 x1	279	-21.11	0.05
+G06	3	226.3	-20.5	382.6	184	GA-MerchantTent00 x1, JF-Tent03 x2	520	-20.93	-0.17
+G07	1	-89.2	-15.3	259.6	186	JF-Tent03 x1	279	-15.22	-0.06
+G08	3	-68.6	-20.5	351.6	192	GA-MerchantTent00 x1, JF-Tent03 x2	279	-20.47	-0.11
+G09	7	169.0	-20.8	63.9	202	GA-MerchantTent00 x1, GA-MerchantTent01 x2, GA-MerchantTent02 x1, JF-Tent00 x1, JF-Tent03 x2	279	-20.8	-0.04
+G10	7	59.9	-20.8	50.8	205	GA-MerchantTent00 x1, GA-MerchantTent01 x1, JF-Tent00 x1, JF-Tent03 x4	279	-20.8	-0.04
+G11	7	97.3	-13.9	460.7	208	JF-Tent00 x3, JF-Tent00_Awaning_00 x1, JF-Tent03 x3	324	-11.41	-0.05
+G12	7	316.6	-16.2	300.7	225	JF-MilitaryTent00 x1, JF-Tent00 x1, JF-Tent02 x2, JF-Tent03 x3	279	-18.82	-0.14
+G13	1	-70.1	-15.7	83.6	237	JF-Tent03 x1	279	-15.58	-0.02
+G14	6	-134.3	-19.6	196.2	238	GA-MerchantTent00 x1, GA-MerchantTent01 x1, GA-MerchantTent02 x1, JF-Tent03 x3	279	-16.75	-0.08
+G15	9	-29.3	-12.1	455.1	238	JF-Tent00 x6, JF-Tent00_Awaning_00 x3	324	-12.8	-0.04
+G16	3	287.2	-16.1	98.9	245	JF-Tent03 x3	279	-17.12	-0.16
+G17	6	41.3	-11.1	508.7	262	JF-Tent00 x4, JF-Tent00_Awaning_00 x2	324	-9.28	-0.12
+G18	9	181.7	-9.6	518.5	279	JF-Tent00 x7, JF-Tent00_Awaning_00 x1, JF-Tent03 x1	324	-9.28	-0.12
+G19	2	126.9	-20.1	-35.5	290	JF-Tent03 x2	279	-21.57	-0.12
+G20	4	-86.8	-8.5	479.9	292	JF-Tent00 x2, JF-Tent03 x2	324	-9.28	-0.12
+G21	3	-164.1	-19.7	89.0	308	GA-MerchantTent00 x1, GA-MerchantTent01 x1, JF-Tent03 x1	279	-19.69	-0.13
+G22	7	-63.9	-18.7	-15.1	312	GA-MerchantTent00 x1, GA-MerchantTent01 x1, GA-MerchantTent02 x2, JF-Tent03 x3	279	-19.09	-0.13
+G23	3	-59.0	-9.3	536.2	323	JF-Tent00 x3	324	-9.28	-0.12
+G24	3	0.9	-14.6	-66.4	333	JF-Tent03 x3	279	-10.86	-0.1
+G25	1	237.6	-7.7	561.3	339	JF-Tent03 x1	324	-7.68	-0.12
+G26	1	86.7	-7.7	594.2	342	JF-Tent00 x1	324	-7.68	-0.19
+G27	2	250.0	-12.4	-53.8	343	JF-Tent03 x2	348	-12.36	-0.2
+G28	1	174.4	-20.6	-102.6	364	JF-Tent00 x1	279	-20.58	-0.13
+G29	5	-267.5	-11.2	321.3	370	JF-MilitaryTent00 x1, JF-Tent00 x3, JF-Tent01 x1	324	-11.23	-0.07
+G30	3	-183.9	-11.3	-38.7	404	JF-Tent02 x1, JF-Tent03 x2	324	-10.65	-0.09
+G31	8	461.1	-12.0	71.5	407	JF-MilitaryTent00 x3, JF-Tent01_Awaning_01 x1, JF-Tent02 x3, JF-Tent03 x1	324	-11.91	-0.24
+G32	5	430.4	-8.1	508.5	421	HB-Tent_Large00 x1, HB-Tent_med00 x4	324	-9.1	-0.14
+G33	3	-266.3	-11.9	20.2	431	JF-MilitaryTent00 x3	324	-11.56	-0.15
+G34	2	-322.3	-11.2	380.2	438	GA-MerchantTent01 x1, JF-Tent01 x1	324	-11.23	-0.07
+G35	3	-258.0	-10.8	521.1	445	JF-Tent00 x2, JF-Tent00_Awaning_00 x1	324	-10.81	-0.47
+G36	3	418.4	-11.1	575.5	456	JF-MilitaryTent00 x3	324	-10.74	-0.17
+G37	3	563.5	-7.2	281.3	468	JF-MilitaryTent00 x3	324	-6.58	-0.02
+G38	2	-377.3	-12.0	211.3	476	JF-Tent00 x1, JF-Tent00_Awaning_00 x1	324	-11.45	-0.2
+G39	1	499.9	-4.5	557.3	505	HB-Tent_Large00 x1	324	-4.62	-0.06

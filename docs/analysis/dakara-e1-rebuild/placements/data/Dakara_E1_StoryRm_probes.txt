@@ -1,0 +1,9 @@
+# nav_inspect --probes file for dakara_e1_storyrm.nav (world 62): NAME X Y Z, one per ledger row.
+# Run: nav_inspect data/spaces/dakara_e1_storyrm.nav --probes Dakara_E1_StoryRm_probes.txt --h-tol 1.2 --v-tol 4.0
+PL-DK-B-01 71.00 0.05 30.00
+PL-DK-B-02 70.74 0.00 39.40
+PL-DK-B-03 70.52 0.05 34.50
+PL-DK-B-04 69.50 0.00 27.60
+PL-DK-B-05 73.60 0.00 27.60
+PL-DK-B-06_stand 64.50 0.12 40.00
+PL-DK-B-07 66.20 -0.12 34.30

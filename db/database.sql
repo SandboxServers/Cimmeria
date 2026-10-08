@@ -198,6 +198,8 @@
 \ir resources/Archetypes/Tables/char_creation.sql
 \ir resources/Archetypes/Tables/char_creation_abilities.sql
 \ir resources/Archetypes/Tables/char_creation_choices.sql
+\ir resources/Archetypes/Tables/char_creation_debug_kit_abilities.sql
+\ir resources/Archetypes/Tables/char_creation_debug_kit_items.sql
 \ir resources/Archetypes/Tables/char_creation_items.sql
 \ir resources/Archetypes/Tables/char_creation_visgroups.sql
 \ir resources/Archetypes/Tables/disciplines.sql
@@ -288,6 +290,8 @@
 \ir resources/Archetypes/Seed/char_creation.sql
 \ir resources/Archetypes/Seed/char_creation_abilities.sql
 \ir resources/Archetypes/Seed/char_creation_choices.sql
+\ir resources/Archetypes/Seed/char_creation_debug_kit_abilities.sql
+\ir resources/Archetypes/Seed/char_creation_debug_kit_items.sql
 \ir resources/Archetypes/Seed/char_creation_items.sql
 \ir resources/Archetypes/Seed/char_creation_visgroups.sql
 \ir resources/Archetypes/Seed/disciplines.sql
@@ -313,6 +317,7 @@
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
+\ir resources/Entities/Seed/entity_templates_dakara_e1.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lineup.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql

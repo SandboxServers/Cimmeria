@@ -11,8 +11,10 @@
 //! Sentinels: `0x7030_0Bxx`. Players and accounts use `0x01..0x0F`; the
 //! non-starter ability ids (quest grant, trainer purchases, give-all ids)
 //! use `0x40..0x5F`, so no assertion leans on a production seed id. The
-//! test character is a Soldier (`archetype = 1`, `insert_test_player`); its
-//! starter set is read from `resources.char_creation_abilities` at run time.
+//! test character is a debug-kit Soldier (`archetype = 1`,
+//! `insert_test_player`, `debug_kit = true`): since Class Start v6 CS-02 a
+//! canonical Soldier starts with nothing, so its reset set is the debug kit,
+//! read from `resources.char_creation_debug_kit_abilities` at run time.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -41,23 +43,18 @@ const NEW_B: i32 = 0x7030_0B51;
 /// `(abilities, trained_abilities, training_points, tree_points_spent)`.
 type Row = (Vec<i32>, Vec<i32>, i32, i32);
 
-/// The Soldier's starters, read by enum label rather than through
-/// [`starter_abilities`]'s ordinal mapping, so the two check each other.
-/// Asserts there are at least two (one test drops one).
+/// The debug-kit Soldier's reset set: the debug kit. Asserts there are at
+/// least two (one test drops one).
 async fn soldier_starters(pool: &sqlx::PgPool) -> Vec<i32> {
     let starters: Vec<i32> = sqlx::query_scalar(
-        "SELECT DISTINCT ca.ability_id \
-           FROM resources.char_creation_abilities ca \
-           JOIN resources.char_creation cc USING (char_def_id) \
-          WHERE cc.archetype = 'ARCHETYPE_Soldier' \
-          ORDER BY 1",
+        "SELECT ability_id FROM resources.char_creation_debug_kit_abilities ORDER BY 1",
     )
     .fetch_all(pool)
     .await
-    .expect("read the Soldier starters");
+    .expect("read the debug kit");
     assert!(
         starters.len() >= 2,
-        "fixture: the seed must give a Soldier 2+ starters"
+        "fixture: the seed must give the debug kit 2+ abilities"
     );
     for id in [QUEST, TRAINED[0], TRAINED[1], NEW_A, NEW_B] {
         assert!(
@@ -74,7 +71,8 @@ async fn setup(pool: &sqlx::PgPool, id: i32, abilities: &[i32], trained: &[i32])
     insert_test_player(pool, id, id, 5_000).await;
     let r = sqlx::query(
         "UPDATE sgw_player SET abilities = $1, trained_abilities = $2, \
-                training_points = 3, tree_points_spent = $3 WHERE player_id = $4",
+                training_points = 3, tree_points_spent = $3, debug_kit = true \
+          WHERE player_id = $4",
     )
     .bind(abilities)
     .bind(trained)
@@ -105,15 +103,58 @@ fn full_kit(starters: &[i32]) -> Vec<i32> {
     v
 }
 
+/// The plain (no-provenance) starters are the holding states' legacy kit,
+/// read by enum label here and by ordinal in [`starter_abilities`], so the
+/// two check each other. A canonical Soldier has none (CS-02).
 #[tokio::test]
-async fn live_db_starter_abilities_are_the_archetypes_char_creation_set() {
+async fn live_db_starter_abilities_are_the_archetypes_legacy_kit() {
     let pool = require_db_or_skip!();
-    let starters = soldier_starters(&pool).await;
-    assert_eq!(starter_abilities(&pool, 1).await.unwrap(), starters);
+    let asgard: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT ca.ability_id FROM resources.char_creation_abilities ca \
+           JOIN resources.char_creation cc USING (char_def_id) \
+          WHERE cc.archetype = 'ARCHETYPE_Asgard' AND ca.source_kind = 'legacy_kit' \
+          ORDER BY 1",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read the Asgard legacy kit");
+    assert_eq!(asgard, vec![592, 594, 597, 1218, 1646]);
+    assert_eq!(starter_abilities(&pool, 5).await.unwrap(), asgard);
+    assert!(starter_abilities(&pool, 1).await.unwrap().is_empty());
     assert!(
         starter_abilities(&pool, 999).await.unwrap().is_empty(),
         "an archetype ordinal with no enum label has no starters"
     );
+}
+
+/// **Guard (CS-02): the reset rebuilds per profile.** A canonical Soldier
+/// resets to nothing but its provenance grants (no universal kit), a Free
+/// Jaffa to its racial core and signature, the Asgard holding state to the
+/// legacy kit. Reverting the reset to the old archetype-wide starter read
+/// gives the Soldier nothing to refuse on (`NoStarters`) or the old kit.
+#[tokio::test]
+async fn live_db_gm_reset_rebuilds_each_profiles_own_set() {
+    let pool = require_db_or_skip!();
+    for (offset, archetype, want) in [
+        (0x0C, 1, vec![]),
+        (0x0D, 7, vec![597, 1218, 1984]),
+        (0x0E, 5, vec![592, 594, 597, 1218, 1646]),
+    ] {
+        let id = 0x7030_0B00 + offset;
+        setup(&pool, id, &[QUEST], &[]).await;
+        sqlx::query("UPDATE sgw_player SET archetype = $1, debug_kit = false WHERE player_id = $2")
+            .bind(archetype)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .expect("set the archetype");
+        let write = persist_bulk(&pool, id, GmAbilityChange::Reset, &[])
+            .await
+            .unwrap()
+            .unwrap_or_else(|r| panic!("archetype {archetype}: reset refused {r:?}"));
+        assert_eq!(write.after, want, "archetype {archetype}");
+        cleanup(&pool, id).await;
+    }
 }
 
 /// **Guard: reset leaves exactly the starters.** The quest grant and the

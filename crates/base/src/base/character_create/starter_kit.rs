@@ -1,16 +1,17 @@
-//! What a new character starts with besides its looks: the starter abilities
-//! (`resources.char_creation_abilities`), the starter items
-//! (`resources.char_creation_items`, the pistol every class spawns with) and
-//! the inventory rows for both those and the item-bearing visual choices.
+//! What a new character starts with besides its looks: its start profile's
+//! abilities and items (`resources.char_creation_abilities` / `_items`), the
+//! debug kit when the profile or a test asks for it (lock L2), the
+//! provenance rows for the profile's grants, and the inventory rows for both
+//! the kit and the item-bearing visual choices (Class Start v6 CS-02).
 //!
 //! Every database error here fails the creation: the caller runs the
-//! `sgw_player` INSERT and [`insert_starter_inventory`] in one transaction
-//! and rolls back on an `Err`, so a character never exists without its kit.
+//! `sgw_player` INSERT, [`insert_starter_inventory`] and
+//! [`record_profile_grants`] in one transaction and rolls back on an `Err`.
 //!
 //! The seeded playtest characters in `db/sgw/Players/Seed/sgw_player.sql` and
 //! `db/sgw/Inventory/Seed/sgw_inventory.sql` are copies of what this module
-//! writes for a Praxis Commando; `seed_parity_live_db_tests` fails when the
-//! two drift apart.
+//! writes for a debug-kit Praxis Commando; `seed_parity_live_db_tests` fails
+//! when the two drift apart.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -67,83 +68,56 @@ pub(super) struct PlacedItem {
     pub(super) ammo: i32,
 }
 
-/// The starter abilities for `char_def_id`, in ability-id order so a created
-/// character's `abilities` array is the same every time (the seed copies it).
-pub(super) async fn load_starter_abilities(
+/// The abilities and items `start` gives: the profile's, then the debug
+/// kit's, abilities deduplicated in ascending id order (the seed copies the
+/// order), with names for the creation log.
+pub(super) async fn start_kit(
     pool: &PgPool,
-    char_def_id: i32,
-) -> Result<Vec<StarterAbility>, KitFailure> {
-    let rows = sqlx::query_as::<_, (i32, Option<String>)>(
-        "SELECT ca.ability_id, a.name \
-         FROM resources.char_creation_abilities ca \
-         LEFT JOIN resources.abilities a ON a.ability_id = ca.ability_id \
-         WHERE ca.char_def_id = $1 \
-         ORDER BY ca.ability_id",
+    start: &super::start_profile::ResolvedStart,
+) -> Result<(Vec<StarterAbility>, Vec<StarterItem>), KitFailure> {
+    let mut ids: Vec<i32> = start
+        .profile
+        .abilities
+        .iter()
+        .map(|a| a.ability_id)
+        .collect();
+    let mut kit_items: Vec<(i32, i32)> = start
+        .profile
+        .items
+        .iter()
+        .map(|i| (i.item_id, i.stack_size))
+        .collect();
+    if let Some(debug) = &start.debug_kit {
+        ids.extend(debug.abilities.iter().copied());
+        kit_items.extend(debug.items.iter().map(|i| (i.item_id, i.stack_size)));
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    let names: Vec<(i32, Option<String>)> = sqlx::query_as(
+        "SELECT u.id, a.name FROM unnest($1::integer[]) AS u(id) \
+         LEFT JOIN resources.abilities a ON a.ability_id = u.id ORDER BY u.id",
     )
-    .bind(char_def_id)
+    .bind(&ids)
     .fetch_all(pool)
     .await
     .map_err(|e| {
         tracing::error!(
             event = "starter_abilities_load_failed",
             reason = "db_error",
-            char_def_id, // nt:id-only char_def rows carry no name column
+            profile_id = %start.profile.profile_id, // nt:id-only profile key has no display name
             error = %e,
-            "character_create: starting abilities lookup failed"
+            "character_create: starter ability names lookup failed"
         );
         "db_error"
     })?;
-    if rows.is_empty() {
-        // A content gap, not a failure: the character is still created.
-        tracing::warn!(
-            event = "starter_abilities_empty",
-            reason = "no_char_creation_abilities_rows",
-            char_def_id, // nt:id-only char_def rows carry no name column
-            "character_create: char_def has no starter abilities"
-        );
-    }
-    Ok(rows
+    let abilities = names
         .into_iter()
         .map(|(ability_id, name)| StarterAbility {
             ability_id,
             ability_name: real_name(name),
         })
-        .collect())
-}
-
-/// The `char_creation_items` rows for `char_def_id`, in item-id order.
-pub(super) async fn load_starter_items(
-    pool: &PgPool,
-    char_def_id: i32,
-) -> Result<Vec<StarterItem>, KitFailure> {
-    let rows = sqlx::query_as::<_, (i32, i32)>(
-        "SELECT item_id, stack_size FROM resources.char_creation_items \
-         WHERE char_def_id = $1 ORDER BY item_id",
-    )
-    .bind(char_def_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(
-            event = "starter_items_load_failed",
-            reason = "db_error",
-            char_def_id, // nt:id-only char_def rows carry no name column
-            error = %e,
-            "character_create: starter items lookup failed"
-        );
-        "db_error"
-    })?;
-    if rows.is_empty() {
-        // A content gap: the character is created but spawns unarmed, and
-        // Pistol Shot is refused with NoAmmo until it finds a weapon.
-        tracing::warn!(
-            event = "starter_kit_empty",
-            reason = "no_char_creation_items_rows",
-            char_def_id, // nt:id-only char_def rows carry no name column
-            "character_create: char_def has no starter items; the character spawns unarmed"
-        );
-    }
-    Ok(rows
+        .collect();
+    let items = kit_items
         .into_iter()
         .map(|(item_type_id, stack_size)| StarterItem {
             item_type_id,
@@ -151,7 +125,48 @@ pub(super) async fn load_starter_items(
             bound: None,
             durability: GRANTED_DURABILITY,
         })
-        .collect())
+        .collect();
+    Ok((abilities, items))
+}
+
+/// Write the provenance row (`sgw_player_ability_grants`, CS-01a) of every
+/// profile ability with a provenance kind: Free Jaffa's `racial_core` 597 and
+/// 1218 and `signature` 1984. The legacy kit and the debug kit get none.
+pub(super) async fn record_profile_grants(
+    tx: &mut Transaction<'_, Postgres>,
+    addr: SocketAddr,
+    player_id: i32,
+    profile: &cimmeria_resources::base::start_profiles::StartProfile,
+) -> Result<(), KitFailure> {
+    for a in &profile.abilities {
+        let Some(kind) = a.source.provenance_kind() else {
+            continue;
+        };
+        if let Err(e) = sqlx::query(
+            "INSERT INTO sgw_player_ability_grants (player_id, ability_id, source_kind) \
+             VALUES ($1, $2, $3) ON CONFLICT (player_id, ability_id) DO NOTHING",
+        )
+        .bind(player_id)
+        .bind(a.ability_id)
+        .bind(kind)
+        .execute(&mut **tx)
+        .await
+        {
+            tracing::error!(
+                event = "starter_grant_failed",
+                reason = "db_error",
+                %addr,
+                player_id, // nt:id-only creation transaction has no committed player name lookup yet
+                ability_id = a.ability_id,
+                ability_name = cimmeria_names::book().ability(i64::from(a.ability_id)),
+                source_kind = kind,
+                error = %e,
+                "character_create: provenance row could not be written; creation rolled back"
+            );
+            return Err("db_error");
+        }
+    }
+    Ok(())
 }
 
 /// Insert `items` into `player_id`'s inventory, in order (Account.py:182-207),
@@ -161,8 +176,9 @@ pub(super) async fn load_starter_items(
 /// and that still has room, so clothes land on the body and a weapon lands
 /// in the bandolier. The row is written the way the grant path writes one
 /// (`INSERT ... SELECT ... FROM resources.items`: the design's ammo types and
-/// charges), and a weapon starts with a full magazine (`ammo` = `clip_size`):
-/// without it Pistol Shot is refused with NoAmmo on the first press.
+/// charges), and a gun starts empty (`ammo` = 0): every gun is acquired empty
+/// and the player reloads once (OD-CS13 and its 2026-10-05 amendment for
+/// creation kits).
 ///
 /// An item that cannot be placed or written is an `Err`, logged here; the
 /// caller rolls the whole character back.
@@ -197,7 +213,7 @@ pub(super) async fn insert_starter_inventory(
         .bind(item.item_type_id)
         .fetch_optional(&mut **tx)
         .await;
-        let (container_sets, clip_size, item_name) = match design {
+        let (container_sets, _clip_size, item_name) = match design {
             Ok(Some((sets, clip, name))) => (sets, clip, real_name(Some(name))),
             Ok(None) => return Err(fail("unknown_item", None, None)),
             Err(e) => return Err(fail("db_error", None, Some(&e))),
@@ -225,7 +241,8 @@ pub(super) async fn insert_starter_inventory(
             .or_insert_with(|| bag_min_slot(bag_id));
         let slot_id = *entry;
         *entry += 1;
-        let ammo = clip_size.max(0);
+        // OD-CS13 amendment: guns given at creation start empty too.
+        let ammo = 0;
 
         let written = sqlx::query(
             "INSERT INTO sgw_inventory \
@@ -297,12 +314,10 @@ pub(super) fn describe_items(items: &[PlacedItem]) -> String {
         .join(", ")
 }
 
-/// Whether a placed item is a loaded weapon in the bandolier: what makes
-/// Pistol Shot fire at spawn.
-pub(super) fn has_loaded_bandolier_weapon(items: &[PlacedItem]) -> bool {
-    items
-        .iter()
-        .any(|i| i.container_id == INV_BANDOLIER && i.ammo > 0)
+/// Whether a placed item is in the bandolier: the character spawns holding
+/// a weapon (empty until the first reload, OD-CS13).
+pub(super) fn has_bandolier_weapon(items: &[PlacedItem]) -> bool {
+    items.iter().any(|i| i.container_id == INV_BANDOLIER)
 }
 
 /// A seed placeholder (`NO ITEM NAME`) is not a name (Rule 6).
@@ -352,10 +367,9 @@ mod tests {
     }
 
     #[test]
-    fn only_a_loaded_bandolier_weapon_counts_as_armed() {
-        assert!(has_loaded_bandolier_weapon(&[placed(55, None, 3, 15)]));
-        assert!(!has_loaded_bandolier_weapon(&[placed(55, None, 3, 0)]));
-        assert!(!has_loaded_bandolier_weapon(&[placed(55, None, 1, 15)]));
+    fn a_bandolier_weapon_counts_as_armed_even_empty() {
+        assert!(has_bandolier_weapon(&[placed(55, None, 3, 0)]));
+        assert!(!has_bandolier_weapon(&[placed(55, None, 1, 0)]));
     }
 
     #[test]
