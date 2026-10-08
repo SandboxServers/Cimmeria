@@ -12,6 +12,7 @@
 //!   template already wears, and which props are clickable from spawn.
 
 mod templates;
+mod travel;
 
 use crate::cell::spawner::{load_spawn_templates, SpawnRecord};
 use crate::test_support::require_db_or_skip;

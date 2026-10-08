@@ -165,6 +165,15 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("harset_space_chains.sql", 6003) // HarsetRingLeft
         | ("harset_space_chains.sql", 6004) // HarsetRingLeftTop
         | ("harset_space_chains.sql", 6005) // HarsetRingRight
+        // dakara_e1_space_chains.sql — DK-04's four flap props use templates
+        // 445-448. DK-03 seeded each template with INT_MissionWorldObject
+        // (1073741824), and its live-DB guard checks the bit after spawn.
+        // The flap is clickable before its travel chain fires, so adding
+        // set_interaction_type to the triggered chain would be too late.
+        | ("dakara_e1_space_chains.sql", 8003) // ToCommand: template 445
+        | ("dakara_e1_space_chains.sql", 8004) // ToMohkatan: template 446
+        | ("dakara_e1_space_chains.sql", 8005) // FromCommand: template 447
+        | ("dakara_e1_space_chains.sql", 8006) // FromMohkatan: template 448
         // castle_701_chains.sql — mission 701 (Gerschon / Copplemann).
         // reason: both NPCs' interaction bit comes from the PER-PLAYER
         // dialog bind, not from a zone-wide flag. `add_dialog_set` pushes

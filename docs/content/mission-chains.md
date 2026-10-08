@@ -1430,6 +1430,25 @@ The item lists match the seeded crate lines of dialogs 5385-5388 ("You look in t
 
 ---
 
+### Dakara_E1 (Free Jaffa start)
+
+**Status:** travel and named areas authored; the Dakara mission arc is still pending. The client has one instanced tent interior (`Dakara_E1_StoryRm`, world 62) for two exterior tents. These are project reconstructions from [DK-02's map-estimated placement ledger](../analysis/dakara-e1-rebuild/placements/README.md), awaiting the M2 client walk.
+
+The [space seed](../../db/resources/Content/Seed/dakara_e1_space_chains.sql) owns the following chains. The four flap props are in [`spawnlist_dakara_e1.sql`](../../db/resources/Worlds/Seed/spawnlist_dakara_e1.sql); each travel chain has a `world` condition because an `interact_tag` key alone does not select a world.
+
+| Chain | Trigger | World | Effect |
+|---|---|---|---|
+| 8001 | `player_loaded Dakara_E1`, Free Jaffa | 61 | Learn Omega Site address once |
+| 8002 | `player_loaded Dakara_E1`, Free Jaffa | 61 | One quiet-cooldown arrival notice |
+| 8003 | `interact_tag Dakara_E1_TentFlap_ToCommand` | 61 | Enter world 62 at (71, 0.05, 30) |
+| 8004 | `interact_tag Dakara_E1_TentFlap_ToMohkatan` | 61 | Enter the same room at (71, 0.05, 30) |
+| 8005 | `interact_tag Dakara_E1_StoryRm_TentFlap_FromCommand` | 62 | Return to the open court on world 61 at (141, -20.8, 288) |
+| 8006 | `interact_tag Dakara_E1_StoryRm_TentFlap_FromMohkatan` | 62 | Return to that same court |
+
+Four client-hinted named regions now have point sets: Command Tent, Moh'katan's Tent, Stargate Plaza and Superweapon Courtyard. The Naquadah Repository and a distinct Jaffa Command region remain unplaced because the map has no identifiable landmark for them. Respawner 611 sits beside the estimated Med Tent; world 62 retains respawner 25 inside the furnished room. There are no mission or dialog binds in this packet, so no relog-restore chain is needed.
+
+---
+
 ### Harset (Hub Zone)
 
 **Confidence**: CONFIRMED

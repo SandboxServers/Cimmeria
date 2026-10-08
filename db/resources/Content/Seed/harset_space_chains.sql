@@ -181,8 +181,9 @@ VALUES (6005, 'trigger_transporter', NULL, NULL, '{"regionId": 8}', 0, 0);
 -- world eq 68 (Harset_CmdCenter). Shape: (chain_id, 'world', <world_id>,
 -- NULL, 'eq', NULL, sort_order); `target_id` is resources.worlds.world_id.
 -- Note a condition alone does NOT close the client-supplied-region-id
--- hole described above — `fire_interact_tag` never populates a world
--- param at all, so the dispatch-site check is still wanted (H06). See
+-- hole described above. Current `fire_interact_tag` does populate world
+-- context, but the region-id lookup still needs a dispatch-site check to
+-- reject a hinted region belonging to another world (H06). See
 -- docs/analysis/harset-rebuild/worknotes/H10.md, IR-1.
 --
 -- `cross_world_teleport` cannot set yaw (the executor sends

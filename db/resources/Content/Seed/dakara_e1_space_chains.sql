@@ -8,6 +8,7 @@
 --
 --   DK-01  8001  Free Jaffa arriving on Dakara_E1 learns the Omega Site address
 --   DK-01  8002  Free Jaffa arriving on Dakara_E1 gets the arrival notice, once
+--   DK-04  8003-8006  Two exterior tent flaps and two shared-interior exits
 --
 -- Evidence labels are the ledger's (README.md, "Evidence Labels"). Nothing
 -- in this file restates recovered data: the client holds no script, offer
@@ -119,3 +120,57 @@ VALUES (8002, 'archetype', NULL, NULL, 'eq', '7', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (8002, 'send_system_mail', NULL, NULL, '{"sender": "Dakara Gate Watch", "subject": "Dakara: no orders yet", "body": "The Free Jaffa command on Dakara is not staffed yet, so there are no orders for you here. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.", "cooldown_secs": 2147483647, "quiet_cooldown": true}', 0, 0);
+
+-- ============================================================
+-- DK-04: two tents, one interior, one shared exterior return point
+-- ============================================================
+--
+-- PROJECT_FINAL_RECONSTRUCTION using DK-02's map-estimated placements.
+-- The two exterior tents at PL-DK-A-01 and A-03 are adjacent. Both lead
+-- to the one client-shipped interior, Dakara_E1_StoryRm (world 62), at
+-- respawner 25's standable front-room point PL-DK-B-01. Both interior
+-- exits lead to PL-DK-A-04, the open court between the tents. No transient
+-- content counter or mission state is needed to remember which flap was
+-- used; that state would be lost during cross-world handoff anyway.
+--
+-- A unique tag identifies each of the four spawn rows. The world gate is
+-- still required: interact_tag is resolved against the global engine and
+-- does not filter by world or by content_chains.scope_id. The executor's
+-- cross_world_teleport sends GateTravel to base, then destroys the cell
+-- entity only after the send succeeds. It cannot set arrival yaw.
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8003, 'Dakara_E1 - enter the command tent (DK-04)', 'space', 61, true, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8003, 'interact_tag', 'Dakara_E1_TentFlap_ToCommand', 'player', false, 0);
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (8003, 'world', 61, NULL, 'eq', NULL, 0);
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (8003, 'cross_world_teleport', NULL, 'Dakara_E1_StoryRm', '{"x": 71.0, "y": 0.05, "z": 30.0}', 0, 0);
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8004, 'Dakara_E1 - enter Moh''katan''s tent (DK-04)', 'space', 61, true, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8004, 'interact_tag', 'Dakara_E1_TentFlap_ToMohkatan', 'player', false, 0);
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (8004, 'world', 61, NULL, 'eq', NULL, 0);
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (8004, 'cross_world_teleport', NULL, 'Dakara_E1_StoryRm', '{"x": 71.0, "y": 0.05, "z": 30.0}', 0, 0);
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8005, 'Dakara_E1_StoryRm - leave by the command flap (DK-04)', 'space', 62, true, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8005, 'interact_tag', 'Dakara_E1_StoryRm_TentFlap_FromCommand', 'player', false, 0);
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (8005, 'world', 62, NULL, 'eq', NULL, 0);
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (8005, 'cross_world_teleport', NULL, 'Dakara_E1', '{"x": 141.0, "y": -20.8, "z": 288.0}', 0, 0);
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8006, 'Dakara_E1_StoryRm - leave by Moh''katan''s flap (DK-04)', 'space', 62, true, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8006, 'interact_tag', 'Dakara_E1_StoryRm_TentFlap_FromMohkatan', 'player', false, 0);
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (8006, 'world', 62, NULL, 'eq', NULL, 0);
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (8006, 'cross_world_teleport', NULL, 'Dakara_E1', '{"x": 141.0, "y": -20.8, "z": 288.0}', 0, 0);

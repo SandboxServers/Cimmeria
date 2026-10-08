@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_dakara_dk04_travel.md](project_dakara_dk04_travel.md) — 2026-10-07 DK-04: two exterior tent flaps share world 62 and one return point; world-gated interact tags, placement/test anchors, client UAT pending
 - [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (12/min per address), public login-port mount approved, inert (no endpoint); production endpoint is a later rollout
 - [project_mac_client_cooked_version_zero.md](project_mac_client_cooked_version_zero.md) — under Wine the client sent cooked version 0 at every login: Wine's msvcp80 `strstreambuf::underflow` returns EOF after a write; repaired in-process by the patches DLL (verified live 2026-10-05), which also made character creation work
 - [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — >1472 B reliable datagrams wedge the client: uncapped ACKs (fixed 2026-10-03), data-sized single sends e.g. NPC cascade (fragmented 2026-10-05)

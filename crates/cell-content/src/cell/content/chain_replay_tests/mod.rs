@@ -37,6 +37,7 @@ mod cellblock_dialog_closes;
 mod class_start_cellblock_scope;
 mod class_start_sgc;
 mod dakara_e1_space;
+mod dakara_e1_tent_travel;
 mod debug_hub;
 mod debug_hub_mail_clerk;
 mod entity_health_below;

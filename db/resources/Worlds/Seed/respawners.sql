@@ -248,3 +248,6 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 -- -17.45 by nav_inspect, so y is floor + 0.05. Guarded by
 -- dakara_free_jaffa_start_is_on_the_gate_plaza_live_db (cell-world).
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (610, 61, 'Dakara Gate Plaza', 100, -17.4, 230);
+-- DK-04 PL-DK-A-02: map-estimated Med Tent entrance, on component 279.
+-- The client names this respawner DN_Respawner_DakaraE1_MedTent (26738).
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (611, 61, 'Med Tent', 121.6, -21.08, 283.2);

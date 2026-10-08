@@ -1094,11 +1094,11 @@ Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-a
 
 ## Dakara_E1
 
-World 61, the Free Jaffa's world. Dakara rebuild DK-01 removes the dead end a new Free Jaffa hits there: the character learns the Omega Site address on arrival, the gate's return arrival is pinned on the plaza, and one mail says where things stand. There is no mission on Dakara yet, and that is intended for now. Design and evidence: [the Dakara_E1 ledger](../analysis/dakara-e1-rebuild/README.md#the-dead-end-fix-exactly).
+World 61, the Free Jaffa's world. DK-01 gives a new character a round trip through Omega Site; DK-04 adds estimated named areas, the Med Tent respawner and two tent flaps into the one instanced interior (world 62), with two exits to the same outdoor court. There is no Dakara mission yet. Design and evidence: [the Dakara_E1 ledger](../analysis/dakara-e1-rebuild/README.md#the-dead-end-fix-exactly) and [DK-04 worknote](../analysis/dakara-e1-rebuild/worknotes/DK-04.md).
 
-**Status:** Not ready for UAT. The steps need a Free Jaffa who starts on Dakara, which arrives with PR #1273 (Class Start v6 CS-02). No step has been run in a client.
+**Status:** Pending a client run. The start and DK-01 code have merged; DK-04's map estimates still need M2 verification. No step below has been run in a client.
 
-**Prerequisites:** a build with DK-01 and #1273. A brand-new Free Jaffa for DK-U1 to DK-U9; a GM character of another archetype for DK-U10.
+**Prerequisites:** a build with #1273 and DK-01 for DK-U1 to DK-U10, plus DK-04 for DK-U11 to DK-U16. A brand-new Free Jaffa for DK-U1 to DK-U9; a GM character of another archetype for DK-U10. For DK-U11 to DK-U16 a GM can reach the estimated points with `.gotoxyz` if needed.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -1112,6 +1112,12 @@ World 61, the Free Jaffa's world. Dakara rebuild DK-01 removes the dead end a ne
 | DK-U8 | Delete the notice, then relog | Still no second mail | Once per character |
 | DK-U9 | Die on Dakara and respawn | You respawn on the gate plaza | Respawner 610 comes from #1273; this step checks it. Nothing on Dakara is hostile yet, so it needs a GM kill; if you cannot die, record the step as not run |
 | DK-U10 | As a Human or a Praxis Jaffa (a GM visitor), `.gotolocation Dakara_E1` | The reply ends in `[stargate arrival]` and you stand on the DK-U6 point. No mail arrives, and your DHD list has nothing new from this visit | The chains are for archetype 7 only |
+| DK-U11 | Walk from the gate plaza toward the command tent in camp A; right-click the flap around (121.5, -19.04, 265.2) | World 62 loads; you stand in the furnished tent's front room at (71, 0.05, 30), able to move | The tent assignment and flap position are LOW-confidence map estimates; record corrections by PL-DK-A-01 |
+| DK-U12 | In world 62, right-click each exit flap, around (70.74, 0, 39.4) and (70.52, 0.05, 34.5), returning between clicks | Either exit takes you to the open court on world 61 at (141, -20.8, 288), able to move; no immediate repeat teleport | PL-DK-B-02/B-03 and PL-DK-A-04; the inner flap's role is inferred |
+| DK-U13 | On world 61 right-click Moh'katan's flap around (164, -21.33, 276) | It leads to the same furnished world-62 room, at the same front-room arrival | PL-DK-A-03; note if the prop is hidden by the tent mesh |
+| DK-U14 | While inside world 62, log out and back in, then use either exit | You return inside the tent, remain able to move, and either exit still leads to the outdoor court | Checks the instance and position restore; no mission scene is authored yet |
+| DK-U15 | Walk to the Med Tent area around (121.6, -21.08, 283.2), die and respawn if the GM tools allow it | Respawn at the Med Tent point on world 61; never at (0, 0, 0). A death inside world 62 uses its existing central respawner 25 | PL-DK-A-02 and PL-DK-B-01; note which respawner the server selected if the gate plaza is closer |
+| DK-U16 | Walk through the command and Moh'katan tent areas, Stargate Plaza, and Superweapon Courtyard | The four named regions trigger at useful positions without overlap or false detection on another floor | The regions are authored cylinders; the Repository and distinct Jaffa Command remain unplaced |
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 
