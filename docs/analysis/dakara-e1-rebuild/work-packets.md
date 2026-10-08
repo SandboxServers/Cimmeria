@@ -85,9 +85,9 @@ Every chain packet ships a chain-replay test (TESTING.md type 6) under `crates/c
 
 ### DK-05
 
-**Status:** BlockedDependency (DK-02, DK-03). **Scope title:** Static population and relog restores. **Advisor:** npc-ai-spawn-advisor, mission-systems-advisor.
+**Status:** Implemented; M2 client UAT pending ([worknote](worknotes/DK-05.md)). The owner approved a speculative military-outpost estimate for Loth'ta and the Repository. **Scope title:** Static population and relog restores. **Advisor:** npc-ai-spawn-advisor, mission-systems-advisor.
 **Entries:** the placement ledger; dialog sets 1656 and 1832-1842; `add_dialog_set` and the NULL-dialog flag-only bind (CA02).
-**Scope:** spawn rows for Bra'tac and Moh'katan (command tent), Loth'ta (Repository camp), Rak'nor (gate plaza; the client's greeter, dialogs 6110/6111), all stationary with headings derived from the approach direction; no bind by default (binds belong to the mission packets); a world-61 and a world-62 `player_loaded` restore skeleton the mission packets extend.
+**Scope:** spawn rows for Bra'tac and Moh'katan (command tent interior), Loth'ta (speculative Repository camp), Rak'nor (gate plaza; the client's greeter, dialogs 6110/6111), all stationary with headings derived from the approach direction; no bind by default (binds belong to the mission packets); documented world-61 and world-62 `player_loaded` restore keys the mission packets extend. No actionless runtime chain is seeded before a bind exists.
 **Acceptance:** navmesh guards; live-DB guard that every Dakara story spawn has a tag starting `Dakara_E1_`, a template in the campaign's block or 54/59, and `respawn_secs`. **UAT (M2):** each NPC is where the ledger says, named, and still there after a relog. **Exclude:** hostiles, vendors, ambient crowds.
 
 ### DK-06

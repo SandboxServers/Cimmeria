@@ -70,7 +70,7 @@ Zone × Content-Type grid showing what exists in each zone.
 
 Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 MissionTest worlds, and various test maps.
 
-Dakara's four flaps, four evidence-backed named areas and Med Tent respawner are reconstructed in [DK-04](../analysis/dakara-e1-rebuild/worknotes/DK-04.md). The two exterior tents lead to the one client-shipped interior. The mission arc and client walk are pending; the two unplaced discovery names are recorded in the placement ledger.
+Dakara's four flaps, four map-estimated named areas and Med Tent respawner are reconstructed in [DK-04](../analysis/dakara-e1-rebuild/worknotes/DK-04.md). The two exterior tents lead to the one client-shipped interior. [DK-05](../analysis/dakara-e1-rebuild/worknotes/DK-05.md) adds Bra'tac, Moh'katan, Rak'nor and Loth'ta plus a speculative Naquadah Repository discovery area. A distinct Jaffa Command area remains unplaced. The mission arc and client walk are pending.
 
 ## Content Summary
 

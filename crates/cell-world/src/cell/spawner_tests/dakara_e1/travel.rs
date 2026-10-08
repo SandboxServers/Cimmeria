@@ -54,7 +54,7 @@ const AREAS: [(i32, &str, [f32; 3]); 4] = [
     ),
 ];
 
-fn mesh(name: &str) -> NavMesh {
+pub(super) fn mesh(name: &str) -> NavMesh {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/spaces")
         .join(name);
@@ -74,7 +74,12 @@ fn reaches(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
             .is_some_and(|end| end.distance_to(&vector(to)) < 2.0)
 }
 
-fn standable_and_connected(mesh: &NavMesh, point: [f32; 3], anchor: [f32; 3], label: &str) {
+pub(super) fn standable_and_connected(
+    mesh: &NavMesh,
+    point: [f32; 3],
+    anchor: [f32; 3],
+    label: &str,
+) {
     assert!(
         mesh.is_point_valid(&vector(point)),
         "{label} is off the shipped navmesh"
