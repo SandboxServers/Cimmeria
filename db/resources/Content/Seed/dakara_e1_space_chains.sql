@@ -174,3 +174,12 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (8006, 'world', 62, NULL, 'eq', NULL, 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (8006, 'cross_world_teleport', NULL, 'Dakara_E1', '{"x": 141.0, "y": -20.8, "z": 288.0}', 0, 0);
+
+-- DK-05 restore skeleton for the later mission packets:
+--   world 61: player_loaded / event_key 'Dakara_E1'
+--   world 62: player_loaded / event_key 'Dakara_E1_StoryRm'
+-- A mission packet must add a separate step-gated chain for each transient
+-- dialog-set bind on its world. There is no bind before those missions exist;
+-- an actionless chain here would claim a restore while restoring nothing.
+-- The four static cast entities instead come from spawnlist on every world
+-- load, including a relog into the instanced story room.

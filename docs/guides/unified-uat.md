@@ -1094,11 +1094,11 @@ Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-a
 
 ## Dakara_E1
 
-World 61, the Free Jaffa's world. DK-01 gives a new character a round trip through Omega Site; DK-04 adds estimated named areas, the Med Tent respawner and two tent flaps into the one instanced interior (world 62), with two exits to the same outdoor court. There is no Dakara mission yet. Design and evidence: [the Dakara_E1 ledger](../analysis/dakara-e1-rebuild/README.md#the-dead-end-fix-exactly) and [DK-04 worknote](../analysis/dakara-e1-rebuild/worknotes/DK-04.md).
+World 61, the Free Jaffa's world. DK-01 gives a new character a round trip through Omega Site; DK-04 adds estimated named areas, the Med Tent respawner and two tent flaps into the one instanced interior (world 62), with two exits to the same outdoor court. DK-05 adds four static story actors and a speculative Repository discovery area. There is no Dakara mission yet. Design and evidence: [the Dakara_E1 ledger](../analysis/dakara-e1-rebuild/README.md#the-dead-end-fix-exactly), [DK-04](../analysis/dakara-e1-rebuild/worknotes/DK-04.md) and [DK-05](../analysis/dakara-e1-rebuild/worknotes/DK-05.md).
 
 **Status:** Pending a client run. The start and DK-01 code have merged; DK-04's map estimates still need M2 verification. No step below has been run in a client.
 
-**Prerequisites:** a build with #1273 and DK-01 for DK-U1 to DK-U10, plus DK-04 for DK-U11 to DK-U16. A brand-new Free Jaffa for DK-U1 to DK-U9; a GM character of another archetype for DK-U10. For DK-U11 to DK-U16 a GM can reach the estimated points with `.gotoxyz` if needed.
+**Prerequisites:** a build with #1273 and DK-01 for DK-U1 to DK-U10, DK-04 for DK-U11 to DK-U16, and DK-05 for DK-U17 to DK-U19. A brand-new Free Jaffa for DK-U1 to DK-U9; a GM character of another archetype for DK-U10. A GM can reach the estimated points with `.gotoxyz` if needed.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -1117,7 +1117,10 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 | DK-U13 | On world 61 right-click Moh'katan's flap around (164, -21.33, 276) | It leads to the same furnished world-62 room, at the same front-room arrival | PL-DK-A-03; note if the prop is hidden by the tent mesh |
 | DK-U14 | While inside world 62, log out and back in, then use either exit | You return inside the tent, remain able to move, and either exit still leads to the outdoor court | Checks the instance and position restore; no mission scene is authored yet |
 | DK-U15 | Walk to the Med Tent area around (121.6, -21.08, 283.2), die and respawn if the GM tools allow it | Respawn at the Med Tent point on world 61; never at (0, 0, 0). A death inside world 62 uses its existing central respawner 25 | PL-DK-A-02 and PL-DK-B-01; note which respawner the server selected if the gate plaza is closer |
-| DK-U16 | Walk through the command and Moh'katan tent areas, Stargate Plaza, and Superweapon Courtyard | The four named regions trigger at useful positions without overlap or false detection on another floor | The regions are authored cylinders; the Repository and distinct Jaffa Command remain unplaced |
+| DK-U16 | Walk through the command and Moh'katan tent areas, Stargate Plaza, and Superweapon Courtyard | The four named regions trigger at useful positions without overlap or false detection on another floor | The regions are authored cylinders; DK-05 adds a separate speculative Repository area |
+| DK-U17 | At the gate plaza find Rak'nor around (103.5, -16.8, 238.5), then enter either tent flap | Rak'nor is named and visible; Bra'tac and Moh'katan stand in the shared interior near (69.5, 0, 27.6) and (73.6, 0, 27.6) | No mission dialog is bound yet; this checks static appearance and placement |
+| DK-U18 | Go to the military outpost near (290, -17, 95) and walk through its discovery cylinder | Loth'ta is named and visible; the Naquadah Repository discovery appears at a useful location | Both are speculative. Record corrected coordinates as DK-05-A-01 if the client scene contradicts the estimate |
+| DK-U19 | Relog once on world 61 by Rak'nor and Loth'ta, and once inside world 62 by Bra'tac and Moh'katan | All four static actors are still present in their worlds; the world-62 tent remains usable | Mission dialog and step-gated restore chains arrive in later packets |
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 

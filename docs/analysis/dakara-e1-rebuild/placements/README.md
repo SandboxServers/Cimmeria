@@ -6,7 +6,7 @@
 
 | File | Scope | Rows |
 |---|---|---|
-| [A-world61-story-placements.md](A-world61-story-placements.md) | command, healing and Moh'katan tents and their flaps, the shared return point, Command Terminal, Rak'nor, three SG-18 sites, the two wall gates, the two Ha'tak plazas, the Superweapon courtyard and its two power supplies | 16 (2 HIGH for position, 1 MEDIUM, 3 LOW-MEDIUM, 10 LOW) |
+| [A-world61-story-placements.md](A-world61-story-placements.md) | original DK-02 story rows plus DK-05's owner-chosen speculative Repository and Loth'ta point | 16 DK-02 rows + 1 DK-05 row |
 | [B-world62-tent-interior.md](B-world62-tent-interior.md) | the story tent: respawner 25, two exit flaps, Bra'tac, Moh'katan, Moh'katan's Terminal, the Ba'al hologram | 7 (1 HIGH for walkable, 1 MEDIUM, 2 LOW-MEDIUM, 3 LOW) |
 | [C-landmark-census.md](C-landmark-census.md) | evidence pack: conversion check, landmark census, the four furnished camps, tent groups, navmesh components, cover | no rows |
 | [data/](data/) | `Dakara_E1_landmarks.tsv` (763 rows), `Dakara_E1_arch_meshes.tsv` and `_arch_positions.tsv` (the `archetype_census` output), `Dakara_E1_tent_groups.tsv`, `Dakara_E1_StoryRm_props.tsv`, `Dakara_E1_probes.txt` (every row's navmesh probe) | n/a |
@@ -47,7 +47,7 @@ So: **no row in this ledger assumes a compass direction.** The gate rows are nam
 
 These are **unplaced**. Nothing was invented to fill them. Each names what was searched and what was missing.
 
-1. **Naquadah Repository and Loth'ta's camp** (missions 1570 step 4902, 1645, 1648). No mesh, prefab or actor name in the map mentions a repository, storage, naquadah, a mine or a silo (the full per-mesh name list was read: 350 direct meshes and every prefab template name). The only place with Goa'uld military hardware is an isolated outpost at x 261 to 341, z 23 to 130 (`GA-HeavyArtillary00` at (282.4, -17.1, 88.2), `GA-Barracks00` at (261.2, -21.8, 22.8), `GA-Container00` clusters at (282, 83) and (341, 84), the map's densest cover: 378 and 364 nodes in two 60 m cells at (273, 92) and (324, 89)). That is a **lead**, not evidence: nothing says a Jaffa camp or a repository stands there, and mission 1645's optional "follow the path" objective has no path in the data. *Cheapest fix:* the owner names the place in a client; a point set follows.
+1. **Naquadah Repository and Loth'ta's camp** (missions 1570 step 4902, 1645, 1648). DK-02 found no matching mesh, prefab or actor name; its only lead was an isolated military outpost at x 261 to 341, z 23 to 130. The owner subsequently chose a **speculative** DK-05 placement there, `DK-05-A-01` at `(290, -17, 95)` ([worknote](../worknotes/DK-05.md)). This records an implementation choice, not new map evidence. The true location and mission 1645's optional path still need a client walk.
 2. **The five Drop Locations** (mission 1646, dialog 5821). Nothing in the map is distinguishable as a scout drop. The 96 `HT-Campfire00` and 235 `JF-Brazier00` props are too common to be markers. They need five points of the owner's choosing, ideally inside the walled city (component 279) so the player can reach them.
 3. **The "Eastern tents"** (mission text). 39 tent groups exist ([tent_groups.tsv](data/Dakara_E1_tent_groups.tsv)), none named; with no axis the choice among them is open. The nearest groups (G01 to G05) are camps A to D and the merchant rows.
 4. **Which wall gate is the Western one** and which the Eastern. Placed by sign of x (A-10, A-11); the names wait on [the axis question](#the-axis-question).

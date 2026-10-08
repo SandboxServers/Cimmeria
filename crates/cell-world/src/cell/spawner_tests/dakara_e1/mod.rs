@@ -11,6 +11,7 @@
 //!   a name on every one, nothing hostile or attackable, a look some other
 //!   template already wears, and which props are clickable from spawn.
 
+mod population;
 mod templates;
 mod travel;
 

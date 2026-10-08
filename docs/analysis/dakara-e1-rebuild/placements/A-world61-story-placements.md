@@ -2,7 +2,13 @@
 
 > Type: reference (placement ledger). Cluster **A** of the Dakara placement pass (packet DK-02). Written 2026-10-06 against `main` @ `ddd549797`. Method, evidence classes and the NO-IDEA rule: the [Harset METHOD](../../harset-rebuild/placements/METHOD.md), reused unchanged. Census and navmesh facts behind every row: [C-landmark-census.md](C-landmark-census.md). Index and headline findings: [README.md](README.md).
 
-Every coordinate below is a **guess with a stated evidence class and confidence**, not a pin. Nothing here was walked in a client. BigWorld metres, Y up; heading is `atan2(dx, dz)` radians, 0 = +Z, the convention the Harset ledger uses. Things with no usable evidence are in [`## No idea` in the README](README.md#no-idea), not here. Seed ids are not assigned yet: DK-04 and DK-05 take these rows, so "how to correct" names the packet whose seed row to edit.
+Every coordinate below is a **guess with a stated evidence class and confidence**, not a pin. Nothing here was walked in a client. BigWorld metres, Y up; heading is `atan2(dx, dz)` radians, 0 = +Z, the convention the Harset ledger uses. Things with no usable evidence in DK-02 are in [`## No idea` in the README](README.md#no-idea). DK-05 later placed one of those by owner choice; see the appended row. Seed ids are named in the packet worknotes.
+
+## DK-05 owner-approved speculative addition
+
+| ID | What | World | X | Y | Z | Heading | Evidence class | Confidence | Checks run | How to verify in-client | How to correct |
+|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| DK-05-A-01 | Loth'ta and Naquadah Repository discovery centre | 61 | 290.00 | -17.00 | 95.00 | 5.3300 | OWNER-CHOSEN SPECULATION from DK-02's isolated military outpost lead; no map label identifies a Repository | VERY LOW for identity, HIGH for navmesh point | `nav_inspect`: component 279, h 0.00 m, dy -0.04 m; path to gate plaza by component | At the outpost, check whether a Repository is actually visible and Loth'ta stands clear of props | Move spawn 8007 and point set 2127's centre together; update this row and [DK-05](../worknotes/DK-05.md) |
 
 "Path to gate plaza" means the point is in navmesh component **279** of `data/spaces/dakara_e1.nav`, the component that holds the gate row, the DHD and the CS-02 start point (100, -17.4, 230). A point in another component cannot be reached by an NPC path from the plaza on the shipped mesh, however close it is.
 
