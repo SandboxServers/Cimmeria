@@ -55,7 +55,7 @@ Zone × Content-Type grid showing what exists in each zone.
 | Agnos | SHELL | — | YES | — | — | — | YES | — | — |
 | Tollana | SHELL | — | — | 3 | — | — | YES | — | — |
 | Beta_Site_Evo_1 | SHELL | — | — | 5 | — | — | YES | — | — |
-| Dakara_E1 | SHELL | — | — | 1 | — | — | YES | — | — |
+| Dakara_E1 | PARTIAL (tent travel) | — | YES | 1 | — | — | YES | two tent flaps | — |
 | Ihpet_Crater_Dark | SHELL | — | — | 1 | — | — | YES | — | — |
 | Ihpet_Crater_Light | SHELL | — | — | 1 | — | — | YES | — | — |
 | Menfa_Light | SHELL | — | — | — | — | — | YES | — | — |
@@ -64,11 +64,13 @@ Zone × Content-Type grid showing what exists in each zone.
 | SGC | SHELL | — | — | — | — | — | YES | — | — |
 | Harset_Market | SHELL | — | — | — | — | — | — | — | — |
 | Harset_StorageRm | SHELL | — | YES | — | — | — | — | — | — |
-| Dakara_E1_StoryRm | SHELL | — | — | — | — | — | — | — | — |
+| Dakara_E1_StoryRm | PARTIAL (tent travel) | — | YES | — | — | — | — | two exit flaps | — |
 | Tollana_Curia | SHELL | — | — | — | — | — | — | — | — |
 | SandBox | DATA-ONLY | 18 ln | — | 1 | — | — | — | — | — |
 
 Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 MissionTest worlds, and various test maps.
+
+Dakara's four flaps, four evidence-backed named areas and Med Tent respawner are reconstructed in [DK-04](../analysis/dakara-e1-rebuild/worknotes/DK-04.md). The two exterior tents lead to the one client-shipped interior. The mission arc and client walk are pending; the two unplaced discovery names are recorded in the placement ledger.
 
 ## Content Summary
 
