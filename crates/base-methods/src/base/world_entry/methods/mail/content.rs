@@ -20,6 +20,11 @@
 //!
 //! Every firing ends with one feedback line to the player: the mail id and
 //! what it carries, the time left on the cooldown, or why nothing was sent.
+//! The one exception is a cooldown the chain marked quiet
+//! ([`ContentMailCooldown::quiet`], Dakara DK-01): a firing inside its window
+//! sends the player nothing and logs at DEBUG on `mail`, because the player did not
+//! press anything (a `player_loaded` notice fires at every login). A quiet
+//! mail's first firing, and every other refusal, answer as usual.
 //! A sent mail is then announced like every other delivery (D-SS11, SS-M4):
 //! `SystemMailSent::notify` pushes the header, so an open mailbox shows it
 //! at once, with the new-mail line, after the commit.
@@ -152,6 +157,32 @@ pub async fn handle_content_system_mail(
                 };
                 done.sent.notify(pool, &fb).await;
             }
+        }
+        Err(ContentRefusal::Cooldown {
+            last_used_at,
+            remaining_secs,
+        }) if msg.cooldown.as_ref().is_some_and(|c| c.quiet) => {
+            // The window did its job and the player did not ask: no line,
+            // and not a WARN, or every login of a notified character would
+            // write one. `mail`, not `content`: the content target ships at
+            // INFO, and `mail` ships DEBUG.
+            tracing::debug!(
+                target: "mail",
+                event = "content.send_system_mail",
+                reason = "cooldown",
+                quiet = true,
+                entity_id = msg.entity_id,
+                entity_name = who.player_name,
+                account_id,
+                account_name = who.account_name,
+                player_id = msg.player_id,
+                player_name = who.player_name,
+                chain_id = msg.chain_id, // nt:id-only content chain row, the chain has no player-facing name
+                cooldown_key,
+                last_used_at,
+                remaining_secs,
+                "content system mail not repeated: inside its quiet cooldown",
+            );
         }
         Err(refusal) => {
             let (last_used_at, remaining_secs) = match &refusal {

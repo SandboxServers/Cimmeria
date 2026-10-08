@@ -82,7 +82,41 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (3, 22, 4, 20, 9, 7, 18, 2, 'The Castle', 0, 'Castle.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 8, 761.67700200000002, 63.466000000000001, 2.1520000000000001, 551.716003, 10011);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (8, 36, 31, 17, 4, 10, 13, 25, 'Dakara E1', 0, 'Dakara_E1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 61, 96.174003999999996, -15.164, 3.0720000000000001, 253.205994, 10013);
+-- Gate 25 (Dakara E1, world 61). The row itself is ORIGINAL_DATA: it equals
+-- the client's CookedDataStargates entry 25 field for field, and it is the
+-- gate prefab's origin on top of the gate dais.
+--
+-- The arrival pin is PROJECT_FINAL_RECONSTRUCTION (Dakara rebuild DK-01),
+-- placement class MAP-GEOMETRY on an AUTHORED axis, confidence MEDIUM until
+-- a client has walked it: (96.87, -16.75, 243.23), yaw 3.072.
+--
+--   * Where: on the gate's own facing axis (the row's yaw 3.072 is
+--     (0.07, -1.00), -Z, out of the gate and down the plaza), 10.0 m in
+--     front of the row. The 10 m is this project's choice.
+--   * Floor: `obj_slab` over the cooked chunk 00020000 (`extract_map`) shows
+--     the dais top at y -15.21 under the gate, a flight of shallow steps
+--     (treads tilted 9.3 degrees) down from about z 251 to its foot at
+--     z 246.1, and one flat slab at y -16.80 from there on (x 86 to 108,
+--     z 232 to 260). The pin is 2.9 m past the foot of the steps, 0.05 m
+--     above the slab, with nothing but floor in a 3 m box and 8 m of clear
+--     line along the axis. The DHD (spawn 38) is 6.0 m further on.
+--   * Navmesh: dakara_e1.nav component 279, the component of the gate row,
+--     the DHD and the plaza start point (100, -17.4, 230) of Class Start
+--     v6's respawner 610.
+--   * Why pinned at all: the row is inside the gate's own volume (point set
+--     1005 `Dakara_E1.Stargate`, radius 2.5), so an unpinned traveller
+--     arrives inside the volume that is crossed to leave. That is inert on
+--     the server today (the dial is per entity and no chain is keyed on the
+--     region; see the Harset row above), and nobody has seen what a client
+--     does there. The pin puts the arrival 10.5 m from the volume's axis,
+--     facing away from the gate, as the Debug Area row does. World 61 is
+--     `navmesh_mode = 'advisory'`, so the server accepts the pin as written.
+--   * `.gotolocation Dakara_E1` with no coordinates uses this point too.
+--
+-- Guard: `gate_dakara_e1_tests.rs` in cimmeria-cell-world. To correct the pin
+-- after a playtest, edit the four arrival_* values here and the constant
+-- there.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (8, 36, 31, 17, 4, 10, 13, 25, 'Dakara E1', 0, 'Dakara_E1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 61, 96.174003999999996, -15.164, 3.0720000000000001, 253.205994, 10013, 96.87, -16.75, 243.23, 3.072);
 
 -- Gate 15 (Agnos): the recovered row is all zeros, and the cooked Agnos map
 -- has no stargate prefab to recover it from, so gate travel and a

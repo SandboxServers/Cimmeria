@@ -4,14 +4,18 @@
 //!
 //! ```json
 //! {"sender": "Gate Mail Clerk", "subject": "...", "body": "...",
-//!  "cash": 50, "item_id": 2893, "qty": 5, "cooldown_secs": 600}
+//!  "cash": 50, "item_id": 2893, "qty": 5, "cooldown_secs": 600,
+//!  "quiet_cooldown": false}
 //! ```
 //!
 //! `sender` and `subject` are required, one line, 1-128 characters; `body`
 //! is optional, up to 1,000 characters (the D-SS12 limits the mail writer
 //! enforces). `cash` is `0..=i32::MAX`. `item_id` is optional; with it,
 //! `qty` defaults to 1 (the writer caps it at the item's stack size).
-//! `cooldown_secs`, when present, is at least 1.
+//! `cooldown_secs`, when present, is at least 1. `quiet_cooldown` is a
+//! boolean, `false` when absent, and `true` only with `cooldown_secs`: it
+//! changes what a firing inside the window does, so without a window it
+//! would be a param that does nothing.
 //!
 //! A bad value drops the row with a `warn!` naming the chain, rather than
 //! defaulting: the base would refuse the same mail on every firing, and the
@@ -109,6 +113,17 @@ pub(super) fn convert_send_system_mail(row: &DbActionRow) -> Option<Action> {
         },
     };
 
+    let quiet_cooldown = match params.get("quiet_cooldown") {
+        None => false,
+        Some(v) => match v.as_bool() {
+            Some(q) => q,
+            None => return drop_row("`quiet_cooldown` must be true or false"),
+        },
+    };
+    if quiet_cooldown && cooldown_secs.is_none() {
+        return drop_row("`quiet_cooldown` without `cooldown_secs`");
+    }
+
     Some(Action::SendSystemMail {
         sender_name,
         subject,
@@ -116,5 +131,6 @@ pub(super) fn convert_send_system_mail(row: &DbActionRow) -> Option<Action> {
         cash,
         item,
         cooldown_secs,
+        quiet_cooldown,
     })
 }

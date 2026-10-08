@@ -2,8 +2,9 @@
 //! `send_system_mail` action (SS-U3, `mail/content.rs`): the Gate Mail
 //! Clerk's mail and its per-player cooldown. The chain and the executor arm
 //! are guarded on the cell (`cell-content`
-//! `chain_replay_tests/debug_hub_mail_clerk.rs`). Sentinels `0x7300_5300` to
-//! `0x7300_53FF`.
+//! `chain_replay_tests/debug_hub_mail_clerk.rs`). The quiet cooldown (Dakara
+//! DK-01, chain 8002's arrival notice) is the last live test. Sentinels
+//! `0x7300_5300` to `0x7300_53FF`.
 
 use super::super::content::{
     refused_line, wait_text, write_content_mail, ContentRefusal, ContentSent,
@@ -32,6 +33,7 @@ fn clerk_mail(c: &Client) -> ContentSystemMail {
         cooldown: Some(ContentMailCooldown {
             key: CLERK_KEY.into(),
             secs: 600,
+            quiet: false,
         }),
     }
 }
@@ -277,6 +279,142 @@ async fn live_db_content_mail_refusals_answer_the_player() {
         .find(|e| e.target == "content" && e.has_field("reason", "no_db_pool"))
         .expect("content.send_system_mail reason=no_db_pool");
     assert!(row.has_field("player_id", &0x7300_53FE_i32.to_string()));
+}
+
+/// Dakara DK-01, the arrival notice's shape: a text-only mail behind a quiet
+/// cooldown of `i32::MAX` seconds. The first firing writes one mail and
+/// tells the player. A second firing writes nothing, sends the client
+/// nothing at all and logs at DEBUG, not WARN. The same second firing
+/// without `quiet` is answered with the wait line and a WARN, as before; and
+/// the window still holds ten years on.
+///
+/// Remove the quiet arm in `handle_content_system_mail` and the "nothing at
+/// all" assertion fails on the wait line.
+#[tokio::test]
+async fn live_db_content_mail_quiet_cooldown_refusal_writes_nothing_and_sends_no_line() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let (acct, player, clocked) = (0x7300_5340, 0x7300_5341, 0x7300_5342);
+    const KEY: &str = "send_system_mail/8002";
+    cleanup(&pool, acct).await;
+    insert_players(
+        &pool,
+        acct,
+        &[(player, "DkOneNotice"), (clocked, "DkOneClock")],
+    )
+    .await;
+    let c = Client::new(0x7300_5395, player, 54_835, "DkOneNotice");
+    let notice = |player_id: i32| ContentSystemMail {
+        entity_id: c.entity_id,
+        player_id,
+        account_id: Some(0x7300_0001),
+        chain_id: 8002,
+        sender_name: "Dakara Gate Watch".into(),
+        subject: "A notice".into(),
+        body: "Nothing to take.".into(),
+        cash: 0,
+        item: None,
+        cooldown: Some(ContentMailCooldown {
+            key: KEY.into(),
+            secs: i32::MAX as u32,
+            quiet: true,
+        }),
+    };
+    let claim = || async {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT last_used_at FROM sgw_player_content_cooldown \
+             WHERE player_id = $1 AND cooldown_key = $2",
+        )
+        .bind(player)
+        .bind(KEY)
+        .fetch_optional(&pool)
+        .await
+        .unwrap()
+    };
+    // The loud refusal is a WARN on `content`; the quiet one a DEBUG on
+    // `mail`, the target that ships at DEBUG.
+    let cooldown_rows = |target: &str, level: tracing::Level| {
+        capture
+            .all()
+            .into_iter()
+            .filter(|e| {
+                e.target == target
+                    && e.level == level
+                    && e.has_field("reason", "cooldown")
+                    && e.has_field("player_id", &player.to_string())
+            })
+            .collect::<Vec<_>>()
+    };
+
+    // First firing: one mail, and the player is told.
+    c.content(notice(player), Some(&pool)).await;
+    let first = mails(&pool, player).await;
+    assert_eq!(first, vec![(None, "Dakara Gate Watch".to_string(), 0, 0)]);
+    assert!(escrow_for(&pool, player).await.is_empty());
+    let mail_id: i32 =
+        sqlx::query_scalar("SELECT mail_id FROM sgw_gate_mail WHERE character_id = $1")
+            .bind(player)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        lines(c.take()),
+        vec![format!(
+            "Dakara Gate Watch sent you mail {mail_id}. Open your mail to read it."
+        )]
+    );
+    let claimed = claim().await.expect("the first firing claims the window");
+
+    // Second firing, quiet: no mail, nothing on the wire, no WARN.
+    c.content(notice(player), Some(&pool)).await;
+    assert_eq!(mail_count(&pool, player).await, 1, "no second mail");
+    let received = c.take();
+    assert!(
+        received.is_empty(),
+        "a quiet refusal sends the client nothing, got {received:?}"
+    );
+    assert_eq!(claim().await, Some(claimed), "the claim is unmoved");
+    assert!(
+        cooldown_rows("content", tracing::Level::WARN).is_empty(),
+        "a quiet refusal is not a WARN"
+    );
+    let quiet = cooldown_rows("mail", tracing::Level::DEBUG);
+    assert_eq!(quiet.len(), 1, "{quiet:#?}");
+    for (k, v) in [
+        ("event", "content.send_system_mail".to_string()),
+        ("quiet", "true".to_string()),
+        ("entity_id", 0x7300_5395_u32.to_string()),
+        ("chain_id", "8002".to_string()),
+        ("cooldown_key", KEY.to_string()),
+        ("last_used_at", claimed.to_string()),
+    ] {
+        assert!(quiet[0].has_field(k, &v), "{k}={v}: {:#?}", quiet[0]);
+    }
+
+    // Control: the same firing without `quiet` is the behaviour every other
+    // chain has, the wait line and a WARN.
+    let mut loud = notice(player);
+    loud.cooldown.as_mut().unwrap().quiet = false;
+    c.content(loud, Some(&pool)).await;
+    assert_eq!(mail_count(&pool, player).await, 1);
+    let told = lines(c.take());
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(
+        told[0].starts_with("Dakara Gate Watch has already sent you mail. You can ask again in "),
+        "{told:?}"
+    );
+    assert_eq!(cooldown_rows("content", tracing::Level::WARN).len(), 1);
+
+    // The window is `i32::MAX` seconds: still shut ten years after a claim.
+    let t0: i64 = 1_700_000_000;
+    sent(write_content_mail(&pool, &notice(clocked), t0).await);
+    match write_content_mail(&pool, &notice(clocked), t0 + 315_360_000).await {
+        Err(ContentRefusal::Cooldown { last_used_at, .. }) => assert_eq!(last_used_at, t0 as i32),
+        other => panic!("ten years on must still be refused, got {other:?}"),
+    }
+    assert_eq!(mail_count(&pool, clocked).await, 1);
+
+    cleanup(&pool, acct).await;
 }
 
 /// The wait is rounded up to whole minutes, never down.

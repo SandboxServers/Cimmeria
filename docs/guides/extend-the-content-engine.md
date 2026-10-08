@@ -96,7 +96,7 @@ SS-U3) is the example to copy:
 
 | Layer | File | What it does |
 |---|---|---|
-| Variant | [`actions.rs`](../../crates/content-engine/src/actions.rs) | `Action::SendSystemMail { sender_name, subject, body, cash, item, cooldown_secs }` |
+| Variant | [`actions.rs`](../../crates/content-engine/src/actions.rs) | `Action::SendSystemMail { sender_name, subject, body, cash, item, cooldown_secs, quiet_cooldown }` |
 | Loader | [`loader/action_mail.rs`](../../crates/content-engine/src/loader/action_mail.rs) | Validates every param against the mail writer's limits and drops a bad row with a `warn!`, so a seed mistake never reaches a player as a refusal |
 | Message | [`content_mail_cell_to_base.rs`](../../crates/wire/src/cell/messages/content_mail_cell_to_base.rs) | `CellToBaseMsg::ContentSystemMail`, with the player's ids taken from the cell entity |
 | Executor | [`executor/mail.rs`](../../crates/cell-content/src/cell/content/executor/mail.rs) | Refuses a non-player actor and forwards the rest |
@@ -110,7 +110,9 @@ Two rules this example follows:
   and a crash between the two cannot give a second mail.
 - **Answer every firing.** The base sends the player one line whether the
   mail went out or not. A button that does nothing on the first press breaks
-  a project rule.
+  a project rule. The exception is opt-in and narrow: `quiet_cooldown` drops
+  the cooldown-refusal line for a chain no player presses (a `player_loaded`
+  notice), and nothing else.
 
 The params and the telemetry are in
 [content-engine.md, `send_system_mail` params](../content/content-engine-vocabulary.md#send_system_mail-params).

@@ -401,6 +401,7 @@
 \ir resources/Content/Seed/debug_area_plaza_chains.sql
 \ir resources/Content/Seed/debug_area_lineup_chains.sql
 \ir resources/Content/Seed/debug_area_ring_chains.sql
+\ir resources/Content/Seed/dakara_e1_space_chains.sql
 \ir resources/Content/Seed/tutorial_chains.sql
 
 \ir resources/_foreign_keys.sql

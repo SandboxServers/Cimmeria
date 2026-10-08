@@ -461,6 +461,11 @@ pub enum Action {
     /// `sgw_player_content_cooldown` under a key derived from the chain id
     /// and claimed in the same transaction as the mail. A firing inside the
     /// window writes nothing and tells the player how long to wait.
+    ///
+    /// `quiet_cooldown` (Dakara DK-01) is for a chain the player does not
+    /// trigger by hand, such as a `player_loaded` notice: a firing inside
+    /// the window still writes nothing, and the player is told nothing. The
+    /// loader only sets it together with `cooldown_secs`.
     SendSystemMail {
         sender_name: String,
         subject: String,
@@ -469,6 +474,7 @@ pub enum Action {
         /// `(type_id, quantity)`.
         item: Option<(i32, i32)>,
         cooldown_secs: Option<u32>,
+        quiet_cooldown: bool,
     },
     /// Open the client Black Market / Auction House window for the
     /// triggering player. Mirrors `DisplayDialog` in routing: the

@@ -17,6 +17,12 @@ pub struct ContentMailCooldown {
     pub key: String,
     /// Seconds between two mails, at least 1.
     pub secs: u32,
+    /// What the base does with a firing inside the window. `false`: the
+    /// player gets the wait line ("You can ask again in ..."). `true`: the
+    /// player gets nothing, for a chain they did not trigger by hand (a
+    /// `player_loaded` notice, Dakara DK-01). Either way no mail is written
+    /// and the claim stays where it was.
+    pub quiet: bool,
 }
 
 /// One system mail a content chain asked for.

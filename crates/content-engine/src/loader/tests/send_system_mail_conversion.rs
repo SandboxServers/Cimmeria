@@ -42,6 +42,7 @@ fn convert_send_system_mail_full_row() {
             cash: 50,
             item: Some((2893, 5)),
             cooldown_secs: Some(600),
+            quiet_cooldown: false,
         }
     );
 }
@@ -64,6 +65,7 @@ fn convert_send_system_mail_defaults() {
             cash: 0,
             item: None,
             cooldown_secs: None,
+            quiet_cooldown: false,
         }
     );
     let with_item = convert_action(&mail_row(serde_json::json!({
@@ -77,6 +79,44 @@ fn convert_send_system_mail_defaults() {
             ..
         }
     ));
+}
+
+/// `quiet_cooldown` (Dakara DK-01): `true` with a window is carried through;
+/// an explicit `false` is the default, with or without a window.
+#[test]
+fn convert_send_system_mail_quiet_cooldown() {
+    let quiet = convert_action(&mail_row(serde_json::json!({
+        "sender": "Dakara Gate Watch", "subject": "Hello",
+        "cooldown_secs": 2_147_483_647_i64, "quiet_cooldown": true
+    })))
+    .expect("a quiet row with a window must convert");
+    assert_eq!(
+        quiet,
+        Action::SendSystemMail {
+            sender_name: "Dakara Gate Watch".into(),
+            subject: "Hello".into(),
+            body: String::new(),
+            cash: 0,
+            item: None,
+            cooldown_secs: Some(2_147_483_647),
+            quiet_cooldown: true,
+        }
+    );
+    for params in [
+        serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": 60, "quiet_cooldown": false}),
+        serde_json::json!({"sender": "c", "subject": "s", "quiet_cooldown": false}),
+    ] {
+        assert!(
+            matches!(
+                convert_action(&mail_row(params.clone())),
+                Some(Action::SendSystemMail {
+                    quiet_cooldown: false,
+                    ..
+                })
+            ),
+            "row {params} must convert as not quiet"
+        );
+    }
 }
 
 /// Every rejected shape drops the row.
@@ -99,6 +139,11 @@ fn convert_send_system_mail_rejects_bad_params() {
         serde_json::json!({"sender": "c", "subject": "s", "qty": 5}),
         serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": 0}),
         serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": -5}),
+        // `quiet_cooldown`: a boolean, and `true` only with a window.
+        serde_json::json!({"sender": "c", "subject": "s", "quiet_cooldown": true}),
+        serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": 60, "quiet_cooldown": 1}),
+        serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": 60, "quiet_cooldown": "true"}),
+        serde_json::json!({"sender": "c", "subject": "s", "cooldown_secs": 60, "quiet_cooldown": null}),
     ];
     for params in cases {
         assert_eq!(

@@ -14,6 +14,7 @@ fn mail_action() -> Action {
         cash: 50,
         item: Some((2893, 5)),
         cooldown_secs: Some(600),
+        quiet_cooldown: false,
     }
 }
 

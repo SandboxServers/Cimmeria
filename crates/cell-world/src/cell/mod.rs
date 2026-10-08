@@ -33,6 +33,10 @@ mod dakara_start_tests;
 /// Seed-vs-navmesh guards for the Debug Area gate (stargate 29, DA-07).
 #[cfg(test)]
 mod debug_area_gate_tests;
+/// Seed guards for the Dakara_E1 gate round trip (stargate 25's arrival
+/// pin and the way back from an address granted on arrival, DK-01).
+#[cfg(test)]
+mod gate_dakara_e1_tests;
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only; in
 /// `cimmeria-services` until wave C6 of the services crate split.
