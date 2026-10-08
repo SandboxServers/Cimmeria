@@ -7,6 +7,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_dakara_dk05_population.md](project_dakara_dk05_population.md) — 2026-10-07 DK-05: four static cast spawns; owner chose a speculative military-outpost Repository/Loth'ta point at (290, -17, 95); mission dialog restore binds still await DK-10 onward; M2 client UAT pending
 
 - [project_dakara_dk04_travel.md](project_dakara_dk04_travel.md) — 2026-10-07 DK-04: two exterior tent flaps share world 62 and one return point; world-gated interact tags, placement/test anchors, client UAT pending
+- [project_dialog_quarantine_2026_10_07.md](project_dialog_quarantine_2026_10_07.md) — stock PAK census weakens the speaker, button-type and screen-count theories; dialog crash cause still unproven
+
 - [project_bank_vault_closeout_2026_10_07.md](project_bank_vault_closeout_2026_10_07.md) — BV-10 release status verified and Banker entity-id reuse guard added; owner UAT remains pending
 
 - [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (12/min per address), public login-port mount approved, inert (no endpoint); production endpoint is a later rollout
