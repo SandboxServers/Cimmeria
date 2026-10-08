@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-09-28 (#804: SGC_W1 shipped chains)
+> **Last updated**: 2026-10-05 (Class Start v6 CS-05: SGC_W1 starter gates, M1559 core grant, M1562 SMG, M1569 rewards)
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) (1,040 mission INSERTs), `deprecated/python/cell/missions/` (20 script files), `deprecated/python/cell/spaces/` (11 space scripts), `deprecated/python/cell/MissionManager.py`
 >
@@ -1154,7 +1154,7 @@ The cost is a stale cue over an NPC or prop the player has finished with; the al
 
 **Minigames**: Livewire on the DHD at step 2418, labelled provisional per D-CA09 — the original minigame for the DHD repair is unrecovered.
 
-**Where the archetype split is enforced**: on the *interact* chains (1352 / 1354), never on the `dialog_choice` chains. The dialog-choice dispatcher does not populate `archetype` into the chain context, and a missing `archetype` evaluates as `-1`, which makes `archetype = 8` permanently false and `archetype != 8` permanently true — a condition that reads like a guard and fails open. The choice halves are discriminated by dialog id instead, which is server-authoritative because a `dialogButtonChoice` is rejected unless the server displayed that dialog to that player, and the only path that displays 5008 is the archetype-gated interact chain.
+**Where the archetype split is enforced**: on the *interact* chains (1352 / 1354), never on the `dialog_choice` chains. When these chains were written the dialog-choice dispatcher did not put `archetype` into the chain context, and a missing `archetype` evaluates as `-1`, which makes `archetype = 8` permanently false and `archetype != 8` permanently true — a condition that reads like a guard and fails open. Since #1263 (Class Start v6 CS-01b) every player dispatcher, `dialog_choice` included, sets it, so an `archetype` condition on a dialog chain now works (the SGC_W1 chains 3018 and 3033 rely on it); only a player with no archetype still reads `-1`. These chains were left as authored: the choice halves are discriminated by dialog id, which is server-authoritative because a `dialogButtonChoice` is rejected unless the server displayed that dialog to that player, and the only path that displays 5008 is the archetype-gated interact chain.
 
 **Zero-button dialogs**: none of 5003, 5004, 5008, 5009, 5010, 5011, 2584 or 2586 has a `dialog_screen_buttons` row. The 2009 client emits its dialog choice from the close path with button id `-1` when a dialog carries no buttons at all, and emits nothing on close when it does — which is why `Castle.py` could key on `dialog.choice::2574` and `::2575`. **Adding a button to any of these dialogs silently breaks the chain that keys on it.**
 
@@ -1173,17 +1173,29 @@ The cost is a stale cue over an NPC or prop the player has finished with; the al
 
 The SGC_W1 space script (`deprecated/python/cell/spaces/SGC_W1.py`) handles mission 1559. The SecurityOffice mission script (`deprecated/python/cell/missions/SGC_W1/SecurityOffice.py`) handles missions 1561 and 1562.
 
-#### Shipped chains (sgc_w1_chains.sql, 3001-3028)
+#### Shipped chains (sgc_w1_chains.sql, 3001-3044)
 
-The Python scripts above are ported to content chains in [db/resources/Content/Seed/sgc_w1_chains.sql](../../db/resources/Content/Seed/sgc_w1_chains.sql):
+The Python scripts above are ported to content chains in [db/resources/Content/Seed/sgc_w1_chains.sql](../../db/resources/Content/Seed/sgc_w1_chains.sql). Chains 3029-3044 and the archetype gates are Class Start v6 packet CS-05 ([ledger](../analysis/class-start-v6/README.md), [worknote](../analysis/class-start-v6/worknotes/CS-05.md)); they are our own authoring (`PROJECT_FINAL_S2C`), not a port.
 
 | Chains | Mission | What they cover |
 |---|---|---|
-| 3001-3017 | 1559 | Load and accept, Gen. Hammond, Teal'c, the first elevator, the firearm, the outro, the relog restores, and the `SGC_W1_JaffaBomb` death that opens Hammond's radio dialog 5359 |
+| 3001-3017, 3029 | 1559 | Load and accept, Gen. Hammond, Teal'c, the first elevator, the firearm, the outro, the relog restores, and the `SGC_W1_JaffaBomb` death that opens Hammond's radio dialog 5359 |
 | 3018-3025 | 1561 | Accept from dialog 5359, the `AirmanBody` radio, both radio uses, the Naquadah bomb and its Livewire minigame, completion |
-| 3026-3028 | 1562 | Only the accept (dialog 5365), the relog restore at step 4624, and the `ElevatorButton2` hop. 3028 is the last chain, so 1562 stops at step 4625, as Part D describes |
+| 3026-3028 | 1562 | The accept (dialog 5365), the relog restore at step 4624, and the `ElevatorButton2` hop to step 4625 |
+| 3030-3037 | 1562 | Human classes only: the lab doors re-opened, Col. Carter from step 4625, then the SGHC 6 SMG (item 21) on her desk and completion |
+| 3041-3044 | 1569 | Human classes only: class gear and the free signature ability on `mission_completed 1569`. Nothing accepts or completes 1569 yet |
 
-No chain-replay test covers SGC_W1 yet, so the Part D statuses for 1559 and 1562 are unchanged.
+**Archetype gates (CS-05).** The `archetype` values are `EArchetype` ordinals ([character-creation.md § Archetypes](../gameplay/character-creation.md#archetypes)).
+
+| Chains | Gate | Effect |
+|---|---|---|
+| 3001, 3017, 3018 | `archetype neq 7` | A Free Jaffa (Shol'va) visiting SGC_W1 is not given M1559, is not shown dialog 5359 and cannot accept M1561 (OD-CS09). Everyone else, including a player with no archetype, is unchanged |
+| 3008 | `archetype lt 5` | The Human pickup: Soldier, Commando, Scientist, Archaeologist, and a player with no archetype (reads -1) |
+| 3029 | `archetype gte 5` | The same pickup as it was before CS-05, for every other archetype. This is the Asgard holding state (OD-CS09, `NON_CANONICAL_BLOCKED_LEGACY`); remove it with that state |
+| 3030-3037 | `archetype lt 5` | For any other archetype M1562 still stops at step 4625: the lab doors stay closed, Col. Carter is never marked and the desk SMG is never lit |
+| 3041-3044 | `archetype eq 1` / `2` / `3` / `4` | One chain per Human class; each `grant_ability` row repeats the class in its own `archetypes` list |
+
+Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-content/src/cell/content/chain_replay_tests/class_start_sgc/mod.rs) (gates, pickup, M1562, M1569), [`mission_1562.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/mission_1562.rs) (chain 3026) and [`sgc_w1_move_entity.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs) (the elevators). None of this has been played on a client yet; the Part D statuses for 1559 and 1562 describe the legacy scripts and are unchanged.
 
 **Unscripted continuation.** Missions 1563-1569 ("Virus", "Self-Destruct", "Tactics", "Tactics pt. 2", "Clear the Way", "Gate Room", "Ordinance") are seeded in `missions.sql` with `mission_label = 'General'`, not SGC_W1. Their step text continues the SGC story ("Take Col. Carter's notes on security protocols.", "Escort Col. Carter to the Failsafe Room on sub-level 28"), so the zone link is inferred from the text (MEDIUM); no script or `.def` evidence exists. The port is tracked in #335.
 
@@ -1239,6 +1251,8 @@ if status == Constants.MISSION_Not_Active:
 7. dialog.choice::5357: teleport player to (-123.625, 1.311, -246.858), complete objective 5358, enable `SGC_W1_FirearmBody`, play sequence 10013
 8. Interact with `SGC_W1_FirearmBody`: complete mission 1559, grant pistol (item 55, bag 1), display dialog 5358
 9. dialog.choice::5358: play sequence 10012
+
+**As shipped (CS-05).** Step 8 is two chains. For a Human class, chain 3008 runs `complete_mission 1559`, `add_item 55`, `grant_ability` (592 Pistol Shot, 594 Strike, 597 Heal Focus, 1218 Recuperation; `source_kind` `tutorial`, `source_id` 1559), `display_dialog 5358`, then `show_tutorial 5882` "Equipping a Weapon", in that order, so the abilities reach the client before the tutorial that tells the player to place Pistol Shot. The first hostile combat afterwards shows tutorial 5883 "Combat" (chain 7101, `tutorial_chains.sql`). For every other archetype chain 3029 runs the three legacy actions only. The pistol arrives with 0 rounds; the player reloads once (OD-CS13).
 
 **Items granted**:
 
@@ -1369,7 +1383,50 @@ if status == Constants.MISSION_Not_Active:
 
 **Sequences**: 10009
 
-**Link to next**: **DEAD END**. Steps 4625-4627 have no script logic to advance or complete them. The teleport happens and dialog 5366 is displayed, but no further interaction is scripted. This is the end of the implemented SGC_W1 chain.
+**Link to next**: **DEAD END** in the legacy script. Steps 4625-4627 have no script logic to advance or complete them. The teleport happens and dialog 5366 is displayed, but no further interaction is scripted.
+
+**As shipped (CS-05), Human classes only.** Chains 3030-3037 finish the mission from seed data the legacy script never used (Carter's spawn `SGC_W1_SamCarter`, spawnlist row 56, and dialogs 5367 and 5368) and from the cooked SGC_W1 map, read with the repo's package and navmesh tools.
+
+| Chain | Trigger and gate | Actions |
+|---|---|---|
+| 3030 | The `SGC_W1_ElevatorButton2` press of chain 3028, step 4624 | Mark Carter (`INT_AStoryMissionActive`); 3 s later `play_sequence 10010`, which re-opens the lab doors chain 3028 closes |
+| 3031 | `player_loaded SGC_W1`, step 4625 or 4626 | Restore Carter's marker after a relog |
+| 3032 | Interact Carter, step 4625 | Advance to 4626, dialog 5367 ("There's another weapon on my lab desk.") |
+| 3033 | Dialog 5367 closed (it has no buttons), step 4626 | Advance to 4627, unmark Carter, light the desk SMG (`INT_MissionWorldObject`) |
+| 3034 | Interact Carter, step 4626 | Dialog 5367 again, for a close lost to a relog or an evicted dialog |
+| 3035 | Interact `SGC_W1_CarterDeskSMG`, step 4627 | Complete 1562, `add_item 21` (SGHC 6 SMG, backpack, 0 rounds), dialog 5368, unlight the SMG |
+| 3036 | Interact Carter, step 4627 | Dialog 5367 again: her pointer to the desk. Grants nothing |
+| 3037 | `player_loaded SGC_W1`, step 4627 | Restore the SMG's marker after a relog |
+
+What the map says about the lab (chunk `SGC_W1-0000ffff`, BigWorld coordinates; evidence classes as in the [Harset placement method](../analysis/harset-rebuild/placements/METHOD.md)):
+
+| Fact | Evidence | Class |
+|---|---|---|
+| The lab is the room Carter's spawn stands in | Its only moving doors, two `InterpActor`s at (-25.0, 36.48) and (-18.6, 36.48), are the targets of the Kismet sequence `CartersLabDoors`; lab props carry the group "W1 - Level 19" | MAP-MARKER, AUTHORED |
+| The desk: the centre one of three desk peninsulas on the west wall, top at y 2.38 over x -50.5..-48.0, z 36.0..37.5 | `EM-Counter02` runs dressed with office chairs, lamps, planners, pens, phones and view screens; the top is a flat up-facing collision surface 1.10 m above the 1.28 floor. No actor, trigger or Kismet node names a desk or the gun, so which of the three is Carter's is inferred: this one is on her axis and under the main console | MAP-LANDMARK, MAP-GEOMETRY, INFERRED |
+| The SMG prop: spawn 81, template 411, at (-49.2, 2.41, 36.75) | The gap between the desk's two prop clusters, on the top surface | INFERRED from the above |
+| Carter's heading, 1.59985 rad (+X), is right and unchanged | She stands at the centre of a U-shaped lab bench that opens west, and faces across it to the lab's only doorway 8 m east of her | MAP-GEOMETRY |
+| The doors start open; `play_sequence 10009` closes them and 10010 opens them | Both doors are placed 3.7 m above the floor; the sequence's two Matinee tracks move them 4 m down in 2.0 s ("Designer 0: Close Doors", event 6000) and 4 m up ("Designer 1: Open Doors", event 6001) | MAP-MARKER |
+| The elevator arrival, the corridor, the doorway, Carter and the floor by the desk are one walkable region | `nav_inspect` puts all of them in component 26 of `data/spaces/sgc_w1.nav` | MAP-GEOMETRY |
+
+So before CS-05 the lab was sealed: the legacy script closed the doors on arrival (chain 3028) and nothing opened them. Chain 3030 re-opens them for a Human once the close has played.
+
+Still not authored, and an owner decision: the fight. The two Jaffa of dialog 5366 are seeded (spawnlist rows 71 and 77, template 35, untagged) in the corridor east of the lab doors, and Carter's "Thanks for your help." (5367) reads as if the doors opened when they died. Objective 5365 (the kill) is optional in the seed, so the doors do not wait for it. The lab-entry region (objective 6036) is not authored either. Completing 1562 offers nothing further: 1563 "Virus" onwards is the SGU route campaign (OD-CS10).
+
+---
+
+#### Mission 1569: "Ordinance" (rewards only)
+
+No chain accepts or completes 1569: its one step, 4640 "Check the storage crates for any useful supplies.", belongs to the SGU route campaign (OD-CS10). What ships is the reward delivery, keyed on `mission_completed 1569` so that campaign can complete the mission however it authors the crates. One rule binds it: the chain that offers 1569 must gate on `mission_status 1569 eq not_active`. The reward chains are not one-shot, and the server's offer guard allows one re-accept of a completed mission whose `num_repeats` is 1 (it refuses only when `repeats > num_repeats`), so an ungated offer would let a second completion grant every item again. The signature grant is idempotent; the items are not.
+
+| Chain | Class (`archetype eq`) | Items (`add_item`, the item's default container) | Signature (`grant_ability`, `source_kind` `signature`, `source_id` 1569) |
+|---|---|---|---|
+| 3041 | Soldier (1) | 3260 SK37 LMG, 7373 Armored BDU Jacket | 598 Quick Burst |
+| 3042 | Commando (2) | 3347, 3359, 3372, 3387, 3401 (Covert Stealth set), 3325 Combat Knife | 646 Stealth I |
+| 3043 | Scientist (3) | 4444 Deployment Belt, 7373 Armored BDU Jacket | 948 Battlefield Heal |
+| 3044 | Archaeologist (4) | 6843 Hologram Emitter, 7373 Armored BDU Jacket | 802 Reveal Mini-Games |
+
+The item lists match the seeded crate lines of dialogs 5385-5388 ("You look in the crate and find a light machine gun and a flak jacket." and so on), which the route campaign can show from its crate chain. The Free Jaffa line (5389) is not used: Free Jaffa are geared at the Dakara start. The spawn `SGC_W1_Crate` (spawnlist row 64, template 36) is seeded and has no chain.
 
 ---
 

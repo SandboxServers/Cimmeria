@@ -24,3 +24,4 @@ metadata:
 - [map-data-placement-toolkit.md](map-data-placement-toolkit.md) — deriving spawn coordinates from a cooked map; heading = atan2(dx, dz).
 - [telemetry-last-valid-is-mostly-synthetic.md](telemetry-last-valid-is-mostly-synthetic.md) — 77% of Harset `last_valid_*` rejects are (0,0,0).
 - [occluder-sizing-and-los-truth.md](occluder-sizing-and-los-truth.md) — NA27 occluder paging; build-determinism and grazing-ray traps.
+- [kismet-designer-events-and-door-state.md](kismet-designer-events-and-door-state.md) — sequence event 6000+N = Designer N; read a door's start pose and travel from Matinee keys; SGC_W1's legacy script closes Carter's lab and never opens it.

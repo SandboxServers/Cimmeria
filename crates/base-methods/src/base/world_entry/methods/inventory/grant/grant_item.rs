@@ -20,8 +20,10 @@ use super::super::core::send_full_inventory_update;
 use super::equip_epilogue::equip_epilogue;
 use super::persist::{persist_grant, PersistOutcome};
 use super::placement::{format_container_sets, resolve_placement};
+use crate::base::feedback::FeedbackCtx;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::outbox;
+use crate::base::world_entry::methods::mail::{send_system_mail, SystemItem, SystemMail};
 use crate::base::ConnectedClientState;
 use crate::cell::messages::{BaseToCellMsg, GrantRefusal, LootGrantSource};
 use cimmeria_cell_catalog::item_placement::INV_BUYBACK;
@@ -70,6 +72,105 @@ pub async fn handle_grant_item(
         entity_to_addr,
     )
     .await;
+}
+
+/// A content grant falls back to persistent mail when the chosen carried bag
+/// is full. The item remains claimable after the mission has completed or the
+/// player has logged out. Loot and GM grants keep their separate refusal
+/// behavior. An unknown commit outcome is never retried or mailed: it may
+/// already have written the inventory row.
+pub async fn handle_content_grant_item(
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    container_id: i32,
+    count: i32,
+    db_pool: &Option<Arc<PgPool>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let outcome = grant(
+        entity_id,
+        player_id,
+        item_id,
+        container_id,
+        count,
+        false,
+        db_pool,
+        cell_tx,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+    if !matches!(
+        outcome,
+        GrantOutcome::Refused {
+            reason: GrantRefusal::ContainerFull,
+            ..
+        }
+    ) {
+        return;
+    }
+    let Some(pool) = db_pool.as_deref() else {
+        return;
+    };
+    let mail = SystemMail {
+        sender_name: "Mission Rewards".to_string(),
+        recipient_player_id: player_id,
+        subject: "Item delivered to your mailbox".to_string(),
+        body: "Your bag was full. Take this item from your mailbox when you have room.".to_string(),
+        cash: 0,
+        item: SystemItem::Minted {
+            type_id: item_id,
+            qty: count,
+        },
+    };
+    match send_system_mail(pool, &mail).await {
+        Ok(sent) => {
+            tracing::info!(
+                target: "inventory", event = "content_grant_mailed",
+                player_id, player_name = known_names::player_name(player_id),
+                item_id, item_name = cimmeria_names::book().item(item_id),
+                mail_id = sent.mail_id, // nt:id-only mail row is named to the player below
+                "full-bag content grant persisted in mail"
+            );
+            send_gm_feedback_to_client(
+                entity_id,
+                "Your bag was full. Your item is in your mailbox.",
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            sent.notify(
+                pool,
+                &FeedbackCtx {
+                    transport,
+                    connected,
+                },
+            )
+            .await;
+        }
+        Err(error) => {
+            tracing::error!(
+                target: "inventory", event = "content_grant_mail_failed",
+                player_id, player_name = known_names::player_name(player_id),
+                item_id, item_name = cimmeria_names::book().item(item_id),
+                %error, "full-bag content grant could not be persisted in mail"
+            );
+            send_gm_feedback_to_client(
+                entity_id,
+                "Your bag was full and your item could not be delivered. Contact a GM.",
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+    }
 }
 
 /// Grant a looted item. A refusal sends the item back to its corpse; a
