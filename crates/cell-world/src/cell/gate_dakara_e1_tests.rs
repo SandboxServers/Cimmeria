@@ -43,10 +43,9 @@ fn repo_file(rel: &str) -> String {
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
-fn dakara_mesh() -> Option<NavMesh> {
+fn dakara_mesh() -> NavMesh {
     let path = std::path::Path::new("../../data/spaces/dakara_e1.nav");
-    path.exists()
-        .then(|| NavMesh::load(path).expect("dakara_e1.nav loads"))
+    NavMesh::load(path).expect("dakara_e1.nav must be present and load for the arrival pin guard")
 }
 
 fn v(p: [f32; 3]) -> Vector3 {
@@ -175,9 +174,7 @@ async fn live_db_dakara_gate_arrival_pin_is_on_the_plaza_outside_the_gate_volume
         assert!(dist_xz(arrival, *dhd) > 3.0, "the pin is on the DHD prop");
     }
 
-    let Some(mesh) = dakara_mesh() else {
-        return;
-    };
+    let mesh = dakara_mesh();
     assert!(
         (arrival[1] - PLAZA_FLOOR_Y).abs() <= 0.25,
         "the pin's y {} is not on the plaza floor ({PLAZA_FLOOR_Y})",
