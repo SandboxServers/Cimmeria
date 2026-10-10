@@ -1,19 +1,21 @@
 //! End-of-session bundle POST.
 //!
-//! At game-exit time the launcher zips the full
-//! `Binaries/sgwdebuglog*` + `Binaries/sessions/**` contents and POSTs
-//! a multipart payload (JSON metadata + zip file) to
+//! At game-exit time the launcher zips this session's
+//! `Binaries/sgwdebuglog*` + `Binaries/sessions/**` files (those written
+//! to since the session started, [`crate::logs::build_session_log_zip`])
+//! and POSTs a multipart payload (JSON metadata + zip file) to
 //! `<upload_endpoint>/upload-bundle`. Idempotent on `(session_id,
 //! sha256(zip))` server-side.
 
 use std::path::Path;
+use std::time::SystemTime;
 
 use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::logs::{build_log_zip, LogError};
+use crate::logs::{build_session_log_zip, LogError};
 
 #[derive(Debug, Error)]
 pub enum BundleError {
@@ -53,17 +55,18 @@ pub struct BundleOutcome {
     pub zip_bytes: u64,
 }
 
-/// Build the bundle metadata + zip from `install_dir`'s session logs
-/// and POST as multipart. Returns Empty if no logs are present (no
-/// network call fires).
+/// Build the bundle metadata + zip from `install_dir`'s logs written to
+/// since `since` and POST as multipart. Returns Empty if no such logs are
+/// present (no network call fires).
 pub async fn upload_bundle(
     http: &reqwest::Client,
     upload_endpoint: &str,
     token: &str,
     install_dir: &Path,
+    since: SystemTime,
     mut metadata: BundleMetadata,
 ) -> Result<BundleOutcome, BundleError> {
-    let Some(zip) = build_log_zip(install_dir)? else {
+    let Some(zip) = build_session_log_zip(install_dir, since)? else {
         return Err(BundleError::Empty);
     };
     let mut hasher = Sha256::new();
@@ -161,6 +164,7 @@ mod tests {
             "https://no.such.host.invalid./api",
             "t",
             dir.path(),
+            std::time::UNIX_EPOCH,
             meta(),
         )
         .await
@@ -185,6 +189,7 @@ mod tests {
             &format!("{}/api", server.uri()),
             "t",
             dir.path(),
+            std::time::UNIX_EPOCH,
             meta(),
         )
         .await
@@ -209,6 +214,7 @@ mod tests {
             &format!("{}/api", server.uri()),
             "t",
             dir.path(),
+            std::time::UNIX_EPOCH,
             meta(),
         )
         .await
@@ -232,6 +238,7 @@ mod tests {
             &format!("{}/api", server.uri()),
             "t",
             dir.path(),
+            std::time::UNIX_EPOCH,
             meta(),
         )
         .await

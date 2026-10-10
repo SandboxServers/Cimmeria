@@ -2,10 +2,7 @@
 
 use std::time::Instant;
 
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-
-use crate::routes::telemetry::chunk::chunk_inner;
+use crate::routes::telemetry::chunk::{chunk_inner, inflate_bounded};
 use crate::routes::telemetry::dto::IngestError;
 use crate::routes::telemetry::session_budget::SessionLedger;
 use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
@@ -13,48 +10,95 @@ use crate::routes::telemetry::MAX_CHUNK_DECOMPRESSED_BYTES;
 
 use super::{chunk_request, gzip, run, small_chunk, Env, PEER};
 
-/// **A gzip chunk expanding past the cap is refused**, with the production
-/// cap. The payload is a fixed 9 MiB of blank lines (a few KiB gzipped),
-/// which would parse to an empty chunk and be accepted if the expansion
-/// were unbounded or bounded as loosely as it used to be (256 MiB).
+/// `rows` client log rows of about `message_len` bytes each, as NDJSON.
+fn rows_of(rows: usize, message_len: usize) -> Vec<u8> {
+    let message = "m".repeat(message_len);
+    let mut out = Vec::new();
+    for seq in 0..rows {
+        out.extend_from_slice(
+            format!(
+                r#"{{"type":"client_log","ts_ms":1,"seq":{seq},"source_file":"a.log","level":"info","category":"raw","message":"{message}"}}"#
+            )
+            .as_bytes(),
+        );
+        out.push(b'\n');
+    }
+    out
+}
+
+/// **A chunk expanding past the cap is truncated, not refused.** With the
+/// production cap, a fixed ~9.3 MiB of rows (4,500 rows of ~2 KiB, under
+/// the row cap) is cut at the last whole row within 8 MiB: those rows are
+/// replayed, the rest dropped, and the answer is a 200 with `truncated`.
+/// Refusing it would make the deployed launcher retry the same backlog
+/// forever; not cutting it (no cap, or the old 256 MiB one) would answer
+/// without `truncated`.
 #[test]
-fn a_chunk_expanding_past_the_cap_is_refused() {
+fn a_chunk_expanding_past_the_cap_is_truncated() {
     let _env = Env::install();
     let state = UploadState::new(UploadLimits::default());
-    let expanded = vec![b'\n'; 9 * 1024 * 1024];
-    assert!(expanded.len() as u64 > MAX_CHUNK_DECOMPRESSED_BYTES);
-    let err = run(chunk_inner(
+    let ndjson = rows_of(4_500, 2_000);
+    assert!(ndjson.len() as u64 > MAX_CHUNK_DECOMPRESSED_BYTES);
+    let resp = run(chunk_inner(
         &state,
         &UploadPolicy::defaults(),
         PEER,
-        chunk_request("sess-bomb", gzip(&expanded)),
+        chunk_request("sess-expand-cut", gzip(&ndjson)),
         Instant::now(),
     ))
-    .unwrap_err();
+    .expect("an over-budget expansion is truncated, not refused");
+    assert!(resp.truncated);
+    // Rows differ by a few bytes (the `seq` digits): the whole rows that
+    // fit in 8 MiB, give or take a few.
+    let row_len = ndjson.len() as u64 / 4_500;
+    let fit = MAX_CHUNK_DECOMPRESSED_BYTES / row_len;
     assert!(
-        matches!(
-            err,
-            IngestError::OverBudget {
-                what: "decompressed bytes",
-                limit: MAX_CHUNK_DECOMPRESSED_BYTES
-            }
-        ),
-        "{err:?}"
+        (fit - 3..=fit + 3).contains(&resp.parsed_lines),
+        "{} rows parsed, about {fit} fit",
+        resp.parsed_lines
     );
-    assert_eq!(err.into_response().status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(resp.accepted, resp.parsed_lines);
 }
 
-/// A chunk with more rows than the cap is refused at the first row past
-/// it, and none of it is replayed.
+/// A gzip bomb of blank lines is cut at the cap too: nothing to replay,
+/// and no more than the cap is ever expanded.
 #[test]
-fn a_chunk_over_the_row_cap_is_refused() {
+fn a_blank_line_bomb_is_cut_at_the_cap() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let resp = run(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request("sess-bomb", gzip(&vec![b'\n'; 9 * 1024 * 1024])),
+        Instant::now(),
+    ))
+    .unwrap();
+    assert!(resp.truncated);
+    assert_eq!(resp.parsed_lines, 0);
+}
+
+/// The cut keeps whole lines only.
+#[test]
+fn the_expansion_cut_lands_after_the_last_whole_line() {
+    let inflated = inflate_bounded(&gzip(b"aaa\nbbbb\ncc"), 7).unwrap();
+    assert_eq!(inflated.text, "aaa\n");
+    assert!(inflated.cut.is_some());
+    let whole = inflate_bounded(&gzip(b"aaa\n"), 7).unwrap();
+    assert_eq!((whole.text.as_str(), whole.cut), ("aaa\n", None));
+}
+
+/// A chunk with more rows than the cap replays the first ones and says it
+/// was truncated; one at the cap is not.
+#[test]
+fn a_chunk_over_the_row_cap_replays_the_first_rows() {
     let _env = Env::install();
     let state = UploadState::new(UploadLimits {
         chunk_rows: 5,
         ..UploadLimits::default()
     });
     let policy = UploadPolicy::defaults();
-    let ok = run(chunk_inner(
+    let at_cap = run(chunk_inner(
         &state,
         &policy,
         PEER,
@@ -62,18 +106,18 @@ fn a_chunk_over_the_row_cap_is_refused() {
         Instant::now(),
     ))
     .unwrap();
-    assert_eq!(ok.accepted, 5);
-    let err = run(chunk_inner(
+    assert_eq!((at_cap.accepted, at_cap.truncated), (5, false));
+    let over = run(chunk_inner(
         &state,
         &policy,
         PEER,
-        chunk_request("sess-rows", small_chunk(6)),
+        chunk_request("sess-rows", small_chunk(8)),
         Instant::now(),
     ))
-    .unwrap_err();
-    assert!(
-        matches!(err, IngestError::OverBudget { what: "rows", .. }),
-        "{err:?}"
+    .unwrap();
+    assert_eq!(
+        (over.accepted, over.parsed_lines, over.truncated),
+        (5, 5, true)
     );
 }
 

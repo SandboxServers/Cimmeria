@@ -157,4 +157,55 @@ impl RefusalLog {
             "telemetry upload refused: {reason}"
         );
     }
+
+    /// Log a truncated upload (`reason` = `chunk_truncated` or
+    /// `bundle_truncated`), unless the throttle holds it back. The upload
+    /// was accepted up to `budget`; `kept` units were replayed and about
+    /// `dropped_estimate` were not.
+    pub(super) fn report_truncated(
+        &self,
+        route: Route,
+        who: &Uploader,
+        t: &Truncation,
+        now: Instant,
+    ) {
+        let reason = match route {
+            Route::Chunk => "chunk_truncated",
+            Route::Bundle => "bundle_truncated",
+        };
+        let peer = who.peer.to_string();
+        let subject = who.session_id.as_deref().unwrap_or(&peer);
+        let Decision::Emit { suppressed } = self.decide(reason, subject, now) else {
+            return;
+        };
+        tracing::warn!(
+            target: "launcher.ingest",
+            route = route.path(),
+            reason,
+            budget = t.budget,
+            limit = t.limit,
+            kept = t.kept,
+            dropped_estimate = t.dropped_estimate,
+            session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
+            install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
+            peer = %who.peer,
+            suppressed,
+            "telemetry upload truncated at its {} budget",
+            t.budget
+        );
+    }
+}
+
+/// Where an accepted upload was cut short.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Truncation {
+    /// The budget that was hit: `decompressed bytes` or `rows` for a
+    /// chunk, `zip entries`, `expanded bytes` or `lines` for a bundle.
+    pub budget: &'static str,
+    pub limit: u64,
+    /// Rows (chunk) or lines (bundle) replayed.
+    pub kept: u64,
+    /// Rows or lines dropped: counted where they were read, estimated from
+    /// the compression ratio past the expansion cap, 0 when unknown.
+    pub dropped_estimate: u64,
 }

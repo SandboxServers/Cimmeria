@@ -225,8 +225,13 @@ every `/api/auth/dev-session` call returns 503 with `Retry-After: 60`.
 The launcher logs a warn and continues launching the game without
 telemetry. Uploads stop too, including those from sessions that
 started before the switch was thrown: a token already issued does not
-get past it. The launcher keeps its queued events on disk and retries
-after `Retry-After`; the DLL keeps its batch, as for any failed upload.
+get past it. Queued events are not lost while it is on. The launcher
+keeps them in its on-disk queue: a current launcher sends no further
+chunk until the `Retry-After` has passed, and launchers released before
+the upload limits retry on every flush, about every 2 s, until the
+switch is released. A session that ends while the switch is on loses
+its end-of-session bundle, which is not retried. The DLL keeps its
+batch, as for any failed upload.
 
 Every telemetry route checks the switch:
 
@@ -408,29 +413,35 @@ expiring exactly at the deadline rather than a full 8 hours past it.
 in this order and before any of the body is read: the kill switch (503),
 the bearer token (401), the session's and then the address's rate quota
 (429 + `Retry-After`, see the table above), and a free upload slot (503 +
-`Retry-After: 5`; 4 chunks and 2 bundles are worked on at once
-server-wide). Then the body is read against fixed size budgets, and the
-first budget an upload passes refuses it with 413:
+`Retry-After: 5`): 4 chunks and 2 bundles are worked on at once
+server-wide, and one address has at most 1 chunk and 1 bundle in flight.
+Then the body is read, and it must arrive within 30 s (past that, 400
+with `reason = body_read_failed`). Some budgets refuse the upload with
+413; the expansion budgets truncate it instead: what fits is replayed
+and the answer is a 200 with `"truncated": true` in its body.
 
-| Route | Budget | Limit | Why this value |
-|---|---|---|---|
-| chunk | compressed body | 4 MiB | The launcher is told to send 1 MiB of NDJSON per chunk (`chunk_max_bytes`), which gzips far smaller |
-| chunk | decompressed NDJSON | 8 MiB | 8× `chunk_max_bytes`; 4× the DLL's largest retained batch |
-| chunk | rows | 10,000 | 5× the DLL's largest retained batch (`max_batch` 1,000, about 2,000 after a failed POST) |
-| bundle | zip part | 32 MiB | A session's logs are about 50 MiB before zipping |
-| bundle | `metadata` part | 16 KiB | A dozen JSON fields |
-| bundle | multipart parts, zip parts | 8, 1 | The launcher sends one of each |
-| bundle | zip entries | 1,024 | Session logs rotate every minute; a long session leaves a few hundred |
-| bundle | expanded bytes, all entries | 64 MiB | Checked on the declared sizes before anything is expanded, then on the bytes read |
-| bundle | replayed lines | 250,000 | Lines replayed before the budget stay replayed |
+| Route | Budget | Limit | Past it | Why this value |
+|---|---|---|---|---|
+| chunk | compressed body | 16 MiB | 413 | The cap launchers have always had: older launchers post their whole backlog as one chunk and retry a refused one forever. A current launcher sends 1 MiB of NDJSON per chunk (`chunk_max_bytes`), which gzips far smaller |
+| chunk | decompressed NDJSON | 8 MiB | cut at the last whole row | 8× `chunk_max_bytes`; 4× the DLL's largest retained batch |
+| chunk | rows | 10,000 | the first 10,000 replayed | 5× the DLL's largest retained batch (`max_batch` 1,000, about 2,000 after a failed POST) |
+| bundle | zip part | 32 MiB | 413 | A session's logs are about 50 MiB before zipping |
+| bundle | `metadata` part | 16 KiB | 413 | A dozen JSON fields |
+| bundle | multipart parts, zip parts | 8, 1 | 413 | The launcher sends one of each |
+| bundle | zip entries, hard cap | 16,384 | 413, from the zip's end record before it is opened | Opening a zip reads every entry's header |
+| bundle | files replayed | 1,024 | the newest replayed | Session logs rotate every minute; a long session leaves a few hundred |
+| bundle | expanded bytes, all files | 64 MiB | replay stops before the file that would pass it | Checked on each file's declared size, then on the bytes actually read |
+| bundle | replayed lines | 250,000 | replay stops | |
 
-A refused chunk replays nothing. Uploaded strings are cut before they
+Bundle files are replayed newest first, by their zip timestamps, so the
+session that just ended is what survives a budget. A chunk refused with
+413 replays nothing. Uploaded strings are cut before they
 reach a log row: log messages to 4 KiB, file names, levels, categories and
 event names to 256 bytes, each value in a DLL `fields` bag to 2 KiB, and
 the bag to 64 keys. A cut value ends in `...[truncated, N bytes]`, with
 the original length, and a cut bag gains `_truncated_keys`.
 
-Every refusal writes a `warn` on `launcher.ingest`:
+Every refusal and every truncation writes a `warn` on `launcher.ingest`:
 
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
@@ -440,18 +451,29 @@ service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
 with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `token_expired`, `rate_limited`, `busy`, `body_too_large`, `over_budget`,
 `bad_gzip`, `bad_ndjson`, `bad_zip`, `bad_multipart`, `body_read_failed`,
-`secret_unusable`),
-`budget` and `limit` for a size refusal, `peer`, and `session_id` /
+`secret_unusable`, and `chunk_truncated` / `bundle_truncated` for an
+upload that was accepted in part), `budget` and `limit` for a size
+refusal or truncation, `kept` and `dropped_estimate` for a truncation
+(rows or lines; past the chunk expansion cap the dropped rows are
+estimated from the compression ratio), `peer`, and `session_id` /
 `install_id` once the token verified. The row never carries the payload.
 Repeats are throttled: one row per uploader and reason per 10 s, the next
 row's `suppressed` counting the ones held back, and at most 50 rows per
 10 s in all.
 
-The launcher posts its whole on-disk queue as one chunk, so a backlog
-left by a launcher that was killed mid-session can pass the row or size
-budget. That chunk is refused on every retry until the launcher splits
-it; the refusal rows show `budget = rows` or `decompressed bytes` for
-that `session_id`.
+Any backlog in the launcher's on-disk queue (a server outage of a few
+minutes, a kill switch, or a launcher killed mid-session) is posted when
+the server answers again. A current launcher splits it into chunks of
+`chunk_max_bytes` and 1,000 rows, and drops a chunk the server answers
+with 413 instead of retrying it (the drop is counted in the bundle
+metadata's `dropped_lines`). Launchers released before the upload limits
+post the whole queue as one chunk and re-queue it on any error; the
+server truncates such a chunk rather than refusing it, so the backlog is
+consumed, minus what was cut, and the `chunk_truncated` rows show how much
+for that `session_id`. The same launchers bundle every past session's
+logs at exit; the server keeps the newest files within the bundle
+budgets. A current launcher bundles only the files written to during the
+session.
 
 ## Where the data lives
 

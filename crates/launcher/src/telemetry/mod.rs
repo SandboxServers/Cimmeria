@@ -5,6 +5,7 @@ pub mod bundle;
 pub mod chunk;
 pub mod endpoint;
 pub mod events;
+mod flush;
 pub mod install_result;
 pub mod patch_counts;
 pub mod patch_log;
@@ -24,6 +25,7 @@ use crate::config::exe_dir;
 use auth::{DevSessionRequest, DevSessionResponse};
 use chunk::ChunkError;
 use events::TelemetryEvent;
+use flush::{flush_queue, FlushTarget};
 use queue::DiskQueue;
 
 #[derive(Debug, Error)]
@@ -67,7 +69,14 @@ pub struct Telemetry {
     issued_at_ms: std::sync::atomic::AtomicI64,
     queue: DiskQueue,
     seq: Arc<Mutex<u64>>,
+    /// ms-since-epoch before which [`Telemetry::flush`] sends nothing: the
+    /// `Retry-After` of the last 429 or 503.
+    retry_not_before_ms: std::sync::atomic::AtomicI64,
 }
+
+/// How far before the session's start a log file's modification time may
+/// be and still count as this session's in the bundle.
+const SESSION_FILE_SLACK_MS: i64 = 10_000;
 
 impl Telemetry {
     /// One-call session bootstrap: handshake with `auth_base_url`,
@@ -122,6 +131,7 @@ impl Telemetry {
             issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
             queue: DiskQueue::new(&exe_dir()),
             seq: Arc::new(Mutex::new(0)),
+            retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
         })
     }
 
@@ -136,35 +146,33 @@ impl Telemetry {
         Ok(())
     }
 
-    /// Drain the queue and POST one chunk. On chunk failure the
-    /// events are re-enqueued so the next flush replays them. A
-    /// `TokenRejected` propagates so the caller can run refresh +
-    /// retry; other errors propagate as-is.
+    /// Drain the queue and POST it as chunks of at most `chunk_max_bytes`
+    /// of NDJSON and [`chunk::MAX_CHUNK_ROWS`] rows, in order. Returns the
+    /// events the server took.
+    ///
+    /// - A 413 means the server will never take that chunk: its events
+    ///   are dropped and added to the queue's dropped-lines count (the
+    ///   bundle metadata reports it), and the next chunk is sent.
+    /// - Any other failure re-enqueues that chunk and every later one, so
+    ///   the next flush replays them, and propagates the error (a
+    ///   `TokenRejected` lets the caller refresh and retry).
+    /// - A 429 or 503 also holds off further flushes for its
+    ///   `Retry-After`; the queue stays on disk meanwhile.
     pub async fn flush(&self, http: &reqwest::Client) -> Result<u64, TelemetryError> {
-        let events: Vec<TelemetryEvent> = self.queue.drain()?;
-        if events.is_empty() {
-            return Ok(0);
-        }
-        let n = events.len() as u64;
-        let (endpoint, token) = {
+        let (endpoint, token, max_bytes) = {
             let s = self.session.read().await;
-            (s.upload_endpoint.clone(), s.token.clone())
+            (
+                s.upload_endpoint.clone(),
+                s.token.clone(),
+                s.chunk_max_bytes,
+            )
         };
-        match chunk::post_chunk(http, &endpoint, &token, &events).await {
-            Ok(()) => Ok(n),
-            Err(e) => {
-                // Best-effort re-enqueue; failures here surface to
-                // the tracing log but don't override the underlying
-                // chunk error.
-                for ev in &events {
-                    if let Err(re) = self.queue.enqueue(ev) {
-                        tracing::warn!(error = %re, "telemetry re-enqueue after chunk failure");
-                        break;
-                    }
-                }
-                Err(map_chunk_err(e))
-            }
-        }
+        let target = FlushTarget {
+            endpoint: &endpoint,
+            token: &token,
+            max_bytes,
+        };
+        flush_queue(http, &self.queue, &target, &self.retry_not_before_ms).await
     }
 
     /// Build + POST the end-of-session bundle. Caller-set counters
@@ -197,7 +205,21 @@ impl Telemetry {
             zip_sha256: String::new(),
             zip_bytes: 0,
         };
-        Ok(bundle::upload_bundle(http, &endpoint, &token, &self.install_dir, metadata).await?)
+        // A little slack before the start: file times on some volumes
+        // have a 2 s granularity, and the client may open its log as the
+        // session is minted.
+        let since = std::time::UNIX_EPOCH
+            + std::time::Duration::from_millis(
+                u64::try_from(
+                    self.session_started_at_ms
+                        .saturating_sub(SESSION_FILE_SLACK_MS),
+                )
+                .unwrap_or(0),
+            );
+        Ok(
+            bundle::upload_bundle(http, &endpoint, &token, &self.install_dir, since, metadata)
+                .await?,
+        )
     }
 
     /// Run the proactive-refresh policy. Returns `Ok(true)` if a

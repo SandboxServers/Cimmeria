@@ -127,7 +127,7 @@ impl DiskQueue {
         Ok(())
     }
 
-    fn add_dropped(&self, n: u64) -> Result<(), QueueError> {
+    pub fn add_dropped(&self, n: u64) -> Result<(), QueueError> {
         let prev = self.dropped_count();
         let next = prev.saturating_add(n);
         if let Some(parent) = self.dropped_path.parent() {

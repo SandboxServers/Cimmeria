@@ -103,6 +103,31 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
 
 pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
     let files = collect_log_inputs(install_dir)?;
+    zip_log_files(install_dir, &files)
+}
+
+/// [`build_log_zip`] for one telemetry session: only the log files written
+/// to since `since` (the session's start), so the end-of-session bundle
+/// carries this session's rotated client logs and the current
+/// `SGWDebugLog`, not every log the install has kept. The client's log
+/// names carry no session id, so the file's modification time is what
+/// places it in a session.
+pub fn build_session_log_zip(
+    install_dir: &Path,
+    since: std::time::SystemTime,
+) -> Result<Option<Vec<u8>>, LogError> {
+    let files: Vec<PathBuf> = collect_log_inputs(install_dir)?
+        .into_iter()
+        .filter(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t >= since)
+        })
+        .collect();
+    zip_log_files(install_dir, &files)
+}
+
+fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>>, LogError> {
     if files.is_empty() {
         return Ok(None);
     }
@@ -113,7 +138,7 @@ pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
         let mut zw = zip::ZipWriter::new(cursor);
         let options: FileOptions<()> =
             FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for path in &files {
+        for path in files {
             let rel = rel_in_archive(path, &binaries);
             zw.start_file(rel, options)?;
             let data = std::fs::read(path)?;
@@ -241,6 +266,36 @@ mod tests {
     fn collect_empty_when_dirs_missing() {
         let dir = tempfile::tempdir().unwrap();
         assert!(collect_log_inputs(dir.path()).unwrap().is_empty());
+    }
+
+    /// The end-of-session bundle carries only files written to during the
+    /// session, not every log the install has kept.
+    #[test]
+    fn session_zip_leaves_out_files_from_earlier_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_logs(dir.path());
+        let sess = dir.path().join("Binaries").join("sessions").join("2026-05");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(sess.join("session.log"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let since = std::time::SystemTime::now() - std::time::Duration::from_secs(3_600);
+        let bytes = build_session_log_zip(dir.path(), since).unwrap().unwrap();
+        let mut zr = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let names: Vec<String> = (0..zr.len())
+            .map(|i| zr.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(
+            names.iter().all(|n| !n.contains("session.log")),
+            "{names:?}"
+        );
+        // Nothing written since: no bundle at all.
+        let future = std::time::SystemTime::now() + std::time::Duration::from_secs(3_600);
+        assert!(build_session_log_zip(dir.path(), future).unwrap().is_none());
     }
 
     #[test]

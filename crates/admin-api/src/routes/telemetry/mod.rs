@@ -25,11 +25,16 @@
 //! Both routes take the request with its body unread and run the gate in
 //! [`upload_gate`] first: the kill switch (503), the token (401), a
 //! per-session and a per-address rate limit (429 + `Retry-After`), and a
-//! concurrency slot (503 + `Retry-After: 5`). Only then is the body read,
-//! against the size budgets below, each refusing the upload with 413 at the
-//! first one hit. Client strings are cut to the caps in [`field_caps`]
-//! before they reach a log event, and every refusal writes one throttled
-//! `warn` ([`refusal_log`]) with the reason, never the payload.
+//! concurrency slot, server-wide and per address ([`upload_slots`]; 503 +
+//! `Retry-After: 5`). Only then is the body read, within a deadline
+//! ([`BODY_TIMEOUT`]). The compressed size and the bundle's multipart shape
+//! refuse with 413; the expansion budgets (a chunk's decompressed bytes and
+//! rows, a bundle's entries, expanded bytes and lines) stop processing
+//! there and answer 200 with `truncated: true`, so an uploader that sent
+//! too much does not retry the same oversized upload forever. Client
+//! strings are cut to the caps in [`field_caps`] before they reach a log
+//! event, and every refusal or truncation writes one throttled `warn`
+//! ([`refusal_log`]) with the reason, never the payload.
 //!
 //! # Why "replay through tracing" and not "write directly to SigNoz"
 //!
@@ -47,8 +52,11 @@
 //!   `IntoResponse` plumbing.
 //! - [`upload_gate`] — what runs before a body is read: kill switch, token,
 //!   rate limits, concurrency slots; and the size budgets as a struct.
-//! - [`chunk`] — the chunk handler: bounded read, expansion and parse.
-//! - [`bundle`] — the bundle handler and its bounded unzip.
+//! - [`upload_slots`] — the concurrency slots, server-wide and per address.
+//! - [`chunk`] — the chunk handler: bounded read, expansion and parse,
+//!   truncating at the expansion budgets.
+//! - [`bundle`] — the bundle handler; [`bundle_unzip`] its bounded,
+//!   newest-first unzip.
 //! - [`field_caps`] — length caps on client strings, with a marker.
 //! - [`refusal_log`] — the throttled refusal `warn`.
 //! - [`replay`] — replaying each uploaded event through `tracing` with
@@ -72,6 +80,7 @@
 //!   [`routes`]; see [`launcher_summary_routes`].
 
 mod bundle;
+mod bundle_unzip;
 mod chunk;
 mod client_symbols;
 mod dto;
@@ -83,6 +92,7 @@ mod replay;
 mod replay_native;
 mod session_budget;
 mod upload_gate;
+mod upload_slots;
 
 #[cfg(test)]
 mod entity_labels_tests;
@@ -117,14 +127,22 @@ use chunk::upload_chunk;
 // posts at most `max_batch` = 1,000 events (about 2,000 after a failed POST
 // is retained), a few hundred bytes each, every 2 s.
 
-/// Compressed chunk body. A 1 MiB NDJSON chunk gzips to well under 1 MiB.
-const MAX_CHUNK_BYTES: usize = 4 * 1024 * 1024;
+/// Compressed chunk body. A 1 MiB NDJSON chunk gzips to well under 1 MiB,
+/// but launchers released before the upload limits post their whole
+/// backlog as one chunk and retry a refused one forever; this is the cap
+/// they have always had, so no backlog that used to be accepted is
+/// refused now. Only the first [`MAX_CHUNK_DECOMPRESSED_BYTES`] of it are
+/// ever expanded.
+const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 
-/// A chunk's NDJSON once expanded: 8× the launcher's `chunk_max_bytes`
-/// and 4× the DLL's largest retained batch.
+/// A chunk's NDJSON expanded at most this far: 8× the launcher's
+/// `chunk_max_bytes` and 4× the DLL's largest retained batch. Past it the
+/// chunk is cut at the last whole line and the rest dropped (a launcher
+/// that posts a long backlog as one chunk sends more than this).
 const MAX_CHUNK_DECOMPRESSED_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Rows in one chunk: 5× the DLL's largest retained batch.
+/// Rows replayed from one chunk: 5× the DLL's largest retained batch.
+/// Further rows are counted and dropped.
 const MAX_CHUNK_ROWS: usize = 10_000;
 
 /// Compressed bundle zip. The launcher's logs are per-session and about
@@ -134,9 +152,15 @@ const MAX_BUNDLE_BYTES: usize = 32 * 1024 * 1024;
 /// Every file in a bundle together, expanded.
 const MAX_BUNDLE_EXPANDED_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Files in a bundle zip. The client's session logs rotate every minute,
-/// so a long session leaves a few hundred.
+/// Files replayed from a bundle zip, newest first. The client's session
+/// logs rotate every minute, so a long session leaves a few hundred, and
+/// launchers before the per-session bundle sent every past session too.
 const MAX_BUNDLE_ENTRIES: usize = 1024;
+
+/// Files past which a bundle is refused outright (413), from its end
+/// record, before the archive is opened: opening it reads every entry's
+/// header into memory.
+const MAX_BUNDLE_ENTRIES_HARD: usize = 16 * 1024;
 
 /// Lines a bundle replays, one log event each.
 const MAX_BUNDLE_LINES: u64 = 250_000;
@@ -153,6 +177,13 @@ const CHUNK_SLOTS: usize = 4;
 
 /// Bundles buffered or expanded at once, server-wide.
 const BUNDLE_SLOTS: usize = 2;
+
+/// Uploads of one route one peer address may have in flight at once.
+const SLOTS_PER_PEER: usize = 1;
+
+/// How long a request may take to deliver its body. A launcher sends a
+/// chunk in well under a second and a bundle in a few.
+const BODY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Generic over the router state for the same reason as
 /// [`crate::routes::dev_session::routes`]: the handlers read none, so the

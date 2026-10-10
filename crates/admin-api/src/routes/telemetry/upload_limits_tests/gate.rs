@@ -15,7 +15,7 @@ use crate::routes::dev_session::AuthError;
 use crate::routes::telemetry;
 use crate::routes::telemetry::chunk::chunk_inner;
 use crate::routes::telemetry::dto::IngestError;
-use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
+use crate::routes::telemetry::upload_gate::{Route, UploadLimits, UploadPolicy, UploadState};
 
 use super::{chunk_request, run, small_chunk, Env, PEER};
 
@@ -209,4 +209,48 @@ fn an_address_over_its_upload_rate_is_refused_whatever_the_session() {
     ))
     .unwrap_err();
     assert_eq!(err.reason(), "rate_limited");
+}
+
+/// **One address holds at most one chunk slot.** While `PEER` has a chunk
+/// in flight its next one is refused as busy, another address's goes
+/// through, and once the first is done `PEER` is admitted again.
+#[test]
+fn an_address_holds_at_most_one_chunk_slot() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let policy = UploadPolicy::defaults();
+    let other = std::net::IpAddr::V4(std::net::Ipv4Addr::new(198, 51, 100, 9));
+    let held = state.hold_peer_slot(Route::Chunk, PEER);
+    let err = run(chunk_inner(
+        &state,
+        &policy,
+        PEER,
+        chunk_request("sess-peer-a", small_chunk(1)),
+        Instant::now(),
+    ))
+    .unwrap_err();
+    assert!(matches!(err, IngestError::Busy), "{err:?}");
+    run(chunk_inner(
+        &state,
+        &policy,
+        other,
+        chunk_request("sess-peer-b", small_chunk(1)),
+        Instant::now(),
+    ))
+    .expect("another address has its own share");
+
+    drop(held);
+    run(chunk_inner(
+        &state,
+        &policy,
+        PEER,
+        chunk_request("sess-peer-a", small_chunk(1)),
+        Instant::now(),
+    ))
+    .expect("the address's slot is free again");
+    assert_eq!(
+        state.peers_in_flight(),
+        0,
+        "finished uploads release their share"
+    );
 }

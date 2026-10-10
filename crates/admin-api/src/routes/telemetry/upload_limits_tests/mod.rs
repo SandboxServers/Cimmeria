@@ -8,12 +8,14 @@
 //! - `bundle` — the bundle budgets.
 //! - `field_caps` — the string caps.
 //! - `refusal_log` — the refusal throttle.
+//! - `slow_body` — token before body (bundle) and the body deadline, over a socket.
 
 mod bundle;
 mod chunk;
 mod field_caps;
 mod gate;
 mod refusal_log;
+mod slow_body;
 
 use std::io::Write;
 use std::net::{IpAddr, Ipv4Addr};

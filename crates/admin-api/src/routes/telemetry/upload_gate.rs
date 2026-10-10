@@ -16,7 +16,9 @@ use std::time::{Duration, Instant};
 
 use axum::body::{Body, HttpBody};
 use axum::http::HeaderMap;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+#[cfg(test)]
+use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::Semaphore;
 
 use crate::routes::dev_session::quota::{install_key, ip_key, WindowTable};
 use crate::routes::dev_session::{
@@ -25,15 +27,19 @@ use crate::routes::dev_session::{
 
 use super::dto::IngestError;
 use super::refusal_log::RefusalLog;
+#[cfg(test)]
+use super::upload_slots::PeerSlot;
+use super::upload_slots::{take_slot, PeerSlots, UploadSlot};
 use super::{
-    BUNDLE_SLOTS, CHUNK_SLOTS, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_EXPANDED_BYTES,
-    MAX_BUNDLE_LINES, MAX_BUNDLE_METADATA_BYTES, MAX_BUNDLE_PARTS, MAX_CHUNK_BYTES,
-    MAX_CHUNK_DECOMPRESSED_BYTES, MAX_CHUNK_ROWS,
+    BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
+    MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
+    MAX_BUNDLE_METADATA_BYTES, MAX_BUNDLE_PARTS, MAX_CHUNK_BYTES, MAX_CHUNK_DECOMPRESSED_BYTES,
+    MAX_CHUNK_ROWS, SLOTS_PER_PEER,
 };
 
 /// Which upload route a request is for: each has its own rate limits and
 /// its own pool of slots.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Route {
     Chunk,
     Bundle,
@@ -137,8 +143,16 @@ pub(super) struct UploadLimits {
     pub bundle_lines: u64,
     pub bundle_metadata_bytes: usize,
     pub bundle_parts: usize,
+    /// Zip entries past which a bundle is refused outright, from its end
+    /// record, before the archive is opened. Between `bundle_entries` and
+    /// this, the newest `bundle_entries` are replayed.
+    pub bundle_entries_hard: usize,
     pub chunk_slots: usize,
     pub bundle_slots: usize,
+    pub chunk_slots_per_peer: usize,
+    pub bundle_slots_per_peer: usize,
+    /// How long one request may take to deliver its body.
+    pub body_timeout: Duration,
 }
 
 impl Default for UploadLimits {
@@ -153,8 +167,12 @@ impl Default for UploadLimits {
             bundle_lines: MAX_BUNDLE_LINES,
             bundle_metadata_bytes: MAX_BUNDLE_METADATA_BYTES,
             bundle_parts: MAX_BUNDLE_PARTS,
+            bundle_entries_hard: MAX_BUNDLE_ENTRIES_HARD,
             chunk_slots: CHUNK_SLOTS,
             bundle_slots: BUNDLE_SLOTS,
+            chunk_slots_per_peer: SLOTS_PER_PEER,
+            bundle_slots_per_peer: SLOTS_PER_PEER,
+            body_timeout: BODY_TIMEOUT,
         }
     }
 }
@@ -169,6 +187,7 @@ pub(super) struct UploadState {
     bundle_ip: WindowTable,
     chunk_slots: Arc<Semaphore>,
     bundle_slots: Arc<Semaphore>,
+    peer_slots: Arc<PeerSlots>,
     pub refusals: RefusalLog,
 }
 
@@ -177,6 +196,7 @@ impl UploadState {
         Self {
             chunk_slots: Arc::new(Semaphore::new(limits.chunk_slots)),
             bundle_slots: Arc::new(Semaphore::new(limits.bundle_slots)),
+            peer_slots: Arc::default(),
             limits,
             chunk_session: WindowTable::new(),
             chunk_ip: WindowTable::new(),
@@ -186,12 +206,28 @@ impl UploadState {
         }
     }
 
-    /// Take a chunk slot as an upload in progress would, for tests.
+    /// Take a server-wide chunk slot as an upload in progress would, for
+    /// tests.
     #[cfg(test)]
     pub(super) fn hold_chunk_slot(&self) -> OwnedSemaphorePermit {
         Arc::clone(&self.chunk_slots)
             .try_acquire_owned()
             .expect("a free chunk slot")
+    }
+
+    /// Take `peer`'s share of `route`'s slots as an upload in progress
+    /// would, for tests.
+    #[cfg(test)]
+    pub(super) fn hold_peer_slot(&self, route: Route, peer: IpAddr) -> PeerSlot {
+        self.peer_slots
+            .try_take(route, ip_key(peer), 1)
+            .expect("a free peer slot")
+    }
+
+    /// Addresses with an upload in flight, for tests.
+    #[cfg(test)]
+    pub(super) fn peers_in_flight(&self) -> usize {
+        self.peer_slots.tracked()
     }
 }
 
@@ -222,12 +258,12 @@ impl Uploader {
 }
 
 /// A request that passed the gate: its claims and the slot it holds. The
-/// slot is released when the permit drops, so the caller keeps it for as
-/// long as it holds the body or works on it.
+/// slot is released when it drops, so the caller keeps it for as long as
+/// it holds the body or works on it.
 #[derive(Debug)]
 pub(super) struct Admitted {
     pub claims: TokenClaims,
-    pub permit: OwnedSemaphorePermit,
+    pub slot: UploadSlot,
 }
 
 /// Run the gate for one request: kill switch (503), token (401), session
@@ -286,10 +322,25 @@ pub(super) fn admit(
     // Refuse rather than queue: a queued request would still hold its
     // connection and, for a bundle, a body the client keeps sending. The
     // uploaders retry on their next flush.
-    let permit = Arc::clone(slots)
-        .try_acquire_owned()
-        .map_err(|_| IngestError::Busy)?;
-    Ok(Admitted { claims, permit })
+    let per_peer = match route {
+        Route::Chunk => state.limits.chunk_slots_per_peer,
+        Route::Bundle => state.limits.bundle_slots_per_peer,
+    };
+    let slot = take_slot(&state.peer_slots, slots, route, ip_key(who.peer), per_peer)
+        .ok_or(IngestError::Busy)?;
+    Ok(Admitted { claims, slot })
+}
+
+/// Await `fut` until `deadline`; past it the body read is refused as
+/// [`IngestError::Body`] (`body_read_failed`), so a client that sends its
+/// body slowly cannot hold a slot indefinitely.
+pub(super) async fn by_deadline<T>(
+    deadline: tokio::time::Instant,
+    fut: impl std::future::Future<Output = Result<T, IngestError>>,
+) -> Result<T, IngestError> {
+    tokio::time::timeout_at(deadline, fut)
+        .await
+        .map_err(|_| IngestError::Body)?
 }
 
 /// Read a request body, refusing it as soon as it passes `cap`: the frame

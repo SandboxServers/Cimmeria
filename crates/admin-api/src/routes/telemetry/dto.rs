@@ -86,6 +86,10 @@ pub(super) struct ChunkResponse {
     /// event budget (`session_budget`). The launcher and the DLL ignore
     /// the body; the server's `launcher.ingest` warn is the report.
     pub suppressed: u64,
+    /// The chunk passed an expansion budget (decompressed bytes or rows):
+    /// only the rows before it were parsed and replayed, the rest were
+    /// dropped. Additive; uploaders that predate it ignore it.
+    pub truncated: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +98,9 @@ pub(super) struct BundleResponse {
     pub files: u64,
     /// Number of lines replayed through tracing across all files.
     pub lines: u64,
+    /// The bundle passed an expansion budget (entries, expanded bytes or
+    /// lines): replay stopped there, newest files first. Additive.
+    pub truncated: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
