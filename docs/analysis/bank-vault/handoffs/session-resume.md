@@ -1,7 +1,7 @@
 # Bank and Vault: Session Resume
 
 > Type: how-to. Audience: the owner (UAT) and any later session.
-> Updated: 2026-09-27. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
+> Updated: 2026-10-10. Companions: [launch prompt and decisions](../README.md), [work packets](../work-packets.md), [audit](../audit.md).
 
 ## State: every packet merged; release 2 dispatched, owner UAT pending
 
@@ -87,7 +87,7 @@ Org vaults, the treasury and the Team expansion (BV-07 to BV-10a):
 
 Personal bank (BV-01 to BV-06):
 
-- **A same-scope Banker can inherit a recycled entity id.** The vault verdict now refuses a nearby replacement NPC that is not a Banker or has a different vault scope, but `VaultSession` stores only the numeric entity id. A new Banker of the same scope reusing that id still passes. Closing this fully requires a spawn identity on the session and the entity, checked on every verdict.
+- **A same-scope Banker can inherit a recycled entity id.** The vault verdict, and the org vault grant (`check_grant`, `banker_missing`), now refuse a nearby replacement NPC that is not a Banker or has a different vault scope, but `VaultSession` stores only the numeric entity id. A new Banker of the same scope reusing that id still passes. Closing this fully requires a spawn identity on the session and the entity, checked on every verdict.
 - **Guard audit (BV-06).** Every catalog event and reason from BV-01 to BV-05 has a `LogCapture` guard on `main`, except these:
   - `bank_feedback_send_failed` with `reason` `no_session`, `not_in_world` or `send_error` (BV-05, `bank_expand/sends.rs`): only `no_client_address` is pinned (`a_player_with_no_client_address_logs_the_dropped_sends`, `a_recycled_entity_id_receives_nothing`).
   - `expand_offer_dropped` with `reason` `entity_missing` or `vault_scope_mismatch`: `a_stale_offer_shows_no_dialog` pins the other three reasons.

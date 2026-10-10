@@ -7,7 +7,7 @@
 use tokio::sync::mpsc;
 use tracing::Level;
 
-use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::cell_entity::{NpcInteractionType, VaultScope};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use cimmeria_wire::cell::client_methods::player::{ON_COMMAND_VAULT_OPEN, ON_TEAM_VAULT_OPEN};
 
@@ -186,6 +186,24 @@ async fn a_grant_after_walking_away_is_refused_out_of_range() {
 async fn a_grant_for_a_gone_banker_is_refused_banker_missing() {
     let (mut mgr, banker, tx, mut rx) = clicked(VaultScope::Team, [2.0, 0.0, 0.0]).await;
     mgr.destroy_entity(banker);
+    let capture = LogCapture::install();
+    grant_org_vault(PLAYER, 12, VaultScope::Team, ORG, banker, &tx, &mut mgr).await;
+    assert_refused(&capture, &mgr, &mut rx, "banker_missing", true).await;
+}
+
+/// The Banker's entity id now names an NPC that is not a Banker of the
+/// grant's scope (despawn and id reuse while the base answered).
+#[tokio::test]
+async fn a_grant_for_a_reused_banker_id_is_refused_banker_missing() {
+    let (mut mgr, banker, tx, mut rx) = clicked(VaultScope::Team, [2.0, 0.0, 0.0]).await;
+    mgr.get_entity_mut(banker).unwrap().interaction_type = Some(NpcInteractionType::Banker {
+        scope: VaultScope::Command,
+    });
+    let capture = LogCapture::install();
+    grant_org_vault(PLAYER, 12, VaultScope::Team, ORG, banker, &tx, &mut mgr).await;
+    assert_refused(&capture, &mgr, &mut rx, "banker_missing", true).await;
+
+    mgr.get_entity_mut(banker).unwrap().interaction_type = None;
     let capture = LogCapture::install();
     grant_org_vault(PLAYER, 12, VaultScope::Team, ORG, banker, &tx, &mut mgr).await;
     assert_refused(&capture, &mgr, &mut rx, "banker_missing", true).await;

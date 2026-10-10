@@ -58,8 +58,9 @@ impl VaultReject {
 ///   [`interact_range`] rule the opening `interact` passed;
 /// - a GM `.bank` session (`banker_id` is `None`) skips the proximity check.
 ///
-/// It does not look at `session.scope`; the caller knows which container it
-/// is moving and checks the scope that container needs.
+/// It checks the Banker against `session.scope`, not the container: the
+/// caller knows which container it is moving and checks the scope that
+/// container needs.
 pub fn vault_move_allowed(
     player: &CellEntity,
     space_mgr: &SpaceManager,
