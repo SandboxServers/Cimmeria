@@ -18,7 +18,8 @@ merge: kind=docs (every changed file is *.md or under .claude/agent-memory/) mer
 with --admin, the owner's rule for Markdown and memory-only PRs. kind=code rebases with
 rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for the gating checks
 (fmt, clippy, build + nextest; `skipping` passes) and merges with --squash. Coverage and
-live-DB jobs are not waited for. --retire then runs `rm-worktree.sh --no-prune NAME`.
+live-DB jobs are not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
+pwsh on Windows, the .sh under bash elsewhere).
 
 Output: one line, `status=... key=value ...`; a value with spaces is double-quoted. The full
 git and gh output goes to a log whose path is printed only on failure; -v copies it to
@@ -45,7 +46,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
-RM_WORKTREE = str(HERE / "rm-worktree.sh")
+RM_WORKTREE = str(HERE / ("rm-worktree.ps1" if os.name == "nt" else "rm-worktree.sh"))
 GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace, no DB)")
 PROTECTED = ("main", "master")
 
@@ -303,20 +304,12 @@ def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
         time.sleep(poll_seconds())
 
 
-def find_bash() -> str:
-    """Git Bash on Windows: the `bash` on PATH there is usually a WSL launcher."""
-    if os.environ.get("SHIP_BASH"):
-        return os.environ["SHIP_BASH"]
-    if os.name != "nt":
-        return shutil.which("bash") or "bash"
-    git_exe = shutil.which("git")
-    roots = [Path(git_exe).resolve().parent.parent] if git_exe else []
-    roots.append(Path(r"C:\Program Files\Git"))
-    for root in roots:
-        for candidate in (root / "bin" / "bash.exe", root / "usr" / "bin" / "bash.exe"):
-            if candidate.exists():
-                return str(candidate)
-    return "bash"
+def rm_worktree_cmd() -> list[str]:
+    """rm-worktree.ps1 under PowerShell 7 on Windows, so no bash is needed there;
+    rm-worktree.sh under bash elsewhere."""
+    if os.name == "nt":
+        return [os.environ.get("SHIP_PWSH") or shutil.which("pwsh") or "pwsh", "-NoProfile", "-File", RM_WORKTREE]
+    return [os.environ.get("SHIP_BASH") or shutil.which("bash") or "bash", RM_WORKTREE]
 
 
 def retire_target(repo: str, name: str, branch: str) -> str:
@@ -334,7 +327,7 @@ def retire_target(repo: str, name: str, branch: str) -> str:
 
 def cmd_merge(args) -> dict:
     repo = norm(git(args.repo or os.getcwd(), "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip())
-    repo = os.path.dirname(repo)   # the main checkout, where rm-worktree.sh runs
+    repo = os.path.dirname(repo)   # the main checkout, where rm-worktree runs
     pr = str(args.pr)
     info = view(pr, repo, "number,state,isDraft,headRefName,files,mergedAt")
     kind = classify([f["path"] for f in info.get("files") or []]) if len(info.get("files") or []) < 100 else "code"
@@ -362,10 +355,10 @@ def cmd_merge(args) -> dict:
             raise Stop(4, "merge-failed", f"PR {pr} is {info['state']} after gh pr merge")
     out = {"status": "merged", "pr": pr, "merged_at": info.get("mergedAt", ""), "kind": kind, "retired": "none"}
     if args.retire:
-        p = run([find_bash(), RM_WORKTREE, "--no-prune", args.retire], cwd=repo, check=False)
+        p = run([*rm_worktree_cmd(), "--no-prune", args.retire], cwd=repo, check=False)
         if p.returncode != 0 or not re.search(r"^retired 1, skipped 0$", p.stdout, re.M):
             why = [l for l in p.stdout.splitlines() + p.stderr.splitlines() if l.startswith(("skip", "  "))]
-            raise Stop(5, "merged", (why[-1].strip() if why else "rm-worktree.sh failed"),
+            raise Stop(5, "merged", (why[-1].strip() if why else "rm-worktree failed"),
                        pr=pr, merged_at=out["merged_at"], kind=kind, retired="none")
         out["retired"] = args.retire
     return out

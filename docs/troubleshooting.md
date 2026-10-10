@@ -80,6 +80,7 @@ Or, from a build that doesn't go through the lane, or from one that filled the d
 ```bash
 bash tools/build-lane/rm-worktree.sh --dry-run --merged
 bash tools/build-lane/rm-worktree.sh --merged
+# or from PowerShell: pwsh tools/build-lane/rm-worktree.ps1 --dry-run --merged, then without --dry-run
 ```
 
 It skips worktrees with open PRs, uncommitted changes, recent activity or a running build. It also deletes Dev Drive target dirs whose worktree no longer exists. If that isn't enough, trim the target dirs that remain: stale incremental caches and feature variants no build has used for a day.
@@ -99,7 +100,7 @@ Check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in Power
 
 **Root cause.** Other builds hold every lane slot. The brackets show each slot's worktree and command, so you can see who is building what.
 
-**Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
+**Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). One exception: a slot held by a dead `lane.ps1` job is freed only by another `lane.ps1` job, so `pwsh tools/build-lane/lane.ps1 <your command>` gets it back if only `lane.sh` jobs are waiting. Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
 
 ---
 

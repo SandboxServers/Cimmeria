@@ -133,6 +133,7 @@ merge_state() {
   local br="$1" st="" head=""
   if command -v gh >/dev/null 2>&1; then
     read -r st head < <(gh pr list --state all --head "$br" --limit 1       --json state,headRefOid -q '.[0] | "\(.state) \(.headRefOid)"' 2>/dev/null)
+    [ "$st" = null ] && st=""   # no PR: jq renders `.[0].state` of [] as null
   fi
   if [ "$st" = MERGED ] && ! git merge-base --is-ancestor "$br" "$head" 2>/dev/null; then
     echo ADVANCED; return
