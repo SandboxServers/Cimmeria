@@ -42,12 +42,24 @@ pub const DRAG_CONTAINER_VTABLE_VA: u32 = 0x01aa_edc4;
 /// `DragContainer::d_dropTarget` (`Window*`): set while the drag is over a
 /// window flagged `DragDropTarget`, null otherwise.
 pub const DROP_TARGET_OFFSET: u32 = 0x270;
+/// The `DragContainer` flag bytes, read as one little-endian word: `+0x23c`
+/// left button down, `+0x23d`, `+0x23e` dragging (findings §7.1). The
+/// dragging byte is the one `onMouseMove` tests to pick `doDragging` and
+/// `onCaptureLost` clears (§8), so it says whether *this* container is the
+/// one being dragged; `getDragInfo` is global and cannot. A live drag read
+/// the word as `0x00000001` after the press and `0x00010101` once dragging.
+pub const DRAG_FLAGS_OFFSET: u32 = 0x23c;
 /// CEGUI `LeftButton`.
 pub const LEFT_BUTTON: u32 = 0;
 
 /// A stock VA moved by the module slide.
 pub fn rebase(va: u32, slide: i64) -> u32 {
     (i64::from(va) + slide) as u32
+}
+
+/// Whether a [`DRAG_FLAGS_OFFSET`] word has the dragging byte (`+0x23e`) set.
+pub fn container_dragging(flags: u32) -> bool {
+    (flags >> 16) & 0xff != 0
 }
 
 /// A float argument as the 32-bit word `call_native` pushes.
@@ -185,12 +197,27 @@ impl Cegui<'_> {
 
     /// A journaled native call on the main thread; returns EAX.
     async fn call(&self, va: u32, this: u32, args: &[u32], ret: &str) -> Result<u32, String> {
+        self.call_as(va, this, args, ret, false).await
+    }
+
+    /// [`Self::call`]; `release` skips the lease check (see
+    /// `Supervisor::bridge_release_call`), for button-up only.
+    async fn call_as(
+        &self,
+        va: u32,
+        this: u32,
+        args: &[u32],
+        ret: &str,
+        release: bool,
+    ) -> Result<u32, String> {
         let func = rebase(va, self.slide);
-        let v = self
-            .sup
-            .bridge_call("call_native", thiscall_params(func, this, args, ret))
-            .await
-            .map_err(|e| format!("call_native {func:#x}: {e}"))?;
+        let params = thiscall_params(func, this, args, ret);
+        let v = if release {
+            self.sup.bridge_release_call("call_native", params).await
+        } else {
+            self.sup.bridge_call("call_native", params).await
+        }
+        .map_err(|e| format!("call_native {func:#x}: {e}"))?;
         if v.get("ok").and_then(Value::as_bool) == Some(false) {
             return Err(format!("call_native {func:#x}: {v}"));
         }
@@ -217,11 +244,18 @@ impl Cegui<'_> {
             .map(|r| r & 0xFF != 0)
     }
 
-    /// `injectMouseButtonUp(button)`; true when CEGUI handled it.
+    /// `injectMouseButtonUp(button)`; true when CEGUI handled it. Runs even
+    /// after the lease was revoked: a drag cut off mid-press still lets go.
     pub async fn button_up(&self, button: u32) -> Result<bool, String> {
-        self.call(INJECT_MOUSE_BUTTON_UP_VA, self.system, &[button], "u32")
-            .await
-            .map(|r| r & 0xFF != 0)
+        self.call_as(
+            INJECT_MOUSE_BUTTON_UP_VA,
+            self.system,
+            &[button],
+            "u32",
+            true,
+        )
+        .await
+        .map(|r| r & 0xFF != 0)
     }
 
     /// The C++ `Window*` behind a named window: the word stored at the
@@ -253,6 +287,13 @@ impl Cegui<'_> {
     pub async fn drop_target(&self, container: u32) -> Result<u32, String> {
         self.read_u32(container.wrapping_add(DROP_TARGET_OFFSET))
             .await
+    }
+
+    /// Whether `container` itself is being dragged (its `+0x23e` byte).
+    pub async fn is_dragging(&self, container: u32) -> Result<bool, String> {
+        self.read_u32(container.wrapping_add(DRAG_FLAGS_OFFSET))
+            .await
+            .map(container_dragging)
     }
 
     /// `target->notifyDragDropItemDropped(item)`.
@@ -318,6 +359,15 @@ mod tests {
             "{e}"
         );
         assert!(e.contains("0x01aaedc4"), "{e}");
+    }
+
+    /// The live words: pressed but not dragging, then dragging.
+    #[test]
+    fn the_dragging_flag_is_the_third_byte() {
+        assert!(!container_dragging(0x0000_0001));
+        assert!(container_dragging(0x0001_0101));
+        assert!(container_dragging(0x0001_0000));
+        assert!(!container_dragging(0x0100_0101));
     }
 
     #[test]
