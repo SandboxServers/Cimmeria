@@ -98,7 +98,10 @@ async fn main() {
     cimmeria_discord::install_panic_hook();
 
     // Create log broadcast channel and ring buffer (for WebSocket log streaming).
-    let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
+    // The channel holds entries until every subscriber has read them, so its
+    // capacity bounds what a slow admin client can pin; a lagging client gets
+    // a "lagged" frame and skips ahead.
+    let (log_tx, _) = broadcast::channel::<LogEntry>(256);
     let log_buffer = LogBuffer::new();
 
     // Create login audit channel and ring buffer.

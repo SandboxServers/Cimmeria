@@ -9,10 +9,8 @@
 //!
 //! # Memory bounds
 //!
-//! Some events carry text the server does not control: client telemetry rows
-//! are replayed as INFO events whose message and fields come from the upload.
-//! The ring is always on, so without bounds it would keep up to
-//! [`BUFFER_CAPACITY`] arbitrarily large strings resident. Two caps apply:
+//! Some events carry text the server does not control, so entries and the
+//! ring are bounded:
 //!
 //! - Each entry is truncated while it is built, before it is cloned or sent:
 //!   the message to [`MAX_MESSAGE_BYTES`], every other string to
@@ -69,23 +67,26 @@ pub struct LogEntry {
 }
 
 impl LogEntry {
-    /// Approximate memory held by this entry: the struct plus the text it
-    /// owns. Non-string JSON values count as 8 bytes. It is the unit of the
-    /// ring's byte budget, not an allocator-exact figure.
+    /// Approximate memory held by this entry: the struct plus the allocated
+    /// capacity of the text it owns. Non-string JSON values count as 8 bytes.
+    /// It is the unit of the ring's byte budget; map node overhead is not
+    /// counted, so it is not an allocator-exact figure.
     pub fn approx_bytes(&self) -> usize {
         std::mem::size_of::<Self>()
-            + self.level.len()
-            + self.target.len()
-            + self.message.len()
+            + self.level.capacity()
+            + self.target.capacity()
+            + self.message.capacity()
             + json_bytes(&self.fields)
     }
 }
 
 fn json_bytes(value: &serde_json::Value) -> usize {
     match value {
-        serde_json::Value::String(s) => s.len(),
+        serde_json::Value::String(s) => s.capacity(),
         serde_json::Value::Array(items) => items.iter().map(json_bytes).sum(),
-        serde_json::Value::Object(map) => map.iter().map(|(k, v)| k.len() + json_bytes(v)).sum(),
+        serde_json::Value::Object(map) => {
+            map.iter().map(|(k, v)| k.capacity() + json_bytes(v)).sum()
+        }
         _ => 8,
     }
 }
@@ -255,6 +256,10 @@ impl BoundedWriter {
         if self.truncated {
             self.buf.push_str(TRUNCATION_MARKER);
         }
+        // The buffer grew by doubling, so it can hold up to twice its length.
+        // Hand back a tight allocation: the ring budgets by capacity, and
+        // slack here would let the budget hold half the entries it could.
+        self.buf.shrink_to_fit();
         self.buf
     }
 }

@@ -21,6 +21,14 @@ fn with_layer_tx(tx: broadcast::Sender<LogEntry>, f: impl FnOnce()) -> LogBuffer
     buffer
 }
 
+/// The ring's own entries, moved out so their allocations are the ones the
+/// layer made (`snapshot` clones, and a clone's capacity is always tight).
+fn stored_entries(ring: &LogBuffer) -> Vec<LogEntry> {
+    let mut guard = ring.inner.lock().unwrap();
+    guard.bytes = 0;
+    guard.entries.drain(..).map(|(e, _)| e).collect()
+}
+
 /// The kept part of a truncated string, with the marker checked and removed.
 fn strip_marker(s: &str) -> &str {
     s.strip_suffix(TRUNCATION_MARKER)
@@ -107,10 +115,11 @@ fn large_entries_keep_the_ring_under_its_byte_budget_oldest_evicted_first() {
         }
     });
 
-    let entries = ring.snapshot();
+    let running = ring.total_bytes();
+    let entries = stored_entries(&ring);
     let recomputed: usize = entries.iter().map(LogEntry::approx_bytes).sum();
     assert!(recomputed <= RING_BYTE_BUDGET, "{recomputed} bytes held");
-    assert_eq!(ring.total_bytes(), recomputed, "running total drifted");
+    assert_eq!(running, recomputed, "running total drifted");
     assert!(entries.len() < N, "nothing was evicted");
 
     // What survives is the newest run, in order, ending with the last event.
@@ -156,4 +165,55 @@ fn live_subscribers_get_the_same_bounded_entry() {
     let kept = strip_marker(&sent.message);
     assert_eq!(kept.len(), MAX_MESSAGE_BYTES);
     assert_eq!(sent.message, ring.snapshot()[0].message);
+}
+
+#[test]
+fn truncated_text_holds_no_spare_capacity() {
+    // The ring budgets by capacity, so a cut string must not keep the
+    // doubled allocation it grew into while being formatted.
+    let big = "w".repeat(MAX_MESSAGE_BYTES * 4);
+    let ring = with_layer(|| tracing::info!(display = %big, "{big}"));
+    // Inspect the stored entry: a snapshot clone would be tight regardless.
+    let stored = stored_entries(&ring);
+    let entry = &stored[0];
+
+    let display = entry.fields["display"].as_str().expect("string field");
+    strip_marker(display);
+    strip_marker(&entry.message);
+    let slack = 64;
+    assert!(
+        entry.message.capacity() <= entry.message.len() + slack,
+        "message: {} capacity for {} bytes",
+        entry.message.capacity(),
+        entry.message.len()
+    );
+    if let serde_json::Value::Object(map) = &entry.fields {
+        for (key, value) in map {
+            if let serde_json::Value::String(s) = value {
+                assert!(s.capacity() <= s.len() + slack, "{key}: spare capacity");
+            }
+        }
+    }
+}
+
+#[test]
+fn full_ring_capacity_stays_within_budget() {
+    let filler = "c".repeat(MAX_MESSAGE_BYTES * 4);
+    let ring = with_layer(|| {
+        for i in 0..BUFFER_CAPACITY {
+            tracing::info!("{i:05} {filler}");
+        }
+    });
+    let resident: usize = stored_entries(&ring)
+        .iter()
+        .map(|e| std::mem::size_of::<LogEntry>() + e.message.capacity() + e.target.capacity())
+        .sum();
+    assert!(resident <= RING_BYTE_BUDGET, "{resident} bytes resident");
+    // The budget is spent on text, not slack: the ring is within one entry
+    // of full.
+    let one = std::mem::size_of::<LogEntry>() + MAX_MESSAGE_BYTES + TRUNCATION_MARKER.len() + 256;
+    assert!(
+        resident + one >= RING_BYTE_BUDGET,
+        "only {resident} bytes used"
+    );
 }
