@@ -190,8 +190,13 @@ jobs:
             echo "::error::expected the container to exit non-zero (status=$status exit=$code)"
             exit 1
           fi
-          if ! printf '%s' "$logs" | grep -q 'cannot log in to the database'; then
-            echo "::error::the database login check did not report the failure"
+          if ! printf '%s' "$logs" | grep -q 'cannot log in to the database.*the database does not exist'; then
+            echo "::error::the database login check did not report the sanitised reason"
+            exit 1
+          fi
+          # The check prints a fixed reason, never the connection string.
+          if printf '%s' "$logs" | grep -q 'password=w-testing'; then
+            echo "::error::the container log contains the DB_URL password"
             exit 1
           fi
           echo "refused as expected (exit $code)"

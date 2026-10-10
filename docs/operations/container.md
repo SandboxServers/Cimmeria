@@ -150,7 +150,7 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 ## Healthcheck
 
 `HEALTHCHECK` checks two things:
-1. `psql -d "$DB_URL" -c 'SELECT 1'`: the server's own connection string can log in and run a query. `pg_isready` alone passes while the user, password or database name is wrong.
+1. `cimmeria-server --check-db`: the server's own connection string can log in and run `SELECT 1`. `pg_isready` alone passes while the user, password or database name is wrong.
 2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
 
 It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing it marked every container unhealthy. A bound port also says nothing about whether a login works, which is why the CI smoke below logs in.
@@ -187,7 +187,7 @@ In `release-container.yml` the order is: build for scan, Trivy, export the probe
 
 The server never runs without the database `DB_URL` names. Three layers enforce it:
 
-1. **Before the server starts**, the s6 run script ([`docker/s6/cimmeria-server/run`](../../docker/s6/cimmeria-server/run)) waits for `pg_isready`, then logs in with `psql -d "$DB_URL" -c 'SELECT 1'`. It retries `DB_AUTH_CHECK_ATTEMPTS` times (default 10, one second apart), then prints psql's error, which names the host, user and database but never the password, and exits 1. An empty `DB_URL` exits 1 at once.
+1. **Before the server starts**, the s6 run script ([`docker/s6/cimmeria-server/run`](../../docker/s6/cimmeria-server/run)) waits for `pg_isready`, then runs `cimmeria-server --check-db`. That mode reads `DB_URL` from the environment, so the password never appears in a process's arguments, parses it exactly as the server does (libpq key-value or a percent-encoded `postgres://` URL), runs `SELECT 1`, and gives up after `PGCONNECT_TIMEOUT` seconds (the script sets 5). The script retries `DB_AUTH_CHECK_ATTEMPTS` times (default 10, one second apart; a value that is not a positive whole number falls back to 10), then prints a fixed reason such as `the database does not exist (SQLSTATE 3D000)` and exits 1. The reason never includes the connection string or the server's own message. An empty `DB_URL` fails the same way.
 2. **The server itself** refuses to start when `DB_URL` is set and the connection fails or times out (30 s). It logs `reason=database_connect_failed` and exits 1.
 3. **The container exits non-zero.** The s6 finish script ([`docker/s6/cimmeria-server/finish`](../../docker/s6/cimmeria-server/finish)) passes the server's non-zero exit code on as the container's, so `docker ps -a` shows `Exited (1)`, not a clean stop, and a `restart:` policy retries it.
 

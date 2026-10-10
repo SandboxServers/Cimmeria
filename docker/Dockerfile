@@ -276,8 +276,8 @@ RUN chmod +x /usr/local/bin/cimmeria-entrypoint
 # `docker run` time: pgdata was initdb'd as $POSTGRES_USER owning
 # $POSTGRES_DB with $POSTGRES_PASSWORD, and changing any of these on
 # a running container won't re-initialise the DB — it will just
-# desync the s6 wait loop / healthcheck (which read these vars to
-# call pg_isready) from the actual cluster contents. Reset by
+# desync the s6 wait loop (which reads these vars to call
+# pg_isready) from the actual cluster contents. Reset by
 # removing the named volume, not by overriding env.
 ENV PGDATA=/var/lib/postgresql/data \
     POSTGRES_USER=w-testing \
@@ -324,12 +324,14 @@ VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
 # Liveness probe: the server's own DB_URL can log in and run a query (not
 # just pg_isready, which passes while the configured user, password or
-# database is wrong) AND the SOAP login listener (LOGON_PORT, the port game
-# clients log in through) is bound. Not AUTH_PORT: nothing binds 13001, so
+# database is wrong). `cimmeria-server --check-db` reads DB_URL from the
+# environment, so the password never appears in argv, and parses it as the
+# server does. The SOAP login listener (LOGON_PORT, the port game
+# clients log in through) must also be bound. Not AUTH_PORT: nothing binds 13001, so
 # probing it marked every container unhealthy. Bash's /dev/tcp gives us a
 # zero-dep TCP probe without pulling in netcat/curl just for this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD psql -X -q -t -A -v ON_ERROR_STOP=1 -d "${DB_URL}" -c "SELECT 1" >/dev/null 2>&1 \
+    CMD PGCONNECT_TIMEOUT=5 /opt/cimmeria/bin/cimmeria-server --check-db >/dev/null 2>&1 \
         && bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" \
         || exit 1
 

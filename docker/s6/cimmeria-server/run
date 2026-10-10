@@ -24,20 +24,24 @@ done
 # refuses to start then. Log in with the same connection string first, so
 # the failure is stated plainly and the container exits through `finish`
 # (non-zero, see there) instead of reporting healthy without a database.
+#
+# The check is the server binary's own `--check-db` mode: it reads DB_URL
+# from the environment (the password never appears in argv or `ps`), parses
+# it exactly as the server does (libpq key-value or a percent-encoded URL),
+# and prints only a sanitised reason, never conninfo or the server's text.
 # An empty DB_URL would start the server with no database at all; this image
-# always ships one, so refuse that too.
-if [ -z "$(printf '%s' "${DB_URL:-}" | tr -d '[:space:]')" ]; then
-    echo "[cimmeria-server] DB_URL is empty; this image runs only with a database. Exiting." >&2
-    exit 1
-fi
+# always ships one, so the check refuses that too.
+export PGCONNECT_TIMEOUT=5
 attempts="${DB_AUTH_CHECK_ATTEMPTS:-10}"
+case "$attempts" in
+    ''|*[!0-9]*) attempts=10 ;;
+esac
+[ "$attempts" -gt 0 ] 2>/dev/null || attempts=10
 n=0
-# psql's error names the host, port, user and database, never the password.
-while ! err=$(psql -X -q -t -A -v ON_ERROR_STOP=1 -d "$DB_URL" -c 'SELECT 1' 2>&1 >/dev/null); do
+while ! reason=$(/opt/cimmeria/bin/cimmeria-server --check-db 2>&1 >/dev/null); do
     n=$((n + 1))
     if [ "$n" -ge "$attempts" ]; then
-        echo "[cimmeria-server] cannot log in to the database with DB_URL after ${attempts} attempts; exiting:" >&2
-        echo "$err" >&2
+        echo "[cimmeria-server] cannot log in to the database with DB_URL after ${attempts} attempts; exiting: ${reason}" >&2
         exit 1
     fi
     sleep 1

@@ -129,66 +129,16 @@ mod tests {
         );
     }
 
-    /// A stand-in PostgreSQL server that rejects every login the way a
-    /// real one rejects a bad password (SQLSTATE 28P01), then closes.
-    async fn spawn_rejecting_postgres() -> u16 {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
-            while let Ok((mut sock, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    // Startup packets: int32 length (inclusive), int32 code.
-                    // An SSLRequest (80877103) gets 'N', then the real
-                    // startup message follows.
-                    loop {
-                        let mut len = [0u8; 4];
-                        if sock.read_exact(&mut len).await.is_err() {
-                            return;
-                        }
-                        let len = u32::from_be_bytes(len) as usize;
-                        let mut body = vec![0u8; len.saturating_sub(4)];
-                        if sock.read_exact(&mut body).await.is_err() {
-                            return;
-                        }
-                        if body.len() >= 4 && body[..4] == 80_877_103u32.to_be_bytes() {
-                            let _ = sock.write_all(b"N").await;
-                            continue;
-                        }
-                        break;
-                    }
-                    let mut fields = Vec::new();
-                    for (code, value) in [
-                        (b'S', "FATAL"),
-                        (b'V', "FATAL"),
-                        (b'C', "28P01"),
-                        (
-                            b'M',
-                            "password authentication failed for user \"w-testing\"",
-                        ),
-                    ] {
-                        fields.push(code);
-                        fields.extend_from_slice(value.as_bytes());
-                        fields.push(0);
-                    }
-                    fields.push(0);
-                    let mut msg = vec![b'E'];
-                    msg.extend_from_slice(&((fields.len() + 4) as u32).to_be_bytes());
-                    msg.extend_from_slice(&fields);
-                    let _ = sock.write_all(&msg).await;
-                    let _ = sock.shutdown().await;
-                });
-            }
-        });
-        port
-    }
-
     /// **Fail-closed guard, bad credentials.** The case the container's
     /// `pg_isready` gate cannot see: PostgreSQL is up but rejects the
     /// configured user or password. `start_all` must refuse to start.
     #[tokio::test]
     async fn start_all_fails_when_configured_database_rejects_credentials() {
-        let port = spawn_rejecting_postgres().await;
+        let port = crate::fake_postgres::spawn_rejecting_postgres(
+            "28P01",
+            "password authentication failed for user \"w-testing\"",
+        )
+        .await;
         let (result, logon_port) = start_with_db(format!(
             "host=127.0.0.1 port={port} user=w-testing password=wrong dbname=sgw"
         ))

@@ -20,9 +20,9 @@ metadata:
 - Tests that drive `AuthService` standalone in developer mode must set
   `db_connection_string: String::new()` or every login is refused.
 - Container: `DEVELOPER_MODE=false` in the image; `docker/compose.yml` passes
-  `${DEVELOPER_MODE:-false}`. s6 `run` does `psql -d "$DB_URL" -c 'SELECT 1'`
+  `${DEVELOPER_MODE:-false}`. s6 `run` runs `cimmeria-server --check-db` (reads DB_URL from env, never argv; sanitised `DbCheckFailure` reason; `crates/services/src/database_check.rs`)
   (DB_AUTH_CHECK_ATTEMPTS, default 10); `finish` writes non-zero exit to
-  `/run/s6-linux-init-container-results/exitcode`. HEALTHCHECK uses the same psql.
+  `/run/s6-linux-init-container-results/exitcode`. HEALTHCHECK uses the same `--check-db`. Watchtower strips env equal to the old image default, so the colo (which inherited true from the image) goes to false on its own at its first swap to this image.
 - The bundled Postgres is initdb'd with default `trust` auth for loopback, so a
   wrong *password* is not refused in-container; wrong user/dbname is.
 

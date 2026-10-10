@@ -20,7 +20,7 @@
 //! | `MINIGAME_HOST` | `0.0.0.0` | Minigame SmartFoxServer TCP bind address |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
 //! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) is served here and on `LOGON_PORT`; remote launchers use `LOGON_PORT`, so this bind can stay narrow. |
-//! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string. When set, the server refuses to start (exit 1, `reason=database_connect_failed`) if it cannot connect within 30 s or the credentials are rejected. Empty runs the server with no database, for development only: logins are then refused unless `DEVELOPER_MODE` is on. |
+//! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string. When set, the server refuses to start (exit 1, `reason=database_connect_failed`) if it cannot connect within 30 s or the credentials are rejected. Empty runs the server with no database, for development only: logins are then refused unless `DEVELOPER_MODE` is on. `cimmeria-server --check-db` connects with it, runs `SELECT 1` and exits 0, or prints a sanitised reason and exits 1, within `PGCONNECT_TIMEOUT` seconds (default 5); the container uses it before start and as its healthcheck. |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `false` | `1`/`true`/`yes` turns it on. Skips the Phase 1 protocol-digest check. Only when `DB_URL` is also empty does it accept any well-formed login unchecked as account 1, access level 99, with a WARN (`reason=dev_mode_no_db_login`) at startup and on each login. |
 //! | `MERCURY_ENCRYPTION_VERSION` | `1` | Mercury wire-encryption version applied to every session. `1` = legacy (only version unpatched clients understand), `2` = modernized. Server-wide; no per-client negotiation yet. Unknown values fall back to `1`. |
@@ -66,12 +66,19 @@ use cimmeria_common::ServerConfig;
 use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
+mod db_check;
 mod logging;
 mod otel;
 mod startup_embed;
 
 #[tokio::main]
 async fn main() {
+    // `--check-db`: the container's database login check. Runs before any
+    // logging, Discord or listener setup and exits.
+    if std::env::args().nth(1).as_deref() == Some(db_check::FLAG) {
+        std::process::exit(db_check::run().await);
+    }
+
     let server_start = std::time::Instant::now();
 
     // Initialise Discord notifications BEFORE tracing — the tracing

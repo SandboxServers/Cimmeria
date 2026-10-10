@@ -108,6 +108,15 @@ services:
       # every swap. With the bundled database it only skips the client
       # protocol-digest check; it never bypasses the password check while
       # DB_URL is set. Images before this change defaulted it to true.
+      # Developer mode, off unless .env sets DEVELOPER_MODE=true. With the
+      # bundled database it only skips the client protocol-digest check; it
+      # never bypasses the password check while DB_URL is set. Images before
+      # this change defaulted it to true.
+      #
+      # Watchtower keeps this across swaps only while it differs from the
+      # image's own default (false): it drops env values that equal the old
+      # image's defaults, so a value equal to the default follows whatever the
+      # next image sets. Runbook: docs/operations/colo-deploy.md.
       DEVELOPER_MODE: "${DEVELOPER_MODE:-false}"
       RUST_LOG: "${RUST_LOG:-info}"
     # No volume for /var/lib/postgresql/data on purpose: the entrypoint
