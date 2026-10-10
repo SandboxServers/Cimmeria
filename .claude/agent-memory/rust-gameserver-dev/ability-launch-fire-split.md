@@ -12,7 +12,7 @@ Since AT-10 (2026-09-26) `handle_use_ability` returning `true` means "committed"
 **How to apply:**
 - Tests: step time with `resolve_warmups(now, ...)` (cfg(test) re-export), not sleeps.
 - Ground AoE collection (`all_npc_entity_ids`) only sees `class_id == 0x04`; plain `create_entity` NPCs are invisible to it — set `class_id` or use `spawn_npc`.
-- `handle_use_ability` redirects 592 to the weapon's RANGED ability, so never match a parked cast by the client's ability id (a review found that bug in AT-10's first cut).
+- Never match a parked cast by the client's ability id; use the parked `PendingCast` (a review found that bug in AT-10's first cut, when `handle_use_ability` still redirected 592 to the weapon's RANGED ability; CS-07 #1271 removed the redirect, but the launch may still resolve the cast differently from the press, e.g. a beneficial cast's target).
 - Since #825 the code is in `crates/cell-combat`; combat must not name `ChainEngine` or `crate::cell::content` (content sits above it). Kill credit goes through `&dyn ContentEvents` (`EngineEvents(&engine)` at the call site in `crates/cell` / `crates/cell-methods`, `NoContentEvents` in tests).
 - Heredocs with backticks+apostrophes can break the Bash tool's parser; write python edit scripts with the Write tool instead.
 - Related: [[cell-entity-direction-semantics]], [[witness-entity-method-dual-fn]].

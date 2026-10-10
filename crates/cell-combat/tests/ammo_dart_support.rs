@@ -64,6 +64,7 @@ fn world(ammo_type: i32, target_is_player: bool) -> SpaceManager {
             target_type_id: 2,
             effect_ids: vec![SHOT_EFFECT],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,

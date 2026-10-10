@@ -61,6 +61,9 @@ mod warmup;
 mod warmup_interrupt;
 mod weapon_grant;
 mod weapon_range;
+mod weapon_requirement;
+mod weapon_requirement_gates;
+mod weapon_requirement_live_db;
 
 /// Every [`make_ability`] fixture carries the shared no-op mechanic effect,
 /// so it passes the AB-12 launch gate (`no_mechanics`) and behaves as the
@@ -81,6 +84,7 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
         target_type_id: 0,
         effect_ids: vec![FIXTURE_EFFECT],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo,
         event_set_id: None,
         velocity: 0.0,

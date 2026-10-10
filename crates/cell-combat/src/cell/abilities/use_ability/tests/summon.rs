@@ -49,6 +49,7 @@ pub(super) fn summon_def(id: i32) -> AbilityDef {
         target_type_id: 1,
         effect_ids: vec![],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: Some(SUMMON_SET),
         velocity: 100.0,

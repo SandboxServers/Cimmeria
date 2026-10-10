@@ -460,6 +460,25 @@ impl CellService {
                     tracing::warn!("Failed to load weapon ranges: {e}");
                 }
             }
+            // The player weapon requirement (OD-CS11) reads these. Left
+            // empty on failure: every weapon-requiring ability is then
+            // refused for players, never let through. That breaks every
+            // player's weapon attacks at once, so it is an ERROR that says so.
+            match spawner::load_weapon_monikers(pool).await {
+                Ok(map) => {
+                    space_mgr.item_monikers = map;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        target: "abilities",
+                        event = "item_monikers_load_failed",
+                        error = %e,
+                        "Failed to load item monikers: every player cast of an ability \
+                         with a weapon requirement (item_monikers) will be refused with \
+                         WrongWeaponType until the cell restarts with a readable resources.items"
+                    );
+                }
+            }
             match spawner::load_loot_tables(pool).await {
                 Ok(tables) => {
                     space_mgr.loot_tables = tables;

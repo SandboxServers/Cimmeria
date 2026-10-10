@@ -37,6 +37,8 @@ jobs:
   # them; a skipped job reports as passed. docs/protocol/ always counts as
   # code, because cimmeria-patch-wire's tests read the dispatch tables there,
   # and so does tools/token-profile/, whose contract tests read its Markdown.
+  # The generated weapon-requirement audit doc counts as code: the
+  # test-live-db job's `--check` is what catches a hand edit to it.
   # Pushes to main always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
   changes:
@@ -61,6 +63,7 @@ jobs:
             nocode='\.md$|^\.claude/|^docs/.*\.(svg|png|jpe?g|gif)$'
             if ! echo "$files" | grep -Ev "$nocode" | grep -q . \
               && ! echo "$files" | grep -q '^docs/protocol/' \
+              && ! echo "$files" | grep -q '^docs/analysis/class-start-v6/weapon-requirement-audit\.md$' \
               && ! echo "$files" | grep -q '^tools/token-profile/'; then
               code=false
             fi
@@ -293,12 +296,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # The generated effect NVP blocks in db/resources/Effects/Seed/ match
-      # what the ability-mechanics generator writes (D-AB06), and its parser
-      # tests pass. Stock Python; runs before the seed this job loads.
-      - name: effect NVP generator (unit tests + --check)
+      # what the ability-mechanics generator writes (D-AB06), the CS-07
+      # weapon-requirement audit doc matches the seeds, and their tests pass.
+      # Stock Python; runs before the seed this job loads.
+      - name: ability-mechanics generators (unit tests + --check)
         run: |
           python3 -m unittest discover -s tools/ability_mechanics -p "test_*.py"
           python3 tools/ability_mechanics/effect_nvps_from_desc.py --check
+          python3 tools/ability_mechanics/weapon_requirement_audit.py --check
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client

@@ -366,6 +366,7 @@ mod handle_train_ability_tests {
                 target_type_id: 0,
                 effect_ids: vec![],
                 moniker_ids: vec![],
+                item_monikers: vec![],
                 required_ammo: 0,
                 event_set_id: None,
                 velocity: 0.0,

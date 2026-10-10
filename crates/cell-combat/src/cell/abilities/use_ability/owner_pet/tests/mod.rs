@@ -70,6 +70,7 @@ fn ability(
         target_type_id: 1,
         effect_ids: effect_ids.to_vec(),
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 100.0,

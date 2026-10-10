@@ -98,6 +98,7 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,

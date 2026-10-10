@@ -24,6 +24,7 @@ fn ability_def(id: i32, name: &str) -> AbilityDef {
         target_type_id: 0,
         effect_ids: vec![],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,

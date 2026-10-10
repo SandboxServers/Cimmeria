@@ -27,6 +27,9 @@ pub(crate) enum InterruptReason {
     CasterDied,
     /// The active bandolier slot changed (python `onBandolierSlotChange`).
     BandolierSlotChange,
+    /// The active bandolier weapon changed without a slot change: a drag-
+    /// equip or a grant into the active slot (CS-07).
+    ActiveWeaponChanged,
     /// The caster moved past the channel interrupt distance. Not in the
     /// python server; see the AT-10 worknote.
     CasterMoved,
@@ -52,6 +55,7 @@ impl InterruptReason {
         match self {
             Self::CasterDied => "caster_died",
             Self::BandolierSlotChange => "bandolier_slot_change",
+            Self::ActiveWeaponChanged => "active_weapon_changed",
             Self::CasterMoved => "caster_moved",
             Self::TargetLost => "target_lost",
             Self::TargetOutOfRange => "target_out_of_range",

@@ -50,6 +50,7 @@ mod respawners;
 mod spawn_sets;
 mod stargates;
 mod templates;
+mod weapon_monikers;
 mod weapon_ranges;
 mod worlds;
 
@@ -99,6 +100,7 @@ pub use respawners::{load_respawners, offered_in_world, RespawnerDef};
 pub use spawn_sets::{load_spawn_sets, SpawnSetDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
+pub use weapon_monikers::load_weapon_monikers;
 pub use weapon_ranges::load_weapon_ranges;
 // The `entity_templates` SELECT + row mapper, shared between the cell's
 // startup template cache and the base-side GM spawn handler so a schema

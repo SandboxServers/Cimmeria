@@ -293,6 +293,7 @@ fn timed_stat_records_the_abilitys_monikers() {
             target_type_id: 1,
             effect_ids: vec![700],
             moniker_ids: vec![3_212_632_871],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,

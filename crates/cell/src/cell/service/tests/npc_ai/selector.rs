@@ -117,6 +117,7 @@ async fn selector_picks_ammo_bearing_ability_for_npc() {
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
+            item_monikers: vec![],
             // Mirror the seeded DB value — Pistol Shot is required_ammo=1.
             required_ammo: 1,
             event_set_id: None,

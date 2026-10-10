@@ -128,5 +128,6 @@ mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
 mod live_db_vendor_arbitrage;
+mod live_db_weapon_monikers;
 mod live_db_weapon_ranges;
 mod npc_ability_animation;

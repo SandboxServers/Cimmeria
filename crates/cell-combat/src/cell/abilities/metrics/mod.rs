@@ -132,6 +132,9 @@ cimmeria_observability::metric_label! {
         WeaponAttackQueued => "weapon_attack_queued",
         /// A bandolier slot swap is in progress.
         SlotSwapInProgress => "slot_swap_in_progress",
+        /// A player's active weapon carries none of the ability's required
+        /// item monikers (OD-CS11, `WrongWeaponType`).
+        WrongWeaponType => "wrong_weapon_type",
     }
 }
 

@@ -95,6 +95,7 @@ mod tests {
             target_type_id: 2,
             effect_ids,
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id,
             velocity: 100.0,

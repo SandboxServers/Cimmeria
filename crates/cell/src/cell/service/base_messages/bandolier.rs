@@ -93,6 +93,15 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
     // can push the AmmoTypeId update to the client when this slot is
     // (or becomes) the active one. `item` is consumed by the insert.
     let inserted_ammo_type = item.cur_ammo_type;
+    let inserted_weapon = (item.instance_id, item.item_id);
+    // The active weapon before this insert, to tell a real weapon change
+    // (which swaps the weapon-granted abilities, CS-07) from a resync of the
+    // same item.
+    let prev_active_weapon = space_mgr.get_entity(entity_id).and_then(|e| {
+        e.bandolier_items
+            .get(&e.active_bandolier_slot)
+            .map(|b| (b.instance_id, b.item_id))
+    });
     let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
             // Mirror the slot's magazine into AmmoSlot{N}, as
@@ -182,6 +191,15 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         "UpdateBandolierItem: equip-display decision"
     );
     push_dirty_stats(entity_id, tx, space_mgr).await;
+    // The inserted item is now the active weapon and it is a different one:
+    // its own attacks reach the known list, and the old weapon's warmup,
+    // loop and last-fired stash go (CS-07 review finding 1).
+    if entity_state.0 && play_equip_anim && prev_active_weapon != Some(inserted_weapon) {
+        cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::on_active_weapon_changed(
+            entity_id, tx, space_mgr,
+        )
+        .await;
+    }
     if play_equip_anim {
         // Appearance refresh first so the weapon mesh is socket-
         // attached when the `Item_Equip` animation plays. Same
@@ -235,6 +253,14 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
     // `moveInventoryItem`, not `grantItem`. The earlier
     // `UpdateBandolierItem` fix only covered chain-engine
     // grants; the player-driven drag-to-equip case lands here.)
+    // The active weapon before the sync, read from the entity's own active
+    // slot (the sync may move it): a different instance afterwards is a
+    // weapon change (CS-07), whatever the animation decision below makes of it.
+    let prev_active_weapon = space_mgr.get_entity(entity_id).and_then(|e| {
+        e.bandolier_items
+            .get(&e.active_bandolier_slot)
+            .map(|b| (b.instance_id, b.item_id))
+    });
     let (prev_active_item_id, new_active_item_id) =
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
             let prev = entity
@@ -277,6 +303,24 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
 
     // Borrow released — push the dirty stats out.
     push_dirty_stats(entity_id, tx, space_mgr).await;
+
+    // A drag-equip, drag-unequip or swap through the inventory changed the
+    // active weapon: swap the weapon-granted abilities and drop what the old
+    // weapon left behind (CS-07 review finding 1).
+    let new_active_weapon = space_mgr
+        .get_entity(entity_id)
+        .filter(|e| e.is_player)
+        .map(|e| {
+            e.bandolier_items
+                .get(&active_bandolier_slot)
+                .map(|b| (b.instance_id, b.item_id))
+        });
+    if new_active_weapon.is_some_and(|new| new != prev_active_weapon) {
+        cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::on_active_weapon_changed(
+            entity_id, tx, space_mgr,
+        )
+        .await;
+    }
 
     // Re-borrow to make the equip-display decision.
     let active_slot_gained_weapon =

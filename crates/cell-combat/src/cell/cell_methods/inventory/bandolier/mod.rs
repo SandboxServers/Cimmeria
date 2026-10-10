@@ -5,7 +5,7 @@
 //! - [`switch_return`]: unfired special rounds back to the bags on an
 //!   ammo-type swap (ammo campaign AM-02; created empty by AM-F).
 //! - [`weapon_abilities`]: the abilities a weapon grants and their swap on
-//!   an active-slot change.
+//!   an active-slot change or an active-weapon change.
 
 mod active_slot;
 mod ammo_change;
@@ -18,4 +18,4 @@ pub use active_slot::flush_dirty_bandolier_ammo;
 pub use active_slot::handle_request_active_slot_change;
 pub use ammo_change::handle_request_ammo_change;
 pub use switch_return::{begin_switch_return, handle_switch_returned, SwitchReturn};
-pub use weapon_abilities::weapon_ability_set;
+pub use weapon_abilities::{on_active_weapon_changed, weapon_ability_set};

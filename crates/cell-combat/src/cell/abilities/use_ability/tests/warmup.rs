@@ -38,6 +38,7 @@ pub(super) fn cast_ability(id: i32, warmup: f32) -> AbilityDef {
         target_type_id: 0,
         effect_ids: vec![500],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: Some(EVENT_SET),
         velocity: 0.0,
@@ -494,63 +495,6 @@ async fn ground_cast_secondaries_wait_for_the_warmup() {
         2,
         "primary and secondary are hit at the fire; got {fire:?}"
     );
-}
-
-/// **Regression guard (review of AT-10).** The launch redirects Pistol Shot
-/// (592) to the active weapon's ranged ability. A ground cast of 592 whose
-/// redirected ability warms up must still defer its splash damage: matching
-/// the parked cast by the client's ability id missed it and hit every
-/// secondary at launch, for free once the cast was interrupted.
-#[tokio::test]
-async fn redirected_ground_cast_defers_its_splash_damage() {
-    use cimmeria_entity::cell_entity::BandolierItem;
-
-    let mut mgr = warmup_mgr();
-    mgr.create_entity(3, "Castle", [3.5, 0.0, 0.0], [0.0; 3])
-        .unwrap();
-    mgr.get_entity_mut(2).unwrap().class_id = 0x04;
-    if let Some(npc) = mgr.get_entity_mut(3) {
-        npc.class_id = 0x04;
-        npc.faction = crate::cell::combat::HOSTILE_FACTION;
-        if let Some(stat) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
-            stat.update(0, 100_000, 100_000);
-            stat.clear_dirty();
-        }
-    }
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.abilities.add_ability(592);
-        p.weapon_holstered = false;
-        p.bandolier_items.insert(
-            0,
-            BandolierItem {
-                instance_id: 0,
-                item_id: 21,
-                clip_size: 30,
-                default_ammo_type: 2,
-                current_ammo: 30,
-                cur_ammo_type: 2,
-            },
-        );
-    }
-    // P90 (21) binds the warmup ability to RANGED (event 7).
-    mgr.item_event_set_abilities.insert((21, 7), WARMUP_ABILITY);
-    mgr.ability_defs.insert(592, cast_ability(592, 0.0));
-    let (tx, mut rx) = mpsc::channel(256);
-
-    crate::cell::abilities::handle_use_ability_on_ground(1, 592, [3.0, 0.0, 0.0], &tx, &mut mgr)
-        .await;
-    let launch = drain(&mut rx);
-    assert_eq!(
-        effect_results(&launch, 1),
-        0,
-        "no splash damage while the redirected primary warms up; got {launch:?}"
-    );
-    let pc = mgr.get_entity(1).unwrap().pending_cast.clone().unwrap();
-    assert_eq!(pc.ability_id, WARMUP_ABILITY);
-    assert_eq!(pc.ground, Some([3.0, 0.0, 0.0]));
-
-    resolve_warmups(after_warmup(), &tx, &mut mgr, &NoContentEvents).await;
-    assert_eq!(effect_results(&drain(&mut rx), 1), 2);
 }
 
 /// Python `launch()`: `speedAttack` shortens an `SpeedAttack`-flagged

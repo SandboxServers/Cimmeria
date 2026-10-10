@@ -1564,12 +1564,10 @@ filter = "event = 'weapon_draw_queued' AND ability_id = 592 AND player_name CONT
 min_rows = 1
 [[row.expect]]
 id = "fired"
-text = "SigNoz: the shot fired as the pistol's 579 Pistol Auto Attack"
+text = "SigNoz: the shot fired as 592 Pistol Shot itself (CS-07: no redirect; the pistol carries ITEM_Pistol)"
 source = "signoz"
-filter = "event = 'weapon_ability_redirect' AND original_ability_id = 592 AND player_name CONTAINS 'D${run_id}'"
-field = "weapon_ability_id"
-op = "eq"
-value = 579
+filter = "event = 'ability_launched' AND ability_id = 592 AND player_name CONTAINS 'D${run_id}'"
+min_rows = 1
 [[row.expect]]
 id = "number"
 text = "the client shows combat text for the hit"

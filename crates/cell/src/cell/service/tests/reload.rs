@@ -195,6 +195,7 @@ async fn reload_completion_tick_emits_ability_end_sequence_when_event_set_presen
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: Some(EVENT_SET_ID),
             velocity: 0.0,

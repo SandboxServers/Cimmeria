@@ -397,8 +397,8 @@ pub async fn handle_request_active_slot_change(
     // (Pistol Shot hardcode); now the resolution is per-item via
     // items_event_sets. Log carries enough context to spot regressions:
     // "swapped to slot N, item M, resolved to ability A" — a missing
-    // ability id (None) flags an unbound item that the right-click
-    // fallback would route to 592, which is the canary for a content gap.
+    // ability id (None) is a weapon with no RANGED binding: right-click
+    // fires nothing with it and says so (CS-07, `interaction/hostile_attack`).
     {
         let item_id = space_mgr
             .get_entity(entity_id)

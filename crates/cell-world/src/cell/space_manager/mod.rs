@@ -307,6 +307,11 @@ pub struct SpaceManager {
     /// `clip_size > 0` rows: most seeded weapons (every Jaffa staff) have
     /// clip 0 but a real reach.
     pub weapon_ranges: HashMap<i32, cimmeria_entity::abilities::WeaponRanges>,
+    /// `resources.items.moniker_ids` keyed by item design id, for every item
+    /// that has any (`spawner::load_weapon_monikers`). The use_ability launch
+    /// reads the active bandolier item's entry for the player weapon
+    /// requirement (`AbilityDef::item_monikers`, OD-CS11).
+    pub item_monikers: HashMap<i32, Vec<i64>>,
     /// Loot tables: loot_table_id → entries.
     /// Loaded from `resources.loot` at startup for NPC death loot generation.
     pub loot_tables: HashMap<i32, Vec<super::spawner::LootTableEntry>>,
@@ -425,6 +430,12 @@ pub struct SpaceManager {
     /// by the ability table, so nothing is released per entity. See
     /// `cell::abilities::use_ability::sequence`.
     pub ability_sequence_log: LogThrottle,
+    /// Gates the player weapon-refusal rows (`wrong_weapon_refused`, the
+    /// right-click `weapon_unbound`), keyed by the player's entity: both sit
+    /// on client-controlled paths a held key or a script can repeat (CS-07).
+    /// The refusal metric counts every press. Released in `destroy_entity`
+    /// and `destroy_space`.
+    pub ability_refusal_log: LogThrottle,
     /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
     /// trackers and their WARN throttles. Reporting only; released in
     /// `destroy_entity` and `destroy_space`. See
@@ -591,6 +602,7 @@ impl SpaceManager {
             template_trainer_lists: HashMap::new(),
             item_defs: HashMap::new(),
             weapon_ranges: HashMap::new(),
+            item_monikers: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),
@@ -614,6 +626,7 @@ impl SpaceManager {
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
             ability_sequence_log: LogThrottle::default(),
+            ability_refusal_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_files: HashMap::new(),

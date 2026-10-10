@@ -242,6 +242,13 @@ pub struct AbilityDef {
     pub target_type_id: i32,
     pub effect_ids: Vec<i32>,
     pub moniker_ids: Vec<i64>,
+    /// `resources.abilities.item_monikers`: the weapon monikers a player's
+    /// cast requires. Empty means no requirement. Otherwise the active
+    /// bandolier weapon must carry at least one of them, or the launch is
+    /// refused with `WrongWeaponType` (OD-CS11, python
+    /// `AbilityInstance.canUse` + `SGWPlayer.hasItemMoniker`). NPC casts
+    /// are not checked. See [`AbilityDef::weapon_satisfies`].
+    pub item_monikers: Vec<i64>,
     pub required_ammo: i32,
     pub event_set_id: Option<i32>,
     pub velocity: f32,

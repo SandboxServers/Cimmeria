@@ -120,6 +120,7 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
             target_type_id: 0,
             effect_ids: vec![641],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,

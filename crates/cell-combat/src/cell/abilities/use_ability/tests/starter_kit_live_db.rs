@@ -4,17 +4,18 @@
 //!
 //! The kit comes from the seed, not from constants here: the abilities from
 //! `char_creation_debug_kit_abilities`, the weapon from
-//! `char_creation_debug_kit_items`, and the weapon's RANGED binding from
-//! `items_event_sets`. Since CS-02 a normal character starts with no kit, and
-//! the pistol is created empty (OD-CS13 amendment): the tests load the
-//! magazine the way the player's one free reload does.
+//! `char_creation_debug_kit_items`, the weapon's RANGED binding from
+//! `items_event_sets`, and the weapon's monikers from `items` (the CS-07
+//! weapon requirement reads them). Since CS-02 a normal character starts with
+//! no kit, and the pistol is created empty (OD-CS13 amendment): the tests load
+//! the magazine the way the player's one free reload does.
 
 use cimmeria_entity::cell_entity::BandolierItem;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use super::*;
 use crate::cell::spawner::{
-    load_ability_defs, load_ammo_catalog, load_effect_defs, EVENT_ITEM_RANGED,
+    load_ability_defs, load_ammo_catalog, load_effect_defs, load_weapon_monikers, EVENT_ITEM_RANGED,
 };
 use crate::test_support::require_db_or_skip;
 
@@ -31,7 +32,7 @@ const START_HEALTH: i32 = 500;
 struct Kit {
     abilities: Vec<i32>,
     weapon: BandolierItem,
-    /// What Pistol Shot fires with the weapon drawn.
+    /// The weapon's own RANGED basic attack (weapon-granted, not 592).
     ranged_ability: i32,
 }
 
@@ -84,6 +85,9 @@ async fn spawned(pool: &sqlx::PgPool, kit: &Kit) -> SpaceManager {
     let abilities = load_ability_defs(pool).await.expect("ability defs load");
     mgr.effect_defs = load_effect_defs(pool).await.expect("effect defs load");
     mgr.ammo_catalog = load_ammo_catalog(pool).await.expect("ammo catalog loads");
+    mgr.item_monikers = load_weapon_monikers(pool)
+        .await
+        .expect("item monikers load");
     crate::test_support::install_effect_scripts(&mut mgr);
     for id in kit.abilities.iter().copied().chain([kit.ranged_ability]) {
         let def = abilities
@@ -124,9 +128,10 @@ fn pool_of(mgr: &SpaceManager, stat: i32) -> i32 {
     mgr.get_entity(PLAYER).unwrap().stats.get(stat).unwrap().cur
 }
 
-/// **Regression guard.** Pistol Shot pressed at a mob fires the starter
-/// pistol's ranged ability and spends a round: no NoAmmo refusal. With the
-/// magazine left empty (the kit before the fix) the cast is refused.
+/// **Regression guard.** Pistol Shot pressed at a mob fires 592 itself
+/// with the starter pistol (which carries 592's ITEM_Pistol, CS-07) and
+/// spends a round: no NoAmmo refusal, no WrongWeaponType. With the magazine
+/// left empty (the kit before the fix) the cast is refused.
 #[tokio::test]
 async fn pistol_shot_fires_the_starter_pistol_at_spawn_live_db() {
     let pool = require_db_or_skip!();
@@ -148,8 +153,12 @@ async fn pistol_shot_fires_the_starter_pistol_at_spawn_live_db() {
     );
     let p = mgr.get_entity(PLAYER).unwrap();
     assert!(
-        p.abilities.is_on_cooldown(kit.ranged_ability),
-        "592 resolves to the pistol's RANGED binding {} and that is what fired",
+        p.abilities.is_on_cooldown(PISTOL_SHOT),
+        "592 fires as itself: there is no redirect (CS-07)"
+    );
+    assert!(
+        !p.abilities.is_on_cooldown(kit.ranged_ability),
+        "592 is not turned into the pistol's RANGED binding {}",
         kit.ranged_ability
     );
     assert_eq!(
