@@ -30,6 +30,7 @@
 //!   cursors (`client_wait_event`, `client_events_read`).
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
+mod account;
 #[cfg(test)]
 mod cegui_fake;
 pub mod cegui_native;
@@ -265,14 +266,7 @@ pub struct Supervisor {
     /// watchdog relaunches a dead client only while it is held.
     leases: Arc<crate::lease::LeaseBook>,
     /// This instance's lab account name (see [`Supervisor::account_name`]).
-    account: Arc<std::sync::Mutex<AccountCache>>,
-}
-
-/// The cached lab account name, and whether a miss was already logged.
-#[derive(Default)]
-struct AccountCache {
-    name: Option<String>,
-    warned: bool,
+    account: Arc<std::sync::Mutex<account::AccountCache>>,
 }
 
 impl Supervisor {
@@ -284,7 +278,7 @@ impl Supervisor {
             state: Arc::new(Mutex::new(SupervisorState::new())),
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
-            account: Arc::new(std::sync::Mutex::new(AccountCache::default())),
+            account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
         }
     }
 
@@ -314,38 +308,6 @@ impl Supervisor {
     /// never blocks on a wedged client.
     pub async fn client_pid(&self) -> Option<u32> {
         self.state.lock().await.pid
-    }
-
-    /// This instance's lab account name (`username` of its lab-account file), if
-    /// readable. A found name is cached; a miss is retried on the next call and
-    /// logged once per run of misses.
-    pub fn account_name(&self) -> Option<String> {
-        let mut cache = self.account.lock().unwrap_or_else(|p| p.into_inner());
-        if cache.name.is_some() {
-            return cache.name.clone();
-        }
-        let dir = self.config.install_dir.as_deref()?;
-        let path = instance::account_path(dir, self.instance());
-        match session_file::read_lab_account_at(&path) {
-            Ok(account) => {
-                cache.name = Some(account.username.clone());
-                cache.warned = false;
-                Some(account.username)
-            }
-            Err(error) => {
-                if !cache.warned {
-                    tracing::warn!(
-                        target: "lab.instance",
-                        instance = self.label(),
-                        path = %path.display(),
-                        error = %error,
-                        "lab account file unreadable; this instance cannot be routed by account name"
-                    );
-                    cache.warned = true;
-                }
-                None
-            }
-        }
     }
 
     /// Proxy a phase-1 client tool call through the bridge, journaling it
@@ -630,15 +592,6 @@ impl Supervisor {
     /// Record login progress for `lab_client_status`.
     pub(crate) async fn set_login_state(&self, login: LoginState) {
         self.state.lock().await.login = login;
-    }
-
-    /// This instance's credentials (`lab-account.json`, or
-    /// `lab-account.<instance>.json` for a named instance), if the file
-    /// exists and parses.
-    pub(crate) fn lab_account(&self) -> Option<session_file::LabAccount> {
-        let dir = self.config.install_dir.as_deref()?;
-        let path = instance::account_path(dir, self.config.instance.as_deref());
-        session_file::read_lab_account_at(&path).ok()
     }
 
     /// `lab_screenshot` — capture the client window as PNG bytes +
