@@ -94,6 +94,18 @@ impl Instances {
         self.iter().find(|h| h.label.eq_ignore_ascii_case(name))
     }
 
+    /// The instance called `name`: by label, else by its lab account name
+    /// (both case-insensitive). Lets a caller say `lab2` for the `p2` client.
+    pub fn by_name(&self, name: &str) -> Option<&Hosted> {
+        self.by_label(name).or_else(|| {
+            self.iter().find(|h| {
+                h.supervisor
+                    .account_name()
+                    .is_some_and(|account| account.eq_ignore_ascii_case(name))
+            })
+        })
+    }
+
     /// The instance whose lease book holds `lease_id` as its current lease.
     pub fn by_lease(&self, lease_id: &str) -> Option<&Hosted> {
         self.iter().find(|h| h.supervisor.leases().holds(lease_id))
@@ -118,32 +130,43 @@ impl LabServer {
     /// supervisor is the target instance's. Takes the `instance` argument
     /// out of the call. Order: the `instance` argument; else the instance
     /// holding the call's `lease_id` (left in the arguments for the lease
-    /// gate); else the first instance.
+    /// gate); else the first instance. `None` only when the call falls
+    /// through to this server's own instance.
     pub(super) fn route(
         &self,
         request: &mut CallToolRequestParams,
     ) -> Result<Option<LabServer>, McpError> {
-        let hosted = match take_instance_arg(request)? {
-            Some(name) => self.instances.by_label(&name).ok_or_else(|| {
-                McpError::invalid_params(
-                    format!(
-                        "no lab instance {name:?}: this daemon hosts {}",
-                        self.instances.labels().join(", ")
-                    ),
-                    None,
-                )
-            })?,
-            None => given_lease(request)
-                .and_then(|id| self.instances.by_lease(&id))
-                .unwrap_or_else(|| self.instances.first()),
+        let (hosted, explicit) = match take_instance_arg(request)? {
+            Some(name) => {
+                let hosted = self.instances.by_name(&name).ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!(
+                            "no lab instance or account {name:?}: this daemon hosts {} (or an account such as lab, lab2, ...)",
+                            self.instances.labels().join(", ")
+                        ),
+                        None,
+                    )
+                })?;
+                (hosted, true)
+            }
+            None => match given_lease(request).and_then(|id| self.instances.by_lease(&id)) {
+                Some(hosted) => (hosted, true),
+                None => (self.instances.first(), false),
+            },
         };
-        if Arc::ptr_eq(&hosted.supervisor, &self.supervisor) {
+        if !explicit && Arc::ptr_eq(&hosted.supervisor, &self.supervisor) {
             return Ok(None);
         }
         Ok(Some(LabServer {
             supervisor: hosted.supervisor.clone(),
+            routed_explicitly: explicit,
             ..self.clone()
         }))
+    }
+
+    /// Whether this server's call chose its instance (see [`LabServer::route`]).
+    pub(super) fn routed_explicitly(&self) -> bool {
+        self.routed_explicitly
     }
 
     /// Advertise the `instance` argument on every tool, when more than one
@@ -227,8 +250,15 @@ mod tests {
     use crate::supervisor::SupervisorConfig;
 
     fn supervisor(instance: Option<&str>) -> Arc<Supervisor> {
+        supervisor_in(instance, None)
+    }
+
+    fn supervisor_in(
+        instance: Option<&str>,
+        install_dir: Option<std::path::PathBuf>,
+    ) -> Arc<Supervisor> {
         let config = SupervisorConfig {
-            install_dir: None,
+            install_dir,
             dll_path: None,
             patches_dll: None,
             helper_path: None,
@@ -242,9 +272,17 @@ mod tests {
     }
 
     fn hosted(label: &str, instance: Option<&str>) -> Hosted {
+        hosted_in(label, instance, None)
+    }
+
+    fn hosted_in(
+        label: &str,
+        instance: Option<&str>,
+        install_dir: Option<std::path::PathBuf>,
+    ) -> Hosted {
         Hosted {
             label: label.into(),
-            supervisor: supervisor(instance),
+            supervisor: supervisor_in(instance, install_dir),
         }
     }
 
@@ -435,5 +473,81 @@ mod tests {
         assert!(!instance_arg_wanted(1));
         assert!(instance_arg_wanted(2));
         assert!(instance_arg_wanted(5));
+    }
+
+    /// The `instance` argument also takes a lab account name (LP-05b).
+    #[test]
+    fn route_by_account_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let default_account = instance::account_path(dir.path(), None);
+        let p2_account = instance::account_path(dir.path(), Some("p2"));
+        for path in [&default_account, &p2_account] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        std::fs::write(&default_account, r#"{"username":"lab","password":"x"}"#).unwrap();
+        std::fs::write(&p2_account, r#"{"username":"lab2","password":"x"}"#).unwrap();
+        let s = LabServer::new_multi(Instances::new(vec![
+            hosted_in("default", None, Some(dir.path().into())),
+            hosted_in("p2", Some("p2"), Some(dir.path().into())),
+        ]));
+        for name in ["LAB2", "lab2"] {
+            let mut req = call("client_ui_state", json!({ "instance": name }));
+            assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "p2");
+        }
+        let mut req = call("client_ui_state", json!({ "instance": "lab" }));
+        assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "default");
+    }
+
+    #[test]
+    fn explicit_routing_is_recorded() {
+        let s = two();
+        let mut req = call("client_ui_state", json!({ "instance": "default" }));
+        let routed = s.route(&mut req).unwrap();
+        assert!(routed.as_ref().is_some_and(|r| r.routed_explicitly()));
+        assert!(!s.routed_explicitly());
+        let mut req = call("client_ui_state", json!({}));
+        assert!(s.route(&mut req).unwrap().is_none());
+    }
+
+    #[test]
+    fn instances_status_lists_every_instance_without_lease_ids() {
+        let s = two();
+        let id = lease_on(&s, "default");
+        let rows = vec![
+            (
+                "default".to_string(),
+                Some("lab".to_string()),
+                s.instances.first().supervisor.leases().status(),
+                json!(100),
+            ),
+            ("p2".to_string(), None, json!({}), Value::Null),
+        ];
+        let out = crate::server::lease::instances_status(&rows);
+        let list = out["instances"].as_array().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0]["instance"], "default");
+        assert_eq!(list[0]["account"], "lab");
+        assert_eq!(list[0]["client_pid"], 100);
+        assert!(list[1]["account"].is_null());
+        assert!(list[1]["client_pid"].is_null());
+        let text = out.to_string();
+        assert!(!text.contains("lease_id"), "{text}");
+        assert!(!text.contains(&id), "{text}");
+    }
+
+    /// A refusal on a routed call names the instance that refused it.
+    #[test]
+    fn a_refusal_names_its_instance() {
+        let s = two();
+        let id = lease_on(&s, "default");
+        let mut req = call(
+            "client_lua_eval",
+            json!({ "instance": "p2", "lease_id": id }),
+        );
+        let routed = s.route(&mut req).unwrap();
+        let Err(err) = routed.as_ref().unwrap_or(&s).gate_call(&mut req) else {
+            panic!("a lease from another instance must be refused");
+        };
+        assert!(err.message.contains("(instance p2)"), "{}", err.message);
     }
 }

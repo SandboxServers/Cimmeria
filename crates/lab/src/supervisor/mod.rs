@@ -300,6 +300,11 @@ impl Supervisor {
         self.instance().unwrap_or("default")
     }
 
+    /// This instance's lab account name (`username` of its lab-account file), if readable.
+    pub fn account_name(&self) -> Option<String> {
+        self.lab_account().map(|a| a.username)
+    }
+
     /// Proxy a phase-1 client tool call through the bridge, journaling it
     /// so `lab_crash_report` can show the last N and quarantine the
     /// in-flight one on a crash.

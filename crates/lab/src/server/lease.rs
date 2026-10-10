@@ -63,7 +63,7 @@ fn text(v: &Value) -> CallToolResult {
 #[tool_router(router = lease_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Take the lab lease before driving the client: every tool that changes the client, drives its input or UI, runs caller-chosen Lua or native code, or reads a shared event cursor needs the returned lease_id, and each such call renews the lease. One holder at a time across every session; a refusal names the holder, their purpose and since when. force: true with a reason takes it over (logged). Default ttl 600 s, max 3600. While nobody holds a lease the watchdog does not relaunch a dead client."
+        description = "Take the lab lease before driving the client: every tool that changes the client, drives its input or UI, runs caller-chosen Lua or native code, or reads a shared event cursor needs the returned lease_id, and each such call renews the lease. One holder per lab instance (one lab account, one client) at a time; pass instance (p2, or an account such as lab2) to pick which client, else the default; a refusal names the holder, their purpose and since when. force: true with a reason takes it over (logged). Default ttl 600 s, max 3600. While nobody holds a lease the watchdog does not relaunch a dead client."
     )]
     async fn lab_lease_acquire(
         &self,
@@ -79,7 +79,12 @@ impl LabServer {
         self.supervisor
             .leases()
             .acquire(req)
-            .map(|l| text(&grant_json(&l)))
+            .map(|l| {
+                let mut grant = grant_json(&l);
+                grant["instance"] = json!(self.supervisor.label());
+                grant["account"] = json!(self.supervisor.account_name());
+                text(&grant)
+            })
             .map_err(|e| McpError::invalid_request(e, Some(self.supervisor.leases().status())))
     }
 
@@ -110,11 +115,47 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Who holds the lab lease (owner, purpose, since, expires_at), the last few leases and how they ended (released, expired, taken over). Never shows a lease id."
+        description = "Who holds the lab lease (owner, purpose, since, expires_at), the last few leases and how they ended (released, expired, taken over). Never shows a lease id. With several instances and no instance argument, lists every instance with its account, its lease and its client pid."
     )]
     async fn lab_lease_status(&self) -> Result<CallToolResult, McpError> {
+        if self.instances.len() > 1 && !self.routed_explicitly() {
+            let mut rows = Vec::new();
+            for h in self.instances.iter() {
+                let pid = h
+                    .supervisor
+                    .status()
+                    .await
+                    .ok()
+                    .and_then(|v| v.get("pid").cloned())
+                    .unwrap_or(Value::Null);
+                rows.push((
+                    h.label.clone(),
+                    h.supervisor.account_name(),
+                    h.supervisor.leases().status(),
+                    pid,
+                ));
+            }
+            return Ok(text(&instances_status(&rows)));
+        }
         Ok(text(&self.supervisor.leases().status()))
     }
+}
+
+/// The `lab_lease_status` answer with several instances and none named: one
+/// row per instance, each with its account, its lease status and its client pid.
+pub(super) fn instances_status(rows: &[(String, Option<String>, Value, Value)]) -> Value {
+    let instances: Vec<Value> = rows
+        .iter()
+        .map(|(label, account, lease, pid)| {
+            json!({
+                "instance": label,
+                "account": account,
+                "lease": lease,
+                "client_pid": pid,
+            })
+        })
+        .collect();
+    json!({ "instances": instances })
 }
 
 impl LabServer {
@@ -143,7 +184,7 @@ impl LabServer {
                 let Some(id) = given else { return Ok(None) };
                 let book = self.supervisor.leases();
                 book.check(Some(&id), tool)
-                    .map_err(|e| McpError::invalid_params(e, Some(book.status())))?;
+                    .map_err(|e| McpError::invalid_params(self.named(e), Some(book.status())))?;
                 return Ok(Some(Permit::Lease {
                     book: book.clone(),
                     id,
@@ -158,11 +199,21 @@ impl LabServer {
             .and_then(|v| v.as_str().map(String::from));
         let book = self.supervisor.leases();
         book.check(id.as_deref(), tool)
-            .map_err(|e| McpError::invalid_params(e, Some(book.status())))?;
+            .map_err(|e| McpError::invalid_params(self.named(e), Some(book.status())))?;
         Ok(id.map(|id| Permit::Lease {
             book: book.clone(),
             id,
         }))
+    }
+
+    /// A refusal, naming the instance it came from when several are hosted,
+    /// so a caller sees which client's lease it ran into.
+    fn named(&self, refusal: String) -> String {
+        if self.instances.len() > 1 {
+            format!("{refusal} (instance {})", self.supervisor.label())
+        } else {
+            refusal
+        }
     }
 }
 
