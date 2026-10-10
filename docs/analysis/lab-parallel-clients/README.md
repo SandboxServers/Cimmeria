@@ -4,7 +4,7 @@
 > Opened 2026-10-10 against `main`. Prefix `LP-`. Tracking issue #1312.
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): planned.** The fix is proven by hand
+> **Campaign status (2026-10-10): wave 1 in progress.** The fix is proven by hand
 > (five clients at once, 2026-10-10); the packets turn it into lab code.
 
 ## Why
@@ -84,15 +84,15 @@ Not fixed here (follow-ups):
 
 ## Dispatch rules
 
-- **Workers** are general agents on Haiku, one packet each, in their own
-  worktree (`bash tools/build-lane/mk-worktree.sh <branch> <name>`), except
-  LP-01, which runs in the plan worktree `lab-parallel`. A worker implements
+- **Workers** are `packet-coder` agents (Haiku), one packet each, in their own
+  worktree (`pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 <branch> <name>`).
+  A worker implements
   exactly its packet, runs the packet's checks through the build lane, and
   commits locally. It does not push, open a PR or touch another packet's
   files.
 - **Review:** each finished packet gets a read-only adversarial reviewer on
-  Sonnet. Findings go to the coordinator, who fixes, then ships with
-  `bash tools/build-lane/ship.sh pr -C <worktree> -m <msg>`.
+  Sonnet (`packet-reviewer`). Findings go to the coordinator, who fixes, then
+  ships with `python tools/build-lane/ship.py pr -C <worktree> -m <msg>`.
 - **Order:** wave 1 = LP-01, LP-02, LP-03, LP-06 (parallel). Wave 2 = LP-05a
   (needs LP-02). Wave 3 = LP-05b (needs LP-05a). Then LP-04 (docs) and LP-07
   (live UAT). LP-01 and LP-02 both edit `supervisor/mod.rs` (different
@@ -105,11 +105,11 @@ Not fixed here (follow-ups):
 
 | ID | Packet | Depends on | Status |
 |---|---|---|---|
-| LP-01 | Per-instance user folder and client cap | none | planned |
-| LP-02 | One lease book per supervisor | none | planned |
-| LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | planned |
+| LP-01 | Per-instance user folder and client cap | none | shipped with 9 review fixes |
+| LP-02 | One lease book per supervisor | none | reviewed, waits for LP-01 to merge |
+| LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | merged, #1319 (4 review fixes) |
 | LP-04 | Docs and memory | LP-01, LP-05b | planned |
 | LP-05a | Instance registry and routing in one daemon | LP-02 | planned |
 | LP-05b | Lease tools and UAT p2 across instances | LP-05a | planned |
-| LP-06 | Watchdog boot grace | none | planned |
+| LP-06 | Watchdog boot grace | none | merged, #1320 (test-gap fix) |
 | LP-07 | Live UAT: five clients, one daemon, five leases | all | planned |
