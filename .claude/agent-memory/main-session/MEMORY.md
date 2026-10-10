@@ -33,6 +33,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp
 - [reference_client_action_bar_events.md](reference_client_action_bar_events.md) — stock action bar Lua (2026-10-05): hidden windows are deaf without `DeafWhenHidden=False`, subscribe takes several handlers, bandolier-bound buttons, `InventoryUpdateContainerActiveSlot`; from patch 015
 - [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
