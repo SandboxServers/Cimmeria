@@ -29,7 +29,7 @@ const TARGET: &str = "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfil
 /// The stock 2009 file, as the cabinets ship it.
 const STOCK_LEN: usize = 3470;
 /// 015's output followed by `HotbarLearnAndFeedback.lua`.
-const RESULT_SHA256: &str = "8d3a2190dde2a1ac6029908a8eae8fb668c68395293b608e64713c056da3a627";
+const RESULT_SHA256: &str = "5893137a6abcfeb5bcc7229a7e9953346b1b82fd3bdb3f07f15bc6a8b5487684";
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")

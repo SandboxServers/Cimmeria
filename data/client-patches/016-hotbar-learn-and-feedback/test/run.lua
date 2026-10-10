@@ -96,6 +96,27 @@ end
 --=============================================================================
 local variant
 
+-- A press whose wrapper calls itself would never return; every press is
+-- stopped after 10^5 function calls instead of hanging the run. The hook
+-- raises on every call after that, so an error a pcall inside the loop
+-- swallows is raised again by the call to that pcall, outside it.
+local function bounded( fn )
+    local calls, armed = 0, true
+    debug.sethook(function()
+        calls = calls + 1
+        if armed and calls > 100000 then
+            error('runaway: the press never returned')
+        end
+    end, 'c')
+    local okay, r = pcall(fn)
+    armed = false               -- before any call: the hook sees debug.sethook
+    debug.sethook()
+    if not okay then
+        error(r, 0)
+    end
+    return r
+end
+
 local function boot( opts, with16 )
     if with16 == nil then
         with16 = true
@@ -107,6 +128,10 @@ local function boot( opts, with16 )
     client.restore()
     client.fire('Events.ModuleLoaded')
     ok(client.dropCallbacks > 0, 'the module finished onModLoaded')
+    local press = client.press
+    client.press = function( n )
+        return bounded(function() return press(n) end)
+    end
     return client
 end
 
@@ -441,9 +466,139 @@ scenario('F6: works by key binding as well as by click (both reach useAction)', 
     -- The stock module subscribes the key binding to the same handler; call
     -- the handler the way a key press does, with the button window.
     local w = c.windows[string.format('ActionButtons_%dButton', 11)]
-    env.ActionButtonMod.onActionPress(w)
+    bounded(function() env.ActionButtonMod.onActionPress(w) end)
     eq(feedbackCount(c, NO_SHOT), 1, 'line on a key press')
     say('ActionButtonMod.onActionPress from a key binding: the line shows')
+end)
+
+scenario('first session: a starter the player removes stays removed while 009 is seeding', function()
+    -- Health Heal is never known, so 009 keeps seeding all session.
+    local c = boot({ known = { PISTOL_SHOT, STRIKE } })
+    eq(c.profile().cimmeriaStarterHotbar, 'seeding', '009 still seeding')
+    remove(c, 11)
+    c.learn({ OTHER })
+    c.advance(2)
+    c.propertyUpdate()
+    eq(onBarCount(c, PISTOL_SHOT), 0, 'not put back by 009 on an update or its poll')
+    c.learn({ HEAL_FOCUS })
+    expectButton(c, 11, HEAL_FOCUS, '009 still tops up, into the freed button')
+    eq(onBarCount(c, PISTOL_SHOT), 0, 'still removed')
+
+    -- Every starter but Staff Swing known: 009 finishes as it did before 016.
+    local d = boot({ known = { PISTOL_SHOT, STRIKE, HEAL_FOCUS, HEALTH_HEAL, RECUPERATION } })
+    eq(d.profile().cimmeriaStarterHotbar, 'done', 'Staff Swing does not keep 009 seeding')
+    ok(not d.subscribed('Events.AbilityUpdate'), '009 unsubscribed')
+    say('592 removed in the first session: not back on the next update or poll; 009 done without 1984')
+end)
+
+scenario('first session: 015\'s look before 009\'s places nothing (009 keeps its line)', function()
+    local c = boot({ known = {} })
+    c.learn({ PISTOL_SHOT }, 'silent')
+    -- 015's listener heard the update first.
+    c.env.ActionProfileMod.WeaponShotBar.run('ability update')
+    eq(onBarCount(c, PISTOL_SHOT), 0, 'this block defers to 009')
+    c.fire('Events.AbilityUpdate', c.env.UIAbilityGroup.KnownAbility, PISTOL_SHOT)
+    expectButton(c, 11, PISTOL_SHOT, '009 placed it')
+    eq(feedbackCount(c, 'Your starting abilities are on your action bar.'), 1, '009\'s line')
+    eq(feedbackCount(c, ' is on your action bar.'), 0, 'and no line of this block')
+    say('first session, 015 runs first: nothing placed by 016; 009 places 592 with its own line')
+end)
+
+scenario('a 009 placement removed before this block looks is still remembered', function()
+    local c = boot({ known = {} })
+    c.advance(25)
+    c.propertyUpdate()                   -- 015's 20 s watch ends here
+    c.learn({ PISTOL_SHOT }, 'silent')
+    c.advance(2)
+    c.propertyUpdate()                   -- 009's poll places it; 015 does not look
+    expectButton(c, 11, PISTOL_SHOT, '009 placed it')
+    remove(c, 11)
+    c.advance(2)
+    c.propertyUpdate()
+    eq(onBarCount(c, PISTOL_SHOT), 0, 'not put back this session')
+    local d = relog(c, { known = { PISTOL_SHOT } })
+    eq(onBarCount(d, PISTOL_SHOT), 0, 'not put back at the next login')
+    say('009 places 592 from its poll, the player removes it at once: recorded by the place wrapper, never back')
+end)
+
+scenario('F8: a grant mid-session with no ability event, weapon switch or relog is placed', function()
+    local c = secondSession()
+    c.advance(100)                       -- long after 015's watch
+    c.propertyUpdate()
+    ok(c.subscribed('Events.PropertyUpdated'), 'polling while a starter is unrecorded')
+    c.learn({ PISTOL_SHOT, STRIKE }, 'property')
+    expectBar(c, 11, { PISTOL_SHOT, STRIKE }, 'placed from the poll')
+
+    -- Throttled: at most one look every 2 s.
+    local calls = c.listCalls
+    c.propertyUpdate()
+    c.advance(1)
+    c.propertyUpdate()
+    eq(c.listCalls, calls, 'no look within 2 s')
+    c.advance(2)
+    c.propertyUpdate(c.env.Unit.Target)
+    eq(c.listCalls, calls, 'another unit is not a reason to look')
+
+    -- Nothing left to find: the poll stops.
+    local d = secondSession()
+    local placed = d.profile().cimmeriaStarterPlaced
+    for _, id in ipairs({ PISTOL_SHOT, STRIKE, STAFF_SWING, HEAL_FOCUS, HEALTH_HEAL, RECUPERATION }) do
+        placed[id] = 1
+    end
+    d.learn({ OTHER })
+    ok(not d.subscribed('Events.PropertyUpdated'), 'every starter recorded: no poll')
+    say('second session, 100 s in, 592 and 594 arrive on a property update only: placed on 11-12; polls at most every 2 s; stops when nothing is left')
+end)
+
+scenario('the client\'s action table is full: not placed now, placed on a later look', function()
+    local c = secondSession()
+    for id = 1, 200 do
+        if c.actions[id] == nil then
+            c.actions[id] = OTHER
+        end
+    end
+    c.learn({ PISTOL_SHOT })
+    eq(onBarCount(c, PISTOL_SHOT), 0, 'no action to bind')
+    ok(logged(c, 'no free action for ability 592; will try again'), 'logged')
+    eq(c.profile().cimmeriaStarterPlaced[PISTOL_SHOT], nil, 'not recorded')
+    c.actions[200] = nil
+    c.learn({ OTHER + 1 })
+    expectButton(c, 11, PISTOL_SHOT, 'placed once an action is free')
+    say('getUnusedAction -1: logged, not recorded; placed on the next update after an action frees up')
+end)
+
+scenario('the block run twice in one Lua state: a press still returns, nothing doubled', function()
+    local c = secondSession({ known = { PISTOL_SHOT, STRIKE, PISTOL } })
+    c.load(HOOK16, 'HotbarLearnAndFeedback.lua (again)')
+    eq(c.press(12), STRIKE, 'Strike fires')
+    switchWeapon(c, PISTOL, SMG)
+    switchWeapon(c, SMG, nil)
+    local calls = c.listCalls
+    c.press(11)
+    eq(feedbackCount(c, NO_SHOT), 1, 'one line, not two')
+    eq(c.listCalls - calls, 1, 'the press is checked once (useAction wrapped once)')
+    c.learn({ HEAL_FOCUS })
+    eq(onBarCount(c, HEAL_FOCUS), 1, 'placed once')
+    eq(feedbackCount(c, 'Ability 597 is on your action bar.'), 1, 'one line')
+    eq(table.concat(c.env.ActionProfileMod.StarterHotbar.Abilities, ','), '592,594,1984,597,1646,1218', 'Staff Swing once')
+
+    -- First session of a Human (never knows Health Heal): 009 must keep
+    -- seeding after a second load, so Staff Swing is discounted only once.
+    local h = boot({ known = { PISTOL_SHOT, STRIKE, HEAL_FOCUS, RECUPERATION } })
+    eq(h.profile().cimmeriaStarterHotbar, 'seeding', 'Health Heal still missing')
+    h.load(HOOK16, 'HotbarLearnAndFeedback.lua (again)')
+    h.learn({ OTHER })
+    eq(h.profile().cimmeriaStarterHotbar, 'seeding', 'still seeding after a second load')
+    say('second load of the block: presses return, one no-shot line, one placement, 1984 listed once, 009 seeding unchanged')
+end)
+
+scenario('F6: an unknown ability that is not a shot gets no line', function()
+    local c = secondSession({ known = { PISTOL_SHOT, STRIKE, PISTOL } })
+    switchWeapon(c, PISTOL, nil)
+    drag(c, 15, OTHER)                   -- forgotten, or a stale action
+    c.press(15)
+    eq(feedbackCount(c, NO_SHOT), 0, 'not a shot')
+    say('knife out, an unknown non-shot ability pressed: no line')
 end)
 
 scenario('a failing setActionToAbility switches the block off without an error', function()

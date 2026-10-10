@@ -236,12 +236,8 @@ scenario('009 still seeds a new character with this block appended', function()
     for i, id in ipairs({ PISTOL_SHOT, STRIKE, HEAL_FOCUS, 1646, RECUPERATION }) do
         expectButton(c, 10 + i, id, '009 seeding')
     end
-    -- 016 adds Staff Swing to 009's list, so with it appended 009 keeps
-    -- seeding until that is known, as it does for Health Heal on a Human.
-    if APPENDED == '' then
-        eq(c.profile().cimmeriaStarterHotbar, 'done', '009 finished')
-        ok(not c.subscribed('Events.AbilityUpdate'), '009 unsubscribed ActionButtonsWin')
-    end
+    eq(c.profile().cimmeriaStarterHotbar, 'done', '009 finished')
+    ok(not c.subscribed('Events.AbilityUpdate'), '009 unsubscribed ActionButtonsWin')
     ok(listens(c, 'Events.AbilityUpdate'), 'this block still listens for the known list')
     ok(listens(c, SLOT_EVENT), 'this block still listens for the weapon switch')
     eq(ourFeedback(c), 0, 'nothing was swapped: a pistol fires Pistol Shot')
