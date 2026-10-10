@@ -54,6 +54,9 @@ Fix warranted adjacent problems in the same pass: a file your change pushed over
 | Test strategy, guard validity, suite audits | `testing-validation-engineer` |
 | Docs of any kind (Diátaxis-aware) | `documentation-writer` |
 | Ghidra work against `SGW.exe`, intent reconstruction | `game-archaeology-specialist` |
+| Implementing one prescriptive campaign packet (Haiku) | `packet-coder` |
+| Adversarial read-only review of one finished packet (Sonnet) | `packet-reviewer` |
+| Driving the live client through the lab MCP tools from a step list (Haiku) | `lab-driver` |
 
 Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/agents/). If your harness has no subagents, read the agent's definition file and its `MEMORY.md` as briefing material.
 
