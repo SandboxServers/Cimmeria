@@ -4,7 +4,7 @@
 > Opened 2026-10-10 against `main`. Prefix `LP-`. Tracking issue #1312.
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): LP-05b1 merged; LP-05b2 and LP-04 next.** The fix is proven by hand
+> **Campaign status (2026-10-10): code complete; LP-04 docs and LP-07 live UAT left.** The fix is proven by hand
 > (five clients at once, 2026-10-10); the packets turn it into lab code.
 
 ## Why
@@ -111,6 +111,6 @@ Not fixed here (follow-ups):
 | LP-04 | Docs and memory | LP-01, LP-05b | planned |
 | LP-05a | Instance registry and routing in one daemon | LP-02 | merged (review: per-instance UI memory, two-player refused until LP-05b, routing tests, instance log spans) |
 | LP-05b1 | Account-name routing and per-instance lease tools (split from LP-05b) | LP-05a | merged (2 review rounds, fixed by the Haiku coder) |
-| LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | planned |
+| LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | merged (2 review rounds, fixed by the Haiku coder; guard verified to fail on revert) |
 | LP-06 | Watchdog boot grace | none | merged, #1320 (test-gap fix) |
 | LP-07 | Live UAT: five clients, one daemon, five leases | all | planned |
