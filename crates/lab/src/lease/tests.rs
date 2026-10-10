@@ -280,3 +280,24 @@ fn acquire_validates_owner_purpose_and_ttl() {
     let l = book.acquire_at(req("a"), T0).unwrap();
     assert_eq!(l.ttl_s, DEFAULT_TTL_S);
 }
+
+/// Regression guard (LP-02): two supervisors never share a lease.
+#[tokio::test]
+async fn each_supervisor_has_its_own_lease_book() {
+    use crate::client::BridgeClient;
+    use crate::supervisor::{Supervisor, SupervisorConfig};
+    let mk = || {
+        Supervisor::new(
+            std::sync::Arc::new(BridgeClient::new("127.0.0.1:9", "")),
+            SupervisorConfig::from_env(),
+        )
+    };
+    let (a, b) = (mk(), mk());
+    assert!(!std::sync::Arc::ptr_eq(a.leases(), b.leases()));
+    a.leases().acquire(req("a")).unwrap();
+    assert!(a.leases().is_held());
+    assert!(
+        !b.leases().is_held(),
+        "a lease on one instance must not hold another"
+    );
+}
