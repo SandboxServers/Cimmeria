@@ -304,6 +304,11 @@ impl Supervisor {
         self.instance().unwrap_or("default")
     }
 
+    /// This instance's bridge port.
+    pub fn port(&self) -> u16 {
+        self.config.port
+    }
+
     /// The running client's pid from supervisor state: no bridge call, so it
     /// never blocks on a wedged client.
     pub async fn client_pid(&self) -> Option<u32> {

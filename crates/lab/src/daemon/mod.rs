@@ -22,11 +22,13 @@
 //! - [`auth`] — the bearer middleware.
 //! - [`single_instance`] — the named-mutex guard and pidfile.
 //! - [`log_file`] — `labd.log` with size rotation.
+//! - [`status`] — `GET /status`, a read-only daemon and instance summary.
 
 pub mod auth;
 pub mod config;
 pub mod log_file;
 pub mod single_instance;
+pub mod status;
 
 #[cfg(test)]
 pub(crate) mod http_tests;
@@ -44,11 +46,17 @@ pub const EXIT_ALREADY_RUNNING: i32 = 3;
 /// Exit code for a configuration refusal (bad bind, missing/short token).
 pub const EXIT_REFUSED: i32 = 2;
 
-/// The axum router: the MCP service at `/mcp` behind the bearer gate.
+/// The axum router: the MCP service at `/mcp` and the read-only `/status`
+/// behind the bearer gate.
 ///
 /// Every MCP session gets a clone of `server`, and every clone shares one
 /// [`crate::supervisor::Supervisor`]: that sharing is the point of the daemon.
 pub fn build_router(server: LabServer, token: &str) -> axum::Router {
+    let server_for_status = server.clone();
+    let started = Arc::new(status::Started {
+        at_ms: crate::supervisor::now_ms(),
+        pid: std::process::id(),
+    });
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),
         LocalSessionManager::default().into(),
@@ -60,6 +68,10 @@ pub fn build_router(server: LabServer, token: &str) -> axum::Router {
     let token: Arc<str> = Arc::from(token);
     axum::Router::new()
         .nest_service("/mcp", service)
+        .route(
+            "/status",
+            axum::routing::get(status::handler).with_state((server_for_status, started)),
+        )
         .layer(axum::middleware::from_fn_with_state(
             token,
             auth::require_bearer,
