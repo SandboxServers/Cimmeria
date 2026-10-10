@@ -327,6 +327,29 @@ pub async fn camera_state<M: Memory>(mem: &mut M, camera: u32) -> Result<CameraS
     })
 }
 
+/// Largest pitch offset the lab turns to: 78.75 degrees. The findings
+/// read the field as clamped to +-0x4000, but the stored offset is not
+/// clamped by the turn handler: live it reached 1563 degrees after repeated
+/// pitch turns and the view ended up looking straight down (2026-10-10).
+pub const CAMERA_PITCH_LIMIT: i32 = 0x3800;
+
+/// The pitch counts to pass to the turn handler so the offset moves by
+/// `dy` counts but ends inside +-[`CAMERA_PITCH_LIMIT`]. A pitch already
+/// outside the limit is brought back to it. Zero means "do not call".
+pub fn clamped_pitch_counts(pitch: i32, gain: f32, dy: f32) -> f32 {
+    if !gain.is_finite() || gain.abs() < 1e-3 {
+        return dy;
+    }
+    let lim = CAMERA_PITCH_LIMIT as f32;
+    let want = (pitch as f32 + gain * dy).clamp(-lim, lim);
+    let counts = (want - pitch as f32) / gain;
+    if counts.abs() < 0.01 {
+        0.0
+    } else {
+        counts
+    }
+}
+
 /// Zoom notches (positive = in) that bring `from` closest to `to`.
 pub fn zoom_notches(from: f32, to: f32) -> i32 {
     let to = to.clamp(CAMERA_DIST_MIN, CAMERA_DIST_MAX);
@@ -434,6 +457,28 @@ mod tests {
         m.insert(pc, words(&[0xbeef]));
         let e = find_player_camera(&mut Fake(m), slide).await.unwrap_err();
         assert!(e.contains("no ASGWController_Player among 3"), "{e}");
+    }
+
+    /// Regression guard (2026-10-10): repeated pitch turns ran the offset to
+    /// 1563 degrees. Each turn is clamped, and a wild pitch is pulled back.
+    #[test]
+    fn pitch_turns_stay_inside_the_limit() {
+        let lim = CAMERA_PITCH_LIMIT;
+        // Room to move: unchanged.
+        assert_eq!(clamped_pitch_counts(0, 20.0, -100.0), -100.0);
+        // Would overshoot: cut to land on the limit.
+        let c = clamped_pitch_counts(lim - 200, 20.0, 600.0);
+        assert!((c - 10.0).abs() < 1e-3, "{c}");
+        // At the limit, pushing further: no call.
+        assert_eq!(clamped_pitch_counts(lim, 20.0, 50.0), 0.0);
+        // Already far outside (the live 1563 degrees): pulled back, even
+        // when asked to go further out.
+        let wild = (1563.79 * 65536.0 / 360.0) as i32;
+        let back = clamped_pitch_counts(wild, 20.0, 600.0);
+        assert!(
+            (wild as f32 + 20.0 * back - lim as f32).abs() < 1.0,
+            "{back}"
+        );
     }
 
     #[test]

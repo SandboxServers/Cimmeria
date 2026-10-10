@@ -395,6 +395,8 @@ pub fn window_text_chunk(window: &str, children: bool) -> String {
 if w == nil then return __jenc({{ missing = true }}) end
 local out = {{ text = __jcall(function() return w:getText() end),
   visible = __jcall(function() return w:isVisible() end) }}
+local r = __jcall(function() return w:getUnclippedPixelRect() end)
+if r then out.rect = {{ r.left, r.top, r.right, r.bottom }} end
 if {children} then
   local c = {{}}
   local n = __jcall(function() return w:getChildCount() end) or 0

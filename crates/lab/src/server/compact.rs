@@ -77,18 +77,61 @@ impl Shape {
         shape
     }
 
-    /// Shape one JSON result.
+    /// Shape one JSON result. Fields that match nothing are named in
+    /// `fields_missing`, with the keys the result does have in
+    /// `fields_available`, so a wrong guess costs one call, not a puzzle.
     pub fn apply(&self, v: Value) -> Value {
-        let v = if self.fields.is_empty() {
+        let mut v = if self.fields.is_empty() {
             v
         } else {
-            project(&v, &self.fields)
+            let mut p = project(&v, &self.fields);
+            let missing: Vec<&String> = self
+                .fields
+                .iter()
+                .filter(|f| {
+                    let mut parts = f.splitn(2, '.');
+                    let head = parts.next().unwrap_or_default();
+                    match parts.next() {
+                        None => p.get(head).is_none(),
+                        Some(rest) => p.get(head).and_then(|h| h.get(rest)).is_none(),
+                    }
+                })
+                .collect();
+            if !missing.is_empty() {
+                p["fields_missing"] = serde_json::json!(missing);
+                if let Some(o) = v.as_object() {
+                    let mut keys: Vec<&String> = o.keys().collect();
+                    keys.sort();
+                    p["fields_available"] = serde_json::json!(keys);
+                }
+            }
+            p
         };
         if self.verbose {
             return v;
         }
-        compact(v, if self.uncapped { usize::MAX } else { LIST_CAP })
-            .unwrap_or(Value::Object(Map::new()))
+        let cap = if self.uncapped { usize::MAX } else { LIST_CAP };
+        // The top level keeps its empty lists and objects: `windows: []`
+        // answers "nothing open", where a missing key reads as no answer
+        // (client_ui_state came back `{}` once, 2026-10-10).
+        if let Value::Object(o) = &mut v {
+            let keep: Vec<(String, Value)> = o
+                .iter()
+                .filter(|(_, x)| {
+                    matches!(x, Value::Array(a) if a.is_empty())
+                        || matches!(x, Value::Object(m) if m.is_empty())
+                })
+                .map(|(k, x)| (k.clone(), x.clone()))
+                .collect();
+            let mut out = compact(v, cap).unwrap_or(Value::Object(Map::new()));
+            if let Value::Object(m) = &mut out {
+                for (k, x) in keep {
+                    m.entry(k).or_insert(x);
+                }
+            }
+            return out;
+        }
+        compact(v, cap).unwrap_or(Value::Object(Map::new()))
     }
 
     /// Shape a text block: JSON is re-serialised compactly; anything else
@@ -323,6 +366,27 @@ mod tests {
         let events = Shape::take("client_events_read", args.as_object_mut());
         let big = json!({ "events": (0..80).collect::<Vec<_>>() });
         assert_eq!(events.apply(big)["events"].as_array().unwrap().len(), 80);
+    }
+
+    /// Regression guard (2026-10-10, bank UAT): `client_ui_state` came back
+    /// `{}` because every top-level list was empty, and `fields: ["text"]`
+    /// on a window read returned `{}` with no hint.
+    #[test]
+    fn top_level_empties_stay_and_missing_fields_are_named() {
+        let s = Shape::default();
+        let v = json!({ "windows": [], "dialog": null, "chat": {}, "nested": { "x": [] } });
+        assert_eq!(s.apply(v), json!({ "windows": [], "chat": {} }));
+        let f = Shape {
+            fields: vec!["text".into(), "title".into()],
+            ..Default::default()
+        };
+        let out = f.apply(json!({ "title": "Lance", "texts": ["hi"], "buttons": [] }));
+        assert_eq!(out["title"], "Lance");
+        assert_eq!(out["fields_missing"], json!(["text"]));
+        assert_eq!(
+            out["fields_available"],
+            json!(["buttons", "texts", "title"])
+        );
     }
 
     #[test]
