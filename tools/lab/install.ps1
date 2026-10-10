@@ -3,7 +3,7 @@
     Build the Live Research Lab binaries from a worktree and install them.
 
 .DESCRIPTION
-    Builds, through the build lane (tools/build-lane/lane.sh):
+    Builds, through the build lane (tools/build-lane/lane.ps1):
       - cimmeria-lab (release, host): the MCP supervisor
       - cimmeria-client-telemetry --features lab-bridge (release, i686): the bridge DLL
       - cimmeria-start32 and cimmeria-client-patches (release, i686): the injector
@@ -57,6 +57,7 @@ param(
     [switch]$DryRun
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $I686 = 'i686-pc-windows-msvc'
 
@@ -70,8 +71,8 @@ if (-not $Worktree) {
     }
 }
 $Worktree = (Resolve-Path $Worktree).Path
-if (-not (Test-Path (Join-Path $Worktree 'tools\build-lane\lane.sh'))) {
-    throw "$Worktree is not a Cimmeria checkout (no tools\build-lane\lane.sh)"
+if (-not (Test-Path (Join-Path $Worktree 'tools\build-lane\lane.ps1'))) {
+    throw "$Worktree is not a Cimmeria checkout (no tools\build-lane\lane.ps1)"
 }
 $Commit = (git -C $Worktree rev-parse HEAD).Trim()
 $Subject = (git -C $Worktree log -1 --format=%s).Trim()
@@ -87,8 +88,10 @@ if (-not $InstallDir) {
     $common = git -C $Worktree rev-parse --path-format=absolute --git-common-dir 2>$null
     $mcp = if ($common) { Join-Path (Split-Path $common -Parent) '.mcp.json' } else { $null }
     if ($mcp -and (Test-Path $mcp)) {
-        $entry = (Get-Content $mcp -Raw | ConvertFrom-Json).mcpServers.'cimmeria-lab'
-        if ($entry -and $entry.env) { $InstallDir = $entry.env.CIMMERIA_LAB_INSTALL_DIR }
+        $json = Get-Content $mcp -Raw | ConvertFrom-Json
+        $entry = if ($json -and $json.PSObject.Properties['mcpServers'] -and $json.mcpServers -and $json.mcpServers.PSObject.Properties['cimmeria-lab']) { $json.mcpServers.'cimmeria-lab' }
+        $envBlock = if ($entry -and $entry.PSObject.Properties['env']) { $entry.env }
+        if ($envBlock -and $envBlock.PSObject.Properties['CIMMERIA_LAB_INSTALL_DIR']) { $InstallDir = $envBlock.CIMMERIA_LAB_INSTALL_DIR }
     }
 }
 if (-not $InstallDir -or -not (Test-Path (Join-Path $InstallDir 'Binaries\SGW.exe'))) {
@@ -139,20 +142,18 @@ if ($clients.Count -gt 0) {
 }
 
 # --- build through the lane ---------------------------------------------------------------
-$bash = Join-Path $env:ProgramFiles 'Git\bin\bash.exe'   # not WSL's bash.exe
-if (-not (Test-Path $bash)) { $bash = 'bash' }
 $builds = @(
     @('cargo', 'build', '-p', 'cimmeria-lab', '--release'),
     @('cargo', 'build', '-p', 'cimmeria-client-telemetry', '--features', 'lab-bridge', '--target', $I686, '--release'),
     @('cargo', 'build', '-p', 'cimmeria-start32', '-p', 'cimmeria-client-patches', '--target', $I686, '--release')
 )
 foreach ($b in $builds) {
-    $line = "bash tools/build-lane/lane.sh $($b -join ' ')"
+    $line = "pwsh tools/build-lane/lane.ps1 $($b -join ' ')"
     if ($SkipBuild) { Say "skip:    $line"; continue }
     if ($DryRun) { Say "would build: $line"; continue }
     Say "build:   $line"
     Push-Location $Worktree
-    try { & $bash tools/build-lane/lane.sh @b; $rc = $LASTEXITCODE } finally { Pop-Location }
+    try { & pwsh -NoProfile -File (Join-Path $Worktree 'tools\build-lane\lane.ps1') @b; $rc = $LASTEXITCODE } finally { Pop-Location }
     if ($rc -ne 0) { throw "build failed (exit $rc): $line. Read the failures file or log the lane printed." }
 }
 
