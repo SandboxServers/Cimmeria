@@ -160,3 +160,15 @@ class CostStateReconcileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongRateCardTest(unittest.TestCase):
+    def test_surcharge_applies_only_to_the_long_part(self):
+        from .cost_state import _tier_usd
+        row = {"input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_write_5m": 1.25, "cache_write_1h": 2.0,
+               "long_above": 100_000, "long_factor": 5.0}
+        t = {"input": 1_000_000, "output": 0, "cache_read": 0, "w5": 0, "w1": 0,
+             "long": {"input": 400_000, "output": 0, "cache_read": 0, "w5": 0, "w1": 0}}
+        # 600K tokens at $1 plus 400K at $5.
+        self.assertAlmostEqual(_tier_usd(row, t), 0.6 + 2.0)
+        self.assertAlmostEqual(_tier_usd({**row, "long_factor": 1.0}, t), 1.0)

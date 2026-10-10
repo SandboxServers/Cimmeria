@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from . import prices
 from .test_support import build_fixtures, pr, run_ingest
 
 AGENT = build_fixtures.AGENT
@@ -135,7 +136,7 @@ class FixtureIngestTest(unittest.TestCase):
 
     def test_run_is_recorded(self):
         row = self.q("SELECT price_table, profiler_commit, status, records_read, unknown_records FROM profiler_runs")
-        self.assertEqual(row[0][:3], ("2026-10-03", "test", "ok"))
+        self.assertEqual(row[0][:3], (prices.CURRENT, "test", "ok"))
         self.assertEqual(row[0][4], 1)
         self.assertGreater(row[0][3], 0)
 

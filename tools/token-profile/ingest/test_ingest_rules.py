@@ -33,6 +33,19 @@ class PriceTest(unittest.TestCase):
         self.assertAlmostEqual(prices.estimate_usd("claude-fable-5-1", tokens), 10 + 50 + 0.25 + 12.5 + 20)
         self.assertIsNone(prices.estimate_usd("claude-unknown-9", tokens))
 
+    def test_haiku_5_5_long_prompt_pays_the_long_card(self):
+        # 100K prompt tokens exactly is the short card; one more is 5x every rate, output included.
+        short = {"input": 1_000, "cache_read": 99_000, "output": 1_000_000}
+        long = {"input": 1_001, "cache_read": 99_000, "output": 1_000_000}
+        self.assertAlmostEqual(prices.estimate_usd("claude-haiku-5-5", short), (1_000 * 0.10 + 99_000 * 0.01 + 0.50e6) / 1e6)
+        self.assertAlmostEqual(prices.estimate_usd("claude-haiku-5-5", long),
+                               5 * (1_001 * 0.10 + 99_000 * 0.01 + 0.50e6) / 1e6)
+        # Cache writes count toward the prompt size too.
+        self.assertAlmostEqual(prices.estimate_usd("claude-haiku-5-5", {"cache_write_1h": 100_001}),
+                               5 * 100_001 * 0.20 / 1e6)
+        # One-card models ignore prompt size.
+        self.assertAlmostEqual(prices.estimate_usd("claude-opus-5-5", {"input": 500_000}), 2.0)
+
     def test_model_ids_are_normalized(self):
         self.assertEqual(prices.normalize_model("claude-haiku-4-5-20251001"), "claude-haiku-4-5")
         self.assertEqual(prices.normalize_model("claude-opus-5[1m]"), "claude-opus-5")
@@ -44,6 +57,9 @@ class PriceTest(unittest.TestCase):
         row = db.execute("SELECT input, cache_read FROM price_tables WHERE version = ? AND model = ?",
                          (prices.CURRENT, "claude-opus-5-5")).fetchone()
         self.assertEqual(row, (4.0, 0.2))
+        row = db.execute("SELECT input, output, long_above, long_factor FROM price_tables"
+                         " WHERE version = ? AND model = ?", (prices.CURRENT, "claude-haiku-5-5")).fetchone()
+        self.assertEqual(row, (0.1, 0.5, 100_000, 5.0))
 
 
 class FingerprintTest(unittest.TestCase):

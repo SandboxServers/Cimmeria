@@ -75,7 +75,8 @@ def load(db, root, expected, hostile):
     db.execute("INSERT INTO profiler_runs VALUES (1, '2026-10-02T00:00:00Z', '2026-10-02T00:01:00Z', ?, ?,"
                " 2, 60, 1, 'ok')", (commit, PRICE_VERSION))
     for model, p in PRICES.items():
-        db.execute("INSERT INTO price_tables VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        db.execute("INSERT INTO price_tables (version, model, input, output, cache_read, cache_write_5m,"
+                   " cache_write_1h, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                    (PRICE_VERSION, model, p["input"], p["output"], p["cache_read"], p["cache_write_5m"],
                     p["cache_write_1h"], bad[3] if hostile else "https://platform.claude.com/docs/en/about-claude/pricing"))
     db.execute("INSERT INTO sessions VALUES (?, ?, '2026-10-01T12:00:00.000Z', '2026-10-01T12:41:00.000Z', 'cli',"

@@ -35,7 +35,7 @@ python tools/token-profile/ingest --db ~/token-profile.sqlite --repo . --fetch-p
 - `--repo .` lets the ingest read branch heads and commit ancestry, which attribution needs. `--fetch-prs` loads the PR list from GitHub; without it, nothing is attributed to a PR.
 - The first run takes a minute or two. Later runs read only what is new and take seconds, and they rebuild attribution, so a PR opened today places requests made before it.
 - The run exits 1 when it meets a transcript shape it doesn't know, and 2 when a request's attribution weights don't sum to 1. Both mean the profiler needs a fix, not a retry.
-- **A database of an older schema version is refused.** When a profiler change bumps the schema (it is at version 4), point `--db` at a new file, or delete the old one, and ingest again.
+- **A database of an older schema version is refused.** When a profiler change bumps the schema (it is at version 5), point `--db` at a new file, or delete the old one, and ingest again.
 
 ## Run a report
 

@@ -170,6 +170,46 @@ class ReportTest(unittest.TestCase):
         self.assertNotIn("tm-alpha-name", md + js)
         self.assertIn("teammate", {r["key"] for r in json.loads(js)["cost"]["by"]["agent_type"]})
 
+    def _long_card_usd(self, mutate):
+        # req_A on a two-card model; mutate(db, ctx) sets up the price rows and returns nothing.
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path, _ = fixture_db.build(tmp)
+            db = sqlite3.connect(db_path)
+            ctx = db.execute("SELECT context_tokens FROM requests WHERE request_id = 'req_A'").fetchone()[0]
+            db.execute("UPDATE requests SET model = 'claude-haiku-5-5' WHERE request_id = 'req_A'")
+            mutate(db, ctx)
+            db.commit()
+            db.close()
+            db = dbmod.open_db(db_path)
+            dbmod.scope(db)
+            got = db.execute("SELECT usd, usd_output FROM rcost WHERE request_id = 'req_A'").fetchone()
+            db.close()
+        return tuple(got)
+
+    def _haiku_row(self, db, long_above):
+        db.execute("INSERT INTO price_tables (version, model, input, output, cache_read, cache_write_5m,"
+                   " cache_write_1h, long_above, long_factor, source) VALUES (?, 'claude-haiku-5-5', ?, ?, ?, ?, ?,"
+                   " ?, 5.0, 'x')", (fixture_db.PRICE_VERSION, P["input"], P["output"], P["cache_read"],
+                                     P["cache_write_5m"], P["cache_write_1h"], long_above))
+
+    def test_long_prompt_pays_the_long_rate_card(self):
+        base = usd(self.want["req_A"])
+        usd_long, out_long = self._long_card_usd(lambda db, ctx: self._haiku_row(db, ctx - 1))
+        self.assertAlmostEqual(usd_long, 5 * base)
+        self.assertAlmostEqual(out_long, 5 * self.want["req_A"]["output_tokens"] * P["output"] / 1e6)
+        # A prompt exactly at the threshold stays on the short card.
+        usd_short, _ = self._long_card_usd(lambda db, ctx: self._haiku_row(db, ctx))
+        self.assertAlmostEqual(usd_short, base)
+
+    def test_schema_4_price_table_has_one_card(self):
+        def to_schema_4(db, ctx):
+            self._haiku_row(db, ctx - 1)
+            db.executescript("CREATE TABLE p4 AS SELECT version, model, input, output, cache_read, cache_write_5m,"
+                             " cache_write_1h, source FROM price_tables; DROP TABLE price_tables;"
+                             " ALTER TABLE p4 RENAME TO price_tables;"
+                             " UPDATE meta SET value = '4' WHERE key = 'schema_version';")
+        self.assertAlmostEqual(self._long_card_usd(to_schema_4)[0], usd(self.want["req_A"]))
+
 
 class CacheSimTest(unittest.TestCase):
     PRICE = {"cache_read": 1.0, "cache_write_5m": 2.0, "cache_write_1h": 3.0}
@@ -189,6 +229,13 @@ class CacheSimTest(unittest.TestCase):
         run = [self.req(0, 100, None), self.req(0, 100, 10, after_compaction=True)]
         out = cache_sim.replay(run, self.PRICE, cold_read=0)
         self.assertAlmostEqual(out["1h"] * 1e6, 300 + 300)
+
+    def test_long_prompt_replays_on_the_long_card(self):
+        price = {**self.PRICE, "long_above": 150, "long_factor": 5.0}
+        run = [dict(self.req(0, 100, None), context_tokens=100), dict(self.req(100, 100, 60), context_tokens=200)]
+        out = cache_sim.replay(run, price, cold_read=0)
+        self.assertAlmostEqual(out["observed"] * 1e6, 200 + 5 * (100 + 200))
+        self.assertAlmostEqual(out["5m"] * 1e6, 200 + 5 * (100 + 200))
 
     def test_cold_read_is_read_when_cold(self):
         run = [self.req(40, 60, None), self.req(40, 60, 4000)]

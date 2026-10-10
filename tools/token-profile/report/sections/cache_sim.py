@@ -37,25 +37,34 @@ from .grouping import GAP_BUCKETS, gap_bucket
 TTL_S = {"5m": 300, "1h": 3600}
 
 
+def tier_factor(price, prompt):
+    """long_factor when the prompt is over the row's long_above (Haiku 5.5's long rate card), else 1."""
+    above = price.get("long_above")
+    return price.get("long_factor") or 1.0 if above is not None and prompt > above else 1.0
+
+
 def replay(requests, price, cold_read):
     """Cache USD for one transcript under each TTL, plus the observed cost.
 
     requests: dicts in time order with cache_read, cache_write_5m,
     cache_write_1h, prev_gap_s and after_compaction.
-    price: dict with cache_read, cache_write_5m, cache_write_1h (USD per MTok).
+    price: dict with cache_read, cache_write_5m, cache_write_1h (USD per MTok), and
+    optionally long_above and long_factor (a request may carry its prompt size as
+    context_tokens; one over long_above pays long_factor x every rate).
     cold_read: tokens read from cache on a cold request (see cold_read()).
     """
     out = {"observed": 0.0, "5m": 0.0, "1h": 0.0}
     prev = None
     for r in requests:
         prefix = r["cache_read"] + r["cache_write_5m"] + r["cache_write_1h"]
+        f = tier_factor(price, r.get("context_tokens", 0))
         out["observed"] += (r["cache_read"] * price["cache_read"] + r["cache_write_5m"] * price["cache_write_5m"]
-                            + r["cache_write_1h"] * price["cache_write_1h"]) / 1e6
+                            + r["cache_write_1h"] * price["cache_write_1h"]) * f / 1e6
         for policy, ttl in TTL_S.items():
             warm = prev is not None and within_ttl(r, ttl)
             read = min(prefix, prev) if warm else min(prefix, cold_read)
             write = prefix - read
-            out[policy] += (read * price["cache_read"] + write * price["cache_write_" + policy]) / 1e6
+            out[policy] += (read * price["cache_read"] + write * price["cache_write_" + policy]) * f / 1e6
         prev = prefix
     return out
 
@@ -89,7 +98,7 @@ def build(db, sc):
     prices = {r["model"]: dict(r) for r in db.execute("SELECT * FROM wprice")}
     after = {r[0] for r in db.execute("SELECT request_after FROM compactions WHERE request_after IS NOT NULL")}
     rows = db.execute("SELECT request_id, session_id, COALESCE(agent_id, '') AS transcript, agent_type, model,"
-                      " cache_read, cache_write_5m, cache_write_1h, prev_gap_s FROM wreq"
+                      " cache_read, cache_write_5m, cache_write_1h, context_tokens, prev_gap_s FROM wreq"
                       " ORDER BY session_id, transcript, ts").fetchall()
     transcripts = {}
     for r in rows:

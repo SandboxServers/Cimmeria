@@ -30,7 +30,7 @@ Checked against the Claude Code and Anthropic docs and re-measured over 899 loca
 
 | Issue claim | Verdict |
 |---|---|
-| One cost-equivalent weight set (cache read = 0.1) | Wrong for most traffic. Cache reads are 0.05x input on Opus 5.5 (59% of requests) and 0.025x on Fable 5.1, with no long-context premium. The profiler prices per model from a versioned table. |
+| One cost-equivalent weight set (cache read = 0.1) | Wrong for most traffic. Cache reads are 0.05x input on Opus 5.5 (59% of requests) and 0.025x on Fable 5.1. Haiku 5.5, added in price table 2026-10-10 (schema version 5), is $0.10/$0.50 with a long rate card at 5x for prompts over 100K tokens; 249 of the first 628 Haiku 5.5 requests were over it. The profiler prices per model from a versioned table. |
 | Usage is repeated across a request's records | Wrong. The first record is a streaming partial; dedupe must keep the final record. Output is 70.8M tokens, 9.6% of cost-equivalent, not 18M and 3%. |
 | `thinking_tokens` | A subset of `output_tokens`, never added on top (0 exceptions in 110k records). |
 | OTel carries request id, cost, agent and tool-result size | Confirmed. `cost_usd` is an estimate; `agent.name` and MCP names need `OTEL_LOG_TOOL_DETAILS=1`; cache writes are not split 5m/1h, so transcripts are still needed. |
