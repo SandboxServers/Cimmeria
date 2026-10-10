@@ -855,7 +855,7 @@ first response byte for the larger of 60 seconds and the server's tool
 timeout. Without the per-server `timeout` (milliseconds), a `lab_uat_run`
 row that takes longer than a minute fails with "The operation timed out."
 while the row is still running (#1243). Calls running past two minutes
-move to a background task in Claude Code; the limit still applies.
+move to a background task in Claude Code; the limit still applies. Source: Claude Code's MCP documentation, <https://code.claude.com/docs/en/mcp>.
 
 `.mcp.json.example` carries this entry as `cimmeria-lab-http`. To switch,
 rename it to `cimmeria-lab` and delete the stdio `cimmeria-lab` entry.

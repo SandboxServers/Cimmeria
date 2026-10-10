@@ -8,8 +8,9 @@
 //! session does the handshake first: `initialize`, keep the
 //! `Mcp-Session-Id` it returns, `notifications/initialized`, then each
 //! `tools/call` carries the session id and the negotiated protocol version.
-//! A server restart forgets the session (404, or 422 again); the call then
-//! handshakes once more and retries once.
+//! A server restart, or the session manager's idle eviction (five minutes
+//! in rmcp 3.4's `LocalSessionManager`), forgets the session: the call gets
+//! 404, before the tool runs, so it handshakes once more and retries once.
 //!
 //! The pure helpers ([`initialize_request`], [`tool_call_request`]) build
 //! the bodies; [`McpHttpSession::call_tool`] is the transport.
@@ -96,9 +97,13 @@ impl McpHttpSession {
         self.session.lock().ok().and_then(|s| s.clone())
     }
 
-    fn forget(&self) {
+    /// Drop the cached session, unless another call already replaced the
+    /// one that failed.
+    fn forget(&self, failed: &Session) {
         if let Ok(mut s) = self.session.lock() {
-            *s = None;
+            if s.as_ref().map(|c| &c.id) == Some(&failed.id) {
+                *s = None;
+            }
         }
     }
 
@@ -138,7 +143,10 @@ impl McpHttpSession {
             .get(HEADER_SESSION_ID)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
-        let text = resp.text().await.unwrap_or_default();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| format!("lab-mcp {url} initialize read body: {e}"))?;
         if !status.is_success() {
             let snippet: String = text.chars().take(200).collect();
             return Err(format!("lab-mcp initialize HTTP {status}: {snippet}"));
@@ -170,8 +178,18 @@ impl McpHttpSession {
         Ok(session)
     }
 
+    /// Open the session now if none is cached, so a caller timing the
+    /// tool call (the timeline's clock ping) does not time the handshake.
+    pub async fn ensure_session(&self, timeout: Duration) -> Result<(), String> {
+        if self.cached().is_none() {
+            self.handshake(timeout).await?;
+        }
+        Ok(())
+    }
+
     /// One `tools/call`; returns the JSON-RPC `result` (an rmcp
-    /// `CallToolResult`). Transport, HTTP and JSON-RPC errors come back as
+    /// `CallToolResult`). `timeout` bounds the whole call, handshake and
+    /// one retry included. Transport, HTTP and JSON-RPC errors come back as
     /// `Err`, never a panic.
     pub async fn call_tool(
         &self,
@@ -179,6 +197,23 @@ impl McpHttpSession {
         args: Value,
         timeout: Duration,
     ) -> Result<Value, String> {
+        match tokio::time::timeout(timeout, self.call_tool_inner(name, args, timeout)).await {
+            Ok(r) => r,
+            Err(_) => Err(format!(
+                "lab-mcp {}: {name} timed out after {} s",
+                self.config.url,
+                timeout.as_secs()
+            )),
+        }
+    }
+
+    async fn call_tool_inner(
+        &self,
+        name: &str,
+        args: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
+        let url = &self.config.url;
         let mut retried = false;
         loop {
             let session = match self.cached() {
@@ -190,14 +225,19 @@ impl McpHttpSession {
                 .post(&body, Some(&session), timeout)
                 .send()
                 .await
-                .map_err(|e| format!("lab-mcp {}: {e}", self.config.url))?;
+                .map_err(|e| format!("lab-mcp {url}: {e}"))?;
             let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
+            // rmcp answers 404 for an unknown session before running the tool,
+            // so the one retry never runs a tool twice.
             if session_lost(status) && !retried {
-                self.forget();
+                self.forget(&session);
                 retried = true;
                 continue;
             }
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("lab-mcp {url} {name} read body: {e}"))?;
             if !status.is_success() {
                 let snippet: String = text.chars().take(200).collect();
                 return Err(format!("lab-mcp HTTP {status}: {snippet}"));

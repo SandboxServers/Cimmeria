@@ -222,6 +222,10 @@ impl PacketTapClient {
         let req = build_tap_request(0, session_id, since_ms, limit);
         let args = req["params"]["arguments"].clone();
 
+        // Handshake first, so the clock ping times the tap read alone.
+        self.session
+            .ensure_session(std::time::Duration::from_secs(30))
+            .await?;
         let local_send_ms = now_ms();
         let result = self
             .session
