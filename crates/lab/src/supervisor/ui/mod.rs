@@ -10,8 +10,10 @@
 //! falls back one level and says so.
 //!
 //! Every result carries the **native level** it used ([`NativeLevel`]):
-//! real input, then a slash command typed into chat, then a call into the
-//! client UI's Lua, then a server shortcut. A step list records the level
+//! real input or the client's own CEGUI input injectors (both N1), then a
+//! slash command typed into chat, then a call into the client UI's Lua or a
+//! native call standing in for the UI's own decision (both N3), then a
+//! server shortcut. A step list records the level
 //! of each step and the overall level is the least native one, so a UAT
 //! verdict can refuse a pass that was not driven natively.
 
@@ -33,8 +35,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::flows::widgets::lua_quote;
-use super::input::lparam_xy;
-use super::{keys, process, Supervisor};
+use super::input::CursorPlaced;
+use super::{keys, Supervisor};
 
 /// How natively a step drove the client, most native first. The derive
 /// order is the ranking: a larger value is less native.
@@ -42,6 +44,12 @@ use super::{keys, process, Supervisor};
 pub enum NativeLevel {
     /// Key and mouse messages through the game's own input handling.
     RealInput,
+    /// The client's own CEGUI input injectors (`injectMousePosition`,
+    /// `injectMouseButtonDown/Up`), called natively ([`crate::supervisor::cegui_native`]).
+    /// These are the calls the game's input pump makes for a real mouse;
+    /// only the DirectInput read in front of them is skipped, as a posted
+    /// window message skips the hardware. Counts as N1 and as a native pass.
+    NativeCegui,
     /// A slash command typed into the chat box (the client builds the
     /// method itself).
     SlashCommand,
@@ -50,23 +58,30 @@ pub enum NativeLevel {
     /// server-side shortcut (`server_console_exec`), is never used by these
     /// tools, so it has no variant.
     ClientUiLua,
+    /// A native client call that stands in for a decision the UI should
+    /// have made itself, such as firing a window's `DragDropItemDropped`
+    /// when CEGUI resolved no drop target. The stock handlers still run,
+    /// but the step skipped the client's own resolution: N3, ranked last.
+    NativeCall,
 }
 
 impl NativeLevel {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::RealInput => "real_input",
+            Self::NativeCegui => "native_cegui",
             Self::SlashCommand => "slash_command",
             Self::ClientUiLua => "client_ui_lua",
+            Self::NativeCall => "native_call",
         }
     }
 
     /// The UAT matrix tier (the same labels the world and combat tools use).
     pub fn tier(self) -> &'static str {
         match self {
-            Self::RealInput => "N1",
+            Self::RealInput | Self::NativeCegui => "N1",
             Self::SlashCommand => "N2",
-            Self::ClientUiLua => "N3",
+            Self::ClientUiLua | Self::NativeCall => "N3",
         }
     }
 }
@@ -92,8 +107,9 @@ impl NativeTrail {
         let overall = self.overall();
         out["native_level"] = json!(overall.map(NativeLevel::as_str));
         out["native_tier"] = json!(overall.map(NativeLevel::tier));
-        // Only a step driven entirely by real input is a native pass.
-        out["native_pass"] = json!(overall == Some(NativeLevel::RealInput));
+        // Only a step driven entirely by real (or natively injected) input
+        // is a native pass.
+        out["native_pass"] = json!(overall.is_some_and(|l| l.tier() == "N1"));
         out["native_steps"] = json!(self
             .steps
             .iter()
@@ -156,9 +172,6 @@ pub fn key_for_binding(short: &str, vk: &str) -> Option<keys::Key> {
     }
 }
 
-const WM_MOUSEMOVE: u32 = 0x0200;
-const MK_LBUTTON: usize = 0x0001;
-
 impl Supervisor {
     /// Run a reader chunk (the [`lua_json`] prelude is added) and parse its
     /// JSON result.
@@ -168,15 +181,17 @@ impl Supervisor {
     }
 
     /// Put the UI cursor on `(x, y)` and click (or double-click) there
-    /// with real button messages.
+    /// with real button messages. The caller records a cursor fallback in
+    /// its trail ([`CursorPlaced::note_fallback`]).
     pub async fn click_at(
         &self,
         x: i32,
         y: i32,
         button: usize,
         double: bool,
-    ) -> Result<(i32, i32), String> {
-        let at = self.move_cursor(x, y).await?;
+    ) -> Result<CursorPlaced, String> {
+        let placed = self.place_cursor(x, y).await?;
+        let at = placed.at;
         // A frame for the hover to register before the press.
         tokio::time::sleep(Duration::from_millis(40)).await;
         self.post_button(button, "click", at, None).await?;
@@ -186,17 +201,7 @@ impl Supervisor {
             tokio::time::sleep(Duration::from_millis(60)).await;
             self.post_button(button, "click", at, None).await?;
         }
-        Ok(at)
-    }
-
-    /// Move the UI cursor and post a matching `WM_MOUSEMOVE` (left button
-    /// held when `dragging`), for drags: CEGUI starts a drag from motion.
-    pub async fn drag_motion(&self, x: i32, y: i32, dragging: bool) -> Result<(i32, i32), String> {
-        let at = self.move_cursor(x, y).await?;
-        let hwnd = self.game_hwnd().await?;
-        let wparam = if dragging { MK_LBUTTON } else { 0 };
-        process::post_message(hwnd, WM_MOUSEMOVE, wparam, lparam_xy(at.0, at.1))?;
-        Ok(at)
+        Ok(placed)
     }
 
     /// Press the key bound to a UI action (`ToggleInventory`,
@@ -252,8 +257,29 @@ mod tests {
 
     #[test]
     fn native_levels_rank_real_input_first() {
-        assert!(NativeLevel::RealInput < NativeLevel::SlashCommand);
+        assert!(NativeLevel::RealInput < NativeLevel::NativeCegui);
+        assert!(NativeLevel::NativeCegui < NativeLevel::SlashCommand);
         assert!(NativeLevel::SlashCommand < NativeLevel::ClientUiLua);
+        assert!(NativeLevel::ClientUiLua < NativeLevel::NativeCall);
+    }
+
+    /// Injected CEGUI input is still a native pass; an explicit drop call
+    /// in the same trail is not.
+    #[test]
+    fn native_cegui_passes_and_a_native_call_does_not() {
+        let mut t = NativeTrail::default();
+        t.push("press", NativeLevel::NativeCegui);
+        t.push("click", NativeLevel::RealInput);
+        let mut out = json!({});
+        t.stamp(&mut out);
+        assert_eq!(out["native_level"], "native_cegui");
+        assert_eq!(out["native_tier"], "N1");
+        assert_eq!(out["native_pass"], true);
+        t.push("notify dropped", NativeLevel::NativeCall);
+        t.stamp(&mut out);
+        assert_eq!(out["native_level"], "native_call");
+        assert_eq!(out["native_tier"], "N3");
+        assert_eq!(out["native_pass"], false);
     }
 
     #[test]

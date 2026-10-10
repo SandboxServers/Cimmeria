@@ -124,14 +124,15 @@ pub fn is_read_only(tool: &str) -> bool {
 
 /// Map a tool's self-reported native level to a tier. The world tools
 /// (#1099) report a word (`real_input`, `slash_command`, `ui_lua`,
-/// `server_shortcut`); the combat tools (#1100) report the tier code
-/// itself (`N1` .. `X`). `read`, `none` and unknown words drove nothing
-/// the grade cares about and map to `None`.
+/// `server_shortcut`); the UI and item tools (#1102) their own words
+/// (`native_cegui`, `client_ui_lua`, `native_call`); the combat tools
+/// (#1100) report the tier code itself (`N1` .. `X`). `read`, `none` and
+/// unknown words drove nothing the grade cares about and map to `None`.
 pub fn from_reported(level: &str) -> Option<Tier> {
     match level {
-        "real_input" | "N1" => Some(Tier::N1),
+        "real_input" | "native_cegui" | "N1" => Some(Tier::N1),
         "slash_command" | "N2" => Some(Tier::N2),
-        "ui_lua" | "N3" => Some(Tier::N3),
+        "ui_lua" | "client_ui_lua" | "native_call" | "N3" => Some(Tier::N3),
         "G" => Some(Tier::G),
         "server_shortcut" | "X" => Some(Tier::X),
         _ => None,
@@ -278,6 +279,15 @@ mod tests {
             from_reported_value(&json!("real_input")).unwrap().0,
             Tier::N1
         );
+    }
+
+    /// The UI tools' words: a drag that fell back to an explicit drop call
+    /// or to the stock Lua must cost the row its N1, not read as unknown.
+    #[test]
+    fn ui_tool_levels_map_to_tiers() {
+        assert_eq!(from_reported("native_cegui"), Some(Tier::N1));
+        assert_eq!(from_reported("client_ui_lua"), Some(Tier::N3));
+        assert_eq!(from_reported("native_call"), Some(Tier::N3));
     }
 
     #[test]
