@@ -250,6 +250,9 @@ pub struct LabServer {
     timeline: Arc<Timeline>,
     tool_router: ToolRouter<LabServer>,
     instances: Arc<Instances>,
+    /// Whether the call chose its instance (an `instance` argument, or a
+    /// lease id that matched one), rather than falling through to the first.
+    routed_explicitly: bool,
 }
 
 #[tool_router(router = tool_router)]
@@ -263,6 +266,7 @@ impl LabServer {
             supervisor,
             timeline: Arc::new(Timeline::from_env()),
             instances: Arc::new(Instances::new(vec![hosted])),
+            routed_explicitly: false,
             tool_router: Self::tool_router()
                 + Self::flows_router()
                 + Self::client_state_router()

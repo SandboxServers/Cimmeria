@@ -30,6 +30,7 @@
 //!   cursors (`client_wait_event`, `client_events_read`).
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
+mod account;
 #[cfg(test)]
 mod cegui_fake;
 pub mod cegui_native;
@@ -264,6 +265,8 @@ pub struct Supervisor {
     /// so each lab instance (each lab account) is leased on its own. The
     /// watchdog relaunches a dead client only while it is held.
     leases: Arc<crate::lease::LeaseBook>,
+    /// This instance's lab account name (see [`Supervisor::account_name`]).
+    account: Arc<std::sync::Mutex<account::AccountCache>>,
 }
 
 impl Supervisor {
@@ -275,6 +278,7 @@ impl Supervisor {
             state: Arc::new(Mutex::new(SupervisorState::new())),
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
+            account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
         }
     }
 
@@ -298,6 +302,12 @@ impl Supervisor {
     /// This supervisor's instance label for logs: its name, or `default`.
     pub fn label(&self) -> &str {
         self.instance().unwrap_or("default")
+    }
+
+    /// The running client's pid from supervisor state: no bridge call, so it
+    /// never blocks on a wedged client.
+    pub async fn client_pid(&self) -> Option<u32> {
+        self.state.lock().await.pid
     }
 
     /// Proxy a phase-1 client tool call through the bridge, journaling it
@@ -582,15 +592,6 @@ impl Supervisor {
     /// Record login progress for `lab_client_status`.
     pub(crate) async fn set_login_state(&self, login: LoginState) {
         self.state.lock().await.login = login;
-    }
-
-    /// This instance's credentials (`lab-account.json`, or
-    /// `lab-account.<instance>.json` for a named instance), if the file
-    /// exists and parses.
-    pub(crate) fn lab_account(&self) -> Option<session_file::LabAccount> {
-        let dir = self.config.install_dir.as_deref()?;
-        let path = instance::account_path(dir, self.config.instance.as_deref());
-        session_file::read_lab_account_at(&path).ok()
     }
 
     /// `lab_screenshot` — capture the client window as PNG bytes +
