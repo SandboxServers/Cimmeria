@@ -1,0 +1,13 @@
+{
+  "id": "016-hotbar-learn-and-feedback",
+  "title": "Action bar: new starting abilities and no-shot feedback",
+  "description": "Puts each starting ability (Pistol Shot, Strike, Staff Swing, Heal Focus, Health Heal, Recuperation) on an empty action button 11-20 the first time your character knows it, in any session, never over a button you filled and never again once you removed it. Pressing a shot button while holding a weapon with no ranged attack now says so. Changes ActionProfileDefault1.lua and needs the weapon shot patch (015) first.",
+  "ops": [
+    {
+      "target": "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
+      "sources": [
+        {"path": "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua", "output_of": "015-weapon-shot-bar"}
+      ]
+    }
+  ]
+}

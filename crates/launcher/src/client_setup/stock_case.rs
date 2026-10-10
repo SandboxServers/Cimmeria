@@ -45,7 +45,8 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Working/SGWGame/Content/audio/ui/prp_gen_gate.fsb",
     // 004-log-config: a new file, in the stock `binaries` directory.
     "Working/binaries/SGWLogConfig.xml",
-    // 009-starter-hotbar; 015-weapon-shot-bar writes the same file.
+    // 009-starter-hotbar; 015-weapon-shot-bar and 016-hotbar-learn-and-feedback
+    // write the same file.
     "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
     // 010-debug-area-rings (retired); 011-debug-area-rings-fix writes the same file.
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
