@@ -115,8 +115,7 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<BatchArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let steps =
-            parse_steps(&a.steps).map_err(|e| McpError::invalid_params(e, None))?;
+        let steps = parse_steps(&a.steps).map_err(|e| McpError::invalid_params(e, None))?;
         let out = self
             .supervisor
             .batch(&steps, a.stop_on_error.unwrap_or(true))
@@ -131,8 +130,7 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<SequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let actions =
-            parse_actions(&a.actions).map_err(|e| McpError::invalid_params(e, None))?;
+        let actions = parse_actions(&a.actions).map_err(|e| McpError::invalid_params(e, None))?;
         let out = self
             .supervisor
             .ui_sequence(&actions, a.stop_on_error.unwrap_or(true))

@@ -29,12 +29,32 @@ const DRAG_WAIT: Duration = Duration::from_secs(3);
 /// One UI action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
-    Click { window: String, button: usize },
-    Key { key: String, action: String, hold_ms: Option<u64> },
-    Type { text: String, into: Option<String> },
-    Drag { from: DragEnd, to: DragEnd, split: bool },
-    WaitWindow { window: String, gone: bool, timeout: Duration },
-    Wait { ms: u64 },
+    Click {
+        window: String,
+        button: usize,
+    },
+    Key {
+        key: String,
+        action: String,
+        hold_ms: Option<u64>,
+    },
+    Type {
+        text: String,
+        into: Option<String>,
+    },
+    Drag {
+        from: DragEnd,
+        to: DragEnd,
+        split: bool,
+    },
+    WaitWindow {
+        window: String,
+        gone: bool,
+        timeout: Duration,
+    },
+    Wait {
+        ms: u64,
+    },
 }
 
 fn s(v: &Value, k: &str) -> Option<String> {
@@ -43,7 +63,11 @@ fn s(v: &Value, k: &str) -> Option<String> {
 
 fn drag_end(v: Option<&Value>, which: &str) -> Result<DragEnd, String> {
     let v = v.ok_or_else(|| format!("drag needs `{which}`"))?;
-    match (s(v, "container"), v.get("slot").and_then(Value::as_u64), s(v, "window")) {
+    match (
+        s(v, "container"),
+        v.get("slot").and_then(Value::as_u64),
+        s(v, "window"),
+    ) {
         (Some(c), Some(slot), None) => Ok(DragEnd::Slot {
             container: ContainerRef::parse(&c),
             slot: slot as u32,
@@ -86,7 +110,10 @@ pub fn parse_action(v: &Value) -> Result<Action, String> {
                 .unwrap_or(DEFAULT_WINDOW_WAIT),
         },
         "wait" => Action::Wait {
-            ms: v.get("ms").and_then(Value::as_u64).ok_or("wait needs `ms`")?,
+            ms: v
+                .get("ms")
+                .and_then(Value::as_u64)
+                .ok_or("wait needs `ms`")?,
         },
         other => {
             return Err(format!(
@@ -132,7 +159,11 @@ impl Supervisor {
                 let l = level_of(&r, NativeLevel::RealInput);
                 Ok((json!(true), Some(l)))
             }
-            Action::Key { key, action, hold_ms } => {
+            Action::Key {
+                key,
+                action,
+                hold_ms,
+            } => {
                 self.input_key(key, action, *hold_ms).await?;
                 Ok((json!(true), Some(NativeLevel::RealInput)))
             }
@@ -151,9 +182,16 @@ impl Supervisor {
                     .drag_drop(from, to, *split, DRAG_STEPS, true, DRAG_WAIT)
                     .await?;
                 let l = level_of(&r, NativeLevel::NativeCegui);
-                Ok((json!({ "moved": r["moved"], "native_level": r["native_level"] }), Some(l)))
+                Ok((
+                    json!({ "moved": r["moved"], "native_level": r["native_level"] }),
+                    Some(l),
+                ))
             }
-            Action::WaitWindow { window, gone, timeout } => {
+            Action::WaitWindow {
+                window,
+                gone,
+                timeout,
+            } => {
                 let ms = self.wait_window(window, *gone, *timeout).await?;
                 Ok((json!({ "ms": ms }), None))
             }
@@ -214,17 +252,35 @@ mod tests {
         .unwrap();
         assert_eq!(
             a[0],
-            Action::Key { key: "B".into(), action: "tap".into(), hold_ms: None }
+            Action::Key {
+                key: "B".into(),
+                action: "tap".into(),
+                hold_ms: None
+            }
         );
-        assert_eq!(a[1], Action::Click { window: "Dialog_Done".into(), button: 0 });
+        assert_eq!(
+            a[1],
+            Action::Click {
+                window: "Dialog_Done".into(),
+                button: 0
+            }
+        );
         assert!(matches!(&a[2], Action::Type { into: Some(w), .. } if w == "Inst1Chat_Input"));
         assert_eq!(
             a[3],
-            Action::WaitWindow { window: "InventoryWin".into(), gone: false, timeout: DEFAULT_WINDOW_WAIT }
+            Action::WaitWindow {
+                window: "InventoryWin".into(),
+                gone: false,
+                timeout: DEFAULT_WINDOW_WAIT
+            }
         );
         assert!(matches!(
             &a[4],
-            Action::Drag { from: DragEnd::Slot { slot: 1, .. }, to: DragEnd::Window(_), split: false }
+            Action::Drag {
+                from: DragEnd::Slot { slot: 1, .. },
+                to: DragEnd::Window(_),
+                split: false
+            }
         ));
         assert_eq!(a[5], Action::Wait { ms: 200 });
     }
@@ -234,15 +290,27 @@ mod tests {
         let e = parse_actions(&[json!({ "do": "key", "key": "B" }), json!({ "do": "click" })])
             .unwrap_err();
         assert!(e.starts_with("action 2:") && e.contains("window"), "{e}");
-        assert!(parse_actions(&[json!({ "do": "fly" })]).unwrap_err().contains("unknown action"));
+        assert!(parse_actions(&[json!({ "do": "fly" })])
+            .unwrap_err()
+            .contains("unknown action"));
         assert!(parse_actions(&[]).is_err());
-        let half = json!({ "do": "drag", "from": { "container": "Main" }, "to": { "window": "W" } });
+        let half =
+            json!({ "do": "drag", "from": { "container": "Main" }, "to": { "window": "W" } });
         assert!(parse_actions(&[half]).unwrap_err().contains("`from`"));
     }
 
     #[test]
     fn levels_come_from_the_result_or_the_action() {
-        assert_eq!(level_of(&json!({ "native_level": "native_call" }), NativeLevel::RealInput), NativeLevel::NativeCall);
-        assert_eq!(level_of(&json!({}), NativeLevel::NativeCegui), NativeLevel::NativeCegui);
+        assert_eq!(
+            level_of(
+                &json!({ "native_level": "native_call" }),
+                NativeLevel::RealInput
+            ),
+            NativeLevel::NativeCall
+        );
+        assert_eq!(
+            level_of(&json!({}), NativeLevel::NativeCegui),
+            NativeLevel::NativeCegui
+        );
     }
 }

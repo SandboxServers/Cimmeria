@@ -420,7 +420,13 @@ mod tests {
         let tail = args.iter().position(|a| a == "--").map(|i| &args[i + 1..]);
         assert_eq!(
             tail,
-            Some(&["-windowed".to_string(), "ResX=1280".into(), "ResY=720".into()][..])
+            Some(
+                &[
+                    "-windowed".to_string(),
+                    "ResX=1280".into(),
+                    "ResY=720".into()
+                ][..]
+            )
         );
     }
 

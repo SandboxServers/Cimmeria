@@ -153,7 +153,10 @@ pub fn capture_pid(_pid: u32) -> Result<CapturedImage, String> {
 pub fn all_black(rgba: &[u8]) -> bool {
     let (pixels, _) = rgba.as_chunks::<4>();
     // Every 97th pixel: enough to see any real frame, cheap at 5120x1440.
-    pixels.iter().step_by(97).all(|p| p[0] < 8 && p[1] < 8 && p[2] < 8)
+    pixels
+        .iter()
+        .step_by(97)
+        .all(|p| p[0] < 8 && p[1] < 8 && p[2] < 8)
 }
 
 #[cfg(windows)]
@@ -226,7 +229,12 @@ mod win {
     }
 
     /// One capture of the client area into a top-down RGBA image.
-    unsafe fn grab(hwnd: HWND, width: u32, height: u32, src: Source) -> Result<CapturedImage, String> {
+    unsafe fn grab(
+        hwnd: HWND,
+        width: u32,
+        height: u32,
+        src: Source,
+    ) -> Result<CapturedImage, String> {
         unsafe {
             // The screen DC for a screen copy, the window's own otherwise.
             let dc_owner = if src == Source::Screen {

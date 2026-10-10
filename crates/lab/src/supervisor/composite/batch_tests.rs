@@ -42,9 +42,15 @@ fn references_interpolate_inside_strings() {
 #[test]
 fn bad_references_are_named() {
     let v = vals(&[("s", json!("text"))]);
-    assert!(resolve(&json!("$nope"), &v).unwrap_err().contains("no earlier step"));
-    assert!(resolve(&json!("$s+4"), &v).unwrap_err().contains("not a number"));
-    assert!(resolve(&json!("$s*2"), &v).unwrap_err().contains("letters, digits"));
+    assert!(resolve(&json!("$nope"), &v)
+        .unwrap_err()
+        .contains("no earlier step"));
+    assert!(resolve(&json!("$s+4"), &v)
+        .unwrap_err()
+        .contains("not a number"));
+    assert!(resolve(&json!("$s*2"), &v)
+        .unwrap_err()
+        .contains("letters, digits"));
     assert!(resolve(&json!("${s"), &v).unwrap_err().contains("unclosed"));
 }
 
@@ -61,7 +67,11 @@ fn floats_are_passed_as_f32_bits_and_doubles_as_two_words() {
     ])
     .unwrap();
     assert_eq!(a[0], json!("0x3fc00000"));
-    assert_eq!(a[1], json!("0x40000000"), "2.0 written as a float is a float");
+    assert_eq!(
+        a[1],
+        json!("0x40000000"),
+        "2.0 written as a float is a float"
+    );
     assert_eq!(a[2], json!(7));
     assert_eq!(a[3], json!(u32::MAX));
     assert_eq!(a[4], json!("0x10"));
@@ -73,7 +83,10 @@ fn floats_are_passed_as_f32_bits_and_doubles_as_two_words() {
 
 #[test]
 fn reads_decode_little_endian() {
-    assert_eq!(decode_read("78563412", ReadAs::U32).unwrap(), json!(0x12345678));
+    assert_eq!(
+        decode_read("78563412", ReadAs::U32).unwrap(),
+        json!(0x12345678)
+    );
     assert_eq!(decode_read("ffffffff", ReadAs::I32).unwrap(), json!(-1));
     assert_eq!(decode_read("0000c03f", ReadAs::F32).unwrap(), json!(1.5));
     assert_eq!(decode_read("01000200", ReadAs::U16).unwrap(), json!([1, 2]));
@@ -92,9 +105,16 @@ fn steps_parse_and_bad_steps_name_themselves() {
     assert_eq!(s[1].id, "2", "an unnamed step is named by position");
     let e = parse_steps(&[json!({ "id": "x", "op": "mem_read", "as": "u32" })]).unwrap_err();
     assert!(e.starts_with("step x:") && e.contains("addr"), "{e}");
-    assert!(parse_steps(&[json!({ "op": "wait" })]).unwrap_err().contains("frames"));
-    assert!(parse_steps(&[json!({ "op": "teleport" })]).unwrap_err().contains("unknown op"));
-    let dup = [json!({ "id": "a", "op": "wait", "ms": 1 }), json!({ "id": "a", "op": "wait", "ms": 1 })];
+    assert!(parse_steps(&[json!({ "op": "wait" })])
+        .unwrap_err()
+        .contains("frames"));
+    assert!(parse_steps(&[json!({ "op": "teleport" })])
+        .unwrap_err()
+        .contains("unknown op"));
+    let dup = [
+        json!({ "id": "a", "op": "wait", "ms": 1 }),
+        json!({ "id": "a", "op": "wait", "ms": 1 }),
+    ];
     assert!(parse_steps(&dup).unwrap_err().contains("two steps"));
     assert!(parse_steps(&[]).is_err());
 }
@@ -130,7 +150,10 @@ async fn a_batch_chains_reads_and_stops_on_error() {
     assert_eq!(out.values["x"], json!(1.5));
     assert_eq!(out.values["c"], json!(0.5));
     assert_eq!(out.values["l"], json!("fine"));
-    assert!(out.values["bad"]["error"].as_str().unwrap().contains("bad address"));
+    assert!(out.values["bad"]["error"]
+        .as_str()
+        .unwrap()
+        .contains("bad address"));
     assert!(!out.values.contains_key("never"));
     assert_eq!(out.stopped_at.as_deref(), Some("bad"));
     let calls = seen.lock().unwrap().clone();

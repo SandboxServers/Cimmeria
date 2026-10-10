@@ -56,7 +56,11 @@ impl ReadAs {
             "i32" => Self::I32,
             "f32" => Self::F32,
             "f64" => Self::F64,
-            other => return Err(format!("`as` must be hex, u8, u16, u32, i32, f32 or f64, not {other:?}")),
+            other => {
+                return Err(format!(
+                    "`as` must be hex, u8, u16, u32, i32, f32 or f64, not {other:?}"
+                ))
+            }
         })
     }
 
@@ -74,12 +78,31 @@ impl ReadAs {
 /// One parsed step.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
-    Lua { chunk: String },
-    MemRead { addr: Value, len: Option<u32>, read_as: ReadAs },
-    CallNative { addr: Value, conv: Option<String>, args: Vec<Value>, ret: Option<String> },
-    Wait { frames: Option<u64>, ms: Option<u64> },
-    PlayerState { fields: Vec<String> },
-    WindowText { window: String, children: bool },
+    Lua {
+        chunk: String,
+    },
+    MemRead {
+        addr: Value,
+        len: Option<u32>,
+        read_as: ReadAs,
+    },
+    CallNative {
+        addr: Value,
+        conv: Option<String>,
+        args: Vec<Value>,
+        ret: Option<String>,
+    },
+    Wait {
+        frames: Option<u64>,
+        ms: Option<u64>,
+    },
+    PlayerState {
+        fields: Vec<String>,
+    },
+    WindowText {
+        window: String,
+        children: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -223,7 +246,11 @@ fn resolve_ref(s: &str, values: &Map<String, Value>) -> Result<Value, String> {
     let delta = as_number(&Value::String(digits.to_string()))
         .ok_or_else(|| format!("{s}: bad offset {digits:?}"))?;
     let base = as_number(&v).ok_or_else(|| format!("{s}: ${path} is not a number ({v})"))?;
-    Ok(json!(if sign == "+" { base + delta } else { base - delta }))
+    Ok(json!(if sign == "+" {
+        base + delta
+    } else {
+        base - delta
+    }))
 }
 
 /// The text a value interpolates as.
@@ -253,7 +280,11 @@ pub fn resolve(v: &Value, values: &Map<String, Value>) -> Result<Value, String> 
             out.push_str(rest);
             Ok(Value::String(out))
         }
-        Value::Array(a) => a.iter().map(|x| resolve(x, values)).collect::<Result<_, _>>().map(Value::Array),
+        Value::Array(a) => a
+            .iter()
+            .map(|x| resolve(x, values))
+            .collect::<Result<_, _>>()
+            .map(Value::Array),
         Value::Object(o) => o
             .iter()
             .map(|(k, x)| resolve(x, values).map(|r| (k.clone(), r)))
@@ -294,12 +325,19 @@ pub fn encode_args(args: &[Value]) -> Result<Vec<Value>, String> {
                 out.push(json!(format!("{:#010x}", f.to_bits())));
             }
             Value::Object(o) if o.contains_key("f64") => {
-                let bits = o["f64"].as_f64().ok_or("{\"f64\": x} needs a number")?.to_bits();
+                let bits = o["f64"]
+                    .as_f64()
+                    .ok_or("{\"f64\": x} needs a number")?
+                    .to_bits();
                 out.push(json!(format!("{:#010x}", bits as u32)));
                 out.push(json!(format!("{:#010x}", (bits >> 32) as u32)));
             }
             Value::String(_) => out.push(a.clone()),
-            other => return Err(format!("argument {other} is not a number, hex string or {{f32|f64}}")),
+            other => {
+                return Err(format!(
+                    "argument {other} is not a number, hex string or {{f32|f64}}"
+                ))
+            }
         }
     }
     Ok(out)
@@ -328,7 +366,10 @@ pub fn decode_read(hex: &str, read_as: ReadAs) -> Result<Value, String> {
         })
         .collect();
     match vals.len() {
-        0 => Err(format!("read {} bytes, fewer than one {w}-byte value", bytes.len())),
+        0 => Err(format!(
+            "read {} bytes, fewer than one {w}-byte value",
+            bytes.len()
+        )),
         1 => Ok(vals.into_iter().next().unwrap_or(Value::Null)),
         _ => Ok(Value::Array(vals)),
     }
@@ -412,12 +453,19 @@ impl Supervisor {
                     .await?;
                 decode_read(r["hex"].as_str().unwrap_or_default(), *read_as)
             }
-            Op::CallNative { addr, conv, args, ret } => {
+            Op::CallNative {
+                addr,
+                conv,
+                args,
+                ret,
+            } => {
                 let addr = addr_text(&resolve(addr, values)?)?;
-                let args = encode_args(&resolve(&Value::Array(args.clone()), values)?
-                    .as_array()
-                    .cloned()
-                    .unwrap_or_default())?;
+                let args = encode_args(
+                    &resolve(&Value::Array(args.clone()), values)?
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default(),
+                )?;
                 let mut params = json!({ "addr": addr, "args": args });
                 if let Some(c) = conv {
                     params["conv"] = json!(c);

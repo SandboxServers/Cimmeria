@@ -50,6 +50,11 @@ pub enum NativeLevel {
     Read,
     /// N1: real key/mouse input through the game's own input handling.
     RealInput,
+    /// N1: the camera's own look and zoom handlers (`ASGWCamera_Player`
+    /// vtable thunks, the code `Event_Input_MouseMove` and the zoom actions
+    /// run), called natively on the main thread. Like the CEGUI injectors,
+    /// only the DirectInput read in front of them is skipped.
+    NativeCamera,
     /// N3: a stock UI Lua call (the same code a button runs).
     UiLua,
 }
@@ -59,6 +64,7 @@ impl NativeLevel {
         match self {
             NativeLevel::Read => "read",
             NativeLevel::RealInput => "real_input",
+            NativeLevel::NativeCamera => "native_camera",
             NativeLevel::UiLua => "ui_lua",
         }
     }
@@ -67,14 +73,14 @@ impl NativeLevel {
     pub fn tier(self) -> &'static str {
         match self {
             NativeLevel::Read => "-",
-            NativeLevel::RealInput => "N1",
+            NativeLevel::RealInput | NativeLevel::NativeCamera => "N1",
             NativeLevel::UiLua => "N3",
         }
     }
 
     /// Does a pass at this level count as a native pass?
     pub fn counts_as_native(self) -> bool {
-        matches!(self, NativeLevel::RealInput)
+        matches!(self, NativeLevel::RealInput | NativeLevel::NativeCamera)
     }
 }
 

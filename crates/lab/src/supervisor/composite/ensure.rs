@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Map, Value};
 
 use crate::supervisor::flows::characters::CreateRequest;
-use crate::supervisor::flows::login::{classify_start, start_screen_chunk, LoginRequest, StartScreen};
+use crate::supervisor::flows::login::{
+    classify_start, start_screen_chunk, LoginRequest, StartScreen,
+};
 use crate::supervisor::flows::widgets::{self, DIALOG_WIN};
 use crate::supervisor::flows::world::{DEFAULT_MAX_PAGES, DEFAULT_PLAY_TIMEOUT};
 use crate::supervisor::{process, Supervisor};
@@ -195,14 +197,19 @@ impl Supervisor {
     }
 
     /// Play `character`, creating it first when allowed and missing.
-    async fn ensure_play(&self, character: &str, create: Option<&CreateRequest>) -> Result<(), String> {
+    async fn ensure_play(
+        &self,
+        character: &str,
+        create: Option<&CreateRequest>,
+    ) -> Result<(), String> {
         let played = self.play_flow(character, true, DEFAULT_PLAY_TIMEOUT).await;
         let Err(e) = played else { return Ok(()) };
         // `select_character` names this step when the list lacks the name.
         let missing = e.step == "find_character";
         match create {
             Some(req) if missing => {
-                self.ensure_slot_flow(1, vec![character.to_string()]).await?;
+                self.ensure_slot_flow(1, vec![character.to_string()])
+                    .await?;
                 self.create_character_flow(req.clone()).await?;
                 self.play_flow(character, true, DEFAULT_PLAY_TIMEOUT)
                     .await
@@ -262,9 +269,16 @@ impl Supervisor {
                         server: req.shard.clone().or_else(|| req.server.clone()),
                         ..Default::default()
                     };
-                    self.login_flow(login).await.map(|_| "login").map_err(String::from)
+                    self.login_flow(login)
+                        .await
+                        .map(|_| "login")
+                        .map_err(String::from)
                 }
-                Next::Logout => self.logout_flow().await.map(|_| "logout").map_err(String::from),
+                Next::Logout => self
+                    .logout_flow()
+                    .await
+                    .map(|_| "logout")
+                    .map_err(String::from),
                 Next::Play => self
                     .ensure_play(&character, req.create.as_ref())
                     .await
@@ -334,12 +348,18 @@ mod tests {
         assert_ne!(plan(&o, &goal(), false), Next::Login);
         o.window = true;
         assert_eq!(plan(&o, &goal(), false), Next::Login);
-        assert_eq!(plan(&obs(Screen::Other, None, false), &goal(), false), Next::Login);
+        assert_eq!(
+            plan(&obs(Screen::Other, None, false), &goal(), false),
+            Next::Login
+        );
     }
 
     #[test]
     fn character_select_plays_and_the_world_finishes_a_dialog_once() {
-        assert_eq!(plan(&obs(Screen::CharSelect, None, false), &goal(), false), Next::Play);
+        assert_eq!(
+            plan(&obs(Screen::CharSelect, None, false), &goal(), false),
+            Next::Play
+        );
         let with_dialog = obs(Screen::World, Some("labone"), true);
         assert_eq!(plan(&with_dialog, &goal(), false), Next::FinishDialog);
         assert_eq!(plan(&with_dialog, &goal(), true), Next::Done);
@@ -347,13 +367,22 @@ mod tests {
 
     #[test]
     fn already_in_world_as_the_character_is_done_at_once() {
-        assert_eq!(plan(&obs(Screen::World, Some("Labone"), false), &goal(), false), Next::Done);
+        assert_eq!(
+            plan(&obs(Screen::World, Some("Labone"), false), &goal(), false),
+            Next::Done
+        );
     }
 
     #[test]
     fn in_world_as_someone_else_logs_out() {
-        assert_eq!(plan(&obs(Screen::World, Some("Other"), false), &goal(), false), Next::Logout);
-        assert_eq!(plan(&obs(Screen::World, None, false), &goal(), false), Next::Logout);
+        assert_eq!(
+            plan(&obs(Screen::World, Some("Other"), false), &goal(), false),
+            Next::Logout
+        );
+        assert_eq!(
+            plan(&obs(Screen::World, None, false), &goal(), false),
+            Next::Logout
+        );
     }
 
     /// Walk a whole run: each action moves the simulated client on, and
@@ -373,7 +402,9 @@ mod tests {
                 Next::Start => o.running = true,
                 Next::WaitReady => (o.window, o.bridge) = (true, true),
                 Next::Login => o.screen = Screen::CharSelect,
-                Next::Play => (o.screen, o.player, o.dialog) = (Screen::World, Some("Labone".into()), true),
+                Next::Play => {
+                    (o.screen, o.player, o.dialog) = (Screen::World, Some("Labone".into()), true)
+                }
                 Next::FinishDialog => (tried, o.dialog) = (true, false),
                 Next::Logout => o.screen = Screen::CharSelect,
                 Next::Done => break,
@@ -381,21 +412,42 @@ mod tests {
         }
         assert_eq!(
             seen,
-            [Next::Start, Next::WaitReady, Next::Login, Next::Play, Next::FinishDialog, Next::Done]
+            [
+                Next::Start,
+                Next::WaitReady,
+                Next::Login,
+                Next::Play,
+                Next::FinishDialog,
+                Next::Done
+            ]
         );
     }
 
     #[test]
     fn observations_parse_screens_dialog_and_player() {
         let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-        let world = parse_observe(&s(&["false", "false", "false", "false", "true", "true", "Labone"]));
+        let world = parse_observe(&s(&[
+            "false", "false", "false", "false", "true", "true", "Labone",
+        ]));
         assert_eq!(world, (Screen::World, true, Some("Labone".into())));
-        let select = parse_observe(&s(&["false", "false", "false", "true", "false", "false", ""]));
+        let select = parse_observe(&s(&[
+            "false", "false", "false", "true", "false", "false", "",
+        ]));
         assert_eq!(select, (Screen::CharSelect, false, None));
-        let login = parse_observe(&s(&["false", "true", "false", "false", "false", "false", "Ghost"]));
-        assert_eq!(login, (Screen::Startup, false, None), "a name off-world is ignored");
+        let login = parse_observe(&s(&[
+            "false", "true", "false", "false", "false", "false", "Ghost",
+        ]));
+        assert_eq!(
+            login,
+            (Screen::Startup, false, None),
+            "a name off-world is ignored"
+        );
         assert_eq!(parse_observe(&[]).0, Screen::Other);
         let c = observe_chunk();
-        assert!(c.starts_with("return ") && c.contains("SelfStatusWin") && c.contains("unitName(Unit.Player)"));
+        assert!(
+            c.starts_with("return ")
+                && c.contains("SelfStatusWin")
+                && c.contains("unitName(Unit.Player)")
+        );
     }
 }

@@ -191,20 +191,146 @@ pub async fn snapshot<M: Memory>(
     })
 }
 
-/// The local camera/controller actor through `g_pGLevel` (see module doc).
-pub async fn camera_actor<M: Memory>(mem: &mut M, slide: i64) -> Result<u32, String> {
-    let va = (GLEVEL_PTR_VA as i64 + slide) as u32;
-    let mut p = u32_at(&mem.read(va, 4).await?, 0);
-    for (i, off) in [0x50u32, 0x3C, 0x0, 0x35C].into_iter().enumerate() {
-        if p == 0 {
-            return Err(format!("camera chain: null at hop {i}"));
+/// `ASGWController_Player` vtable (findings `cegui-mouse-input-feed.md` §10.2).
+pub const PLAYER_CONTROLLER_VTABLE_VA: u32 = 0x019E_2B2C;
+/// `ASGWCamera_Player` vtable (§10.3).
+pub const PLAYER_CAMERA_VTABLE_VA: u32 = 0x019E_1134;
+/// `ASGWController_Player + 0x2b0`: its `ASGWCamera_Player*`.
+pub const CONTROLLER_CAMERA_OFF: u32 = 0x2B0;
+/// Most level actors scanned for the controller (live: 0x32).
+const MAX_LEVEL_ACTORS: u32 = 8192;
+
+/// Camera fields (§10.3): look gain, distance (zoom), pitch and yaw offsets.
+pub const CAMERA_GAIN_OFF: u32 = 0x358;
+pub const CAMERA_DIST_OFF: u32 = 0x360;
+pub const CAMERA_PITCH_OFF: u32 = 0x368;
+pub const CAMERA_YAW_OFF: u32 = 0x36C;
+/// Third-person zoom limits and the step per notch (§10.3).
+pub const CAMERA_DIST_MIN: f32 = 100.0;
+pub const CAMERA_DIST_MAX: f32 = 775.0;
+pub const CAMERA_ZOOM_STEP: f32 = 30.0;
+/// The camera's own handlers (§10.4), all `thiscall` on the camera:
+/// zoom in / out (`void()`), turn yaw / pitch (`void(float counts)`).
+pub const CAMERA_ZOOM_IN_VA: u32 = 0x00E7_E560;
+pub const CAMERA_ZOOM_OUT_VA: u32 = 0x00E7_E870;
+pub const CAMERA_TURN_YAW_VA: u32 = 0x00E7_E600;
+pub const CAMERA_TURN_PITCH_VA: u32 = 0x00E7_E590;
+
+fn rebase(va: u32, slide: i64) -> u32 {
+    (va as i64 + slide) as u32
+}
+
+/// The local player's controller and camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayerCamera {
+    pub controller: u32,
+    pub camera: u32,
+}
+
+/// Whether `ptr`'s first word is the vtable `va` (rebased).
+pub async fn has_vtable<M: Memory>(mem: &mut M, ptr: u32, va: u32, slide: i64) -> bool {
+    ptr != 0
+        && mem
+            .read(ptr, 4)
+            .await
+            .is_ok_and(|b| u32_at(&b, 0) == rebase(va, slide))
+}
+
+/// Find the local `ASGWController_Player` by scanning the level's Actors
+/// array for its vtable, then its camera (`+0x2b0`), checked by vtable.
+/// The old chain (`[[[[g_pGLevel+0x50]+0x3C]]+0x35C]`, `0x0054d8d0`) reads
+/// a WorldInfo field that is 0 in a normal game (§10.1). Callers cache the
+/// result and re-check both vtables before each use.
+pub async fn find_player_camera<M: Memory>(
+    mem: &mut M,
+    slide: i64,
+) -> Result<PlayerCamera, String> {
+    let world = u32_at(&mem.read(rebase(GLEVEL_PTR_VA, slide), 4).await?, 0);
+    if world == 0 {
+        return Err("g_pGLevel is null (no world loaded)".into());
+    }
+    let level = u32_at(&mem.read(world + 0x50, 4).await?, 0);
+    if level == 0 {
+        return Err("UWorld has no level".into());
+    }
+    let hdr = mem.read(level + 0x3C, 8).await?;
+    let (data, count) = (u32_at(&hdr, 0), u32_at(&hdr, 4).min(MAX_LEVEL_ACTORS));
+    if data == 0 || count == 0 {
+        return Err("the level's Actors array is empty".into());
+    }
+    let actors = mem.read(data, count * 4).await?;
+    let want = rebase(PLAYER_CONTROLLER_VTABLE_VA, slide);
+    for i in 0..count as usize {
+        let a = u32_at(&actors, i * 4);
+        if a == 0 {
+            continue;
         }
-        p = u32_at(&mem.read(p + off, 4).await?, 0);
+        let Ok(vt) = mem.read(a, 4).await else {
+            continue;
+        };
+        if u32_at(&vt, 0) != want {
+            continue;
+        }
+        let camera = u32_at(&mem.read(a + CONTROLLER_CAMERA_OFF, 4).await?, 0);
+        if !has_vtable(mem, camera, PLAYER_CAMERA_VTABLE_VA, slide).await {
+            return Err(format!(
+                "player controller {a:#x} has no ASGWCamera_Player at +0x2b0 ({camera:#x})"
+            ));
+        }
+        return Ok(PlayerCamera {
+            controller: a,
+            camera,
+        });
     }
-    if p == 0 {
-        return Err("camera chain: null actor".into());
+    Err(format!(
+        "no ASGWController_Player among {count} level actors"
+    ))
+}
+
+/// The camera's readable state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CameraState {
+    /// Third-person distance (zoom), 100..775.
+    pub distance: f32,
+    /// Yaw and pitch offsets from the pawn, rotator units (65536 per turn).
+    pub yaw: i32,
+    pub pitch: i32,
+    /// Look gain: rotator units per mouse count.
+    pub gain: f32,
+}
+
+impl CameraState {
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "zoom": self.distance,
+            "yaw_offset_deg": f64::from(self.yaw) * 360.0 / 65536.0,
+            "pitch_offset_deg": f64::from(self.pitch) * 360.0 / 65536.0,
+            "gain": self.gain,
+        })
     }
-    Ok(p)
+}
+
+/// Read the camera's gain, distance, pitch and yaw (one read).
+pub async fn camera_state<M: Memory>(mem: &mut M, camera: u32) -> Result<CameraState, String> {
+    let b = mem
+        .read(
+            camera + CAMERA_GAIN_OFF,
+            CAMERA_YAW_OFF + 4 - CAMERA_GAIN_OFF,
+        )
+        .await?;
+    let at = |off: u32| (off - CAMERA_GAIN_OFF) as usize;
+    Ok(CameraState {
+        gain: f32_at(&b, at(CAMERA_GAIN_OFF)),
+        distance: f32_at(&b, at(CAMERA_DIST_OFF)),
+        pitch: u32_at(&b, at(CAMERA_PITCH_OFF)) as i32,
+        yaw: u32_at(&b, at(CAMERA_YAW_OFF)) as i32,
+    })
+}
+
+/// Zoom notches (positive = in) that bring `from` closest to `to`.
+pub fn zoom_notches(from: f32, to: f32) -> i32 {
+    let to = to.clamp(CAMERA_DIST_MIN, CAMERA_DIST_MAX);
+    ((from - to) / CAMERA_ZOOM_STEP).round() as i32
 }
 
 #[cfg(test)]
@@ -252,23 +378,70 @@ mod tests {
         assert_eq!(slot_entity(&slots, 1), 42);
     }
 
-    /// The camera chain follows four pointers from `g_pGLevel`.
+    /// Regression guard (2026-10-10): the camera is found by scanning the
+    /// level's actors for the player controller's vtable, not by the old
+    /// WorldInfo+0x35c chain (0 live). Actors[0] is a WorldInfo whose
+    /// +0x35c is 0, so the old chain would fail on this layout.
     #[tokio::test]
-    async fn camera_chain_follows_the_level_pointers() {
+    async fn the_camera_is_found_by_scanning_for_the_player_controller() {
         let slide = 0x10000i64;
-        let g = (GLEVEL_PTR_VA as i64 + slide) as u32;
+        let vt = |va: u32| words(&[rebase(va, slide)]);
+        let g = rebase(GLEVEL_PTR_VA, slide);
+        let (world, level, data, info, other, pc, cam) = (
+            0x5000u32, 0x6000u32, 0x7000u32, 0x8000u32, 0x8800u32, 0x9000u32, 0xA000u32,
+        );
         let mut m = std::collections::HashMap::new();
-        m.insert(g, words(&[0x5000]));
-        m.insert(0x5000 + 0x50, words(&[0x6000]));
-        m.insert(0x6000 + 0x3C, words(&[0x7000]));
-        m.insert(0x7000, words(&[0x8000]));
-        m.insert(0x8000 + 0x35C, words(&[0x9000]));
-        assert_eq!(camera_actor(&mut Fake(m.clone()), slide).await, Ok(0x9000));
-        m.insert(0x6000 + 0x3C, words(&[0]));
-        assert!(camera_actor(&mut Fake(m), slide)
+        m.insert(g, words(&[world]));
+        m.insert(world + 0x50, words(&[level]));
+        m.insert(level + 0x3C, words(&[data, 3]));
+        m.insert(data, words(&[info, other, pc]));
+        m.insert(info, words(&[0x0018_a02b4]));
+        m.insert(other, words(&[0x1234]));
+        m.insert(pc, vt(PLAYER_CONTROLLER_VTABLE_VA));
+        m.insert(pc + CONTROLLER_CAMERA_OFF, words(&[cam]));
+        m.insert(cam, vt(PLAYER_CAMERA_VTABLE_VA));
+        let mut state = Vec::new();
+        for v in [20.0f32, 0.0, 250.0, 0.0] {
+            state.extend_from_slice(&v.to_le_bytes());
+        }
+        state.extend_from_slice(&(-0x2000i32).to_le_bytes());
+        state.extend_from_slice(&0x4000i32.to_le_bytes());
+        m.insert(cam + CAMERA_GAIN_OFF, state);
+        let found = find_player_camera(&mut Fake(m.clone()), slide)
             .await
-            .unwrap_err()
-            .contains("hop 2"));
+            .unwrap();
+        assert_eq!(
+            found,
+            PlayerCamera {
+                controller: pc,
+                camera: cam
+            }
+        );
+        let s = camera_state(&mut Fake(m.clone()), cam).await.unwrap();
+        assert_eq!(
+            (s.gain, s.distance, s.pitch, s.yaw),
+            (20.0, 250.0, -0x2000, 0x4000)
+        );
+        assert_eq!(s.to_json()["yaw_offset_deg"], 90.0);
+
+        // A camera pointer that is not an ASGWCamera_Player is refused.
+        m.insert(cam, words(&[0xdead]));
+        let e = find_player_camera(&mut Fake(m.clone()), slide)
+            .await
+            .unwrap_err();
+        assert!(e.contains("no ASGWCamera_Player"), "{e}");
+        // No controller in the level.
+        m.insert(pc, words(&[0xbeef]));
+        let e = find_player_camera(&mut Fake(m), slide).await.unwrap_err();
+        assert!(e.contains("no ASGWController_Player among 3"), "{e}");
+    }
+
+    #[test]
+    fn zoom_notches_round_to_the_30_unit_step_and_clamp() {
+        assert_eq!(zoom_notches(250.0, 100.0), 5);
+        assert_eq!(zoom_notches(250.0, 400.0), -5);
+        assert_eq!(zoom_notches(250.0, 2000.0), -18);
+        assert_eq!(zoom_notches(250.0, 260.0), 0);
     }
 
     fn pose_bytes(x: f32, y: f32, z: f32, pitch: i32, yaw: i32) -> Vec<u8> {

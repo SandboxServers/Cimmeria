@@ -258,7 +258,8 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                     }
                 }
             }
-            io.look(s.dx, 0, 0)
+            let look_level = io
+                .look(s.dx, 0, 0)
                 .await
                 .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
             if s.forward != forward {
@@ -267,7 +268,10 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                     .map_err(|e| steps.fail(io.now_ms(), "forward_key", e))?;
                 forward = s.forward;
             }
-            if s.dx != 0 || s.forward {
+            if s.dx != 0 {
+                steps.used(look_level);
+            }
+            if s.forward {
                 steps.used(NativeLevel::RealInput);
             }
             io.sleep(DEFAULT_TICK_MS).await;

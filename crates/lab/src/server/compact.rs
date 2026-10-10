@@ -301,10 +301,7 @@ mod tests {
         assert_eq!(s.fields, vec!["position", "world_id"]);
         assert_eq!(args, json!({ "x": 1 }));
         let mut csv = json!({ "fields": "a, b" });
-        assert_eq!(
-            Shape::take("t", csv.as_object_mut()).fields,
-            vec!["a", "b"]
-        );
+        assert_eq!(Shape::take("t", csv.as_object_mut()).fields, vec!["a", "b"]);
     }
 
     #[test]
