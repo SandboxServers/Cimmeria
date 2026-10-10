@@ -227,3 +227,5 @@ ghidra/*
 # it anywhere in case a dev keeps a copy in-tree.
 **/lab-account.json
 lab-account.json
+# The per-instance copies (lab-account.p2.json...) tools/lab/instances.ps1 writes.
+**/lab-account.*.json

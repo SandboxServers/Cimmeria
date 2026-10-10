@@ -54,18 +54,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'labd-lib.ps1')
+
 $LabdEnv = Join-Path $env:LOCALAPPDATA 'cimmeria-lab\labd.env'
 $Ordinals = @{ 2 = 'two'; 3 = 'three'; 4 = 'four'; 5 = 'five' }
 
 function Get-InstallRoot {
     if ($InstallDir) { return $InstallDir }
     if ($env:CIMMERIA_LAB_INSTALL_DIR) { return $env:CIMMERIA_LAB_INSTALL_DIR }
-    if (Test-Path -LiteralPath $LabdEnv) {
-        $line = Get-Content -LiteralPath $LabdEnv -Encoding UTF8 |
-            Where-Object { $_ -like 'CIMMERIA_LAB_INSTALL_DIR=*' } |
-            Select-Object -First 1
-        if ($line) { return $line.Substring('CIMMERIA_LAB_INSTALL_DIR='.Length).Trim() }
-    }
+    # Parsed the way the daemon parses it (last duplicate wins).
+    $map = Read-LabdEnvFile $LabdEnv
+    if ($map.Contains('CIMMERIA_LAB_INSTALL_DIR')) { return $map['CIMMERIA_LAB_INSTALL_DIR'] }
     return $null
 }
 
@@ -123,6 +122,9 @@ function Invoke-Init {
     if (-not (Test-Path -LiteralPath $source)) { throw "missing the default account file: $source" }
 
     $account = Get-Content -LiteralPath $source -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($field in 'username', 'password') {
+        if ($account.PSObject.Properties.Name -notcontains $field) { throw "$source has no '$field' field" }
+    }
     $utf8 = [Text.UTF8Encoding]::new($false)
     foreach ($inst in Get-Instances) {
         if ($inst.Number -eq 1) { continue }
@@ -132,8 +134,9 @@ function Invoke-Init {
             continue
         }
         $copy = $account | ConvertTo-Json -Depth 32 | ConvertFrom-Json
-        $copy.username = "lab$($inst.Number)"
-        $copy.character = 'Lab' + $Ordinals[$inst.Number]
+        # character is optional in the Rust reader, so add it when absent.
+        $copy | Add-Member -NotePropertyName username -NotePropertyValue "lab$($inst.Number)" -Force
+        $copy | Add-Member -NotePropertyName character -NotePropertyValue ('Lab' + $Ordinals[$inst.Number]) -Force
         [IO.File]::WriteAllText($target, ($copy | ConvertTo-Json -Depth 32), $utf8)
         Write-Host "written  $target"
     }
@@ -151,7 +154,12 @@ function Invoke-Status {
 
         $info = Read-Json (Get-InstancePath $inst.Label 'lab-instance.json')
         $clientPid = Get-OptionalProperty $info 'pid'
-        $proc = if ($clientPid) { Get-Process -Id $clientPid -ErrorAction SilentlyContinue } else { $null }
+        # A stale file plus pid reuse must not report a client: require SGW.exe.
+        $proc = $null
+        if ("$clientPid" -match '^\d+$') {
+            $proc = Get-Process -Id ([int]$clientPid) -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProcessName -eq 'SGW' }
+        }
         $client = if ($proc) { "client running pid $clientPid" } else { 'no client' }
 
         Write-Host ("{0,-8} {1,-10} {2,-12} {3,-11} {4}" -f $inst.Label, $username, $character, $profile, $client)
