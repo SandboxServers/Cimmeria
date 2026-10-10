@@ -492,7 +492,7 @@ async fn post_rebuild(State(state): State<Arc<SupervisorState>>) -> Json<ActionR
 #[tokio::main]
 async fn main() {
     // Set up broadcast channel and ring buffer for log streaming.
-    let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
+    let (log_tx, _) = broadcast::channel::<LogEntry>(256);
     let log_buffer = LogBuffer::new();
 
     // Build tracing subscriber with broadcast layer.

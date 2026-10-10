@@ -85,3 +85,10 @@ Corollary for tests: always wrap a handler call that awaits a cross-service
 reply in `tokio::time::timeout`, so an ordering regression fails fast instead
 of wedging the suite. See [[cross-world-transfer-flow]] for the case that
 taught this.
+
+## `bash` from the PowerShell tool can be WSL bash
+
+Seen 2026-10-10: `bash tools/build-lane/lane.sh ...` run from the PowerShell
+tool resolved to WSL's bash (lane log under `/home/...`, then `no such
+command: nextest`). Run lane commands from the Bash tool (Git Bash), or call
+Git's `bash.exe` by full path from PowerShell.
