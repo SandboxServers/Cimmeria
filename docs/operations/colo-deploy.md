@@ -2,7 +2,7 @@
 title: "Colo / single-host auto-update deployment"
 type: how-to
 audience: operators
-last_updated: 2026-10-04
+last_updated: 2026-10-10
 ---
 
 # Colo / single-host auto-update deployment
@@ -30,7 +30,7 @@ The game container reaches the collector as `otel-collector:4317` on the externa
 |---|---|---|---|
 | `8081/tcp` | SOAP login; also launcher telemetry upload (`/api/auth/dev-session`, `/api/telemetry/*`) | Players | all interfaces |
 | `32832/udp` | BaseApp, all game traffic after login | Players | all interfaces |
-| `30000/tcp` | Minigame SmartFoxServer | Players | all interfaces |
+| `30000/tcp` | Minigame SmartFoxServer. Capped at 256 connections, 8 per source address, 30 s to log in, 4 KiB frames, 30 min idle ([limits](../gameplay/minigame-system.md#connection-limits)) | Players | all interfaces |
 | `8443/tcp` | Admin REST API. **No authentication** (#439) | Operators only | `ADMIN_PUBLISH`, default `127.0.0.1` |
 | `8444/tcp` | Live Research Lab endpoint (overlay) | The owner's dev box over the VPN | `CIMMERIA_WG_IP` only |
 | `8080/tcp` | SigNoz UI and query API | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |

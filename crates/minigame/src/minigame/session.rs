@@ -11,6 +11,8 @@ use rand::RngExt;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+pub use super::session_claim::ClaimRejection;
+
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
 ///
@@ -201,35 +203,46 @@ impl SessionRegistry {
     /// first connection's teardown would later delete a session it never owned.
     /// Doing both under one lock makes the interleaving unrepresentable: either
     /// the claim wins and the session is connected (so the sweep skips it), or
-    /// the sweep wins and this returns `None`.
+    /// the sweep wins and this returns an error.
+    ///
+    /// Does not log: the caller has the peer address and logs the rejection
+    /// (see [`ClaimRejection`] for why most of them are not WARN).
     pub async fn authenticate_and_claim(
         &self,
         entity_id: u32,
         password: &str,
         game_name: &str,
-    ) -> Option<MinigameSession> {
+    ) -> Result<MinigameSession, ClaimRejection> {
         let mut inner = self.inner.lock().await;
-        let session = inner.sessions.get_mut(&entity_id)?;
+        let session = inner
+            .sessions
+            .get_mut(&entity_id)
+            .ok_or(ClaimRejection::NoSession)?;
         if session.ticket != password {
-            tracing::warn!(
-                entity_id,
-                entity_name = session.player_name.as_deref(),
-                "Minigame ticket mismatch"
-            );
-            return None;
+            return Err(ClaimRejection::TicketMismatch {
+                player_name: session.player_name.clone(),
+            });
         }
         if session.game_name != game_name {
-            tracing::warn!(
-                entity_id,
-                entity_name = session.player_name.as_deref(),
-                expected = %session.game_name,
-                got = %game_name,
-                "Minigame game name mismatch",
-            );
-            return None;
+            return Err(ClaimRejection::GameMismatch {
+                player_name: session.player_name.clone(),
+                expected: session.game_name.clone(),
+            });
+        }
+        // One live connection per ticket: a second login while the first
+        // is still playing would run a second game against the same victory
+        // chains. The session leaves the registry when its connection task
+        // ends, which needs the server to see the first socket go: a FIN or
+        // RST, a failed or timed-out send, TCP keepalive giving up, or the
+        // idle timeout. Until one of those, a SWF reconnecting after a
+        // half-open drop lands here and is refused.
+        if session.connected {
+            return Err(ClaimRejection::AlreadyClaimed {
+                player_name: session.player_name.clone(),
+            });
         }
         session.connected = true;
-        Some(session.clone())
+        Ok(session.clone())
     }
 
     /// Validate a ticket without claiming the session.
@@ -749,7 +762,7 @@ mod tests {
         assert!(
             reg.authenticate_and_claim(42, &stale_ticket, "Livewire")
                 .await
-                .is_none(),
+                .is_err(),
             "a stale ticket must not authenticate against the replacement",
         );
 
@@ -796,13 +809,13 @@ mod tests {
         assert!(
             reg.authenticate_and_claim(42, "WRONG", "Livewire")
                 .await
-                .is_none(),
+                .is_err(),
             "a wrong ticket must be rejected",
         );
         assert!(
             reg.authenticate_and_claim(42, &ticket, "Alignment")
                 .await
-                .is_none(),
+                .is_err(),
             "a wrong game name must be rejected",
         );
 

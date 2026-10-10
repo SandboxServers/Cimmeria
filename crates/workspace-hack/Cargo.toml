@@ -55,7 +55,6 @@ sha2-a6292c17cd707f01 = { package = "sha2", version = "0.11" }
 simd-adler32 = { version = "0.3", default-features = false, features = ["std"] }
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde"] }
-socket2 = { version = "0.6", default-features = false, features = ["all"] }
 sqlx-core = { version = "0.9", features = ["_rt-tokio", "any", "json", "migrate", "offline"] }
 sqlx-postgres = { version = "0.9", default-features = false, features = ["any", "migrate", "offline"] }
 subtle = { version = "2", default-features = false, features = ["const-generics"] }

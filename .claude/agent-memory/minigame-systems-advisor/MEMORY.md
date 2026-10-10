@@ -7,4 +7,5 @@
 - [Difficulty ranges](difficulty-ranges.md) — content/def layer asserts 1-5, every per-game table only has tiers 1-4; the mismatch is original
 - [Converse minigame evidence](converse-minigame-evidence.md) — "Trump" mechanic from ability passives 778/779/792/793, 20s engagement state, ability-initiated not interact-initiated
 - [Mission seed has no minigame columns](mission-seed-has-no-minigame-columns.md) — mission_steps/objectives/tasks column lists; task_type is 1 for all 4358 rows
+- [Public port hardening](public-port-hardening.md) — why scanner bytes gave empty-field WARNs; listener limits; pre-auth logs DEBUG only; one live connection per ticket
 - [Search without a minigame](search-without-minigame.md) — the chain-1032 interact_tag+add_item+destroy_entity pattern, and NpcInteractionType::Loot for real containers

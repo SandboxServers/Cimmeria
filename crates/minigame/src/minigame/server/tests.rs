@@ -10,8 +10,18 @@
 //! `victory` extension command and reports `needs_tick() == false`, so no
 //! test here depends on the 250 ms tick timer.
 
+use tokio::net::TcpListener;
+
 use super::*;
 use crate::minigame::game::create_game;
+
+/// A slot from a throwaway tracker, for driving [`handle_connection`]
+/// without the accept loop. The permit keeps the tracker's counts alive.
+pub(super) fn test_permit(peer: SocketAddr) -> ConnectionPermit {
+    limits::ConnectionTracker::new(&ListenerLimits::default())
+        .try_acquire(peer.ip())
+        .expect("an empty tracker admits the first connection")
+}
 
 /// Stand up a loopback TCP pair and drive [`run_session`] over the server
 /// half with a placeholder instance.
@@ -19,8 +29,20 @@ use crate::minigame::game::create_game;
 /// Returns `(client_half, result_rx, join_handle)`. The caller drives the
 /// client half — sending `victory` to finish the game, or simply dropping
 /// it to simulate the player closing the SWF.
-async fn spawn_placeholder_session(
+pub(super) async fn spawn_placeholder_session(
     entity_id: u32,
+) -> (
+    TcpStream,
+    mpsc::Receiver<CellToBaseMsg>,
+    tokio::task::JoinHandle<()>,
+) {
+    spawn_placeholder_session_with_idle(entity_id, ListenerLimits::default().idle_timeout).await
+}
+
+/// [`spawn_placeholder_session`] with an explicit idle timeout.
+pub(super) async fn spawn_placeholder_session_with_idle(
+    entity_id: u32,
+    idle_timeout: Duration,
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
@@ -66,8 +88,8 @@ async fn spawn_placeholder_session(
             &tx,
             session,
             game,
-            vec![0u8; MAX_MESSAGE_LEN],
-            0,
+            ReadState::empty(),
+            idle_timeout,
         )
         .await;
     });
@@ -149,7 +171,7 @@ async fn read_one_chunk(client: &mut TcpStream) {
 ///
 /// Panics on timeout, EOF or I/O error — reaching the game loop is a
 /// precondition of every caller, not something to paper over.
-async fn read_until_game_begin(client: &mut TcpStream) {
+pub(super) async fn read_until_game_begin(client: &mut TcpStream) {
     const MILESTONE: &str = "<var n='_cmd' t='s'>onGameBegin</var>";
     let mut seen = String::new();
     let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
@@ -179,7 +201,7 @@ async fn read_until_game_begin(client: &mut TcpStream) {
 }
 
 /// Collect every `MinigameResult` the session dispatched.
-fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u8, Vec<i64>)> {
+pub(super) fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u8, Vec<i64>)> {
     let mut out = Vec::new();
     while let Ok(CellToBaseMsg::MinigameResult {
         result_code,
@@ -290,7 +312,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
         .expect("bind loopback");
     let addr = listener.local_addr().expect("local_addr");
     let mut client = TcpStream::connect(addr).await.expect("connect loopback");
-    let (server, _) = listener.accept().await.expect("accept loopback");
+    let server = listener.accept().await.expect("accept loopback");
 
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -300,7 +322,17 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     let (tx, _rx) = mpsc::channel(16);
     let reg = registry.clone();
-    let handle = tokio::spawn(handle_connection(server, reg, tx, 9339));
+    let (server, peer) = server;
+    let permit = test_permit(peer);
+    let handle = tokio::spawn(handle_connection(
+        server,
+        peer,
+        permit,
+        reg,
+        tx,
+        9339,
+        ListenerLimits::default(),
+    ));
 
     // Phase 1 — verChk. The server answers with the cross-domain policy
     // and apiOK; 154 is the version the original SWFs were built against.
@@ -427,8 +459,8 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
             &tx,
             session,
             game,
-            vec![0u8; MAX_MESSAGE_LEN],
-            0,
+            ReadState::empty(),
+            ListenerLimits::default().idle_timeout,
         )
         .await;
         reg.remove_if_ticket(4304, &ticket).await;

@@ -61,15 +61,79 @@ pub enum SfsMessage {
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
+impl SfsMessage {
+    /// The `(t, action)` pair this message arrived as, for log fields.
+    pub fn kind(&self) -> (&'static str, &'static str) {
+        match self {
+            SfsMessage::VersionCheck { .. } => ("sys", "verChk"),
+            SfsMessage::Login { .. } => ("sys", "login"),
+            SfsMessage::ExtensionRequest { .. } => ("xt", "xtReq"),
+        }
+    }
+}
+
+/// Why [`parse_message`] could not turn a frame into an [`SfsMessage`].
+///
+/// The codec does not log. Whether a bad frame is noise or a fault depends
+/// on who sent it: bytes from a peer that has not logged in are usually a
+/// port scanner and log at DEBUG, while the same thing from an
+/// authenticated SWF is a protocol gap worth a WARN. Only the connection
+/// task knows which, so it gets the reason and decides.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    /// The frame is not well-formed XML.
+    Malformed,
+    /// Well-formed (or plain text), but there is no `<msg>` envelope: a TLS
+    /// ClientHello, an HTTP request line, a stray probe.
+    NotSfs,
+    /// An SFS envelope with a `(t, action)` pair this server does not
+    /// handle. Both values are as the peer sent them.
+    UnknownType {
+        msg_type: String,
+        body_action: String,
+    },
+    /// An `xtReq` whose CDATA `<dataObj>` did not parse.
+    BadExtensionData,
+}
+
+impl ParseError {
+    /// Stable `reason` field value for the log row.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            ParseError::Malformed => "malformed_xml",
+            ParseError::NotSfs => "no_sfs_envelope",
+            ParseError::UnknownType { .. } => "unknown_sfs_type",
+            ParseError::BadExtensionData => "bad_extension_data",
+        }
+    }
+
+    /// `(msg_type, body_action)` when the frame had an envelope, empty
+    /// strings otherwise.
+    pub fn kind(&self) -> (&str, &str) {
+        match self {
+            ParseError::UnknownType {
+                msg_type,
+                body_action,
+            } => (msg_type, body_action),
+            ParseError::BadExtensionData => ("xt", "xtReq"),
+            ParseError::Malformed | ParseError::NotSfs => ("", ""),
+        }
+    }
+}
+
 /// Parse a raw XML message string into an `SfsMessage`.
-pub fn parse_message(xml: &str) -> Option<SfsMessage> {
+///
+/// Never logs; see [`ParseError`] for why.
+pub fn parse_message(xml: &str) -> Result<SfsMessage, ParseError> {
     // Use quick-xml for parsing
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
     let mut reader = Reader::from_str(xml);
 
-    // Find <msg t='...'>
+    // Find <msg t='...'>. `saw_msg` tells a missing envelope (scanner
+    // bytes) apart from an envelope with an empty or unknown `t`.
+    let mut saw_msg = false;
     let mut msg_type = String::new();
     let mut in_body = false;
     let mut body_action = String::new();
@@ -96,6 +160,7 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
                 let name = std::str::from_utf8(name_bytes.as_ref()).unwrap_or("");
                 match name {
                     "msg" => {
+                        saw_msg = true;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"t" {
                                 msg_type = String::from_utf8_lossy(&attr.value).to_string();
@@ -167,7 +232,7 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(_) => return None,
+            Err(_) => return Err(ParseError::Malformed),
             _ => {}
         }
         buf.clear();
@@ -175,24 +240,32 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
 
     let _ = body_r; // Used in routing but not needed for parsing
 
+    // Before this check, a frame with no envelope fell through to the
+    // unknown-type arm with `msg_type` and `body_action` still empty, which
+    // is the empty-field WARN scanners produced on the public port.
+    if !saw_msg {
+        return Err(ParseError::NotSfs);
+    }
+
     match (msg_type.as_str(), body_action.as_str()) {
-        ("sys", "verChk") => Some(SfsMessage::VersionCheck {
+        ("sys", "verChk") => Ok(SfsMessage::VersionCheck {
             version: ver_version.unwrap_or(0),
         }),
-        ("sys", "login") => Some(SfsMessage::Login {
+        ("sys", "login") => Ok(SfsMessage::Login {
             zone: login_zone,
             nick,
             password,
         }),
         ("xt", "xtReq") => {
             // Parse the CDATA content as a nested XML dataObj
-            let (cmd, params) = parse_extension_data(&body_text)?;
-            Some(SfsMessage::ExtensionRequest { cmd, params })
+            let (cmd, params) =
+                parse_extension_data(&body_text).ok_or(ParseError::BadExtensionData)?;
+            Ok(SfsMessage::ExtensionRequest { cmd, params })
         }
-        _ => {
-            tracing::warn!(msg_type, body_action, "Unknown SFS message type");
-            None
-        }
+        _ => Err(ParseError::UnknownType {
+            msg_type,
+            body_action,
+        }),
     }
 }
 
@@ -414,6 +487,40 @@ mod tests {
             }
             _ => panic!("Expected ExtensionRequest"),
         }
+    }
+
+    /// Bytes with no SFS envelope -- what a port scanner sends -- come back
+    /// as `NotSfs`, not as an unknown type with empty fields.
+    #[test]
+    fn non_sfs_input_is_not_sfs() {
+        for probe in [
+            "GET / HTTP/1.1\r\nHost: x\r\n\r\n",
+            "\u{16}\u{3}\u{1}\u{2}",
+            "<policy-file-request/>",
+            "",
+        ] {
+            assert_eq!(
+                parse_message(probe).unwrap_err(),
+                ParseError::NotSfs,
+                "probe {probe:?}"
+            );
+        }
+    }
+
+    /// A well-formed envelope with an unhandled `(t, action)` carries both
+    /// values, so the WARN an authenticated session raises can name them.
+    #[test]
+    fn unknown_type_carries_msg_type_and_action() {
+        let xml = "<msg t='sys'><body action='roundTrip' r='1'></body></msg>";
+        let err = parse_message(xml).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError::UnknownType {
+                msg_type: "sys".into(),
+                body_action: "roundTrip".into(),
+            }
+        );
+        assert_eq!(err.kind(), ("sys", "roundTrip"));
     }
 
     #[test]
