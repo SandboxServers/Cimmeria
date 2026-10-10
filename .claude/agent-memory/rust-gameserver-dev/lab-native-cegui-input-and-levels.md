@@ -17,6 +17,14 @@ Posted `WM_MOUSEMOVE` and Lua `setPosition` never give CEGUI a `MouseMove`
 - `d_dropTarget` (+0x270) stays null live; the tool fires
   `notifyDragDropItemDropped` and labels it `native_call` (N3). Cause unconfirmed
   (suspect: no `DragDropTarget` flag up the slot's parent chain).
+- Gate anything drop-related on the source container's own dragging byte
+  (`+0x23e`, word at +0x23c reads 0x00010101 live), never on `getDragInfo`:
+  that is global SGW state and reports any item's drag (#1302 review).
+- Cleanup that lets go (native button-up, clearing `input_modifiers`) uses
+  `Supervisor::bridge_release_call`: plain `bridge_call` refuses after a lease
+  takeover, which would leave the button or Ctrl held.
+- A tool that ran but did nothing returns `effect_ok: false`; the UAT runner
+  fails the action on it (native level alone would grade a no-op as N1).
 - UI tools report `native_level` words from `supervisor/ui/mod.rs::NativeLevel`
   (`native_cegui`, `client_ui_lua`, `native_call`). The UAT runner only downgrades
   a tier for words `uat/tier.rs::from_reported` knows; `client_ui_lua` was missing

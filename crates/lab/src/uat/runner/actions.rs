@@ -237,6 +237,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         self.attach_images(ctx, &format!("action{}", rec.index), &name, &out);
         record_outcome(rec, &out);
+        // A tool that ran but says its effect did not happen (a drag that
+        // moved nothing: `effect_ok: false`) fails the action, so it can
+        // never count toward a native pass.
+        if out.ok && out.json.get("effect_ok") == Some(&json!(false)) {
+            return fail(rec, format!("{name} ran but reports effect_ok: false"));
+        }
         // A tool that reports how it drove the game (the world tools #1099,
         // the combat tools #1100) overrides the static tier when it fell back lower.
         if let Some((reported, word)) = out

@@ -265,6 +265,10 @@ Live memory diff: container vtable `0x01AAEDC4`, `+0x260 = 8.0`, `+0x270` is 0 t
   byte at `window+0xfc`). The next move gives Enters and Up gives Dropped. Direct fallback after the normal Up:
   `notifyDragDropItemDropped` = `0x011a2930`, `__thiscall (target*, draggedContainer*)`, `ret 4`, which fires the
   target's Dropped event. Swapping the sheet is unnecessary.
+- **Which container is dragging [V live].** In the same live drag the container's flag word at `+0x23c` read
+  `0x00000001` after the press and `0x00010101` once dragging (the `+0x23e` dragging byte set), and its alpha at
+  `+0x070` went from 1.0 to 0.5. `getDragInfo` is global SGW drag state and would also report another item's drag, so
+  the lab gates the explicit drop on the source container's own `+0x23e` byte.
 
 ## 9. Follow-up: camera yaw/pitch and zoom through DirectInput (2026-10-10)
 

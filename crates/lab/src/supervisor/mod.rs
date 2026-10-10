@@ -298,6 +298,18 @@ impl Supervisor {
         if method != "input_release" {
             crate::lease::permit::ensure(&format!("bridge {method}"))?;
         }
+        self.bridge_call_unguarded(method, params).await
+    }
+
+    /// [`Self::bridge_call`] without the lease check, for a call that only
+    /// lets go of something the same tool pressed (a native button-up,
+    /// clearing a held modifier): like `input_release`, cleanup must still
+    /// run when the lease was revoked mid-press. Still journaled.
+    pub async fn bridge_release_call(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.bridge_call_unguarded(method, params).await
+    }
+
+    async fn bridge_call_unguarded(&self, method: &str, params: Value) -> Result<Value, String> {
         let seq = {
             let mut st = self.state.lock().await;
             st.journal.record(method, now_ms())
