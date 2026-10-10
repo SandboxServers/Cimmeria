@@ -356,3 +356,56 @@ Do not rely on the DI hook alone. In order:
 Open: why `events_delivered` is 0 (candidate causes: the gate in 9.3 being false while no capture is held, the capture
 flush eating records, or the hook matching the wrong device); the `ASGWController_Player` mouse-move handler and its
 gain; the meaning of `vfunc +0x40` and `+0x4d0`.
+
+## 10. Follow-up: finding the local PlayerController and camera (2026-10-10)
+
+Method: headless Ghidra on SGW.exe plus read-only `client_mem_read` on the live client (in world). [V] = static and live agree.
+
+### 10.1 Why the old chain returns null
+
+`g_pGLevel` (`0x01EE2684`, live value 0xE5712210) is the `UWorld` [V]. The lab chain `[[[[g_pGLevel+0x50]+0x3C]]+0x35C]` is exactly `0x0054d8d0`: `*(**(*(w+0x50)+0x3c)+0x35c)`. Level = `*(w+0x50)`, its Actors array data = `*(level+0x3c)`, count = `*(level+0x40)` (live 0x32). `Actors[0]` is the `AWorldInfo` (vtable `0x018a02b4`). The hops are right, but `WorldInfo+0x35c` is 0 live. The field is not the local PlayerController in this build. It is only read as a flag-bearing actor (`+0x1b0`, `+0x254`) by `PlayerTick` (`0x005e4350`), so it is empty in a normal game. Do not use `0x0054d8d0` as a PlayerController getter.
+
+### 10.2 Reliable path to the PlayerController [V]
+
+Scan the level's Actors array for the actor whose vtable is `0x019E2B2C` (`ASGWController_Player`, slot 0 = `0x00e83c10`). Live: `Actors` data 0xDCD77410, entry 36 = PC 0xE0FA6410 (the camera is the next entry, 37). Cost: one read of `count*4` bytes plus one 4-byte read per entry. Cache the PC and revalidate its vtable each tick.
+
+### 10.3 Camera object [V]
+
+`ASGWCamera_Player` (`SGWCamera_Player.cpp`, size 0x378, vtable `0x019E1134`) = `*(PC + 0x2b0)` (all `ASGWController_Player` input handlers do `FUN_00df5f20(*(this+0x2b0))`). Live: 0xDC68E410. Third-person camera fields:
+
+| Offset | Type | Meaning | Live |
+| --- | --- | --- | --- |
+| +0x344 | f32 | max-distance scale | 0.75 |
+| +0x348 | u32 | flags; bit 2 (0x4) inverts yaw, bit 3 (0x8) inverts pitch (multiplier -1.0f at `0x01814190`) | 3 |
+| +0x34c, +0x350 | f32 | zoom step = 10.0 * 3.0 = 30 per notch | 10, 3 |
+| +0x358 | f32 | look gain (mouse counts to rotator units) | 20.0 |
+| +0x360 | f32 | camera distance (third-person zoom) | 250.0 |
+| +0x368 | i32 | camera pitch offset, clamped to +-0x4000 | 0 |
+| +0x36c | i32 | camera yaw offset, wraps at +-0x8000 (65536 units per turn) | 0 |
+
+Zoom limits: min 100.0 (`0x019e1000`), max `0.75 * 900.0 (0x018cb14c) + 100.0` = 775.0. The pawn's own Rotation is a different thing: `AActor+0xE8` (Pitch, Yaw, Roll as i32), location `+0xDC` (matches `memory.rs`). The camera yaw/pitch above are offsets relative to it.
+
+### 10.4 Native zoom and look (preferred over key injection)
+
+`ASGWController_Player` subscribes (`FUN_00e85c00`, `FUN_00e85540`) to `Event_Action_ZoomIn/Out` and `Event_Input_MouseMove`. The handlers are one-line thunks on the camera vtable (all `thiscall`, `ecx` = camera, callee pops nothing extra):
+
+| Handler | Camera vtable slot | Effect | Signature |
+| --- | --- | --- | --- |
+| `0x00e83ee0` ZoomIn | +0x2f8 -> `0x00e7e560` | `dist -= 30` while `dist > 100` | `void(void)` |
+| `0x00e83f10` ZoomOut | +0x2f4 -> `0x00e7e870` | `dist += 30` while `dist < 775` | `void(void)` |
+| `0x00e83f40` MouseMove(dx,dy) | +0x300 -> `0x00e7e600` (yaw), +0x2fc -> `0x00e7e590` (pitch) | `yaw += gain*dx*inv`, `pitch += gain*dy*inv` | `void(float)` each |
+| ExecYawAbsolute | +0x304 -> `0x00e7e680` | sets yaw from a float | `void(float)` |
+
+So the lab can zoom by calling `0x00e7e560` / `0x00e7e870` with `ecx` = camera, or by writing `camera+0x360` (float, keep 100..775). It can turn by calling `0x00e7e600(ecx=camera, float dx)` and `0x00e7e590(ecx=camera, float dy)`, or by writing `+0x36c` / `+0x368`. The handler also accumulates raw counts into `PC+0x4a0` / `PC+0x4a4` (not needed to move the camera). Camera movement does not need RMB native-side: the RMB `MouseLook` gate only decides whether `Event_Input_MouseMove` reaches the handler (it is subscribed on `released==0`, unsubscribed on release).
+
+### 10.5 `0x00581fb0` / `0x005820f0` and `InputAxis`
+
+- `0x00581fb0(InputMgr, int delta)` (wheel up, key 300) and `0x005820f0(InputMgr, int delta)` (wheel down, key 0x12d): `thiscall`, `this` = the InputMgr singleton (`0x01ee2b1c`, from `0x005822c0`), one `int` stack arg (cast to float for CEGUI via `0x0056b320`), callee cleans (`ret 4`). Not zooming directly: they feed CEGUI first, then emit the key through CME. Native zoom is 10.4.
+- Viewport client `InputAxis` (vtable `+0x18`): UE3 `UBOOL InputAxis(FViewport* vp, INT ControllerId, FName Key, FLOAT Delta, FLOAT DeltaTime, UBOOL bGamepad)`, `thiscall`, `FName` passed by value as two dwords (index, number). [U for the trailing bGamepad param; the pump passes 5 values per `9.2`.]
+- FName values, read live from `0x01ee1fe8` (index, number): MouseX = {0x2a69, 0}, MouseY = {0x2a6a, 0}, ScrollUp = {0x2a67, 0} (`0x01ee1ff8`), ScrollDown = {0x2a66, 0} (`0x01ee2000`). The indices are per-run name-table slots; read them from those addresses instead of hardcoding.
+- Caution: `V = *(SGWUIManager+0x38)` = 0xEE8B3204 is an interior (multiple-inheritance) pointer. `*(V+0x38)` live is the static address 0x01849C0C (an `FViewport` vtable-like), not a heap client object, so `viewport+0x38` as "client" in `9.2` is not confirmed for this pointer. Use the camera calls in 10.4 and avoid depending on `InputAxis`.
+
+### 10.6 Open
+
+- The real `GEngine` -> `GamePlayers[0]` -> `Actor` (PlayerController) path was not located; the Actors scan in 10.2 is the working recipe.
+- The `+0x340` / `+0x354` / `+0x35c` / `+0x364` camera floats were read but their roles were not traced.
