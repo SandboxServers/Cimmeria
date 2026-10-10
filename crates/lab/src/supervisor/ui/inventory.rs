@@ -23,10 +23,18 @@ use crate::supervisor::flows::widgets::lua_quote;
 /// its `Container.*` name, and `__lab_items(id, name, include_empty)`
 /// reads one container's slots (1-based, as the inventory UI numbers them).
 pub const ITEMS_FN: &str = r#"
+local __LAB_CONTAINER_NAMES = {'Main','Mission','Crafting','Vault','TeamVault','CommandVault','TeamBank','CommandBank','Bandolier','Head','Face','Neck','Chest','Back','Waist','Hands','Legs','Feet','Artifact1','Artifact2'}
 local function __lab_cnames()
   local names = {}
   if type(Container) == 'table' then
+    -- The live client's Container is a tolua class: pairs() sees only its
+    -- metamethods and the ids resolve through __index, so look the known
+    -- names up by index too (pairs still covers a plain table).
     for k, v in pairs(Container) do if type(v) == 'number' then names[v] = k end end
+    for _, k in ipairs(__LAB_CONTAINER_NAMES) do
+      local ok, v = pcall(function() return Container[k] end)
+      if ok and type(v) == 'number' and names[v] == nil then names[v] = k end
+    end
   end
   return names
 end

@@ -22,6 +22,11 @@ use super::inventory::ITEMS_FN;
 use super::{NativeLevel, NativeTrail, Supervisor};
 use crate::supervisor::flows::widgets::lua_quote;
 
+/// The `Container.*` names the stock UI Lua uses. The live `Container` is a
+/// tolua class, so these are looked up by index; `pairs()` finds none.
+/// `ITEMS_FN` carries the same list (pinned by a test).
+pub const CONTAINER_NAMES_LUA: &str = "{'Main','Mission','Crafting','Vault','TeamVault','CommandVault','TeamBank','CommandBank','Bandolier','Head','Face','Neck','Chest','Back','Waist','Hands','Legs','Feet','Artifact1','Artifact2'}";
+
 /// A container named by its `Container.*` name or its number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContainerRef {
@@ -42,9 +47,15 @@ impl ContainerRef {
     pub fn lua_id(&self) -> String {
         match self {
             Self::Id(n) => n.to_string(),
+            // The live Container is a tolua class whose ids resolve through
+            // __index (pairs() sees only metamethods), so try the known
+            // names by index before falling back to pairs().
             Self::Name(n) => format!(
                 "(function() local want = string.lower({}) \
-                 for k, v in pairs(Container or {{}}) do if string.lower(k) == want then return v end end \
+                 for _, k in ipairs({CONTAINER_NAMES_LUA}) do if string.lower(k) == want then \
+                 local ok, v = pcall(function() return Container[k] end) \
+                 if ok and type(v) == 'number' then return v end end end \
+                 for k, v in pairs(Container or {{}}) do if type(k) == 'string' and string.lower(k) == want then return v end end \
                  return nil end)()",
                 lua_quote(n)
             ),
@@ -235,6 +246,17 @@ mod tests {
         let l = ContainerRef::Name("bandolier".into()).lua_id();
         assert!(l.contains(r#"string.lower("bandolier")"#));
         assert!(l.contains("pairs(Container or {})"));
+        // The tolua Container resolves ids through __index only.
+        assert!(l.contains("return Container[k]"));
+        assert!(l.contains(CONTAINER_NAMES_LUA));
+    }
+
+    #[test]
+    fn the_reader_and_the_lookup_share_one_container_name_list() {
+        assert!(ITEMS_FN.contains(&format!(
+            "local __LAB_CONTAINER_NAMES = {CONTAINER_NAMES_LUA}"
+        )));
+        assert!(ITEMS_FN.contains("return Container[k]"));
     }
 
     #[test]
