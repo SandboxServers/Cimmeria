@@ -5,7 +5,7 @@
 
 use super::heartbeat::HeartbeatState;
 use super::main_thread::MainThreadCpu;
-use super::stall_grace::{self, Heartbeat, Poll, StallTracker, Verdict};
+use super::stall_grace::{self, BootGrace, Heartbeat, Poll, StallTracker, Verdict};
 use serde_json::Value;
 
 use super::flows::{self, login::LoginRequest};
@@ -30,7 +30,7 @@ impl Supervisor {
         // tracker (pure, tested): the failure count, the stale rule and
         // the load grace.
         let mut tracker = StallTracker::new(MAX_HEARTBEAT_FAILS, grace);
-        let mut answered_once = false;
+        let mut boot = BootGrace::new(started_ms, stall_grace::BOOT_GRACE);
         loop {
             tokio::time::sleep(WATCHDOG_POLL).await;
 
@@ -44,7 +44,7 @@ impl Supervisor {
 
             let hb = match self.bridge.heartbeat().await {
                 Ok(count) => {
-                    answered_once = true;
+                    boot.answered();
                     let mut st = self.state.lock().await;
                     let ts = now_ms();
                     st.record_heartbeat(count, ts);
@@ -58,9 +58,7 @@ impl Supervisor {
                         self.handle_death(my_pid).await;
                         return;
                     }
-                    let since =
-                        std::time::Duration::from_millis((now_ms() - started_ms).max(0) as u64);
-                    if stall_grace::in_boot_grace(answered_once, since, stall_grace::BOOT_GRACE) {
+                    if let Some(since) = boot.ignores_failure(now_ms()) {
                         tracing::debug!(
                             pid = my_pid,
                             since_ms = since.as_millis() as u64,

@@ -304,16 +304,30 @@ fn busy_is_a_share_of_the_interval() {
 /// boot grace is ignored; after the grace it counts again.
 #[test]
 fn a_boot_failure_inside_the_grace_is_ignored() {
-    assert!(in_boot_grace(false, Duration::ZERO, BOOT_GRACE));
-    assert!(in_boot_grace(false, Duration::from_secs(89), BOOT_GRACE));
-    assert!(!in_boot_grace(false, BOOT_GRACE, BOOT_GRACE));
-    assert!(!in_boot_grace(false, Duration::from_secs(91), BOOT_GRACE));
+    let start = 1_000_000;
+    let boot = BootGrace::new(start, BOOT_GRACE);
+    assert_eq!(boot.ignores_failure(start), Some(Duration::ZERO));
+    assert_eq!(
+        boot.ignores_failure(start + 89_000),
+        Some(Duration::from_secs(89))
+    );
+    assert_eq!(
+        boot.ignores_failure(start + 90_000),
+        None,
+        "the grace ends at 90 s"
+    );
+    assert_eq!(boot.ignores_failure(start + 91_000), None);
+    // A clock that steps back reads as zero time since launch.
+    assert_eq!(boot.ignores_failure(start - 5_000), Some(Duration::ZERO));
 }
 
 /// Once the bridge has answered, the boot grace is over, however young
-/// the launch is.
+/// the launch is: a client that answers and then hangs gets none.
 #[test]
 fn an_answered_bridge_has_no_boot_grace() {
-    assert!(!in_boot_grace(true, Duration::ZERO, BOOT_GRACE));
-    assert!(!in_boot_grace(true, Duration::from_secs(10), BOOT_GRACE));
+    let start = 1_000_000;
+    let mut boot = BootGrace::new(start, BOOT_GRACE);
+    boot.answered();
+    assert_eq!(boot.ignores_failure(start), None);
+    assert_eq!(boot.ignores_failure(start + 10_000), None);
 }
