@@ -237,6 +237,11 @@ use crate::otel;
 /// datagram exceeds the client's 1472-byte receive buffer. `debug` because
 /// the ordinary rows are the join key a stall investigation needs.
 ///
+/// `mercury.fragment_caps` covers the per-channel fragment reassembly caps:
+/// a DEBUG row per incomplete bundle evicted to stay within them, and a WARN
+/// (`event = "fragment_cap"`) at most once per 10 s per channel that sums
+/// the drops. Silent unless a peer leaves many fragmented bundles unfinished.
+///
 /// `org` and `squad` (organizations campaign, ORG-01) are the Team/Command
 /// and Squad targets. Both are `debug`: the per-call "no handler yet" rows
 /// and the later routing decisions are DEBUG, and the coordinator reads
@@ -326,6 +331,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mercury.rx_order=debug,\
                 mercury.tx_hole=debug,\
                 mercury.reliable_send=debug,\
+                mercury.fragment_caps=debug,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
                 wire.out.forced_position=debug,\

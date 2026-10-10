@@ -11,6 +11,7 @@ pub(super) use crate::consts;
 pub(super) use crate::packet::Packet;
 
 mod channel_lifecycle;
+mod fragment_caps;
 mod reassembly;
 mod retransmit_cap;
 mod rx_order;

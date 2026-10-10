@@ -627,6 +627,23 @@ The SGW client orders its **reliable** stream and delivers **unreliable** packet
 
 So a lost `CREATE_ENTITY` delays the reliable cascade behind it until the retransmit arrives; it never reorders it. The Rust `Channel::receive_parsed` (`crates/mercury/src/channel/rx_order.rs`) implements the same gate with `RX_WINDOW_SIZE = 512`. The server runs it on every client packet. Like the client, it adopts the first reliable sequence the peer sends. It differs from the client in one way: a packet beyond the window is not acked, so the sender retransmits it. A stall watchdog (`Channel::check_rx_stall`) warns when one gap blocks delivery for more than 2 s. It never skips the gap. The 64-packet receive window in the table below is the deprecated C++ server's value.
 
+### Receive-side Reassembly Caps (Rust Server)
+
+Each server channel reassembles client fragments in a `FragmentAssembler` (`crates/mercury/src/unpacker/`), one partial reassembly per `first_seq`. Like the client it has no time-based sweep (spec R13): a partial bundle is removed when it completes, when a newer bundle overlapping its sequence range arrives, or when the channel is dropped. Memory is bounded by two per-channel caps instead:
+
+| Constant | Value | Why this value |
+|----------|-------|----------------|
+| `MAX_PENDING_FRAGMENTED_BUNDLES` | 16 | The client keeps one reassembly group per channel (`Channel+0x124`, see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md)), so a BigWorld sender finishes one bundle before it starts the next. Reliable fragments reach the assembler in sequence order through the receive window, so a legitimate client has one bundle open at a time. The headroom covers unreliable bundles and partials left by lost unreliable fragments. |
+| `MAX_PENDING_FRAGMENT_BYTES` | 256 KiB | The largest legitimate bundle is 64 x 1472 = 94,208 bytes, so more than two fit. One 64-fragment bundle at the server's 4096-byte receive buffer also fits. |
+
+**Admission policy.** When a new bundle arrives with 16 already open, the bundle that arrived earliest is evicted. When a fragment would push the held payload past 256 KiB, the earliest-arrived *other* bundles are evicted until it fits; the bundle the fragment belongs to is never the one evicted. A single bundle that alone exceeds the byte cap is dropped. Evicting the earliest arrival was chosen over refusing the new bundle: partials that nothing else removes would otherwise block every later bundle on the channel, including reliable ones whose fragments the receive window has already acked and the client will not resend. A legitimate bundle is only evicted if 16 newer bundles open while it waits.
+
+**Cost.** Pending bundles are indexed by `first_seq` (masked to 28 bits) in a `BTreeMap`. A bundle spans at most 64 sequence numbers, so the overlap checks read only the keys within 63 before the incoming range, and each fragment costs O(log pending). The stored fragment is copied, so the held allocation equals the counted bytes.
+
+**Unreliable fragments.** A packet with `FLAG_FRAGMENTED | FLAG_HAS_SEQUENCE` and no `FLAG_RELIABLE` (`0x60`) skips the receive window and goes straight to the assembler, under the same caps. It stays accepted. The client's own receive path handles unreliable fragments (one group, discarded when any other bundle arrives), and the deprecated C++ server discarded them (`"Discarding fragmented unreliable frame"`, `deprecated/cpp/src/mercury/channel.cpp`), but no capture or decompile shows whether the 2009 client ever sends one.
+
+**Telemetry.** Each eviction logs a DEBUG row on target `mercury.fragment_caps` (`reason`, `evicted_first_seq`, `evicted_received`, `evicted_total`, `evicted_bytes`). The channel logs one WARN, `event = "fragment_cap"`, at most every 10 s (`FRAGMENT_CAP_WARN_INTERVAL_MS`) with `peer`, `dropped`, `count_evictions`, `byte_evictions`, `oversize_drops`, the last drop's `reason`, `last_first_seq`, `last_received` and `last_total`, the current `pending_bundles` and `pending_bytes`, and `lifetime_drops`. Drops inside the window are carried into the next WARN. `Channel::fragment_cap_drops` counts drops over the channel's life.
+
 ## Channels
 
 A channel is a persistent communication endpoint between two addresses. It maintains ordering, reliability, and flow control state.
