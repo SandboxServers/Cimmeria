@@ -1,6 +1,8 @@
 //! One-attribute patches to entries the client already ships, in any cooked
 //! category: an ability icon (`CookedDataAbilities`, category 2) or an error
-//! string (`ErrorStrings`, category 11).
+//! string (`ErrorStrings`, category 11). Error strings the client never
+//! shipped are added whole ([`additions`]); they share this module's
+//! category-11 metadata bump.
 //!
 //! Delivery is the same as every other override: the entry is patched in
 //! memory at startup and the category's metadata is bumped by a value hashed
@@ -14,6 +16,9 @@
 //! reasons are on each row and in `docs/content/debug-area.md`.
 
 use std::collections::HashMap;
+
+mod additions;
+pub use additions::{generate_error_text_xml, ErrorStringAddition, ERROR_STRING_ADDITIONS};
 
 use crate::base::item_overrides::patch_attr;
 use crate::base::resources::{category_name, CategoryData};
@@ -73,6 +78,43 @@ pub const ATTRIBUTE_PATCHES: &[AttributePatch] = &[
                  so the client printed the raw token (DA-F6); worded like the shipped _39 \
                  \"You do not have Line of Sight to your target\"",
     },
+    // The character-creation refusals (Class Start v6 CS-08 F1). The client
+    // shows the served `Text` of the code `onCharacterCreateFailed` carries
+    // in its "Creation Error" prompt, and all four ship as the bare or quoted
+    // moniker.
+    AttributePatch {
+        category: CATEGORY_ERROR_STRINGS,
+        element_id: 10000,
+        element_name: "ERROR_CharacterCreationNotEnoughInformation",
+        attribute: "Text",
+        value: "Character creation is missing some information. Please try again",
+        reason: "ships its moniker as its text; sent for a short or malformed create request",
+    },
+    AttributePatch {
+        category: CATEGORY_ERROR_STRINGS,
+        element_id: 10001,
+        element_name: "ERROR_CharacterCreationInvalidCharacterType",
+        attribute: "Text",
+        value: "That character type cannot be created",
+        reason: "ships its quoted moniker as its text; sent for an unknown or unusable char_def",
+    },
+    AttributePatch {
+        category: CATEGORY_ERROR_STRINGS,
+        element_id: 10002,
+        element_name: "ERROR_CharacterCreationInvalidSkinColor",
+        attribute: "Text",
+        value: "That skin color is not available",
+        reason: "ships its quoted moniker as its text; sent for a skin tint outside 0-15",
+    },
+    AttributePatch {
+        category: CATEGORY_ERROR_STRINGS,
+        element_id: 10003,
+        element_name: "ERROR_CharacterCreationUnspecifiedError",
+        attribute: "Text",
+        value: "The character could not be created. Please try again",
+        reason: "ships its quoted moniker as its text; sent for a bad visual choice or a \
+                 database error",
+    },
 ];
 
 /// The metadata bump for one category: a 32-bit FNV-1a hash of every patch
@@ -101,12 +143,18 @@ fn bump_for(category: u32) -> u32 {
         feed(p.value.as_bytes());
         feed(&[0]);
     }
+    if category == CATEGORY_ERROR_STRINGS {
+        for a in ERROR_STRING_ADDITIONS {
+            feed(&generate_error_text_xml(a));
+            feed(&[0]);
+        }
+    }
     hash | 0x1
 }
 
-/// Apply [`ATTRIBUTE_PATCHES`] to the loaded categories, bump each patched
-/// category's metadata once, and return the patched element ids per
-/// category, sorted.
+/// Apply [`ATTRIBUTE_PATCHES`] and [`ERROR_STRING_ADDITIONS`] to the loaded
+/// categories, bump each changed category's metadata once, and return the
+/// changed element ids per category, sorted.
 pub(crate) fn apply_attribute_patches(
     categories: &mut HashMap<u32, CategoryData>,
 ) -> HashMap<u32, Vec<u32>> {
@@ -158,6 +206,14 @@ pub(crate) fn apply_attribute_patches(
             reason = patch.reason,
             "Applied Cimmeria cooked attribute patch"
         );
+    }
+    if let Some(added) = additions::apply(categories) {
+        if !added.is_empty() {
+            applied
+                .entry(CATEGORY_ERROR_STRINGS)
+                .or_default()
+                .extend(added);
+        }
     }
     for (&category_id, ids) in &mut applied {
         ids.sort_unstable();

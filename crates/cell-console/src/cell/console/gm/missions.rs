@@ -277,6 +277,36 @@ pub(super) async fn handle_mission_advance(
         send_gm_feedback(entity_id, "gmMissionAdvance: step must be positive", tx).await;
         return true;
     }
+    // Since the advance is saved, a step from another mission (or none) would
+    // be persisted and survive every relog (CS-08 review S1). Refuse it.
+    let owner = space_mgr.step_missions.get(&new_step_id).copied();
+    if owner != Some(mission_id) {
+        let book = cimmeria_names::book();
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            new_step_id,
+            new_step_name = cimmeria_names::book().mission_step(new_step_id),
+            owner_mission_id = owner,
+            owner_mission_name = owner.and_then(|m| book.mission(m)),
+            "gmMissionAdvance: step is not one of the mission's steps, refused"
+        );
+        drop(book);
+        let line = match owner {
+            Some(other) => format!(
+                "gmMissionAdvance: step {new_step_id} belongs to mission {other}, \
+                 not {mission_id}; nothing changed"
+            ),
+            None => format!(
+                "gmMissionAdvance: step {new_step_id} is not a known mission step; \
+                 nothing changed"
+            ),
+        };
+        send_gm_feedback(entity_id, &line, tx).await;
+        return true;
+    }
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),

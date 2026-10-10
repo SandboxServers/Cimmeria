@@ -4,9 +4,11 @@
 //! database run with no database attached; the taken name is a live-DB test.
 //!
 //! Bug shape: the handler sent 2 for every malformed payload, rejected name
-//! and bad skin tint, and 3 with no database. The client renders the code
-//! through `error_texts`, where 2 and 3 are `CONDITION_FEEDBACK_*` rows, so a
-//! rejected name read "CONDITION_FEEDBACK_PositionCheckNotBelow". The codes
+//! and bad skin tint, and 3 with no database. The client shows the served
+//! `ErrorStrings` (cooked category 11) text of the code, and 2 and 3 are
+//! `CONDITION_FEEDBACK_*` entries, so a rejected name read
+//! "CONDITION_FEEDBACK_PositionCheckNotBelow". The text served for each code
+//! is guarded in `cimmeria-resources` (`attribute_patches` tests). The codes
 //! are asserted as literals, not through `fail_code`, so reverting a
 //! constant fails here too.
 
@@ -26,6 +28,8 @@ const SESSION_KEY: [u8; 32] = [0u8; 32];
 const ACCOUNT_EID: u32 = 0xAAAA_0001;
 /// Sentinel after `profile_live_db_tests`' `0x7000_1E04`.
 const NAME_TAKEN_ACCOUNT: i32 = 0x7000_1E05;
+/// After `profile_live_db_tests`' `0x7000_1E06`.
+const VISUALS_ACCOUNT: i32 = 0x7000_1E07;
 
 /// Run the handler on `payload` with no database and return the one
 /// message it sent: `[0x83][u16 len = 8][u32 account eid][i32 code]`.
@@ -57,15 +61,23 @@ async fn refusal_message_with(
     .await
     .expect("the handler answers the client");
 
+    sent_message(&transport)
+}
+
+/// The one message the handler sent through `transport`, decrypted: the
+/// flags byte and the 4-byte sequence footer (no ACKs) stripped. Shared with
+/// the other live-DB creation tests, whose sessions use the same key and
+/// account entity id (`live_db_tests::make_connected`).
+pub(super) fn sent_message(transport: &TestTransport) -> Vec<u8> {
     let sent = transport.drain();
     assert_eq!(sent.len(), 1, "exactly one packet: the refusal");
     let enc = MercuryEncryption::from_session_key(SESSION_KEY);
     let plain = enc.decrypt(&sent[0].1).expect("decrypt the refusal");
-    // Flags byte in front, the 4-byte sequence footer behind (no ACKs).
     plain[1..plain.len() - 4].to_vec()
 }
 
-fn expected(code: i32) -> Vec<u8> {
+/// `onCharacterCreateFailed` with `code`, as `sent_message` returns it.
+pub(super) fn expected(code: i32) -> Vec<u8> {
     let mut out = vec![0x83, 0x08, 0x00];
     out.extend_from_slice(&ACCOUNT_EID.to_le_bytes());
     out.extend_from_slice(&code.to_le_bytes());
@@ -171,4 +183,32 @@ async fn taken_name_is_invalid_character_name_live_db() {
     .await;
     cleanup(&pool, NAME_TAKEN_ACCOUNT).await;
     assert_eq!(message, expected(20001));
+}
+
+/// The two visual-choice refusals, which need the database: a choice for a
+/// group the char_def does not have is `ERROR_CharacterCreationUnspecifiedError`
+/// (python's `getAllChoices` returns 10003), and a missing choice for a
+/// `VIS_Optional` group is `ERROR_CharacterCreationNotEnoughInformation`.
+#[tokio::test]
+async fn visual_choice_refusals_live_db() {
+    let pool = require_db_or_skip!();
+    let choices = default_choices(&pool, 1).await;
+    assert!(!choices.is_empty(), "char_def 1 has optional visual groups");
+    let pool = Some(Arc::new(pool));
+
+    let mut bad_group = choices.clone();
+    bad_group.push((999_999, 1));
+    let bad = build_create_character_payload("Bad Visuals", "", 1, &bad_group, 0);
+    assert_eq!(
+        refusal_message_with(&bad, VISUALS_ACCOUNT as u32, &pool).await,
+        expected(10003),
+        "a visual group the char_def does not have"
+    );
+
+    let missing = build_create_character_payload("Few Visuals", "", 1, &choices[1..], 0);
+    assert_eq!(
+        refusal_message_with(&missing, VISUALS_ACCOUNT as u32, &pool).await,
+        expected(10000),
+        "an optional visual group with no choice"
+    );
 }

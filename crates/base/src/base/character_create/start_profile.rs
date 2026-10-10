@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use cimmeria_resources::base::start_profiles::{self, DebugKit, StartProfile};
 use sqlx::PgPool;
 
-/// `ERROR_CharacterCreationInvalidCharacterType` (error_texts 10001): the
+/// `ERROR_CharacterCreationInvalidCharacterType` (ErrorStrings 10001): the
 /// code a client gets when its char_def's start profile cannot be used.
 pub(super) const ERR_PROFILE_UNUSABLE: i32 = super::fail_code::INVALID_CHARACTER_TYPE;
 /// `ERROR_CharacterCreationUnspecifiedError`: the DB-error code.

@@ -252,6 +252,11 @@ async fn a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db() {
         .await
         .expect("restore the profile");
     assert!(result.is_ok(), "the handler answers the client: {result:?}");
+    assert_eq!(
+        super::fail_code_tests::sent_message(&transport),
+        super::fail_code_tests::expected(10001),
+        "an unusable profile is ERROR_CharacterCreationInvalidCharacterType"
+    );
     let players: i64 = sqlx::query_scalar("SELECT count(*) FROM sgw_player WHERE account_id = $1")
         .bind(UNKNOWN_WORLD_ACCOUNT)
         .fetch_one(&pool)

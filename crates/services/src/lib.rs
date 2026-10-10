@@ -90,6 +90,11 @@ mod gate_round_trip_tests;
 #[cfg(test)]
 mod mission_round_trip_tests;
 
+/// Saving an abandon (#1315): abandon, re-login, the mission is gone or
+/// not active with its `repeats`. Test-only.
+#[cfg(test)]
+mod mission_abandon_round_trip_tests;
+
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]

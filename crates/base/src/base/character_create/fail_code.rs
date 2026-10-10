@@ -1,10 +1,15 @@
 //! The `onCharacterCreateFailed` (0x83) error codes.
 //!
-//! The client looks the code up in `error_texts` and shows that row's text,
-//! so every code sent must be a real `ERROR_CharacterCreation*` /
-//! `ERROR_InvalidCharacterName` row. Codes 1, 2 and 3, which this handler used
-//! to send, are `CONDITION_FEEDBACK_*` rows: a rejected name showed
+//! The client shows, in its "Creation Error" prompt, the `Text` of the
+//! `ErrorStrings` entry (cooked category 11, served by this server from
+//! `data/cache/ErrorStrings.pak`) whose id is the code. It never reads the
+//! `error_texts` seed. Codes 1, 2 and 3, which this handler used to send, are
+//! `CONDITION_FEEDBACK_*` entries: a rejected name showed
 //! "CONDITION_FEEDBACK_PositionCheckNotBelow" (Class Start v6 CS-08 F1).
+//!
+//! The codes below need served text too: 10000-10003 ship with the moniker
+//! as their text and are patched, and 20001 does not ship at all and is
+//! added (`cimmeria_resources::base::attribute_patches`).
 //! The values and which failure gets which are python's
 //! (`deprecated/python/base/Account.py:createCharacter`,
 //! `common/defs/CharacterCreation.py:getAllChoices`).

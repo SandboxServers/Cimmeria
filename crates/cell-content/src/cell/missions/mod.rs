@@ -18,6 +18,8 @@ mod progression;
 mod resend;
 
 #[cfg(test)]
+mod abandon_persist_tests;
+#[cfg(test)]
 mod hidden_frames_tests;
 #[cfg(test)]
 mod progression_tests;

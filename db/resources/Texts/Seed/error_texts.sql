@@ -12,13 +12,13 @@ INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, te
 
 INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (100, 0, 1033, 100, 'CONDITION_FEEDBACK_UnableToRunOnGhostEntity', 'CONDITION_FEEDBACK_UnableToRunOnGhostEntity');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10000, 0, 1033, 198, 'ERROR_CharacterCreationNotEnoughInformation', 'ERROR_CharacterCreationNotEnoughInformation');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10000, 0, 1033, 198, 'ERROR_CharacterCreationNotEnoughInformation', 'Character creation is missing some information. Please try again');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10001, 0, 1033, 199, 'ERROR_CharacterCreationInvalidCharacterType', 'ERROR_CharacterCreationInvalidCharacterType');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10001, 0, 1033, 199, 'ERROR_CharacterCreationInvalidCharacterType', 'That character type cannot be created');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10002, 0, 1033, 200, 'ERROR_CharacterCreationInvalidSkinColor', 'ERROR_CharacterCreationInvalidSkinColor');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10002, 0, 1033, 200, 'ERROR_CharacterCreationInvalidSkinColor', 'That skin color is not available');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10003, 0, 1033, 201, 'ERROR_CharacterCreationUnspecifiedError', 'ERROR_CharacterCreationUnspecifiedError');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10003, 0, 1033, 201, 'ERROR_CharacterCreationUnspecifiedError', 'The character could not be created. Please try again');
 
 INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (10004, 0, 1033, 202, 'ERROR_SpecialWordViolation', 'ERROR_SpecialWordViolation');
 
@@ -438,5 +438,5 @@ INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, te
 
 INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (20002, 0, 1033, 20002, 'ERROR_CellLoginFailed', 'CellApp login failed');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (20001, 0, 1033, 20001, 'ERROR_InvalidCharacterName', 'Invalid character name');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (20001, 0, 1033, 20001, 'ERROR_InvalidCharacterName', 'That name is taken or not allowed. Names are 3 to 20 letters, digits, spaces, hyphens or apostrophes');
 

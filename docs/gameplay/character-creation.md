@@ -96,17 +96,19 @@ Entry point: `createCharacter(name, extraName, charDefId, visualChoices, skinTin
 
 ### Refusal codes
 
-`onCharacterCreateFailed` (0x83) carries one `INT32`, and the client shows the `error_texts` row with that id, so every refusal must send a real `ERROR_*` row. The Rust handler (`crates/base/src/base/character_create/fail_code.rs`) sends python's codes:
+`onCharacterCreateFailed` (0x83) carries one `INT32`. The client's "Creation Error" prompt shows the `Text` of the cooked `ErrorStrings` entry (category 11) with that id, which this server serves from `data/cache/ErrorStrings.pak`. The client never reads the `error_texts` seed; the seed only mirrors the served text for the names book and tools. The Rust handler (`crates/base/src/base/character_create/fail_code.rs`) sends python's codes, and their text is served by `crates/resources/src/base/attribute_patches/`:
 
-| Code | `error_texts` moniker | When |
-|---|---|---|
-| 10000 | `ERROR_CharacterCreationNotEnoughInformation` | The payload is short or malformed, or a required (`VIS_Optional`) visual group has no choice |
-| 10001 | `ERROR_CharacterCreationInvalidCharacterType` | An unknown char_def, or a start profile that cannot be used (lock L3, below) |
-| 10002 | `ERROR_CharacterCreationInvalidSkinColor` | A skin tint outside 0-15 |
-| 10003 | `ERROR_CharacterCreationUnspecifiedError` | An invalid visual group or choice, no database, or a database error |
-| 20001 | `ERROR_InvalidCharacterName` | The name or extra name breaks the format rules (3-20 characters; letters, digits, spaces, hyphens, apostrophes), or the name is taken |
+| Code | Moniker | When | Served text |
+|---|---|---|---|
+| 10000 | `ERROR_CharacterCreationNotEnoughInformation` | The payload is short or malformed, or a required (`VIS_Optional`) visual group has no choice | Character creation is missing some information. Please try again |
+| 10001 | `ERROR_CharacterCreationInvalidCharacterType` | An unknown char_def, or a start profile that cannot be used (lock L3, below) | That character type cannot be created |
+| 10002 | `ERROR_CharacterCreationInvalidSkinColor` | A skin tint outside 0-15 | That skin color is not available |
+| 10003 | `ERROR_CharacterCreationUnspecifiedError` | An invalid visual group or choice, no database, or a database error | The character could not be created. Please try again |
+| 20001 | `ERROR_InvalidCharacterName` | The name or extra name breaks the format rules (3-20 characters; letters, digits, spaces, hyphens, apostrophes), or the name is taken | That name is taken or not allowed. Names are 3 to 20 letters, digits, spaces, hyphens or apostrophes |
 
-Before Class Start v6 CS-08 the handler sent 1 (name taken), 2 (bad payload, name, tint or char_def) and 3 (no database or a database error). Those ids are `CONDITION_FEEDBACK_*` rows, so a rejected name showed `CONDITION_FEEDBACK_PositionCheckNotBelow`. The payload, names, tint and char_def are checked before the database, so a malformed request gets its own code even with no database attached.
+The shipped PAK has 10000-10003 with the moniker (10001-10003 in quotes) as their text, so those four are patched. It has no 20001 at all (the seed row came from the Giza dump), so 20001 is added whole. Both change the category's metadata, so a client holding the shipped table resyncs it.
+
+Before Class Start v6 CS-08 the handler sent 1 (name taken), 2 (bad payload, name, tint or char_def) and 3 (no database or a database error). Those ids are `CONDITION_FEEDBACK_*` entries, so a rejected name showed `CONDITION_FEEDBACK_PositionCheckNotBelow`. The payload, names, tint and char_def are checked before the database, so a malformed request gets its own code even with no database attached.
 
 ### Database Writes
 

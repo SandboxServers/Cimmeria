@@ -28,7 +28,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Wire format
 
-- [client-error-codes-and-ammo-chatter.md](client-error-codes-and-ammo-chatter.md) — create-failed codes are error_texts ids (10000-10003, 20001); "out of ammo" is the client reacting to AmmoSlotN = 0.
+- [client-error-codes-and-ammo-chatter.md](client-error-codes-and-ammo-chatter.md) — create-failed codes are served ErrorStrings.pak ids, not error_texts; check the PAK text; "out of ammo" is the client reacting to AmmoSlotN = 0.
 - [wire-names-generated-tables.md](wire-names-generated-tables.md) — `cimmeria_wire::names` is generated from defs (regen cmd), doc-checked; naming rules for unknown entity types.
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files; GM tail is `109 + K`.
 - [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `mercury::method_idx` is a drifted partial copy; `def_conformance` guards both (#801).

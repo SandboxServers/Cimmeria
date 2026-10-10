@@ -250,6 +250,19 @@ impl CellService {
             }
         }
 
+        // Step owners, so `gmMissionAdvance` can refuse a step from another
+        // mission. Without them every GM advance is refused (with feedback).
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_step_missions(pool).await {
+                Ok(steps) => {
+                    space_mgr.step_missions = steps;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load step_missions: {e}");
+                }
+            }
+        }
+
         // Load stargate destinations cache for gate travel
         if let Some(ref pool) = self.db_pool {
             match spawner::load_stargates(pool).await {

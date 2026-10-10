@@ -123,7 +123,7 @@ The Account entity is the first entity created when a player connects. It handle
 
 **Total wire size**: 1B header + 4B = **5 bytes**
 
-As the Rust base sends it (`build_char_create_failed`), the message is word-length framed and carries the Account entity id before the argument: `[0x83][u16 length = 8][u32 Account entity id][INT32 ErrorID]`, pinned byte for byte by `crates/base/src/base/character_create/fail_code_tests.rs`. The client shows the `error_texts` row whose id is `ErrorID`; the Class Start v6 CS-08 live UAT saw code 2 rendered as row 2's text, so the client reads the code from that position. The codes the server sends are listed in [character-creation.md](../../gameplay/character-creation.md#refusal-codes).
+As the Rust base sends it (`build_char_create_failed`), the message is word-length framed and carries the Account entity id before the argument: `[0x83][u16 length = 8][u32 Account entity id][INT32 ErrorID]`, pinned byte for byte by `crates/base/src/base/character_create/fail_code_tests.rs`. The client shows the `Text` of the cooked `ErrorStrings` entry (category 11, served from `ErrorStrings.pak`) whose id is `ErrorID`; the Class Start v6 CS-08 live UAT saw code 2 rendered as entry 2's text, so the client reads the code from that position. The codes the server sends are listed in [character-creation.md](../../gameplay/character-creation.md#refusal-codes).
 
 #### `onCharacterVisuals` — Character Appearance Data
 

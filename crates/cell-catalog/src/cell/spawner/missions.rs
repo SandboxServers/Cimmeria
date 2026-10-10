@@ -117,6 +117,19 @@ pub async fn load_mission_defs(
     Ok(map)
 }
 
+/// Load the owner of every mission step: `step_id → mission_id`.
+pub async fn load_step_missions(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, i32>, sqlx::Error> {
+    let rows: Vec<(i32, i32)> =
+        sqlx::query_as("SELECT step_id, mission_id FROM resources.mission_steps")
+            .fetch_all(pool)
+            .await?;
+    let map: std::collections::HashMap<i32, i32> = rows.into_iter().collect();
+    tracing::info!(steps = map.len(), "Loaded step_missions cache");
+    Ok(map)
+}
+
 /// Load step objectives for all steps from the database.
 ///
 /// Maps `step_id → Vec<MissionObjectiveDef>` so that `AdvanceStep` can

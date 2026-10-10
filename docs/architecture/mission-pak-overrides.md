@@ -112,6 +112,8 @@ A mismatch happens when a client first meets a build whose served version it doe
 | Apply the world-info entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_world_info_overrides` |
 | New stargates (category 13) | `crates/resources/src/base/stargate_overrides.rs` | `StargateAddition`, `STARGATE_ADDITIONS`, `generate_stargate_xml` |
 | Apply the stargate entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_stargate_overrides` |
+| One-attribute patches to shipped entries, any category (ability icons, error-string text) + bump | `crates/resources/src/base/attribute_patches/mod.rs` | `AttributePatch`, `ATTRIBUTE_PATCHES`, `apply_attribute_patches` |
+| New error strings (category 11), sharing that bump | `crates/resources/src/base/attribute_patches/additions.rs` | `ErrorStringAddition`, `ERROR_STRING_ADDITIONS`, `generate_error_text_xml` |
 
 ## The XML-index gotcha
 
