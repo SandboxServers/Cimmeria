@@ -43,6 +43,8 @@ fn state_with_audit() -> (
         sessions: Arc::new(Mutex::new(HashMap::new())),
         pending_logins: Arc::new(Mutex::new(HashMap::new())),
         developer_mode: true,
+        // No database configured, as in the developer setup this guard models.
+        db_configured: false,
         db: None,
         login_tx: Some(tx),
         login_buffer: Some(buffer.clone()),

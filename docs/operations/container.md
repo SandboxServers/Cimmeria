@@ -101,7 +101,7 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | (unset) | Extra `Host` header values the lab MCP endpoint accepts, comma-separated, on top of `localhost`, `127.0.0.1` and `::1`. [`docker/compose.lab.yml`](../../docker/compose.lab.yml) sets it to `CIMMERIA_WG_IP`. |
 
 > `DB_URL` must not be empty in this image. An empty value makes the server run with no database, so the container refuses to start with it (see [Database login check](#database-login-check)).
-
+>
 > `DB_URL` must be in libpq key-value form, not URL DSN form. `crates/services/src/orchestrator_postgres.rs::ensure_postgresql_running` parses `host=` / `port=` tokens to decide whether to auto-start the bundled Postgres. A URL like `postgres://...` would silently fall back to `localhost:5433` and emit warnings, even though sqlx itself accepts either form.
 
 ## Volume / persistence
@@ -150,6 +150,7 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 ## Healthcheck
 
 `HEALTHCHECK` checks two things:
+
 1. `cimmeria-server --check-db`: the server's own connection string can log in and run `SELECT 1`. `pg_isready` alone passes while the user, password or database name is wrong.
 2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
 
