@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Schema versions the reports read. Versions 2 (TP-01a), 3 (TP-05) and 4 (TP-05b) only added columns
 # and methods; the campaign rollup needs version 4.
-SUPPORTED_SCHEMAS = ("1", "2", "3", "4")
+SUPPORTED_SCHEMAS = ("1", "2", "3", "4", "5")
 
 
 def agent_type_sql(alias, default="NULL"):
@@ -49,6 +49,9 @@ def scope(db, since=None, until=None, price_table=None):
         row = db.execute("SELECT MAX(version) FROM price_tables").fetchone()
         price_table = row[0] if row else None
     db.execute("INSERT INTO report_window VALUES (?, ?, ?)", (since or "", until or "￿", price_table))
+    # Schema 5 added the long rate card; an older database's rows have one card.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(price_tables)")}
+    price_columns = "*" if "long_above" in cols else "*, NULL AS long_above, 1.0 AS long_factor"
     db.executescript("""
         DROP VIEW IF EXISTS temp.wreq;
         DROP VIEW IF EXISTS temp.wtool;
@@ -69,24 +72,31 @@ def scope(db, since=None, until=None, price_table=None):
             SELECT c.*, w.agent_type, w.scope, w.model
             FROM tool_calls c JOIN wreq w ON w.request_id = c.request_id;
         CREATE TEMP VIEW wprice AS
-            SELECT * FROM price_tables WHERE version = (SELECT price_table FROM report_window);
+            SELECT """ + price_columns + """ FROM price_tables WHERE version = (SELECT price_table FROM report_window);
         -- Estimated list-price USD per request, for every request (the per-PR
         -- section counts a PR's whole spend, not only what falls in the window).
         -- usd is NULL when the model has no price in the chosen table.
         CREATE TEMP VIEW rcost AS
-            SELECT r.request_id,
-                   p.model IS NOT NULL AS priced,
-                   r.input_tokens * p.input / 1e6 AS usd_input,
-                   r.output_tokens * p.output / 1e6 AS usd_output,
-                   r.cache_read * p.cache_read / 1e6 AS usd_cache_read,
-                   r.cache_write_5m * p.cache_write_5m / 1e6 AS usd_cache_write_5m,
-                   r.cache_write_1h * p.cache_write_1h / 1e6 AS usd_cache_write_1h,
-                   (r.input_tokens * p.input + r.output_tokens * p.output + r.cache_read * p.cache_read
-                    + r.cache_write_5m * p.cache_write_5m + r.cache_write_1h * p.cache_write_1h) / 1e6 AS usd
-            -- A dated model id ('claude-haiku-4-5-20251001') takes its undated row's price.
-            FROM requests r LEFT JOIN wprice p ON p.model = r.model
-                 OR (r.model LIKE p.model || '-________'
-                     AND substr(r.model, -8) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]');
+            SELECT request_id, priced,
+                   input_tokens * input * f / 1e6 AS usd_input,
+                   output_tokens * output * f / 1e6 AS usd_output,
+                   cache_read_tokens * cache_read * f / 1e6 AS usd_cache_read,
+                   cache_write_5m_tokens * cache_write_5m * f / 1e6 AS usd_cache_write_5m,
+                   cache_write_1h_tokens * cache_write_1h * f / 1e6 AS usd_cache_write_1h,
+                   (input_tokens * input + output_tokens * output + cache_read_tokens * cache_read
+                    + cache_write_5m_tokens * cache_write_5m + cache_write_1h_tokens * cache_write_1h) * f / 1e6 AS usd
+            FROM (
+                SELECT r.request_id, p.model IS NOT NULL AS priced, r.input_tokens, r.output_tokens,
+                       r.cache_read AS cache_read_tokens, r.cache_write_5m AS cache_write_5m_tokens,
+                       r.cache_write_1h AS cache_write_1h_tokens, p.input, p.output, p.cache_read,
+                       p.cache_write_5m, p.cache_write_1h,
+                       -- Haiku 5.5's long rate card: every rate x long_factor when the prompt is over long_above.
+                       CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above
+                            THEN p.long_factor ELSE 1.0 END AS f
+                -- A dated model id ('claude-haiku-4-5-20251001') takes its undated row's price.
+                FROM requests r LEFT JOIN wprice p ON p.model = r.model
+                     OR (r.model LIKE p.model || '-________'
+                         AND substr(r.model, -8) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]'));
         CREATE TEMP VIEW wcost AS
             SELECT w.*, c.priced, c.usd_input, c.usd_output, c.usd_cache_read,
                    c.usd_cache_write_5m, c.usd_cache_write_1h, c.usd

@@ -6,7 +6,7 @@ Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, re
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 4. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 5. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR or a campaign, and the invariants every attribution keeps. |
 | [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
@@ -31,7 +31,7 @@ Stock Python 3.11+, no dependencies.
 
 - **Dedupe by `requestId`, keeping the last record.** The first record of a request is a streaming partial.
 - **`thinking_tokens` is part of `output_tokens`.** Never add it on top.
-- **Price per model, from a versioned table.** One set of cache weights is wrong: Opus 5.5 reads cache at 0.05 of input and Fable 5.1 at 0.025. USD is a list-price estimate of plan usage, always labelled as one; the project is on a Max subscription (D-TP1).
+- **Price per model, from a versioned table.** One set of cache weights is wrong: Opus 5.5 reads cache at 0.05 of input and Fable 5.1 at 0.025. Haiku 5.5 has two rate cards: a request whose prompt (input plus cache reads and writes) is over 100K tokens pays 5x every rate, so a price row carries `long_above` and `long_factor` (price table 2026-10-10, schema version 5). USD is a list-price estimate of plan usage, always labelled as one; the project is on a Max subscription (D-TP1).
 - **Unknown transcript shapes fail the run.** They are counted, never dropped.
 - **Context exposure is not cost.** `result_chars × later requests` ranks offenders; it is never reported as dollars.
 - **Reports carry their window and versions** (Claude Code, profiler commit, price table, models seen) and contain no commands, transcript text, absolute paths or credentials.

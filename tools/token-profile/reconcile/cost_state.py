@@ -60,17 +60,38 @@ def _usd(row, t):
             + t["w5"] * row["cache_write_5m"] + t["w1"] * row["cache_write_1h"]) / 1e6
 
 
+def _tier_usd(row, t):
+    """_usd plus the long rate card's surcharge on t's long-prompt part (t["long"], same keys)."""
+    return _usd(row, t) + ((row.get("long_factor") or 1.0) - 1.0) * _usd(row, t["long"])
+
+
 def _profiler_by_model(db, session_id, start):
+    """Token sums per model; "long" holds the same sums over the requests on the long rate card."""
+    keys = ("input", "output", "cache_read", "w5", "w1")
     out = {}
     for r in db.execute(
-            "SELECT model, COUNT(*) AS n, SUM(input_tokens) AS input, SUM(output_tokens) AS output,"
-            " SUM(cache_read) AS cache_read, SUM(cache_write_5m) AS w5, SUM(cache_write_1h) AS w1,"
-            " SUM(web_search) AS web_search FROM requests WHERE session_id = ? AND ts >= ? GROUP BY model",
+            "SELECT r.model, COUNT(*) AS n, SUM(r.input_tokens) AS input, SUM(r.output_tokens) AS output,"
+            " SUM(r.cache_read) AS cache_read, SUM(r.cache_write_5m) AS w5, SUM(r.cache_write_1h) AS w1,"
+            " SUM(r.web_search) AS web_search,"
+            " SUM(CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above THEN r.input_tokens END)"
+            " AS long_input,"
+            " SUM(CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above THEN r.output_tokens END)"
+            " AS long_output,"
+            " SUM(CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above THEN r.cache_read END)"
+            " AS long_cache_read,"
+            " SUM(CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above THEN r.cache_write_5m END)"
+            " AS long_w5,"
+            " SUM(CASE WHEN p.long_above IS NOT NULL AND r.context_tokens > p.long_above THEN r.cache_write_1h END)"
+            " AS long_w1"
+            " FROM requests r LEFT JOIN wprice p ON p.model = r.model"
+            " WHERE r.session_id = ? AND r.ts >= ? GROUP BY r.model",
             (session_id, start or "")):
         m = normalize_model(r["model"])
-        acc = out.setdefault(m, {k: 0 for k in ("n", "input", "output", "cache_read", "w5", "w1", "web_search")})
-        for k in acc:
+        acc = out.setdefault(m, {**{k: 0 for k in ("n", *keys, "web_search")}, "long": {k: 0 for k in keys}})
+        for k in ("n", *keys, "web_search"):
             acc[k] += r[k] or 0
+        for k in keys:
+            acc["long"][k] += r["long_" + k] or 0
     return out
 
 
@@ -109,7 +130,8 @@ def build(db, sc, since=None, until=None):
         session_pr_usd = 0.0
         n = 0
         for m in set(pr) | set(cs):
-            p = pr.get(m, {"n": 0, "input": 0, "output": 0, "cache_read": 0, "w5": 0, "w1": 0, "web_search": 0})
+            p = pr.get(m, {"n": 0, "input": 0, "output": 0, "cache_read": 0, "w5": 0, "w1": 0, "web_search": 0,
+                           "long": {"input": 0, "output": 0, "cache_read": 0, "w5": 0, "w1": 0}})
             c = cs.get(m, {"usd": 0.0, "web_search": 0, **{k: 0 for k, _ in TOKEN_KEYS}})
             price = prices.get(m)
             acc = models.setdefault(m, {"requests": 0, "cost_state_usd": 0.0, "profiler_usd": 0.0,
@@ -125,7 +147,7 @@ def build(db, sc, since=None, until=None):
             if price is None:
                 totals["unpriced_cost_state_usd"] += c["usd"]
                 continue
-            pusd = _usd(price, p) + p["web_search"] * WEB_SEARCH_USD
+            pusd = _tier_usd(price, p) + p["web_search"] * WEB_SEARCH_USD
             session_pr_usd += pusd
             acc["profiler_usd"] += pusd
             # The cost-state doesn't split cache writes by TTL; use the profiler's split for the same
@@ -134,6 +156,10 @@ def build(db, sc, since=None, until=None):
             f1h = p["w1"] / writes if writes else 0.0
             repriced = _usd(price, {"input": c["input"], "output": c["output"], "cache_read": c["cache_read"],
                                     "w5": c["cache_write"] * (1 - f1h), "w1": c["cache_write"] * f1h})
+            # The cost-state has no per-request prompt sizes either; scale by the profiler's long-card
+            # share of the same session and model.
+            base = _usd(price, p)
+            repriced *= _tier_usd(price, p) / base if base else 1.0
             repriced += c["web_search"] * WEB_SEARCH_USD
             acc["repriced_usd"] += repriced
             totals["repriced_usd"] += repriced
@@ -184,7 +210,7 @@ def _uncovered(db, prices, lo, hi):
     out = {"requests": 0, "usd": 0.0, "sessions_without_cost_state": 0, "resumed_sessions": 0}
     rows = db.execute(
         "SELECT r.model, r.input_tokens AS input, r.output_tokens AS output, r.cache_read, r.cache_write_5m AS w5,"
-        " r.cache_write_1h AS w1, r.web_search, c.session_id IS NULL AS no_cs, r.session_id"
+        " r.cache_write_1h AS w1, r.web_search, r.context_tokens, c.session_id IS NULL AS no_cs, r.session_id"
         " FROM requests r LEFT JOIN cost_states c USING (session_id)"
         " WHERE r.ts >= ? AND r.ts < ? AND (c.session_id IS NULL OR r.ts < COALESCE(c.process_start, ''))",
         (lo, hi)).fetchall()
@@ -193,7 +219,9 @@ def _uncovered(db, prices, lo, hi):
         price = prices.get(normalize_model(r["model"]))
         out["requests"] += 1
         if price is not None:
-            out["usd"] += _usd(price, r) + r["web_search"] * WEB_SEARCH_USD
+            long = price.get("long_above") is not None and r["context_tokens"] > price["long_above"]
+            out["usd"] += _usd(price, r) * ((price.get("long_factor") or 1.0) if long else 1.0)
+            out["usd"] += r["web_search"] * WEB_SEARCH_USD
         (no_cs if r["no_cs"] else resumed).add(r["session_id"])
     out["sessions_without_cost_state"] = len(no_cs)
     out["resumed_sessions"] = len(resumed)

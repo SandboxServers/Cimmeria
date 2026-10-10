@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 4.
+-- Token profiler data contract, schema version 5.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -27,6 +27,10 @@
 -- tool calls; and a packet merged into an integration branch is charged to
 -- its campaign, not to the integration PR. See attribution.md.
 --
+-- Version 5: price_tables.long_above and price_tables.long_factor. Haiku 5.5
+-- bills a prompt over 100K tokens at 5x every rate, so a request's price
+-- depends on its context_tokens, not only its model. See ingest/prices.py.
+--
 -- Token columns are raw counts. thinking_tokens is a SUBSET of
 -- output_tokens and is never added on top of it.
 
@@ -36,7 +40,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '4');
+INSERT INTO meta (key, value) VALUES ('schema_version', '5');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -76,6 +80,9 @@ CREATE TABLE price_tables (
     cache_read        REAL NOT NULL,
     cache_write_5m    REAL NOT NULL,
     cache_write_1h    REAL NOT NULL,
+    long_above        INTEGER,                -- version 5: prompt tokens (context_tokens) the long rate card
+                                              -- starts above; NULL when the model has one card
+    long_factor       REAL NOT NULL DEFAULT 1 CHECK (long_factor >= 1),  -- every rate x this above long_above
     source            TEXT NOT NULL,          -- URL of the pricing page
     PRIMARY KEY (version, model)
 );
