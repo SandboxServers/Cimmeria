@@ -72,6 +72,21 @@ impl MissionInstance {
         }
     }
 
+    /// What an abandoned mission leaves behind: no step, no objectives,
+    /// `MISSION_NOT_ACTIVE`, and only its `repeats` and `is_hidden`.
+    pub fn not_active_record(&self) -> Self {
+        Self {
+            mission_id: self.mission_id,
+            status: MISSION_NOT_ACTIVE,
+            current_step_id: None,
+            active_objectives: Vec::new(),
+            completed_objectives: Vec::new(),
+            completed_steps: Vec::new(),
+            is_hidden: self.is_hidden,
+            repeats: self.repeats,
+        }
+    }
+
     /// Mark this mission as completed.
     pub fn complete(&mut self) {
         self.status = MISSION_COMPLETED;
@@ -154,6 +169,32 @@ impl MissionManager {
     /// Remove a mission (abandon).
     pub fn remove_mission(&mut self, mission_id: i32) -> Option<MissionInstance> {
         self.missions.remove(&mission_id)
+    }
+
+    /// Abandon a mission the player holds and return the removed instance.
+    ///
+    /// Only a `MISSION_ACTIVE` mission can be abandoned, as in python
+    /// (`MissionManager.py`: `abandon()` is `fail()`, which refuses anything
+    /// not active). A completed, failed or not-active record is left as it
+    /// is and `None` comes back: since the abandon is saved (#1315), letting
+    /// it through would overwrite a finished mission's saved status for good
+    /// (CS-08 review R1).
+    ///
+    /// A mission with `repeats > 0` is not forgotten: a `MISSION_NOT_ACTIVE`
+    /// record carrying the count takes its place, so a re-accept in the same
+    /// session keeps counting from it (the offer guard carries `repeats`
+    /// forward, #118). That record is what a relog loads from the saved row
+    /// too.
+    pub fn abandon_mission(&mut self, mission_id: i32) -> Option<MissionInstance> {
+        if self.missions.get(&mission_id)?.status != MISSION_ACTIVE {
+            return None;
+        }
+        let removed = self.missions.remove(&mission_id)?;
+        if removed.repeats > 0 {
+            self.missions
+                .insert(mission_id, removed.not_active_record());
+        }
+        Some(removed)
     }
 
     /// Get a mission by ID.

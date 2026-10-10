@@ -6,7 +6,8 @@
 //! autocommit INSERT whose failure was logged and skipped. A kit that failed
 //! to place left a character that exists for good without its pistol, and
 //! the client was told the creation succeeded. Now the row and the kit are
-//! one transaction and the client gets error code 3.
+//! one transaction and the client gets `ERROR_CharacterCreationUnspecifiedError`
+//! (10003; it was 3, a `CONDITION_FEEDBACK_*` entry, before CS-08 F1).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -89,6 +90,11 @@ async fn unplaceable_kit_rolls_the_character_back_live_db() {
     // Undo the seed change before asserting, so a failure doesn't leak it.
     remove_kit_row(&pool, item).await;
     assert!(result.is_ok(), "the handler answers the client: {result:?}");
+    assert_eq!(
+        super::fail_code_tests::sent_message(&transport),
+        super::fail_code_tests::expected(10003),
+        "the client is told the creation failed, with 10003"
+    );
 
     let players: i64 = sqlx::query_scalar("SELECT count(*) FROM sgw_player WHERE account_id = $1")
         .bind(ROLLBACK_ACCOUNT)

@@ -248,6 +248,10 @@ pub struct SpaceManager {
     /// Populated at startup from `resources.mission_objectives`.
     /// Used by `advance_step` to load new objectives when advancing a mission step.
     pub step_objectives: HashMap<i32, Vec<super::spawner::MissionObjectiveDef>>,
+    /// Cached step owners: step_id → mission_id, every row of
+    /// `resources.mission_steps`. `gmMissionAdvance` refuses a step its
+    /// mission does not have (CS-08 review S1).
+    pub step_missions: HashMap<i32, i32>,
     /// Registered generic regions keyed by runtime_id (auto-incrementing from 1).
     /// Loaded from `resources.point_sets` (type='AreaSet') at startup.
     pub regions: HashMap<u32, RegionData>,
@@ -590,6 +594,7 @@ impl SpaceManager {
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),
             step_objectives: HashMap::new(),
+            step_missions: HashMap::new(),
             regions: HashMap::new(),
             next_region_id: 1,
             ability_defs: HashMap::new(),

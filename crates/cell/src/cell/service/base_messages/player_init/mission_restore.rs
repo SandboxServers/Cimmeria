@@ -161,6 +161,11 @@ pub(crate) fn build_restored_missions(
                 objectives,
             );
             mission.status = saved.status;
+            // An abandoned repeatable mission is saved with no step (#1315);
+            // `new` would otherwise mark a step 0 active.
+            if saved.current_step_id.is_none() {
+                mission.current_step_id = None;
+            }
             mission.completed_steps = saved.completed_step_ids.clone();
             mission.completed_objectives = saved.completed_objective_ids.clone();
             // Without this, `complete()` on a re-accepted repeatable

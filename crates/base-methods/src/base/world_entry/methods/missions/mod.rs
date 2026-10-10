@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use cimmeria_entity::known_names;
+use cimmeria_entity::missions::MISSION_NOT_ACTIVE;
 use sqlx::PgPool;
 
 use crate::cell::messages::SavedMission;
@@ -135,6 +136,37 @@ pub async fn handle_mission_update(
             return;
         }
     };
+
+    // An abandon (#1315) arrives as `MISSION_NOT_ACTIVE`. With no completed
+    // run to remember there is nothing to keep, so the row goes: the
+    // mission loads as never taken. With `repeats > 0` the UPSERT below keeps
+    // a not-active row, so the count survives (#118).
+    if status == MISSION_NOT_ACTIVE && repeats == 0 {
+        let result =
+            sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1 AND mission_id = $2")
+                .bind(player_id)
+                .bind(mission_id)
+                .execute(pool.as_ref())
+                .await;
+        match result {
+            Ok(done) => tracing::debug!(
+                player_id,
+                player_name,
+                mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
+                rows = done.rows_affected(),
+                "Abandoned mission row deleted"
+            ),
+            Err(e) => tracing::error!(
+                player_id,
+                player_name,
+                mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
+                "Failed to delete abandoned mission: {e}"
+            ),
+        }
+        return;
+    }
 
     // `repeats = EXCLUDED.repeats` is the fix for #118 — the prior UPSERT
     // omitted this column, so re-completing a repeatable mission appeared to

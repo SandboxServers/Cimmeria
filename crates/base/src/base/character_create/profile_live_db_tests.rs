@@ -18,6 +18,13 @@ use crate::test_support::{require_db_or_skip, TestTransport};
 /// `kit_rollback`'s `0x7000_1E02`.
 const MATRIX_ACCOUNT: i32 = 0x7000_1E03;
 const UNKNOWN_WORLD_ACCOUNT: i32 = 0x7000_1E04;
+/// After `fail_code_tests`' `0x7000_1E05`.
+const FREE_JAFFA_ACCOUNT: i32 = 0x7000_1E06;
+
+/// Standard Chestplate, the Free Jaffa's starting armour.
+const STANDARD_CHESTPLATE: i32 = 4342;
+const INV_MAIN: i32 = 1;
+const INV_CHEST: i32 = 7;
 
 const INV_BANDOLIER: i32 = 3;
 
@@ -44,7 +51,9 @@ fn want(char_def_id: i32) -> Want {
                 (1218, "racial_core"),
                 (1984, "signature"),
             ],
-            items: vec![2797, 4342],
+            // 4342 comes from the forced Torso choice, not the profile;
+            // `free_jaffa_wears_exactly_one_chestplate_live_db` pins it.
+            items: vec![2797],
         },
         // SGU_ASGARD holding state (OD-CS09)
         9 => Want {
@@ -243,6 +252,11 @@ async fn a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db() {
         .await
         .expect("restore the profile");
     assert!(result.is_ok(), "the handler answers the client: {result:?}");
+    assert_eq!(
+        super::fail_code_tests::sent_message(&transport),
+        super::fail_code_tests::expected(10001),
+        "an unusable profile is ERROR_CharacterCreationInvalidCharacterType"
+    );
     let players: i64 = sqlx::query_scalar("SELECT count(*) FROM sgw_player WHERE account_id = $1")
         .bind(UNKNOWN_WORLD_ACCOUNT)
         .fetch_one(&pool)
@@ -250,4 +264,41 @@ async fn a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db() {
         .expect("count players");
     cleanup(&pool, UNKNOWN_WORLD_ACCOUNT).await;
     assert_eq!(players, 0, "no character in a world the cell cannot load");
+}
+
+/// **Regression guard (CS-08 F4).** A new Free Jaffa (char_defs 8 and 18)
+/// owns exactly one Standard Chestplate, and wears it. The forced Torso
+/// choice places 4342 in the Chest slot; the profile used to grant it again,
+/// so a second one landed in the backpack. Re-adding the
+/// `char_creation_items` row puts a `(4342, 1)` row next to `(4342, 7)` and
+/// fails this.
+#[tokio::test]
+async fn free_jaffa_wears_exactly_one_chestplate_live_db() {
+    let pool = require_db_or_skip!();
+    cleanup(&pool, FREE_JAFFA_ACCOUNT).await;
+    insert_account(&pool, FREE_JAFFA_ACCOUNT, 0).await;
+
+    let mut found = Vec::new();
+    for char_def_id in [8, 18] {
+        let name = format!("Free Jaffa {char_def_id:02}");
+        let player_id = create(&pool, FREE_JAFFA_ACCOUNT, 0, char_def_id, &name, false).await;
+        let containers: Vec<i32> = sqlx::query_scalar(
+            "SELECT container_id FROM sgw_inventory \
+              WHERE character_id = $1 AND type_id = $2 ORDER BY container_id",
+        )
+        .bind(player_id)
+        .bind(STANDARD_CHESTPLATE)
+        .fetch_all(&pool)
+        .await
+        .expect("read chestplates");
+        found.push((char_def_id, containers));
+    }
+    cleanup(&pool, FREE_JAFFA_ACCOUNT).await;
+
+    assert_eq!(
+        found,
+        vec![(8, vec![INV_CHEST]), (18, vec![INV_CHEST])],
+        "one Standard Chestplate, in the Chest slot (container {INV_CHEST}); \
+         a second one in the backpack (container {INV_MAIN}) is the F4 duplicate"
+    );
 }

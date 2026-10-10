@@ -80,7 +80,10 @@ pub use dialogs::{
 };
 pub use eye_heights::load_body_set_eye_heights;
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};
-pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
+pub use missions::{
+    load_mission_defs, load_step_missions, load_step_objectives, MissionDefEntry,
+    MissionObjectiveDef,
+};
 pub use navmesh_mode::NavmeshMode;
 pub use npcs::{class_id_for_class, load_spawns_from_db, SpawnRecord};
 pub use pet_summons::{load_pet_summons, PetSummon, PetSummonCatalog};

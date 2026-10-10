@@ -180,7 +180,11 @@ The fix is a single per-entity bool, `CellEntity::movement_unrestricted`
 own no-save-across-sessions behavior). `console::gm::physics::handle_physics`
 flips it on `onPhysics`, with **inverted wire polarity**: `bTurnOn=0`
 (physics off, client is flying/ghosting) sets `movement_unrestricted =
-true`; `bTurnOn=1` (physics restored) sets it back to `false`.
+true`; `bTurnOn=1` (physics restored) sets it back to `false`. The GM gets
+a feedback line, and the cell an INFO row, only when the flag actually
+changes: the GM client sends `onPhysics(1)` by itself at every world entry,
+which used to print "movement validation restored" on every GM login (Class
+Start v6 CS-08 F2). A no-change call logs DEBUG and stays silent.
 
 `apply_client_position_update_at` checks the flag immediately after
 resolving `bounds`/`last_valid` — before Layer 1 — and, if set, skips all

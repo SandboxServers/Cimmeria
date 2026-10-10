@@ -50,8 +50,8 @@ pub(super) async fn handle_physics(
     // bTurnOn=0 -> normal physics OFF -> validator bypass ON.
     let unrestricted = turn_on == 0;
 
-    match space_mgr.get_entity_mut(entity_id) {
-        Some(e) => e.movement_unrestricted = unrestricted,
+    let was_unrestricted = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => std::mem::replace(&mut e.movement_unrestricted, unrestricted),
         None => {
             tracing::warn!(
                 entity_id,
@@ -61,6 +61,21 @@ pub(super) async fn handle_physics(
             send_gm_feedback(entity_id, "onPhysics: caller entity not found", tx).await;
             return true;
         }
+    };
+
+    // The GM client sends `onPhysics(1)` by itself at every world entry
+    // (Class Start v6 CS-08 F2), so a press that changes nothing is common.
+    // Answering it printed "movement validation restored" on every GM login;
+    // only a real change is announced.
+    if was_unrestricted == unrestricted {
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            turn_on,
+            unrestricted,
+            "onPhysics: movement validator bypass already in that state, nothing to say"
+        );
+        return true;
     }
 
     tracing::info!(

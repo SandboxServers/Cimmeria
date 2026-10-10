@@ -4,7 +4,10 @@
 
 use std::io::Read;
 
-use super::{ATTRIBUTE_PATCHES, CATEGORY_ABILITIES, CATEGORY_ERROR_STRINGS, MEDKIT_ICON};
+use super::{
+    generate_error_text_xml, ATTRIBUTE_PATCHES, CATEGORY_ABILITIES, CATEGORY_ERROR_STRINGS,
+    ERROR_STRING_ADDITIONS, MEDKIT_ICON,
+};
 use crate::base::resources::ResourceCache;
 
 fn repo(rel: &str) -> String {
@@ -67,7 +70,10 @@ fn served_entries_carry_the_patches_and_both_categories_resync() {
     );
 
     assert_eq!(cache.overridden_elements(CATEGORY_ABILITIES), &[1218, 1646]);
-    assert_eq!(cache.overridden_elements(CATEGORY_ERROR_STRINGS), &[42]);
+    assert_eq!(
+        cache.overridden_elements(CATEGORY_ERROR_STRINGS),
+        &[42, 10000, 10001, 10002, 10003, 20001]
+    );
     assert_ne!(
         cache.category(CATEGORY_ABILITIES).unwrap().metadata,
         shipped_metadata("CookedDataAbilities.pak")
@@ -99,6 +105,9 @@ fn patches_target_shipped_entries_in_categories_no_other_pass_owns() {
             .filter(|q| q.category == p.category)
             .map(|q| q.element_id)
             .collect();
+        if p.category == CATEGORY_ERROR_STRINGS {
+            ours.extend(ERROR_STRING_ADDITIONS.iter().map(|a| a.error_id));
+        }
         ours.sort_unstable();
         assert_eq!(
             cache.overridden_elements(p.category),
@@ -144,6 +153,85 @@ fn seed_rows_match_the_patches() {
             "{p:?}: the seed row must carry the patched value"
         );
     }
+    for a in ERROR_STRING_ADDITIONS {
+        let row = errors
+            .split("INSERT INTO ")
+            .find(|r| r.contains(&format!("VALUES ({}, ", a.error_id)))
+            .unwrap_or_else(|| panic!("{a:?}: no seed row"));
+        assert!(
+            row.contains(&format!(
+                "{}, '{}', '{}')",
+                a.moniker_id, a.moniker_name, a.text
+            )),
+            "{a:?}: the seed row must carry the added entry"
+        );
+    }
+}
+
+/// **Regression guard (Class Start v6 CS-08 F1).** The character-creation
+/// refusal codes are served with player-facing text: 10000-10003 are
+/// patched (they ship as the bare or quoted moniker) and 20001, which the
+/// client never shipped, is added. The client shows the served `Text` of
+/// the code `onCharacterCreateFailed` carries, so each served entry is
+/// checked byte for byte against the shipped one with only `Text` changed,
+/// and 20001 against the whole expected entry. Dropping a patch or the
+/// addition fails here.
+#[test]
+fn creation_refusal_codes_are_served_with_readable_text() {
+    let cache = ResourceCache::load_all(&data_dir()).expect("committed PAKs load");
+    for (id, moniker, text) in [
+        (
+            10000,
+            "ERROR_CharacterCreationNotEnoughInformation",
+            "Character creation is missing some information. Please try again",
+        ),
+        (
+            10001,
+            "'ERROR_CharacterCreationInvalidCharacterType'",
+            "That character type cannot be created",
+        ),
+        (
+            10002,
+            "'ERROR_CharacterCreationInvalidSkinColor'",
+            "That skin color is not available",
+        ),
+        (
+            10003,
+            "'ERROR_CharacterCreationUnspecifiedError'",
+            "The character could not be created. Please try again",
+        ),
+    ] {
+        let shipped = String::from_utf8(shipped("ErrorStrings.pak", &format!("_{id}"))).unwrap();
+        let expected = shipped.replace(&format!("Text=\"{moniker}\""), &format!("Text=\"{text}\""));
+        assert_ne!(expected, shipped, "{id}: the shipped text is the moniker");
+        assert_eq!(served(&cache, CATEGORY_ERROR_STRINGS, id), expected, "{id}");
+    }
+
+    assert!(
+        std::panic::catch_unwind(|| shipped("ErrorStrings.pak", "_20001")).is_err(),
+        "20001 must not ship, or the addition would be skipped"
+    );
+    assert_eq!(
+        served(&cache, CATEGORY_ERROR_STRINGS, 20001),
+        concat!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+            "<COOKED_ERROR_TEXT",
+            " xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\"",
+            " xmlns:SOAP-ENC=\"http://schemas.xmlsoap.org/soap/encoding/\"",
+            " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"",
+            " xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"",
+            " xmlns:CookedData1=\"SGW\"",
+            " Text=\"That name is taken or not allowed. Names are 3 to 20 letters, digits,",
+            " spaces, hyphens or apostrophes\" Flags=\"0\" Language=\"1033\"",
+            " MonikerName=\"ERROR_InvalidCharacterName\" MonikerID=\"20001\" ErrorID=\"20001\">",
+            "</COOKED_ERROR_TEXT>",
+        )
+    );
+    // The generator and the served entry agree (the addition went in as is).
+    assert_eq!(
+        cache.get(CATEGORY_ERROR_STRINGS, 20001),
+        Some(&generate_error_text_xml(&ERROR_STRING_ADDITIONS[0]))
+    );
 }
 
 /// A zero bump would leave clients on the shipped version; the low bit keeps
@@ -161,5 +249,6 @@ fn every_bump_is_non_zero_and_stable() {
 
 /// FNV-1a of the two Medkit patches (computed independently in Python).
 const PINNED_ABILITIES_BUMP: u32 = 0x4d34_0d53;
-/// FNV-1a of the error-42 text patch.
-const PINNED_ERROR_BUMP: u32 = 0xef2d_c891;
+/// FNV-1a of the error-string text patches (42, 10000-10003) and the 20001
+/// addition's generated entry (computed independently in Python).
+const PINNED_ERROR_BUMP: u32 = 0xae9c_cdd1;

@@ -4,7 +4,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::missions::{
     MissionInstance, MissionObjective, MISSION_ACTIVE, MISSION_COMPLETED, MISSION_FAILED,
-    STATUS_ACTIVE, STATUS_COMPLETED,
+    MISSION_NOT_ACTIVE, STATUS_ACTIVE, STATUS_COMPLETED,
 };
 
 use super::{
@@ -189,12 +189,25 @@ pub async fn accept_mission(
     true
 }
 
-/// Abandon a mission: remove it and send removal to client.
+/// Abandon a mission: remove it, save the abandon, and send the removal to
+/// the client.
+///
+/// Only an active mission is abandoned: a completed, failed or not-active
+/// one is refused with an INFO row and nothing is saved or sent (CS-08
+/// review R1; python's `abandon()` is `fail()`, active only).
 ///
 /// Returns `true` only when a mission instance was actually removed. Callers
 /// use that to gate the `mission_abandoned` content event (H54): abandoning a
 /// mission the player does not hold is a no-op, and firing the event for it
 /// would repaint an offer on every stray `abandonMission` the client sends.
+///
+/// The save is a `MissionUpdate` at `MISSION_NOT_ACTIVE` with no step and no
+/// objectives, carrying the mission's `repeats`. The base deletes the row
+/// when `repeats` is 0 and keeps a not-active row otherwise, so the mission
+/// does not come back after a relog and a repeatable one keeps its count
+/// (#1315, #118). Every abandon path (the player's `abandonMission`, the
+/// `abandon_mission` chain action, `gmMissionClear` / `gmMissionAbandon`)
+/// comes through here, so none of them persists on its own.
 #[tracing::instrument(
     name = "mission.abandon",
     level = "info",
@@ -216,7 +229,7 @@ pub async fn abandon_mission(
     }
     let player_id = entity.player_id;
 
-    if let Some(removed) = entity.missions.remove_mission(mission_id) {
+    if let Some(removed) = entity.missions.abandon_mission(mission_id) {
         tracing::info!(
             entity_id,
             entity_name = EntityNames::of(entity).entity_name,
@@ -224,6 +237,36 @@ pub async fn abandon_mission(
             mission_name = cimmeria_names::book().mission(mission_id),
             "Mission abandoned"
         );
+
+        // Persist first, hidden or not: the saved row must not reload as
+        // active either way.
+        if let Some(pid) = player_id {
+            let saved = CellToBaseMsg::MissionUpdate {
+                player_id: pid,
+                mission_id,
+                status: MISSION_NOT_ACTIVE,
+                current_step_id: None,
+                completed_step_ids: vec![],
+                completed_objective_ids: vec![],
+                active_objective_ids: vec![],
+                failed_objective_ids: vec![],
+                repeats: removed.repeats,
+            };
+            if let Err(e) = tx.send(saved).await {
+                tracing::error!(
+                    entity_id,
+                    entity_name = EntityNames::of(entity).entity_name,
+                    player_id = pid,
+                    // A player's entity name is its character name.
+                    player_name = EntityNames::of(entity).entity_name,
+                    mission_id,
+                    mission_name = cimmeria_names::book().mission(mission_id),
+                    error = %e,
+                    "abandon_mission: MissionUpdate send to base failed -- the abandon \
+                     is not saved and the mission returns after a relog"
+                );
+            }
+        }
 
         // The client never saw a hidden mission, so there is no journal
         // row to remove (#715). The removal itself still counts.
@@ -252,6 +295,20 @@ pub async fn abandon_mission(
         return true;
     }
 
+    if let Some(status) = entity.missions.get_mission(mission_id).map(|m| m.status) {
+        tracing::info!(
+            event = "mission_abandon_refused",
+            reason = "not_active",
+            entity_id,
+            entity_name = EntityNames::of(entity).entity_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            status,
+            "abandon_mission: only an active mission can be abandoned; the record and its \
+             saved row are left as they are"
+        );
+        return false;
+    }
     tracing::debug!(
         entity_id,
         entity_name = EntityNames::of(entity).entity_name,

@@ -71,9 +71,16 @@ fn parse_mission_id(
 }
 
 /// `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — grant a mission to the
-/// caller by numeric design id. Mirrors the content-engine accept path: resolve
-/// the mission def's first step + objectives, then `accept_mission`. The `popup`
-/// byte is a client UI hint and isn't needed server-side.
+/// caller by numeric design id. Mirrors the content-engine accept path
+/// (`executor::mission::accept_or_advance`): resolve the mission def's first
+/// step + objectives, `accept_mission`, persist the `MissionUpdate`, fire
+/// `mission_accepted`, then replay the first step's regions. Only the Discord
+/// gameplay line is left out: a GM assign is a test action, not play. The
+/// `popup` byte is a client UI hint and isn't needed server-side.
+///
+/// `accept_mission` only changes cell memory; the content caller is what
+/// persists. Without the `MissionUpdate` an assigned mission was gone after a
+/// relog (Class Start v6 CS-08 F9).
 pub(super) async fn handle_mission_assign(
     entity_id: u32,
     args: &[u8],
@@ -134,11 +141,26 @@ pub(super) async fn handle_mission_assign(
     let accepted =
         missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
     if accepted {
+        let player_id = player_id_of(entity_id, space_mgr);
+        // Read back from the live instance after the accept, as the content
+        // accept does, so the row carries the real objective ids and repeats.
+        missions::send_mission_update(
+            entity_id,
+            player_id,
+            mission_id,
+            "gm_mission_assign",
+            tx,
+            space_mgr,
+        )
+        .await;
+        crate::cell::content::fire_mission_accepted(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
+        .await;
         // H52: the assigned mission's first step is now active. A chain gated
         // on it and keyed on a volume the target is already standing in spent
         // its edge before the assign, so replay those volumes —
         // `gmMissionAssign` is the primary UAT tool for exactly that flow.
-        let player_id = player_id_of(entity_id, space_mgr);
         crate::cell::content::fire_step_activation_regions(
             entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
         )
@@ -183,7 +205,8 @@ pub(super) async fn handle_mission_clear(
         mission_name = cimmeria_names::book().mission(mission_id),
         "gmMissionClear: abandoning mission"
     );
-    if missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await {
+    let abandoned = missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await;
+    if abandoned {
         // H54: a GM clearing a mission must repaint its offer too, otherwise
         // the GM's own re-test of the flow starts from a broken giver.
         let player_id = player_id_of(entity_id, space_mgr);
@@ -192,19 +215,23 @@ pub(super) async fn handle_mission_clear(
         )
         .await;
     }
-    send_gm_feedback(
-        entity_id,
-        &format!("gmMissionClear: abandoned mission {mission_id}"),
-        tx,
-    )
-    .await;
+    // Only an active mission is abandoned (CS-08 review R1). Before #1315 a
+    // clear of a finished mission changed memory only and a relog undid it,
+    // so the GM path never could wipe one for good; it gets no exception.
+    let line = if abandoned {
+        format!("gmMissionClear: abandoned mission {mission_id}")
+    } else {
+        format!("gmMissionClear: mission {mission_id} is not active on you; nothing changed")
+    };
+    send_gm_feedback(entity_id, &line, tx).await;
     true
 }
 
 /// `gmMissionAdvance(WSTRING DesignID, INT32 StepToAdvanceTo)` — jump a
 /// mission to a specific step. Reuses `advance_step`, which completes the old
 /// step's objectives, sets the new step, and loads + broadcasts the new
-/// objectives.
+/// objectives, then persists as the content `advance_step` action does (the
+/// same gap as `gmMissionAssign`, CS-08 F9).
 pub(super) async fn handle_mission_advance(
     entity_id: u32,
     args: &[u8],
@@ -254,6 +281,36 @@ pub(super) async fn handle_mission_advance(
         send_gm_feedback(entity_id, "gmMissionAdvance: step must be positive", tx).await;
         return true;
     }
+    // Since the advance is saved, a step from another mission (or none) would
+    // be persisted and survive every relog (CS-08 review S1). Refuse it.
+    let owner = space_mgr.step_missions.get(&new_step_id).copied();
+    if owner != Some(mission_id) {
+        let book = cimmeria_names::book();
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            new_step_id,
+            new_step_name = cimmeria_names::book().mission_step(new_step_id),
+            owner_mission_id = owner,
+            owner_mission_name = owner.and_then(|m| book.mission(m)),
+            "gmMissionAdvance: step is not one of the mission's steps, refused"
+        );
+        drop(book);
+        let line = match owner {
+            Some(other) => format!(
+                "gmMissionAdvance: step {new_step_id} belongs to mission {other}, \
+                 not {mission_id}; nothing changed"
+            ),
+            None => format!(
+                "gmMissionAdvance: step {new_step_id} is not a known mission step; \
+                 nothing changed"
+            ),
+        };
+        send_gm_feedback(entity_id, &line, tx).await;
+        return true;
+    }
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
@@ -264,8 +321,20 @@ pub(super) async fn handle_mission_advance(
         "gmMissionAdvance: advancing mission step"
     );
     if missions::advance_step(entity_id, mission_id, new_step_id, tx, space_mgr).await {
-        // H52, same reasoning as `handle_mission_assign`.
         let player_id = player_id_of(entity_id, space_mgr);
+        // After the mutation, before the region replay, as the content action
+        // does. `advance_step` is false only for a missing caller or a
+        // mission it does not hold, where there is nothing to save.
+        missions::send_mission_update(
+            entity_id,
+            player_id,
+            mission_id,
+            "gm_mission_advance",
+            tx,
+            space_mgr,
+        )
+        .await;
+        // H52, same reasoning as `handle_mission_assign`.
         crate::cell::content::fire_step_activation_regions(
             entity_id,
             player_id,

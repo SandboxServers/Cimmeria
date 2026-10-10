@@ -37,7 +37,7 @@ use super::super::mission_context::{populate_mission_context, populate_world_con
 /// accepts work without each one being wired by hand. Bounded in practice
 /// because chain authors don't write self-accepting cycles; if that turns
 /// out to be optimistic, guard with a depth counter here.
-pub(in crate::cell::content) fn fire_mission_accepted<'a>(
+pub fn fire_mission_accepted<'a>(
     entity_id: u32,
     player_id: i32,
     mission_id: i32,

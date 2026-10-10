@@ -231,7 +231,7 @@ the live UAT (CS-08).
 | CS-05 | SGC: M1559 core grant and tutorials, M1562 Carter desk SMG, M1569 class rewards and signatures; `archetype neq 7` on the SGC starter chains. | CS-01a/b, CS-02, CS-03 | Built, not yet integrated (#1279; merge after #1273; [worknote](worknotes/CS-05.md)); lab UAT in CS-08 |
 | CS-06 | Free Jaffa start on Dakara_E1 at level 1: authored navmesh-validated spawn and respawner, start gear and grants from the profile. | CS-02 | Folded into CS-02 (spawn (100, -17.4, 230), respawner 610) |
 | CS-07 | Player weapon-moniker requirement (OD-CS11) with the per-ability audit; remove the 592 redirect; weapon basic-attack transience guards; doc fixes. After the review (2026-10-10): the active weapon's own attacks reach the known list at world entry, on a drag-equip and on a grant into the active slot (with the warmup interrupt and last-fired clear of a slot change, OD-CS14); right-click with no RANGED binding answers "This weapon has no ranged attack." and 581 is seeded onto the 50 sniper rifles and 579 onto 5481 (OD-CS15); the four FAIL rows stay flagged (OD-CS16). [Audit](weapon-requirement-audit.md): 122 PASS, 4 FAIL, 133 weapon-granted bindings refused by their own weapon, 25 abilities gated by the Rust server only, 269 bandolier weapons with no RANGED binding. PR #1271. | none | In review (#1271) |
-| CS-08 | Live UAT of every buildable profile; final PASS/BLOCKED matrix. | all | Planned |
+| CS-08 | Live UAT of every buildable profile; final PASS/BLOCKED matrix. | all | First live pass done ([worknote](worknotes/CS-08.md): findings F1-F10); server and seed fixes for F1, F2, F4 and F9 in PR #1314; F5, F6 and F8 need decisions; the desk SMG pickup (F10) is not yet reached |
 
 ## Grant provenance contract (CS-01a)
 

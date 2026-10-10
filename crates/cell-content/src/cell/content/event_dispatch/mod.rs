@@ -73,8 +73,8 @@ pub use lifecycle::{
 pub use region::{fire_enter_region, fire_exit_region, fire_teleport_in};
 pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};
 
-pub use mission::fire_mission_abandoned;
-pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
+pub(super) use mission::fire_mission_completed;
+pub use mission::{fire_mission_abandoned, fire_mission_accepted};
 pub use step_activation::fire_step_activation_regions;
 
 /// Fire a content chain directly by ID, bypassing trigger matching.
