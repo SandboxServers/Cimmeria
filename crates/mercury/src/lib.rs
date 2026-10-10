@@ -181,4 +181,37 @@ pub mod consts {
 
     /// Maximum number of fragments a single message may be split across.
     pub const MAX_FRAGMENTS: usize = 64;
+
+    /// Per-channel cap on incomplete fragmented bundles held by the
+    /// receive-side `FragmentAssembler`.
+    ///
+    /// The SGW client keeps a single reassembly group per channel
+    /// (`Channel+0x124`, `processPacket` at `ghidra://SGW.exe@0x0157fd20`),
+    /// so a BigWorld sender finishes one bundle before it starts the next.
+    /// On the reliable path the receive window releases fragments in
+    /// sequence order, so a legitimate peer has at most one bundle open at
+    /// a time; 16 leaves room for unreliable bundles and for partials left
+    /// behind by lost unreliable fragments (there is no time-based sweep).
+    /// When a new bundle arrives at the cap, the bundle that arrived
+    /// earliest is evicted. See `docs/protocol/mercury-wire-format.md`
+    /// § "Receive-side reassembly caps".
+    pub const MAX_PENDING_FRAGMENTED_BUNDLES: usize = 16;
+
+    /// Per-channel cap on fragment payload bytes held by incomplete
+    /// bundles in the receive-side `FragmentAssembler`.
+    ///
+    /// 256 KiB. The largest legitimate bundle is
+    /// `MAX_FRAGMENTS × PACKET_MAX_SIZE` = 94,208 bytes, so the cap holds
+    /// more than two maximal bundles in flight at once. It also holds one
+    /// bundle of 64 fragments at the server's 4096-byte receive buffer
+    /// (`crates/base/src/base/connect_loop/mod.rs`), so a single bundle
+    /// never has to be refused for size alone. When a fragment would
+    /// exceed the cap, the earliest-arrived other bundles are evicted
+    /// until it fits.
+    pub const MAX_PENDING_FRAGMENT_BYTES: usize = 256 * 1024;
+
+    /// Minimum spacing between `mercury.fragment_caps` warnings for one
+    /// channel. Cap hits inside the window are counted and reported in the
+    /// next warning.
+    pub const FRAGMENT_CAP_WARN_INTERVAL_MS: u64 = 10_000;
 }

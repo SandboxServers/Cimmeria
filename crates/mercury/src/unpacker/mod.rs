@@ -25,35 +25,57 @@
 //!    an already-evicted bundle is itself dropped (does not displace
 //!    the newer bundle that took over). Matches the SGW client behavior
 //!    documented at `ghidra://SGW.exe@0x01b18868`.
-//! 3. **Channel teardown** — the owning `Channel` is dropped, taking
+//! 3. **Cap eviction** — the channel already holds
+//!    [`crate::consts::MAX_PENDING_FRAGMENTED_BUNDLES`] incomplete bundles when
+//!    a new one arrives, or a fragment would push the held payload past
+//!    [`crate::consts::MAX_PENDING_FRAGMENT_BYTES`]. The bundle that arrived
+//!    earliest is evicted (never the one the incoming fragment belongs
+//!    to). A single bundle that alone exceeds the byte cap is dropped.
+//!    Each drop is counted in [`FragmentCapHits`], which the owning
+//!    `Channel` turns into a rate-limited WARN.
+//! 4. **Channel teardown** — the owning `Channel` is dropped, taking
 //!    the `FragmentAssembler` with it.
 //!
 //! There is **no time-based stale sweep**. Per `mercury-wire-format`
 //! spec §2.4.1 R13 + §2.10 S6, the SGW client never implemented one;
 //! a slow sender (transatlantic link with loss) could legitimately
 //! take longer than any reasonable sweep interval to finish a bundle,
-//! and a sweep would silently drop it mid-reassembly.
+//! and a sweep would silently drop it mid-reassembly. The caps bound
+//! memory instead of time: they never touch a lone slow bundle.
 //!
-//! ## Memory implications
+//! ## Why evict the earliest rather than refuse the newest
 //!
-//! Because there is no sweep, orphan partial reassemblies sit in the
-//! per-channel assembler until either an overlapping bundle arrives or
-//! the channel is torn down. Worst-case footprint per channel is bounded
-//! by `MAX_FRAGMENTS` (the per-bundle cap) × the number of distinct
-//! `first_seq` keys currently in flight. A malicious peer that opens
-//! many partial bundles without completing them pins memory until the
-//! channel's existing dead-peer detection (`is_timed_out`) reaps the
-//! channel — which is the only safe upper bound under the spec's
-//! contract. Channels in practice live minutes-to-hours; this footprint
-//! is acceptable and there are easier DoS vectors against a busy server.
+//! Refusing new bundles at the cap would let partials left behind by
+//! lost unreliable fragments (which nothing else ever removes) block
+//! every later bundle on the channel for its whole life, including
+//! reliable ones whose fragments the receive window has already acked
+//! and the sender will never resend. Evicting the earliest arrival keeps
+//! the channel able to reassemble: a legitimate in-progress bundle is
+//! only lost if 16 newer bundles open while it waits, or newer bundles
+//! together push the held payload past 256 KiB. In-order reliable
+//! delivery produces neither.
+//!
+//! ## Cost per fragment
+//!
+//! Pending bundles are kept in a `BTreeMap` keyed by `first_seq` (masked
+//! to 28 bits). A bundle spans at most [`crate::consts::MAX_FRAGMENTS`]
+//! sequence numbers, so only keys within `MAX_FRAGMENTS - 1` before the
+//! incoming range can overlap it; the overlap checks look at that key
+//! window alone. Arrival order lives in a second `BTreeMap` for the cap
+//! eviction. Each fragment costs O(log pending), not O(pending).
 
-use std::collections::HashMap;
+mod pending;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use std::collections::BTreeMap;
+
+use bytes::Bytes;
 use cimmeria_common::{CimmeriaError, Result};
 
-use crate::consts::MAX_FRAGMENTS;
+use crate::consts::{MAX_FRAGMENTS, MAX_PENDING_FRAGMENTED_BUNDLES, MAX_PENDING_FRAGMENT_BYTES};
 use crate::packet::{ParsedPacket, SEQUENCE_MASK};
+
+use pending::PendingMessage;
+pub use pending::{FragmentCapHits, FragmentCapReason};
 
 /// 28-bit modular "is `later` strictly after `earlier`" comparison.
 ///
@@ -81,56 +103,6 @@ fn ranges_overlap_mod28(a_begin: u32, a_end: u32, b_begin: u32, b_end: u32) -> b
     b_in_a || a_in_b
 }
 
-/// Tracks the in-progress reassembly of a single fragmented message.
-#[derive(Debug)]
-struct PendingMessage {
-    /// Total number of fragments expected.
-    total_fragments: u8,
-    /// Received fragment payloads, indexed by fragment number.
-    fragments: Vec<Option<Bytes>>,
-    /// How many fragments have been received so far.
-    received_count: u8,
-}
-
-impl PendingMessage {
-    fn new(total_fragments: u8) -> Self {
-        Self {
-            total_fragments,
-            fragments: (0..total_fragments).map(|_| None).collect(),
-            received_count: 0,
-        }
-    }
-
-    /// Insert a fragment. Returns `true` if the message is now complete.
-    fn insert(&mut self, index: u8, data: Bytes) -> bool {
-        let idx = index as usize;
-        if idx >= self.fragments.len() {
-            return false;
-        }
-        if self.fragments[idx].is_none() {
-            self.fragments[idx] = Some(data);
-            self.received_count += 1;
-        }
-        self.received_count == self.total_fragments
-    }
-
-    /// Assemble the complete message from all fragments in order.
-    fn assemble(self) -> Bytes {
-        let total_len: usize = self
-            .fragments
-            .iter()
-            .filter_map(|f| f.as_ref())
-            .map(|f| f.len())
-            .sum();
-
-        let mut buf = BytesMut::with_capacity(total_len);
-        for frag in self.fragments.into_iter().flatten() {
-            buf.put_slice(&frag);
-        }
-        buf.freeze()
-    }
-}
-
 // ── FragmentAssembler ───────────────────────────────────────────────────────
 
 /// Reassembles fragmented Mercury messages.
@@ -138,15 +110,28 @@ impl PendingMessage {
 /// Keyed by the sequence number of the first fragment in each message.
 /// Once all fragments arrive, the complete payload is returned.
 pub struct FragmentAssembler {
-    /// In-progress reassembly buffers, keyed by first-fragment sequence.
-    pending: HashMap<u32, PendingMessage>,
+    /// In-progress reassembly buffers, keyed by first-fragment sequence
+    /// masked to 28 bits.
+    pending: BTreeMap<u32, PendingMessage>,
+    /// Arrival ticket → `pending` key, oldest first. Drives cap eviction.
+    by_arrival: BTreeMap<u64, u32>,
+    /// Next arrival ticket to hand out.
+    next_ticket: u64,
+    /// Sum of [`PendingMessage::bytes`] over `pending`.
+    pending_bytes: usize,
+    /// Cap drops since the last [`Self::take_cap_hits`].
+    cap_hits: FragmentCapHits,
 }
 
 impl FragmentAssembler {
     /// Create a new assembler with no pending messages.
     pub fn new() -> Self {
         Self {
-            pending: HashMap::new(),
+            pending: BTreeMap::new(),
+            by_arrival: BTreeMap::new(),
+            next_ticket: 0,
+            pending_bytes: 0,
+            cap_hits: FragmentCapHits::default(),
         }
     }
 
@@ -155,6 +140,7 @@ impl FragmentAssembler {
     /// # Arguments
     ///
     /// - `first_seq` — Sequence number of the first fragment (reassembly key).
+    ///   Only its low 28 bits are used, matching the modular comparisons.
     /// - `frag_index` — 0-based index of this fragment within the message.
     /// - `total_frags` — Total number of fragments that make up the message.
     /// - `data` — This fragment's payload bytes.
@@ -162,7 +148,8 @@ impl FragmentAssembler {
     /// # Returns
     ///
     /// `Some(complete_payload)` if this was the final missing fragment,
-    /// `None` if more fragments are still needed.
+    /// `None` if more fragments are still needed, or if the fragment was
+    /// dropped (stale, or its bundle exceeded the byte cap on its own).
     pub fn add_fragment(
         &mut self,
         first_seq: u32,
@@ -208,92 +195,195 @@ impl FragmentAssembler {
         // conflicting `total_frags` for a key it's already mid-
         // reassembly on) is a distinct protocol violation handled
         // below as a hard reject, not an eviction.
-        let new_begin = first_seq;
-        let new_end = first_seq.wrapping_add(total_frags as u32 - 1);
+        let key = first_seq & SEQUENCE_MASK;
+        let new_end = key.wrapping_add(total_frags as u32 - 1) & SEQUENCE_MASK;
+        let overlapping = self.overlapping_keys(key, new_end);
 
-        // Pre-scan: if any overlapping entry is strictly newer than
-        // the incoming bundle, this fragment is itself stale.
-        let incoming_is_stale = self.pending.iter().any(|(&existing_seq, msg)| {
-            if existing_seq == first_seq {
-                return false;
-            }
-            let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
-            if !ranges_overlap_mod28(new_begin, new_end, existing_seq, existing_end) {
-                return false;
-            }
-            is_strictly_newer_mod28(existing_seq, first_seq)
-        });
-        if incoming_is_stale {
+        if overlapping
+            .iter()
+            .any(|&existing| is_strictly_newer_mod28(existing, key))
+        {
             tracing::debug!(
-                first_seq,
+                first_seq = key,
                 last_seq = new_end,
                 "Ignoring stale fragment from older overlapping bundle (newer bundle already in flight)"
             );
             return Ok(None);
         }
 
-        // Evict every overlapping entry whose `first_seq` is strictly
-        // older than the incoming bundle's. `retain()` is single-pass
-        // and avoids the collect+remove dance that would otherwise
-        // touch each pending entry twice under burst conditions.
-        let evicting_first_seq = first_seq;
-        let evicting_last_seq = new_end;
-        self.pending.retain(|&existing_seq, msg| {
-            if existing_seq == evicting_first_seq {
-                return true;
+        // Every remaining overlapping entry is strictly older: evict it.
+        for existing in overlapping {
+            if let Some(msg) = self.remove(existing) {
+                // The completion percentage tells operators whether this
+                // was a normal abandonment (low pct) or a suspicious
+                // near-complete drop (high pct → possible sender-side bug
+                // / loss-driven restart).
+                let existing_end = existing.wrapping_add(msg.total_fragments as u32 - 1);
+                let completion_pct = (msg.received_count as u32 * 100) / msg.total_fragments as u32;
+                tracing::debug!(
+                    evicted_first_seq = existing,
+                    evicted_last_seq = existing_end,
+                    evicted_received = msg.received_count,
+                    evicted_total = msg.total_fragments,
+                    evicted_completion_pct = completion_pct,
+                    evicted_by_first_seq = key,
+                    evicted_by_last_seq = new_end,
+                    "Discarding abandoned stale overlapping fragmented bundle from seq {} to {}",
+                    existing,
+                    existing_end,
+                );
             }
-            let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
-            if !ranges_overlap_mod28(new_begin, new_end, existing_seq, existing_end) {
-                return true;
-            }
-            if !is_strictly_newer_mod28(evicting_first_seq, existing_seq) {
-                return true;
-            }
-            // Strictly-older overlapping bundle: evict. The completion
-            // percentage tells operators whether this was a normal
-            // abandonment (low pct) or a suspicious near-complete drop
-            // (high pct → possible sender-side bug / loss-driven restart).
-            let completion_pct = (msg.received_count as u32 * 100) / msg.total_fragments as u32;
-            tracing::debug!(
-                evicted_first_seq = existing_seq,
-                evicted_last_seq = existing_end,
-                evicted_received = msg.received_count,
-                evicted_total = msg.total_fragments,
-                evicted_completion_pct = completion_pct,
-                evicted_by_first_seq = evicting_first_seq,
-                evicted_by_last_seq = evicting_last_seq,
-                "Discarding abandoned stale overlapping fragmented bundle from seq {} to {}",
-                existing_seq,
-                existing_end,
-            );
-            false
-        });
+        }
 
-        let pending = self
-            .pending
-            .entry(first_seq)
-            .or_insert_with(|| PendingMessage::new(total_frags));
+        // Admission of a new bundle: at the count cap, evict the
+        // earliest arrival to make room.
+        if !self.pending.contains_key(&key) {
+            while self.pending.len() >= MAX_PENDING_FRAGMENTED_BUNDLES {
+                if !self.evict_earliest_except(key, FragmentCapReason::BundleCount) {
+                    break;
+                }
+            }
+            let ticket = self.next_ticket;
+            self.next_ticket += 1;
+            self.by_arrival.insert(ticket, key);
+            self.pending
+                .insert(key, PendingMessage::new(total_frags, ticket));
+        }
 
+        let Some(pending) = self.pending.get(&key) else {
+            return Ok(None);
+        };
         // Sanity: total_frags must match what we saw on the first fragment.
         if pending.total_fragments != total_frags {
             return Err(CimmeriaError::FragmentReassembly(format!(
                 "conflicting total_frags for seq {}: expected {}, got {}",
-                first_seq, pending.total_fragments, total_frags
+                key, pending.total_fragments, total_frags
             )));
         }
+        // A duplicate stores nothing and cannot complete the bundle
+        // (a complete bundle is removed the moment it completes).
+        if pending.has(frag_index) {
+            return Ok(None);
+        }
 
-        if pending.insert(frag_index, data) {
+        // Byte cap: make room by evicting earlier arrivals; if this
+        // bundle alone would exceed the cap, drop it.
+        let len = data.len();
+        while self.pending_bytes + len > MAX_PENDING_FRAGMENT_BYTES {
+            if !self.evict_earliest_except(key, FragmentCapReason::PendingBytes) {
+                if let Some(msg) = self.remove(key) {
+                    self.cap_hits
+                        .record(FragmentCapReason::OversizeBundle, &msg, key);
+                }
+                return Ok(None);
+            }
+        }
+
+        // Store a copy so the held allocation is exactly the counted
+        // bytes. The live path already gets an owned body from
+        // `parse_incoming`; this guards direct callers whose `Bytes` may
+        // be a view into a larger buffer.
+        let data = Bytes::copy_from_slice(&data);
+        let Some(pending) = self.pending.get_mut(&key) else {
+            return Ok(None);
+        };
+        let complete = pending.insert(frag_index, data);
+        self.pending_bytes += len;
+        if complete {
             // All fragments received — assemble and remove from pending.
-            let msg = self.pending.remove(&first_seq).unwrap();
-            Ok(Some(msg.assemble()))
+            Ok(self.remove(key).map(PendingMessage::assemble))
         } else {
             Ok(None)
         }
     }
 
+    /// Keys of pending bundles whose range overlaps `[key, new_end]`,
+    /// excluding `key` itself.
+    ///
+    /// An existing bundle spans at most `MAX_FRAGMENTS` sequence numbers,
+    /// so it can only overlap if its `first_seq` lies within
+    /// `MAX_FRAGMENTS - 1` before `key` or inside the incoming range. The
+    /// candidate window is therefore at most `2 × MAX_FRAGMENTS - 1` keys
+    /// wide, split in two where it crosses the 28-bit wrap.
+    fn overlapping_keys(&self, key: u32, new_end: u32) -> Vec<u32> {
+        let lo = key.wrapping_sub(MAX_FRAGMENTS as u32 - 1) & SEQUENCE_MASK;
+        let candidates: Vec<u32> = if lo <= new_end {
+            self.pending.range(lo..=new_end).map(|(&k, _)| k).collect()
+        } else {
+            self.pending
+                .range(lo..=SEQUENCE_MASK)
+                .chain(self.pending.range(0..=new_end))
+                .map(|(&k, _)| k)
+                .collect()
+        };
+        candidates
+            .into_iter()
+            .filter(|&existing| existing != key)
+            .filter(|&existing| {
+                let msg = &self.pending[&existing];
+                let existing_end = existing.wrapping_add(msg.total_fragments as u32 - 1);
+                ranges_overlap_mod28(key, new_end, existing, existing_end)
+            })
+            .collect()
+    }
+
+    /// Evict the earliest-arrived pending bundle other than `keep`,
+    /// recording the drop. Returns `false` when there is none.
+    fn evict_earliest_except(&mut self, keep: u32, reason: FragmentCapReason) -> bool {
+        let Some((ticket, victim)) = self
+            .by_arrival
+            .iter()
+            .map(|(&ticket, &key)| (ticket, key))
+            .find(|&(_, candidate)| candidate != keep)
+        else {
+            return false;
+        };
+        let Some(msg) = self.remove(victim) else {
+            // `by_arrival` names a bundle `pending` no longer holds. Drop
+            // the stale entry and report no progress, so the cap loops in
+            // `add_fragment` end instead of spinning.
+            debug_assert!(
+                false,
+                "by_arrival ticket {ticket} names first_seq {victim}, which is not pending"
+            );
+            self.by_arrival.remove(&ticket);
+            return false;
+        };
+        tracing::debug!(
+            target: "mercury.fragment_caps",
+            reason = reason.as_str(),
+            evicted_first_seq = victim,
+            evicted_received = msg.received_count,
+            evicted_total = msg.total_fragments,
+            evicted_bytes = msg.bytes,
+            "Evicting incomplete fragmented bundle to stay within the reassembly caps"
+        );
+        self.cap_hits.record(reason, &msg, victim);
+        true
+    }
+
+    /// Remove a pending bundle and its bookkeeping.
+    fn remove(&mut self, key: u32) -> Option<PendingMessage> {
+        let msg = self.pending.remove(&key)?;
+        self.by_arrival.remove(&msg.admitted);
+        self.pending_bytes -= msg.bytes;
+        Some(msg)
+    }
+
     /// Returns the number of messages currently being reassembled.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
+    }
+
+    /// Fragment payload bytes currently held by incomplete bundles.
+    pub fn pending_bytes(&self) -> usize {
+        self.pending_bytes
+    }
+
+    /// Bundles dropped to stay inside the caps since the last call, and
+    /// reset the tally.
+    pub fn take_cap_hits(&mut self) -> FragmentCapHits {
+        std::mem::take(&mut self.cap_hits)
     }
 
     /// Feed a freshly-parsed Mercury packet into the assembler.
@@ -379,5 +469,7 @@ impl Default for FragmentAssembler {
     }
 }
 
+#[cfg(test)]
+mod cap_tests;
 #[cfg(test)]
 mod tests;

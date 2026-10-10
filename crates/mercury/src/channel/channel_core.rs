@@ -16,7 +16,7 @@ use cimmeria_common::Result;
 
 use crate::clock::{Clock, SystemClock};
 use crate::consts;
-use crate::packet::{Packet, ParsedPacket};
+use crate::packet::Packet;
 use crate::unpacker::FragmentAssembler;
 
 use super::rto::{Rto, RtoConfig};
@@ -176,13 +176,24 @@ pub struct Channel {
     /// without colliding in a shared map.
     ///
     /// **Cleanup contract:** there is no periodic time-based cleanup.
-    /// Partial reassemblies are evicted only when a new bundle arrives
-    /// whose sequence range overlaps an in-progress one (handled
+    /// Partial reassemblies are evicted when a new bundle arrives whose
+    /// sequence range overlaps an in-progress one, or when the
+    /// per-channel caps ([`consts::MAX_PENDING_FRAGMENTED_BUNDLES`],
+    /// [`consts::MAX_PENDING_FRAGMENT_BYTES`]) are reached (both handled
     /// inside [`FragmentAssembler::add_fragment`]). When this channel
     /// is dropped, the assembler goes with it, taking any remaining
-    /// partials. See `crates/mercury/src/unpacker.rs` module doc for
-    /// the full lifecycle + memory-footprint analysis.
-    fragment_assembler: FragmentAssembler,
+    /// partials. See the `crate::unpacker` module doc for the full
+    /// lifecycle and the cap policy.
+    pub(super) fragment_assembler: FragmentAssembler,
+
+    /// Reassembly cap drops not yet reported in a WARN, and when the
+    /// last WARN went out. See [`super::fragment_caps`].
+    pub(super) fragment_cap_unreported: crate::unpacker::FragmentCapHits,
+    pub(super) fragment_cap_warned_at: Option<Instant>,
+
+    /// Incomplete fragmented bundles dropped by the reassembly caps over
+    /// this channel's life.
+    pub fragment_cap_drops: u64,
 
     /// Adaptive retransmission timeout state. Tracks
     /// smoothed RTT + RTT variance for this peer; consulted by
@@ -255,6 +266,9 @@ impl Channel {
             last_sent: now,
             last_received: now,
             fragment_assembler: FragmentAssembler::new(),
+            fragment_cap_unreported: Default::default(),
+            fragment_cap_warned_at: None,
+            fragment_cap_drops: 0,
             rto: Rto::new(rto_config),
             clock,
         }
@@ -270,24 +284,6 @@ impl Channel {
     /// samples).
     pub(super) fn rto_mut(&mut self) -> &mut Rto {
         &mut self.rto
-    }
-
-    /// Feed a parsed Mercury packet through this channel's fragment
-    /// assembler and bump `last_received`.
-    ///
-    /// Non-fragmented packets pass through immediately; fragmented packets
-    /// buffer until the bundle is complete. This is the receive-path
-    /// equivalent of [`Self::send_packet`] for FLAG_FRAGMENTED bundles —
-    /// non-fragmented `Packet`s still go through [`Self::receive_packet`].
-    ///
-    /// Per-channel ownership of the assembler matters: keying reassembly
-    /// by sequence number alone would let one peer's fragments collide
-    /// with another peer's identical sequence numbers in a shared map.
-    /// Tying the assembler to the channel makes the per-peer scope
-    /// implicit.
-    pub fn reassemble_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
-        self.last_received = self.clock.now();
-        self.fragment_assembler.process_parsed(pkt)
     }
 
     /// Register a packet that the caller has already assigned a sequence
