@@ -175,7 +175,7 @@ The reference is the previous emulator, not the 2009 server, so this is its inte
 | 2 | `MISSION_Completed` | Successfully completed |
 | 3 | `MISSION_Failed` | Failed or abandoned |
 
-In the Rust server an abandon (the player's `abandonMission`, the `abandon_mission` chain action, `gmMissionClear` / `gmMissionAbandon`) is saved as code 0, not 3 (#1315). `cell::missions::abandon_mission` sends a `MissionUpdate` at `MISSION_NOT_ACTIVE` with no step and no objectives, carrying the mission's `repeats`. The base deletes the row when `repeats` is 0, so the mission reloads as never taken; with `repeats` above 0 it keeps a not-active row, and the cell keeps a matching not-active record, so a re-accept counts on from it (#118). Before #1315 no abandon was saved and the mission came back, active, after a relog.
+In the Rust server an abandon (the player's `abandonMission`, the `abandon_mission` chain action, `gmMissionClear` / `gmMissionAbandon`) is saved as code 0, not 3 (#1315). Only an active mission can be abandoned, as in python (`abandon()` is `fail()`, active only): an abandon of a completed, failed or not-active mission is refused with an INFO row (`event = "mission_abandon_refused"`) and its saved row is left as it is. `cell::missions::abandon_mission` sends a `MissionUpdate` at `MISSION_NOT_ACTIVE` with no step and no objectives, carrying the mission's `repeats`. The base deletes the row when `repeats` is 0, so the mission reloads as never taken; with `repeats` above 0 it keeps a not-active row, and the cell keeps a matching not-active record, so a re-accept counts on from it (#118). Before #1315 no abandon was saved and the mission came back, active, after a relog.
 
 ## Data References
 

@@ -173,14 +173,20 @@ impl MissionManager {
 
     /// Abandon a mission the player holds and return the removed instance.
     ///
+    /// Only a `MISSION_ACTIVE` mission can be abandoned, as in python
+    /// (`MissionManager.py`: `abandon()` is `fail()`, which refuses anything
+    /// not active). A completed, failed or not-active record is left as it
+    /// is and `None` comes back: since the abandon is saved (#1315), letting
+    /// it through would overwrite a finished mission's saved status for good
+    /// (CS-08 review R1).
+    ///
     /// A mission with `repeats > 0` is not forgotten: a `MISSION_NOT_ACTIVE`
     /// record carrying the count takes its place, so a re-accept in the same
     /// session keeps counting from it (the offer guard carries `repeats`
     /// forward, #118). That record is what a relog loads from the saved row
-    /// too (#1315). A record that is already `MISSION_NOT_ACTIVE` is not a
-    /// held mission: `None`, nothing to abandon.
+    /// too.
     pub fn abandon_mission(&mut self, mission_id: i32) -> Option<MissionInstance> {
-        if self.missions.get(&mission_id)?.status == MISSION_NOT_ACTIVE {
+        if self.missions.get(&mission_id)?.status != MISSION_ACTIVE {
             return None;
         }
         let removed = self.missions.remove(&mission_id)?;

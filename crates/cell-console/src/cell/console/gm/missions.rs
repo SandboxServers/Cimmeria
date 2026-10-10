@@ -205,7 +205,8 @@ pub(super) async fn handle_mission_clear(
         mission_name = cimmeria_names::book().mission(mission_id),
         "gmMissionClear: abandoning mission"
     );
-    if missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await {
+    let abandoned = missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await;
+    if abandoned {
         // H54: a GM clearing a mission must repaint its offer too, otherwise
         // the GM's own re-test of the flow starts from a broken giver.
         let player_id = player_id_of(entity_id, space_mgr);
@@ -214,12 +215,15 @@ pub(super) async fn handle_mission_clear(
         )
         .await;
     }
-    send_gm_feedback(
-        entity_id,
-        &format!("gmMissionClear: abandoned mission {mission_id}"),
-        tx,
-    )
-    .await;
+    // Only an active mission is abandoned (CS-08 review R1). Before #1315 a
+    // clear of a finished mission changed memory only and a relog undid it,
+    // so the GM path never could wipe one for good; it gets no exception.
+    let line = if abandoned {
+        format!("gmMissionClear: abandoned mission {mission_id}")
+    } else {
+        format!("gmMissionClear: mission {mission_id} is not active on you; nothing changed")
+    };
+    send_gm_feedback(entity_id, &line, tx).await;
     true
 }
 

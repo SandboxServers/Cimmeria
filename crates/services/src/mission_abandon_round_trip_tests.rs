@@ -5,7 +5,7 @@
 //! row stayed active and the mission came back after a relog.
 //!
 //! Beside `mission_round_trip_tests`, in the free top of its sentinel window
-//! (`0x7000_84BC..=0x7000_84BF`).
+//! (`0x7000_84BC..=0x7000_84C1`).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -32,6 +32,8 @@ const ACCOUNT_A: i32 = 0x7000_84BC;
 const PLAYER_A: i32 = 0x7000_84BD;
 const ACCOUNT_B: i32 = 0x7000_84BE;
 const PLAYER_B: i32 = 0x7000_84BF;
+const ACCOUNT_C: i32 = 0x7000_84C0;
+const PLAYER_C: i32 = 0x7000_84C1;
 const ENTITY_ID: u32 = 1;
 const MISSION_ID: i32 = 0x7000_0710;
 const STEP_ID: i32 = 0x7000_0711;
@@ -208,4 +210,50 @@ async fn live_db_abandoned_repeatable_mission_keeps_its_repeats() {
         "not active, no step, the count kept"
     );
     assert_ne!(row.status, MISSION_COMPLETED);
+}
+
+/// **Regression guard (CS-08 review R1).** An abandon of a completed mission
+/// leaves its saved row alone, for a row written since #118 (`repeats` 1) and
+/// for a pre-#118 one (`repeats` 0, which a not-active save would DELETE).
+/// Before the active-only guard the first reloaded as not active and the
+/// second was gone, so the completion was lost for good and the mission
+/// could be earned again.
+#[tokio::test]
+async fn live_db_abandon_of_a_completed_mission_keeps_its_saved_row() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (ACCOUNT_C, PLAYER_C);
+    for repeats in [1, 0] {
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let db_pool = Some(Arc::new(pool.clone()));
+        let mut mgr = make_mgr(player_id, 0);
+        let mut done = MissionInstance::new(MISSION_ID, STEP_ID, vec![]);
+        done.complete();
+        done.repeats = repeats;
+        mgr.get_entity_mut(ENTITY_ID)
+            .unwrap()
+            .missions
+            .add_mission(done);
+        let (tx, mut rx) = mpsc::channel(64);
+        send_mission_update(ENTITY_ID, player_id, MISSION_ID, "test", &tx, &mgr).await;
+        forward(&mut rx, &db_pool).await;
+
+        assert!(
+            !abandon_mission(ENTITY_ID, MISSION_ID, &tx, &mut mgr).await,
+            "repeats {repeats}: a completed mission is not abandoned"
+        );
+        forward(&mut rx, &db_pool).await;
+
+        let saved = query_saved_missions(&db_pool, player_id).await;
+        cleanup(&pool, account_id, player_id).await;
+        let row = saved
+            .iter()
+            .find(|m| m.mission_id == MISSION_ID)
+            .unwrap_or_else(|| panic!("repeats {repeats}: the completed row must survive"));
+        assert_eq!(
+            (row.status, row.repeats),
+            (MISSION_COMPLETED, repeats),
+            "repeats {repeats}: still completed"
+        );
+    }
 }

@@ -12,7 +12,8 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::missions::{
-    MissionInstance, MissionObjective, MISSION_COMPLETED, MISSION_NOT_ACTIVE, STATUS_ACTIVE,
+    MissionInstance, MissionObjective, MISSION_COMPLETED, MISSION_FAILED, MISSION_NOT_ACTIVE,
+    STATUS_ACTIVE,
 };
 
 use super::{abandon_mission, accept_mission};
@@ -164,4 +165,47 @@ async fn abandon_of_a_repeated_mission_keeps_its_repeats() {
         2,
         "a re-accept counts from the kept repeats"
     );
+}
+
+/// **Regression guard (CS-08 review R1).** Only an active mission can be
+/// abandoned. A completed or a failed record, including a pre-#118 one with
+/// `repeats` 0 (which the base would DELETE), is left exactly as it is:
+/// `false`, no `MissionUpdate`, no client frame. Letting it through saved a
+/// not-active row over the completion for good, so a forged `abandonMission`
+/// made a finished mission re-earnable.
+#[tokio::test]
+async fn abandon_of_a_finished_mission_is_refused_and_saves_nothing() {
+    for (status, repeats) in [
+        (MISSION_COMPLETED, 1),
+        (MISSION_COMPLETED, 0),
+        (MISSION_FAILED, 1),
+        (MISSION_FAILED, 0),
+    ] {
+        let mut mgr = make_mgr(0);
+        let mut finished = MissionInstance::new(MISSION, STEP, vec![]);
+        finished.status = status;
+        finished.current_step_id = None;
+        finished.repeats = repeats;
+        mgr.get_entity_mut(EID)
+            .unwrap()
+            .missions
+            .add_mission(finished);
+        let (tx, mut rx) = mpsc::channel(32);
+
+        assert!(
+            !abandon_mission(EID, MISSION, &tx, &mut mgr).await,
+            "status {status} repeats {repeats}: refused"
+        );
+        assert!(
+            drain(&mut rx).is_empty(),
+            "status {status} repeats {repeats}: nothing saved or sent"
+        );
+        let kept = mgr
+            .get_entity(EID)
+            .unwrap()
+            .missions
+            .get_mission(MISSION)
+            .expect("the finished record stays");
+        assert_eq!((kept.status, kept.repeats), (status, repeats));
+    }
 }

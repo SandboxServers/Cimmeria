@@ -192,6 +192,10 @@ pub async fn accept_mission(
 /// Abandon a mission: remove it, save the abandon, and send the removal to
 /// the client.
 ///
+/// Only an active mission is abandoned: a completed, failed or not-active
+/// one is refused with an INFO row and nothing is saved or sent (CS-08
+/// review R1; python's `abandon()` is `fail()`, active only).
+///
 /// Returns `true` only when a mission instance was actually removed. Callers
 /// use that to gate the `mission_abandoned` content event (H54): abandoning a
 /// mission the player does not hold is a no-op, and firing the event for it
@@ -291,6 +295,20 @@ pub async fn abandon_mission(
         return true;
     }
 
+    if let Some(status) = entity.missions.get_mission(mission_id).map(|m| m.status) {
+        tracing::info!(
+            event = "mission_abandon_refused",
+            reason = "not_active",
+            entity_id,
+            entity_name = EntityNames::of(entity).entity_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            status,
+            "abandon_mission: only an active mission can be abandoned; the record and its \
+             saved row are left as they are"
+        );
+        return false;
+    }
     tracing::debug!(
         entity_id,
         entity_name = EntityNames::of(entity).entity_name,
