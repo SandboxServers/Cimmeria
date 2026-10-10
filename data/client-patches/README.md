@@ -37,6 +37,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilt on the player's machine from the map's own tiles by a new source transform, so the zip holds no picture data; **needs a launcher that knows the transform** (see below) | 1 recipe + a 219-byte delta | 1.4 KB |
 | `014-debug-area-lineup-ring` | A ninth Debug Area ring rig, the Lineup station beside the NPC lineup, added to 011's Ihpet_Crater_Light chunk (see below). Needs 011 applied first | 1 map delta from 011's output | 1.4 KB |
 | `015-weapon-shot-bar` | An action button holding a weapon's basic shot (or Pistol Shot) follows the weapon: when the player switches weapons it switches to the new weapon's shot (see below). Needs 009 applied first | 1 delta from 009's output (`ActionProfileDefault1.lua`) | 4.7 KB |
+| `016-hotbar-learn-and-feedback` | A starting ability reaches the bar the first time it is known, in any session; Staff Swing joins the starting abilities; a shot button pressed with a weapon that has no ranged attack says so (see below). Needs 015 applied first | 1 delta from 015's output (`ActionProfileDefault1.lua`) | 5.1 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -82,7 +83,9 @@ module loads that file after `ActionProfiles.lua`.
   never touches it again, even if the starting abilities become known
   later. It also stops listening as soon as it is done. A profile that
   existed before the patch, or one made with the editor's New Profile
-  button, has no mark and is left alone.
+  button, has no mark and is left alone. Since Class Start v6 most
+  starting abilities are granted after the first session, so
+  [016](#016-hotbar-learn-and-feedback) places them in later sessions too.
 - **Compatible with UI packs.** It never creates, moves or resizes a
   button, and it patches no file that the WQHD v26 UI pack replaces
   (`ActionProfiles.lua`, `ActionButton.layout`). It wraps
@@ -797,7 +800,12 @@ for byte.
   no shot in the list, and the bar is left alone.
 - **If 009 is retired.** 015 starts from 009's output, so a manifest without
   009 cannot apply 015 to a fresh install. Retiring 009 (Class Start v6 rule
-  L1) needs a successor to 015 that starts from the stock file.
+  L1, since superseded by OD-CS17, which keeps 009 for normal players) would
+  need a successor to 015 that starts from the stock file, and one to 016,
+  which starts from 015's output.
+- **No shot to fire.** With a weapon that has no ranged binding the block
+  leaves the button on the last shot, and the client drops its press without
+  a word. [016](#016-hotbar-learn-and-feedback) adds the feedback line.
 - **Rebuilding.** `--stock` is a client with 009 applied (a launcher-installed
   client), `--patched` a tree whose `ActionProfileDefault1.lua` is that file
   followed by `WeaponShotBar.lua`. `weapon_shot_bar_tests.rs` in
@@ -824,6 +832,148 @@ for byte.
      change.
   5. On a new character, switch weapons in the first session: no second
      Pistol Shot appears on buttons 11-20.
+
+### 016-hotbar-learn-and-feedback
+
+Three fixes from the Class Start v6 CS-08 lab run (2026-10-10), decided by
+the maintainer the same day. 016 appends
+[HotbarLearnAndFeedback.lua](016-hotbar-learn-and-feedback/HotbarLearnAndFeedback.lua)
+to `ActionProfileDefault1.lua`, after [009](#009-starter-hotbar)'s and
+[015](#015-weapon-shot-bar)'s blocks, byte for byte.
+
+- **Why a new patch.** 009 and 015 are both in the signed content manifest
+  (015 checked against the published `manifest.json` on 2026-10-10), so
+  their zips are append-only. Every change here goes through the tables
+  those blocks expose (`ActionProfileMod.StarterHotbar` and
+  `ActionProfileMod.WeaponShotBar`), so neither block's bytes change. The
+  delta's only source is 015's output (`"output_of": "015-weapon-shot-bar"`,
+  sha256 `b3202d57...`): a client without 015 is refused and keeps its file.
+- **F8: starting abilities learned in a later session.** Since CS-02, CS-04
+  and CS-05 the starting abilities are granted by content (the CellBlock
+  guard's corpse, mission 622; the SGC firearm, mission 1559), often after
+  the character's first session. 009 seeds only in that session, so an SGC
+  character that had logged in once learned all four with an empty bar.
+  016 places each starting ability the first time the character knows it,
+  in any session, on the next empty layer-bound button from 11 to 20, with
+  009's own `isEmptyLayerButton` and `place`. It writes one line per
+  ability placed ("Pistol Shot is on your action bar."). The first session
+  stays 009's: while 009 is still seeding, 016 only records. Owner
+  decision OD-CS17 (Class Start v6) makes this the rule for normal
+  players.
+- **Never overwrite, never re-add.** The profile keeps the ids 016 has dealt
+  with, `cimmeriaStarterPlaced` (`1` was on the bar, `2` known while 11-20
+  were full). An id is recorded when 009 or 016 places it (016 wraps 009's
+  `place`) and whenever 016 sees it on the bar. 016 also wraps 009's
+  `abilitiesOnBar` so that a recorded id counts as on the bar. 009's own
+  seeding runs on every update and polls once a second for the whole first
+  session of a character that never knows one of the starters, and with
+  this rule it does not put back one the player removed either. A removed
+  starting ability stays removed, in this session and in later ones. A
+  weapon shot on the bar counts as Pistol Shot, through 015's rule in
+  `abilitiesOnBar`.
+- **No room.** A starting ability learned while buttons 11-20 are all
+  taken is recorded as `2` and not placed later, even when a button frees
+  up: the free button is the player's. When the client's action table is
+  full instead (`getUnusedAction` gives -1), nothing is recorded and the
+  next look tries again; the log says "no free action ... will try again".
+- **Which profiles.** Only a profile 009 created (it carries
+  `cimmeriaStarterHotbar`), as for 009 itself. A profile from before 009 or
+  from the editor's New Profile button is never touched.
+- **A profile from before 016.** There is no record of what 009 placed
+  before 016 existed. At the first look, a known starting ability that is
+  missing from the bar is placed, which is exactly the CS-08 F8 state (an
+  empty bar). A player who removed a starting ability before 016 was
+  installed gets it back once, and never again after.
+- **F5: Staff Swing.** The Free Jaffa knows 597, 1218 and 1984 Staff Swing,
+  its signature attack, which 009's list lacked, so a new Free Jaffa had no
+  attack on the bar. 016 inserts 1984 into 009's list after Strike:
+  `592, 594, 1984, 597, 1646, 1218`. A new Free Jaffa gets Staff Swing on
+  11, Heal Focus on 12 and Recuperation on 13. Only a Free Jaffa knows
+  Staff Swing, so 016 wraps 009's `seed` to leave an unknown Staff Swing
+  out of the missing count: 009 finishes its first session exactly as it
+  did before 016.
+- **F6: a shot press with no shot.** With a weapon that has no ranged basic
+  attack (Combat Knife 3325, say) the server removes the last weapon's
+  shot from the known list, 015 leaves the button on it, and the client
+  drops the press of an ability it does not know with no feedback.
+  Right-click in the same state already answers "This weapon has no ranged
+  attack." from the server. 016 wraps the global `useAction`, which the
+  stock button handler looks up on every press (click or key binding).
+  When the action holds a weapon shot or Pistol Shot that is not known, and
+  the known list holds no weapon shot at all, 016 writes the same line.
+  Repeats within a second are not written again. The press still goes to
+  the client, and the button keeps its shot. Pistol Shot that is still
+  known is sent to the server, which answers it (CS-07).
+- **Depends on 015's `WeaponShots`.** "No weapon shot known" means none of
+  the twelve ids in 015's `WeaponShots` table is known. A ranged weapon
+  whose basic attack is not in that table would look like a knife to 016:
+  a button still holding the previous gun's shot would print the line
+  although the weapon has a shot. `weapon_shot_bar_tests.rs` pins that
+  table to the seed's ranged bindings, so a new weapon family fails there
+  first and needs a successor to both 015 and 016.
+- **When it looks.** After `WeaponShotBar.run`, which 015 calls on every
+  known-abilities update, weapon switch and profile load. While a starting
+  ability is still unrecorded and 009 is not seeding, 016 also looks on the
+  player's own property updates, at most every 2 s, for the whole session.
+  This covers a content grant that reaches the known list with no
+  `Events.AbilityUpdate`, as 009's fallback does in the first session. The
+  poll listens on `ActionButtonsWin`, which 009 has stopped using by then,
+  and stops once nothing is left to find. If 015 has no listener window,
+  the poll and the profile load are what remain.
+- **Safe to run twice.** Each function of 009 and 015 is wrapped once per
+  table, using a mark on `StarterHotbar` and on `WeaponShotBar`. The
+  `useAction` wrapper keeps the native in an upvalue, and the global
+  `CimmeriaNoShotUseAction` names the wrapper. A second run of the block in
+  one Lua state (a UI reload) therefore neither doubles a wrapper nor makes
+  a press call itself.
+- **Fails closed.** Every entry point runs under `pcall`. An error while
+  placing is logged once and switches the F8 part off for the session.
+  Placements and the feedback line are logged to `Debug:log`.
+- **Rebuilding.** `--stock` is a client with 009 and 015 applied, `--patched`
+  a tree whose `ActionProfileDefault1.lua` is that file followed by
+  `HotbarLearnAndFeedback.lua`. `hotbar_learn_and_feedback_tests.rs` in
+  `crates/patchset` decodes the committed delta and fails when the bytes
+  after the stock part differ from 009's and 015's blocks followed by
+  016's, or when the feedback line differs from the server's
+  `NO_RANGED_ATTACK_TEXT`. Its ignored test
+  `real_client_hotbar_learn_and_feedback` (`SGW_015_DEFAULT_PROFILE`)
+  applies the zip to a real file and compares every byte.
+- **Logic UAT.** `lua5.1 data/client-patches/016-hotbar-learn-and-feedback/test/run.lua`,
+  or `python .../test/run_lupa.py`, against 009's clean-room model with all
+  three blocks; `SGW_UI_DIR` adds the real scripts, as for 015. CI also
+  runs 015's UAT with `WEAPON_SHOT_BAR_APPEND` set to 016's block, so 015's
+  scenarios hold with 016 appended.
+- **Publishing.** Add the entry `cimmeria-patchset build` prints with
+  `"after": "015-weapon-shot-bar"`. It needs no new launcher code, so
+  `min_launcher` stays as it is.
+- **Not yet seen in a client** (run 2026-10-10 against the QA client's real
+  ActionButtons scripts with stubbed natives only):
+  1. A grant mid-session, with no weapon switch and no relog. A new SGC
+     character logs in, logs out before reaching the firearm, logs back in,
+     waits a minute, and takes the firearm (mission 1559) without switching
+     weapons. Pistol Shot, Strike, Heal Focus and Recuperation land on empty
+     buttons from 11 within a few seconds, one line each, and Pistol Shot
+     fires on the first press. If they arrive only after a weapon switch or
+     a relog, the grant reached the client with neither an ability event
+     nor a player property update: record that before signing.
+  2. The same on a new CellBlock character, learning from the guard's
+     corpse (mission 622) in its second session.
+  3. Remove one of those buttons, wait for any other update (learn
+     something, or wait a few seconds), then relog: it does not come back.
+     Do the same in a first session, with a button 009 placed.
+  4. Fill buttons 11-20 first, then learn a starting ability: nothing is
+     replaced.
+  5. A new Free Jaffa: Staff Swing on button 11 at the first login, and it
+     fires on the first press.
+  6. Switch to Combat Knife 3325 with the shot button holding the last
+     gun's shot and press it, once by click and once by its key: "This
+     weapon has no ranged attack." shows once per press, not more than once
+     a second when held or spammed, and the button keeps its shot. Switch
+     back to a gun: the button fires it.
+  7. The character from the CS-08 lab run (four starters known, empty bar):
+     the first login with 016 puts them on 11-14.
+  8. `/reloadui`, if the client runs the block again in the same Lua
+     state: presses still work and the knife line shows once.
 
 ## Rebuilding a patch
 

@@ -17,6 +17,9 @@
 --          launcher-installed client) gets only this patch's block.
 --
 -- Set WEAPON_SHOT_BAR_REQUIRE_REAL=1 to fail when stock is skipped.
+-- Set WEAPON_SHOT_BAR_APPEND to a later patch's block (016's
+-- HotbarLearnAndFeedback.lua) to run these scenarios with that block
+-- appended after this one, as a later patch ships it.
 -- No CME file is read from the repo; the stock variant reads your client.
 
 local here = ((arg and arg[0]) or ''):match('^(.*)[/\\][^/\\]*$') or '.'
@@ -26,6 +29,12 @@ local Stubs = dofile(starterDir..'/test/stubs.lua')
 
 local HOOK9 = assert(Stubs.readFile(starterDir..'/StarterHotbar.lua'), '009 StarterHotbar.lua not found')
 local HOOK15 = assert(Stubs.readFile(patchDir..'/WeaponShotBar.lua'), 'WeaponShotBar.lua not found')
+local appendPath = os.getenv('WEAPON_SHOT_BAR_APPEND')
+local APPENDED = ''
+if appendPath and appendPath ~= '' then
+    APPENDED = assert(Stubs.readFile(appendPath), 'WEAPON_SHOT_BAR_APPEND not found: '..appendPath)
+    print('== with '..appendPath..' appended after this block')
+end
 
 local PISTOL_SHOT, STRIKE, HEAL_FOCUS, RECUPERATION = 592, 594, 597, 1218
 local PISTOL, SMG, RIFLE, STAFF = 579, 559, 581, 584
@@ -55,7 +64,7 @@ local MODEL = assert(Stubs.readFile(starterDir..'/test/fake_action_buttons.lua')
 variants[#variants + 1] = {
     name = 'model',
     scripts = function( with15 )
-        return { { 'fake_action_buttons.lua', MODEL..HOOK9..(with15 and HOOK15 or '') } }
+        return { { 'fake_action_buttons.lua', MODEL..HOOK9..(with15 and HOOK15..APPENDED or '') } }
     end,
 }
 
@@ -80,7 +89,7 @@ if uiDir and uiDir ~= '' then
             return {
                 { 'ActionButtons.lua', buttons },
                 { 'ActionProfiles.lua', profiles },
-                { 'ActionProfileDefault1.lua', base..(with15 and HOOK15 or '') },
+                { 'ActionProfileDefault1.lua', base..(with15 and HOOK15..APPENDED or '') },
             }
         end,
     }
@@ -466,7 +475,18 @@ scenario('a failing setActionToAbility switches the block off without an error',
     local calls = c.listCalls
     c.fire(SLOT_EVENT, c.env.Container.Bandolier)
     c.fire('Events.AbilityUpdate', c.env.UIAbilityGroup.KnownAbility, RIFLE)
-    eq(c.listCalls, calls, 'no retry on later events')
+    -- An appended block may read the list on these events; the swap itself
+    -- must still not be retried.
+    if APPENDED == '' then
+        eq(c.listCalls, calls, 'no retry on later events')
+    end
+    local errors = 0
+    for _, line in ipairs(c.log) do
+        if line:find('weapon shot bar: error', 1, true) then
+            errors = errors + 1
+        end
+    end
+    eq(errors, 1, 'the failing swap is not retried')
     expectButton(c, 12, STRIKE, 'the bar still works')
     say('setActionToAbility raises: logged once, no retry, the bar is as it was')
 end)

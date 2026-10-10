@@ -240,6 +240,14 @@ jobs:
       # same clean-room model (it reads 009's stubs and model).
       - name: run the weapon shot bar logic UAT
         run: lua5.1 data/client-patches/015-weapon-shot-bar/test/run.lua
+      # 016-hotbar-learn-and-feedback's block after 009's and 015's, and 015's
+      # scenarios again with 016's block appended (016 must not break them).
+      - name: run the hotbar learn and feedback logic UAT
+        run: lua5.1 data/client-patches/016-hotbar-learn-and-feedback/test/run.lua
+      - name: run the weapon shot bar logic UAT with 016 appended
+        run: lua5.1 data/client-patches/015-weapon-shot-bar/test/run.lua
+        env:
+          WEAPON_SHOT_BAR_APPEND: data/client-patches/016-hotbar-learn-and-feedback/HotbarLearnAndFeedback.lua
       # 012-gm-slash-commands: the committed XML must be what the generator
       # makes from commands.toml (the Rust tests pin the zip to that XML).
       - name: check the generated GM slash command XML is current

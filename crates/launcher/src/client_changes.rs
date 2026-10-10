@@ -342,6 +342,15 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              changed. Changes ActionProfileDefault1.lua and needs the starting-abilities \
              patch (009) first.",
         ),
+        "016-hotbar-learn-and-feedback" => (
+            "Action bar: new starting abilities and no-shot feedback",
+            "Puts each starting ability (Pistol Shot, Strike, Staff Swing, Heal Focus, \
+             Health Heal, Recuperation) on an empty action button 11-20 the first time your \
+             character knows it, in any session, never over a button you filled and never \
+             again once you removed it. Pressing a shot button while holding a weapon with \
+             no ranged attack now says so. Changes ActionProfileDefault1.lua and needs the \
+             weapon shot patch (015) first.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };
