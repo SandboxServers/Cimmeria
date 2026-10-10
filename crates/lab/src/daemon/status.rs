@@ -11,7 +11,9 @@ use crate::server::LabServer;
 
 /// When this daemon process started (set once in `build_router`).
 pub struct Started {
+    /// Unix milliseconds when the daemon built its router.
     pub at_ms: i64,
+    /// The daemon's OS process id.
     pub pid: u32,
 }
 
