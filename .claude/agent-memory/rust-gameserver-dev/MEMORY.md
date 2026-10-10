@@ -4,7 +4,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Build environment
 
-- [build-environment.md](build-environment.md) — rust-lld override obsolete; worktrees need the `external/` junction.
+- [build-environment.md](build-environment.md) — rust-lld override obsolete; worktrees need the `external/` junction; PowerShell `bash` may be WSL.
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable; idle branches fail on new lints. Update the branch first.
 - [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` the old `%TEMP%` lane exited 0 on a failed cargo.
 - [mutation-restore-mtime-trap.md](mutation-restore-mtime-trap.md) — restoring from a backup copy leaves an old mtime; cargo keeps the mutated build. Touch restored files.

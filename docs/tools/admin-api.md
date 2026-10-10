@@ -350,7 +350,7 @@ All WebSocket endpoints accept upgrade at the listed path. Two of the three are 
 
 | Path | Purpose | Status |
 |------|---------|--------|
-| `/ws/logs` | Server log output stream | **Live** — replays the ring buffer on connect, then forwards the live `broadcast` channel (`crates/admin-api/src/ws/log_stream.rs:22-70`) |
+| `/ws/logs` | Server log output stream | **Live** — replays the ring buffer on connect, then forwards the live `broadcast` channel (`crates/admin-api/src/ws/log_stream.rs:22-70`). Entries are bounded where they are built: the message is cut at 8 KiB, every other string at 1 KiB and the whole entry at 16 KiB, on a UTF-8 boundary, ending with `...[truncated]`. The ring keeps the newest 500 entries within 2 MiB, evicting the oldest first (`crates/admin-api/src/ws/broadcast_layer/mod.rs`) |
 | `/ws/events` | Game event notifications | **Live** — replays the login-audit buffer, then streams live events (`crates/admin-api/src/ws/event_stream.rs:19-60`) |
 | `/ws/entities` | Real-time entity property updates | Stub — accepts the upgrade and does nothing (`crates/admin-api/src/ws/entity_stream.rs:26-31`) |
 

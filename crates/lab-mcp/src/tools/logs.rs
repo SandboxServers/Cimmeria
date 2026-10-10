@@ -9,7 +9,8 @@ pub const DEFAULT_LIMIT: usize = 100;
 
 /// Return the last `limit` buffered log entries, optionally filtered to a
 /// single level (case-insensitive, e.g. `"warn"`). The buffer holds only the
-/// most recent entries (see `LogBuffer::BUFFER_CAPACITY`), so this is a tail,
+/// most recent entries (see `broadcast_layer::BUFFER_CAPACITY` and
+/// `RING_BYTE_BUDGET`; long messages are truncated), so this is a tail,
 /// not a full history.
 pub fn log_tail(state: &LabState, limit: usize, level: Option<&str>) -> Value {
     let mut entries = state.log_snapshot();
