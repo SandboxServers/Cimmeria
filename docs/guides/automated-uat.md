@@ -350,14 +350,16 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 | `bank` (fresh character) | 1, 12, 2 (`@world_click`, #1099) | |
 | `black-market` | U1, U22 | U0 (needs `owner_approvals: ["bm_seed"]`) |
 | `crafting` (fresh Scientist) | 1, 2, 3, 5, 19 | |
-| `consumables` | I1 | I2 (`@item_action`, `@inventory`) |
+| `consumables` | I1, I2 (the item tools are routed) | |
 | `cooked-data` | CD3, CD6 | CD1, CD5 (`@cache_files`), CD2 (owner-only files), CD4 (`@cache_files`, `@world_click`) |
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 25 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U20 and AB-U22 (`.dummy caster`), AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
+| `first-session` (makes and deletes its own Praxis and SGU Soldiers, 2026-10-10) | All 14: FS-01 boot, FS-02 login and server select, FS-P1 to FS-P5 (Praxis: create, enter Castle_CellBlock, complete 622), FS-S1 to FS-S6 (SGU: create, enter SGC_W1, complete 1559), FS-99 cleanup. Run this section first on a new build | |
 | `debug-area` (fresh Soldier, 2026-10-04) | 43 rows: DA-U1, DA-U3 to DA-U6, DA-U8 to DA-U43, DA-U45, DA-U46 (every Debug Area station, the outbound stargate, a ring trip, the starter kit, the patch-009 hotbar and a read of the seeded characters) | DA-U2 (non-GM account), DA-U7 (the store's buttons, L9), DA-U44 (a seeded account) |
 
-88 rows are ready (22 before `ability-mechanics`, which adds 23, and `debug-area` 43) and 25 are blocked (12, plus its 10, plus `debug-area`'s 3). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
+103 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
 
+0. `first-session`, the whole section: boot, login, character creation for both factions, world entry and each faction's first quest, graded on the server's own `sgw_mission` rows. Its stand-off points and the unnamed-corpse point clicks are unproven; fix the coordinates from what the first run shows.
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
 2. `chat` 9a and 9c, `black-market` U1 and U22: exact-count clauses, refusals, teardown.
 3. `pets` U12, then `chat` 6: setup in G, captures feeding a later command.

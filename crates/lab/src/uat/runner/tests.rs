@@ -579,7 +579,7 @@ lab_ensure_character_slot lab_finish_dialog lab_login lab_logout lab_pixel_probe
 lab_play_character lab_screenshot lab_screenshot_region lab_timeline \
 client_entity_find client_target client_world_click client_move_to client_camera \
 client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event \
-client_player_state";
+client_player_state client_inventory client_item_action client_drag_drop";
 
 /// Plan every committed spec against today's tools: the rows the lab can
 /// drive now come back SKIPPED (ready), and the rows waiting on a planned
@@ -638,9 +638,8 @@ async fn committed_specs_plan_against_main_tools() {
     }
     // Unblocked by #1099's client_world_click.
     assert_eq!(result("bank", "2").result, "SKIPPED");
-    let i2 = result("consumables", "I2");
-    assert_eq!(i2.result, "BLOCKED");
-    assert!(i2.reasons.iter().any(|x| x.contains("client_item_action")));
+    // Unblocked by the item tools (client_inventory, client_item_action).
+    assert_eq!(result("consumables", "I2").result, "SKIPPED");
     let cd1 = result("cooked-data", "CD1");
     assert!(cd1.reasons.iter().any(|x| x.contains("client_cache_files")));
     assert_eq!(
@@ -688,6 +687,17 @@ async fn committed_specs_plan_against_main_tools() {
             }
             None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
         }
+    }
+    // First session (the smoke run): every row plans as ready, so a row
+    // that picks up an unrouted tool or a standing reason fails here.
+    let first_session: Vec<_> = out
+        .rows
+        .iter()
+        .filter(|r| r.section == "first-session")
+        .collect();
+    assert!(first_session.len() >= 13, "the section lost rows");
+    for r in first_session {
+        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
     }
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
