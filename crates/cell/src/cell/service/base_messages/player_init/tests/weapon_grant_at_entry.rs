@@ -57,8 +57,10 @@ fn known_updates(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<Vec<i32>> {
             if method_index == crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE {
                 out.push(
                     args[4..]
-                        .chunks_exact(4)
-                        .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|c| i32::from_le_bytes(*c))
                         .collect(),
                 );
             }
