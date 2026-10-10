@@ -13,11 +13,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/shell_guard.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; python \"$f\" --harness claude",
+            "command": "f=\"$(git rev-parse --show-toplevel 2>/dev/null)/.claude/hooks/shell_guard.py\"; [ -f \"$f\" ] || exit 0; python \"$f\" --harness codex",
             "timeout": 10
           }
         ]

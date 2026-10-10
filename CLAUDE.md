@@ -160,6 +160,8 @@ Sessions and agents across the SandboxServers repos coordinate on the agent boar
 
 ## Agent skills
 
+Repo skills are in `.claude/skills/` (`ship-pr`, `lane-build`, `lab-uat`, `telemetry-triage`, `re-lookup`, `seed-change`, `campaign-packet`); load the matching one before that kind of work. Edit them only there and run `python tools/agent-skills/sync.py` to refresh the Codex/Copilot mirror in `.agents/skills/`. A `PreToolUse` hook refuses direct compiling `cargo` calls and shell-only file reads — [development-workflow.md § Agent skills](docs/agents/development-workflow.md#agent-skills-and-the-shell-guard).
+
 Per-repo configuration for agent skills that triage, write tickets, or model the domain lives in [docs/agents/](docs/agents/):
 
 - **Issue tracker:** GitHub Issues for `SandboxServers/Cimmeria` via the `gh` CLI — [issue-tracker.md](docs/agents/issue-tracker.md), including the ticket body contract.
