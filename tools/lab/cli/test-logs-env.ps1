@@ -44,6 +44,20 @@ try {
     Check (@($logLines | Select-LabLogLine -Instance 'p2' -Level 'info').Count -eq 1) 'instance and level filters combine'
     Check (@($logLines | Select-LabLogLine).Count -eq 6) 'no filter keeps every line, including the continuation line'
 
+    # --- Select-LabLogLine: continuation lines follow their entry ---
+    $panic = @(
+        '2026-10-10T20:00:05.000001Z ERROR serve: instance=Some("p2") panicked',
+        '   at error handling here',
+        '   stack frame 2',
+        '2026-10-10T20:00:06.000001Z  INFO serve: instance=Some("p3") fine',
+        '   at error handling there'
+    )
+    $errs = @($panic | Select-LabLogLine -Level 'error')
+    Check ($errs.Count -eq 3 -and $errs[2] -match 'frame 2') 'a kept ERROR entry keeps its continuation lines'
+    Check (@($errs | Where-Object { $_ -match 'there' }).Count -eq 0) "a continuation line whose second word is a level name is not ranked on its own"
+    $p2 = @($panic | Select-LabLogLine -Instance 'p2')
+    Check ($p2.Count -eq 3) 'an -Instance match keeps the entry continuation lines'
+
     # --- Select-LabLogLine: redaction ---
     $all = @($logLines | Select-LabLogLine)
     Check ($all[2] -notmatch 'abc123def' -and $all[2] -match '<redacted>') 'a bearer token is masked'
@@ -57,6 +71,10 @@ try {
     Check ((Get-MaskedEnvLine '# keep this comment') -eq '# keep this comment') 'a plain comment is shown as is'
     Check ((Get-MaskedEnvLine 'CIMMERIA_LAB_INSTANCES=default,p2') -eq 'CIMMERIA_LAB_INSTANCES=default,p2') 'an ordinary value is shown as is'
     Check ((Get-MaskedEnvLine ('CIMMERIA_LAB_X=' + $hex)) -eq 'CIMMERIA_LAB_X=<redacted>') 'a 64-hex value is masked under any key'
+    Check ((Get-MaskedEnvLine 'U=http://user:p/ss@host.example/x') -eq 'U=http://<host>/x') 'URL userinfo with a / in the password is masked with the host'
+    Check ((Get-MaskedEnvLine 'U=postgres://u:pw@db:5432/d') -eq 'U=postgres://<host>:5432/d') 'URL userinfo is masked, the port stays'
+    Check ((Get-MaskedEnvLine 'API_KEY=0123456789abcdef0123456789abcdef01234567') -eq 'API_KEY=<redacted>') 'a KEY-named value is masked'
+    Check ((Get-MaskedEnvLine 'pasted-secret-on-its-own-line') -eq '<unparsed line>') 'a line that is not KEY=VALUE is not shown'
 
     # --- env: key rule ---
     Check (Test-LabdEnvKey 'CIMMERIA_LAB_X_1') 'an upper-case key with digits and _ is valid'
@@ -72,6 +90,8 @@ try {
     Check (((Remove-LabdEnvLine $src 'FOO') -join '|') -eq '# head|CIMMERIA_LAB_BAR=a=b|# tail') 'unset removes the key line only'
     Check (((Set-LabdEnvLine @('A=1', 'A=2') 'A' '9') -join '|') -eq 'A=1|A=9') 'set changes the last duplicate, which is the one that counts'
     Check ((Remove-LabdEnvLine @('FOO=1') 'FOO').Count -eq 0) 'unset of the only line gives no lines'
+    Check ((Remove-LabdEnvLine @('foo=1', 'BAR=2') 'FOO') -join '|' -eq 'BAR=2') 'unset matches a key stored in another case, as the daemon reads it'
+    Check (((Set-LabdEnvLine @('foo=1') 'FOO' '2') -join '|') -eq 'FOO=2') 'set replaces a key stored in another case instead of adding a second'
     Check (($src -join '|') -eq '# head|FOO=1|CIMMERIA_LAB_BAR=a=b|# tail') 'the input lines are not changed'
 
     # --- logs.ps1 and env.ps1 on a temp lab home ---
@@ -115,6 +135,12 @@ try {
 
     $null = pwsh -NoProfile -File $envPs1 unset MISSING_KEY
     Check ($LASTEXITCODE -eq 0 -and @(Get-ChildItem -LiteralPath $tmp -Filter 'labd.env.bak-*').Count -eq 3) 'unset of an absent key exits 0 and writes nothing'
+
+    $null = pwsh -NoProfile -File $envPs1 set PAD_KEY 'val  ' 2>$null
+    Check ($LASTEXITCODE -eq 2) 'a VALUE with trailing spaces is refused (exit 2)'
+    $null = pwsh -NoProfile -File $envPs1 set DASH_KEY -Value:-Xmx512m
+    Check ($LASTEXITCODE -eq 0 -and ([System.IO.File]::ReadAllLines($envFile) -contains 'DASH_KEY=-Xmx512m')) 'a VALUE starting with - is set with -Value:'
+    Check (-not (Test-Path -LiteralPath "$envFile.tmp")) 'no labd.env.tmp is left behind'
 
     $listedAll = (pwsh -NoProfile -File $envPs1) -join "`n"
     Check ($listedAll -notmatch 'test-token-not-real') 'the token never appears in env output'

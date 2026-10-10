@@ -8,15 +8,23 @@
     lab env set KEY VALUE    set KEY in place, or append it; comments and order are kept
     lab env unset KEY        remove KEY's lines
 
-    A key whose name contains TOKEN, SECRET or PASSWORD prints as <redacted>.
-    A host in a URL prints as <host>. Both are display only: set and unset
-    write the values back unchanged. Before a set or unset, labd.env is copied
-    to labd.env.bak-<yyyyMMdd-HHmmss>. The daemon reads labd.env only at start,
-    so a change applies after lab restart.
+    A key whose name contains TOKEN, SECRET, PASSWORD, KEY, AUTH or CREDENTIAL
+    prints as <redacted>. A URL's user, password and host print as <host>, and a
+    line that is not KEY=VALUE or a comment prints as <unparsed line>. All of it
+    is display only: set and unset write the values back unchanged. Keys match
+    ignoring case, as the daemon reads them. Before a set or unset, labd.env is
+    copied to labd.env.bak-<yyyyMMdd-HHmmss>, and the new file replaces the old
+    one in a single move. The daemon reads labd.env only at start, so a change
+    applies after lab restart.
+
+    A VALUE that starts with '-' must be written -Value:<value>, or PowerShell
+    reads it as a parameter name. A VALUE with leading or trailing spaces is
+    refused, because labd.env lines are trimmed when read.
 
 .EXAMPLE
     pwsh tools/lab/lab.ps1 env
     pwsh tools/lab/lab.ps1 env set CIMMERIA_LAB_INSTANCES default,p2
+    pwsh tools/lab/lab.ps1 env set SOME_FLAGS -Value:-Xmx512m
 #>
 param(
     [Parameter(Position = 0)][string]$Verb,
@@ -39,10 +47,11 @@ function Get-LabdEnvLineKey([string]$Line) {
     return $l.Substring(0, $i).Trim()
 }
 
-# The index of the last line that sets $Key, or -1. The last one wins in Read-LabdEnvFile too.
+# The index of the last line that sets $Key, ignoring case, or -1. The last one
+# wins in Read-LabdEnvFile too, and its map ignores case, so these must as well.
 function Find-LabdEnvLine([string[]]$Lines, [string]$Key) {
     for ($i = $Lines.Count - 1; $i -ge 0; $i--) {
-        if ((Get-LabdEnvLineKey $Lines[$i]) -ceq $Key) { return $i }
+        if ((Get-LabdEnvLineKey $Lines[$i]) -ieq $Key) { return $i }
     }
     return -1
 }
@@ -55,11 +64,11 @@ function Set-LabdEnvLine([string[]]$Lines, [string]$Key, [string]$Value) {
     return , $out.ToArray()
 }
 
-# $Lines without any line that sets $Key; comments and other keys are kept.
+# $Lines without any line that sets $Key (ignoring case); comments and other keys are kept.
 function Remove-LabdEnvLine([string[]]$Lines, [string]$Key) {
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($line in $Lines) {
-        if ((Get-LabdEnvLineKey $line) -cne $Key) { $out.Add($line) }
+        if ((Get-LabdEnvLineKey $line) -ine $Key) { $out.Add($line) }
     }
     return , $out.ToArray()
 }
@@ -69,27 +78,36 @@ function Test-LabdEnvKey([string]$Key) {
     return [bool]($Key -cmatch '^[A-Z][A-Z0-9_]*$')
 }
 
-# Masks secret-looking text for display: a TOKEN=, SECRET= or PASSWORD=
-# assignment loses its value, a bearer token and a 64-hex token become
-# <redacted>, and a URL's host becomes <host> (the port stays).
+# Key names whose values are secrets.
+$script:SecretKeyPattern = 'TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL'
+
+# Masks secret-looking text for display: a secret-named assignment loses its
+# value, a bearer token and a 64-hex token become <redacted>, and a URL's
+# userinfo and host become <host> (the port and path stay). The userinfo match
+# runs to the last '@' in the URL, so a password holding '/' is covered too.
 function Hide-LabdEnvText([string]$Text) {
-    $t = $Text -replace '(?i)((?:TOKEN|SECRET|PASSWORD)\w*\s*=)\S*', '${1}<redacted>'
+    $t = $Text -replace "(?i)((?:$script:SecretKeyPattern)\w*\s*=)\S*", '${1}<redacted>'
     $t = $t -replace '(?i)bearer\s+\S+', '<redacted>'
     $t = $t -replace '(?i)\b[0-9a-f]{64}\b', '<redacted>'
-    $t = $t -replace '(?i)([a-z][a-z0-9+.-]*://)(?:[^/\s@]*@)?[^/\s:?#]+', '${1}<host>'
+    $t = $t -replace '(?i)([a-z][a-z0-9+.-]*://)(?:\S*@)?[^/\s:?#@]+', '${1}<host>'
     return $t
 }
 
 # A value for display: <redacted> when its key is a secret, else the masked text.
 function Get-MaskedEnvValue([string]$Key, [string]$Value) {
-    if ($Key -imatch 'TOKEN|SECRET|PASSWORD') { return '<redacted>' }
+    if ($Key -imatch $script:SecretKeyPattern) { return '<redacted>' }
     return Hide-LabdEnvText $Value
 }
 
-# One labd.env line for display: KEY=<masked value>. Comments and blank lines are masked as text.
+# One labd.env line for display: KEY=<masked value>. Comments and blank lines
+# are masked as text; any other line (a stray pasted value) is not shown.
 function Get-MaskedEnvLine([string]$Line) {
     $key = Get-LabdEnvLineKey $Line
-    if ($null -eq $key) { return Hide-LabdEnvText $Line }
+    if ($null -eq $key) {
+        $l = $Line.Trim().TrimStart([char]0xFEFF)
+        if (-not $l -or $l.StartsWith('#')) { return Hide-LabdEnvText $Line }
+        return '<unparsed line>'
+    }
     $text = $Line.Trim().TrimStart([char]0xFEFF)
     $value = $text.Substring($text.IndexOf('=') + 1)
     return "$key=" + (Get-MaskedEnvValue $key $value)
@@ -107,12 +125,15 @@ function Save-LabdEnv([string]$Path, [string[]]$Lines) {
         Copy-Item -LiteralPath $Path -Destination $backup
         Write-Host "backup: $backup"
     }
-    Write-LabdEnvFile $Path $Lines
+    # Write beside it, then move over it, so a crash never leaves a half-written labd.env.
+    $tmp = "$Path.tmp"
+    Write-LabdEnvFile $tmp $Lines
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
 }
 
 # Prints the usage line to stderr and exits 2.
 function Exit-EnvUsage([string]$Message) {
-    [Console]::Error.WriteLine("$Message`nusage: lab env [get KEY | set KEY VALUE | unset KEY]")
+    [Console]::Error.WriteLine("$Message`nusage: lab env [get KEY | set KEY VALUE | unset KEY]  (a VALUE starting with '-': -Value:<value>)")
     exit 2
 }
 
@@ -141,6 +162,10 @@ if ($MyInvocation.InvocationName -ne '.') {
         if (-not $PSBoundParameters.ContainsKey('Value')) { Exit-EnvUsage 'set needs KEY and VALUE' }
         if ($Value -match "[`r`n]") {
             [Console]::Error.WriteLine('VALUE must be one line')
+            exit 2
+        }
+        if ($Value -ne $Value.Trim()) {
+            [Console]::Error.WriteLine('VALUE must not start or end with spaces (labd.env lines are trimmed when read)')
             exit 2
         }
         Save-LabdEnv $path (Set-LabdEnvLine $lines $Key $Value)
