@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,205 |
-| Files with tests | 2,150 |
-| Gated in CI (every crate but CI's exclude list) | 9,858 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,216 |
+| Files with tests | 2,152 |
+| Gated in CI (every crate but CI's exclude list) | 9,868 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,695 |
-| Inventory threshold (5% of the tests) | 610 |
+| Inventory threshold (5% of the tests) | 611 |
 
 <!-- /gen:tests-totals -->
 
@@ -100,8 +100,8 @@ with no file in this directory yet.
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/base-session` | `cimmeria-base-session` | 443 | 80 | 187 | yes | none |
 | `crates/mercury` | `cimmeria-mercury` | 351 | 58 | 0 | yes | [mercury.md](mercury.md) |
+| `crates/wire` | `cimmeria-wire` | 326 | 59 | 0 | yes | none |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
-| `crates/wire` | `cimmeria-wire` | 323 | 59 | 0 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 293 | 27 | 0 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 287 | 48 | 9 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 231 | 58 | 137 | yes | none |
@@ -116,7 +116,7 @@ with no file in this directory yet.
 | `crates/client-patches` | `cimmeria-client-patches` | 99 | 16 | 0 | no | none |
 | `crates/patchset` | `cimmeria-patchset` | 78 | 14 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
-| `crates/auth` | `cimmeria-auth` | 74 | 15 | 10 | yes | none |
+| `crates/auth` | `cimmeria-auth` | 75 | 15 | 10 | yes | none |
 | `crates/cell-org` | `cimmeria-cell-org` | 74 | 8 | 0 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 73 | 18 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
@@ -129,15 +129,15 @@ with no file in this directory yet.
 | `crates/patch-wire` | `cimmeria-patch-wire` | 47 | 6 | 0 | yes | none |
 | `crates/common` | `cimmeria-common` | 44 | 5 | 0 | yes | [common.md](common.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 41 | 4 | 0 | yes | none |
-| `crates/upk` | `cimmeria-upk` | 31 | 4 | 0 | yes | none |
+| `crates/upk` | `cimmeria-upk` | 37 | 5 | 0 | yes | none |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 28 | 6 | 0 | yes | none |
 | `crates/names` | `cimmeria-names` | 24 | 6 | 4 | yes | none |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 22 | 6 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
+| `tools/ContentEditor` | `cimmeria-content-editor` | 13 | 2 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
-| `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
 | `crates/cell-chatter` | `cimmeria-cell-chatter` | 10 | 3 | 0 | yes | none |
 | `crates/observability` | `cimmeria-observability` | 9 | 2 | 0 | yes | none |
 | `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
