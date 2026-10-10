@@ -126,6 +126,16 @@ struct RouterInvoker<'a> {
     lease: Option<&'a RunLease>,
 }
 
+/// Run `fut` under `lease`'s permit when the run took that lease itself; a
+/// caller's lease is already in scope. So each guarded action re-checks the
+/// lease its own instance runs under: p2's own when p2 is hosted, not p1's.
+async fn under_lease<F: std::future::Future>(lease: Option<&RunLease>, fut: F) -> F::Output {
+    match lease {
+        Some(l) if l.is_own() => crate::lease::permit::scope(l.permit(), fut).await,
+        _ => fut.await,
+    }
+}
+
 /// Tools the runner must never call: itself, re-entrantly.
 fn forbidden(name: &str) -> bool {
     name.starts_with("lab_uat_")
@@ -158,13 +168,7 @@ impl ToolInvoker for RouterInvoker<'_> {
         };
         let params = CallToolRequestParams::new(name.to_string()).with_arguments(obj);
         let tcc = ToolCallContext::new(self.server, params, self.ctx.clone());
-        let routed = self.server.tool_router.call(tcc);
-        let result = match self.lease {
-            // Under the lease's own permit, so each guarded action re-checks
-            // this lease: p2's own when p2 is hosted, not p1's.
-            Some(l) if l.is_own() => crate::lease::permit::scope(l.permit(), routed).await,
-            _ => routed.await,
-        };
+        let result = under_lease(self.lease, self.server.tool_router.call(tcc)).await;
         match result {
             Ok(CallToolResponse::Complete(r)) => {
                 normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null))
@@ -586,6 +590,36 @@ mod tests {
         assert!(is_same_instance(Some("p2"), "P2"));
         assert!(!is_same_instance(None, "p2"));
         assert!(!is_same_instance(Some("p3"), "p2"));
+    }
+
+    /// Regression guard (LP-05b2): a takeover of p2 stops p2's actions even
+    /// inside p1's run scope, because each action checks p2's own lease.
+    #[tokio::test]
+    async fn p2_actions_check_p2s_own_lease() {
+        use crate::lease::{permit, AcquireRequest, LeaseBook};
+        let b1 = Arc::new(LeaseBook::default());
+        let b2 = Arc::new(LeaseBook::default());
+        let p1 = RunLease::acquire_own(b1.clone(), "p1".into()).unwrap();
+        let p2 = RunLease::acquire_own(b2.clone(), "p2".into()).unwrap();
+        permit::scope(
+            p1.permit(),
+            under_lease(Some(&p2), async {
+                assert!(permit::ensure("bridge x").is_ok());
+                b2.acquire(AcquireRequest {
+                    owner: "other".into(),
+                    purpose: "takeover".into(),
+                    force: true,
+                    reason: Some("test".into()),
+                    ..Default::default()
+                })
+                .unwrap();
+                assert!(
+                    permit::ensure("bridge x").is_err(),
+                    "a takeover of p2 must stop p2's actions"
+                );
+            }),
+        )
+        .await;
     }
 
     fn supervisor(instance: Option<&str>) -> Arc<Supervisor> {
