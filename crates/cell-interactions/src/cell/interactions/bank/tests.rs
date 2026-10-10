@@ -241,6 +241,15 @@ async fn vault_move_allowed_enforces_session_space_and_proximity() {
     mgr.get_entity_mut(PLAYER).unwrap().vault_session = Some(open(Some(banker), space));
     mgr.destroy_entity(banker);
     assert_eq!(allowed(&mgr), Err(VaultReject::BankerGone));
+
+    // Reusing the id for a nearby NPC must not revive the old session.
+    mgr.spawn_npc(banker, "Agnos", [12.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    assert_eq!(allowed(&mgr), Err(VaultReject::BankerGone));
+    mgr.get_entity_mut(banker).unwrap().interaction_type = Some(NpcInteractionType::Banker {
+        scope: VaultScope::Team,
+    });
+    assert_eq!(allowed(&mgr), Err(VaultReject::BankerGone));
 }
 
 /// GM `.bank`'s open: a Banker-less session and `onVaultOpen` addressed to

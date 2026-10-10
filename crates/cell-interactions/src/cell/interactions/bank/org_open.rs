@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::cell_entity::{PlayerIdentity, VaultScope, VaultSession};
+use cimmeria_entity::cell_entity::{NpcInteractionType, PlayerIdentity, VaultScope, VaultSession};
 use cimmeria_wire::cell::vault::{build_vault_open_args, vault_open_method};
 
 use super::rejection::send_bank_feedback;
@@ -240,8 +240,9 @@ struct Grant {
     banker_id: u32,
 }
 
-/// The grant's checks: the same character, the Banker still pinned, and the
-/// Banker still within the interact distance in the player's space. Returns
+/// The grant's checks: the same character, the Banker still pinned, still a
+/// Banker of the grant's scope, and still within the interact distance in the
+/// player's space. Returns
 /// the Banker's position and the distance.
 fn check_grant(grant: &Grant, space_mgr: &SpaceManager) -> Result<([f32; 3], f32), OrgGrantReject> {
     let player = space_mgr
@@ -263,8 +264,16 @@ fn check_grant(grant: &Grant, space_mgr: &SpaceManager) -> Result<([f32; 3], f32
     }
     let banker = space_mgr
         .get_entity(grant.banker_id)
-        .ok_or(OrgGrantReject::BankerMissing)?
-        .position;
+        .ok_or(OrgGrantReject::BankerMissing)?;
+    // An entity id reused by a non-Banker, or a Banker of another scope, is
+    // not the Banker the player clicked.
+    if !matches!(
+        banker.interaction_type,
+        Some(NpcInteractionType::Banker { scope }) if scope == grant.scope
+    ) {
+        return Err(OrgGrantReject::BankerMissing);
+    }
+    let banker = banker.position;
     let distance = player.position.distance_squared_to(&banker).sqrt();
     Ok(([banker.x, banker.y, banker.z], distance))
 }

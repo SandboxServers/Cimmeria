@@ -1,5 +1,24 @@
 # RE Finding: Cooked-Dialog Override Crash on Map Load (dialog ids 100100/100101)
 
+## 2026-10-07 evidence update: three candidate fields have stock precedents
+
+A read-only census of the committed `data/cache/CookedDataDialogs.pak` ZIP entries
+(matching the `Screens` and `Buttons` XML attributes) found 1,920 dialogs with
+multiple screens, 361 `ButtonType="4"` buttons, ten dialogs containing
+`SpeakerID="754"`, and two containing `SpeakerID="843"`. The authored debug-hub
+dialogs' multi-screen layout, Generic button type, and speaker IDs are therefore
+not novel values by themselves. This supersedes the 2026-09-27 "novel
+`SpeakerID=754`" lead below; that section is retained as investigation history.
+
+The largest stock `ScreenID` found was 120383 (`_4842`); the authored
+200000-range screen IDs remain outside the observed stock range. This is a
+candidate difference, not a demonstrated crash mechanism: the traced map-load
+path does not parse these dialog records, and the same tester had similar
+map-entry hangs before these overrides existed. The 16-bit dialog-key theory
+remains refuted by the earlier decompile. A controlled clean-cache versus
+cached-override client reproduction is still needed before lifting the
+quarantine or asserting that any XML field caused the hang.
+
 ```
 Confidence: HIGH (the >65535 / 16-bit element-key hypothesis is REFUTED for the traced pipeline, and the entire CME-event map-load graph is traced clean — live decompile) / LOW (true root cause — inconclusive; the hub-dialog correlation itself may be coincidental, see counter-evidence below)
 Last verified: 2026-09-27 (final pass for this RE session — four rounds of headless-Ghidra live decompile; further work is empirical, not static RE)

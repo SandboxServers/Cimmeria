@@ -204,7 +204,7 @@ A refused vault move logs `move_rejected` (WARN, `bank`) with a stable `reason` 
 |---|---|---|
 | `no_vault_session` | no window open | "Your vault is closed. Visit a Banker to use your vault." |
 | `banker_out_of_range`, `banker_other_space`, `vault_session_other_space` | walked away, or changed space | "You are too far from the Banker. Return to the Banker to use your vault." |
-| `banker_gone` | the pinned Banker despawned | "The Banker has left. Visit a Banker to use your vault." |
+| `banker_gone` | the pinned Banker despawned, or its entity id now names an NPC without the same Banker scope | "The Banker has left. Visit a Banker to use your vault." |
 | `player_missing` | no cell entity (a race with logout) | "Your vault is closed. ..." |
 | `vault_scope_mismatch` | a Team or Command vault session is open instead | "Your vault is closed. ..." |
 | `target_slot_beyond_bank_slots` | a slot at or past `bank_slots` (`bank_slots` logged) | "That vault slot is locked. Your vault has N slots." |
