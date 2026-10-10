@@ -243,9 +243,22 @@ impl Supervisor {
                 };
                 match typed {
                     Ok(()) => break,
-                    // No regression test yet: the flow needs a client. It
-                    // waits for the CI fake-client harness.
-                    Err(_) if attempt < CREDENTIAL_TRIES => {
+                    // Only a box that read back wrong is worth typing again;
+                    // a dead client or a revoked lease would fail the same
+                    // way twice. No regression test yet: the flow needs a
+                    // client, and it waits for the CI fake-client harness.
+                    Err(e) if attempt < CREDENTIAL_TRIES && e.message.contains("after typing") => {
+                        tracing::warn!(
+                            attempt,
+                            step = %e.step,
+                            error = %e.message,
+                            "lab_login: credential typing missed; typing both again"
+                        );
+                        run.record(
+                            "retry_credentials",
+                            Instant::now(),
+                            json!({ "attempt": attempt, "step": e.step, "error": e.message }),
+                        );
                         attempt += 1;
                         settle(1000).await;
                     }

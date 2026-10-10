@@ -425,7 +425,9 @@ impl LabServer {
         self.wrap(self.supervisor.start(args.server).await)
     }
 
-    #[tool(description = "Terminate the supervised SGW.exe client.")]
+    #[tool(
+        description = "Terminate the supervised SGW.exe client and wait up to 10 s until the process and its window are gone. `exited: false` means the wait ran out and the next start will refuse that client."
+    )]
     async fn lab_client_stop(&self) -> Result<CallToolResult, McpError> {
         self.wrap(self.supervisor.stop().await)
     }

@@ -566,8 +566,9 @@ async fn plan_only_drives_nothing() {
     assert_eq!(out.rows[0].result, "SKIPPED");
 }
 
-/// The tools the router exposes on `main` today (#1080, #1090, #1099),
-/// from a live `run.json` on 2026-09-29 plus the #1099 world tools.
+/// The tools the router exposes on `main` today: a live `run.json` from
+/// 2026-09-29, the #1099 world tools, the item tools and
+/// `client_window_click`.
 const MAIN_TOOLS: &str =
     "client_call_native client_console client_cursor_move client_entity_table \
 client_events_read client_hook_install client_hook_list client_hook_remove client_input_focus \
@@ -695,7 +696,7 @@ async fn committed_specs_plan_against_main_tools() {
         .iter()
         .filter(|r| r.section == "first-session")
         .collect();
-    assert!(first_session.len() >= 13, "the section lost rows");
+    assert_eq!(first_session.len(), 14, "the section lost or gained rows");
     for r in first_session {
         assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
     }

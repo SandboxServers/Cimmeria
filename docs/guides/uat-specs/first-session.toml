@@ -49,11 +49,13 @@
 #                                                     before it, no NPCs exist and clicks and chat
 #                                                     are swallowed. MoviePlayerWin is NOT the
 #                                                     signal (it hides after ~2 s).
-#   camera                   +200 pitch counts        a new character starts level (0 deg, zoom
-#                            = +21.97 deg down,       250). Level, a body on the floor sits under the
-#                            zoom 250                 avatar's legs and the HUD ring and the click
-#                                                     hovers nothing. Relative: FS-P3's `pitch`
-#                                                     clause fails if the start was not level.
+#   camera pitch             +200 counts (+21.97 deg  a new character starts level (0 deg, zoom
+#                            from level, zoom 250),   250), where a floor body sits under the
+#                            then the face re-pitches avatar and the HUD ring. The face that
+#                            to -28.8 deg             follows re-centres the target vertically and
+#                                                     lands on -28.8 deg each time; every passing
+#                                                     click ran there. Both are graded (`pitch`,
+#                                                     `aim-pitch`, FS-P4 `pitch`).
 #   camera yaw               face the target, then    the teleport keeps whatever facing the player
 #                            +230 yaw counts          had, so a click could land on the avatar (hover
 #                            (= +25.3 deg)            = own entity). Facing puts the target behind
@@ -84,6 +86,10 @@
 #   a client restart or relog, rerun FS-01, FS-02 and the faction's enter
 #   row (FS-P2 or FS-S2) first; skip FS-P1/FS-S1, which would fail with
 #   the name taken. Then `rows: [<the failed row>, ...]`.
+# - FS-P4 starts from FS-P3's camera, and a relog levels it. Resuming at
+#   FS-P4 after a relog, call `client_camera {pitch_counts: 200}` once
+#   first, so FS-P4's own face starts tilted as in a full run; from level
+#   it stops at about -19 deg and FS-P4's `pitch` clause fails.
 # - To start over instead, run FS-99 on the old run_dir (it deletes both
 #   characters), then a fresh run.
 
@@ -270,7 +276,9 @@ step = [
   # so bodies on the floor clear the avatar and the HUD ring. Relative:
   # the `pitch` clause fails if the start was not level.
   { tool = "@camera", args = { pitch_counts = 200 }, label = "pitch" },
-  # Yaw is not fixed by the teleport. Face Frost (yaw only), then turn 230
+  # Yaw is not fixed by the teleport. Face Frost: from the +22 deg tilt he
+  # sits outside the vertical margin, so the face also re-pitches, to
+  # -28.8 deg every time (`aim-pitch` grades it). Then turn 230
   # counts (+25.3 deg) so he sits left of the avatar instead of behind it;
   # rotate_camera = false keeps the click from turning it back.
   { tool = "@camera", args = { face_name = "Corporal Frost" } },
@@ -301,6 +309,37 @@ args = { name = "Corporal Frost" }
 pointer = "/matches/0/screen/0"
 op = "lt"
 value = 560
+[[row.expect]]
+id = "aim-on-screen"
+text = "Corporal Frost projects inside the window (screen x above 0)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/screen/0"
+op = "gt"
+value = 0
+[[row.expect]]
+id = "aim-near"
+text = "the teleport landed: Corporal Frost is within interact range (5 m)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/distance_m"
+op = "lt"
+value = 5
+[[row.expect]]
+id = "aim-pitch"
+text = "after facing Frost the camera looks at him at the calibrated pitch (-28.8 deg; the face re-centres him vertically)"
+source = "tool"
+at = "aim"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = -28.8
+tolerance = 3.0
 [[row.expect]]
 id = "zoom"
 text = "the camera is at the default zoom (250)"
@@ -353,11 +392,33 @@ step = [
   # Close the tutorial first with its title-bar X (works from any of its
   # three pages; Done shows only on the last), then finish the dialog.
   { tool = "@wait_for", args = { lua_condition = "TutorialWin ~= nil and TutorialWin:isVisible()", timeout_ms = 10000 } },
-  { tool = "client_window_click", args = { target = "TutorialWin__auto_closebutton__" }, tier = "N1", label = "tutorial-x" },
+  { tool = "@window_click", args = { target = "TutorialWin__auto_closebutton__" }, label = "tutorial-x" },
   { wait_ms = 500 },
   { tool = "@finish_dialog", args = {}, label = "close" },
   { wait_ms = 1500 },
 ]
+[[row.expect]]
+id = "pitch"
+text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a relog) the face stops at about -19 and the click is unproven: resume per the header"
+source = "tool"
+at = "aim"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = -28.8
+tolerance = 3.0
+[[row.expect]]
+id = "landed"
+text = "the teleport landed at the Guard stand-off (server x -319.0)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { include_player = true, limit = 1 }
+pointer = "/player/position/server/x"
+op = "approx"
+value = -319.0
+tolerance = 0.5
 [[row.expect]]
 id = "step-80622"
 text = "sgw_mission: 622 on step 80622 (equip the pistol)"
@@ -575,11 +636,12 @@ pointer = "/rows/0/done"
 op = "truthy"
 [[row.expect]]
 id = "moved"
-text = "the client stands near the armory drop point"
+text = "the client stands near the armory drop point (server x about -123.6)"
 source = "tool"
-tool = "@player_state"
-args = { stats = false, effects = false }
-pointer = "/position/x"
+# Server metres: @player_state reports client units (x = server z * 100).
+tool = "@entity_find"
+args = { include_player = true, limit = 1 }
+pointer = "/player/position/server/x"
 op = "approx"
 value = -123.6
 tolerance = 6

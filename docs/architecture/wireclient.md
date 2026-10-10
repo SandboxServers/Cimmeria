@@ -315,12 +315,13 @@ New corpora are added by:
 
 ## Praxis start: the wire sequence
 
-The lab's `first-session` UAT rows FS-P2 to FS-P5 drive the real client through mission 622 "Arm Yourself!" ([spec](../guides/uat-specs/first-session.toml)). With the packet tap on, a whole run is nine client calls besides movement (`avatarUpdateExplicit`) and `perfStats`. This is what a wireclient script has to send; character creation happens before the tap can attach and is not in the capture.
+The lab's `first-session` UAT rows FS-P2 to FS-P5 drive the real client through mission 622 "Arm Yourself!" ([spec](../guides/uat-specs/first-session.toml)). With the packet tap on, a whole run is ten client calls besides movement (`avatarUpdateExplicit`), `perfStats` and `requestEntityUpdate`. This is what a wireclient script has to send; character creation happens before the tap can attach and is not in the capture.
 
 | # | Client call | Arguments | The server answers with |
 |---|---|---|---|
 | 1 | `dialogButtonChoice` (cell 75) | dialog 2982, choice -1 | (closes the arrival dialog) |
-| 2 | `gmGotoXYZ` (cell 163) | (-325.0, 73.6, -212.8) | SYSTEM chat confirming the teleport |
+| 2 | `gmGotoXYZ` (cell 163) | (-325.0, 73.6, -212.8) | SYSTEM chat confirming the teleport; an undecoded method 27 to a nearby NPC |
+| 2a | `triggerClientHintedGenericRegion` (cell 85) | region 14, leaving, at the new position | (the client reports leaving `Castle_Cellblock.Region1`) |
 | 3 | `interact` (cell 74) | Corporal Frost's entity id | `onDialogDisplay` 3995; `InteractionType` 0 on Frost and 0x40000000 on the Guard's body; 622's step 2113 done, step 80623 started; mission 1360 accepted |
 | 4 | `dialogButtonChoice` | 3995, -1 | |
 | 5 | `gmGotoXYZ` | (-319.0, 73.6, -212.5) | |

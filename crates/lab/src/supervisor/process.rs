@@ -307,6 +307,14 @@ pub use win::{
     terminate,
 };
 
+/// Whether a terminated client still counts as running: its exit code says
+/// alive, or the start guard still sees its window (`window_pids` is
+/// [`running_sgw_pids`]). The exit code is set the moment the process is
+/// terminated; the window outlives it.
+pub fn still_present(pid: u32, alive: bool, window_pids: &[u32]) -> bool {
+    alive || window_pids.contains(&pid)
+}
+
 /// Poll `alive` until it reports false or `timeout` passes; true when the
 /// process is gone. `TerminateProcess` returns before the process has
 /// gone, so a stop that returned at once let the next start see the
@@ -472,6 +480,16 @@ mod tests {
         assert_eq!(polls, 4, "kept polling until the process was gone");
         let stuck = wait_for_exit(|| true, Duration::from_millis(20), Duration::from_millis(1));
         assert!(!stuck, "a process that never exits times out");
+    }
+
+    /// Regression guard (2026-10-10): the stop's first wait looked at the
+    /// exit code only, which is set at once, and the next start still saw
+    /// the client's window. A client is gone only when both have gone.
+    #[test]
+    fn a_terminated_client_is_present_while_its_window_lingers() {
+        assert!(still_present(7, false, &[3, 7]), "window still listed");
+        assert!(still_present(7, true, &[]), "exit code still active");
+        assert!(!still_present(7, false, &[3]), "gone");
     }
 
     #[test]
