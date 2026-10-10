@@ -53,7 +53,7 @@ pub struct CreateArg {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct BatchArgs {
     /// Ordered steps, each {id?, op, ...}: lua {chunk}; mem_read {addr, len?,
-    /// as: hex|u8|u16|u32|i32|f32|f64}; call_native {addr, conv?, args?,
+    /// as: hex|u8|u16|u32|i32|f32|f64, default u32 for 4 bytes}; call_native {addr, conv?, args?,
     /// ret?: u32|i32|f32|f64|void|hex}; wait {frames|ms}; player_state
     /// {fields?}; window_text {window, children?}. "$id", "$id.key" or
     /// "$id+0x270" in an argument is an earlier step's value; "${id}" inside
@@ -85,7 +85,7 @@ fn json_result(v: Value) -> CallToolResult {
 #[tool_router(router = composite_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (create it first when `create` is given and it is missing), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms} (or {at, characters?}); a failure names the step. Refuses to start while a client the lab did not launch is running."
+        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (with `create` and the character missing: the arguments are checked first, then the oldest unprotected character may be deleted to free a slot, reported as deleted_to_free_a_slot, and it is created), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms} (or {at, characters?}); a failure names the step. Refuses to start while a client the lab did not launch is running."
     )]
     async fn lab_ensure_in_world(
         &self,

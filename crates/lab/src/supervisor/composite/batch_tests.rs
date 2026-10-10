@@ -103,6 +103,27 @@ fn steps_parse_and_bad_steps_name_themselves() {
     .unwrap();
     assert_eq!(s[0].id, "p");
     assert_eq!(s[1].id, "2", "an unnamed step is named by position");
+    // Regression guard (review of #1309): a 4-byte read with no `as` is a
+    // u32, so a pointer chain adds to a number; other lengths stay hex.
+    let d = parse_steps(&[
+        json!({ "op": "mem_read", "addr": "0x1000" }),
+        json!({ "op": "mem_read", "addr": "0x1000", "len": 16 }),
+    ])
+    .unwrap();
+    assert!(matches!(
+        d[0].op,
+        Op::MemRead {
+            read_as: ReadAs::U32,
+            ..
+        }
+    ));
+    assert!(matches!(
+        d[1].op,
+        Op::MemRead {
+            read_as: ReadAs::Hex,
+            ..
+        }
+    ));
     let e = parse_steps(&[json!({ "id": "x", "op": "mem_read", "as": "u32" })]).unwrap_err();
     assert!(e.starts_with("step x:") && e.contains("addr"), "{e}");
     assert!(parse_steps(&[json!({ "op": "wait" })])
@@ -167,4 +188,55 @@ async fn a_batch_chains_reads_and_stops_on_error() {
     let on = sup.batch(&steps, false).await;
     assert!(on.stopped_at.is_none());
     assert_eq!(on.values["never"], json!("fine"));
+}
+
+/// Regression guard (review of #1309): a batch stops at the next step
+/// once its lease is taken over, and nothing after it reaches the client.
+#[tokio::test]
+async fn a_batch_stops_when_its_lease_is_taken_over() {
+    use crate::lease::permit::{scope, Permit};
+    use crate::lease::{AcquireRequest, LeaseBook};
+    let book = Arc::new(LeaseBook::default());
+    let lease = book
+        .acquire(AcquireRequest {
+            owner: "a".into(),
+            purpose: "batch".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let calls = Arc::new(Mutex::new(0u32));
+    let (b2, c2) = (book.clone(), calls.clone());
+    let sup = fake_bridge::supervisor(Arc::new(move |_m: &str, _p: &Value| {
+        *c2.lock().unwrap() += 1;
+        // Another session takes the lab over during the first step.
+        let _ = b2.acquire(AcquireRequest {
+            owner: "b".into(),
+            purpose: "takeover".into(),
+            force: true,
+            reason: Some("test".into()),
+            ..Default::default()
+        });
+        Ok(json!({ "hex": "01000000" }))
+    }))
+    .await;
+    let steps = parse_steps(&[
+        json!({ "id": "one", "op": "mem_read", "addr": "0x1000" }),
+        json!({ "id": "two", "op": "mem_read", "addr": "0x2000" }),
+        json!({ "id": "three", "op": "lua", "chunk": "return 1" }),
+    ])
+    .unwrap();
+    let permit = Permit::Lease {
+        book: book.clone(),
+        id: lease.lease_id,
+    };
+    let out = scope(permit, sup.batch(&steps, true)).await;
+    assert_eq!(out.values["one"], json!(1));
+    let e = out.values["two"]["error"].as_str().unwrap();
+    assert!(e.contains("lease revoked"), "{e}");
+    assert_eq!(out.stopped_at.as_deref(), Some("two"));
+    assert_eq!(
+        *calls.lock().unwrap(),
+        1,
+        "nothing after the takeover reached the bridge"
+    );
 }

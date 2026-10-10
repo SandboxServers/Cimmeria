@@ -194,6 +194,15 @@ async fn an_occluder_stops_the_click() {
         .iter()
         .fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
     assert_eq!((dx, dy), (0, 0), "the retries end where they began");
+    // Regression guard (review of #1309): a failed retry run zooms back out.
+    let zoom: i32 = click::VIEW_RETRIES.iter().map(|r| r.2).sum();
+    assert_eq!(
+        sim.looks.last(),
+        Some(&(0, 0, -zoom * 120)),
+        "{:?}",
+        sim.looks
+    );
+    assert!(state.contains("\"view_restored\":true"), "{state}");
 }
 
 #[tokio::test]

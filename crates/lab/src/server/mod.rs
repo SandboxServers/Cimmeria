@@ -664,7 +664,24 @@ impl ServerHandler for LabServer {
         mut request: CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
-        let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut());
+        // Shaping arguments the tool declares itself stay with the tool.
+        let own: Vec<String> = self
+            .tool_router
+            .get(request.name.as_ref())
+            .and_then(|t| {
+                t.input_schema
+                    .get("properties")
+                    .and_then(Value::as_object)
+                    .map(|p| {
+                        compact::SHAPE_ARGS
+                            .iter()
+                            .filter(|a| p.contains_key(**a))
+                            .map(|a| a.to_string())
+                            .collect()
+                    })
+            })
+            .unwrap_or_default();
+        let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut(), &own);
         let permit = self.gate_call(&mut request)?;
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let out = match permit {

@@ -270,6 +270,8 @@ pub async fn run<W: WorldIo>(
     let mut adjusted = Vec::new();
     let mut tried = Vec::new();
     let mut chosen = None;
+    let mut start_view: Option<Value> = None;
+    let mut zoomed = 0;
     for (i, adj) in std::iter::once(None)
         .chain(VIEW_RETRIES.iter().map(Some))
         .enumerate()
@@ -278,6 +280,10 @@ pub async fn run<W: WorldIo>(
             if entity.is_none() || !req.rotate_camera.unwrap_or(true) {
                 break;
             }
+            if start_view.is_none() {
+                start_view = io.camera_readout().await.ok();
+            }
+            zoomed += notches;
             let level = io
                 .look(dx, dy, notches * super::camera::WHEEL_NOTCH)
                 .await
@@ -304,6 +310,20 @@ pub async fn run<W: WorldIo>(
     let mut hover_detail = json!({ "tried": tried });
     if !adjusted.is_empty() {
         hover_detail["view_retries"] = json!(adjusted);
+    }
+    // Every retry failed: put the view back as it was (review of #1309).
+    // Yaw already nets to zero; zoom and a clamped pitch do not.
+    if chosen.is_none() && !adjusted.is_empty() {
+        let now = io.camera_readout().await.ok();
+        let dy = match (&start_view, &now) {
+            (Some(a), Some(b)) => restore_pitch_counts(a, b),
+            _ => 0,
+        };
+        let restored = io
+            .look(0, dy, -zoomed * super::camera::WHEEL_NOTCH)
+            .await
+            .is_ok();
+        hover_detail["view_restored"] = json!(restored);
     }
     steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
     let Some((pixel, hover)) = chosen else {
@@ -345,6 +365,23 @@ pub const VIEW_RETRIES: [(i32, i32, i32); 5] = [
     (-500, 0, 0),
     (250, 600, 4),
 ];
+
+/// Pitch counts that take the camera from readout `now` back to `start`
+/// (`pitch_offset_deg` and `pitch_gain` from `camera_readout`); 0 when
+/// either readout lacks them.
+pub fn restore_pitch_counts(start: &Value, now: &Value) -> i32 {
+    let (Some(a), Some(b), Some(g)) = (
+        start["pitch_offset_deg"].as_f64(),
+        now["pitch_offset_deg"].as_f64(),
+        now["pitch_gain"].as_f64(),
+    ) else {
+        return 0;
+    };
+    if g.abs() < 1e-3 {
+        return 0;
+    }
+    ((a - b) * 65536.0 / 360.0 / g).round() as i32
+}
 
 /// One hover pass over the target's body heights: the chosen point and how
 /// each height went.
@@ -559,6 +596,18 @@ async fn click_and_observe<W: WorldIo>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Restoring pitch inverts the clamped retries, with the invert flag.
+    #[test]
+    fn pitch_restore_counts_undo_the_offset_change() {
+        let start = json!({ "pitch_offset_deg": 0.0, "pitch_gain": 20.0 });
+        let now = json!({ "pitch_offset_deg": -66.0, "pitch_gain": 20.0 });
+        // +66 degrees = 12014 units = 601 counts at 20 units per count.
+        assert_eq!(restore_pitch_counts(&start, &now), 601);
+        let inverted = json!({ "pitch_offset_deg": -66.0, "pitch_gain": -20.0 });
+        assert_eq!(restore_pitch_counts(&start, &inverted), -601);
+        assert_eq!(restore_pitch_counts(&start, &json!({})), 0);
+    }
 
     fn snap(target: u32, windows: &[&str]) -> UiSnap {
         UiSnap {

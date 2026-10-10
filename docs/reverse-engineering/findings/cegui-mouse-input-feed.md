@@ -384,7 +384,7 @@ Scan the level's Actors array for the actor whose vtable is `0x019E2B2C` (`ASGWC
 | +0x34c, +0x350 | f32 | zoom step = 10.0 * 3.0 = 30 per notch | 10, 3 |
 | +0x358 | f32 | look gain (mouse counts to rotator units) | 20.0 |
 | +0x360 | f32 | camera distance (third-person zoom) | 250.0 |
-| +0x368 | i32 | camera pitch offset, clamped to +-0x4000 | 0 |
+| +0x368 | i32 | camera pitch offset. The pitch handler `0x00e7e590` does not clamp the stored value: repeated native pitch turns ran it to 1563 degrees and the view looked straight down (live, 2026-10-10). Whatever limits pitch to +-0x4000 acts later, on the view, so the lab clamps its own turns (+-0x3800). | 0 |
 | +0x36c | i32 | camera yaw offset, wraps at +-0x8000 (65536 units per turn) | 0 |
 
 Zoom limits: min 100.0 (`0x019e1000`), max `0.75 * 900.0 (0x018cb14c) + 100.0` = 775.0. The pawn's own Rotation is a different thing: `AActor+0xE8` (Pitch, Yaw, Roll as i32), location `+0xDC` (matches `memory.rs`). The camera yaw/pitch above are offsets relative to it.

@@ -137,6 +137,12 @@ pub fn parse_actions(raw: &[Value]) -> Result<Vec<Action>, String> {
         .collect()
 }
 
+/// Whether a `client_drag_drop` result moved the item: `moved` true and
+/// `effect_ok` not false.
+pub fn drag_moved(r: &Value) -> bool {
+    r["moved"] == json!(true) && r["effect_ok"] != json!(false)
+}
+
 /// The native level a result reports, else the level the action implies.
 fn level_of(result: &Value, default: NativeLevel) -> NativeLevel {
     match result["native_level"].as_str() {
@@ -181,9 +187,17 @@ impl Supervisor {
                 let r = self
                     .drag_drop(from, to, *split, DRAG_STEPS, true, DRAG_WAIT)
                     .await?;
+                // A drag that moved nothing is a failed step, not a pass
+                // (review of #1309; the UAT runner fails effect_ok false).
+                if !drag_moved(&r) {
+                    return Err(format!(
+                        "the drag moved nothing (drag_started {}, drop_notified {}, snap_back {})",
+                        r["drag_started"], r["drop_notified"], r["snap_back"]
+                    ));
+                }
                 let l = level_of(&r, NativeLevel::NativeCegui);
                 Ok((
-                    json!({ "moved": r["moved"], "native_level": r["native_level"] }),
+                    json!({ "moved": true, "native_level": r["native_level"] }),
                     Some(l),
                 ))
             }
@@ -297,6 +311,15 @@ mod tests {
         let half =
             json!({ "do": "drag", "from": { "container": "Main" }, "to": { "window": "W" } });
         assert!(parse_actions(&[half]).unwrap_err().contains("`from`"));
+    }
+
+    /// Regression guard (review of #1309): a drag that moved nothing fails.
+    #[test]
+    fn a_drag_that_moved_nothing_is_not_a_pass() {
+        assert!(drag_moved(&json!({ "moved": true, "effect_ok": true })));
+        assert!(!drag_moved(&json!({ "moved": false, "effect_ok": false })));
+        assert!(!drag_moved(&json!({ "moved": true, "effect_ok": false })));
+        assert!(!drag_moved(&json!({})));
     }
 
     #[test]

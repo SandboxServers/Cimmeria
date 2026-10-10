@@ -297,29 +297,47 @@ pub struct CameraState {
     pub pitch: i32,
     /// Look gain: rotator units per mouse count.
     pub gain: f32,
+    /// `+0x348` flags: bit 2 (0x4) inverts yaw, bit 3 (0x8) inverts pitch
+    /// (findings §10.3).
+    pub flags: u32,
 }
 
 impl CameraState {
+    /// Rotator units the pitch handler adds per count: `gain * inv`, where
+    /// `inv` is -1 when the pitch-invert flag (0x8) is set.
+    pub fn pitch_gain(self) -> f32 {
+        if self.flags & 0x8 != 0 {
+            -self.gain
+        } else {
+            self.gain
+        }
+    }
+
     pub fn to_json(self) -> serde_json::Value {
         serde_json::json!({
             "zoom": self.distance,
             "yaw_offset_deg": f64::from(self.yaw) * 360.0 / 65536.0,
             "pitch_offset_deg": f64::from(self.pitch) * 360.0 / 65536.0,
             "gain": self.gain,
+            "pitch_gain": self.pitch_gain(),
         })
     }
 }
 
-/// Read the camera's gain, distance, pitch and yaw (one read).
+/// `ASGWCamera_Player + 0x348`: the invert flags (see [`CameraState`]).
+pub const CAMERA_FLAGS_OFF: u32 = 0x348;
+
+/// Read the camera's flags, gain, distance, pitch and yaw (one read).
 pub async fn camera_state<M: Memory>(mem: &mut M, camera: u32) -> Result<CameraState, String> {
     let b = mem
         .read(
-            camera + CAMERA_GAIN_OFF,
-            CAMERA_YAW_OFF + 4 - CAMERA_GAIN_OFF,
+            camera + CAMERA_FLAGS_OFF,
+            CAMERA_YAW_OFF + 4 - CAMERA_FLAGS_OFF,
         )
         .await?;
-    let at = |off: u32| (off - CAMERA_GAIN_OFF) as usize;
+    let at = |off: u32| (off - CAMERA_FLAGS_OFF) as usize;
     Ok(CameraState {
+        flags: u32_at(&b, at(CAMERA_FLAGS_OFF)),
         gain: f32_at(&b, at(CAMERA_GAIN_OFF)),
         distance: f32_at(&b, at(CAMERA_DIST_OFF)),
         pitch: u32_at(&b, at(CAMERA_PITCH_OFF)) as i32,
@@ -423,13 +441,15 @@ mod tests {
         m.insert(pc, vt(PLAYER_CONTROLLER_VTABLE_VA));
         m.insert(pc + CONTROLLER_CAMERA_OFF, words(&[cam]));
         m.insert(cam, vt(PLAYER_CAMERA_VTABLE_VA));
-        let mut state = Vec::new();
-        for v in [20.0f32, 0.0, 250.0, 0.0] {
+        // From +0x348: flags (pitch inverted), three floats, then gain,
+        // +0x35c, distance, +0x364, pitch, yaw.
+        let mut state = 0x8u32.to_le_bytes().to_vec();
+        for v in [10.0f32, 3.0, 0.0, 20.0, 0.0, 250.0, 0.0] {
             state.extend_from_slice(&v.to_le_bytes());
         }
         state.extend_from_slice(&(-0x2000i32).to_le_bytes());
         state.extend_from_slice(&0x4000i32.to_le_bytes());
-        m.insert(cam + CAMERA_GAIN_OFF, state);
+        m.insert(cam + CAMERA_FLAGS_OFF, state);
         let found = find_player_camera(&mut Fake(m.clone()), slide)
             .await
             .unwrap();
@@ -446,6 +466,11 @@ mod tests {
             (20.0, 250.0, -0x2000, 0x4000)
         );
         assert_eq!(s.to_json()["yaw_offset_deg"], 90.0);
+        // Regression guard (review of #1309): the pitch-invert flag flips
+        // the per-count gain the clamp uses.
+        assert_eq!(s.flags, 0x8);
+        assert_eq!(s.pitch_gain(), -20.0);
+        assert_eq!(CameraState { flags: 0x3, ..s }.pitch_gain(), 20.0);
 
         // A camera pointer that is not an ASGWCamera_Player is refused.
         m.insert(cam, words(&[0xdead]));

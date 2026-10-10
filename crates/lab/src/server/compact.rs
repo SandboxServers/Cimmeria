@@ -46,6 +46,26 @@ const UNCAPPED: [&str; 4] = [
 /// The argument that returns images inline instead of as a saved path.
 pub const IMAGE_ARG: &str = "image";
 
+/// The shaping arguments. A tool that declares one of these names itself
+/// keeps it: `client_wait_event`'s `fields` is an equality filter, and
+/// taking it would turn a wait for one event into a wait for any
+/// (review of #1309).
+pub const SHAPE_ARGS: [&str; 3] = [VERBOSE_ARG, FIELDS_ARG, IMAGE_ARG];
+
+/// Probe tools whose numbers are measurements: their floats are not
+/// rounded (a 0.0174 radian read must not come back as 0.02).
+const EXACT: [&str; 6] = [
+    "client_batch",
+    "client_call_native",
+    "client_mem_read",
+    "client_lua_eval",
+    "client_events_read",
+    "client_wait_event",
+];
+
+/// Saved images older than this are removed when the next one is saved.
+const IMAGE_KEEP: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
 /// How one call's result is shaped.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Shape {
@@ -60,6 +80,8 @@ pub struct Shape {
     pub image: bool,
     /// The tool, for saved file names.
     pub tool: String,
+    /// Keep floats exact (probe tools).
+    pub exact: bool,
 }
 
 /// Where saved images go: `%LOCALAPPDATA%\cimmeria-lab\screenshots`, else
@@ -86,25 +108,57 @@ pub fn save_image_in(
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
     let path = dir.join(format!("{tool}-{stamp}.png"));
     std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    prune_images(dir, IMAGE_KEEP);
     Ok(path)
 }
 
+/// Remove saved PNGs older than `keep` (best effort).
+pub fn prune_images(dir: &std::path::Path, keep: std::time::Duration) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for e in entries.flatten() {
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age > keep);
+        if old && e.path().extension().is_some_and(|x| x == "png") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 impl Shape {
-    /// Take `verbose` and `fields` out of a call's arguments.
-    pub fn take(tool: &str, args: Option<&mut Map<String, Value>>) -> Self {
+    /// Take `verbose`, `image` and `fields` out of a call's arguments,
+    /// except those the tool declares itself (`own`, from its schema).
+    pub fn take(tool: &str, args: Option<&mut Map<String, Value>>, own: &[String]) -> Self {
         let mut shape = Shape {
             uncapped: UNCAPPED.contains(&tool),
+            exact: EXACT.contains(&tool),
             tool: tool.to_string(),
             ..Default::default()
         };
         let Some(args) = args else { return shape };
-        if let Some(v) = args.remove(VERBOSE_ARG) {
-            shape.verbose = v.as_bool().unwrap_or(false);
+        let mine = |k: &str| !own.iter().any(|o| o == k);
+        if mine(VERBOSE_ARG) {
+            if let Some(v) = args.remove(VERBOSE_ARG) {
+                shape.verbose = v.as_bool().unwrap_or(false);
+            }
         }
-        if let Some(v) = args.remove(IMAGE_ARG) {
-            shape.image = v.as_bool().unwrap_or(false);
+        if mine(IMAGE_ARG) {
+            if let Some(v) = args.remove(IMAGE_ARG) {
+                shape.image = v.as_bool().unwrap_or(false);
+            }
         }
-        if let Some(f) = args.remove(FIELDS_ARG) {
+        let taken = if mine(FIELDS_ARG) {
+            args.remove(FIELDS_ARG)
+        } else {
+            None
+        };
+        if let Some(f) = taken {
             shape.fields = match f {
                 Value::Array(a) => a
                     .iter()
@@ -151,7 +205,10 @@ impl Shape {
         if self.verbose {
             return v;
         }
-        let cap = if self.uncapped { usize::MAX } else { LIST_CAP };
+        let opts = Opts {
+            cap: if self.uncapped { usize::MAX } else { LIST_CAP },
+            round: !self.exact,
+        };
         // The top level keeps its empty lists and objects: `windows: []`
         // answers "nothing open", where a missing key reads as no answer
         // (client_ui_state came back `{}` once, 2026-10-10).
@@ -164,7 +221,7 @@ impl Shape {
                 })
                 .map(|(k, x)| (k.clone(), x.clone()))
                 .collect();
-            let mut out = compact(v, cap).unwrap_or(Value::Object(Map::new()));
+            let mut out = compact_with(v, opts).unwrap_or(Value::Object(Map::new()));
             if let Value::Object(m) = &mut out {
                 for (k, x) in keep {
                     m.entry(k).or_insert(x);
@@ -172,7 +229,9 @@ impl Shape {
             }
             return out;
         }
-        compact(v, cap).unwrap_or(Value::Object(Map::new()))
+        // A bare `[]`, `""` or `null` is an answer: keep it as it was.
+        let orig = v.clone();
+        compact_with(v, opts).unwrap_or(orig)
     }
 
     /// Shape a text block: JSON is re-serialised compactly; anything else
@@ -351,6 +410,13 @@ pub fn project(v: &Value, fields: &[String]) -> Value {
     Value::Object(out)
 }
 
+/// How [`compact_with`] shapes a value.
+#[derive(Debug, Clone, Copy)]
+pub struct Opts {
+    pub cap: usize,
+    pub round: bool,
+}
+
 /// Round a float to 2 decimals; integers pass through.
 fn round_number(n: &serde_json::Number) -> Value {
     if n.is_f64() {
@@ -368,34 +434,61 @@ fn round_number(n: &serde_json::Number) -> Value {
     Value::Number(n.clone())
 }
 
-/// Compact `v`; `None` when it compacts to nothing (null, `""`, `[]`, `{}`).
+/// Compact `v` with rounding; `None` when it compacts to nothing.
+#[cfg(test)]
 pub fn compact(v: Value, cap: usize) -> Option<Value> {
+    compact_with(v, Opts { cap, round: true })
+}
+
+/// The items of an array: each compacted, an item that compacts to
+/// nothing kept as it was (a position in a list means something), capped
+/// at `cap`.
+fn compact_items(a: Vec<Value>, o: Opts) -> Vec<Value> {
+    a.into_iter()
+        .take(o.cap)
+        .map(|x| {
+            let orig = x.clone();
+            compact_with(x, o).unwrap_or(orig)
+        })
+        .collect()
+}
+
+/// Compact `v`; `None` when it compacts to nothing (null, `""`, `[]`, `{}`).
+/// A capped array under an object key gets `<key>_total` and `truncated`
+/// beside it; a capped array anywhere else ends with a
+/// `{"truncated_total": n}` item.
+pub fn compact_with(v: Value, o: Opts) -> Option<Value> {
     match v {
         Value::Null => None,
         Value::String(s) if s.is_empty() => None,
-        Value::Number(n) => Some(round_number(&n)),
+        Value::Number(n) if o.round => Some(round_number(&n)),
         Value::Array(a) => {
-            let items: Vec<Value> = a
-                .into_iter()
-                .take(cap)
-                .filter_map(|x| compact(x, cap).or(Some(Value::Null)))
-                .collect();
+            let total = a.len();
+            let mut items = compact_items(a, o);
+            if total > o.cap {
+                items.push(serde_json::json!({ "truncated_total": total }));
+            }
             (!items.is_empty()).then_some(Value::Array(items))
         }
-        Value::Object(o) => {
+        Value::Object(obj) => {
             let mut out = Map::new();
             let mut truncated = false;
-            for (k, x) in o {
+            for (k, x) in obj {
                 if TRAIL_KEYS.contains(&k.as_str()) {
                     continue;
                 }
-                if let Value::Array(a) = &x {
-                    if a.len() > cap {
-                        out.insert(format!("{k}_total"), Value::from(a.len()));
-                        truncated = true;
+                let c = match x {
+                    Value::Array(a) => {
+                        if a.len() > o.cap {
+                            out.insert(format!("{k}_total"), Value::from(a.len()));
+                            truncated = true;
+                        }
+                        let items = compact_items(a, o);
+                        (!items.is_empty()).then_some(Value::Array(items))
                     }
-                }
-                if let Some(c) = compact(x, cap) {
+                    other => compact_with(other, o),
+                };
+                if let Some(c) = c {
                     out.insert(k, c);
                 }
             }
@@ -462,12 +555,15 @@ mod tests {
     #[test]
     fn verbose_and_fields_are_taken_out_of_the_arguments() {
         let mut args = json!({ "verbose": true, "fields": ["position", "world_id"], "x": 1 });
-        let s = Shape::take("client_player_state", args.as_object_mut());
+        let s = Shape::take("client_player_state", args.as_object_mut(), &[]);
         assert!(s.verbose);
         assert_eq!(s.fields, vec!["position", "world_id"]);
         assert_eq!(args, json!({ "x": 1 }));
         let mut csv = json!({ "fields": "a, b" });
-        assert_eq!(Shape::take("t", csv.as_object_mut()).fields, vec!["a", "b"]);
+        assert_eq!(
+            Shape::take("t", csv.as_object_mut(), &[]).fields,
+            vec!["a", "b"]
+        );
     }
 
     #[test]
@@ -486,7 +582,7 @@ mod tests {
         };
         assert_eq!(verbose.apply(v.clone()), v);
         let mut args = json!({});
-        let events = Shape::take("client_events_read", args.as_object_mut());
+        let events = Shape::take("client_events_read", args.as_object_mut(), &[]);
         let big = json!({ "events": (0..80).collect::<Vec<_>>() });
         assert_eq!(events.apply(big)["events"].as_array().unwrap().len(), 80);
     }
@@ -549,11 +645,11 @@ mod tests {
     #[test]
     fn images_are_saved_to_a_file_by_default() {
         let mut args = json!({ "image": true });
-        let s = Shape::take("lab_screenshot", args.as_object_mut());
+        let s = Shape::take("lab_screenshot", args.as_object_mut(), &[]);
         assert!(s.image);
         assert_eq!(s.tool, "lab_screenshot");
         assert_eq!(args, json!({}));
-        assert!(!Shape::take("lab_screenshot", None).image);
+        assert!(!Shape::take("lab_screenshot", None, &[]).image);
 
         let dir = tempfile::tempdir().unwrap();
         // "iVBORw==" is the PNG magic's first four bytes.
@@ -565,6 +661,79 @@ mod tests {
             .to_string_lossy()
             .starts_with("lab_screenshot-"));
         assert!(save_image_in(dir.path(), "t", "not base64!").is_err());
+    }
+
+    /// Regression guard (review of #1309): a tool's own `fields` argument
+    /// (client_wait_event's equality filter) is left with the tool.
+    #[test]
+    fn a_tools_own_shape_arguments_are_left_alone() {
+        let mut args = json!({ "fields": { "hit_name": "Critical" }, "verbose": true });
+        let own = vec!["fields".to_string()];
+        let s = Shape::take("client_wait_event", args.as_object_mut(), &own);
+        assert!(s.fields.is_empty());
+        assert!(s.verbose, "verbose is not the tool's own, so it is taken");
+        assert_eq!(args, json!({ "fields": { "hit_name": "Critical" } }));
+    }
+
+    /// The live router: every tool that declares a shaping argument keeps
+    /// it, which is what call_tool computes from the schemas.
+    #[test]
+    fn client_wait_event_declares_its_own_fields() {
+        use std::sync::Arc;
+        let config = crate::supervisor::SupervisorConfig {
+            install_dir: None,
+            dll_path: None,
+            patches_dll: None,
+            helper_path: None,
+            bind: "127.0.0.1".into(),
+            port: 8770,
+            instance: None,
+            telemetry: Default::default(),
+        };
+        let bridge = Arc::new(crate::client::BridgeClient::new("127.0.0.1:1", ""));
+        let server = crate::server::LabServer::new(Arc::new(crate::supervisor::Supervisor::new(
+            bridge, config,
+        )));
+        let t = server.tool_router.get("client_wait_event").unwrap();
+        let props = t.input_schema["properties"].as_object().unwrap();
+        assert!(props.contains_key(FIELDS_ARG));
+    }
+
+    /// Regression guard (review of #1309): probe floats are not rounded;
+    /// arrays keep empty items in place and mark a cap without a parent
+    /// key; a bare non-object result is not turned into `{}`.
+    #[test]
+    fn probes_keep_exact_floats_and_lists_keep_their_shape() {
+        let mut args = json!({});
+        let probe = Shape::take("client_batch", args.as_object_mut(), &[]);
+        assert_eq!(probe.apply(json!({ "r": 0.0174 }))["r"], 0.0174);
+        let read = Shape::take("client_player_state", args.as_object_mut(), &[]);
+        assert_eq!(read.apply(json!({ "r": 0.0174 }))["r"], 0.02);
+
+        let v = compact(json!({ "rows": ["a", "", null, "b"] }), 50).unwrap();
+        assert_eq!(v["rows"], json!(["a", "", null, "b"]));
+        let nested = compact(json!([(0..60).collect::<Vec<_>>()]), 50).unwrap();
+        let inner = nested[0].as_array().unwrap();
+        assert_eq!(inner.len(), 51);
+        assert_eq!(inner[50], json!({ "truncated_total": 60 }));
+
+        let s = Shape::default();
+        assert_eq!(s.apply(json!([])), json!([]));
+        assert_eq!(s.apply(json!("")), json!(""));
+        assert_eq!(s.apply(Value::Null), Value::Null);
+    }
+
+    #[test]
+    fn old_saved_images_are_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old.png");
+        std::fs::write(&old, b"x").unwrap();
+        prune_images(dir.path(), std::time::Duration::ZERO);
+        assert!(!old.exists());
+        let keep = dir.path().join("new.png");
+        std::fs::write(&keep, b"x").unwrap();
+        prune_images(dir.path(), std::time::Duration::from_secs(3600));
+        assert!(keep.exists());
     }
 
     #[test]

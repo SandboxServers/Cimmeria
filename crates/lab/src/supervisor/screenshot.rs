@@ -172,7 +172,9 @@ mod win {
     // PrintWindow lives in the Xps namespace in windows-sys (it is the
     // user32 print-to-DC entry point).
     use windows_sys::Win32::Storage::Xps::PrintWindow;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, IsIconic};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetClientRect, IsIconic, WindowFromPoint, GA_ROOT,
+    };
 
     const BI_RGB: u32 = 0;
     const DIB_RGB_COLORS: u32 = 0;
@@ -211,6 +213,14 @@ mod win {
             if !all_black(&printed.rgba) {
                 return Ok(printed);
             }
+            // The screen copy is whatever is on top: refuse it when another
+            // window covers the client area (review of #1309).
+            if let Some(other) = covered(hwnd, width, height) {
+                return Err(format!(
+                    "PrintWindow gave a black frame and the client area is covered by window \
+                     {other:#x}; bring the client to the front to capture it"
+                ));
+            }
             let shown = grab(hwnd, width, height, Source::Screen)?;
             if all_black(&shown.rgba) {
                 return Err(format!(
@@ -219,6 +229,39 @@ mod win {
                 ));
             }
             Ok(shown)
+        }
+    }
+
+    /// The top-level window over any of the client area's centre and four
+    /// inset corners, when it is not `hwnd`.
+    unsafe fn covered(hwnd: HWND, width: u32, height: u32) -> Option<isize> {
+        unsafe {
+            let mut origin = POINT { x: 0, y: 0 };
+            ClientToScreen(hwnd, &mut origin);
+            let (w, h) = (width as i32, height as i32);
+            let inset = 8;
+            let points = [
+                (w / 2, h / 2),
+                (inset, inset),
+                (w - inset, inset),
+                (inset, h - inset),
+                (w - inset, h - inset),
+            ];
+            for (x, y) in points {
+                let top = WindowFromPoint(POINT {
+                    x: origin.x + x,
+                    y: origin.y + y,
+                });
+                let root = if top.is_null() {
+                    top
+                } else {
+                    GetAncestor(top, GA_ROOT)
+                };
+                if root != hwnd {
+                    return Some(root as isize);
+                }
+            }
+            None
         }
     }
 

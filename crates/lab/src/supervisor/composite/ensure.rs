@@ -26,6 +26,9 @@ use crate::supervisor::{process, Supervisor};
 pub const READY_TIMEOUT: Duration = Duration::from_secs(120);
 /// Observe-act rounds before giving up (each round is one flow).
 pub const MAX_ROUNDS: usize = 10;
+/// One-second waits for the player's name to read after zone-in, before
+/// the run gives up (they do not count as rounds).
+pub const MAX_SETTLES: usize = 15;
 
 /// What the client shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +108,9 @@ pub enum Next {
     Logout,
     Play,
     FinishDialog,
+    /// In the world but the player's name does not read yet (right after
+    /// zone-in): wait a second and look again rather than log out.
+    Settle,
     Done,
 }
 
@@ -129,6 +135,7 @@ pub fn plan(o: &Observation, goal: &Goal, dialog_tried: bool) -> Next {
         StopAt::World => {}
     }
     match o.screen {
+        Screen::World if o.player.is_none() => Next::Settle,
         Screen::World => {
             let same = o
                 .player
@@ -152,7 +159,8 @@ pub fn plan(o: &Observation, goal: &Goal, dialog_tried: bool) -> Next {
 pub fn observe_chunk() -> String {
     let p = |e: String| format!("tostring(select(2, pcall(function() return {e} end)) == true)");
     format!(
-        "{}, {}, {}, tostring(select(2, pcall(function() return unitName(Unit.Player) end)) or '')",
+        "{}, {}, {}, (function() local ok, n = pcall(unitName, Unit.Player) \
+         if ok and n ~= nil then return tostring(n) end return '' end)()",
         start_screen_chunk(),
         p(widgets::world_up()),
         p(widgets::visible(DIALOG_WIN)),
@@ -249,20 +257,25 @@ impl Supervisor {
         &self,
         character: &str,
         create: Option<&CreateRequest>,
-    ) -> Result<(), String> {
+    ) -> Result<Value, String> {
         let played = self.play_flow(character, true, DEFAULT_PLAY_TIMEOUT).await;
-        let Err(e) = played else { return Ok(()) };
+        let Err(e) = played else {
+            return Ok(Value::Null);
+        };
         // `select_character` names this step when the list lacks the name.
         let missing = e.step == "find_character";
         match create {
             Some(req) if missing => {
-                self.ensure_slot_flow(1, vec![character.to_string()])
+                // The arguments were checked before the run started, so a
+                // character is only deleted for a create that can succeed.
+                let freed = self
+                    .ensure_slot_flow(1, vec![character.to_string()])
                     .await?;
                 self.create_character_flow(req.clone()).await?;
                 self.play_flow(character, true, DEFAULT_PLAY_TIMEOUT)
                     .await
-                    .map(|_| ())
-                    .map_err(String::from)
+                    .map_err(String::from)?;
+                Ok(freed["deleted"].clone())
             }
             _ => Err(e.summary()),
         }
@@ -277,17 +290,44 @@ impl Supervisor {
             .or_else(|| account.as_ref().map(|a| a.character.clone()))
             .filter(|c| !c.is_empty())
             .ok_or("no character: pass `character` or set it in lab-account.json")?;
+        // The character's last name is its list name. Check every create
+        // argument before acting: freeing a slot deletes a character, and
+        // must not happen for a create the flow would then refuse (review
+        // of #1309).
+        let create = req.create.clone().map(|mut c| {
+            if c.last.is_empty() {
+                c.last = character.clone();
+            }
+            c
+        });
+        if let Some(c) = &create {
+            c.check()
+                .map_err(|e| format!("create: {e} (nothing was changed)"))?;
+        }
         let goal = Goal {
             character: character.clone(),
-            can_create: req.create.is_some(),
+            can_create: create.is_some(),
             stop: req.stop,
         };
         let mut steps_ms = Map::new();
         let mut dialog_tried = false;
         let mut already = true;
-        for _ in 0..MAX_ROUNDS {
+        let mut deleted = Value::Null;
+        let (mut rounds, mut settles) = (0, 0);
+        while rounds < MAX_ROUNDS {
             let o = self.observe().await;
             let next = plan(&o, &goal, dialog_tried);
+            if next == Next::Settle {
+                settles += 1;
+                if settles > MAX_SETTLES {
+                    return Err(format!(
+                        "in the world but the player's name did not read for {MAX_SETTLES} s"
+                    ));
+                }
+                self.idle(Duration::from_secs(1)).await?;
+                continue;
+            }
+            rounds += 1;
             let t0 = Instant::now();
             let step = match next {
                 Next::Done if req.stop != StopAt::World => {
@@ -327,8 +367,12 @@ impl Supervisor {
                     if o.dialog {
                         out["dialog_open"] = json!(true);
                     }
+                    if !deleted.is_null() {
+                        out["deleted_to_free_a_slot"] = deleted;
+                    }
                     return Ok(out);
                 }
+                Next::Settle => unreachable!("handled before the match"),
                 Next::Start => self.start(req.server.clone()).await.map(|_| "start"),
                 Next::WaitReady => self.wait_ready().await.map(|_| "ready"),
                 Next::Login => {
@@ -347,9 +391,12 @@ impl Supervisor {
                     .map(|_| "logout")
                     .map_err(String::from),
                 Next::Play => self
-                    .ensure_play(&character, req.create.as_ref())
+                    .ensure_play(&character, create.as_ref())
                     .await
-                    .map(|_| "play"),
+                    .map(|d| {
+                        deleted = d;
+                        "play"
+                    }),
                 Next::FinishDialog => {
                     dialog_tried = true;
                     self.finish_dialog_flow(false, DEFAULT_MAX_PAGES)
@@ -447,10 +494,43 @@ mod tests {
             plan(&obs(Screen::World, Some("Other"), false), &goal(), false),
             Next::Logout
         );
+    }
+
+    /// Regression guard (review of #1309): a name that does not read yet
+    /// (right after zone-in) is no reason to log out, and a failed lookup
+    /// reads as no name, never as the Lua error text.
+    #[test]
+    fn an_unread_name_waits_instead_of_logging_out() {
         assert_eq!(
             plan(&obs(Screen::World, None, false), &goal(), false),
-            Next::Logout
+            Next::Settle
         );
+        let c = observe_chunk();
+        assert!(
+            c.contains("local ok, n = pcall(unitName, Unit.Player)"),
+            "{c}"
+        );
+        assert!(c.contains("return ''"), "{c}");
+    }
+
+    /// Regression guard (review of #1309): the create arguments are
+    /// checked before anything runs, and the last name defaults to the
+    /// character.
+    #[test]
+    fn create_arguments_are_checked_up_front() {
+        let req = |last: &str| CreateRequest {
+            first: "Lab".into(),
+            last: last.into(),
+            alignment: "sgu".into(),
+            archetype: "Soldier".into(),
+            gender: "male".into(),
+        };
+        assert!(req("Labone").check().is_ok());
+        assert!(req("").check().unwrap_err().contains("last name"));
+        assert!(req("Lab-1").check().unwrap_err().contains("letters only"));
+        let mut bad = req("Labone");
+        bad.archetype = "Wizard".into();
+        assert!(bad.check().is_err());
     }
 
     /// Walk a whole run: each action moves the simulated client on, and
@@ -475,6 +555,7 @@ mod tests {
                 }
                 Next::FinishDialog => (tried, o.dialog) = (true, false),
                 Next::Logout => o.screen = Screen::CharSelect,
+                Next::Settle => o.player = Some("Labone".into()),
                 Next::Done => break,
             }
         }
@@ -555,7 +636,7 @@ mod tests {
         assert!(
             c.starts_with("return ")
                 && c.contains("SelfStatusWin")
-                && c.contains("unitName(Unit.Player)")
+                && c.contains("pcall(unitName, Unit.Player)")
         );
     }
 }

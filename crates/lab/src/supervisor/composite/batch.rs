@@ -3,7 +3,7 @@
 //! one turn in all.
 //!
 //! Steps (`op`): `lua` (`chunk`), `mem_read` (`addr`, `len`, `as` =
-//! `hex|u8|u16|u32|i32|f32|f64`), `call_native` (`addr`, `conv`, `args`,
+//! `hex|u8|u16|u32|i32|f32|f64`; default `u32` for a 4-byte read, else `hex`), `call_native` (`addr`, `conv`, `args`,
 //! `ret`), `wait` (`frames` or `ms`), `player_state` (`fields`) and
 //! `window_text` (`window`, `children`). Each step may carry an `id`; a step
 //! without one is named by its 1-based position.
@@ -146,11 +146,22 @@ fn parse_op(s: &Value) -> Result<Op, String> {
         "lua" => Op::Lua {
             chunk: need_str(s, "chunk", "lua")?,
         },
-        "mem_read" => Op::MemRead {
-            addr: s.get("addr").cloned().ok_or("mem_read needs `addr`")?,
-            len: s.get("len").and_then(Value::as_u64).map(|n| n as u32),
-            read_as: ReadAs::parse(&str_field(s, "as").unwrap_or_else(|| "hex".into()))?,
-        },
+        "mem_read" => {
+            let len = s.get("len").and_then(Value::as_u64).map(|n| n as u32);
+            // A 4-byte read (the default) is a u32 unless `as` says
+            // otherwise, so `$ptr+0x270` after it adds to a number, not
+            // to a byte-order hex dump (review of #1309).
+            let default_as = if len.is_none_or(|n| n == 4) {
+                "u32"
+            } else {
+                "hex"
+            };
+            Op::MemRead {
+                addr: s.get("addr").cloned().ok_or("mem_read needs `addr`")?,
+                len,
+                read_as: ReadAs::parse(&str_field(s, "as").unwrap_or_else(|| default_as.into()))?,
+            }
+        }
         "call_native" => Op::CallNative {
             addr: s.get("addr").cloned().ok_or("call_native needs `addr`")?,
             conv: str_field(s, "conv"),

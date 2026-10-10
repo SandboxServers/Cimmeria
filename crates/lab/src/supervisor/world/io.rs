@@ -153,7 +153,7 @@ impl<'a> LiveWorld<'a> {
         if dy != 0 {
             // The handler does not clamp the stored pitch: keep it usable.
             let state = memory::camera_state(&mut Reader(self.sup), cam).await?;
-            let counts = memory::clamped_pitch_counts(state.pitch, state.gain, dy as f32);
+            let counts = memory::clamped_pitch_counts(state.pitch, state.pitch_gain(), dy as f32);
             if counts != 0.0 {
                 self.camera_call(cam, memory::CAMERA_TURN_PITCH_VA, &[float_word(counts)])
                     .await?;
