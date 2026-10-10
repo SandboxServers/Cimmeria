@@ -22,6 +22,8 @@ mod result_dispatch;
 mod listener_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timeout_tests;
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -146,6 +148,35 @@ impl ReadState {
     }
 }
 
+/// A session's socket, which stops writing after the first failed send.
+///
+/// A send fails on an error or after [`framing::SEND_TIMEOUT`]. Either way
+/// the stream may hold half a frame, and the peer is gone or not reading,
+/// so the teardown frames are skipped rather than each waiting out its own
+/// timeout.
+struct Outbound {
+    stream: TcpStream,
+    broken: bool,
+}
+
+impl Outbound {
+    fn new(stream: TcpStream) -> Self {
+        Self {
+            stream,
+            broken: false,
+        }
+    }
+
+    async fn send(&mut self, msg: &str) -> Result<(), ()> {
+        if self.broken {
+            return Err(());
+        }
+        let sent = send_null_terminated(&mut self.stream, msg).await;
+        self.broken = sent.is_err();
+        sent
+    }
+}
+
 /// Drive one authenticated session: room join, game loop, teardown.
 ///
 /// Split out of [`handle_connection`] so the caller owns the single
@@ -158,7 +189,7 @@ impl ReadState {
 /// [`handle_connection`] needs them. `idle_timeout` ends the session as a
 /// cancel when the client sends nothing for that long.
 async fn run_session(
-    mut stream: TcpStream,
+    stream: TcpStream,
     registry: &SessionRegistry,
     result_tx: &mpsc::Sender<CellToBaseMsg>,
     session: MinigameSession,
@@ -170,6 +201,7 @@ async fn run_session(
         mut buf,
         len: mut buf_len,
     } = read;
+    let mut out = Outbound::new(stream);
     let entity_id = session.entity_id;
     let room_id = registry.allocate_room_id().await;
     let user_id = entity_id.to_string();
@@ -198,7 +230,7 @@ async fn run_session(
          <rm id='{room_id}' priv='0' temp='0' game='1' ucnt='1' maxu='1' scnt='0' maxs='100'>\
          <n><![CDATA[{game_name}-{room_id}]]></n></rm></body></msg>"
         );
-        if send_null_terminated(&mut stream, &rm_list).await.is_err() {
+        if out.send(&rm_list).await.is_err() {
             break 'session;
         }
 
@@ -206,7 +238,7 @@ async fn run_session(
         let login_ok = protocol::encode_extension_raw(
             "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginSucceeded</var>",
         );
-        if send_null_terminated(&mut stream, &login_ok).await.is_err() {
+        if out.send(&login_ok).await.is_err() {
             break 'session;
         }
 
@@ -239,14 +271,14 @@ async fn run_session(
             session.player_level,
             session.intelligence,
         );
-        if send_null_terminated(&mut stream, &join_ok).await.is_err() {
+        if out.send(&join_ok).await.is_err() {
             break 'session;
         }
 
         // uCount
         let u_count =
             format!("<msg t='sys'><body action='uCount' r='{room_id}' u='1' s='0'></body></msg>");
-        if send_null_terminated(&mut stream, &u_count).await.is_err() {
+        if out.send(&u_count).await.is_err() {
             break 'session;
         }
 
@@ -255,7 +287,7 @@ async fn run_session(
         for output in &outputs {
             if let GameOutput::Send(vars) = output {
                 let msg = protocol::encode_extension(vars);
-                if send_null_terminated(&mut stream, &msg).await.is_err() {
+                if out.send(&msg).await.is_err() {
                     break 'session;
                 }
             }
@@ -265,16 +297,13 @@ async fn run_session(
         let join_game = protocol::encode_extension_raw(&format!(
             "<var n='_cmd' t='s'>onPlayerJoinGame</var><var n='PlayerId' t='s'>{user_id}</var>"
         ));
-        if send_null_terminated(&mut stream, &join_game).await.is_err() {
+        if out.send(&join_game).await.is_err() {
             break 'session;
         }
 
         // onGameBegin
         let game_begin = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameBegin</var>");
-        if send_null_terminated(&mut stream, &game_begin)
-            .await
-            .is_err()
-        {
+        if out.send(&game_begin).await.is_err() {
             break 'session;
         }
 
@@ -309,7 +338,7 @@ async fn run_session(
         loop {
             tokio::select! {
                 // Read incoming messages
-                result = read_null_terminated(&mut stream, &mut buf, &mut buf_len) => {
+                result = read_null_terminated(&mut out.stream, &mut buf, &mut buf_len) => {
                     match result {
                         Ok(msg) => {
                             idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
@@ -321,7 +350,7 @@ async fn run_session(
                                         match output {
                                             GameOutput::Send(vars) => {
                                                 let encoded = protocol::encode_extension(&vars);
-                                                if send_null_terminated(&mut stream, &encoded).await.is_err() {
+                                                if out.send(&encoded).await.is_err() {
                                                     game_complete = true;
                                                     break;
                                                 }
@@ -383,8 +412,6 @@ async fn run_session(
                                     tracing::warn!(
                                         entity_id,
                                         entity_name = player.name(),
-                                        player_id = player.id,
-                                        player_name = player.name(),
                                         game = %game_name,
                                         msg_type,
                                         body_action,
@@ -397,8 +424,6 @@ async fn run_session(
                                     tracing::warn!(
                                         entity_id,
                                         entity_name = player.name(),
-                                        player_id = player.id,
-                                        player_name = player.name(),
                                         game = %game_name,
                                         msg_type,
                                         body_action,
@@ -413,8 +438,6 @@ async fn run_session(
                             tracing::warn!(
                                 entity_id,
                                 entity_name = player.name(),
-                                player_id = player.id,
-                                player_name = player.name(),
                                 game = %game_name,
                                 limit = MAX_MESSAGE_LEN,
                                 reason = "message_too_long",
@@ -440,8 +463,6 @@ async fn run_session(
                     tracing::info!(
                         entity_id,
                         entity_name = player.name(),
-                        player_id = player.id,
-                        player_name = player.name(),
                         game = %game_name,
                         reason = "idle_timeout",
                         timeout_s = idle_timeout.as_secs(),
@@ -464,7 +485,7 @@ async fn run_session(
                         match output {
                             GameOutput::Send(vars) => {
                                 let encoded = protocol::encode_extension(&vars);
-                                if send_null_terminated(&mut stream, &encoded).await.is_err() {
+                                if out.send(&encoded).await.is_err() {
                                     game_complete = true;
                                     break;
                                 }
@@ -552,7 +573,7 @@ async fn run_session(
             if let GameOutput::Send(vars) = output {
                 // Best-effort: the peer is usually already gone.
                 let encoded = protocol::encode_extension(&vars);
-                let _ = send_null_terminated(&mut stream, &encoded).await;
+                let _ = out.send(&encoded).await;
             }
         }
         send_minigame_result(
@@ -571,12 +592,12 @@ async fn run_session(
     let leave = protocol::encode_extension_raw(&format!(
         "<var n='_cmd' t='s'>onPlayerLeaveGame</var><var n='PlayerId' t='s'>{user_id}</var>"
     ));
-    let _ = send_null_terminated(&mut stream, &leave).await;
+    let _ = out.send(&leave).await;
 
     let end = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameEnd</var>");
-    let _ = send_null_terminated(&mut stream, &end).await;
+    let _ = out.send(&end).await;
 
     let room_del =
         format!("<msg t='sys'><body action='roomDel'><rm id='{room_id}' /></body></msg>");
-    let _ = send_null_terminated(&mut stream, &room_del).await;
+    let _ = out.send(&room_del).await;
 }

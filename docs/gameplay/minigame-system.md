@@ -149,13 +149,16 @@ the connection task that owns it finishes. Two things end it:
    only ever own the session it authenticated against. A ticket
    authenticates one live connection: a second login with it while the
    first is connected is refused (WARN `reason=ticket_already_claimed`).
-   When the socket
-   closes — win,
-   loss, or the player closing the window — the task unregisters it. A
-   connected session is never expired by age, because a Livewire round can
-   run longer than the TTL. It does end if the client sends nothing for the
-   idle timeout (30 minutes), which reports a cancel like a closed window;
-   see [Connection limits](#connection-limits).
+   When the connection ends — win, loss, or the player closing the window —
+   the task unregisters the session. A connected session is never expired
+   by age, because a Livewire round can run longer than the TTL.
+
+   The task only ends when the server notices the socket is gone: a FIN or
+   RST, a send that fails or blocks past 10 s, TCP keepalive giving up
+   (about 90 s after a vanished peer last sent anything), or the 30-minute
+   idle timeout. Until then a SWF that reconnects after a half-open drop is
+   refused as `ticket_already_claimed`. See
+   [Connection limits](#connection-limits).
 2. **The expiry sweep.** A session whose SWF never connects has no task to
    clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
    every unconnected session older than `PENDING_SESSION_TTL` (180 s).
@@ -192,13 +195,18 @@ in within a second.
 | Accept to successful `login` | 30 s | Closed. DEBUG row `reason=handshake_timeout` |
 | Frame size (`MAX_MESSAGE_LEN`, the read buffer) | 4096 bytes | Closed. Before login, DEBUG `reason=preauth_message_too_long`; in a session, WARN `reason=message_too_long` and result code 0 |
 | No inbound frame in a logged-in session | 30 min | The session ends as a cancel (result code 0). INFO row `reason=idle_timeout` |
+| One send to the client | 10 s (`SEND_TIMEOUT`) | The connection is treated as gone: no further frames are sent, and a session ends as a cancel. DEBUG row `reason=send_timeout` |
+| TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s after the peer last sent anything |
 
 The defaults are `ListenerLimits::default()` in
 [`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
 `server::run_with_limits` takes other values; the server configuration has
-no keys for them yet. The idle timeout counts inbound frames only, because a
-Livewire board keeps sending timer updates to a client that has gone. It is
-long on purpose: the board can sit unstarted while the player reads it.
+no keys for them yet. A cap of 0 is raised to 1 with a WARN. The idle
+timeout counts inbound frames only, because a Livewire board keeps sending
+timer updates to a client that has gone. It is long on purpose: the board
+can sit unstarted while the player reads it. Keepalive frees a vanished
+peer well before that, and the send timeout keeps a client that stopped
+reading from parking the game loop where neither would be noticed.
 
 The per-address cap needs the real client address. On Linux, Docker's
 default (iptables) port publishing keeps it for traffic from other hosts.
@@ -223,12 +231,18 @@ connection task decides the level:
 | Who sent it | Level | Fields |
 |---|---|---|
 | A peer that has not logged in | DEBUG | `reason=non_sfs_preauth`, `peer`, `phase`, `parse_error`, `len`, an escaped 48-character `sample`. A well-formed frame in the wrong phase logs `reason=unexpected_preauth_message`, a bad API version INFO `reason=bad_api_version` |
-| A logged-in session | WARN | `Unknown SFS message type` with `entity_id`, `player_id`, their names, `game`, `msg_type`, `body_action`, `reason` (`unknown_sfs_type`, `malformed_xml`, `no_sfs_envelope`, `bad_extension_data`) and `sample` |
+| A login naming an entity id with no session | DEBUG | `reason=no_session`, `peer`, `entity_id`, `game` |
+| A login with the wrong ticket or game for a registered entity | INFO | `reason=ticket_mismatch` or `game_name_mismatch`, `peer`, `entity_id`, `entity_name` |
+| A login with a valid ticket already held by a live connection | WARN | `reason=ticket_already_claimed`, `peer`, `entity_id`, `entity_name`, `game` |
+| A logged-in session | WARN | `Unknown SFS message type` with `entity_id`, `entity_name`, `game`, `msg_type`, `body_action`, `reason` (`unknown_sfs_type`, `malformed_xml`, `no_sfs_envelope`, `bad_extension_data`) and `sample` |
 
 DEBUG reaches SigNoz (`cimmeria_minigame=debug` in the OTLP filter), so the
-pre-login rows stay queryable there. Only WARN and ERROR reach Discord. A
-ticket mismatch for a registered entity is still a WARN from the registry:
-it needs a real entity id and is worth an operator's attention.
+pre-login rows stay queryable there. Only WARN and ERROR reach Discord. The
+entity id in a login is a small integer anyone can guess, and the ticket is
+256 bits from a CSPRNG, so a ticket mismatch is never a real player: it
+stays at INFO so a peer looping crafted logins cannot reach Discord. Only a
+login that holds the real ticket can WARN. The accept-error WARN is
+throttled to once a minute with a `suppressed` count.
 
 ### Result codes
 

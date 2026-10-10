@@ -8,5 +8,6 @@ pub mod games;
 pub mod protocol;
 pub mod server;
 pub mod session;
+mod session_claim;
 
 pub use session::SessionRegistry;

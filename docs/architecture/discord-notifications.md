@@ -336,7 +336,9 @@ probes. Each posted `Unknown SFS message type` with empty `msg_type` and
 `body_action` fields: the codec logged at WARN for any frame without a
 `<msg>` envelope. The codec no longer logs; a frame from a peer that has not
 logged in logs at DEBUG with `reason=non_sfs_preauth` and the `peer`, and
-connection-cap refusals log at DEBUG or INFO. An unknown frame from a
+connection-cap refusals log at DEBUG or INFO. A login with a made-up
+ticket for a guessable entity id used to WARN from the session registry;
+it now logs at INFO with the `peer`. An unknown frame from a
 logged-in session still posts, now with the session and type fields filled.
 This is a fix at the source, not a Discord filter. See
 [minigame-system.md § Logging](../gameplay/minigame-system.md#logging).

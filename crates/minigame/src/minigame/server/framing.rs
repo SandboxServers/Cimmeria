@@ -4,6 +4,8 @@
 //! byte — there is no length prefix, so the reader has to scan for the
 //! terminator and carry the remainder of a coalesced read forward.
 
+use std::time::Duration;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -73,13 +75,40 @@ pub(super) async fn read_null_terminated(
     }
 }
 
+/// How long one send may block on a full socket buffer before the
+/// connection is treated as gone.
+///
+/// A peer that stops reading (or vanished without a FIN) fills the send
+/// buffer, and an unbounded `write_all` would then park the session's
+/// `select!` loop inside a branch body, where neither the idle deadline nor
+/// a closed socket can be noticed. Frames here are a few hundred bytes, so a
+/// healthy client never comes close.
+pub(super) const SEND_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Send a null-terminated message to the stream.
+///
+/// Fails on a write error or when the write has not finished within
+/// [`SEND_TIMEOUT`]. Every caller treats a failure as the end of the
+/// connection: after a timed-out partial write the stream is mid-frame and
+/// must not be written again.
 pub(super) async fn send_null_terminated(stream: &mut TcpStream, msg: &str) -> Result<(), ()> {
     let mut data = msg.as_bytes().to_vec();
     data.push(0); // null terminator
-    stream.write_all(&data).await.map_err(|e| {
-        tracing::debug!(error = %e, "Minigame send error");
-    })
+    match tokio::time::timeout(SEND_TIMEOUT, stream.write_all(&data)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            tracing::debug!(error = %e, "Minigame send error");
+            Err(())
+        }
+        Err(_) => {
+            tracing::debug!(
+                reason = "send_timeout",
+                timeout_s = SEND_TIMEOUT.as_secs(),
+                "Minigame send blocked past the deadline; closing",
+            );
+            Err(())
+        }
+    }
 }
 
 /// A short, escaped prefix of a rejected frame for a DEBUG row, so a probe

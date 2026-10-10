@@ -21,7 +21,7 @@ use super::*;
 use crate::test_support::LogCapture;
 
 /// Loopback pair: `(client, server_half, server_peer_addr)`.
-async fn loopback_pair() -> (TcpStream, TcpStream, SocketAddr) {
+pub(super) async fn loopback_pair() -> (TcpStream, TcpStream, SocketAddr) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback");
@@ -33,7 +33,7 @@ async fn loopback_pair() -> (TcpStream, TcpStream, SocketAddr) {
 
 /// Run [`handle_connection`] over the server half of a fresh pair, against
 /// `registry`.
-async fn connect_to(
+pub(super) async fn connect_to(
     registry: SessionRegistry,
     limits: ListenerLimits,
 ) -> (
@@ -56,7 +56,7 @@ async fn connect_to(
 }
 
 /// [`connect_to`] with an empty registry: nothing can log in.
-async fn spawn_connection(
+pub(super) async fn spawn_connection(
     limits: ListenerLimits,
 ) -> (
     TcpStream,
@@ -92,7 +92,7 @@ async fn closed_within(client: &mut TcpStream, wait: Duration) -> bool {
     }
 }
 
-fn assert_no_warn_or_error(capture: &crate::test_support::LogCaptureGuard) {
+pub(super) fn assert_no_warn_or_error(capture: &crate::test_support::LogCaptureGuard) {
     let loud: Vec<_> = capture
         .all()
         .into_iter()
@@ -356,7 +356,7 @@ async fn an_idle_session_ends_as_canceled() {
 
 /// Send the two frames a real SWF sends on connect: `verChk`, then `login`
 /// with the entity id as `nick` and the ticket as `pword`.
-async fn send_handshake(client: &mut TcpStream, entity_id: u32, ticket: &str) {
+pub(super) async fn send_handshake(client: &mut TcpStream, entity_id: u32, ticket: &str) {
     send_null_terminated(
         client,
         "<msg t='sys'><body action='verChk' r='0'><ver v='154'/></body></msg>",
@@ -409,13 +409,15 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
         "the second login must not start a game:\n{rest}",
     );
     assert!(drain_results(&mut second_rx).is_empty());
-    assert!(capture
+    let row = capture
         .find_event(
             Level::WARN,
             "already in use by a live connection",
             "ticket_already_claimed",
         )
-        .is_some());
+        .expect("a second login on a live ticket must WARN");
+    assert!(row.fields.contains_key("peer"), "{row:#?}");
+    assert!(row.has_field("entity_id", "4313"), "{row:#?}");
 
     // The first session is untouched and still wins normally.
     let victory = "<msg t='xt'><body action='xtReq'>\
@@ -433,4 +435,44 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
         drain_results(&mut first_rx),
         vec![(RESULT_VICTORY, vec![99])]
     );
+}
+
+/// A crafted login naming a registered (guessable) entity id with a
+/// made-up ticket or the wrong game is refused below WARN, with the peer.
+/// The registry used to WARN both, so a peer looping them reached Discord.
+#[tokio::test]
+async fn crafted_logins_for_a_registered_entity_do_not_warn() {
+    let capture = LogCapture::install();
+    let registry = SessionRegistry::new();
+    let ticket = registry
+        .register(4314, 7, "Livewire".into(), 1, 1, 0, 0, 0, 1, vec![], None)
+        .await
+        .expect("fresh registry must accept the session");
+    // `send_handshake` logs in to the `Hack` zone.
+    for (attempt, password) in [("ticket", "0".repeat(64)), ("game", ticket.clone())] {
+        let (mut client, _rx, handle) =
+            connect_to(registry.clone(), ListenerLimits::default()).await;
+        send_handshake(&mut client, 4314, &password).await;
+        tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .unwrap_or_else(|_| panic!("{attempt}: a refused login must close"))
+            .expect("connection task must not panic");
+    }
+
+    for (message, reason) in [
+        ("ticket mismatch", "ticket_mismatch"),
+        ("game name mismatch", "game_name_mismatch"),
+    ] {
+        let row = capture
+            .find_event(Level::INFO, message, reason)
+            .unwrap_or_else(|| panic!("no {reason} row: {:#?}", capture.all()));
+        assert!(row.fields.contains_key("peer"), "{row:#?}");
+        assert!(row.has_field("entity_id", "4314"), "{row:#?}");
+    }
+    assert_no_warn_or_error(&capture);
+    // Neither attempt claimed the session.
+    assert!(registry
+        .authenticate_and_claim(4314, &ticket, "Livewire")
+        .await
+        .is_ok());
 }

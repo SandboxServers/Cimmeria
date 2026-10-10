@@ -1,6 +1,6 @@
 ---
 name: public-port-hardening
-description: SFS port 30000 is internet-facing; why scanner bytes produced empty-field WARNs, the listener limits chosen (2026-10-10) and the pre-auth logging rule
+description: SFS port 30000 is internet-facing; why scanner bytes produced empty-field WARNs, the listener limits, send timeout and keepalive chosen (2026-10-10), and which login rejections may WARN
 metadata:
   type: project
 ---
@@ -23,9 +23,15 @@ sessions WARN with entity/player pairs and the type fields. DEBUG still reaches 
 IP, 30 s accept-to-login, 4096-byte frames (unchanged, C++ parity), 30 min inbound idle.
 Idle expiry reports Canceled (0). The original C++ had none of these.
 
-**Ticket one-live-connection:** `authenticate_and_claim` refuses a session already
-`connected` (WARN `ticket_already_claimed`). Reconnect-after-drop is unaffected because the
-dropped connection's teardown removes the session.
+Also 10 s per send (`SEND_TIMEOUT`; a timed-out send ends the connection and skips the
+teardown frames) and TCP keepalive 60 s / 10 s / 3 probes on accepted sockets (socket2).
+
+**Ticket one-live-connection:** `authenticate_and_claim` returns `Result<_, ClaimRejection>`
+and refuses a session already `connected` (WARN `ticket_already_claimed`, the only
+login-phase WARN reachable with a real ticket). Ticket/game mismatches are INFO: entity ids
+are guessable, so they were a Discord flood vector. A reconnect is only free once the
+server has noticed the old socket is gone (FIN/RST, failed or timed-out send, keepalive
+~90 s, idle 30 min). A half-open drop is refused as `ticket_already_claimed` until then.
 
 Still open from #532: Flash policy `domain='*'`, accept-rate limiting, ticket-to-IP binding.
 

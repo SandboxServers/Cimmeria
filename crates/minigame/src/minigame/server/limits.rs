@@ -81,12 +81,34 @@ pub(super) struct ConnectionTracker {
 }
 
 impl ConnectionTracker {
+    /// A cap of 0 would refuse every connection, so a zero is raised to 1
+    /// (with a WARN, since it is a configuration mistake).
     pub(super) fn new(limits: &ListenerLimits) -> Self {
+        let at_least_one = |value: usize, field: &'static str| {
+            if value == 0 {
+                tracing::warn!(
+                    field,
+                    reason = "zero_connection_cap",
+                    "Minigame connection cap of 0 would refuse everyone; using 1",
+                );
+            }
+            value.max(1)
+        };
         Self {
-            max_total: limits.max_connections,
-            max_per_ip: limits.max_connections_per_ip,
+            max_total: at_least_one(limits.max_connections, "max_connections"),
+            max_per_ip: at_least_one(limits.max_connections_per_ip, "max_connections_per_ip"),
             counts: Arc::default(),
         }
+    }
+
+    /// The effective total cap.
+    pub(super) fn max_total(&self) -> usize {
+        self.max_total
+    }
+
+    /// The effective per-address cap.
+    pub(super) fn max_per_ip(&self) -> usize {
+        self.max_per_ip
     }
 
     /// Take a slot for `ip`, or say which cap is full.
@@ -173,6 +195,17 @@ mod tests {
             Refusal::TotalCap
         );
         assert_eq!(tracker.open(), 2);
+    }
+
+    /// A zero cap is a misconfiguration, not a request to refuse everyone.
+    #[test]
+    fn zero_caps_still_admit_one_connection() {
+        let tracker = ConnectionTracker::new(&limits(0, 0));
+        let ip: IpAddr = "203.0.113.4".parse().unwrap();
+        let _only = tracker
+            .try_acquire(ip)
+            .expect("a zero cap is raised to 1, so the first connection is admitted");
+        assert!(tracker.try_acquire(ip).is_err());
     }
 
     #[test]

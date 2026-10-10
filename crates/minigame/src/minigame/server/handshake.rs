@@ -7,11 +7,17 @@
 //! # Logging
 //!
 //! The peer has not authenticated yet, and the port is public: most of what
-//! fails here is a port scanner sending HTTP, TLS or random bytes. Those
-//! rows log at DEBUG with a stable `reason` and the `peer` address, so they
-//! stay queryable in SigNoz without reaching the Discord warn harvest. The
-//! one WARN left in this phase is a ticket mismatch for a registered entity,
-//! raised by the registry itself.
+//! fails here is a port scanner sending HTTP, TLS or random bytes, or a
+//! crafted login naming a guessable entity id with a made-up ticket. Those
+//! rows log at DEBUG or INFO with a stable `reason` and the `peer` address,
+//! so they stay queryable in SigNoz without reaching the Discord warn
+//! harvest. Two WARNs remain in this phase, and neither is reachable without
+//! a valid ticket:
+//!
+//! - `reason=ticket_already_claimed`: a valid ticket presented while a live
+//!   connection already holds it.
+//! - `Failed to create minigame`: the game factory rejected a claimed
+//!   session (unreachable today; see the comment at the call).
 
 use std::net::SocketAddr;
 
@@ -20,7 +26,7 @@ use tokio::net::TcpStream;
 use super::framing::{frame_sample, read_null_terminated, send_null_terminated, ReadError};
 use crate::minigame::game::{create_game, MinigameInstance};
 use crate::minigame::protocol::{self, ParseError, SfsMessage};
-use crate::minigame::session::{MinigameSession, SessionRegistry};
+use crate::minigame::session::{ClaimRejection, MinigameSession, SessionRegistry};
 
 /// SmartFoxServer API version the original SWFs were built against.
 const API_VERSION: u32 = 154;
@@ -79,6 +85,49 @@ fn log_non_sfs_preauth(peer: SocketAddr, phase: &'static str, error: &ParseError
         sample = %frame_sample(msg),
         "Minigame rejected a pre-login frame; closing",
     );
+}
+
+/// Log a refused login. The entity id in a login is a small integer anyone
+/// can guess, so every rejection that does not need the real ticket stays
+/// below WARN: a peer looping crafted logins must not reach Discord.
+fn log_claim_rejection(peer: SocketAddr, entity_id: u32, game: &str, rejection: &ClaimRejection) {
+    let entity_name = rejection.player_name();
+    let reason = rejection.reason();
+    match rejection {
+        ClaimRejection::AlreadyClaimed { .. } => tracing::warn!(
+            %peer,
+            entity_id,
+            entity_name,
+            game,
+            reason,
+            "Minigame ticket already in use by a live connection",
+        ),
+        ClaimRejection::TicketMismatch { .. } => tracing::info!(
+            %peer,
+            entity_id,
+            entity_name,
+            game,
+            reason,
+            "Minigame ticket mismatch; closing",
+        ),
+        ClaimRejection::GameMismatch { expected, .. } => tracing::info!(
+            %peer,
+            entity_id,
+            entity_name,
+            expected = %expected,
+            got = game,
+            reason,
+            "Minigame game name mismatch; closing",
+        ),
+        ClaimRejection::NoSession => tracing::debug!(
+            %peer,
+            entity_id,
+            entity_name,
+            game,
+            reason,
+            "Minigame login for an entity with no session; closing",
+        ),
+    }
 }
 
 /// Phase 1 — answer `verChk` with the Flash cross-domain policy and
@@ -164,18 +213,15 @@ pub(super) async fn read_and_handle_login(
             };
             // Validate and claim atomically — see `authenticate_and_claim` for
             // the interleaving that a separate `mark_connected` would allow.
-            let Some(session) = registry
+            let session = match registry
                 .authenticate_and_claim(entity_id, &password, &zone)
                 .await
-            else {
-                tracing::debug!(
-                    %peer,
-                    entity_id, // nt:id-only claimed by an unauthenticated peer, no session to name it
-                    game = %zone,
-                    reason = "login_rejected",
-                    "Minigame login rejected; closing",
-                );
-                return None;
+            {
+                Ok(session) => session,
+                Err(rejection) => {
+                    log_claim_rejection(peer, entity_id, &zone, &rejection);
+                    return None;
+                }
             };
 
             // Create game instance. Unreachable today: `games::create` has a
