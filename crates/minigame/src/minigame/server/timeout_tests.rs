@@ -106,6 +106,57 @@ async fn a_trickling_peer_is_cut_at_the_handshake_deadline() {
     );
 }
 
+/// One deadline covers both phases. A peer that completes `verChk` at 25 s
+/// and then trickles its login is still closed at 30 s from accept, not
+/// 30 s after `verChk` (55 s), which a separate deadline per phase would
+/// allow.
+#[tokio::test(start_paused = true)]
+async fn the_handshake_deadline_spans_both_phases() {
+    let limits = ListenerLimits::default();
+    let deadline = limits.handshake_timeout;
+    let start = Instant::now();
+    let (mut client, _rx, handle) = spawn_connection(limits).await;
+
+    tokio::time::sleep_until(start + Duration::from_secs(25)).await;
+    send_null_terminated(
+        &mut client,
+        "<msg t='sys'><body action='verChk' r='0'><ver v='154'/></body></msg>",
+    )
+    .await
+    .expect("verChk send");
+    // The policy reply goes out only once verChk is handled. Wait for it in
+    // real time with a non-blocking read, which arms no timer, so the
+    // paused clock stays at 25 s (see `wait_for_row`).
+    let mut reply = [0u8; 512];
+    let mut answered = false;
+    for _ in 0..500 {
+        if matches!(client.try_read(&mut reply), Ok(n) if n > 0) {
+            answered = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        tokio::task::yield_now().await;
+    }
+    assert!(answered, "the server never answered verChk");
+    assert!(start.elapsed() < deadline, "verChk was handled late");
+
+    let mut tick = 0u64;
+    while !handle.is_finished() && tick < 20 {
+        tick += 1;
+        tokio::time::sleep_until(start + Duration::from_secs(25 + 2 * tick)).await;
+        // Login bytes, never a terminator.
+        let _ = client.write_all(b"<").await;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        tokio::task::yield_now().await;
+    }
+    assert!(handle.is_finished(), "the trickled login was never cut");
+    let closed_at = start.elapsed();
+    assert!(
+        closed_at >= deadline && closed_at <= deadline + Duration::from_secs(2),
+        "closed at {closed_at:?}; the deadline runs {deadline:?} from accept, not from verChk",
+    );
+}
+
 /// A send that cannot finish (the peer never reads, so both socket buffers
 /// fill) fails after `SEND_TIMEOUT` instead of blocking forever.
 #[tokio::test(start_paused = true)]

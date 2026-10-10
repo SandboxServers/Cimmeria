@@ -23,7 +23,9 @@ pub(super) const KEEPALIVE_TIME: Duration = Duration::from_secs(60);
 /// Gap between unanswered probes.
 pub(super) const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 /// Unanswered probes before the OS resets the socket. With the two above,
-/// a vanished peer is dropped about 90 s after it last sent anything.
+/// a vanished peer on an idle connection is dropped about 90 s after it last
+/// sent anything. A connection with unacknowledged data in flight is
+/// governed by TCP retransmission and `SEND_TIMEOUT` instead.
 pub(super) const KEEPALIVE_RETRIES: u32 = 3;
 
 /// Start the minigame TCP server with the default [`ListenerLimits`].

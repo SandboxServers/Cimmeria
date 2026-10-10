@@ -24,8 +24,7 @@ rand = { workspace = true }
 quick-xml = { workspace = true }
 tracing = { workspace = true }
 # TCP keepalive on accepted sockets (time, interval and probe count), which
-# tokio does not expose. `all` is what gates `TcpKeepalive::with_retries`;
-# the workspace-hack already builds socket2 with it.
+# tokio does not expose. `all` is what gates `TcpKeepalive::with_retries`.
 socket2 = { version = "0.6", features = ["all"] }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 

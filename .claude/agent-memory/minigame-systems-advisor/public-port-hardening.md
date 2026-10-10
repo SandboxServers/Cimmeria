@@ -31,7 +31,8 @@ and refuses a session already `connected` (WARN `ticket_already_claimed`, the on
 login-phase WARN reachable with a real ticket). Ticket/game mismatches are INFO: entity ids
 are guessable, so they were a Discord flood vector. A reconnect is only free once the
 server has noticed the old socket is gone (FIN/RST, failed or timed-out send, keepalive
-~90 s, idle 30 min). A half-open drop is refused as `ticket_already_claimed` until then.
+~90 s for an idle connection; with data in flight, retransmit and SEND_TIMEOUT govern instead;
+idle 30 min). A half-open drop is refused as `ticket_already_claimed` until then.
 
 Still open from #532: Flash policy `domain='*'`, accept-rate limiting, ticket-to-IP binding.
 

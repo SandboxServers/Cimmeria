@@ -155,7 +155,7 @@ the connection task that owns it finishes. Two things end it:
 
    The task only ends when the server notices the socket is gone: a FIN or
    RST, a send that fails or blocks past 10 s, TCP keepalive giving up
-   (about 90 s after a vanished peer last sent anything), or the 30-minute
+   (about 90 s for an idle connection whose peer vanished), or the 30-minute
    idle timeout. Until then a SWF that reconnects after a half-open drop is
    refused as `ticket_already_claimed`. See
    [Connection limits](#connection-limits).
@@ -196,7 +196,7 @@ in within a second.
 | Frame size (`MAX_MESSAGE_LEN`, the read buffer) | 4096 bytes | Closed. Before login, DEBUG `reason=preauth_message_too_long`; in a session, WARN `reason=message_too_long` and result code 0 |
 | No inbound frame in a logged-in session | 30 min | The session ends as a cancel (result code 0). INFO row `reason=idle_timeout` |
 | One send to the client | 10 s (`SEND_TIMEOUT`) | The connection is treated as gone: no further frames are sent, and a session ends as a cancel. DEBUG row `reason=send_timeout` |
-| TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s after the peer last sent anything |
+| TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s for an idle connection. With data in flight, TCP retransmission and the 10 s send timeout apply instead |
 
 The defaults are `ListenerLimits::default()` in
 [`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
