@@ -1,0 +1,1117 @@
+{
+  "archive": "02_CASTLE_CELLBLOCK_MAPS_01.zip",
+  "sha256": "50f9ee55543acadda6d5f579b7755b52e4c24e434acaec927138a13c52712291",
+  "files": [
+    {
+      "file": "Castle_CellBlock-00000000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00000001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00000002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00000003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0000fffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0000fffd.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0000fffe.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0000ffff.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00010000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00010001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00010002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00010003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0001fffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0001fffd.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0001fffe.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0001ffff.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00020000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00020001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00020002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00020003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0002fffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0002fffd.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0002fffe.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0002ffff.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00030000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00030001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00030002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-00030003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0003fffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0003fffd.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0003fffe.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-0003ffff.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffc0000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffc0001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffc0002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffc0003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffcfffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffcfffd.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffcfffe.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffcffff.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffd0000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffd0001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffd0002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffd0003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "names": 480,
+      "imports": 310,
+      "exports": 1010
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "names": 229,
+      "imports": 94,
+      "exports": 227
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffe.umap",
+      "names": 169,
+      "imports": 61,
+      "exports": 110
+    },
+    {
+      "file": "Castle_CellBlock-fffdffff.umap",
+      "names": 122,
+      "imports": 22,
+      "exports": 62
+    },
+    {
+      "file": "Castle_CellBlock-fffe0000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffe0001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffe0002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffe0003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "names": 622,
+      "imports": 411,
+      "exports": 977
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "names": 883,
+      "imports": 695,
+      "exports": 2374
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "names": 686,
+      "imports": 463,
+      "exports": 1591
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "names": 726,
+      "imports": 508,
+      "exports": 1764
+    },
+    {
+      "file": "Castle_CellBlock-ffff0000.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-ffff0001.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-ffff0002.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-ffff0003.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffffffc.umap",
+      "names": 116,
+      "imports": 21,
+      "exports": 61
+    },
+    {
+      "file": "Castle_CellBlock-fffffffd.umap",
+      "names": 312,
+      "imports": 128,
+      "exports": 434
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "names": 677,
+      "imports": 496,
+      "exports": 1688
+    },
+    {
+      "file": "Castle_CellBlock-ffffffff.umap",
+      "names": 550,
+      "imports": 369,
+      "exports": 1004
+    },
+    {
+      "file": "Castle_CellBlock.umap",
+      "names": 445,
+      "imports": 78,
+      "exports": 241
+    },
+    {
+      "file": "Castle_CellBlock_MapData.upk",
+      "names": 39,
+      "imports": 4,
+      "exports": 18
+    }
+  ],
+  "matches": [
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Arm00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Closed01"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0_2Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0_2Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Complete00_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_HalfOpen01"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisCamber_Wallstation01"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_Arm00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_Arm00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_Arm00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_GlassOld00_E"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisChamber_HeartBeat00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisControl00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisControl00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisControl00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisControl00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "CA-StasisPrisoner00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisPrisoner00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisPrisoner00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffc.umap",
+      "name": "Ca-StasisPrisoner00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Arm00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Closed01"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Complete00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Wallstation00"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "Ca-StasisCamber_Wallstation01"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_Arm00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_Arm00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_Arm00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_GlassOld00_E"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisChamber_HeartBeat00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisControl00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisControl00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisControl00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffdfffd.umap",
+      "name": "CA-StasisControl00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Arm00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Closed01"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Closed01_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Complete00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisCamber_Wallstation00_Pf0_Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_Arm00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_Arm00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_Arm00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_GlassOld00_E"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisChamber_HeartBeat00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisControl00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisControl00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisControl00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisControl00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "CA-StasisPrisoner00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisPrisoner00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisPrisoner00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "Ca-StasisPrisoner00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffc.umap",
+      "name": "StasisBlockDoubleDoors"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "CA-Stasis_Hub00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransportBase_TC00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransportBase_TC00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransportBase_TC00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransportBase_TC00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc3"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc4"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_44Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_5Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Arc2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "Par-ring05"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "PFX-TakeCover"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "Prisoner329CellDoor"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "ring1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "ring2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "ring3"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "ring4"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "ring5"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "SeqVar_String"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "TakeCoverIndicator"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffd.umap",
+      "name": "TC-Ring_Trans_Console00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-ForceField_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransportBase_TC00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransportBase_TC00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransportBase_TC00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransportBase_TC00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc3"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_19Arc4"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_44Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_5Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Arc0"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Arc2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "ring1"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "ring2"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "ring3"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "ring4"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "ring5"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "SGW-ForceFieldCollisionPlane"
+    },
+    {
+      "file": "Castle_CellBlock-fffefffe.umap",
+      "name": "TC-Ring_Trans_Console00"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "EM-Barbed_fence00_DaOM"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "EM-Barbed_fence00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "EM-Barbed_fence_twoPoles_00"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-ForceField_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingActivate"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransportBase_TC00_D"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransportBase_TC00_EaEM"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransportBase_TC00_N"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransportBase_TC00_S"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransporter00"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransporterBase_TC00"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "GLB-RingTransporterBase_TC00_Pf0_Seq"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "Par-Ring01"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "Par-ring03"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "Par-ring04"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "Par-ring05"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "ring1"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "ring2"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "ring3"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "ring4"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "ring5"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "SGW-ForceFieldCollisionPlane"
+    },
+    {
+      "file": "Castle_CellBlock-fffeffff.umap",
+      "name": "TC-Ring_Trans_Console00"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "CA-Fence00_FX-MI"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "CA-StasisChamber_Glass00_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "CA-StasisChamber_Glass00_Mat"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "CA-StasisChamber_GlassOld00_E"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "GLB-ForceField_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "SeqVar_String"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "SGW-ForceFieldCollisionPlane"
+    },
+    {
+      "file": "Castle_CellBlock-fffffffe.umap",
+      "name": "StraegisAttack"
+    },
+    {
+      "file": "Castle_CellBlock-ffffffff.umap",
+      "name": "CA-Fence00_FX-MI"
+    },
+    {
+      "file": "Castle_CellBlock-ffffffff.umap",
+      "name": "GLB-ForceField_DaO"
+    },
+    {
+      "file": "Castle_CellBlock-ffffffff.umap",
+      "name": "SGW-ForceFieldCollisionPlane"
+    },
+    {
+      "file": "Castle_CellBlock.umap",
+      "name": "SeqVar_String"
+    }
+  ],
+  "errors": []
+}
