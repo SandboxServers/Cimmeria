@@ -127,12 +127,19 @@ pub fn stamp_read(out: &mut Value, elapsed_ms: u64) {
 }
 
 /// Supervisor-lifetime memory for the readers: inventory snapshots for
-/// before/after diffs and the chat read cursors. One supervisor process
-/// drives one client, so a process-wide store is enough.
+/// before/after diffs and the chat read cursors. One process can host
+/// several lab instances (#1312), so every key is scoped by
+/// [`memory_key`] to the instance that wrote it.
 #[derive(Debug, Default)]
 pub struct UiMemory {
     pub snapshots: HashMap<String, Value>,
     pub chat_cursors: HashMap<String, u64>,
+}
+
+/// `label` scoped to lab instance `instance` (`None`: the default), so two
+/// hosted instances never read each other's snapshots or cursors.
+pub fn memory_key(instance: Option<&str>, label: &str) -> String {
+    format!("{}/{label}", instance.unwrap_or("default"))
 }
 
 pub fn memory() -> &'static Mutex<UiMemory> {

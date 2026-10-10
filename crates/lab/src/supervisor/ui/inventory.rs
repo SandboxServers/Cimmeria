@@ -16,7 +16,7 @@ use std::time::Instant;
 use serde_json::{json, Value};
 
 use super::lua_json::list;
-use super::{memory, stamp_read, Supervisor};
+use super::{memory, memory_key, stamp_read, Supervisor};
 use crate::supervisor::flows::widgets::lua_quote;
 
 /// Lua (after the JSON prelude): `__lab_cnames()` maps container id to
@@ -238,7 +238,7 @@ impl Supervisor {
                 .lock()
                 .map_err(|_| "inventory memory poisoned".to_string())?
                 .snapshots
-                .get(label)
+                .get(&memory_key(self.instance(), label))
                 .cloned()
                 .ok_or_else(|| format!("no inventory snapshot named {label:?}"))?;
             out["diff"] = diff(&before, &read);
@@ -249,7 +249,7 @@ impl Supervisor {
                 .lock()
                 .map_err(|_| "inventory memory poisoned".to_string())?
                 .snapshots
-                .insert(label.to_string(), read);
+                .insert(memory_key(self.instance(), label), read);
             out["snapshot"] = json!(label);
         }
         stamp_read(&mut out, t0.elapsed().as_millis() as u64);

@@ -147,13 +147,24 @@ fn build_hosted_server(raw: &str) -> Result<LabServer> {
         let port = u16::try_from(i)
             .ok()
             .and_then(|i| base.checked_add(i))
-            .ok_or_else(|| anyhow::anyhow!("{INSTANCES_ENV} lists too many instances"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "bridge port {base} + {i} for instance {} overflows; lower CIMMERIA_LAB_BRIDGE_PORT",
+                    entry.as_deref().unwrap_or("default")
+                )
+            })?;
         let mut config = SupervisorConfig::from_env();
         config.instance = entry.clone();
         config.port = port;
         let addr = format!("127.0.0.1:{port}");
         let token = if i == 0 {
-            std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default()
+            let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
+            if token.is_empty() {
+                tracing::warn!(
+                    "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will fail until lab_client_start mints its own token"
+                );
+            }
+            token
         } else {
             String::new()
         };
@@ -161,7 +172,12 @@ fn build_hosted_server(raw: &str) -> Result<LabServer> {
 
         let bridge = Arc::new(BridgeClient::new(addr, token));
         let supervisor = Arc::new(Supervisor::new(bridge, config));
-        lease::spawn_sweeper(supervisor.leases().clone());
+        {
+            // The sweeper's expiry lines carry the instance label.
+            let _span =
+                tracing::info_span!("lab_instance", instance = supervisor.label()).entered();
+            lease::spawn_sweeper(supervisor.leases().clone());
+        }
         hosted.push(Hosted {
             label: entry.unwrap_or_else(|| "default".to_string()),
             supervisor,

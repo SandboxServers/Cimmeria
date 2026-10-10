@@ -3,8 +3,9 @@
 //!
 //! Stdio mode gives each session its own supervisor process, each with its
 //! own watchdog, all driving the same `SGW.exe`; one relaunched a client
-//! another had just closed. The daemon is one process with one supervisor,
-//! so there is one watchdog and one owner of the client. ADR:
+//! another had just closed. The daemon is one process with one supervisor
+//! per lab instance (`CIMMERIA_LAB_INSTANCES`, #1312), so each client has
+//! one watchdog and one owner. ADR:
 //! `docs/architecture/live-research-lab.md`; runbook:
 //! `docs/guides/live-research-lab.md`.
 //!

@@ -25,6 +25,7 @@ pub const INSTANCE_ARG: &str = "instance";
 pub struct Hosted {
     /// `default` or the instance name (`p2`).
     pub label: String,
+    /// The instance's own supervisor: client, watchdog and lease book.
     pub supervisor: Arc<Supervisor>,
 }
 
@@ -55,11 +56,19 @@ pub fn parse_list(raw: &str) -> Result<Vec<Option<String>>, String> {
     if out.is_empty() {
         return Err(format!("{INSTANCES_ENV} names no instance"));
     }
+    if out.len() > instance::CEILING_MAX_CLIENTS {
+        return Err(format!(
+            "{INSTANCES_ENV} lists {} instances; at most {} lab clients can run",
+            out.len(),
+            instance::CEILING_MAX_CLIENTS
+        ));
+    }
     Ok(out)
 }
 
 impl Instances {
-    /// Panics on an empty list: a programming error, `parse_list` refuses one.
+    /// The hosted instances, in order. Panics on an empty list: a
+    /// programming error, `parse_list` refuses one.
     pub fn new(list: Vec<Hosted>) -> Self {
         assert!(!list.is_empty(), "an Instances needs at least one instance");
         Self { list }
@@ -70,10 +79,12 @@ impl Instances {
         &self.list[0]
     }
 
+    /// How many instances are hosted (at least one).
     pub fn len(&self) -> usize {
         self.list.len()
     }
 
+    /// The instances in order.
     pub fn iter(&self) -> impl Iterator<Item = &Hosted> {
         self.list.iter()
     }
@@ -88,17 +99,30 @@ impl Instances {
         self.iter().find(|h| h.supervisor.leases().holds(lease_id))
     }
 
+    /// Every instance's label, in order.
     pub fn labels(&self) -> Vec<String> {
         self.iter().map(|h| h.label.clone()).collect()
     }
 }
 
 impl LabServer {
-    /// The server a call runs on: a clone whose supervisor is the target
-    /// instance's. Takes the `instance` argument out of the call. Order: the
-    /// `instance` argument; else the instance holding the call's `lease_id`
-    /// (left in the arguments for the lease gate); else the first instance.
-    pub(super) fn route(&self, request: &mut CallToolRequestParams) -> Result<LabServer, McpError> {
+    /// A server hosting every instance in `instances`. A call runs on the
+    /// instance it names, else the one holding its lease, else the first.
+    pub fn new_multi(instances: Instances) -> Self {
+        let mut server = Self::new(instances.first().supervisor.clone());
+        server.instances = Arc::new(instances);
+        server
+    }
+
+    /// The server a call runs on: `None` for this one, else a clone whose
+    /// supervisor is the target instance's. Takes the `instance` argument
+    /// out of the call. Order: the `instance` argument; else the instance
+    /// holding the call's `lease_id` (left in the arguments for the lease
+    /// gate); else the first instance.
+    pub(super) fn route(
+        &self,
+        request: &mut CallToolRequestParams,
+    ) -> Result<Option<LabServer>, McpError> {
         let hosted = match take_instance_arg(request)? {
             Some(name) => self.instances.by_label(&name).ok_or_else(|| {
                 McpError::invalid_params(
@@ -113,10 +137,13 @@ impl LabServer {
                 .and_then(|id| self.instances.by_lease(&id))
                 .unwrap_or_else(|| self.instances.first()),
         };
-        Ok(LabServer {
+        if Arc::ptr_eq(&hosted.supervisor, &self.supervisor) {
+            return Ok(None);
+        }
+        Ok(Some(LabServer {
             supervisor: hosted.supervisor.clone(),
             ..self.clone()
-        })
+        }))
     }
 
     /// Advertise the `instance` argument on every tool, when more than one
@@ -139,6 +166,10 @@ fn take_instance_arg(request: &mut CallToolRequestParams) -> Result<Option<Strin
     else {
         return Ok(None);
     };
+    // A client that fills optional properties with null means "none".
+    if value.is_null() {
+        return Ok(None);
+    }
     value
         .as_str()
         .map(|s| Some(s.to_string()))
@@ -237,6 +268,11 @@ mod tests {
         assert!(parse_list("p2,../x").is_err());
         assert!(parse_list("").is_err());
         assert!(parse_list(" , ").is_err());
+        assert!(parse_list("default,p2,p3,p4,p5").is_ok());
+        assert!(
+            parse_list("default,p2,p3,p4,p5,p6").is_err(),
+            "the cap is five"
+        );
     }
 
     #[test]
@@ -269,6 +305,127 @@ mod tests {
             assert_eq!(
                 b.input_schema.get("required"),
                 a.input_schema.get("required")
+            );
+        }
+    }
+
+    fn two() -> LabServer {
+        LabServer::new_multi(Instances::new(vec![
+            hosted("default", None),
+            hosted("p2", Some("p2")),
+        ]))
+    }
+
+    fn call(name: &str, args: Value) -> CallToolRequestParams {
+        CallToolRequestParams::new(name.to_string())
+            .with_arguments(args.as_object().unwrap().clone())
+    }
+
+    fn lease_on(s: &LabServer, label: &str) -> String {
+        let req = crate::lease::AcquireRequest {
+            owner: format!("agent-{label}"),
+            purpose: "routing test".into(),
+            ..Default::default()
+        };
+        s.instances
+            .by_label(label)
+            .unwrap()
+            .supervisor
+            .leases()
+            .acquire(req)
+            .unwrap()
+            .lease_id
+    }
+
+    fn routed_label(s: &LabServer, routed: &Option<LabServer>) -> String {
+        let sup = &routed.as_ref().unwrap_or(s).supervisor;
+        s.instances
+            .iter()
+            .find(|h| Arc::ptr_eq(&h.supervisor, sup))
+            .unwrap()
+            .label
+            .clone()
+    }
+
+    /// Regression guard (LP-05a): the `instance` argument picks the
+    /// instance and never reaches the tool's own arguments.
+    #[test]
+    fn route_by_instance_strips_the_argument() {
+        let s = two();
+        for name in ["p2", "P2"] {
+            let mut req = call("client_ui_state", json!({ "instance": name, "x": 1 }));
+            let routed = s.route(&mut req).unwrap();
+            assert_eq!(routed_label(&s, &routed), "p2");
+            let args = req.arguments.unwrap();
+            assert!(!args.contains_key(INSTANCE_ARG));
+            assert_eq!(args["x"], 1);
+        }
+        let mut req = call("client_ui_state", json!({ "instance": null }));
+        assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "default");
+    }
+
+    #[test]
+    fn route_refuses_an_unknown_or_non_string_instance() {
+        let s = two();
+        let Err(err) = s.route(&mut call("client_ui_state", json!({ "instance": "p9" }))) else {
+            panic!("an unknown instance must be refused");
+        };
+        assert!(err.message.contains("default, p2"), "{}", err.message);
+        assert!(s
+            .route(&mut call("client_ui_state", json!({ "instance": 2 })))
+            .is_err());
+    }
+
+    /// Regression guard (LP-05a): with no `instance`, a lease id routes to
+    /// the instance that issued it, else the first instance.
+    #[test]
+    fn route_by_lease_lands_on_its_own_instance() {
+        let s = two();
+        let id = lease_on(&s, "p2");
+        let mut req = call("client_lua_eval", json!({ "lease_id": id }));
+        let routed = s.route(&mut req).unwrap();
+        assert_eq!(routed_label(&s, &routed), "p2");
+        assert!(routed.as_ref().unwrap_or(&s).gate_call(&mut req).is_ok());
+        let mut req = call("client_lua_eval", json!({ "lease_id": "unknown" }));
+        assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "default");
+    }
+
+    /// Regression guard (LP-05a): a lease from one instance does not
+    /// admit a call that names another.
+    #[test]
+    fn a_lease_from_one_instance_is_refused_on_another() {
+        let s = two();
+        let id = lease_on(&s, "default");
+        let mut req = call(
+            "client_lua_eval",
+            json!({ "instance": "p2", "lease_id": id }),
+        );
+        let routed = s.route(&mut req).unwrap();
+        assert_eq!(routed_label(&s, &routed), "p2");
+        assert!(routed.as_ref().unwrap_or(&s).gate_call(&mut req).is_err());
+    }
+
+    #[test]
+    fn a_single_instance_server_lists_no_instance_argument() {
+        let s = LabServer::new(supervisor(None));
+        for t in s.advertise_hosted(s.tool_router.list_all()) {
+            assert!(
+                t.input_schema
+                    .get("properties")
+                    .and_then(|p| p.get(INSTANCE_ARG))
+                    .is_none(),
+                "{}",
+                t.name
+            );
+        }
+        for t in two().advertise_hosted(s.tool_router.list_all()) {
+            assert!(
+                t.input_schema
+                    .get("properties")
+                    .and_then(|p| p.get(INSTANCE_ARG))
+                    .is_some(),
+                "{}",
+                t.name
             );
         }
     }
