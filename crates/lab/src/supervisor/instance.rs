@@ -328,6 +328,9 @@ mod tests {
         assert_eq!(clamp_max(Some("0")), 1);
         assert_eq!(clamp_max(Some("3")), 3);
         assert_eq!(clamp_max(Some("99")), CEILING_MAX_CLIENTS);
+        // The ceiling is the five seeded lab accounts (#1312).
+        assert_eq!(clamp_max(Some("5")), 5);
+        assert_eq!(clamp_max(Some("6")), 5);
     }
 
     #[test]

@@ -404,10 +404,16 @@ impl Supervisor {
         session_file::write_session_at(&session_path, &session)?;
         let mut envs = instance::launch_env(&install_dir, inst);
         // Every lab client gets its own Firesky folder, so two clients never
-        // lock each other's cooked-data cache (#1312).
-        if let Some(profile) = instance_profile::prepare(&install_dir, inst.unwrap_or("default")) {
-            envs.push(profile);
-        }
+        // lock each other's cooked-data cache (#1312). The first launch of
+        // an instance copies its seed (about 30 MB), so off the runtime.
+        let profile = tokio::task::spawn_blocking({
+            let dir = install_dir.clone();
+            let label = inst.unwrap_or("default").to_string();
+            move || instance_profile::prepare(&dir, &label)
+        })
+        .await
+        .map_err(|e| format!("profile task: {e}"))?;
+        envs.extend(profile);
 
         // Native launch runs on a blocking thread. SGW.exe lives in
         // `<install>/Binaries`, next to the `sessions/` dir the session file

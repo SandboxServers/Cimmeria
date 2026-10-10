@@ -8,9 +8,9 @@
 > PowerShell, in this order:
 >
 > ```powershell
-> bash tools/build-lane/lane.sh cargo fmt -p cimmeria-lab
-> bash tools/build-lane/lane.sh cargo clippy -p cimmeria-lab --all-targets -- -D warnings
-> bash tools/build-lane/lane.sh cargo test -p cimmeria-lab
+> pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo fmt -p cimmeria-lab
+> pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo clippy -p cimmeria-lab --all-targets -- -D warnings
+> pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo test -p cimmeria-lab
 > ```
 >
 > The commit message is the packet's subject line, a blank line, a short
@@ -83,7 +83,7 @@ the seed's temp-then-rename.
 
 ## LP-02 One lease book per supervisor
 
-**Worktree:** new, `bash tools/build-lane/mk-worktree.sh feat/lab-lease-per-instance lp02`.
+**Worktree:** new, `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 feat/lab-lease-per-instance lp02`.
 **Subject:** `feat(lab): LP-02 one lease book per supervisor`
 
 Files:
@@ -143,7 +143,7 @@ before.
 
 ## LP-03 Lab tooling
 
-**Worktree:** new, `bash tools/build-lane/mk-worktree.sh feat/lab-instances-tooling lp03`.
+**Worktree:** new, `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 feat/lab-instances-tooling lp03`.
 **Subject:** `feat(lab): LP-03 instances.ps1 and multi-instance labd.env`
 No Rust. PowerShell and docs only.
 
@@ -184,7 +184,7 @@ Files:
 
 Checks: `pwsh -NoProfile -File tools/lab/instances.ps1 status` runs without
 error (it may print "missing"); `pwsh -NoProfile -Command "Get-Command -Syntax tools/lab/instances.ps1"`
-parses. `bash tools/lint-md.sh` on changed Markdown is warn-only.
+parses. `pwsh -NoProfile -File tools/lint-md.ps1` on changed Markdown is warn-only.
 
 Reviewer focus: the password never printed; `-Force` respected; strict mode
 errors on a missing property; CRLF.
@@ -192,7 +192,7 @@ errors on a missing property; CRLF.
 ## LP-05a Instance registry and routing
 
 **Depends on:** LP-02 merged. **Worktree:** new off `origin/main`,
-`bash tools/build-lane/mk-worktree.sh feat/lab-multi-instance lp05a`.
+`pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 feat/lab-multi-instance lp05a`.
 **Subject:** `feat(lab): LP-05a one daemon hosts every lab instance, routed per call`
 
 Files:
@@ -329,7 +329,7 @@ path unchanged.
 ## LP-05b Lease tools and UAT p2 across instances
 
 **Depends on:** LP-05a merged. **Worktree:** new off `origin/main`,
-`bash tools/build-lane/mk-worktree.sh feat/lab-lease-tools-multi lp05b`.
+`pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 feat/lab-lease-tools-multi lp05b`.
 **Subject:** `feat(lab): LP-05b per-account lease tools, account-name routing, UAT p2 from the registry`
 
 Files:
@@ -376,7 +376,7 @@ registry p2 do not leave the p2 lease held after the run.
 
 ## LP-06 Watchdog boot grace
 
-**Worktree:** new, `bash tools/build-lane/mk-worktree.sh feat/lab-watchdog-boot-grace lp06`.
+**Worktree:** new, `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 feat/lab-watchdog-boot-grace lp06`.
 **Subject:** `fix(lab): LP-06 watchdog boot grace for a client whose bridge is still coming up`
 
 Files:
@@ -441,6 +441,8 @@ Update, each in the same voice as its file (docs are CRLF):
 - `docs/reverse-engineering/findings/multi-client-lab.md`: results of the
   live test plan (LT-1 to LT-7 as run on 2026-10-10), root cause, the
   measurements in [README.md](README.md), confidence raised to HIGH.
+- The client ceiling is now 5, not 4: `docs/guides/live-research-lab.md`
+  (about line 375) and `multi-client-lab.md` (about line 74) still say 4.
 - `docs/guides/automated-uat.md`: two-player rows use the registry's p2
   when hosted.
 - `docs/analysis/lab-automation/tooling-backlog.md`: note the camera gap

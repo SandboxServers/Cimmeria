@@ -63,14 +63,25 @@ pub enum Seeded {
     /// instance keeps the cache its own logins brought up to date.
     AlreadyThere,
     /// Copied this many files from the real folder.
-    Copied { files: usize, bytes: u64 },
+    Copied {
+        /// Files copied.
+        files: usize,
+        /// Their total size.
+        bytes: u64,
+    },
     /// The real folder does not exist yet (the game never ran on this
     /// account): the instance starts empty and the server fills its cache.
     NoSource,
 }
 
+/// Serialises seeds: two launches of one instance at once must not race on
+/// its `SGWGame.seeding` folder (the loser would fall back to the shared
+/// folder, the #1312 lock). Seeds are rare, so one lock for every instance.
+static SEED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Seed `profile`'s `SGWGame` from `source` (the real one), once.
 pub fn seed(source: &Path, profile: &Path) -> std::io::Result<Seeded> {
+    let _guard = SEED_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dst = sgwgame_dir(&profile.join("Documents"));
     if dst.is_dir() {
         return Ok(Seeded::AlreadyThere);
@@ -142,9 +153,11 @@ pub fn redirectable_documents(personal_raw: &str, user_profile: &Path) -> Result
 }
 
 /// The current user's unexpanded `Personal` value from
-/// `HKCU\...\Explorer\User Shell Folders`.
+/// `HKCU\...\Explorer\User Shell Folders`: `Ok(None)` when the value is
+/// absent (Windows then uses its default), `Err` on any other failure.
 #[cfg(windows)]
-pub fn personal_shell_folder_raw() -> Option<String> {
+pub fn personal_shell_folder_raw() -> Result<Option<String>, String> {
+    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_MORE_DATA};
     use windows_sys::Win32::System::Registry::{
         RegGetValueW, HKEY_CURRENT_USER, RRF_NOEXPAND, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
     };
@@ -152,31 +165,44 @@ pub fn personal_shell_folder_raw() -> Option<String> {
     let key = wide(r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders");
     let value = wide("Personal");
     let mut buf = vec![0u16; 1024];
-    let mut len = (buf.len() * 2) as u32;
-    // SAFETY: the key and value names are NUL-terminated UTF-16; `buf` and
-    // `len` describe a writable buffer of `len` bytes.
-    let rc = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            key.as_ptr(),
-            value.as_ptr(),
-            RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
-            std::ptr::null_mut(),
-            buf.as_mut_ptr().cast(),
-            &mut len,
-        )
-    };
-    if rc != 0 {
-        return None;
+    // A value longer than the buffer reports its size: grow once and retry.
+    for _ in 0..2 {
+        let mut len = (buf.len() * 2) as u32;
+        // SAFETY: the key and value names are NUL-terminated UTF-16; `buf`
+        // and `len` describe a writable buffer of `len` bytes.
+        let rc = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                value.as_ptr(),
+                RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast(),
+                &mut len,
+            )
+        };
+        match rc {
+            0 => {
+                let chars = (len as usize / 2).min(buf.len());
+                let s = String::from_utf16_lossy(&buf[..chars]);
+                return Ok(Some(s.trim_end_matches('\0').to_string()));
+            }
+            ERROR_FILE_NOT_FOUND => return Ok(None),
+            ERROR_MORE_DATA => buf = vec![0u16; len as usize / 2 + 1],
+            rc => {
+                return Err(format!(
+                    "reading the Personal shell folder failed (error {rc})"
+                ))
+            }
+        }
     }
-    let chars = (len as usize / 2).min(buf.len());
-    let s = String::from_utf16_lossy(&buf[..chars]);
-    Some(s.trim_end_matches('\0').to_string())
+    Err("the Personal shell folder value kept growing".into())
 }
 
+/// Off Windows there is no shell-folder registry: always the default.
 #[cfg(not(windows))]
-pub fn personal_shell_folder_raw() -> Option<String> {
-    None
+pub fn personal_shell_folder_raw() -> Result<Option<String>, String> {
+    Ok(None)
 }
 
 /// The real `SGWGame` folder to seed from, or why the redirect cannot work
@@ -185,7 +211,7 @@ pub fn real_sgwgame() -> Result<PathBuf, String> {
     let profile = std::env::var_os(USER_PROFILE_ENV)
         .map(PathBuf::from)
         .ok_or_else(|| "USERPROFILE is unset".to_string())?;
-    let raw = personal_shell_folder_raw().unwrap_or_else(|| r"%USERPROFILE%\Documents".into());
+    let raw = personal_shell_folder_raw()?.unwrap_or_else(|| r"%USERPROFILE%\Documents".into());
     redirectable_documents(&raw, &profile).map(|docs| sgwgame_dir(&docs))
 }
 
@@ -195,7 +221,8 @@ pub const SHARED_USER_DIR_ENV: &str = "CIMMERIA_LAB_SHARED_USER_DIR";
 
 /// Whether [`SHARED_USER_DIR_ENV`]'s raw value asks for the shared folder.
 pub fn shared_user_dir_from(raw: Option<&str>) -> bool {
-    matches!(raw.map(str::trim), Some("1" | "true" | "yes"))
+    let raw = raw.map(|s| s.trim().to_ascii_lowercase());
+    matches!(raw.as_deref(), Some("1" | "true" | "yes"))
 }
 
 /// Get instance `label`'s profile ready and return the environment entry
@@ -203,12 +230,24 @@ pub fn shared_user_dir_from(raw: Option<&str>) -> bool {
 /// (opted out, a non-redirectable Documents folder, or a seed failure; each
 /// logged). Called on every launch; the seed itself happens once.
 pub fn prepare(install_dir: &Path, label: &str) -> Option<(String, String)> {
-    if shared_user_dir_from(std::env::var(SHARED_USER_DIR_ENV).ok().as_deref()) {
+    let shared = shared_user_dir_from(std::env::var(SHARED_USER_DIR_ENV).ok().as_deref());
+    prepare_from(shared, real_sgwgame, install_dir, label)
+}
+
+/// [`prepare`] over its inputs: the opt-out, and how to find the real
+/// `SGWGame` folder (only asked when not opted out).
+fn prepare_from(
+    shared: bool,
+    real: impl FnOnce() -> Result<PathBuf, String>,
+    install_dir: &Path,
+    label: &str,
+) -> Option<(String, String)> {
+    if shared {
         tracing::info!(target: "lab.instance", event = "user_dir_shared", instance = label,
             reason = "opted_out", "lab client uses the shared Firesky folder ({SHARED_USER_DIR_ENV})");
         return None;
     }
-    let source = match real_sgwgame() {
+    let source = match real() {
         Ok(s) => s,
         Err(why) => {
             tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
@@ -248,7 +287,7 @@ mod tests {
 
     #[test]
     fn only_an_explicit_yes_shares_the_folder() {
-        for yes in ["1", "true", "yes", " 1 "] {
+        for yes in ["1", "true", "yes", " 1 ", "TRUE", "Yes"] {
             assert!(shared_user_dir_from(Some(yes)), "{yes:?}");
         }
         for no in [None, Some(""), Some("0"), Some("false"), Some("no")] {
@@ -380,5 +419,56 @@ mod tests {
             Seeded::Copied { files: 1, bytes: 3 }
         );
         assert!(!half.exists());
+        assert!(
+            !sgwgame_dir(&profile.join("Documents"))
+                .join("partial.tmp")
+                .exists(),
+            "a half-finished seed's files must not reach the instance"
+        );
+    }
+
+    #[test]
+    fn prepare_points_the_default_instance_at_its_own_profile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("real/SGWGame");
+        write(&src.join("Config/SGWEngine.ini"), "ini");
+        let install = tmp.path().join("install");
+        let env = prepare_from(false, || Ok(src.clone()), &install, "default").unwrap();
+        let profile = profile_dir(&install, "default");
+        assert_eq!(
+            env,
+            (
+                USER_PROFILE_ENV.to_string(),
+                profile.to_string_lossy().into_owned()
+            )
+        );
+        assert!(sgwgame_dir(&profile.join("Documents"))
+            .join("Config/SGWEngine.ini")
+            .is_file());
+    }
+
+    #[test]
+    fn prepare_falls_back_to_the_shared_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let install = tmp.path().join("install");
+        let src = tmp.path().join("real/SGWGame");
+        write(&src.join("Config/SGWEngine.ini"), "ini");
+
+        // Opted out: the real folder is not even looked up.
+        assert_eq!(
+            prepare_from(true, || panic!("not asked"), &install, "p2"),
+            None
+        );
+        // Documents not redirectable (OneDrive, a registry error).
+        assert_eq!(
+            prepare_from(false, || Err("absolute".into()), &install, "p2"),
+            None
+        );
+        // The seed fails: the profile's Documents is a file.
+        write(&profile_dir(&install, "p3").join("Documents"), "not a dir");
+        assert_eq!(
+            prepare_from(false, || Ok(src.clone()), &install, "p3"),
+            None
+        );
     }
 }
