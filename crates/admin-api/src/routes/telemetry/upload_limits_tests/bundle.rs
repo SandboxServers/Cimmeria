@@ -176,6 +176,50 @@ fn a_zip_over_the_line_budget_is_truncated() {
     assert_eq!((ok.files, ok.lines, ok.truncation), (1, 3, None));
 }
 
+/// **A large entry of short lines stops at the line budget** and counts
+/// what it dropped: 2,000,000 one-byte lines (4 MB) with a budget of
+/// 1,000 replay 1,000 and report 1,999,000 dropped. The lines are walked
+/// lazily, never collected: collecting a 64 MiB entry of `a\n` would
+/// allocate about half a gigabyte of slices.
+#[test]
+fn a_large_entry_of_short_lines_stops_at_the_line_budget() {
+    let data = "a\n".repeat(2_000_000);
+    let zip = zip_of(&[("big.log", data.as_bytes())]);
+    let limits = UploadLimits {
+        bundle_lines: 1_000,
+        ..UploadLimits::default()
+    };
+    let counts = unpack_and_replay(&claims("sess-zip-short-lines"), &zip, &limits).unwrap();
+    assert_eq!(counts.lines, 1_000);
+    let t = counts.truncation.unwrap();
+    assert_eq!(
+        (t.budget, t.kept, t.dropped_estimate),
+        ("lines", 1_000, 1_999_000)
+    );
+}
+
+/// A file over what is left of the byte budget is skipped, not the end of
+/// the replay: a smaller, older file after it still fits and is replayed.
+#[test]
+fn a_file_over_the_byte_budget_is_skipped_and_smaller_ones_still_replay() {
+    let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, day, len) in [("new-big.log", 20u8, 500usize), ("old-small.log", 5, 10)] {
+        let when = zip::DateTime::from_date_and_time(2026, 9, day, 12, 0, 0).unwrap();
+        let options = zip::write::SimpleFileOptions::default().last_modified_time(when);
+        zw.start_file(name, options).unwrap();
+        zw.write_all("x\n".repeat(len / 2).as_bytes()).unwrap();
+    }
+    let zip = zw.finish().unwrap().into_inner();
+    let limits = UploadLimits {
+        bundle_expanded_bytes: 100,
+        ..UploadLimits::default()
+    };
+    let counts = unpack_and_replay(&claims("sess-zip-skip"), &zip, &limits).unwrap();
+    assert_eq!((counts.files, counts.lines), (1, 5));
+    let t = counts.truncation.unwrap();
+    assert_eq!((t.budget, t.dropped_estimate), ("expanded bytes", 500));
+}
+
 /// A bundle within every budget is accepted through the handler.
 #[test]
 fn a_small_bundle_is_accepted() {

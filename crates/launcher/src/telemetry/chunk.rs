@@ -29,10 +29,11 @@ pub enum ChunkError {
     KillSwitch { retry_after_secs: u64 },
     #[error("Rate limited (429) — retry after {retry_after_secs}s")]
     RateLimited { retry_after_secs: u64 },
-    /// 413: the server will never take this chunk. The caller drops it
+    /// A 4xx other than 401, 408 and 429 (413 too large, 400 not gzip,
+    /// ...): the server will never take this chunk. The caller drops it
     /// rather than re-queueing it, or it would be refused on every retry.
-    #[error("Chunk refused as too large (413): {body}")]
-    TooLarge { body: String },
+    #[error("Chunk rejected ({status}): {body}")]
+    Rejected { status: u16, body: String },
 }
 
 impl ChunkError {
@@ -132,8 +133,13 @@ pub async fn post_chunk(
         });
     }
     let body = resp.text().await.unwrap_or_default();
-    if status.as_u16() == 413 {
-        return Err(ChunkError::TooLarge { body });
+    // 401 and 429 are handled above; 408 is a timeout worth retrying.
+    // Every other 4xx says this chunk itself is unacceptable.
+    if status.is_client_error() && status.as_u16() != 408 {
+        return Err(ChunkError::Rejected {
+            status: status.as_u16(),
+            body,
+        });
     }
     Err(ChunkError::Status {
         status: status.as_u16(),
@@ -284,11 +290,17 @@ mod tests {
         }
     }
 
-    // 413 and 429 have their own shapes: the flush drops a 413'd chunk and
-    // backs off on a 429.
+    // A 4xx other than 401/408/429 is a rejection the flush drops; 429 is
+    // a back-off; 408 is an ordinary retryable status.
     #[tokio::test]
-    async fn post_chunk_413_and_429_have_their_own_errors() {
-        for (status, retry) in [(413u16, None), (429, Some("30"))] {
+    async fn post_chunk_classifies_client_errors() {
+        for (status, retry) in [
+            (413u16, None),
+            (400, None),
+            (422, None),
+            (429, Some("30")),
+            (408, None),
+        ] {
             let server = MockServer::start().await;
             let mut resp = ResponseTemplate::new(status);
             if let Some(r) = retry {
@@ -304,7 +316,10 @@ mod tests {
                 .await
                 .unwrap_err();
             match (status, err) {
-                (413, ChunkError::TooLarge { .. }) => {}
+                (400 | 413 | 422, ChunkError::Rejected { status: s, .. }) => {
+                    assert_eq!(s, status);
+                }
+                (408, ChunkError::Status { status: 408, .. }) => {}
                 (429, e @ ChunkError::RateLimited { .. }) => {
                     assert_eq!(e.retry_after_secs(), Some(30));
                 }

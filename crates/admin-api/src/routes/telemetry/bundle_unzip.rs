@@ -125,29 +125,41 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
     truncation: impl Fn(&'static str, u64, u64) -> Truncation,
 ) -> Result<(), IngestError> {
     let mut expanded = 0u64;
+    let mut skipped_bytes = 0u64;
     for (_, i) in order {
         let mut entry = zip
             .by_index(i)
             .map_err(|e| IngestError::Zip(e.to_string()))?;
         let path = capped(entry.name(), MAX_LABEL_BYTES).into_owned();
         let remaining = limits.bundle_expanded_bytes - expanded;
-        let over_bytes = truncation("expanded bytes", limits.bundle_expanded_bytes, entry.size());
         // The declared size first, so an entry known to be too big is not
-        // expanded at all...
+        // expanded at all. It is skipped, not the end of the replay: a
+        // smaller, older file may still fit.
         if entry.size() > remaining {
-            counts.truncation = Some(over_bytes);
-            break;
+            skipped_bytes = skipped_bytes.saturating_add(entry.size());
+            counts.truncation = Some(truncation(
+                "expanded bytes",
+                limits.bundle_expanded_bytes,
+                skipped_bytes,
+            ));
+            continue;
         }
-        // ...then the bytes actually read, because the declared size is
-        // the zip's own claim. The whole entry is read before any of it is
-        // replayed.
+        // Then the bytes actually read, because the declared size is the
+        // zip's own claim. The whole entry is read before any of it is
+        // replayed. An entry that expands past what it declared stops the
+        // replay: the zip is lying, and skipping on would let every lying
+        // entry cost another full read of the budget.
         let mut content = Vec::new();
         (&mut entry as &mut dyn Read)
             .take(remaining + 1)
             .read_to_end(&mut content)
             .map_err(|e| IngestError::Zip(e.to_string()))?;
         if content.len() as u64 > remaining {
-            counts.truncation = Some(over_bytes);
+            counts.truncation = Some(truncation(
+                "expanded bytes",
+                limits.bundle_expanded_bytes,
+                skipped_bytes.saturating_add(content.len() as u64),
+            ));
             break;
         }
         expanded += content.len() as u64;
@@ -165,15 +177,14 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
             continue;
         };
         counts.files += 1;
-        let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
-        for (n, line) in lines.iter().enumerate() {
+        // Lazily: an entry of short lines has millions of them, and
+        // collecting them first would cost far more than the entry itself.
+        let mut lines = content.lines().filter(|l| !l.is_empty());
+        let mut over = false;
+        for line in lines.by_ref() {
             if counts.lines >= limits.bundle_lines {
-                counts.truncation = Some(truncation(
-                    "lines",
-                    limits.bundle_lines,
-                    (lines.len() - n) as u64,
-                ));
-                return Ok(());
+                over = true;
+                break;
             }
             tracing::info!(
                 target: "launcher.client_log",
@@ -186,6 +197,15 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
                 message = %capped(line, MAX_MESSAGE_BYTES),
             );
             counts.lines += 1;
+        }
+        if over {
+            // The line that hit the budget, and the rest of this entry.
+            counts.truncation = Some(truncation(
+                "lines",
+                limits.bundle_lines,
+                1 + lines.count() as u64,
+            ));
+            return Ok(());
         }
     }
     Ok(())

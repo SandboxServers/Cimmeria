@@ -1,5 +1,6 @@
-//! Flushing the on-disk queue as chunks: split by size and rows, a 413
-//! dropped as poison, a 429/503 honoured as a back-off.
+//! Flushing the on-disk queue as chunks: split by size and rows, a 4xx
+//! rejection (413, 400, ...) dropped as poison, a 429/503 honoured as a
+//! back-off.
 //!
 //! The queue can hold far more than one chunk (a server outage, or a
 //! launcher killed mid-session, leaves a backlog that survives restarts),
@@ -50,10 +51,11 @@ pub(super) async fn flush_queue(
         let n = batch.len() as u64;
         match chunk::post_chunk(http, target.endpoint, target.token, &events[batch.clone()]).await {
             Ok(()) => sent += n,
-            Err(ChunkError::TooLarge { .. }) => {
+            Err(ChunkError::Rejected { status, .. }) => {
                 tracing::warn!(
+                    status,
                     dropped = n,
-                    "telemetry chunk refused as too large (413); its events are dropped"
+                    "telemetry chunk rejected by the server; its events are dropped"
                 );
                 if let Err(e) = queue.add_dropped(n) {
                     tracing::warn!(error = %e, "telemetry dropped-lines counter update failed");

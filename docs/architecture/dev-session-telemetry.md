@@ -54,7 +54,7 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/events.rs` | NDJSON event schema + Atera log-line parser. |
 | `crates/launcher/src/telemetry/queue.rs` | Crash-safe on-disk JSONL queue (100 MiB cap, drop-oldest). |
 | `crates/launcher/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`, and the split of a drained queue into chunks. |
-| `crates/launcher/src/telemetry/flush.rs` | Flushes the queue as chunks of at most `chunk_max_bytes` of NDJSON and 1,000 rows. A 413 drops that chunk into the dropped-lines count; a 429 or 503 holds further flushes off for its `Retry-After`; any other failure re-queues the unsent chunks. |
+| `crates/launcher/src/telemetry/flush.rs` | Flushes the queue as chunks of at most `chunk_max_bytes` of NDJSON and 1,000 rows. A 413, or any 4xx but 401, 408 and 429, drops that chunk into the dropped-lines count; a 429 or 503 holds further flushes off for its `Retry-After`; any other failure re-queues the unsent chunks. |
 | `crates/launcher/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`, carrying the log files written to since the session started. |
 | `crates/launcher/src/telemetry/session.rs` | `current-session.json` writer (reserved for future Lua-side hook). |
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |

@@ -196,6 +196,31 @@ impl RefusalLog {
     }
 }
 
+impl RefusalLog {
+    /// Log a chunk that was accepted with `bad` rows skipped because they
+    /// did not parse (`reason = bad_rows`), unless the throttle holds it
+    /// back. Never the rows themselves.
+    pub(super) fn report_bad_rows(&self, who: &Uploader, bad: u64, now: Instant) {
+        let reason = "bad_rows";
+        let peer = who.peer.to_string();
+        let subject = who.session_id.as_deref().unwrap_or(&peer);
+        let Decision::Emit { suppressed } = self.decide(reason, subject, now) else {
+            return;
+        };
+        tracing::warn!(
+            target: "launcher.ingest",
+            route = Route::Chunk.path(),
+            reason,
+            bad_rows = bad,
+            session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
+            install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
+            peer = %who.peer,
+            suppressed,
+            "telemetry upload-chunk skipped rows that did not parse"
+        );
+    }
+}
+
 /// Where an accepted upload was cut short.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Truncation {

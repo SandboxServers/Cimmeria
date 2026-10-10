@@ -14,7 +14,11 @@
 //! every retry, forever. Instead the chunk is cut at the last whole line
 //! within the budget, the rows before the cut are replayed, the rest are
 //! counted (or estimated) and dropped, and the answer is a 200 with
-//! `truncated: true` and a throttled `chunk_truncated` warn.
+//! `truncated: true` and a throttled `chunk_truncated` warn. For the same
+//! reason a row that is not UTF-8 or not an event the server knows is
+//! skipped and counted (`bad_rows`, and a throttled `bad_rows` warn)
+//! rather than refusing the chunk; only a body that is not gzip at all is
+//! refused (400 `bad_gzip`).
 
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
@@ -96,7 +100,11 @@ async fn chunk_flow(
     .await
     .map_err(|e| IngestError::Gzip(format!("chunk decode join failed: {e}")))?;
     let _slot = slot;
-    let DecodedChunk { events, truncation } = decoded?;
+    let DecodedChunk {
+        events,
+        truncation,
+        bad_rows,
+    } = decoded?;
 
     // The runaway guard first: over the session's budget only priority
     // events are replayed (the rest are counted and reported below, never
@@ -119,6 +127,9 @@ async fn chunk_flow(
 
     if let Some(t) = &truncation {
         state.refusals.report_truncated(Route::Chunk, who, t, now);
+    }
+    if bad_rows > 0 {
+        state.refusals.report_bad_rows(who, bad_rows, now);
     }
     if suppressed > 0 {
         tracing::warn!(
@@ -158,6 +169,7 @@ async fn chunk_flow(
         parsed_lines: parsed,
         suppressed,
         truncated: truncation.is_some(),
+        bad_rows,
     })
 }
 
@@ -166,6 +178,8 @@ async fn chunk_flow(
 pub(super) struct DecodedChunk {
     pub events: Vec<TelemetryEvent>,
     pub truncation: Option<Truncation>,
+    /// Rows skipped because they did not parse.
+    pub bad_rows: u64,
 }
 
 /// Expand, cut and parse one chunk body, and cap its strings.
@@ -174,7 +188,11 @@ pub(super) fn decode_chunk(
     limits: &UploadLimits,
 ) -> Result<DecodedChunk, IngestError> {
     let inflated = inflate_bounded(body, limits.chunk_decompressed_bytes)?;
-    let (mut events, rows_past_cap) = parse_rows_bounded(&inflated.text, limits.chunk_rows)?;
+    let ParsedRows {
+        mut events,
+        past_cap: rows_past_cap,
+        bad: bad_rows,
+    } = parse_rows_bounded(&inflated.bytes, limits.chunk_rows);
     events.iter_mut().for_each(cap_event);
     let kept = events.len() as u64;
     let truncation = if let Some(ratio_left) = inflated.cut {
@@ -197,13 +215,18 @@ pub(super) fn decode_chunk(
     } else {
         None
     };
-    Ok(DecodedChunk { events, truncation })
+    Ok(DecodedChunk {
+        events,
+        truncation,
+        bad_rows,
+    })
 }
 
 /// An expanded chunk, cut at its last whole line if it passed the cap.
 #[derive(Debug)]
 pub(super) struct Inflated {
-    pub text: String,
+    /// NDJSON bytes; each row is checked for UTF-8 on its own.
+    pub bytes: Vec<u8>,
     /// `Some(r)` when the output was cut at the cap: `r` is the compressed
     /// input left unread per byte read, for estimating what was dropped.
     pub cut: Option<f64>,
@@ -228,33 +251,42 @@ pub(super) fn inflate_bounded(body: &[u8], cap: u64) -> Result<Inflated, IngestE
     } else {
         None
     };
-    let text =
-        String::from_utf8(out).map_err(|_| IngestError::Gzip("chunk is not UTF-8".into()))?;
-    Ok(Inflated { text, cut })
+    Ok(Inflated { bytes: out, cut })
 }
 
-/// Parse up to `max_rows` rows; the rest are counted, not parsed. A bad
-/// row among the parsed ones refuses the whole chunk, so a refused chunk
-/// spends none of the session's budget.
-pub(super) fn parse_rows_bounded(
-    ndjson: &str,
-    max_rows: usize,
-) -> Result<(Vec<TelemetryEvent>, u64), IngestError> {
-    let mut events = Vec::new();
-    let mut past_cap = 0u64;
-    for (idx, line) in ndjson.lines().enumerate() {
-        if line.trim().is_empty() {
+/// The rows of one chunk.
+#[derive(Debug, Default)]
+pub(super) struct ParsedRows {
+    pub events: Vec<TelemetryEvent>,
+    /// Rows past the row cap: counted, never parsed.
+    pub past_cap: u64,
+    /// Rows that are not UTF-8 or not a [`TelemetryEvent`] the server
+    /// knows: counted and skipped.
+    pub bad: u64,
+}
+
+/// Parse up to `max_rows` good rows; the rest are counted, not parsed. A
+/// row that does not parse is counted and skipped rather than refusing the
+/// chunk: the uploaders re-send a refused chunk, so one row the server's
+/// types reject would otherwise block everything queued behind it.
+pub(super) fn parse_rows_bounded(ndjson: &[u8], max_rows: usize) -> ParsedRows {
+    let mut rows = ParsedRows::default();
+    for line in ndjson.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.iter().all(u8::is_ascii_whitespace) {
             continue;
         }
-        if events.len() >= max_rows {
-            past_cap += 1;
+        if rows.events.len() >= max_rows {
+            rows.past_cap += 1;
             continue;
         }
-        let ev: TelemetryEvent = serde_json::from_str(line).map_err(|e| IngestError::Ndjson {
-            line: idx as u64 + 1,
-            err: e.to_string(),
-        })?;
-        events.push(ev);
+        match std::str::from_utf8(line)
+            .ok()
+            .and_then(|l| serde_json::from_str::<TelemetryEvent>(l).ok())
+        {
+            Some(ev) => rows.events.push(ev),
+            None => rows.bad += 1,
+        }
     }
-    Ok((events, past_cap))
+    rows
 }

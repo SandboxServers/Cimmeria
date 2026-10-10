@@ -90,6 +90,9 @@ pub(super) struct ChunkResponse {
     /// only the rows before it were parsed and replayed, the rest were
     /// dropped. Additive; uploaders that predate it ignore it.
     pub truncated: bool,
+    /// Rows skipped because they were not UTF-8 or not an event the server
+    /// knows. Additive.
+    pub bad_rows: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,8 +120,6 @@ pub(super) enum IngestError {
     Zip(String),
     #[error("multipart parse failed: {0}")]
     Multipart(String),
-    #[error("ndjson parse failed at line {line}: {err}")]
-    Ndjson { line: u64, err: String },
     /// The upload passed one of its budgets (expanded bytes, rows, zip
     /// entries, lines). Processing stopped at the first one hit.
     #[error("Upload exceeds the {what} limit ({limit})")]
@@ -152,7 +153,6 @@ impl IngestError {
             IngestError::Gzip(_) => "bad_gzip",
             IngestError::Zip(_) => "bad_zip",
             IngestError::Multipart(_) => "bad_multipart",
-            IngestError::Ndjson { .. } => "bad_ndjson",
             IngestError::OverBudget { .. } => "over_budget",
             IngestError::Body => "body_read_failed",
             IngestError::Busy => "busy",
@@ -187,7 +187,6 @@ impl IntoResponse for IngestError {
             IngestError::Gzip(_) | IngestError::Zip(_) | IngestError::Multipart(_) => {
                 StatusCode::BAD_REQUEST
             }
-            IngestError::Ndjson { .. } => StatusCode::BAD_REQUEST,
             IngestError::OverBudget { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             IngestError::Body => StatusCode::BAD_REQUEST,
             IngestError::Busy => {

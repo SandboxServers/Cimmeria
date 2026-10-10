@@ -82,10 +82,50 @@ fn a_blank_line_bomb_is_cut_at_the_cap() {
 #[test]
 fn the_expansion_cut_lands_after_the_last_whole_line() {
     let inflated = inflate_bounded(&gzip(b"aaa\nbbbb\ncc"), 7).unwrap();
-    assert_eq!(inflated.text, "aaa\n");
+    assert_eq!(inflated.bytes, b"aaa\n");
     assert!(inflated.cut.is_some());
     let whole = inflate_bounded(&gzip(b"aaa\n"), 7).unwrap();
-    assert_eq!((whole.text.as_str(), whole.cut), ("aaa\n", None));
+    assert_eq!((whole.bytes.as_slice(), whole.cut), (&b"aaa\n"[..], None));
+}
+
+/// **A row the server cannot parse is skipped, not fatal.** A chunk with a
+/// malformed row, a row of an unknown event type and a row that is not
+/// UTF-8 replays its good rows and counts the three bad ones. Refusing it
+/// would make the uploader re-send the same chunk forever.
+#[test]
+fn rows_that_do_not_parse_are_skipped_and_counted() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let mut ndjson = rows_of(2, 4);
+    ndjson.extend_from_slice(b"{not json\n");
+    ndjson.extend_from_slice(b"{\"type\":\"from_the_future\",\"x\":1}\n");
+    ndjson.extend_from_slice(b"\xff\xfe\n");
+    ndjson.extend_from_slice(&rows_of(1, 4));
+    let resp = run(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request("sess-bad-rows", gzip(&ndjson)),
+        Instant::now(),
+    ))
+    .expect("bad rows are skipped, the chunk is accepted");
+    assert_eq!((resp.accepted, resp.bad_rows), (3, 3));
+}
+
+/// A body that is not gzip at all is still refused (400).
+#[test]
+fn a_body_that_is_not_gzip_is_refused() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let err = run(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request("sess-not-gzip", b"plain text".to_vec()),
+        Instant::now(),
+    ))
+    .unwrap_err();
+    assert!(matches!(err, IngestError::Gzip(_)), "{err:?}");
 }
 
 /// A chunk with more rows than the cap replays the first ones and says it

@@ -150,9 +150,10 @@ impl Telemetry {
     /// of NDJSON and [`chunk::MAX_CHUNK_ROWS`] rows, in order. Returns the
     /// events the server took.
     ///
-    /// - A 413 means the server will never take that chunk: its events
-    ///   are dropped and added to the queue's dropped-lines count (the
-    ///   bundle metadata reports it), and the next chunk is sent.
+    /// - A 413, or any 4xx but 401, 408 and 429, means the server will
+    ///   never take that chunk: its events are dropped and added to the
+    ///   queue's dropped-lines count (the bundle metadata reports it), and
+    ///   the next chunk is sent.
     /// - Any other failure re-enqueues that chunk and every later one, so
     ///   the next flush replays them, and propagates the error (a
     ///   `TokenRejected` lets the caller refresh and retry).

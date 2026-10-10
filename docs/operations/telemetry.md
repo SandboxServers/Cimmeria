@@ -430,12 +430,18 @@ and the answer is a 200 with `"truncated": true` in its body.
 | bundle | multipart parts, zip parts | 8, 1 | 413 | The launcher sends one of each |
 | bundle | zip entries, hard cap | 16,384 | 413, from the zip's end record before it is opened | Opening a zip reads every entry's header |
 | bundle | files replayed | 1,024 | the newest replayed | Session logs rotate every minute; a long session leaves a few hundred |
-| bundle | expanded bytes, all files | 64 MiB | replay stops before the file that would pass it | Checked on each file's declared size, then on the bytes actually read |
+| bundle | expanded bytes, all files | 64 MiB | a file whose declared size would pass it is skipped and smaller files still replay; a file that expands past what it declared stops the replay | Checked on each file's declared size, then on the bytes actually read |
 | bundle | replayed lines | 250,000 | replay stops | |
 
-Bundle files are replayed newest first, by their zip timestamps, so the
-session that just ended is what survives a budget. A chunk refused with
-413 replays nothing. Uploaded strings are cut before they
+Bundle files are replayed in order of the zip entry's modification time,
+newest first, and among equal times in reverse archive order. A current
+launcher records each file's own modification time, so the session that
+just ended is what survives a budget. Launchers released before the
+upload limits give every entry the same time, so their files are taken
+in reverse archive order, which is reverse path order. A chunk refused
+with 413 replays nothing. A chunk row that is not UTF-8 or not an event
+the server knows is skipped and counted in the response's `bad_rows`;
+only a body that is not gzip is refused (400). Uploaded strings are cut before they
 reach a log row: log messages to 4 KiB, file names, levels, categories and
 event names to 256 bytes, each value in a DLL `fields` bag to 2 KiB, and
 the bag to 64 keys. A cut value ends in `...[truncated, N bytes]`, with
@@ -450,9 +456,10 @@ service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
 
 with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `token_expired`, `rate_limited`, `busy`, `body_too_large`, `over_budget`,
-`bad_gzip`, `bad_ndjson`, `bad_zip`, `bad_multipart`, `body_read_failed`,
-`secret_unusable`, and `chunk_truncated` / `bundle_truncated` for an
-upload that was accepted in part), `budget` and `limit` for a size
+`bad_gzip`, `bad_zip`, `bad_multipart`, `body_read_failed`,
+`secret_unusable`, and `chunk_truncated` / `bundle_truncated` /
+`bad_rows` for an upload that was accepted in part, the last with a
+`bad_rows` count), `budget` and `limit` for a size
 refusal or truncation, `kept` and `dropped_estimate` for a truncation
 (rows or lines; past the chunk expansion cap the dropped rows are
 estimated from the compression ratio), `peer`, and `session_id` /
@@ -465,7 +472,8 @@ Any backlog in the launcher's on-disk queue (a server outage of a few
 minutes, a kill switch, or a launcher killed mid-session) is posted when
 the server answers again. A current launcher splits it into chunks of
 `chunk_max_bytes` and 1,000 rows, and drops a chunk the server answers
-with 413 instead of retrying it (the drop is counted in the bundle
+with 413 or any other 4xx but 401, 408 and 429 instead of retrying it
+(the drop is counted in the bundle
 metadata's `dropped_lines`). Launchers released before the upload limits
 post the whole queue as one chunk and re-queue it on any error; the
 server truncates such a chunk rather than refusing it, so the backlog is

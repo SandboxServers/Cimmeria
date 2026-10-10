@@ -140,6 +140,16 @@ fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>
             FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         for path in files {
             let rel = rel_in_archive(path, &binaries);
+            // Each entry carries its file's own modification time, so the
+            // server's newest-first replay keeps the latest logs.
+            let options = match std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(zip_time)
+            {
+                Some(t) => options.last_modified_time(t),
+                None => options,
+            };
             zw.start_file(rel, options)?;
             let data = std::fs::read(path)?;
             zw.write_all(&data)?;
@@ -147,6 +157,22 @@ fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>
         zw.finish()?;
     }
     Ok(Some(buf))
+}
+
+/// A file time as a zip (DOS) timestamp: local time, 2 s resolution,
+/// 1980-2107. `None` outside that range.
+fn zip_time(t: std::time::SystemTime) -> Option<zip::DateTime> {
+    use chrono::{Datelike, Timelike};
+    let local: chrono::DateTime<chrono::Local> = t.into();
+    zip::DateTime::from_date_and_time(
+        u16::try_from(local.year()).ok()?,
+        u8::try_from(local.month()).ok()?,
+        u8::try_from(local.day()).ok()?,
+        u8::try_from(local.hour()).ok()?,
+        u8::try_from(local.minute()).ok()?,
+        u8::try_from(local.second()).ok()?,
+    )
+    .ok()
 }
 
 fn rel_in_archive(path: &Path, binaries: &Path) -> String {
@@ -296,6 +322,37 @@ mod tests {
         // Nothing written since: no bundle at all.
         let future = std::time::SystemTime::now() + std::time::Duration::from_secs(3_600);
         assert!(build_session_log_zip(dir.path(), future).unwrap().is_none());
+    }
+
+    /// Each zip entry carries its file's modification time, which the
+    /// server's newest-first replay orders by.
+    #[test]
+    fn zip_entries_carry_the_files_modification_times() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_logs(dir.path());
+        let sess = dir.path().join("Binaries").join("sessions").join("2026-05");
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(30 * 86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(sess.join("session.log"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let bytes = build_log_zip(dir.path()).unwrap().unwrap();
+        let mut zr = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let stamp = |zr: &mut zip::ZipArchive<_>, suffix: &str| {
+            let i = (0..zr.len())
+                .find(|&i| zr.by_index(i).unwrap().name().ends_with(suffix))
+                .unwrap();
+            zr.by_index(i).unwrap().last_modified().unwrap()
+        };
+        let old_stamp = stamp(&mut zr, "session.log");
+        let new_stamp = stamp(&mut zr, "sgwdebuglog");
+        assert_eq!(Some(old_stamp), zip_time(old));
+        assert!(
+            (old_stamp.datepart(), old_stamp.timepart())
+                < (new_stamp.datepart(), new_stamp.timepart())
+        );
     }
 
     #[test]
