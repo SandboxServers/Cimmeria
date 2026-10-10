@@ -76,27 +76,26 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
 
                 match tag.as_str() {
                     "Script" => {
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"Version" => {
-                                    script.version = String::from_utf8(attr.value.to_vec())?;
+                                "Version" => {
+                                    script.version = attr.value.into_owned();
                                 }
-                                b"DatasetVersion" => {
-                                    script.dataset_version =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                "DatasetVersion" => {
+                                    script.dataset_version = attr.value.into_owned();
                                 }
-                                b"Module" => {
-                                    script.module = String::from_utf8(attr.value.to_vec())?;
+                                "Module" => {
+                                    script.module = attr.value.into_owned();
                                 }
-                                b"Type" => {
-                                    script.script_type = String::from_utf8(attr.value.to_vec())?;
+                                "Type" => {
+                                    script.script_type = attr.value.into_owned();
                                 }
-                                b"NextId" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "NextId" => {
+                                    let s = attr.value.into_owned();
                                     script.next_id = s.parse().unwrap_or(0);
                                 }
                                 _ => {}
@@ -114,19 +113,19 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                         };
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"Id" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Id" => {
+                                    let s = attr.value.into_owned();
                                     node.id = s.parse().unwrap_or(0);
                                 }
-                                b"Ref" => {
-                                    node.ref_name = String::from_utf8(attr.value.to_vec())?;
+                                "Ref" => {
+                                    node.ref_name = attr.value.into_owned();
                                 }
-                                b"X" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "X" => {
+                                    let s = attr.value.into_owned();
                                     node.x = s.parse().unwrap_or(0);
                                 }
-                                b"Y" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Y" => {
+                                    let s = attr.value.into_owned();
                                     node.y = s.parse().unwrap_or(0);
                                 }
                                 _ => {}
@@ -140,11 +139,11 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                             let mut value = String::new();
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Name" => {
-                                        name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        name = attr.value.into_owned();
                                     }
-                                    b"Value" => {
-                                        value = String::from_utf8(attr.value.to_vec())?;
+                                    "Value" => {
+                                        value = attr.value.into_owned();
                                     }
                                     _ => {}
                                 }
@@ -158,11 +157,11 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                             let mut flags: u32 = 0;
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Name" => {
-                                        name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        name = attr.value.into_owned();
                                     }
-                                    b"Flags" => {
-                                        let s = String::from_utf8(attr.value.to_vec())?;
+                                    "Flags" => {
+                                        let s = attr.value.into_owned();
                                         flags = s.parse().unwrap_or(0);
                                     }
                                     _ => {}
@@ -180,19 +179,19 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                         };
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"OutNode" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "OutNode" => {
+                                    let s = attr.value.into_owned();
                                     conn.out_node = s.parse().unwrap_or(0);
                                 }
-                                b"OutPort" => {
-                                    conn.out_port = String::from_utf8(attr.value.to_vec())?;
+                                "OutPort" => {
+                                    conn.out_port = attr.value.into_owned();
                                 }
-                                b"InNode" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "InNode" => {
+                                    let s = attr.value.into_owned();
                                     conn.in_node = s.parse().unwrap_or(0);
                                 }
-                                b"InPort" => {
-                                    conn.in_port = String::from_utf8(attr.value.to_vec())?;
+                                "InPort" => {
+                                    conn.in_port = attr.value.into_owned();
                                 }
                                 _ => {}
                             }
@@ -211,31 +210,31 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                         };
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"Id" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Id" => {
+                                    let s = attr.value.into_owned();
                                     comment.id = s.parse().unwrap_or(0);
                                 }
-                                b"Text" => {
-                                    comment.text = String::from_utf8(attr.value.to_vec())?;
+                                "Text" => {
+                                    comment.text = attr.value.into_owned();
                                 }
-                                b"X" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "X" => {
+                                    let s = attr.value.into_owned();
                                     comment.x = s.parse().unwrap_or(0);
                                 }
-                                b"Y" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Y" => {
+                                    let s = attr.value.into_owned();
                                     comment.y = s.parse().unwrap_or(0);
                                 }
-                                b"Width" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Width" => {
+                                    let s = attr.value.into_owned();
                                     comment.width = s.parse().unwrap_or(0);
                                 }
-                                b"Height" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Height" => {
+                                    let s = attr.value.into_owned();
                                     comment.height = s.parse().unwrap_or(0);
                                 }
-                                b"Color" => {
-                                    let s = String::from_utf8(attr.value.to_vec())?;
+                                "Color" => {
+                                    let s = attr.value.into_owned();
                                     comment.color = s.parse().unwrap_or(0);
                                 }
                                 _ => {}
@@ -248,7 +247,7 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
             }
             Ok(Event::End(ref e)) => {
                 let name = e.name();
-                let tag = std::str::from_utf8(name.as_ref())?;
+                let tag = name.as_ref();
                 if tag == "Node" {
                     if let Some(node) = current_node.take() {
                         script.nodes.push(node);
@@ -347,4 +346,45 @@ pub fn save_script(path: &Path, script: &ScriptFile) -> Result<()> {
     std::fs::write(path, result)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_then_load_preserves_utf8_attributes() {
+        let path = std::env::temp_dir().join(format!(
+            "cimmeria-script-roundtrip-{}-{}.xml",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = ScriptFile {
+            version: "1".into(),
+            dataset_version: "Béta".into(),
+            module: "Test".into(),
+            script_type: "Quest".into(),
+            next_id: 2,
+            nodes: vec![ScriptNode {
+                id: 1,
+                ref_name: "Start".into(),
+                x: 10,
+                y: 20,
+                properties: vec![("Caption".into(), "Résumé".into())],
+                ports: vec![],
+            }],
+            connections: vec![],
+            comments: vec![],
+        };
+
+        save_script(&path, &script).unwrap();
+        let loaded = load_script(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(loaded.dataset_version, "Béta");
+        assert_eq!(loaded.nodes[0].properties[0].1, "Résumé");
+    }
 }

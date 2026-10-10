@@ -69,7 +69,7 @@ fn attrs(e: &quick_xml::events::BytesStart<'_>) -> BTreeMap<String, String> {
         .map(|a| {
             let a = a.expect("well-formed attribute");
             (
-                String::from_utf8(a.key.as_ref().to_vec()).unwrap(),
+                a.key.as_ref().to_string(),
                 a.normalized_value(quick_xml::XmlVersion::Explicit1_0)
                     .expect("valid escapes")
                     .into_owned(),
@@ -87,19 +87,19 @@ fn parse(xml: &str) -> Parsed {
         match reader.read_event().expect("the XML parses") {
             Event::Eof => break,
             Event::Decl(_) => {}
-            Event::Comment(c) => out.comments.push(String::from_utf8_lossy(&c).into_owned()),
+            Event::Comment(c) => out.comments.push(c.as_ref().to_string()),
             Event::Text(t) => {
-                let s = String::from_utf8_lossy(&t).into_owned();
+                let s = t.as_ref().to_string();
                 if !s.trim().is_empty() {
                     out.stray_text.push(s);
                 }
             }
             Event::Start(e) => match e.name().as_ref() {
-                b"CommandList" => {
+                "CommandList" => {
                     depth_root = true;
                     out.root_attrs = attrs(&e);
                 }
-                b"scmd:Command" => {
+                "scmd:Command" => {
                     assert!(depth_root && open.is_none(), "Command outside the list");
                     let a = attrs(&e);
                     let get = |k: &str| a.get(&format!("scmd:{k}")).cloned();
@@ -119,10 +119,10 @@ fn parse(xml: &str) -> Parsed {
                         params: Vec::new(),
                     });
                 }
-                other => panic!("unexpected element {}", String::from_utf8_lossy(other)),
+                other => panic!("unexpected element {}", other),
             },
             Event::Empty(e) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                let name = e.name().as_ref().to_string();
                 let tag = match name.as_str() {
                     "scmd:MandatoryParam" => "MandatoryParam",
                     "scmd:OptionalParam" => "OptionalParam",
@@ -153,9 +153,9 @@ fn parse(xml: &str) -> Parsed {
                     });
             }
             Event::End(e) => match e.name().as_ref() {
-                b"scmd:Command" => out.commands.push(open.take().expect("Command was open")),
-                b"CommandList" => depth_root = false,
-                other => panic!("unexpected end {}", String::from_utf8_lossy(other)),
+                "scmd:Command" => out.commands.push(open.take().expect("Command was open")),
+                "CommandList" => depth_root = false,
+                other => panic!("unexpected end {}", other),
             },
             other => panic!("unexpected XML event {other:?}"),
         }

@@ -131,14 +131,11 @@ fn generated_entries_parse_and_name_the_added_worlds_package() {
         let mut attrs = std::collections::HashMap::new();
         loop {
             match reader.read_event().expect("well-formed XML") {
-                Event::Start(e) if e.name().as_ref() == b"COOKED_WORLD_INFO" => {
+                Event::Start(e) if e.name().as_ref() == "COOKED_WORLD_INFO" => {
                     for a in e.attributes() {
                         let a = a.expect("well-formed attribute");
                         // Raw value: none of these attributes needs escaping.
-                        attrs.insert(
-                            String::from_utf8(a.key.as_ref().to_vec()).unwrap(),
-                            String::from_utf8(a.value.to_vec()).unwrap(),
-                        );
+                        attrs.insert(a.key.as_ref().to_string(), a.value.into_owned());
                     }
                 }
                 Event::Eof => break,

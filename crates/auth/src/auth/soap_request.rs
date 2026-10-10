@@ -117,7 +117,7 @@ fn for_each_known_attribute(
 ) -> Result<(), SoapRequestError> {
     for attr in element.attributes() {
         let attr = attr.map_err(|_| SoapRequestError::MalformedAttributes)?;
-        let Some(&name) = known.iter().find(|k| k.as_bytes() == attr.key.as_ref()) else {
+        let Some(&name) = known.iter().find(|k| **k == attr.key.as_ref()) else {
             continue;
         };
         on_attr(name, decode_value(&attr, name)?);
@@ -135,9 +135,7 @@ fn with_request_element<T>(
     let mut reader = Reader::from_str(body);
     loop {
         match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == local_name.as_bytes() =>
-            {
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) if e.local_name().as_ref() == local_name => {
                 return with_element(&e);
             }
             Ok(Event::Eof) | Err(_) => break,
@@ -221,6 +219,12 @@ mod tests {
     /// missing, the parse succeeds with default (empty) fields. The
     /// handler validates above the parser; a refactor that pushed
     /// validation down here would silently break that layering.
+    #[test]
+    fn parse_server_selection_preserves_utf8_attribute_value() {
+        let body = r#"<SGWSelectServerRequest ServerSelection="Béta" />"#;
+        assert_eq!(parse_server_selection(body).unwrap(), "Béta");
+    }
+
     #[test]
     fn parse_login_request_does_not_validate_missing_attributes() {
         let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;

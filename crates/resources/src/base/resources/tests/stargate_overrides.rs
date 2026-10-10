@@ -34,15 +34,15 @@ fn attrs(xml: &[u8]) -> Vec<(String, String)> {
     let mut out = Vec::new();
     loop {
         match reader.read_event().expect("well-formed XML") {
-            Event::Start(e) if e.name().as_ref() == b"COOKED_STARGATE" => {
+            Event::Start(e) if e.name().as_ref() == "COOKED_STARGATE" => {
                 for a in e.attributes() {
                     let a = a.expect("well-formed attribute");
-                    let key = String::from_utf8(a.key.as_ref().to_vec()).unwrap();
+                    let key = a.key.as_ref().to_string();
                     if key.starts_with("xmlns") {
                         continue;
                     }
                     // Raw value: the attributes compared here need no unescaping.
-                    let value = String::from_utf8(a.value.to_vec()).unwrap();
+                    let value = a.value.into_owned();
                     out.push((key, value));
                 }
             }

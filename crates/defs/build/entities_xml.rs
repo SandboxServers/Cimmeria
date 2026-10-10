@@ -43,7 +43,7 @@ pub fn parse_entities_xml(path: &Path) -> Vec<String> {
                 // The Start branch catches the `<Account></Account>` form;
                 // the Empty branch below catches the `<Account/>` form.
                 if depth == 2 {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     names.push(tag);
                 }
             }
@@ -51,7 +51,7 @@ pub fn parse_entities_xml(path: &Path) -> Vec<String> {
                 // Self-closing tag — depth doesn't advance, so direct
                 // children of <root> fire here at depth == 1.
                 if depth == 1 => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag = e.name().as_ref().to_string();
                     if tag != "root" {
                         names.push(tag);
                     }

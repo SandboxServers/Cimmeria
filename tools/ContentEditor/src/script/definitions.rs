@@ -144,13 +144,13 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 match &mut state {
                     State::Root => match tag.as_str() {
                         "Nodes" => {
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"Version" {
-                                    dataset_version = String::from_utf8(attr.value.to_vec())?;
+                                if attr.key.as_ref() == "Version" {
+                                    dataset_version = attr.value.into_owned();
                                 }
                             }
                         }
@@ -163,11 +163,11 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             };
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Ref" => {
-                                        db_ref.ref_name = String::from_utf8(attr.value.to_vec())?;
+                                    "Ref" => {
+                                        db_ref.ref_name = attr.value.into_owned();
                                     }
-                                    b"NullValue" => {
-                                        db_ref.null_value = String::from_utf8(attr.value.to_vec())?;
+                                    "NullValue" => {
+                                        db_ref.null_value = attr.value.into_owned();
                                     }
                                     _ => {}
                                 }
@@ -196,17 +196,17 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             };
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Ref" => {
-                                        node.ref_name = String::from_utf8(attr.value.to_vec())?;
+                                    "Ref" => {
+                                        node.ref_name = attr.value.into_owned();
                                     }
-                                    b"Name" => {
-                                        node.display_name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        node.display_name = attr.value.into_owned();
                                     }
-                                    b"Type" => {
-                                        node.node_type = String::from_utf8(attr.value.to_vec())?;
+                                    "Type" => {
+                                        node.node_type = attr.value.into_owned();
                                     }
-                                    b"Category" => {
-                                        node.category = String::from_utf8(attr.value.to_vec())?;
+                                    "Category" => {
+                                        node.category = attr.value.into_owned();
                                     }
                                     _ => {}
                                 }
@@ -231,20 +231,20 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             };
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Name" => {
-                                        port.name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        port.name = attr.value.into_owned();
                                     }
-                                    b"Type" => {
-                                        port.port_type = String::from_utf8(attr.value.to_vec())?;
+                                    "Type" => {
+                                        port.port_type = attr.value.into_owned();
                                     }
-                                    b"Direction" => {
-                                        port.direction = String::from_utf8(attr.value.to_vec())?;
+                                    "Direction" => {
+                                        port.direction = attr.value.into_owned();
                                     }
-                                    b"DefaultHide" => {
-                                        port.default_hide = attr.value.as_ref() == b"true";
+                                    "DefaultHide" => {
+                                        port.default_hide = attr.value.as_ref() == "true";
                                     }
-                                    b"Required" => {
-                                        port.required = attr.value.as_ref() == b"true";
+                                    "Required" => {
+                                        port.required = attr.value.as_ref() == "true";
                                     }
                                     _ => {}
                                 }
@@ -263,8 +263,8 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                         } else if tag == "Method" {
                             let mut method_name = String::new();
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"Name" {
-                                    method_name = String::from_utf8(attr.value.to_vec())?;
+                                if attr.key.as_ref() == "Name" {
+                                    method_name = attr.value.into_owned();
                                 }
                             }
                             current_child_tag = Some(format!("Method:{}", method_name));
@@ -281,7 +281,7 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                 }
             }
             Ok(Event::Empty(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 match &mut state {
                     State::InNode(ref mut node) => {
                         if tag == "Port" {
@@ -295,20 +295,20 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             };
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Name" => {
-                                        port.name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        port.name = attr.value.into_owned();
                                     }
-                                    b"Type" => {
-                                        port.port_type = String::from_utf8(attr.value.to_vec())?;
+                                    "Type" => {
+                                        port.port_type = attr.value.into_owned();
                                     }
-                                    b"Direction" => {
-                                        port.direction = String::from_utf8(attr.value.to_vec())?;
+                                    "Direction" => {
+                                        port.direction = attr.value.into_owned();
                                     }
-                                    b"DefaultHide" => {
-                                        port.default_hide = attr.value.as_ref() == b"true";
+                                    "DefaultHide" => {
+                                        port.default_hide = attr.value.as_ref() == "true";
                                     }
-                                    b"Required" => {
-                                        port.required = attr.value.as_ref() == b"true";
+                                    "Required" => {
+                                        port.required = attr.value.as_ref() == "true";
                                     }
                                     _ => {}
                                 }
@@ -323,19 +323,17 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             };
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"Name" => {
-                                        prop.name = String::from_utf8(attr.value.to_vec())?;
+                                    "Name" => {
+                                        prop.name = attr.value.into_owned();
                                     }
-                                    b"Type" => {
-                                        prop.prop_type = String::from_utf8(attr.value.to_vec())?;
+                                    "Type" => {
+                                        prop.prop_type = attr.value.into_owned();
                                     }
-                                    b"DefaultValue" => {
-                                        prop.default_value =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                    "DefaultValue" => {
+                                        prop.default_value = attr.value.into_owned();
                                     }
-                                    b"DatabaseRef" => {
-                                        prop.database_ref =
-                                            Some(String::from_utf8(attr.value.to_vec())?);
+                                    "DatabaseRef" => {
+                                        prop.database_ref = Some(attr.value.into_owned());
                                     }
                                     _ => {}
                                 }
@@ -347,7 +345,7 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                 }
             }
             Ok(Event::Text(ref e)) => {
-                let text = e.decode()?.to_string();
+                let text = e.as_ref().to_string();
                 match &mut state {
                     State::InDatabaseRef(_) | State::InNode(_) => {
                         text_buf.push_str(&text);
@@ -359,11 +357,11 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                 }
             }
             Ok(Event::CData(ref e)) => {
-                let text = String::from_utf8(e.to_vec())?;
+                let text = e.as_ref().to_string();
                 text_buf.push_str(&text);
             }
             Ok(Event::End(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 match &mut state {
                     State::InDatabaseRef(ref mut db_ref) => {
                         if tag == "DatabaseRef" {
@@ -546,15 +544,15 @@ fn parse_enumerations_xml(path: &Path) -> Result<Vec<EnumDefinition>> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 match &mut state {
                     State::Root => {
                         if tag != "root" {
                             // This is an enum definition element
                             let mut is_bitfield = false;
                             for attr in e.attributes().flatten() {
-                                if attr.key.as_ref() == b"IsBitfield"
-                                    && attr.value.as_ref() == b"true"
+                                if attr.key.as_ref() == "IsBitfield"
+                                    && attr.value.as_ref() == "true"
                                 {
                                     is_bitfield = true;
                                 }
@@ -608,7 +606,7 @@ fn parse_enumerations_xml(path: &Path) -> Result<Vec<EnumDefinition>> {
                 }
             }
             Ok(Event::Empty(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 // Some child elements like <BW_TO_UE3_DIST_CONVERT/> are empty -- ignore them
                 match &mut state {
                     State::InEnum(_) => {
@@ -619,11 +617,11 @@ fn parse_enumerations_xml(path: &Path) -> Result<Vec<EnumDefinition>> {
                 let _ = tag;
             }
             Ok(Event::Text(ref e)) => {
-                let text = e.decode()?.to_string();
+                let text = e.as_ref().to_string();
                 text_buf.push_str(&text);
             }
             Ok(Event::End(ref e)) => {
-                let tag = std::str::from_utf8(e.name().as_ref())?.to_string();
+                let tag = e.name().as_ref().to_string();
                 match &mut state {
                     State::InEnum(ref mut def) => {
                         if tag == def.name {

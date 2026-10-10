@@ -35,6 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Reference
 - [reference_cellblock_asset_audit.md](reference_cellblock_asset_audit.md) — 2026-10-06 static audit: map count correction, existing exit/cinematic wiring, parsed asset candidates, extraction coverage gaps; full restoration/UAT campaign indexed under docs/analysis/cellblock-asset-audit/
 - [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp
+- [reference_quick_xml_042_migration.md](reference_quick_xml_042_migration.md) — 2026-10-07 quick-xml 0.42 string API, escaped dialog attributes, and GUI check boundary
 - [reference_client_action_bar_events.md](reference_client_action_bar_events.md) — stock action bar Lua (2026-10-05): hidden windows are deaf without `DeafWhenHidden=False`, subscribe takes several handlers, bandolier-bound buttons, `InventoryUpdateContainerActiveSlot`; from patch 015
 - [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
