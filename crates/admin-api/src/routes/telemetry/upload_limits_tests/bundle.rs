@@ -155,6 +155,39 @@ fn a_zip_that_lies_about_its_sizes_is_stopped_by_the_bytes_read() {
     assert_eq!(budget(&counts), Some("expanded bytes"));
 }
 
+/// **A lying entry stops the replay; it is not skipped.** Two entries
+/// both declare small sizes: the newer one really expands to 4,000 bytes
+/// against a 1,000-byte budget, the older one is honest and 10 bytes. The
+/// older one is not replayed: skipping past a lying entry would let every
+/// lying entry in a zip cost another full read of the budget.
+#[test]
+fn a_lying_entry_stops_the_replay_instead_of_being_skipped() {
+    let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, day, data) in [
+        ("liar.log", 20u8, "line\n".repeat(800)),
+        ("honest.log", 5, "x\n".repeat(5)),
+    ] {
+        let when = zip::DateTime::from_date_and_time(2026, 9, day, 12, 0, 0).unwrap();
+        let options = zip::write::SimpleFileOptions::default().last_modified_time(when);
+        zw.start_file(name, options).unwrap();
+        zw.write_all(data.as_bytes()).unwrap();
+    }
+    let mut zip = zw.finish().unwrap().into_inner();
+    // Only the first central-directory header (the liar's) lies.
+    let cdh = zip
+        .windows(4)
+        .position(|w| w == [0x50, 0x4b, 0x01, 0x02])
+        .unwrap();
+    zip[cdh + 24..cdh + 28].copy_from_slice(&1u32.to_le_bytes());
+    let limits = UploadLimits {
+        bundle_expanded_bytes: 1_000,
+        ..UploadLimits::default()
+    };
+    let counts = unpack_and_replay(&claims("sess-zip-liar-first"), &zip, &limits).unwrap();
+    assert_eq!((counts.files, counts.lines), (0, 0));
+    assert_eq!(budget(&counts), Some("expanded bytes"));
+}
+
 /// Replay stops at the line budget, and says how many lines it dropped.
 #[test]
 fn a_zip_over_the_line_budget_is_truncated() {

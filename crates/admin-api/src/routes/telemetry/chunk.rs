@@ -189,11 +189,10 @@ pub(super) fn decode_chunk(
 ) -> Result<DecodedChunk, IngestError> {
     let inflated = inflate_bounded(body, limits.chunk_decompressed_bytes)?;
     let ParsedRows {
-        mut events,
+        events,
         past_cap: rows_past_cap,
         bad: bad_rows,
-    } = parse_rows_bounded(&inflated.bytes, limits.chunk_rows);
-    events.iter_mut().for_each(cap_event);
+    } = parse_rows_bounded(&inflated.bytes, limits.chunk_rows, limits.chunk_row_bytes);
     let kept = events.len() as u64;
     let truncation = if let Some(ratio_left) = inflated.cut {
         // Rows past the cut were never expanded: estimate them from the
@@ -269,7 +268,17 @@ pub(super) struct ParsedRows {
 /// row that does not parse is counted and skipped rather than refusing the
 /// chunk: the uploaders re-send a refused chunk, so one row the server's
 /// types reject would otherwise block everything queued behind it.
-pub(super) fn parse_rows_bounded(ndjson: &[u8], max_rows: usize) -> ParsedRows {
+///
+/// A row longer than `max_row_bytes` is counted as bad without being
+/// parsed: parsing builds the whole row in memory several times over, and
+/// no uploader sends rows anywhere near that long. Each event's strings are
+/// capped as soon as it parses, so the parsed chunk never holds more than
+/// one uncapped row.
+pub(super) fn parse_rows_bounded(
+    ndjson: &[u8],
+    max_rows: usize,
+    max_row_bytes: usize,
+) -> ParsedRows {
     let mut rows = ParsedRows::default();
     for line in ndjson.split(|&b| b == b'\n') {
         let line = line.strip_suffix(b"\r").unwrap_or(line);
@@ -280,11 +289,18 @@ pub(super) fn parse_rows_bounded(ndjson: &[u8], max_rows: usize) -> ParsedRows {
             rows.past_cap += 1;
             continue;
         }
+        if line.len() > max_row_bytes {
+            rows.bad += 1;
+            continue;
+        }
         match std::str::from_utf8(line)
             .ok()
             .and_then(|l| serde_json::from_str::<TelemetryEvent>(l).ok())
         {
-            Some(ev) => rows.events.push(ev),
+            Some(mut ev) => {
+                cap_event(&mut ev);
+                rows.events.push(ev);
+            }
             None => rows.bad += 1,
         }
     }

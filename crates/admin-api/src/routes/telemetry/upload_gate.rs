@@ -34,7 +34,7 @@ use super::{
     BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
     MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
     MAX_BUNDLE_METADATA_BYTES, MAX_BUNDLE_PARTS, MAX_CHUNK_BYTES, MAX_CHUNK_DECOMPRESSED_BYTES,
-    MAX_CHUNK_ROWS, SLOTS_PER_PEER,
+    MAX_CHUNK_ROWS, MAX_CHUNK_ROW_BYTES, SLOTS_PER_PEER,
 };
 
 /// Which upload route a request is for: each has its own rate limits and
@@ -137,6 +137,8 @@ pub(super) struct UploadLimits {
     pub chunk_body_bytes: usize,
     pub chunk_decompressed_bytes: u64,
     pub chunk_rows: usize,
+    /// One chunk row's bytes; a longer row is counted bad, not parsed.
+    pub chunk_row_bytes: usize,
     pub bundle_body_bytes: usize,
     pub bundle_expanded_bytes: u64,
     pub bundle_entries: usize,
@@ -161,6 +163,7 @@ impl Default for UploadLimits {
             chunk_body_bytes: MAX_CHUNK_BYTES,
             chunk_decompressed_bytes: MAX_CHUNK_DECOMPRESSED_BYTES,
             chunk_rows: MAX_CHUNK_ROWS,
+            chunk_row_bytes: MAX_CHUNK_ROW_BYTES,
             bundle_body_bytes: MAX_BUNDLE_BYTES,
             bundle_expanded_bytes: MAX_BUNDLE_EXPANDED_BYTES,
             bundle_entries: MAX_BUNDLE_ENTRIES,

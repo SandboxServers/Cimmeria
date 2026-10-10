@@ -230,7 +230,10 @@ pub(super) struct Truncation {
     pub limit: u64,
     /// Rows (chunk) or lines (bundle) replayed.
     pub kept: u64,
-    /// Rows or lines dropped: counted where they were read, estimated from
-    /// the compression ratio past the expansion cap, 0 when unknown.
+    /// What was dropped, in the budget's own unit: rows for a chunk's
+    /// `decompressed bytes` and `rows` budgets (estimated from the
+    /// compression ratio past the expansion cap), files for a bundle's
+    /// `zip entries`, **bytes** for its `expanded bytes` (the declared or
+    /// read sizes of the files not replayed), lines for its `lines`.
     pub dropped_estimate: u64,
 }

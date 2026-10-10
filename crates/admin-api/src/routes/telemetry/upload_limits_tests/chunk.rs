@@ -2,11 +2,13 @@
 
 use std::time::Instant;
 
-use crate::routes::telemetry::chunk::{chunk_inner, inflate_bounded};
+use crate::routes::telemetry::chunk::{chunk_inner, inflate_bounded, parse_rows_bounded};
 use crate::routes::telemetry::dto::IngestError;
+use crate::routes::telemetry::dto::TelemetryEvent;
+use crate::routes::telemetry::field_caps::marker;
 use crate::routes::telemetry::session_budget::SessionLedger;
 use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
-use crate::routes::telemetry::MAX_CHUNK_DECOMPRESSED_BYTES;
+use crate::routes::telemetry::{MAX_CHUNK_DECOMPRESSED_BYTES, MAX_CHUNK_ROW_BYTES};
 
 use super::{chunk_request, gzip, run, small_chunk, Env, PEER};
 
@@ -110,6 +112,55 @@ fn rows_that_do_not_parse_are_skipped_and_counted() {
     ))
     .expect("bad rows are skipped, the chunk is accepted");
     assert_eq!((resp.accepted, resp.bad_rows), (3, 3));
+}
+
+/// **A row over the per-row cap is counted bad without being parsed.** A
+/// well-formed row of a fixed ~66,000 bytes, just over the 64 KiB cap, is
+/// not replayed and counts as one bad row; parsing it would have accepted
+/// it. A row just under the cap is replayed.
+#[test]
+fn a_row_over_the_row_cap_is_not_parsed() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let over = rows_of(1, 66_000);
+    assert!(over.len() > MAX_CHUNK_ROW_BYTES && over.len() < 70_000);
+    let resp = run(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request("sess-big-row", gzip(&over)),
+        Instant::now(),
+    ))
+    .unwrap();
+    assert_eq!((resp.accepted, resp.bad_rows), (0, 1));
+
+    let under = rows_of(1, 60_000);
+    let resp = run(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request("sess-big-row", gzip(&under)),
+        Instant::now(),
+    ))
+    .unwrap();
+    assert_eq!((resp.accepted, resp.bad_rows), (1, 0));
+}
+
+/// Parsed rows come out with their strings already capped, so a chunk
+/// never holds more than one uncapped row.
+#[test]
+fn parsed_rows_are_capped_as_they_parse() {
+    let rows = parse_rows_bounded(&rows_of(2, 10_000), 10, MAX_CHUNK_ROW_BYTES);
+    assert_eq!((rows.events.len(), rows.bad), (2, 0));
+    for ev in rows.events {
+        let TelemetryEvent::ClientLog(e) = ev else {
+            panic!("expected a client log row")
+        };
+        assert!(
+            e.message.ends_with(&marker(10_000)),
+            "message was not capped"
+        );
+    }
 }
 
 /// A body that is not gzip at all is still refused (400).

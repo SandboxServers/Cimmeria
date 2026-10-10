@@ -145,6 +145,13 @@ const MAX_CHUNK_DECOMPRESSED_BYTES: u64 = 8 * 1024 * 1024;
 /// Further rows are counted and dropped.
 const MAX_CHUNK_ROWS: usize = 10_000;
 
+/// One chunk row, as NDJSON. The DLL caps its strings at a few hundred
+/// bytes (its largest field, an ability row's argument dump, at 4 KiB) and
+/// a launcher row is one log line; the replay cuts a message to 4 KiB
+/// anyway. A longer row is counted as bad without being parsed, since
+/// parsing it builds the whole row in memory several times over.
+const MAX_CHUNK_ROW_BYTES: usize = 64 * 1024;
+
 /// Compressed bundle zip. The launcher's logs are per-session and about
 /// 50 MiB before zipping in normal flows; log text zips 5-10×.
 const MAX_BUNDLE_BYTES: usize = 32 * 1024 * 1024;

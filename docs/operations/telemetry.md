@@ -439,8 +439,9 @@ launcher records each file's own modification time, so the session that
 just ended is what survives a budget. Launchers released before the
 upload limits give every entry the same time, so their files are taken
 in reverse archive order, which is reverse path order. A chunk refused
-with 413 replays nothing. A chunk row that is not UTF-8 or not an event
-the server knows is skipped and counted in the response's `bad_rows`;
+with 413 replays nothing. A chunk row that is not UTF-8, not an event
+the server knows, or longer than 64 KiB (not parsed at all) is skipped
+and counted in the response's `bad_rows`;
 only a body that is not gzip is refused (400). Uploaded strings are cut before they
 reach a log row: log messages to 4 KiB, file names, levels, categories and
 event names to 256 bytes, each value in a DLL `fields` bag to 2 KiB, and
@@ -460,10 +461,14 @@ with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `secret_unusable`, and `chunk_truncated` / `bundle_truncated` /
 `bad_rows` for an upload that was accepted in part, the last with a
 `bad_rows` count), `budget` and `limit` for a size
-refusal or truncation, `kept` and `dropped_estimate` for a truncation
-(rows or lines; past the chunk expansion cap the dropped rows are
-estimated from the compression ratio), `peer`, and `session_id` /
+refusal or truncation, `kept` (rows or lines replayed) and
+`dropped_estimate` for a truncation, `peer`, and `session_id` /
 `install_id` once the token verified. The row never carries the payload.
+`dropped_estimate` is in the unit of the budget that was hit: rows for a
+chunk (past the expansion cap, estimated from the compression ratio),
+files for `budget = zip entries`, **bytes** for `budget = expanded
+bytes` (the sizes of the bundle files not replayed), and lines for
+`budget = lines`.
 Repeats are throttled: one row per uploader and reason per 10 s, the next
 row's `suppressed` counting the ones held back, and at most 50 rows per
 10 s in all.
