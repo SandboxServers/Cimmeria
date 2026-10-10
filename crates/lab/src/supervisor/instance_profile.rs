@@ -658,5 +658,18 @@ mod tests {
             prepare_from(false, || Ok(src.clone()), Some(relative), &install, "p2"),
             None
         );
+        // An empty LOCALAPPDATA gives the same relative default root.
+        let from_empty_local = profile_root_from(None, Some(Path::new(""))).unwrap();
+        assert!(!from_empty_local.is_absolute());
+        assert_eq!(
+            prepare_from(
+                false,
+                || Ok(src.clone()),
+                Some(from_empty_local),
+                &install,
+                "p2"
+            ),
+            None
+        );
     }
 }
