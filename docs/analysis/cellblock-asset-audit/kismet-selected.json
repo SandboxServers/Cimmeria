@@ -1,0 +1,242 @@
+{
+  "chains": [
+    {
+      "chain_id": 42,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffc.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.StasisBlockDoubleDoors",
+      "trigger": {
+        "type": "SeqEvent_Designer",
+        "comment": "Designer 0: Open Doors",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_Interp",
+          "target_name": "SeqAct_Interp",
+          "target_comment": "Open Stasis Block Double Doors",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    },
+    {
+      "chain_id": 43,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffc.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.StasisBlockDoubleDoors",
+      "trigger": {
+        "type": "SeqEvent_LevelLoaded",
+        "comment": "",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_Interp",
+          "target_name": "SeqAct_Interp",
+          "target_comment": "Close Stasis Block Double Doors",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    },
+    {
+      "chain_id": 75,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffd.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.Prisoner329CellDoor",
+      "trigger": {
+        "type": "SeqEvent_LevelLoaded",
+        "comment": "",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_Interp",
+          "target_name": "SeqAct_Interp",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    },
+    {
+      "chain_id": 76,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffd.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.Prisoner329CellDoor",
+      "trigger": {
+        "type": "SeqEvent_Designer",
+        "comment": "Designer 0:  Open Door",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_SetBool",
+          "target_name": "SeqAct_SetBool",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": [
+            {
+              "output_pin": "Out",
+              "input_pin_idx": 0,
+              "target_type": "SeqAct_PlaySound",
+              "target_name": "SeqAct_PlaySound",
+              "target_comment": "",
+              "target_properties": {},
+              "sub_steps": [
+                {
+                  "output_pin": "Out",
+                  "input_pin_idx": 0,
+                  "target_type": "SeqAct_Interp",
+                  "target_name": "SeqAct_Interp",
+                  "target_comment": "",
+                  "target_properties": {},
+                  "sub_steps": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "chain_id": 77,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffd.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.Prisoner329CellDoor",
+      "trigger": {
+        "type": "SeqEvent_Touch",
+        "comment": "",
+        "properties": {
+          "Originator": 2355
+        }
+      },
+      "steps": [
+        {
+          "output_pin": "Touched",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_PlaySound",
+          "target_name": "SeqAct_PlaySound",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": [
+            {
+              "output_pin": "Out",
+              "input_pin_idx": 0,
+              "target_type": "SeqAct_Interp",
+              "target_name": "SeqAct_Interp",
+              "target_comment": "",
+              "target_properties": {},
+              "sub_steps": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "chain_id": 78,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffd.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.TakeCoverIndicator",
+      "trigger": {
+        "type": "SeqEvent_LevelLoaded",
+        "comment": "",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_ToggleHidden",
+          "target_name": "SeqAct_ToggleHidden",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    },
+    {
+      "chain_id": 79,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffefffd.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.TakeCoverIndicator",
+      "trigger": {
+        "type": "SeqEvent_Designer",
+        "comment": "Designer 0:  Reveal Particle",
+        "properties": {}
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 1,
+          "target_type": "SeqAct_ToggleHidden",
+          "target_name": "SeqAct_ToggleHidden",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    },
+    {
+      "chain_id": 135,
+      "zone": "Castle_CellBlock",
+      "tile": "Castle_CellBlock-fffffffe.umap",
+      "sequence_path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack",
+      "trigger": {
+        "type": "SeqEvent_Designer",
+        "comment": "Designer 0:  Begin Matinee",
+        "properties": {
+          "MaxTriggerCount": 0
+        }
+      },
+      "steps": [
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_Interp",
+          "target_name": "SeqAct_Interp",
+          "target_comment": "",
+          "target_properties": {},
+          "sub_steps": [
+            {
+              "output_pin": "Completed",
+              "input_pin_idx": 0,
+              "target_type": "SeqAct_Log",
+              "target_name": "SeqAct_Log",
+              "target_comment": "StraegisAttack Matinee completed!",
+              "target_properties": {},
+              "sub_steps": []
+            }
+          ]
+        },
+        {
+          "output_pin": "Out",
+          "input_pin_idx": 0,
+          "target_type": "SeqAct_Log",
+          "target_name": "SeqAct_Log",
+          "target_comment": "StraegisAttack Designer 0 Event Fired!",
+          "target_properties": {},
+          "sub_steps": []
+        }
+      ]
+    }
+  ],
+  "errors": [
+    [
+      "Castle_CellBlock.umap",
+      "export 135 (Sequence): unpack_from requires a buffer of at least 24 bytes for unpacking 4 bytes at offset 20 (actual buffer size is 16)"
+    ]
+  ],
+  "total_sequences": 125,
+  "total_nodes": 1079,
+  "tiles_processed": 65
+}

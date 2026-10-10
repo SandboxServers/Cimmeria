@@ -1,0 +1,2323 @@
+{
+  "terms": [
+    "blood",
+    "gore",
+    "splatter",
+    "puddle",
+    "syringe",
+    "shelfbox13",
+    "groundvoid",
+    "vortex",
+    "fence_energy",
+    "forcefield",
+    "stasis"
+  ],
+  "packages_scanned": 361,
+  "matches": [
+    {
+      "file": "Packages/AN-Props.upk",
+      "sha256": "abacb33d36331d4d50d0999836945cd792ddb8ee0f80aa91de66b2beb9836af7",
+      "names": [
+        "AN-PlasmaPuddle00",
+        "AN-PlasmaPuddle00_DaOM",
+        "AN-PlasmaPuddle00_FX_Mat",
+        "AN-PlasmaPuddle01",
+        "AN-PlasmaPuddle02",
+        "AN-PuddleJumper00",
+        "AN-PuddleJumper00_D",
+        "AN-PuddleJumper00_E",
+        "AN-PuddleJumper00_MI",
+        "AN-PuddleJumper00_N",
+        "AN-PuddleJumper00_Ruin_D",
+        "AN-PuddleJumper00_Ruin_MI",
+        "AN-PuddleJumper00_Ruin_N",
+        "AN-PuddleJumper00_Ruin_S",
+        "AN-PuddleJumper00_S",
+        "AN-PuddleJumper_Ruin00",
+        "AN-StasisChamber00",
+        "An-StasisChamber00_D",
+        "An-StasisChamber00_E",
+        "AN-StasisChamber00_MI",
+        "An-StasisChamber00_N",
+        "AN-StasisChamber00_Pf0",
+        "AN-StasisChamber00_Pf0_Arc0",
+        "AN-StasisChamber00_Pf0_Arc1",
+        "AN-StasisChamber00_Pf0_Arc2",
+        "AN-StasisChamber00_Pf0_Arc3",
+        "An-StasisChamber00_S",
+        "AN-StasisChamber01_MI",
+        "AN-StasisChamber_Open00"
+      ],
+      "exports": [
+        {
+          "index": 383,
+          "path": "AN-PlasmaPuddle00_FX_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 708,
+          "path": "AN-PuddleJumper00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 709,
+          "path": "AN-PuddleJumper00_Ruin_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 713,
+          "path": "AN-StasisChamber00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 714,
+          "path": "AN-StasisChamber01_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 1015,
+          "path": "AN-StasisChamber00_Pf0.AN-StasisChamber00_Pf0_Arc1",
+          "class": "PointLight"
+        },
+        {
+          "index": 1016,
+          "path": "AN-StasisChamber00_Pf0.AN-StasisChamber00_Pf0_Arc2",
+          "class": "PointLight"
+        },
+        {
+          "index": 1017,
+          "path": "AN-StasisChamber00_Pf0.AN-StasisChamber00_Pf0_Arc3",
+          "class": "PointLight"
+        },
+        {
+          "index": 1212,
+          "path": "AN-StasisChamber00_Pf0",
+          "class": "Prefab"
+        },
+        {
+          "index": 1415,
+          "path": "AN-PlasmaPuddle00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1416,
+          "path": "AN-PlasmaPuddle01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1417,
+          "path": "AN-PlasmaPuddle02",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1424,
+          "path": "AN-PuddleJumper00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1425,
+          "path": "AN-PuddleJumper_Ruin00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1434,
+          "path": "AN-StasisChamber00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1435,
+          "path": "AN-StasisChamber_Open00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 1499,
+          "path": "AN-StasisChamber00_Pf0.AN-StasisChamber00_Pf0_Arc0",
+          "class": "StaticMeshActor"
+        },
+        {
+          "index": 1677,
+          "path": "AN-PlasmaPuddle00_DaOM",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1682,
+          "path": "AN-PuddleJumper00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1683,
+          "path": "AN-PuddleJumper00_E",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1684,
+          "path": "AN-PuddleJumper00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1685,
+          "path": "AN-PuddleJumper00_Ruin_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1686,
+          "path": "AN-PuddleJumper00_Ruin_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1687,
+          "path": "AN-PuddleJumper00_Ruin_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1688,
+          "path": "AN-PuddleJumper00_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1701,
+          "path": "An-StasisChamber00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1702,
+          "path": "An-StasisChamber00_E",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1703,
+          "path": "An-StasisChamber00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 1704,
+          "path": "An-StasisChamber00_S",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/ANM-Props.upk",
+      "sha256": "2476a6cf47e0c5e5ff8adac83b609c95b66bb28190a17fcb9f501d220b47f5e3",
+      "names": [
+        "ANM-PuddleJumper00_Ruin_D",
+        "ANM-PuddleJumper00_Ruin_MI",
+        "ANM-PuddleJumper00_Ruin_N",
+        "ANM-PuddleJumper00_Ruin_S",
+        "ANM-PuddleJumper_Ruin00"
+      ],
+      "exports": [
+        {
+          "index": 88,
+          "path": "ANM-PuddleJumper00_Ruin_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 395,
+          "path": "ANM-PuddleJumper_Ruin00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 517,
+          "path": "ANM-PuddleJumper00_Ruin_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 518,
+          "path": "ANM-PuddleJumper00_Ruin_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 519,
+          "path": "ANM-PuddleJumper00_Ruin_S",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/ASG-Buildings.upk",
+      "sha256": "f7eacbbc7ad39e0a3bb41ef8784ac7911f63e22a9b73cdc7c50563ea22d0d399",
+      "names": [
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/ASG-Props.upk",
+      "sha256": "f428b320019bbfecbca8bf1fd4ed3661a5c7d0daa4b069fefd31435bacae2d1d",
+      "names": [
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/CA-Arch.upk",
+      "sha256": "cfefac6800cd620845031e12e874cafb698b4e564b4593c2eb7a2f6383f4bb94",
+      "names": [
+        "CA-Stasis_Hub_Glass00"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/CA-Building.upk",
+      "sha256": "77d9731357c9f8539f7125d276fb4a2d6518fc5c2f42cc8fdeba8809d516269d",
+      "names": [
+        "CA-Stasis_Hub00",
+        "CA-Stasis_Hub_Glass00",
+        "CA-StasisChamber_Glass00_DaO"
+      ],
+      "exports": [
+        {
+          "index": 160,
+          "path": "CA-Stasis_Hub_Glass00",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 223,
+          "path": "CA-Stasis_Hub00",
+          "class": "StaticMesh"
+        }
+      ]
+    },
+    {
+      "file": "Packages/CA-Props.upk",
+      "sha256": "7e36e37dbf7ae88447839b89f570c1d5a3e318df1015989c9168b260de2713a7",
+      "names": [
+        "Ca-PuddleLarge",
+        "Ca-PuddleMed",
+        "Ca-PuddleSmall",
+        "Ca-PuddleWater",
+        "Ca-puddlewater_D",
+        "Ca-puddlewater_DaO",
+        "Ca-PuddleWater_FX-Mat",
+        "Ca-puddleWater_N",
+        "Ca-puddleWater_S",
+        "Ca-StasisCamber_Arm00",
+        "Ca-StasisCamber_Closed01",
+        "Ca-StasisCamber_Closed01_Pf0",
+        "Ca-StasisCamber_Closed01_Pf0_Arc0",
+        "Ca-StasisCamber_Closed01_Pf0_Arc1",
+        "Ca-StasisCamber_Complete00",
+        "Ca-StasisCamber_Complete00_Pf0",
+        "Ca-StasisCamber_Complete00_Pf0_2Arc0",
+        "Ca-StasisCamber_Complete00_Pf0_2Arc1",
+        "Ca-StasisCamber_Complete00_Pf0_Arc0",
+        "Ca-StasisCamber_Complete00_Pf0_Arc1",
+        "Ca-StasisCamber_FullOpen01",
+        "Ca-StasisCamber_HalfOpen01",
+        "Ca-StasisCamber_Old00",
+        "Ca-StasisCamber_Wallstation00",
+        "Ca-StasisCamber_Wallstation00_Pf0",
+        "Ca-StasisCamber_Wallstation00_Pf0_Arc0",
+        "Ca-StasisCamber_Wallstation00_Pf0_Arc1",
+        "Ca-StasisCamber_Wallstation01",
+        "CA-StasisChamber00_D",
+        "CA-StasisChamber00_EaEM",
+        "CA-StasisChamber00_Hbeat_FX-Mat",
+        "CA-StasisChamber00_Hbeat_Mat",
+        "CA-StasisChamber00_Mat",
+        "CA-StasisChamber00_N",
+        "CA-StasisChamber00_NoHbeat_MI",
+        "CA-StasisChamber00_S",
+        "CA-StasisChamber_Arm00_D",
+        "CA-StasisChamber_Arm00_MI",
+        "CA-StasisChamber_Arm00_N",
+        "CA-StasisChamber_Arm00_S",
+        "CA-StasisChamber_Arm_Tint00_MI",
+        "CA-StasisChamber_Glass00_DaO",
+        "CA-StasisChamber_Glass00_FX-Mat",
+        "CA-StasisChamber_Glass00_Mat",
+        "CA-StasisChamber_Glass00_RTT",
+        "CA-StasisChamber_Glass00_RTTC",
+        "CA-StasisChamber_Glass00_RTTC_Custom",
+        "CA-StasisChamber_Glass00_RTTC_Tex",
+        "CA-StasisChamber_Glass00_RTTC_Tex2",
+        "CA-StasisChamber_Glass00_RTTC_Tex2NegX",
+        "CA-StasisChamber_Glass00_RTTC_Tex2NegY",
+        "CA-StasisChamber_Glass00_RTTC_Tex2NegZ",
+        "CA-StasisChamber_Glass00_RTTC_Tex2PosX",
+        "CA-StasisChamber_Glass00_RTTC_Tex2PosY",
+        "CA-StasisChamber_Glass00_RTTC_Tex2PosZ",
+        "CA-StasisChamber_Glass00_RTTC_Tex3",
+        "CA-StasisChamber_Glass00_RTTC_Tex3NegX",
+        "CA-StasisChamber_Glass00_RTTC_Tex3NegY",
+        "CA-StasisChamber_Glass00_RTTC_Tex3NegZ",
+        "CA-StasisChamber_Glass00_RTTC_Tex3PosX",
+        "CA-StasisChamber_Glass00_RTTC_Tex3PosY",
+        "CA-StasisChamber_Glass00_RTTC_Tex3PosZ",
+        "CA-StasisChamber_Glass00_RTTC_TexNegX",
+        "CA-StasisChamber_Glass00_RTTC_TexNegY",
+        "CA-StasisChamber_Glass00_RTTC_TexNegZ",
+        "CA-StasisChamber_Glass00_RTTC_TexPosX",
+        "CA-StasisChamber_Glass00_RTTC_TexPosY",
+        "CA-StasisChamber_Glass00_RTTC_TexPosZ",
+        "CA-StasisChamber_Glass00_RTTCNegX",
+        "CA-StasisChamber_Glass00_RTTCNegY",
+        "CA-StasisChamber_Glass00_RTTCNegZ",
+        "CA-StasisChamber_Glass00_RTTCPosX",
+        "CA-StasisChamber_Glass00_RTTCPosY",
+        "CA-StasisChamber_Glass00_RTTCPosZ",
+        "CA-StasisChamber_GlassOld00_DaO",
+        "CA-StasisChamber_GlassOld00_E",
+        "CA-StasisChamber_GlassOld00_Mat",
+        "CA-StasisChamber_HeartBeat00_EaEM",
+        "CA-StasisChamber_Old00_D",
+        "CA-StasisChamber_Old_Mat",
+        "CA-StasisControl00_D",
+        "CA-StasisControl00_EaEM",
+        "CA-StasisControl00_FX-Mat",
+        "CA-StasisControl00_Mat",
+        "CA-StasisControl00_N",
+        "CA-StasisControl00_S",
+        "CA-StasisPrisoner00",
+        "Ca-StasisPrisoner00_D",
+        "CA-StasisPrisoner00_MI",
+        "Ca-StasisPrisoner00_N",
+        "Ca-StasisPrisoner00_S",
+        "Fence_Energy",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 6,
+          "path": "Ca-StasisCamber_Closed01_Pf0.Ca-StasisCamber_Closed01_Pf0_Arc0",
+          "class": "AmbientSoundSGW"
+        },
+        {
+          "index": 7,
+          "path": "Ca-StasisCamber_Complete00_Pf0.Ca-StasisCamber_Complete00_Pf0_Arc0",
+          "class": "AmbientSoundSGW"
+        },
+        {
+          "index": 38,
+          "path": "Ca-PuddleWater_FX-Mat",
+          "class": "Material"
+        },
+        {
+          "index": 40,
+          "path": "CA-StasisChamber00_Hbeat_FX-Mat",
+          "class": "Material"
+        },
+        {
+          "index": 41,
+          "path": "CA-StasisChamber_Glass00_FX-Mat",
+          "class": "Material"
+        },
+        {
+          "index": 42,
+          "path": "CA-StasisChamber_Glass00_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 43,
+          "path": "CA-StasisChamber_GlassOld00_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 44,
+          "path": "CA-StasisChamber_Old_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 45,
+          "path": "CA-StasisControl00_FX-Mat",
+          "class": "Material"
+        },
+        {
+          "index": 225,
+          "path": "CA-StasisChamber00_NoHbeat_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 226,
+          "path": "CA-StasisChamber_Arm00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 227,
+          "path": "CA-StasisChamber_Arm_Tint00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 228,
+          "path": "CA-StasisPrisoner00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 262,
+          "path": "Ca-PuddleWater",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 263,
+          "path": "CA-StasisChamber00_Hbeat_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 264,
+          "path": "CA-StasisChamber00_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 265,
+          "path": "CA-StasisControl00_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 273,
+          "path": "Ca-StasisCamber_Complete00_Pf0.Ca-StasisCamber_Complete00_Pf0_2Arc0",
+          "class": "PointLight"
+        },
+        {
+          "index": 274,
+          "path": "Ca-StasisCamber_Complete00_Pf0.Ca-StasisCamber_Complete00_Pf0_2Arc1",
+          "class": "PointLight"
+        },
+        {
+          "index": 275,
+          "path": "Ca-StasisCamber_Wallstation00_Pf0.Ca-StasisCamber_Wallstation00_Pf0_Arc0",
+          "class": "PointLight"
+        },
+        {
+          "index": 307,
+          "path": "Ca-StasisCamber_Closed01_Pf0",
+          "class": "Prefab"
+        },
+        {
+          "index": 308,
+          "path": "Ca-StasisCamber_Complete00_Pf0",
+          "class": "Prefab"
+        },
+        {
+          "index": 309,
+          "path": "Ca-StasisCamber_Wallstation00_Pf0",
+          "class": "Prefab"
+        },
+        {
+          "index": 497,
+          "path": "CA-Fence00_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 499,
+          "path": "CA-Fence01_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 501,
+          "path": "CA-Fence02_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 503,
+          "path": "CA-FenceFrost00_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 505,
+          "path": "CA-FenceFrost01_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 507,
+          "path": "CA-FenceFrost02_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 632,
+          "path": "Ca-PuddleLarge",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 633,
+          "path": "Ca-PuddleMed",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 634,
+          "path": "Ca-PuddleSmall",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 639,
+          "path": "Ca-StasisCamber_Arm00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 640,
+          "path": "Ca-StasisCamber_Closed01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 641,
+          "path": "Ca-StasisCamber_Complete00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 642,
+          "path": "Ca-StasisCamber_FullOpen01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 643,
+          "path": "Ca-StasisCamber_HalfOpen01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 644,
+          "path": "Ca-StasisCamber_Old00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 645,
+          "path": "Ca-StasisCamber_Wallstation00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 646,
+          "path": "Ca-StasisCamber_Wallstation01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 647,
+          "path": "CA-StasisPrisoner00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 672,
+          "path": "Ca-StasisCamber_Closed01_Pf0.Ca-StasisCamber_Closed01_Pf0_Arc1",
+          "class": "StaticMeshActor"
+        },
+        {
+          "index": 673,
+          "path": "Ca-StasisCamber_Complete00_Pf0.Ca-StasisCamber_Complete00_Pf0_Arc1",
+          "class": "StaticMeshActor"
+        },
+        {
+          "index": 674,
+          "path": "Ca-StasisCamber_Wallstation00_Pf0.Ca-StasisCamber_Wallstation00_Pf0_Arc1",
+          "class": "StaticMeshActor"
+        },
+        {
+          "index": 798,
+          "path": "Ca-puddlewater_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 799,
+          "path": "Ca-puddlewater_DaO",
+          "class": "Texture2D"
+        },
+        {
+          "index": 800,
+          "path": "Ca-puddleWater_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 801,
+          "path": "Ca-puddleWater_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 811,
+          "path": "CA-StasisChamber00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 812,
+          "path": "CA-StasisChamber00_EaEM",
+          "class": "Texture2D"
+        },
+        {
+          "index": 813,
+          "path": "CA-StasisChamber00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 814,
+          "path": "CA-StasisChamber00_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 815,
+          "path": "CA-StasisChamber_Arm00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 816,
+          "path": "CA-StasisChamber_Arm00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 817,
+          "path": "CA-StasisChamber_Arm00_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 818,
+          "path": "CA-StasisChamber_Glass00_DaO",
+          "class": "Texture2D"
+        },
+        {
+          "index": 819,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2NegX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 820,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2NegY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 821,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2NegZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 822,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2PosX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 823,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2PosY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 824,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2PosZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 825,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3NegX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 826,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3NegY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 827,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3NegZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 828,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3PosX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 829,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3PosY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 830,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3PosZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 831,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexNegX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 832,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexNegY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 833,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexNegZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 834,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexPosX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 835,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexPosY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 836,
+          "path": "CA-StasisChamber_Glass00_RTTC_TexPosZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 837,
+          "path": "CA-StasisChamber_Glass00_RTTCNegX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 838,
+          "path": "CA-StasisChamber_Glass00_RTTCNegY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 839,
+          "path": "CA-StasisChamber_Glass00_RTTCNegZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 840,
+          "path": "CA-StasisChamber_Glass00_RTTCPosX",
+          "class": "Texture2D"
+        },
+        {
+          "index": 841,
+          "path": "CA-StasisChamber_Glass00_RTTCPosY",
+          "class": "Texture2D"
+        },
+        {
+          "index": 842,
+          "path": "CA-StasisChamber_Glass00_RTTCPosZ",
+          "class": "Texture2D"
+        },
+        {
+          "index": 843,
+          "path": "CA-StasisChamber_GlassOld00_DaO",
+          "class": "Texture2D"
+        },
+        {
+          "index": 844,
+          "path": "CA-StasisChamber_GlassOld00_E",
+          "class": "Texture2D"
+        },
+        {
+          "index": 845,
+          "path": "CA-StasisChamber_HeartBeat00_EaEM",
+          "class": "Texture2D"
+        },
+        {
+          "index": 846,
+          "path": "CA-StasisChamber_Old00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 847,
+          "path": "CA-StasisControl00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 848,
+          "path": "CA-StasisControl00_EaEM",
+          "class": "Texture2D"
+        },
+        {
+          "index": 849,
+          "path": "CA-StasisControl00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 850,
+          "path": "CA-StasisControl00_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 851,
+          "path": "Ca-StasisPrisoner00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 852,
+          "path": "Ca-StasisPrisoner00_N",
+          "class": "Texture2D"
+        },
+        {
+          "index": 853,
+          "path": "Ca-StasisPrisoner00_S",
+          "class": "Texture2D"
+        },
+        {
+          "index": 903,
+          "path": "CA-StasisChamber_Glass00_RTTC",
+          "class": "TextureCube"
+        },
+        {
+          "index": 904,
+          "path": "CA-StasisChamber_Glass00_RTTC_Custom",
+          "class": "TextureCube"
+        },
+        {
+          "index": 905,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex",
+          "class": "TextureCube"
+        },
+        {
+          "index": 906,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex2",
+          "class": "TextureCube"
+        },
+        {
+          "index": 907,
+          "path": "CA-StasisChamber_Glass00_RTTC_Tex3",
+          "class": "TextureCube"
+        },
+        {
+          "index": 908,
+          "path": "CA-StasisChamber_Glass00_RTT",
+          "class": "TextureRenderTargetCube"
+        }
+      ]
+    },
+    {
+      "file": "Packages/CA-Skydome.upk",
+      "sha256": "c1d9ec6de07b4796a22816e0ae713c3ed940ff6601560433e00831e400bfabcd",
+      "names": [
+        "CA-CloudVortex",
+        "CA-CloudVortex_Fast_Mat",
+        "CA-CloudVortex_Huge",
+        "CA-CloudVortex_Large_Mat",
+        "CA-CloudVortex_Lightning_Test",
+        "CA-CloudVortex_Mat",
+        "CA-CloudVortex_Med_Mat",
+        "CA-CloudVortex_Small",
+        "CA-CloudVortex_Small_Dup",
+        "CA-CloudVortex_Small_LightingDemo",
+        "CA-CloudVortex_Small_LightingDemo_00",
+        "CA-CloudVortex_Small_LightingDemo_01",
+        "CA-CloudVortex_Small_LightingDemo_02",
+        "CA-CloudVortex_Small_LightingDemo_03",
+        "CA-CloudVortex_Small_LightingDemo_04",
+        "CA-CloudVortex_Small_LightingDemo_05",
+        "CA-CloudVortex_Small_Mat",
+        "CA-CloudVortex_Smooth",
+        "CA-CloudVortex_Smooth_Mat",
+        "CA-CloudVortex_Test",
+        "CA-CloudVortex_Test_Mat",
+        "CA-CloudVortex_Test_Mat_Dup",
+        "CA-CloudVortex_Thick",
+        "CA-CloudVortex_Thick_Mat",
+        "CA-CloudVortexHuge",
+        "CA-CloudVortexHuge_Mat",
+        "CA-CloudVortexTwist",
+        "CA-CloudVortexTwist_Test"
+      ],
+      "exports": [
+        {
+          "index": 1,
+          "path": "CA-CloudVortex_Large_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 2,
+          "path": "CA-CloudVortex_Med_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 3,
+          "path": "CA-CloudVortex_Small_LightingDemo",
+          "class": "Material"
+        },
+        {
+          "index": 4,
+          "path": "CA-CloudVortex_Small_LightingDemo_01",
+          "class": "Material"
+        },
+        {
+          "index": 5,
+          "path": "CA-CloudVortex_Small_LightingDemo_03",
+          "class": "Material"
+        },
+        {
+          "index": 6,
+          "path": "CA-CloudVortex_Small_LightingDemo_04",
+          "class": "Material"
+        },
+        {
+          "index": 7,
+          "path": "CA-CloudVortex_Small_LightingDemo_05",
+          "class": "Material"
+        },
+        {
+          "index": 8,
+          "path": "CA-CloudVortex_Small_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 9,
+          "path": "CA-CloudVortex_Smooth_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 10,
+          "path": "CA-CloudVortex_Thick_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 11,
+          "path": "CA-CloudVortexHuge_Mat",
+          "class": "Material"
+        },
+        {
+          "index": 476,
+          "path": "CA-CloudVortex_Fast_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 477,
+          "path": "CA-CloudVortex_Lightning_Test",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 478,
+          "path": "CA-CloudVortex_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 479,
+          "path": "CA-CloudVortex_Small",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 480,
+          "path": "CA-CloudVortex_Small_Dup",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 481,
+          "path": "CA-CloudVortex_Small_LightingDemo_00",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 482,
+          "path": "CA-CloudVortex_Small_LightingDemo_02",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 483,
+          "path": "CA-CloudVortex_Test",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 484,
+          "path": "CA-CloudVortex_Test_Mat",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 485,
+          "path": "CA-CloudVortex_Test_Mat_Dup",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 486,
+          "path": "CA-CloudVortexTwist_Test",
+          "class": "ObjectRedirector"
+        },
+        {
+          "index": 488,
+          "path": "CA-CloudVortex_Huge",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 489,
+          "path": "CA-CloudVortex_Thick",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 495,
+          "path": "CA-CloudVortex",
+          "class": "Texture2D"
+        },
+        {
+          "index": 496,
+          "path": "CA-CloudVortex_Smooth",
+          "class": "Texture2D"
+        },
+        {
+          "index": 497,
+          "path": "CA-CloudVortex_Thick",
+          "class": "Texture2D"
+        },
+        {
+          "index": 498,
+          "path": "CA-CloudVortexHuge",
+          "class": "Texture2D"
+        },
+        {
+          "index": 499,
+          "path": "CA-CloudVortexTwist",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Ca-VFX.upk",
+      "sha256": "7d4eacf75116d0f7a6f537b303b47ae264ab555c0014d65b0282b3f625f8d9f3",
+      "names": [
+        "Par-CloudVortex_DaO",
+        "Par-CloudVortex_MI"
+      ],
+      "exports": [
+        {
+          "index": 1949,
+          "path": "Par-CloudVortex_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 3596,
+          "path": "Par-CloudVortex_DaO",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Character/KD_WP-Asgard.upk",
+      "sha256": "eaccca99a5e2dcacaa0ab6068507de46f4270e42fafe345ae5be2eea908db7c3",
+      "names": [
+        "AS-Sing_BeamStasis",
+        "SingBeamStasis",
+        "WFX-StasisBeam"
+      ],
+      "exports": [
+        {
+          "index": 58,
+          "path": "AS-Sing_BeamStasis",
+          "class": "ComponentKismetData"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Character/MOB_CA_DroneTank.upk",
+      "sha256": "c3ec8ff74a193bb4e66f23af21dee8c7baeaa3227dc0018f450521ea28e9a9fa",
+      "names": [
+        "Stasis",
+        "WFX-StasisBeam"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/Character/PFX-abilities.upk",
+      "sha256": "5d1c3d43529ccc786d6c763c95335466e2ef9d1ef22c870215bc1f06c8345f0e",
+      "names": [
+        "PFX-StasisEffect_BC",
+        "PFX-Syringe_BC",
+        "WFX-StasisHold",
+        "WP-Syringe00"
+      ],
+      "exports": [
+        {
+          "index": 63,
+          "path": "PFX-StasisEffect_BC",
+          "class": "BodyComponent"
+        },
+        {
+          "index": 67,
+          "path": "PFX-Syringe_BC",
+          "class": "BodyComponent"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Character/Straegis-VFX.upk",
+      "sha256": "85e7757208961163d9bfa9e7c9eba7683b50196258c34ab9c580bc44b2e0fd0e",
+      "names": [
+        "dark_vortex",
+        "energyVortex",
+        "energyVortex_Dup",
+        "Par-DarkVortex00_DaO",
+        "Par-Vortex00_DaO",
+        "Par-Vortex01_DaO",
+        "Str-DarkVortex00_MI",
+        "Str-GroundVoid",
+        "Str-GroundVoidHold",
+        "Str-Vortex00_MI",
+        "Str-Vortex01_MI"
+      ],
+      "exports": [
+        {
+          "index": 19299,
+          "path": "Str-DarkVortex00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 19320,
+          "path": "Str-Vortex00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 19321,
+          "path": "Str-Vortex01_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 35142,
+          "path": "Str-GroundVoid",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 35143,
+          "path": "Str-GroundVoidHold",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 35213,
+          "path": "Par-DarkVortex00_DaO",
+          "class": "Texture2D"
+        },
+        {
+          "index": 35236,
+          "path": "Par-Vortex00_DaO",
+          "class": "Texture2D"
+        },
+        {
+          "index": 35237,
+          "path": "Par-Vortex01_DaO",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Character/VFX-Weapons.upk",
+      "sha256": "9a5826e5e2a777787df9b89afbf9ba1e618a48d208214baadd93a19bd573b24c",
+      "names": [
+        "PFX-StasisEffect_BC",
+        "vortex1",
+        "vortex1_Dup",
+        "vortex2",
+        "vortex2_Dup",
+        "WFX-StasisAoE",
+        "WFX-StasisBeam",
+        "WFX-StasisField",
+        "WFX-StasisFieldTarget",
+        "WFX-StasisHold",
+        "WFX-StasisPulse",
+        "WFX-StasisPulseAoE"
+      ],
+      "exports": [
+        {
+          "index": 3,
+          "path": "Mob.PFX-StasisEffect_BC",
+          "class": "BodyComponent"
+        },
+        {
+          "index": 97606,
+          "path": "Asgard.WFX-StasisAoE",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97607,
+          "path": "Asgard.WFX-StasisBeam",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97608,
+          "path": "Asgard.WFX-StasisField",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97609,
+          "path": "Asgard.WFX-StasisFieldTarget",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97610,
+          "path": "Asgard.WFX-StasisPulse",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97611,
+          "path": "Asgard.WFX-StasisPulseAoE",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97831,
+          "path": "Mob.WFX-StasisBeam",
+          "class": "ParticleSystem"
+        },
+        {
+          "index": 97832,
+          "path": "Mob.WFX-StasisHold",
+          "class": "ParticleSystem"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Character/WP-Asgard.upk",
+      "sha256": "ae41e9517d90a1cc4657dc10d854880cc67059779cf45ae7c1c743af6ea01f18",
+      "names": [
+        "AS-Sing_BeamStasis"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/Character/WP-Special.upk",
+      "sha256": "d7f380b127e0ec592b3cb742be923182c42fc7c47c3dc519fd09afb1d3802dda",
+      "names": [
+        "WP-Syringe00",
+        "WP-Syringe00_D",
+        "WP-Syringe00_E",
+        "WP-Syringe00_MI"
+      ],
+      "exports": [
+        {
+          "index": 2,
+          "path": "WP-Syringe00_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 5,
+          "path": "WP-Syringe00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 9,
+          "path": "WP-Syringe00_D",
+          "class": "Texture2D"
+        },
+        {
+          "index": 10,
+          "path": "WP-Syringe00_E",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Derek.upk",
+      "sha256": "8d8eabba2b303f4bdbc5e705bd6d84622fb30430d43bff1234a4a3b6fff87006",
+      "names": [
+        "Castle_Stasis_Hub",
+        "Stasis_Hub_Room_Hall"
+      ],
+      "exports": [
+        {
+          "index": 61,
+          "path": "Castle_Stasis_Hub",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 62,
+          "path": "Stasis_Hub_Room_Hall",
+          "class": "StaticMesh"
+        }
+      ]
+    },
+    {
+      "file": "Packages/EM-Cover.upk",
+      "sha256": "afcd64ebcc0021e1b411d2f5708b64eacdef6a5197748931f7a8de329e408ba2",
+      "names": [
+        "CA-Stasis_Hub_Glass00"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/Em-Props.upk",
+      "sha256": "eca77d714ebded0af928aada3574421170b80d3cc9977f057cecb8f45013895a",
+      "names": [
+        "EM-ShelfBox13",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 1710,
+          "path": "EM-ShelfBox13",
+          "class": "StaticMesh"
+        }
+      ]
+    },
+    {
+      "file": "Packages/GA-Props.upk",
+      "sha256": "d49a06b143b337dadc05d36d729c80b6dd0e432a80289caffe8500813840516e",
+      "names": [
+        "CA-StasisChamber_Arm_Tint00_MI",
+        "CA-StasisControl00_FX-Mat",
+        "Fence_Energy",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 767,
+          "path": "GA-Fence00_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 769,
+          "path": "GA-Fence01_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 771,
+          "path": "GA-Fence02_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 773,
+          "path": "GA-Fence03_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        }
+      ]
+    },
+    {
+      "file": "Packages/HB-Props.upk",
+      "sha256": "885c40f94340cb5bab04b5426a5ee116d8dbcc34a363f61be7deba7522ebfad8",
+      "names": [
+        "Fence_Energy",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 7531,
+          "path": "HB-Fence00_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 7533,
+          "path": "HB-Fence01_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 7535,
+          "path": "HB-Fence02_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        }
+      ]
+    },
+    {
+      "file": "Packages/HT-Props.upk",
+      "sha256": "6ff0dd3e810371d770d9a9f163c491e4bc6b0fc8369d32ce4ce7b9514ab4dc4e",
+      "names": [
+        "Fence_Energy",
+        "GLB-ForceField_DaO",
+        "HT-ForceFieldPlane00",
+        "HT-ForceFieldPlane00_Pf0",
+        "HT-ForceFieldPlane00_Pf0_Arc0",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 958,
+          "path": "HT-ForceFieldPlane00_Pf0",
+          "class": "Prefab"
+        },
+        {
+          "index": 1438,
+          "path": "HT-Fence00_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 1440,
+          "path": "HT-Fence01_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 1442,
+          "path": "HT-Fence02_Pf0.Sequence.Fence_Energy",
+          "class": "Sequence"
+        },
+        {
+          "index": 1775,
+          "path": "HT-ForceFieldPlane00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 2010,
+          "path": "HT-ForceFieldPlane00_Pf0.HT-ForceFieldPlane00_Pf0_Arc0",
+          "class": "StaticMeshActor"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Leonard-VFX.upk",
+      "sha256": "0622e4d8f31171bf800af832e01084d1eccde26ee8c2abbcd1762fe8b37f40c1",
+      "names": [
+        "splatter",
+        "splatter_Dup",
+        "splatter_Dup_Dup"
+      ],
+      "exports": []
+    },
+    {
+      "file": "Packages/ParentMaterials.upk",
+      "sha256": "3b7ce99e66001952af8da18de371c5ed8f30f6c37af70f4f4eac017206648412",
+      "names": [
+        "GLB-ForceField_DaO",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField_Fallback"
+      ],
+      "exports": [
+        {
+          "index": 243,
+          "path": "Unique-2S-Additive-Unlit_DaO-W_ForceField",
+          "class": "Material"
+        },
+        {
+          "index": 244,
+          "path": "Unique-2S-Additive-Unlit_DaO-W_ForceField_Fallback",
+          "class": "Material"
+        },
+        {
+          "index": 5851,
+          "path": "GLB-ForceField_DaO",
+          "class": "Texture2D"
+        }
+      ]
+    },
+    {
+      "file": "Packages/SGW_fluids.upk",
+      "sha256": "f076ccc09d1f91719ec33c71a38eaf79e53b209d87a90d2d3a3cbc841769ee35",
+      "names": [
+        "SGW-ForceFieldCollisionPlane",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 2669,
+          "path": "SGW-ForceFieldCollisionPlane",
+          "class": "StaticMesh"
+        }
+      ]
+    },
+    {
+      "file": "Packages/Tol-Props00.upk",
+      "sha256": "001bd47b9ad47c51d0e29b7ec1740cd4b0348b02b8c26f150ff4a29e1e772d0e",
+      "names": [
+        "GLB-ForceField_DaO",
+        "Tol-ForceFieldBarrier00",
+        "Tol-ForceFieldBarrier01",
+        "Tol-ForceFieldBarrier02",
+        "Tol-ForceFieldBarrier03",
+        "Tol-ForceFieldBarrier03_End00",
+        "Tol-ForceFieldBarrier_FX_MI",
+        "Unique-2S-Additive-Unlit_DaO-W_ForceField"
+      ],
+      "exports": [
+        {
+          "index": 22,
+          "path": "Tol-ForceFieldBarrier_FX_MI",
+          "class": "MaterialInstanceConstant"
+        },
+        {
+          "index": 87,
+          "path": "Tol-ForceFieldBarrier00",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 88,
+          "path": "Tol-ForceFieldBarrier01",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 89,
+          "path": "Tol-ForceFieldBarrier02",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 90,
+          "path": "Tol-ForceFieldBarrier03",
+          "class": "StaticMesh"
+        },
+        {
+          "index": 91,
+          "path": "Tol-ForceFieldBarrier03_End00",
+          "class": "StaticMesh"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "archives": [
+    {
+      "archive": "01_RING_TRANSPORT_CLAUDE_INSTRUCTIONS.zip",
+      "entries": 5,
+      "leads": []
+    },
+    {
+      "archive": "02_CASTLE_CELLBLOCK_MAPS_01.zip",
+      "entries": 66,
+      "leads": [
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00000000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00000001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00000002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00000003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0000fffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0000fffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0000fffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0000ffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00010000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00010001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00010002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00010003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0001fffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0001fffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0001fffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0001ffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00020000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00020001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00020002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00020003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0002fffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0002fffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0002fffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0002ffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00030000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00030001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00030002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-00030003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0003fffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0003fffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0003fffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-0003ffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffc0000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffc0001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffc0002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffc0003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffcfffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffcfffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffcfffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffcffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffd0000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffd0001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffd0002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffd0003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffdfffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffdfffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffdfffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffdffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffe0000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffe0001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffe0002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffe0003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffefffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffefffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffefffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffeffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-ffff0000.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-ffff0001.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-ffff0002.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-ffff0003.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffffffc.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffffffd.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-fffffffe.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock-ffffffff.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock.umap",
+        "SOURCE_MAPS/Castle_CellBlock/Castle_CellBlock/Castle_CellBlock_MapData.upk"
+      ]
+    },
+    {
+      "archive": "03_CASTLE_MAPS_01.zip",
+      "entries": 77,
+      "leads": []
+    },
+    {
+      "archive": "03_CASTLE_MAPS_02.zip",
+      "entries": 34,
+      "leads": []
+    },
+    {
+      "archive": "03_CASTLE_MAPS_03.zip",
+      "entries": 35,
+      "leads": []
+    },
+    {
+      "archive": "SGW_FINAL_COMPLETE_RE_REVIEW_BUNDLE.zip",
+      "entries": 155,
+      "leads": [
+        "REPORTS/13_MISSING_WORLD_ASSET_CANDIDATES.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/00_WORLD_CONTENT_DOSSIER.md"
+      ]
+    },
+    {
+      "archive": "SGW_FINAL_DEVELOPER_HANDOFF.zip",
+      "entries": 615,
+      "leads": [
+        "WORLDS/RECOVERED/Agnos/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Agnos/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Agnos/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Agnos_Library/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Agnos_Library/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Agnos_Library/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Beta_Site_Evo_1/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Beta_Site_Evo_1/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Beta_Site_Evo_1/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Castle/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Castle/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Castle/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/00_WORLD_CONTENT_DOSSIER.md",
+        "WORLDS/RECOVERED/Castle_CellBlock/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/02_MISSIONS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/03_DIALOG_EVENTSET_SCRIPT.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/05_RUNTIME_OBJECT_WORLD_BINDINGS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/06_CINEMATIC_RUNTIME_PATHS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/07_CINEMATIC_WORLD_BINDINGS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/08_DIALOG_VO_SAMPLE_CANDIDATES.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/09_WORLD_AUDIO_CANDIDATES.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/10_UI_MINIMAP_CANDIDATES.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/12_PLAYER_STARTS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/13_TRAVEL_TRANSPORT.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/14_TRIGGER_ACCESS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/15_SPAWN_ENCOUNTER_ROOTS.csv",
+        "WORLDS/RECOVERED/Castle_CellBlock/16_SPAWN_ENCOUNTER_BINDINGS.csv",
+        "WORLDS/RECOVERED/Dakara_E1/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Dakara_E1/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Dakara_E1/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Dakara_E1_StoryRm/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Dakara_E1_StoryRm/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Dakara_E1_StoryRm/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Harset/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Harset/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Harset/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Harset_CmdCenter/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Harset_CmdCenter/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Harset_CmdCenter/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Harset_Market/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Harset_Market/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Harset_Market/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Harset_StorageRm/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Harset_StorageRm/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Harset_StorageRm/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Dark/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Dark/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Dark/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Light/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Light/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Ihpet_Crater_Light/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Login_Map/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Login_Map/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Login_Map/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Lucia/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Lucia/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Lucia/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Menfa_Dark/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Menfa_Dark/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Menfa_Dark/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Menfa_Light/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Menfa_Light/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Menfa_Light/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Omega_Site/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Omega_Site/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Omega_Site/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Omega_Site_CmdCenter/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Omega_Site_CmdCenter/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Omega_Site_CmdCenter/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Sewer_Falls/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Sewer_Falls/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Sewer_Falls/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/SGC/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/SGC/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/SGC/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/SGC_W1/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/SGC_W1/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/SGC_W1/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Tollana/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Tollana/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Tollana/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/RECOVERED/Tollana_Curia/01_MAP_PACKAGES.csv",
+        "WORLDS/RECOVERED/Tollana_Curia/04_KISMET_EVENTSET_ACTORS.csv",
+        "WORLDS/RECOVERED/Tollana_Curia/11_RUNTIME_ASSET_USAGE.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ahket/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Anima_Vitrus/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Asgard_Hgh_Council/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Bat/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Beta-Omega/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Beta_Site_E2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ca-Alpha_Pocket_00/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ca-Alpha_Pocket_01/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Combat_Terrain_Test/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Content_Smoketest/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Dak/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Dakara/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Dakara_E2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Dakara_E3/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Dakara_Superweapon/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/DELETE/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Derek_TestMap_01/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Egypt/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Egypt_StoryRm/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Flg/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/GeneticsLab/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Hebridan/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Holding_Area/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/IhpCrater/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ihpet/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ihpet_E1/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Ihpet_E2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/IhpetCrater/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/InteriorCombatTest/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/INVALID/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Kheb/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Menfa-Omega-Beta/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MenFa/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Meridian/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestAhket/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestAhketThrn/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestBetaE1/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestBetaE2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestCallandra/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestDakara/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestHebridan/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestIhpetCrtr/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestIhpetE1/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestIhpetE2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestKheb/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestMeridian/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestNaitac/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestOmegaSite/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestPenLai/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestPerthro/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestPrimHatak/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestRasE1/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestRasE2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestSGC/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestSGCE2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestSokar/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestTartarus/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestVokos/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/MissionTestYotenheim/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Mob_TestMap/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Naitac/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Omega_Site_Ruins/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Omega_Site_StorageRm/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Pen-Lai/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Pertho/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Pertho_Genetics_Lab/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Pertho_StoryRm/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Playground/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/PrimHatak/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/QA_Testmap/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/sandbox/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/SGC2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/SGC_W2/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Sokars/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Sokars_Moon/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tartarus/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Temple/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/TestSGC1/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tol-Alpha_Pocket_00/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tol-Alpha_Pocket_01/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tol-Alpha_Pocket_02/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tol/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Tol_POI_Test06/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Vitrus/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Vok/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Vokos/01_DIRECT_ASSET_CANDIDATES.csv",
+        "WORLDS/MISSING_UNRECOVERED/Yotunheim/01_DIRECT_ASSET_CANDIDATES.csv"
+      ]
+    },
+    {
+      "archive": "SGW_FINAL_OVERVIEW_EXPORT.zip",
+      "entries": 14,
+      "leads": [
+        "t_04Y_V2_CORRECTED_BUILD_DOSSIERS_03_ASSET_COVERAGE_AUDIT.csv"
+      ]
+    },
+    {
+      "archive": "SGW_Historical_CellBlocks_CLIENT_7VERSIONS_FINAL.zip",
+      "entries": 471,
+      "leads": [
+        "Uninstall-Historical-CellBlocks.ps1",
+        "Install-Historical-CellBlocks.ps1",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_MapData.upk",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C57050_CellBlock/C57050_CellBlock_fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock_MapData.upk",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C63682_CellBlock/C63682_CellBlock-0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock_MapData.upk",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C58674_CellBlock/C58674_CellBlock-ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock_MapData.upk",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C60130_CellBlock/C60130_CellBlock-00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C43485_CellBlock/C43485_CellBlock_fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffcfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C55124_CellBlock/C55124_CellBlock_fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00020001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00000001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-ffffffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0001fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0001ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-ffff0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffe0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffc0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0003fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffc0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffc0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffeffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-ffff0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffd0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffc0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffe0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0000fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffefffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffdfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0002fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffcfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffdffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffe0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock_MapData.upk",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffefffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00030001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-ffff0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0003fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00030002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0002ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00020000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffffffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffd0001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0000fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00000003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0003ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffd0003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00000000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0001fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00020002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffcfffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffdfffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffd0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0002fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00000002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00030003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00010003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00020003.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffe0002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00010000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00030000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0000ffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00010002.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffffffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-ffff0000.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0002fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffcffff.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0000fffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffdfffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0001fffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-00010001.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffefffe.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffffffc.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-0003fffd.umap",
+        "PAYLOAD/SGWGame/CookedPC/Maps/C62429_CellBlock/C62429_CellBlock-fffcfffd.umap"
+      ]
+    },
+    {
+      "archive": "SGW_Historical_CellBlocks_SERVER_DEV_7VERSIONS_ENGLISH.zip",
+      "entries": 13,
+      "leads": [
+        "CLAUDE_HANDOFF_HISTORICAL_CELLBLOCKS_7VERSIONS_ENGLISH.md"
+      ]
+    },
+    {
+      "archive": "SGW_Historical_CellBlocks_SERVER_DEV_PATCH.zip",
+      "entries": 13,
+      "leads": [
+        "CLAUDE_HANDOFF_HISTORICAL_CELLBLOCKS.md",
+        "PATCH_FILES/01_worlds_historical_cellblocks.sql",
+        "PATCH_FILES/02_spaces_historical_cellblocks.xml"
+      ]
+    },
+    {
+      "archive": "SGW_Map_Editor_Pro_FINAL.zip",
+      "entries": 24,
+      "leads": [
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/sgw_map_editor_pro_icon.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/sgw_map_editor_pro_icon.ico",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/gate.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/open.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/build.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/thumbs.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/sort.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/zoom.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/fit.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/save.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/launch.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/remove.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/settings.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/theme_pack_preview.png",
+        "SGW Map Editor Pro Auto Builder Installer/app/assets/theme_pack/README_THEME_PACK.txt"
+      ]
+    },
+    {
+      "archive": "SGW_UI_DEV_HANDOFF_2026-09-20.zip",
+      "entries": 24,
+      "leads": []
+    }
+  ]
+}

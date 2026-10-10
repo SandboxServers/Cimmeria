@@ -1,0 +1,528 @@
+{
+  "map": "Castle_CellBlock-fffffffe.umap",
+  "sha256": "d00b8261b7d882fd7ff6cf8329c21a347db7f5969175d186989610ebbfa0c4e2",
+  "nodes": [
+    {
+      "index": 89,
+      "path": "TheWorld.PersistentLevel.CameraActor",
+      "class": "CameraActor",
+      "scalar_properties": {
+        "DrawFrustum": 99,
+        "MeshComp": 1356,
+        "Tag": "CameraActor",
+        "Location": [
+          -6151.80859375,
+          -14167.8408203125,
+          2656.0
+        ],
+        "Rotation": [
+          0,
+          20864,
+          0
+        ]
+      },
+      "links": null
+    },
+    {
+      "index": 281,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.InterpData",
+      "class": "InterpData",
+      "scalar_properties": {
+        "InterpLength": 10.009596824645996,
+        "SelectedFilter": -103,
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 953,
+        "ObjPosX": 201,
+        "ObjPosY": 92,
+        "DrawWidth": 32,
+        "DrawHeight": 32
+      },
+      "links": null
+    },
+    {
+      "index": 286,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.InterpData.InterpGroup",
+      "class": "InterpGroup",
+      "scalar_properties": {
+        "GroupName": "Camera",
+        "GroupColor": [
+          128,
+          202,
+          0,
+          255
+        ]
+      },
+      "links": null
+    },
+    {
+      "index": 287,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.InterpData.InterpGroupDirector",
+      "class": "InterpGroupDirector",
+      "scalar_properties": {
+        "GroupColor": [
+          0,
+          50,
+          229,
+          255
+        ]
+      },
+      "links": null
+    },
+    {
+      "index": 288,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.InterpData.InterpGroupDirector.InterpTrackDirector",
+      "class": "InterpTrackDirector",
+      "scalar_properties": {},
+      "links": null
+    },
+    {
+      "index": 953,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack",
+      "class": "Sequence",
+      "scalar_properties": {
+        "DefaultViewX": 479,
+        "DefaultViewY": 193,
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 938,
+        "ObjPosX": 160,
+        "ObjPosY": 72,
+        "ObjName": "StraegisAttack",
+        "DrawWidth": 108,
+        "DrawHeight": 29
+      },
+      "links": {
+        "input": [],
+        "output": [],
+        "variable": []
+      }
+    },
+    {
+      "index": 922,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqEvent_Designer",
+      "class": "SeqEvent_Designer",
+      "scalar_properties": {
+        "MaxTriggerCount": 0,
+        "MaxWidth": 143,
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 953,
+        "ObjPosX": -64,
+        "ObjComment": "Designer 0:  Begin Matinee",
+        "DrawWidth": 91,
+        "DrawHeight": 144
+      },
+      "links": {
+        "input": [],
+        "output": [
+          {
+            "desc": "Out",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:892",
+                "target_op": 892,
+                "input_idx": 0
+              },
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:893",
+                "target_op": 893,
+                "input_idx": 0
+              }
+            ]
+          }
+        ],
+        "variable": [
+          {
+            "desc": "Source",
+            "connections": [],
+            "expected_type": "SeqVar_Object",
+            "property_name": "None",
+            "min_vars": 1,
+            "max_vars": 255
+          },
+          {
+            "desc": "Primary Target",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:989",
+                "target_op": 989,
+                "input_idx": 0
+              }
+            ],
+            "expected_type": "SeqVar_Object",
+            "property_name": "None",
+            "min_vars": 1,
+            "max_vars": 255
+          }
+        ]
+      }
+    },
+    {
+      "index": 892,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqAct_Interp",
+      "class": "SeqAct_Interp",
+      "scalar_properties": {
+        "bRewindOnPlay": true,
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 953,
+        "ObjPosX": 208,
+        "DrawWidth": 128,
+        "DrawHeight": 61
+      },
+      "links": {
+        "input": [
+          {
+            "desc": "Play",
+            "connections": []
+          },
+          {
+            "desc": "Reverse",
+            "connections": []
+          },
+          {
+            "desc": "Stop",
+            "connections": []
+          },
+          {
+            "desc": "Pause",
+            "connections": []
+          },
+          {
+            "desc": "Change Dir",
+            "connections": []
+          }
+        ],
+        "output": [
+          {
+            "desc": "Completed",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:894",
+                "target_op": 894,
+                "input_idx": 0
+              }
+            ]
+          },
+          {
+            "desc": "Aborted",
+            "connections": []
+          }
+        ],
+        "variable": [
+          {
+            "desc": "Data",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:281",
+                "target_op": 281,
+                "input_idx": 0
+              }
+            ],
+            "expected_type": "InterpData",
+            "property_name": "None",
+            "min_vars": 1,
+            "max_vars": 1
+          },
+          {
+            "desc": "Camera",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:988",
+                "target_op": 988,
+                "input_idx": 0
+              }
+            ],
+            "expected_type": "SeqVar_Object",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          }
+        ]
+      }
+    },
+    {
+      "index": 893,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqAct_Log",
+      "class": "SeqAct_Log",
+      "scalar_properties": {
+        "ObjInstanceVersion": 2,
+        "ParentSequence": 953,
+        "ObjPosX": 216,
+        "ObjPosY": 240,
+        "ObjComment": "StraegisAttack Designer 0 Event Fired!",
+        "DrawWidth": 76,
+        "DrawHeight": 61
+      },
+      "links": {
+        "input": [
+          {
+            "desc": "In",
+            "connections": []
+          }
+        ],
+        "output": [
+          {
+            "desc": "Out",
+            "connections": []
+          }
+        ],
+        "variable": [
+          {
+            "desc": "String",
+            "connections": [],
+            "expected_type": "SeqVar_String",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Float",
+            "connections": [],
+            "expected_type": "SeqVar_Float",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Bool",
+            "connections": [],
+            "expected_type": "SeqVar_Bool",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Object",
+            "connections": [],
+            "expected_type": "SeqVar_Object",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Int",
+            "connections": [],
+            "expected_type": "SeqVar_Int",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Target",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:989",
+                "target_op": 989,
+                "input_idx": 0
+              }
+            ],
+            "expected_type": "SeqVar_Object",
+            "property_name": "Targets",
+            "min_vars": 1,
+            "max_vars": 255
+          },
+          {
+            "desc": "Vector",
+            "connections": [],
+            "expected_type": "SeqVar_Vector",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          }
+        ]
+      }
+    },
+    {
+      "index": 989,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqVar_Object",
+      "class": "SeqVar_Object",
+      "scalar_properties": {
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 953,
+        "ObjPosX": 8,
+        "ObjPosY": 216,
+        "DrawWidth": 32,
+        "DrawHeight": 32
+      },
+      "links": {
+        "input": [],
+        "output": [],
+        "variable": []
+      }
+    },
+    {
+      "index": 894,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqAct_Log",
+      "class": "SeqAct_Log",
+      "scalar_properties": {
+        "ObjInstanceVersion": 2,
+        "ParentSequence": 953,
+        "ObjPosX": 496,
+        "ObjPosY": 40,
+        "ObjComment": "StraegisAttack Matinee completed!",
+        "DrawWidth": 76,
+        "DrawHeight": 61
+      },
+      "links": {
+        "input": [
+          {
+            "desc": "In",
+            "connections": []
+          }
+        ],
+        "output": [
+          {
+            "desc": "Out",
+            "connections": []
+          }
+        ],
+        "variable": [
+          {
+            "desc": "String",
+            "connections": [],
+            "expected_type": "SeqVar_String",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Float",
+            "connections": [],
+            "expected_type": "SeqVar_Float",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Bool",
+            "connections": [],
+            "expected_type": "SeqVar_Bool",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Object",
+            "connections": [],
+            "expected_type": "SeqVar_Object",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Int",
+            "connections": [],
+            "expected_type": "SeqVar_Int",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          },
+          {
+            "desc": "Target",
+            "connections": [
+              {
+                "target_key": "Castle_CellBlock-fffffffe.umap:989",
+                "target_op": 989,
+                "input_idx": 0
+              }
+            ],
+            "expected_type": "SeqVar_Object",
+            "property_name": "Targets",
+            "min_vars": 1,
+            "max_vars": 255
+          },
+          {
+            "desc": "Vector",
+            "connections": [],
+            "expected_type": "SeqVar_Vector",
+            "property_name": "None",
+            "min_vars": 0,
+            "max_vars": 255
+          }
+        ]
+      }
+    },
+    {
+      "index": 988,
+      "path": "TheWorld.PersistentLevel.Main_Sequence.StraegisAttack.SeqVar_Object",
+      "class": "SeqVar_Object",
+      "scalar_properties": {
+        "ObjValue": 89,
+        "ObjInstanceVersion": 1,
+        "ParentSequence": 953,
+        "ObjPosX": 289,
+        "ObjPosY": 92,
+        "DrawWidth": 32,
+        "DrawHeight": 32
+      },
+      "links": {
+        "input": [],
+        "output": [],
+        "variable": []
+      }
+    }
+  ],
+  "arrays": [
+    {
+      "index": 281,
+      "property": "InterpGroups",
+      "references": [
+        {
+          "index": 286,
+          "path": "InterpGroup"
+        },
+        {
+          "index": 287,
+          "path": "InterpGroupDirector"
+        }
+      ]
+    },
+    {
+      "index": 288,
+      "property": "CutTrack",
+      "count": 1,
+      "parsed": [
+        {
+          "Time": 0.0,
+          "TransitionTime": 0.0,
+          "TargetCamGroup": "Camera"
+        }
+      ],
+      "bytes_consumed": 92,
+      "bytes_total": 100
+    },
+    {
+      "index": 953,
+      "property": "SequenceObjects",
+      "references": [
+        {
+          "index": 922,
+          "path": "SeqEvent_Designer"
+        },
+        {
+          "index": 892,
+          "path": "SeqAct_Interp"
+        },
+        {
+          "index": 893,
+          "path": "SeqAct_Log"
+        },
+        {
+          "index": 989,
+          "path": "SeqVar_Object"
+        },
+        {
+          "index": 894,
+          "path": "SeqAct_Log"
+        },
+        {
+          "index": 281,
+          "path": "InterpData"
+        },
+        {
+          "index": 988,
+          "path": "SeqVar_Object"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
