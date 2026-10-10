@@ -71,3 +71,82 @@ function Get-DaemonBind($Info, [string]$Default) {
     if ($Info -and $Info.bind) { return [string]$Info.bind }
     return $Default
 }
+
+# A property of a JSON object, or $null when the object lacks it.
+function Get-LabdField($Object, [string]$Name) {
+    if ($null -eq $Object) { return $null }
+    if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+    return $null
+}
+
+# Which lab clients a daemon stop closes (F-LC1), from the daemon's
+# GET /status body. A new daemon does not adopt the clients the old one
+# launched, so stop, restart and install close them once the daemon is down.
+# Leases live in the daemon's memory and die with it, so a leased client
+# would be taken from its holder: those are refused unless $Force.
+# Returns @{ close = rows; refuse = rows }, each row
+# @{ instance; pid; holder }. With $Force every client is in close and the
+# leased ones are in refuse as well, so the caller can name the holders.
+# Pure: no process is touched.
+function Select-LabClientsToClose($Status, [bool]$Force) {
+    $result = @{ close = @(); refuse = @() }
+    foreach ($inst in @(Get-LabdField $Status 'instances')) {
+        $clientPid = Get-LabdField $inst 'client_pid'
+        if ("$clientPid" -notmatch '^\d+$') { continue }
+        $lease = Get-LabdField $inst 'lease'
+        $row = @{ instance = [string](Get-LabdField $inst 'instance'); pid = [int]$clientPid; holder = $null }
+        if (Get-LabdField $lease 'held') {
+            $held = Get-LabdField $lease 'lease'
+            $owner = [string](Get-LabdField $held 'owner')
+            $purpose = [string](Get-LabdField $held 'purpose')
+            if (-not $owner) { $owner = '-' }
+            if (-not $purpose) { $purpose = '-' }
+            $row.holder = "$owner ($purpose)"
+            $result.refuse += $row
+            if (-not $Force) { continue }
+        }
+        $result.close += $row
+    }
+    return $result
+}
+
+# Whether a GET /status body has the daemon's shape: a daemon object and an
+# instances list, which may be empty (a property check, because an empty
+# array read through a function unrolls to $null).
+function Test-LabdStatusShape($Status) {
+    if ($null -eq $Status -or $Status -is [string]) { return $false }
+    $names = $Status.PSObject.Properties.Name
+    return ($names -contains 'daemon' -and $null -ne $Status.daemon -and $names -contains 'instances')
+}
+
+# What a daemon stop does about the clients (F-LC1). $Status is the GET
+# /status body or $null; $Unauthorized is true when the daemon answered 401
+# (a token that is not this daemon's); $DaemonAlive is whether labd.pid names
+# a live process. Returns @{ action; close; overridden; refused; warn }:
+#   action 'refuse-leased'       a client is leased and no -Force (exit 3)
+#   action 'refuse-unauthorized' the daemon is alive but refused our token,
+#                                so its leases are unknown (exit 4)
+#   action 'proceed'             stop the daemon, then close the close rows
+# overridden lists the leased clients -Force closes; warn is a message when
+# the clients cannot be known and are left open. Pure.
+function Get-LabdStopPlan($Status, [bool]$Unauthorized, [bool]$DaemonAlive, [bool]$Force) {
+    $plan = @{ action = 'proceed'; close = @(); overridden = @(); refused = @(); warn = $null }
+    if (Test-LabdStatusShape $Status) {
+        $sel = Select-LabClientsToClose $Status $Force
+        if ($sel.refuse.Count -and -not $Force) {
+            $plan.action = 'refuse-leased'
+            $plan.refused = $sel.refuse
+            return $plan
+        }
+        $plan.close = $sel.close
+        $plan.overridden = $sel.refuse
+        return $plan
+    }
+    if (-not $DaemonAlive) { return $plan }
+    if ($Unauthorized -and -not $Force) {
+        $plan.action = 'refuse-unauthorized'
+        return $plan
+    }
+    $plan.warn = 'could not read the daemon''s GET /status; any lab clients it runs are left open (close them by hand; lab doctor lists them)'
+    return $plan
+}

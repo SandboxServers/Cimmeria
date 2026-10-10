@@ -718,7 +718,7 @@ Every ability anchor was read statically from the QA `SGW.exe`, and the decoders
 
 AB-L0 of the [ability-mechanics lab plan](../analysis/ability-mechanics/lab-uat-and-telemetry.md#part-4-lab-tools-and-the-uat-run-ab-l-ab-r) is the first thing any live run does. It needs no code unless it fails:
 
-1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease), then [install from `main`](#install-or-update-the-lab) and restart the daemon (`pwsh tools/lab/daemon.ps1 restart`; with a stdio supervisor, reconnect the MCP server). Record the commit from `installed-from.txt`.
+1. [Install from `main`](#install-or-update-the-lab) and restart the daemon (`lab restart`; with a stdio supervisor, reconnect the MCP server), then take the [lab lease](#before-you-drive-the-client-the-lab-lease). Restart first: the restart closes the lab clients and refuses while a client is leased, and the lease would not survive it anyway. Record the commit from `installed-from.txt`.
 2. Point the lab at the colo: the colo row in `lab-account.json`, and `CIMMERIA_LAB_MCP_URL` / `CIMMERIA_LAB_MCP_TOKEN` at its WireGuard-only endpoint ([colo-deploy.md](../operations/colo-deploy.md)).
 3. `server_sessions` answers. A 403 "Host header is not allowed" is gap G6 in the plan: the endpoint's allowed-hosts setting.
 4. `lab_uat_run { plan_only: true }` matches the [spec coverage table](automated-uat.md#spec-coverage): no row BLOCKED on a missing tool that the table says is routed.
@@ -973,7 +973,7 @@ first line of each.
 | `lab help` | lists the commands | 0 |
 | `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
 | `lab version` | the copy's `VERSION` (`dev` when run from a checkout) and the daemon version | 0 |
-| `lab start`, `lab stop`, `lab restart` | the `CimmeriaLabDaemon` task, through `daemon.ps1` | `daemon.ps1`'s |
+| `lab start`, `lab stop [-Force]`, `lab restart [-Force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
 | `lab logs [-Lines 50] [-Instance p2] [-Level warn] [-Follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>` | 0; 1 when there is no log |
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | reads or edits `labd.env`; see below | 0; 1 for `get` of an unset key or a missing `labd.env`; 2 for a bad verb, key or value |
 | `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
@@ -1143,9 +1143,22 @@ rename it to `cimmeria-lab` and delete the stdio `cimmeria-lab` entry.
 `target\debug\cimmeria-lab.exe`, over the daemon's copy when it is newer
 (`-Exe <path>` names one explicitly), then starts the task. Every session
 gets the new build on its next call; a session whose MCP connection broke
-reconnects with `/mcp`. The game client keeps running across a daemon
-restart, but the new daemon does not adopt it: stop the client first
-(`lab_client_stop`) or start a fresh one afterwards.
+reconnects with `/mcp`.
+
+**Clients across a stop.** A new daemon does not adopt the clients the old
+one launched. Before F-LC1 they ran on unlisted, with their bridges
+unreachable. So `stop`, `restart`, `install` and `uninstall` read the
+running daemon's `/status` first, stop the daemon, and then close every
+client it listed (window close, force-stop after 8 seconds, only a process
+named `SGW`). Leases live in the daemon's memory and end with it. If any
+client is leased, the stop is refused before anything is touched: it names
+the holder and purpose and exits 3. `-Force` closes the leased clients too.
+If the live daemon answers `401` (the token is not its token), its leases
+are unknown, so the stop is refused with exit 4; `-Force` stops the daemon
+and leaves the clients open. When `/status` can't be read for another reason
+(an older daemon), the stop warns and leaves the clients open; `lab doctor`
+then lists them as unlisted `SGW.exe`. The clients are closed only once the
+daemon that listed them has exited, so its watchdog can't relaunch them.
 
 ### The lab lease
 

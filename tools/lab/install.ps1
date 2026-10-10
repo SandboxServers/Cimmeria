@@ -224,6 +224,6 @@ if ($running.Count -gt 0) {
     Say "running supervisor(s), still the old build: $(($running | ForEach-Object { $_.Id }) -join ', ')"
 }
 Say "next: lab restart (the daemon picks up the new build), then lab doctor. MCP sessions reconnect"
-Say "      on their next call, or with /mcp. Close idle lab clients first (lab clients stop): a restart"
-Say "      leaves running clients unlisted."
+Say "      on their next call, or with /mcp. The restart closes the lab clients, and refuses while one"
+Say "      is leased (-Force closes it anyway)."
 if ($DryRun) { Say "dry run: nothing was built, moved or copied" }
