@@ -117,6 +117,13 @@ impl Instances {
     pub fn labels(&self) -> Vec<String> {
         self.iter().map(|h| h.label.clone()).collect()
     }
+
+    /// The lab account name of every instance whose account is readable, in order.
+    pub fn accounts(&self) -> Vec<String> {
+        self.iter()
+            .filter_map(|h| h.supervisor.account_name())
+            .collect()
+    }
 }
 
 impl LabServer {
@@ -143,8 +150,9 @@ impl LabServer {
                 let hosted = self.instances.by_name(&name).ok_or_else(|| {
                     McpError::invalid_params(
                         format!(
-                            "no lab instance or account {name:?}: this daemon hosts {} (or an account such as lab, lab2, ...)",
-                            self.instances.labels().join(", ")
+                            "no lab instance or account {name:?}: this daemon hosts {}; hosted accounts: {} (an instance whose account file cannot be read cannot be named by account)",
+                            self.instances.labels().join(", "),
+                            self.instances.accounts().join(", ")
                         ),
                         None,
                     )
@@ -589,20 +597,34 @@ mod tests {
         assert!(!text.contains(&id), "{text}");
     }
 
+    /// Two instances in `dir`, with p2's account file (`lab2`) written there.
+    fn two_in(dir: &std::path::Path) -> LabServer {
+        let account = instance::account_path(dir, Some("p2"));
+        std::fs::create_dir_all(account.parent().unwrap()).unwrap();
+        std::fs::write(&account, r#"{"username":"lab2","password":"x"}"#).unwrap();
+        LabServer::new_multi(Instances::new(vec![
+            hosted_in("default", None, Some(dir.into())),
+            hosted_in("p2", Some("p2"), Some(dir.into())),
+        ]))
+    }
+
     #[tokio::test]
     async fn routed_lease_status_is_the_instances_own() {
-        let s = two();
+        let dir = tempfile::tempdir().unwrap();
+        let s = two_in(dir.path());
         let mut req = call("lab_lease_status", json!({ "instance": "p2" }));
         let routed = s.route(&mut req).unwrap().unwrap();
         let text = result_text(&routed.lab_lease_status().await.unwrap());
         let v: Value = serde_json::from_str(&text).unwrap();
         assert!(v.get("instances").is_none(), "{text}");
         assert_eq!(v["instance"], "p2");
+        assert_eq!(v["account"], "lab2");
     }
 
     #[tokio::test]
     async fn acquire_on_a_routed_instance_reports_it() {
-        let s = two();
+        let dir = tempfile::tempdir().unwrap();
+        let s = two_in(dir.path());
         let mut req = call("lab_lease_acquire", json!({ "instance": "p2" }));
         let routed = s.route(&mut req).unwrap().unwrap();
         let args = crate::server::lease::LeaseAcquireArgs {
@@ -618,7 +640,25 @@ mod tests {
             .unwrap();
         let v: Value = serde_json::from_str(&result_text(&result)).unwrap();
         assert_eq!(v["instance"], "p2");
-        assert!(v.get("account").is_some());
+        assert_eq!(v["account"], "lab2");
+    }
+
+    /// An account file written after the daemon started makes its instance
+    /// routable by account name: a miss is retried, not cached.
+    #[test]
+    fn an_account_written_after_startup_becomes_routable() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = LabServer::new_multi(Instances::new(vec![
+            hosted_in("default", None, Some(dir.path().into())),
+            hosted_in("p2", Some("p2"), Some(dir.path().into())),
+        ]));
+        let mut req = call("client_ui_state", json!({ "instance": "lab2" }));
+        assert!(s.route(&mut req).is_err());
+        let account = instance::account_path(dir.path(), Some("p2"));
+        std::fs::create_dir_all(account.parent().unwrap()).unwrap();
+        std::fs::write(&account, r#"{"username":"lab2","password":"x"}"#).unwrap();
+        let mut req = call("client_ui_state", json!({ "instance": "lab2" }));
+        assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "p2");
     }
 
     #[test]
