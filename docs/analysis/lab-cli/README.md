@@ -5,9 +5,9 @@
 > clients campaign ([../lab-parallel-clients/README.md](../lab-parallel-clients/README.md), #1312).
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): code complete, UAT pending.** LC-01 to
-> LC-05 merged; LC-06 (docs) is the last PR; LC-07, the live UAT, waits
-> on the owner. D-LC1 to D-LC5 accepted; D-LC5 amended to allow `-Force`.
+> **Campaign status (2026-10-10): done.** LC-01 to LC-06 merged; LC-07,
+> the live UAT, passed on this machine (results below). D-LC1 to D-LC5
+> accepted; D-LC5 amended to allow `-Force`. One follow-up: F-LC1.
 
 ## Why
 
@@ -68,8 +68,8 @@ user `PATH` once. Operating detail: [The `lab` command](../../guides/live-resear
 | LC-03 | `logs` and `env` | packet-coder | LC-02 | Integrated (#1338) |
 | LC-04 | `install` without bash, and `setup` (shim, installed copy, PATH) | packet-coder | D-LC3, D-LC4 | Integrated (#1335) |
 | LC-05 | `instances`, `clients stop`, `doctor` | packet-coder | LC-02, LC-01 | Integrated (#1337) |
-| LC-06 | Docs and memory | documentation-writer | LC-01 to LC-05 | InReview (this PR, branch `docs/lab-cli-docs`) |
-| LC-07 | Live UAT of every command on this machine | coordinator | all | UATPending (needs the owner: `lab setup` edits the user `PATH`) |
+| LC-06 | Docs and memory | documentation-writer | LC-01 to LC-05 | Integrated (#1339) |
+| LC-07 | Live UAT of every command on this machine | coordinator | all | Done 2026-10-10 |
 
 Waves:
 
@@ -115,6 +115,34 @@ are the reference; the packet specs are not updated.
 - **`lab doctor` (LC-05).** The last check compares the copy's `tools/lab`
   with `origin/main` by content, not ancestry: squash merges mean a
   worktree sha never becomes an ancestor of `origin/main`.
+
+## LC-07 live UAT (2026-10-10)
+
+Run through the `lab.cmd` shim on the owner's workstation, with the lab
+free (no leases), after the owner approved the PATH change.
+
+| Step | Result |
+|---|---|
+| `lab setup -Yes` | Shim written, `<LabHome>\bin` added to the user `PATH` once; the value kept its registry type; a second run reports "already on the user PATH". |
+| `lab status`, `lab version`, `lab doctor` | Five instances with account, client pid, port, lease and seed; doctor 10/10 PASS. |
+| `lab env get` / `set` / `set -Value:-x` / `unset` | Values round-trip; three timestamped backups (the third got `-2`); `labd.env` byte-identical afterwards; `get` after `unset` exits 1; the MCP token prints `<redacted>`. |
+| `lab logs -Lines 5 -Instance p2` | Five p2 lines; named flags pass through the shim. |
+| `lab restart`, `lab status` | New daemon pid; see F-LC1. |
+| `lab install -From <worktree on main>` | Built through `lane.ps1` (no bash), installed, CLI copy refreshed; doctor then WARNed "bin and labd copies differ; run lab restart", and PASSed after `lab restart`. |
+| doctor's VERSION check | WARNed correctly when LC-06 changed `tools/lab` on `origin/main`; PASS after `lab setup` from the updated checkout. |
+| `lab clients stop` with p2 leased | `stop p2` and `stop all` refused, naming the holder, exit 3; `stop all -Force` exit 2; `stop p2 -Force` (on the coordinator's own lease) stopped it, exit 0. The watchdog relaunched it while leased, as the warning says; after release, `stop p2` stopped it, exit 0. |
+
+Not checked: that a terminal opened from Explorer sees the new `PATH` (the
+`WM_SETTINGCHANGE` broadcast); the shim was called by its full path.
+
+### Follow-ups
+
+- **F-LC1.** `lab restart` leaves running lab clients orphaned: the new
+  daemon does not adopt them (`lab status` shows no client, the bridge is
+  unreachable), and `lab doctor` flags them as unlisted SGW.exe. This predates
+  the CLI. The `install.ps1` hint now says to close idle clients first.
+  Possible fix: have the daemon adopt a live client on its bridge port at
+  start, or have `daemon.ps1 restart` close unleased clients.
 
 ## Dispatch rules
 

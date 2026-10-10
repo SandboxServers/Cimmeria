@@ -223,6 +223,7 @@ Say "source commit: $Commit"
 if ($running.Count -gt 0) {
     Say "running supervisor(s), still the old build: $(($running | ForEach-Object { $_.Id }) -join ', ')"
 }
-Say "next: reconnect the MCP server (/mcp reconnect cimmeria-lab). If it stays on the old process,"
-Say "      stop that cimmeria-lab.exe first, then reconnect. Verify with lab_uat_run { plan_only: true }."
+Say "next: lab restart (the daemon picks up the new build), then lab doctor. MCP sessions reconnect"
+Say "      on their next call, or with /mcp. Close idle lab clients first (lab clients stop): a restart"
+Say "      leaves running clients unlisted."
 if ($DryRun) { Say "dry run: nothing was built, moved or copied" }
