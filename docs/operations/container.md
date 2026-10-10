@@ -2,7 +2,7 @@
 title: "Container distribution"
 type: how-to
 audience: operators
-last_updated: 2026-07-25
+last_updated: 2026-10-10
 ---
 
 # Container distribution
@@ -149,7 +149,32 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 1. `pg_isready` against the bundled Postgres.
 2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
 
-It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing it marked every container unhealthy. The CI smoke tests in `pr-container.yml` and `release-container.yml` probe the login port from inside the container for the same reason; a host-side probe of a published port always connects, because docker-proxy accepts the handshake itself.
+It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing it marked every container unhealthy. A bound port also says nothing about whether a login works, which is why the CI smoke below logs in.
+
+## CI login smoke
+
+`pr-container.yml` (on every PR that touches the image's inputs) and `release-container.yml` (on every release) run the same check, [`tools/container-smoke.sh`](../../tools/container-smoke.sh), against the image they just built. It starts the container with the image's defaults, publishing only the login port (`LOGON_PORT`, TCP) and the BaseApp port (`BASE_PORT`, UDP) as the image sets them, and then:
+
+1. **Waits for readiness, probed from inside the container**: `pg_isready`, a TCP connect to the login port, and the BaseApp's UDP socket in `/proc/net/udp`. Auth starts before the BaseApp, so the login port alone is not enough. A host-side probe of a published port always connects, because docker-proxy accepts the handshake itself. The budget is about 120 s.
+2. **Logs in as a client with `login-probe`**, from the runner through the published ports. The probe is a binary in `cimmeria-wireclient` (`crates/wireclient/src/login_probe.rs`), compiled in the image's builder stage and exported by the Dockerfile's `login-probe` target, so it never ships in the image. In order:
+   - A wrong password for the seeded `test` account must be rejected with "The account name or password is incorrect." Any other answer fails: a success means the server is not checking credentials (developer mode without a database accepts every password), and a different error (such as "A request to the database server failed.") means the rejection came from the wrong path.
+   - The real password must pass SOAP Phase 1 and Phase 2, and Phase 1 must return the account id the container's own database holds for `test`. The shard is the first row of the container's `shards` table.
+   - Phase 2 must advertise `BASE_EXTERNAL:BASE_PORT` as the running container sees them (`docker exec … printenv`). Both workflows run the image defaults, `127.0.0.1:32832`; if a job ever sets `-e BASE_EXTERNAL=…`, the expected endpoint follows it.
+   - The Mercury `baseAppLogin` handshake runs against the endpoint Phase 2 advertised, as a client would, and must return the encrypted login reply and time-sync packets under the Phase 2 session key. An unreachable or wrong endpoint fails here.
+
+On every run the script prints the container state and `docker logs`, and copies the server's log files out of `/var/log/cimmeria`; when the job fails, the workflow uploads them as the `container-smoke-logs` artifact (kept 14 days).
+
+The smoke stops at the handshake. Character select and world entry need a character row, and the image's database is the plain seed; that path is covered by the live-DB wireclient tests instead (`crates/wireclient/tests/it/`).
+
+To run it locally with Docker:
+
+```bash
+docker buildx build -f docker/Dockerfile -t cimmeria-server:local --load .
+docker buildx build -f docker/Dockerfile --target login-probe --output type=local,dest=/tmp/probe .
+bash tools/container-smoke.sh cimmeria-server:local /tmp/probe/login-probe /tmp/smoke-logs
+```
+
+In `release-container.yml` the order is: build for scan, Trivy, export the probe, push the dated tag, smoke, then promote `latest-prerelease`. A smoke failure ends the job before the promote, so the rolling tag never points at an image that fails to log in. The dated tag is already pushed by then; it is immutable, and the next release's version step skips past it.
 
 ## Logs
 

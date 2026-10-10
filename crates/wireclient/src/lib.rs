@@ -53,6 +53,9 @@
 //!   the bot's state machine and its keep-alive loop. The `sparbot` binary
 //!   runs it; `GameSession::enter_world` is the world-entry sequence it and
 //!   the integration tests share.
+//! - [`login_probe`] — the container smoke tests' login checks (wrong
+//!   password rejected, SOAP Phase 1 + 2, advertised BaseApp endpoint,
+//!   Mercury handshake). The `login-probe` binary runs it (issue #1291).
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
@@ -65,6 +68,7 @@ pub mod auth;
 pub mod bundle;
 pub mod error;
 pub mod handshake;
+pub mod login_probe;
 pub mod session;
 pub mod session_trace;
 pub mod sparbot;

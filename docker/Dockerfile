@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Three-stage build for the self-contained Cimmeria server image:
-#   builder  → compiles cimmeria-server against the Rust workspace.
+#   builder  → compiles cimmeria-server against the Rust workspace (and the
+#              CI login probe, exported only by the `login-probe` target).
 #   db-init  → initialises a Postgres data directory with schema + seeds.
 #   runtime  → carries the binary, cooked data, the loaded pgdata, and
 #              s6-overlay supervising postgres + cimmeria-server together.
@@ -92,10 +93,28 @@ ENV CARGO_INCREMENTAL=0
 ARG CIMMERIA_GIT_SHA=unknown
 ENV CIMMERIA_GIT_SHA=${CIMMERIA_GIT_SHA}
 
+# The second cargo build is the CI login probe (`login-probe`, from
+# cimmeria-wireclient), which the container smoke tests export through the
+# `login-probe` stage below; it never reaches the runtime image. It is a
+# separate cargo invocation on purpose: one `cargo build -p cimmeria-server
+# -p cimmeria-wireclient` would unify features and compile wireclient's
+# test-harness features into the server binary. It reuses every dependency
+# the first build compiled, so it adds seconds, and because it shares this
+# layer a warm-cache CI run exports it without compiling anything.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
     cargo build -p cimmeria-server --release \
- && cp target/release/cimmeria-server /tmp/cimmeria-server
+ && cp target/release/cimmeria-server /tmp/cimmeria-server \
+ && cargo build -p cimmeria-wireclient --bin login-probe --release \
+ && cp target/release/login-probe /tmp/login-probe
+
+
+# ─── Stage 1b: login-probe (CI export only) ──────────────────────
+# `docker buildx build --target login-probe --output type=local,dest=DIR`
+# writes DIR/login-probe for tools/container-smoke.sh. Not part of the
+# default (runtime) target.
+FROM scratch AS login-probe
+COPY --from=builder /tmp/login-probe /login-probe
 
 
 # ─── Stage 2: db-init ────────────────────────────────────────────

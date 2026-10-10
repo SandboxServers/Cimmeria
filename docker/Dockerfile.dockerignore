@@ -31,6 +31,9 @@ db.bat
 setup.ps1
 patch-client.ps1
 build.sh
+# CI-only: run on the runner against the built image, never inside it.
+# Excluded so editing it does not invalidate the builder layer (COPY tools).
+tools/container-smoke.sh
 
 # IDE + VCS
 .git/

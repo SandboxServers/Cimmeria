@@ -128,6 +128,31 @@ async fn wireclient_phase1_returns_sid_cookie() {
     auth.stop().await;
 }
 
+/// A rejected Phase 1 surfaces the server's reason, not a bare "no cookie".
+/// The container login probe (`login-probe`) relies on this to tell a wrong
+/// password from a database failure. Developer-mode auth without a database
+/// accepts any password, so the rejection here is the unknown-SKU path, which
+/// is checked before credentials and goes through the same envelope.
+#[tokio::test]
+async fn wireclient_phase1_rejection_carries_server_reason() {
+    let (mut auth, port) = start_auth().await;
+    let client = AuthClient::new(format!("http://127.0.0.1:{port}"));
+    let creds = Credentials {
+        sku: "NOT_SGW".into(),
+        ..Credentials::test_account()
+    };
+
+    let err = client.phase1(&creds).await.unwrap_err();
+    match err {
+        Error::LoginRejected(reason) => {
+            assert_eq!(reason, "The specified service does not exist.");
+        }
+        other => panic!("expected Error::LoginRejected, got: {other:?}"),
+    }
+
+    auth.stop().await;
+}
+
 #[tokio::test]
 async fn wireclient_phase2_replay_with_same_sid_errors() {
     let (mut auth, port) = start_auth().await;

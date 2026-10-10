@@ -168,6 +168,8 @@ pub fn ephemeral_udp_port() -> u16 {
 pub struct RunningServer {
     pub orchestrator: Orchestrator,
     pub auth_url: String,
+    /// The BaseApp's UDP port, which Phase 2 advertises.
+    pub base_port: u16,
 }
 
 /// `CellService::start()` loads `entities/spaces.xml` /
@@ -228,7 +230,8 @@ pub async fn start_server(db_url: &str) -> RunningServer {
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
     for _ in 0..MAX_ATTEMPTS {
-        let config = base_config(db_url, ephemeral_udp_port());
+        let base_port = ephemeral_udp_port();
+        let config = base_config(db_url, base_port);
         let auth_url = format!("http://127.0.0.1:{}", config.logon_port);
         let orchestrator = Orchestrator::new(config);
         match orchestrator.start_all().await {
@@ -236,6 +239,7 @@ pub async fn start_server(db_url: &str) -> RunningServer {
                 return RunningServer {
                     orchestrator,
                     auth_url,
+                    base_port,
                 }
             }
             Err(e) => last_err = Some(e),
@@ -281,6 +285,7 @@ pub async fn start_server_with_base_transport(
     RunningServer {
         orchestrator,
         auth_url,
+        base_port,
     }
 }
 

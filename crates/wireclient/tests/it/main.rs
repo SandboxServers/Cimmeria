@@ -14,6 +14,7 @@
 
 mod auth_smoke;
 mod duel_two_duelists_and_a_spectator;
+mod login_probe;
 mod sparbot_duel;
 mod support;
 mod trace_load;
