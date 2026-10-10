@@ -4,7 +4,7 @@
 > Opened 2026-10-10 against `main`. Prefix `LP-`. Tracking issue #1312.
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): code complete; LP-04 docs and LP-07 live UAT left.** The fix is proven by hand
+> **Campaign status (2026-10-10): closed. LP-07 passed on the colo.** The fix is proven by hand
 > (five clients at once, 2026-10-10); the packets turn it into lab code.
 
 ## Why
@@ -114,4 +114,21 @@ Not fixed here (follow-ups):
 | LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | merged (2 review rounds, fixed by the Haiku coder; guard verified to fail on revert) |
 | LP-06 | Watchdog boot grace | none | merged, #1320 (test-gap fix) |
 | LP-08 | Instance profiles outside the game install (found by LP-07: SGW.exe refuses a user folder inside its install) | LP-01 | merged (1 review round, fixed by the Haiku coder) |
-| LP-07 | Live UAT: five clients, one daemon, five leases | all | planned |
+| LP-07 | Live UAT: five clients, one daemon, five leases | all | passed 2026-10-10 (second run, after LP-08) |
+
+## LP-07 result (2026-10-10, colo)
+
+One daemon (`CIMMERIA_LAB_INSTANCES=default,p2,p3,p4,p5`, build bceb723) and five Haiku lab-driver agents, one per account, started at the same moment.
+
+- **First run: failed.** Every client quit at boot with `Failed to create user directory ... Force quitting`. SGW.exe refuses a `USERPROFILE` inside its own install folder, which is where LP-01 had put the profiles. Direct launches proved it: an empty profile inside the install fails, and outside it any length works (95 to 158 characters), with or without spaces. LP-08 (#1329) fixed it.
+- **Second run: passed.**
+  - **In the world.** All five clients reached the world at once: Labone to Labfive, ready in 26 to 38 s from launch.
+  - **Leases.** `lab_lease_status` listed five holders, one per instance, each with its own client pid.
+  - **Routing.** A lease acquired on `lab2` was refused on `p3` with `(instance p3)`.
+  - **No full resync.** Colo telemetry (`client.cooked.versions_held`) shows each of the five sessions holding 21 of 22 categories at real versions (`covernodes_local` is always 0), so no full resync happened.
+  - **No cache errors.** None of the five profiles' fresh logs has a cache-archive error.
+  - **Watchdog and seeds.** No watchdog kill. All five profiles were already seeded (`seeded="already_there"`).
+- **Follow-ups.**
+  - Two of the five clients hit `bridge error -32603: dispatch timeout` at `enter_world` on the first try, then succeeded on retry. `lab_ensure_in_world` could retry that step itself.
+  - A session's tool list only shows `instance` after `/mcp`. Agents that follow the schema literally then drop the argument, though the server accepts it. Tell drivers to pass it, or reconnect.
+  - A Windows service can't host the supervisor (Session 0 has no desktop for SGW.exe). The daemon stays a logon scheduled task; a tray or `lab` CLI is an option.
