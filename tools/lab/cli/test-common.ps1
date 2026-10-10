@@ -49,6 +49,15 @@ try {
     Check ($LASTEXITCODE -eq 0 -and "$out" -eq '5|True|p2') "named arguments reach the command (got '$out', exit $LASTEXITCODE)"
     $null = pwsh -NoProfile -File $labPs1 seven
     Check ($LASTEXITCODE -eq 7) "a command's exit code passes through (got $LASTEXITCODE)"
+    # One argument after the command (lab instances status) must stay one
+    # argument, not be splatted a character at a time.
+    Set-Content (Join-Path $disp 'cli\verb.ps1') -Value @(
+        'param([Parameter(Position = 0)][ValidateSet(''init'', ''status'')][string]$Verb)',
+        '"verb=$Verb"')
+    $out = pwsh -NoProfile -File $labPs1 verb status 2>&1
+    Check ($LASTEXITCODE -eq 0 -and "$out" -eq 'verb=status') "a single argument reaches the command whole (got '$out', exit $LASTEXITCODE)"
+    $out = pwsh -NoProfile -File $labPs1 echoargs -Follow 2>&1
+    Check ($LASTEXITCODE -eq 0 -and "$out" -eq '10|True|') "a single switch reaches the command (got '$out', exit $LASTEXITCODE)"
     $null = pwsh -NoProfile -File $labPs1 nope 2>$null
     Check ($LASTEXITCODE -eq 2) 'an unknown command exits 2'
 

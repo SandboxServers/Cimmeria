@@ -22,7 +22,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Command = if ($args.Count) { [string]$args[0] } else { 'help' }
-$Rest = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
+# Assigned directly, not through an if-expression: an expression's output
+# unrolls a one-element array to a bare string, which @Rest then splats one
+# character at a time (lab instances status bound 's', 't', ...).
+$Rest = @()
+if ($args.Count -gt 1) { $Rest = @($args[1..($args.Count - 1)]) }
 
 $CliDir = Join-Path $PSScriptRoot 'cli'
 $Commands = @(Get-ChildItem -LiteralPath $CliDir -Filter '*.ps1' -File |

@@ -11,7 +11,7 @@
     would lose the client. -Force overrides that, for one named instance only:
     `all` with -Force is refused (D-LC5). Exit codes: 0 when nothing was
     refused, 1 when the daemon is not running, 2 on a usage error, 3 when a
-    leased client was refused.
+    leased client was refused, 4 when a client could not be stopped.
 
     Select-StopTargets is pure and dot-sourceable: tools/lab/cli/test-ops.ps1
     dot-sources this file, and the command runs only when it is not dot-sourced.
@@ -86,17 +86,30 @@ function Select-StopTargets($Status, [string]$Which, [bool]$Force) {
 # Closes one client: CloseMainWindow, then Stop-Process -Force after 8 s. Acts
 # only on a process named SGW; the process object is held, so a reused pid
 # cannot be swapped in between the checks.
+# Returns $false only when an SGW was there and is still alive afterwards (for
+# example an elevated client this shell may not stop).
 function Stop-LabClient([string]$Label, [int]$ClientPid) {
     $proc = Get-Process -Id $ClientPid -ErrorAction SilentlyContinue
     if (-not $proc -or $proc.ProcessName -ne 'SGW') {
         Write-Host "${Label}: no client (pid $ClientPid is not a running SGW)"
-        return
+        return $true
     }
-    $null = $proc.CloseMainWindow()
+    # HasExited throws on a process this shell cannot query: treat that as alive.
+    $exited = { try { $proc.HasExited } catch { $false } }
+    try { $null = $proc.CloseMainWindow() } catch { }
     $deadline = (Get-Date).AddSeconds(8)
-    while (-not $proc.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
-    if (-not $proc.HasExited) { Stop-Process -InputObject $proc -Force -ErrorAction SilentlyContinue }
+    while (-not (& $exited) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+    if (-not (& $exited)) {
+        Stop-Process -InputObject $proc -Force -ErrorAction SilentlyContinue
+        $deadline = (Get-Date).AddSeconds(2)
+        while (-not (& $exited) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    }
+    if (-not (& $exited)) {
+        [Console]::Error.WriteLine("${Label}: could not stop pid $ClientPid")
+        return $false
+    }
     Write-Host "${Label}: stopped pid $ClientPid"
+    return $true
 }
 
 # The stop command: prints one line per instance and returns the exit code.
@@ -130,13 +143,15 @@ function Invoke-ClientsStop([string]$Verb, [string]$Which, [bool]$Force) {
     foreach ($inst in $sel.refuse) {
         Write-Host "$(Get-Field $inst 'instance'): leased to $(Get-LeaseWho $inst); not stopped (use -Force to override)"
     }
+    $failed = 0
     foreach ($inst in $sel.stop) {
         $label = [string](Get-Field $inst 'instance')
         if ($forcedNames -contains $label) {
             Write-Host "${label}: leased to $(Get-LeaseWho $inst); stopping anyway (-Force). The holder loses the client and the watchdog may relaunch it."
         }
-        Stop-LabClient $label (Get-ClientPid $inst)
+        if (-not (Stop-LabClient $label (Get-ClientPid $inst))) { $failed++ }
     }
+    if ($failed) { return 4 }
     if ($sel.refuse.Count) { return 3 }
     return 0
 }

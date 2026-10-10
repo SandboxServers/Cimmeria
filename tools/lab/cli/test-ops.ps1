@@ -89,6 +89,9 @@ try {
     Check ((Names $sel.none) -eq 'p4') 'a /status without client_pid or lease reads as no client'
 
     # --- clients stop: the refusals exit before the daemon is asked ---
+    # The temp labd.pid points at a closed port, so if a refusal ever reached
+    # the daemon it would find none (exit 1), never the real one.
+    [System.IO.File]::WriteAllText((Join-Path $env:CIMMERIA_LAB_HOME 'labd.pid'), '{"pid":1,"bind":"127.0.0.1:9"}')
     $clients = Join-Path $PSScriptRoot 'clients.ps1'
     $null = pwsh -NoProfile -File $clients stop all -Force 2>$null
     Check ($LASTEXITCODE -eq 2) "'clients stop all -Force' exits 2 (got $LASTEXITCODE)"
@@ -143,8 +146,24 @@ try {
     Check ((Get-BinaryCheck $binA $binB).Status -eq 'PASS') 'identical bin and labd copies PASS'
     Check ((Get-BinaryCheck $binA (Join-Path $tmp 'none.exe')).Status -eq 'WARN') 'a missing copy WARNs'
 
-    Check ((Get-VersionCheck $null $true).Status -eq 'WARN') 'no VERSION inside a checkout WARNs'
-    Check ((Get-VersionCheck 'abc1234' $false).Status -eq 'PASS') 'outside a checkout the VERSION check is skipped (PASS)'
+    $daemonDown = Get-StraySgwCheck @(30) @() $false
+    Check ($daemonDown.Status -eq 'WARN' -and $daemonDown.Detail -match 'daemon down' -and $daemonDown.Detail -match '30') 'with the daemon down, a running SGW.exe WARNs as unmatched'
+
+    # Version: content of tools/lab against origin/main, in this checkout.
+    $repo = (git -C $PSScriptRoot rev-parse --show-toplevel).Trim()
+    $mainSha = (git -C $repo rev-parse --short origin/main).Trim()
+    $labTouch = (git -C $repo rev-list -1 origin/main -- tools/lab).Trim()
+    $beforeLab = (git -C $repo rev-parse --short "$labTouch^").Trim()
+    Check ((Get-VersionCheck $null $repo).Status -eq 'WARN') 'no VERSION inside a checkout WARNs'
+    Check ((Get-VersionCheck 'abc1234' $null).Status -eq 'PASS') 'outside a checkout the VERSION check is skipped (PASS)'
+    Check ((Get-VersionCheck $mainSha $repo).Status -eq 'PASS') "origin/main's own sha PASSes"
+    Check ((Get-VersionCheck $beforeLab $repo).Status -eq 'WARN') 'a sha whose tools/lab differs from origin/main WARNs'
+    $unknown = Get-VersionCheck 'deadbee' $repo
+    Check ($unknown.Status -eq 'WARN' -and $unknown.Detail -match 'unknown') 'an unknown sha WARNs as unknown'
+
+    # Stop-LabClient acts only on an SGW process: this test's own pid is left alone.
+    $ok = Stop-LabClient 'self' $PID 6>$null
+    Check ($ok -and -not (Get-Process -Id $PID).HasExited) 'a pid that is not SGW is not stopped'
 }
 finally {
     $env:CIMMERIA_LAB_HOME = $saved.Home

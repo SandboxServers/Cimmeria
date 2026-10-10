@@ -100,9 +100,12 @@ function Get-SeedCheck([string]$ProfileRoot, [string[]]$Labels) {
 }
 
 # Running SGW.exe pids that the daemon's /status does not list as an instance's client.
-function Get-StraySgwCheck([int[]]$Running, [int[]]$Listed) {
+function Get-StraySgwCheck([int[]]$Running, [int[]]$Listed, [bool]$DaemonUp = $true) {
     $name = 'no SGW.exe runs that /status does not list'
     $stray = @($Running | Where-Object { $Listed -notcontains $_ })
+    if ($stray.Count -and -not $DaemonUp) {
+        return New-CheckResult 'WARN' $name ("daemon down; running SGW pid {0} cannot be matched to an instance" -f ($stray -join ', '))
+    }
     if ($stray.Count) { return New-CheckResult 'WARN' $name ("not listed by /status: pid {0}" -f ($stray -join ', ')) }
     return New-CheckResult 'PASS' $name 'none'
 }
@@ -119,18 +122,31 @@ function Get-BinaryCheck([string]$BinExe, [string]$DaemonExe) {
     return New-CheckResult 'PASS' $name "same SHA-256 ($($a.Substring(0, 12))...)"
 }
 
-# The CLI copy's VERSION must be an ancestor of origin/main. Only checked
-# inside a git checkout; elsewhere it passes as skipped.
-function Get-VersionCheck([string]$Sha, [bool]$InCheckout) {
-    $name = 'CLI VERSION is an ancestor of origin/main'
-    if (-not $InCheckout) { return New-CheckResult 'PASS' $name 'not in a git checkout; skipped' }
+# The CLI copy matches origin/main's tools/lab. It compares content, not
+# ancestry: PRs are squash-merged, so a worktree sha installed by
+# lab install -From never becomes an ancestor of origin/main. $Root is the
+# Cimmeria checkout the caller stands in, or $null (then skipped).
+function Get-VersionCheck([string]$Sha, [string]$Root) {
+    $name = 'CLI copy matches origin/main (as of the last fetch)'
+    if (-not $Root) { return New-CheckResult 'PASS' $name 'not in a Cimmeria checkout; skipped' }
     if (-not $Sha) { return New-CheckResult 'WARN' $name 'no cli\cli\VERSION; run lab setup' }
-    git merge-base --is-ancestor $Sha origin/main 2>$null | Out-Null
+    git -C $Root diff --quiet $Sha origin/main -- tools/lab 2>$null | Out-Null
     switch ($LASTEXITCODE) {
-        0 { return New-CheckResult 'PASS' $name "$Sha is in origin/main" }
-        1 { return New-CheckResult 'WARN' $name "$Sha is not in origin/main; run lab setup" }
-        default { return New-CheckResult 'WARN' $name "cannot compare $Sha with origin/main" }
+        0 { return New-CheckResult 'PASS' $name "$Sha has origin/main's tools/lab" }
+        1 { return New-CheckResult 'WARN' $name "$Sha differs from origin/main in tools/lab; run lab setup" }
+        default { return New-CheckResult 'WARN' $name "$Sha is unknown in $Root; git fetch, or run lab setup" }
     }
+}
+
+# The top of the Cimmeria checkout the caller stands in (it has tools\lab\lab.ps1),
+# or $null when there is none or git is not installed.
+function Get-CimmeriaRoot {
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }
+    $top = git rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not "$top".Trim()) { return $null }
+    $top = "$top".Trim()
+    if (-not (Test-Path -LiteralPath (Join-Path $top 'tools\lab\lab.ps1'))) { return $null }
+    return $top
 }
 
 # Gathers the facts, runs every check and prints them. Returns the exit code.
@@ -157,8 +173,6 @@ function Invoke-Doctor {
     $versionFile = Join-Path $labHome 'cli\cli\VERSION'
     $sha = $null
     if (Test-Path -LiteralPath $versionFile) { $sha = "$(Get-Content -LiteralPath $versionFile -TotalCount 1)".Trim() }
-    git rev-parse --is-inside-work-tree 2>$null | Out-Null
-    $inCheckout = ($LASTEXITCODE -eq 0)
 
     $results = @(
         Get-TaskCheck ([bool](Get-ScheduledTask -TaskName 'CimmeriaLabDaemon' -ErrorAction SilentlyContinue))
@@ -168,9 +182,9 @@ function Invoke-Doctor {
         Get-ProfileRootCheck (Get-ProfileRoot) $installDir
         Get-AccountCheck $installDir $labels
         Get-SeedCheck (Get-ProfileRoot) $labels
-        Get-StraySgwCheck $running $listed
+        Get-StraySgwCheck $running $listed ([bool]$status)
         Get-BinaryCheck (Join-Path $labHome 'bin\cimmeria-lab.exe') (Join-Path $labHome 'labd\cimmeria-lab.exe')
-        Get-VersionCheck $sha $inCheckout
+        Get-VersionCheck $sha (Get-CimmeriaRoot)
     )
     foreach ($r in $results) { Write-Host ('{0}  {1}  {2}' -f $r.Status, $r.Check, $r.Detail) }
     if ($results.Status -contains 'FAIL') { return 1 }

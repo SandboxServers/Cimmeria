@@ -364,7 +364,7 @@ Files:
    | Each instance's profile is seeded | WARN if not |
    | No `SGW.exe` runs that `/status` does not list | WARN, naming pids |
    | Installed `cimmeria-lab.exe` is the one the daemon runs (`<LabHome>\bin` vs `<LabHome>\labd`, file hash) | WARN if they differ, "run lab restart" |
-   | The CLI copy's `VERSION` is an ancestor of `origin/main` (when run inside a git checkout) | WARN, "run lab setup" |
+   | The CLI copy's `VERSION` has the same `tools/lab` as `origin/main` (`git diff --quiet <VERSION> origin/main -- tools/lab`, only when run inside a Cimmeria checkout). Not an ancestor test: PRs are squash-merged, so a worktree sha never becomes an ancestor of `origin/main`. | WARN, "run lab setup" |
 
    The checks are functions returning `[pscustomobject]@{ Status; Check; Detail }`,
    so tests can call them with fakes.
