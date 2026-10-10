@@ -157,6 +157,8 @@ since = "searchitem"                 # only lines after that step started
 matches = "searchitem 'pistol': [0-9]+ match"
 ```
 
+**Where rows run.** A row that tests a feature rather than a level (vendors, bankers, mail, trade, inventory, abilities, combat, chat) runs in the Debug Area (world 1300, `.gotolocation DebugArea`). It has a copy of every hub service, open ground and clear sight lines, where Castle_CellBlock's hub NPCs stand against walls the camera ends up behind. Use a level's own map only when the row is about that level: its missions, NPC placement, transitions or geometry.
+
 **Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `setup`, `step`, `teardown`, `expect`, `evidence`.
 
 **Actions** (exactly one of the first four):

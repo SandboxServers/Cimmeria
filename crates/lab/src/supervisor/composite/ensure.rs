@@ -59,6 +59,41 @@ pub struct Goal {
     pub character: String,
     /// Create the character when the list does not have it.
     pub can_create: bool,
+    /// Where to stop.
+    pub stop: StopAt,
+}
+
+/// How far `lab_ensure_in_world` goes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StopAt {
+    /// The client is running with its window and bridge up (any screen).
+    Running,
+    /// Logged in, at character select (logs out of the world if needed).
+    CharacterSelect,
+    /// In the world as the character.
+    #[default]
+    World,
+}
+
+impl StopAt {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.to_ascii_lowercase().as_str() {
+            "running" => Ok(Self::Running),
+            "character_select" | "char_select" => Ok(Self::CharacterSelect),
+            "world" => Ok(Self::World),
+            other => Err(format!(
+                "stop_at must be running, character_select or world, not {other:?}"
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::CharacterSelect => "character_select",
+            Self::World => "world",
+        }
+    }
 }
 
 /// The next action.
@@ -81,6 +116,17 @@ pub fn plan(o: &Observation, goal: &Goal, dialog_tried: bool) -> Next {
     }
     if !o.window || !o.bridge {
         return Next::WaitReady;
+    }
+    match goal.stop {
+        StopAt::Running => return Next::Done,
+        StopAt::CharacterSelect => {
+            return match o.screen {
+                Screen::CharSelect => Next::Done,
+                Screen::World => Next::Logout,
+                Screen::Startup | Screen::Other => Next::Login,
+            }
+        }
+        StopAt::World => {}
     }
     match o.screen {
         Screen::World => {
@@ -144,6 +190,8 @@ pub struct EnsureRequest {
     pub focus: bool,
     /// Create the character with these when it is missing.
     pub create: Option<CreateRequest>,
+    /// Where to stop (default: in the world).
+    pub stop: StopAt,
 }
 
 impl Supervisor {
@@ -232,6 +280,7 @@ impl Supervisor {
         let goal = Goal {
             character: character.clone(),
             can_create: req.create.is_some(),
+            stop: req.stop,
         };
         let mut steps_ms = Map::new();
         let mut dialog_tried = false;
@@ -241,6 +290,24 @@ impl Supervisor {
             let next = plan(&o, &goal, dialog_tried);
             let t0 = Instant::now();
             let step = match next {
+                Next::Done if req.stop != StopAt::World => {
+                    let mut out = json!({ "at": req.stop.as_str(), "steps_ms": steps_ms });
+                    if req.stop == StopAt::CharacterSelect {
+                        if let Ok(v) = self.characters_flow().await {
+                            let names: Vec<Value> = v["characters"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .map(|c| c["name"].clone())
+                                .collect();
+                            out["characters"] = json!(names);
+                        }
+                    }
+                    if already {
+                        out["already"] = json!(true);
+                    }
+                    return Ok(out);
+                }
                 Next::Done => {
                     if req.focus {
                         self.input_focus(true).await?;
@@ -323,6 +390,7 @@ mod tests {
         Goal {
             character: "Labone".into(),
             can_create: false,
+            stop: StopAt::World,
         }
     }
 
@@ -421,6 +489,46 @@ mod tests {
                 Next::Done
             ]
         );
+    }
+
+    #[test]
+    fn stop_at_ends_at_running_or_character_select() {
+        let running = Goal {
+            stop: StopAt::Running,
+            ..goal()
+        };
+        assert_eq!(
+            plan(&obs(Screen::Other, None, false), &running, false),
+            Next::Done
+        );
+        let mut cold = obs(Screen::Other, None, false);
+        cold.running = false;
+        assert_eq!(plan(&cold, &running, false), Next::Start);
+
+        let select = Goal {
+            stop: StopAt::CharacterSelect,
+            ..goal()
+        };
+        assert_eq!(
+            plan(&obs(Screen::Startup, None, false), &select, false),
+            Next::Login
+        );
+        assert_eq!(
+            plan(&obs(Screen::CharSelect, None, false), &select, false),
+            Next::Done
+        );
+        // In the world, even as the right character: back to select.
+        assert_eq!(
+            plan(&obs(Screen::World, Some("Labone"), false), &select, false),
+            Next::Logout
+        );
+
+        assert_eq!(
+            StopAt::parse("character_select"),
+            Ok(StopAt::CharacterSelect)
+        );
+        assert_eq!(StopAt::default(), StopAt::World);
+        assert!(StopAt::parse("server_select").is_err());
     }
 
     #[test]

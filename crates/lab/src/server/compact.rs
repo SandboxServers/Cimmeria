@@ -43,6 +43,9 @@ const UNCAPPED: [&str; 4] = [
     "client_wait_event",
 ];
 
+/// The argument that returns images inline instead of as a saved path.
+pub const IMAGE_ARG: &str = "image";
+
 /// How one call's result is shaped.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Shape {
@@ -50,6 +53,40 @@ pub struct Shape {
     pub fields: Vec<String>,
     /// No array cap (cursor readers).
     pub uncapped: bool,
+    /// Return image blocks inline. Otherwise each image is saved to a PNG
+    /// file and replaced by its path: an inline 1280x720 capture costs an
+    /// agent over a thousand tokens on every later turn, and a path is
+    /// enough for a caller that can open files (2026-10-10).
+    pub image: bool,
+    /// The tool, for saved file names.
+    pub tool: String,
+}
+
+/// Where saved images go: `%LOCALAPPDATA%\cimmeria-lab\screenshots`, else
+/// the temp directory.
+pub fn image_dir() -> std::path::PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("cimmeria-lab")
+        .join("screenshots")
+}
+
+/// Save a base64 image block under `dir` and return the file's path.
+pub fn save_image_in(
+    dir: &std::path::Path,
+    tool: &str,
+    b64: &str,
+) -> Result<std::path::PathBuf, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("image block is not base64: {e}"))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S%.3f");
+    let path = dir.join(format!("{tool}-{stamp}.png"));
+    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path)
 }
 
 impl Shape {
@@ -57,11 +94,15 @@ impl Shape {
     pub fn take(tool: &str, args: Option<&mut Map<String, Value>>) -> Self {
         let mut shape = Shape {
             uncapped: UNCAPPED.contains(&tool),
+            tool: tool.to_string(),
             ..Default::default()
         };
         let Some(args) = args else { return shape };
         if let Some(v) = args.remove(VERBOSE_ARG) {
             shape.verbose = v.as_bool().unwrap_or(false);
+        }
+        if let Some(v) = args.remove(IMAGE_ARG) {
+            shape.image = v.as_bool().unwrap_or(false);
         }
         if let Some(f) = args.remove(FIELDS_ARG) {
             shape.fields = match f {
@@ -502,6 +543,28 @@ mod tests {
             json!(["string", "integer"])
         );
         assert_eq!(s["required"], json!(["from"]));
+    }
+
+    /// Images are saved and replaced by a path unless `image: true`.
+    #[test]
+    fn images_are_saved_to_a_file_by_default() {
+        let mut args = json!({ "image": true });
+        let s = Shape::take("lab_screenshot", args.as_object_mut());
+        assert!(s.image);
+        assert_eq!(s.tool, "lab_screenshot");
+        assert_eq!(args, json!({}));
+        assert!(!Shape::take("lab_screenshot", None).image);
+
+        let dir = tempfile::tempdir().unwrap();
+        // "iVBORw==" is the PNG magic's first four bytes.
+        let p = save_image_in(dir.path(), "lab_screenshot", "iVBORw==").unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), vec![0x89, b'P', b'N', b'G']);
+        assert!(p
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("lab_screenshot-"));
+        assert!(save_image_in(dir.path(), "t", "not base64!").is_err());
     }
 
     #[test]

@@ -263,7 +263,99 @@ pub async fn run<W: WorldIo>(
     }
 
     // 3. Hover: find a point on the body the client says is the entity.
+    // When every point is covered or off screen, change the view (pitch
+    // up over the occluder, yaw each way, zoom in) and try again; the bank
+    // UAT needed a hand-made pitch for exactly this (2026-10-10).
     let t_hover = io.now_ms();
+    let mut adjusted = Vec::new();
+    let mut tried = Vec::new();
+    let mut chosen = None;
+    for (i, adj) in std::iter::once(None)
+        .chain(VIEW_RETRIES.iter().map(Some))
+        .enumerate()
+    {
+        if let Some(&(dx, dy, notches)) = adj {
+            if entity.is_none() || !req.rotate_camera.unwrap_or(true) {
+                break;
+            }
+            let level = io
+                .look(dx, dy, notches * super::camera::WHEEL_NOTCH)
+                .await
+                .map_err(|e| steps.fail(io.now_ms(), "view_retry", e))?;
+            steps.used(level);
+            io.sleep(super::camera::LOOK_SETTLE_MS).await;
+            adjusted.push(json!({ "retry": i, "yaw_counts": dx, "pitch_counts": dy, "zoom_notches": notches }));
+        }
+        let (c, t) = hover_once(
+            io,
+            &mut steps,
+            &mut aim,
+            entity,
+            units.mouse_over,
+            req.force,
+        )
+        .await?;
+        tried = t;
+        chosen = c;
+        if chosen.is_some() {
+            break;
+        }
+    }
+    let mut hover_detail = json!({ "tried": tried });
+    if !adjusted.is_empty() {
+        hover_detail["view_retries"] = json!(adjusted);
+    }
+    steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
+    let Some((pixel, hover)) = chosen else {
+        return Err(steps.fail_with(
+            io.now_ms(),
+            "hover",
+            "every point on the target is off screen or covered by another entity, after the view retries (force=true clicks anyway)",
+            hover_detail,
+        ));
+    };
+    let (x, y) = (pixel.0.round() as i32, pixel.1.round() as i32);
+    if !matches!(hover, Hover::Matched) || tried.len() > 1 {
+        io.place_cursor(x, y, true)
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
+        io.sleep(HOVER_WAIT_MS).await;
+    }
+    let plan = ClickPlan {
+        button,
+        expect,
+        entity,
+        units,
+        before,
+        at: (x, y),
+        hover_verified: matches!(hover, Hover::Matched),
+        face_json,
+        found,
+    };
+    click_and_observe(io, steps, &req, plan).await
+}
+
+/// View changes tried, in order and cumulatively, when the target is
+/// covered: (yaw counts, pitch counts, zoom notches). At the live gain (20
+/// units per count) 300 counts is about 33 degrees.
+pub const VIEW_RETRIES: [(i32, i32, i32); 5] = [
+    (0, -300, 0),
+    (0, -300, 0),
+    (250, 0, 0),
+    (-500, 0, 0),
+    (250, 600, 4),
+];
+
+/// One hover pass over the target's body heights: the chosen point and how
+/// each height went.
+async fn hover_once<W: WorldIo>(
+    io: &mut W,
+    steps: &mut Steps,
+    aim: &mut Aim,
+    entity: Option<u32>,
+    mo_slot: i32,
+    force: bool,
+) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
         Some(_) => HOVER_OFFSETS
@@ -301,7 +393,7 @@ pub async fn run<W: WorldIo>(
                 .slots()
                 .await
                 .map_err(|err| steps.fail(io.now_ms(), "read_mouse_over", err))?;
-            let mo = slot_entity(&slots, units.mouse_over);
+            let mo = slot_entity(&slots, mo_slot);
             hover = if mo == e {
                 Hover::Matched
             } else if mo == 0 {
@@ -330,27 +422,44 @@ pub async fn run<W: WorldIo>(
             // may only update mouse-over on its own schedule): keep it as
             // a candidate but prefer a verified height.
             Hover::Nothing if chosen.is_none() => chosen = Some((p, Hover::Nothing)),
-            Hover::Other(o) if req.force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
+            Hover::Other(o) if force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
             _ => {}
         }
     }
-    steps.record("hover", t_hover, io.now_ms(), json!({ "tried": tried }));
-    let Some((pixel, hover)) = chosen else {
-        return Err(steps.fail_with(
-            io.now_ms(),
-            "hover",
-            "every point on the target is off screen or covered by another entity (force=true clicks anyway)",
-            json!({ "tried": tried }),
-        ));
-    };
-    let (x, y) = (pixel.0.round() as i32, pixel.1.round() as i32);
-    if !matches!(hover, Hover::Matched) || tried.len() > 1 {
-        io.place_cursor(x, y, true)
-            .await
-            .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
-        io.sleep(HOVER_WAIT_MS).await;
-    }
+    Ok((chosen, tried))
+}
 
+/// What the click step needs from the resolve and hover steps.
+struct ClickPlan {
+    button: usize,
+    expect: Expect,
+    entity: Option<u32>,
+    units: super::lua::UnitSlots,
+    before: UiSnap,
+    at: (i32, i32),
+    hover_verified: bool,
+    face_json: Value,
+    found: Option<Found>,
+}
+
+/// Steps 4 and 5: click, then watch what the client did.
+async fn click_and_observe<W: WorldIo>(
+    io: &mut W,
+    mut steps: Steps,
+    req: &ClickRequest,
+    plan: ClickPlan,
+) -> Result<Value, WorldError> {
+    let ClickPlan {
+        button,
+        expect,
+        entity,
+        units,
+        before,
+        at: (x, y),
+        hover_verified,
+        face_json,
+        found,
+    } = plan;
     // 4. Click and watch.
     let t_click = io.now_ms();
     io.button(button, true)
@@ -438,7 +547,7 @@ pub async fn run<W: WorldIo>(
         "entity": found.as_ref().map(Found::to_json),
         "button": if button == 0 { "left" } else { "right" },
         "clicked_at": [x, y],
-        "hover_verified": matches!(hover, Hover::Matched),
+        "hover_verified": hover_verified,
         "expect": format!("{expect:?}").to_lowercase(),
         "result": evidence,
         "camera": face_json,

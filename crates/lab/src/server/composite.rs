@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::LabServer;
 use crate::supervisor::composite::batch::parse_steps;
-use crate::supervisor::composite::ensure::EnsureRequest;
+use crate::supervisor::composite::ensure::{EnsureRequest, StopAt};
 use crate::supervisor::composite::sequence::parse_actions;
 use crate::supervisor::flows::characters::CreateRequest;
 
@@ -29,6 +29,10 @@ pub struct EnsureArgs {
     /// Turn on virtual focus at the end (default true).
     #[serde(default)]
     pub focus: Option<bool>,
+    /// Stop at `running` (window and bridge up), `character_select`, or
+    /// `world` (default).
+    #[serde(default)]
+    pub stop_at: Option<String>,
     /// Create the character when missing: {alignment, archetype, gender,
     /// first}; its last name is `character`.
     #[serde(default)]
@@ -81,7 +85,7 @@ fn json_result(v: Value) -> CallToolResult {
 #[tool_router(router = composite_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (create it first when `create` is given and it is missing), finish an intro dialog, turn on virtual focus. Already in the world as that character: returns at once. Returns {in_world, character, world_id, pos, steps_ms}; a failure names the step. Refuses to start while a client the lab did not launch is running."
+        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (create it first when `create` is given and it is missing), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms} (or {at, characters?}); a failure names the step. Refuses to start while a client the lab did not launch is running."
     )]
     async fn lab_ensure_in_world(
         &self,
@@ -100,6 +104,10 @@ impl LabServer {
             character: a.character,
             focus: a.focus.unwrap_or(true),
             create,
+            stop: match a.stop_at.as_deref() {
+                Some(s) => StopAt::parse(s).map_err(|e| McpError::invalid_params(e, None))?,
+                None => StopAt::World,
+            },
         };
         self.supervisor
             .ensure_in_world(req)

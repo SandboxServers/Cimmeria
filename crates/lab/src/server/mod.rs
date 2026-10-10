@@ -590,10 +590,27 @@ fn shape_response(
     match out {
         Ok(CallToolResponse::Complete(mut r)) => {
             for block in &mut r.content {
-                if let ContentBlock::Text(t) = block {
-                    if let Some(s) = shape.apply_text(&t.text) {
-                        t.text = s;
+                match block {
+                    ContentBlock::Text(t) => {
+                        if let Some(s) = shape.apply_text(&t.text) {
+                            t.text = s;
+                        }
                     }
+                    ContentBlock::Image(img) if !shape.image && !shape.verbose => {
+                        let note = match compact::save_image_in(
+                            &compact::image_dir(),
+                            &shape.tool,
+                            &img.data,
+                        ) {
+                            Ok(p) => format!(
+                                "image saved: {} (image: true returns it inline)",
+                                p.display()
+                            ),
+                            Err(e) => format!("image not saved ({e}); image: true returns it"),
+                        };
+                        *block = ContentBlock::text(note);
+                    }
+                    _ => {}
                 }
             }
             if let Some(sc) = r.structured_content.take() {
@@ -633,7 +650,7 @@ impl ServerHandler for LabServer {
                  step. Results are compact (no nulls or empties, floats to 2 \
                  decimals, lists capped at 50, no per-step native trail); any \
                  tool takes verbose: true for the full result and fields: [..] \
-                 to keep only some top-level keys."
+                 to keep only some top-level keys. Images (lab_screenshot) come back as a saved file path; image: true returns them inline."
                     .to_string(),
             )
     }
