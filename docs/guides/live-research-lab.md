@@ -401,20 +401,26 @@ In `labd.log`, every routed tool call runs in a `lab_call` span, each watchdog i
 | Credentials | `sessions\lab-account.json` | `sessions\lab-account.p2.json`, never the default file |
 | Crash marker, minidumps | `sessions\` | `sessions\instances\p2\` |
 | DLL logs | `cimmeria-client-*.log` | `cimmeria-client-*-p2.log` |
-| Firesky folder | `sessions\instances\default\profile` | `sessions\instances\p2\profile` |
+| Firesky folder | `%LOCALAPPDATA%\cimmeria-lab\instances\default\profile` | `%LOCALAPPDATA%\cimmeria-lab\instances\p2\profile` |
 | Lease | its own | its own |
 
-All paths are under the install's `Binaries\`.
+All paths are under the install's `Binaries\`, except the Firesky folder: it is the exception, see below.
 
 ### The per-instance profile
 
-Every instance, the default one included, launches the game with `USERPROFILE` set to `Binaries\sessions\instances\<label>\profile`. The client finds My Documents in one place, `SHGetFolderPathW(CSIDL_PERSONAL)`, and Windows resolves the default `%USERPROFILE%\Documents` with the calling process's own `USERPROFILE`, so the client's whole `My Games\Firesky\SGWGame` folder moves into the profile. Its one other folder lookup, Local AppData, moves there too.
+Every instance, the default one included, launches the game with `USERPROFILE` set to `<root>\<label>\profile`. The root is `%LOCALAPPDATA%\cimmeria-lab\instances`, or the absolute path in `CIMMERIA_LAB_PROFILE_ROOT` (`labd.env` or the environment). It must lie outside the game install: `SGW.exe` refuses a user folder inside its own install folder (`Failed to create user directory ... Force quitting`), so a profile under `Binaries\` fails at boot. Outside the install any length works, with or without spaces.
+
+The client finds My Documents in one place, `SHGetFolderPathW(CSIDL_PERSONAL)`, and Windows resolves the default `%USERPROFILE%\Documents` with the calling process's own `USERPROFILE`, so the client's whole `My Games\Firesky\SGWGame` folder moves into the profile. Its one other folder lookup, Local AppData, moves there too. The client finds My Documents in one place, `SHGetFolderPathW(CSIDL_PERSONAL)`, and Windows resolves the default `%USERPROFILE%\Documents` with the calling process's own `USERPROFILE`, so the client's whole `My Games\Firesky\SGWGame` folder moves into the profile. Its one other folder lookup, Local AppData, moves there too.
 
 The first launch seeds the profile's `SGWGame` from the real one: the top-level files (`SavedSystemOptions.xml`, `WindowStates.xml`, ...) and the `Config`, `Content` and `Cache.en-US` folders. The per-account folders (saved vars), `Logs`, `CrashDumps`, `Stats` and every other folder are left out. A warm `Cache.en-US` means the instance's first login is a routine one, not a full resync. After that the seed never runs again, so the instance keeps the cache its own logins bring up to date. The copy goes to `SGWGame.seeding` and is renamed when complete, so a seed cut short is redone on the next launch. With no real `SGWGame` folder (the game never ran on this Windows account), the profile starts empty and the server fills its cache at the first login.
 
 A change you make to the real `Config\*.ini` doesn't reach an instance that is already seeded. To reseed one, stop its client and delete its `profile` folder.
 
 `labd.log` records the outcome at every launch under `lab.instance`: `user_dir_ready` with `seeded` (`copied`, `already_there` or `no_source`), or a `user_dir_shared` warning with its `reason`.
+
+- **`no_profile_root`**: neither `CIMMERIA_LAB_PROFILE_ROOT` nor `LOCALAPPDATA` is set. The client uses the shared folder.
+- **`profile_root_inside_install`**: the root lies inside the install folder. Set `CIMMERIA_LAB_PROFILE_ROOT` to a folder outside it. The client uses the shared folder.
+- **`profile_root_not_absolute`**: the root is relative, so it would resolve inside `Binaries\`. Use an absolute path. The client uses the shared folder.
 
 - **`CIMMERIA_LAB_SHARED_USER_DIR=1`** (also `true` or `yes`) in `labd.env` turns this off and puts every lab client back on the real, shared folder (`reason = opted_out`). Two clients then lock each other's cache again.
 - **OneDrive and redirected Documents.** The redirect works only where the `Personal` shell folder (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`) is `%USERPROFILE%`-relative, the Windows default. If OneDrive Known Folder Move or a policy points Documents at an absolute path, every launch logs `reason = documents_not_redirectable` and uses the shared folder, and so does a failed registry read. A seed that fails (`reason = seed_failed`) falls back the same way. On such a machine run one lab client at a time. The durable fix, a `SHGetFolderPathW` hook in the lab DLL, is on the [tooling backlog](../analysis/lab-automation/tooling-backlog.md#backlog-lab-bridge-and-supervisor-for-the-session-that-owns-them).

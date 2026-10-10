@@ -16,8 +16,8 @@
     the account's username and character, whether the instance's profile
     is seeded under <root>\<label>\profile, and whether that instance's
     lab-instance.json (under Binaries\sessions\instances\<label>) names a
-    live client process. The root is $env:CIMMERIA_LAB_PROFILE_ROOT, else
-    the CIMMERIA_LAB_PROFILE_ROOT line of labd.env, else
+    live client process. The root is the CIMMERIA_LAB_PROFILE_ROOT line of
+    labd.env, else $env:CIMMERIA_LAB_PROFILE_ROOT, else
     %LOCALAPPDATA%\cimmeria-lab\instances. It prints "missing" rather than
     failing when the install or a file is absent.
 
@@ -89,12 +89,13 @@ function Get-InstancePath([string]$Label, [string]$Leaf) {
     return Join-Path $sessions "instances\$Label\$Leaf"
 }
 
-# Where the game's profiles live, the same order the daemon resolves it.
+# Where the game's profiles live. The daemon applies labd.env over the
+# process environment, so the file's value wins, then the variable, then
+# the default. Whitespace-only values count as unset.
 function Get-ProfileRoot {
-    if ($env:CIMMERIA_LAB_PROFILE_ROOT) { return $env:CIMMERIA_LAB_PROFILE_ROOT }
     $map = Read-LabdEnvFile $LabdEnv
-    if ($map.Contains('CIMMERIA_LAB_PROFILE_ROOT') -and $map['CIMMERIA_LAB_PROFILE_ROOT'].Trim()) {
-        return $map['CIMMERIA_LAB_PROFILE_ROOT'].Trim()
+    foreach ($raw in @($map['CIMMERIA_LAB_PROFILE_ROOT'], $env:CIMMERIA_LAB_PROFILE_ROOT)) {
+        if ("$raw".Trim()) { return "$raw".Trim() }
     }
     return Join-Path $env:LOCALAPPDATA 'cimmeria-lab\instances'
 }

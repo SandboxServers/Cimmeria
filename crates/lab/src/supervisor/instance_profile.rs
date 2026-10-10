@@ -27,7 +27,7 @@
 //! launch and the shared folder; the durable fix there is a
 //! `SHGetFolderPathW` hook in the lab DLL (#1312).
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 
 /// The variable the game resolves My Documents through.
 pub const USER_PROFILE_ENV: &str = "USERPROFILE";
@@ -64,14 +64,43 @@ pub fn profile_root_from(raw: Option<&str>, local_app_data: Option<&Path>) -> Op
 
 /// Whether `path` is `dir` or lies under it. Windows paths: the comparison
 /// ignores case and works on whole components, so `C:\Games\SGW2` is not
-/// inside `C:\Games\SGW`.
+/// inside `C:\Games\SGW`. Both paths are normalised lexically first: `.` is
+/// dropped, `..` pops, and a `\\?\` verbatim prefix matches its plain form.
+/// Junctions, symlinks and 8.3 short names are not resolved. An empty `dir`
+/// counts as containing everything (fail-safe: the caller refuses the root).
 pub fn inside(path: &Path, dir: &Path) -> bool {
-    let mut parts = path.components();
-    dir.components().all(|d| {
-        parts
-            .next()
-            .is_some_and(|p| p.as_os_str().eq_ignore_ascii_case(d.as_os_str()))
-    })
+    let (dir_anchor, dir_parts) = lexical(dir);
+    if dir_anchor.is_empty() && dir_parts.is_empty() {
+        return true;
+    }
+    let (path_anchor, path_parts) = lexical(path);
+    path_anchor == dir_anchor && path_parts.starts_with(&dir_parts)
+}
+
+/// The drive or UNC anchor (lowercased, `C:` and `\\?\C:` alike) and the
+/// normal components below it (lowercased), with `.` dropped and `..` popped.
+fn lexical(path: &Path) -> (String, Vec<String>) {
+    let mut anchor = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for c in path.components() {
+        match c {
+            Component::Prefix(prefix) => {
+                anchor = match prefix.kind() {
+                    Prefix::Disk(d) | Prefix::VerbatimDisk(d) => {
+                        format!("{}:", char::from(d).to_lowercase())
+                    }
+                    _ => prefix.as_os_str().to_string_lossy().to_lowercase(),
+                }
+            }
+            Component::RootDir => anchor.push('\\'),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                parts.pop();
+            }
+            Component::Normal(s) => parts.push(s.to_string_lossy().to_lowercase()),
+        }
+    }
+    (anchor, parts)
 }
 
 /// `<documents>\My Games\Firesky\SGWGame`.
@@ -295,6 +324,12 @@ fn prepare_from(
             "lab client uses the shared Firesky folder; set {PROFILE_ROOT_ENV} or LOCALAPPDATA");
         return None;
     };
+    if !root.is_absolute() {
+        tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
+            reason = "profile_root_not_absolute", root = %root.display(),
+            "a relative profile root would resolve inside the install; set {PROFILE_ROOT_ENV} to an absolute path");
+        return None;
+    }
     if inside(&root, install_dir) {
         tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
             reason = "profile_root_inside_install", root = %root.display(),
@@ -375,6 +410,31 @@ mod tests {
         assert!(!inside(Path::new(r"C:\Games\SGW2"), install));
         assert!(!inside(Path::new(r"C:\Games"), install));
         assert!(!inside(Path::new(r"D:\Games\SGW\x"), install));
+    }
+
+    #[test]
+    fn inside_normalises_dots_verbatim_prefixes_and_non_ascii_case() {
+        let install = Path::new(r"C:\Games\SGW");
+        // `..` pops: this path is the install's own sibling folder walked back in.
+        assert!(inside(Path::new(r"C:\Games\Other\..\SGW\x"), install));
+        assert!(!inside(Path::new(r"C:\Games\SGW\..\Other"), install));
+        // `.` is dropped.
+        assert!(inside(Path::new(r"C:\Games\.\SGW\x"), install));
+        // A verbatim prefix matches its plain drive form.
+        assert!(inside(Path::new(r"\\?\C:\Games\SGW\x"), install));
+        assert!(inside(Path::new(r"\\?\c:\games\sgw"), install));
+        assert!(!inside(Path::new(r"\\?\C:\Games\SGW2"), install));
+        // Lowercasing is not ASCII-only.
+        assert!(inside(
+            Path::new(r"C:\Jeux\ÉTÉ\x"),
+            Path::new(r"c:\jeux\été")
+        ));
+    }
+
+    #[test]
+    fn inside_treats_an_empty_dir_as_containing_everything() {
+        assert!(inside(Path::new(r"C:\Games\SGW\x"), Path::new("")));
+        assert!(!inside(Path::new(""), Path::new(r"C:\Games\SGW")));
     }
 
     #[test]
@@ -576,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_refuses_a_root_inside_the_install() {
+    fn prepare_refuses_an_unsafe_root() {
         let tmp = tempfile::tempdir().unwrap();
         let install = tmp.path().join("install");
         let src = tmp.path().join("real/SGWGame");
@@ -590,6 +650,12 @@ mod tests {
         // No root at all (no override, no LOCALAPPDATA): also shared.
         assert_eq!(
             prepare_from(false, || Ok(src.clone()), None, &install, "p2"),
+            None
+        );
+        // A relative root would resolve against the game's cwd (Binaries).
+        let relative = PathBuf::from(r"profiles\instances");
+        assert_eq!(
+            prepare_from(false, || Ok(src.clone()), Some(relative), &install, "p2"),
             None
         );
     }

@@ -319,8 +319,11 @@ full resync at every login
    only when more than one instance is hosted, and refusals then name the
    instance (`(instance p3)`).
 4. **A per-instance Documents folder.** Every client launches with
-   `USERPROFILE` at its instance's `profile` folder, seeded once from the
-   real `SGWGame` folder, so no two clients share a cache.
+   `USERPROFILE` at its instance's `profile` folder under
+   `%LOCALAPPDATA%\cimmeria-lab\instances` (or `CIMMERIA_LAB_PROFILE_ROOT`),
+   outside the install because `SGW.exe` refuses a user folder inside its
+   own install. It is seeded once from the real `SGWGame` folder, so no two
+   clients share a cache.
    `CIMMERIA_LAB_SHARED_USER_DIR=1` opts out. A Documents folder
    redirected to an absolute path (OneDrive) defeats the redirect and gets
    a warning; the durable fix is a `SHGetFolderPathW` hook in the lab DLL
