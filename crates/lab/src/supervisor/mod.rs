@@ -260,8 +260,9 @@ pub struct Supervisor {
     state: Arc<Mutex<SupervisorState>>,
     /// Client-event history (the bridge ring's only drainer).
     events: Arc<events::store::EventStore>,
-    /// The lab lease ([`crate::lease`]): the watchdog relaunches a dead
-    /// client only while one is held.
+    /// This instance's lab lease ([`crate::lease`]): one book per supervisor,
+    /// so each lab instance (each lab account) is leased on its own. The
+    /// watchdog relaunches a dead client only while it is held.
     leases: Arc<crate::lease::LeaseBook>,
 }
 
@@ -273,11 +274,11 @@ impl Supervisor {
             config,
             state: Arc::new(Mutex::new(SupervisorState::new())),
             events: Arc::new(events::store::EventStore::default()),
-            leases: crate::lease::global(),
+            leases: Arc::new(crate::lease::LeaseBook::default()),
         }
     }
 
-    /// Use `leases` instead of the process-wide book (tests).
+    /// Use `leases` as this supervisor's lease book (tests that share one).
     #[cfg(test)]
     pub fn with_leases(mut self, leases: Arc<crate::lease::LeaseBook>) -> Self {
         self.leases = leases;

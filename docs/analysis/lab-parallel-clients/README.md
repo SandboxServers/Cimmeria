@@ -4,7 +4,7 @@
 > Opened 2026-10-10 against `main`. Prefix `LP-`. Tracking issue #1312.
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): wave 1 in progress.** The fix is proven by hand
+> **Campaign status (2026-10-10): wave 1 merged; LP-05a next.** The fix is proven by hand
 > (five clients at once, 2026-10-10); the packets turn it into lab code.
 
 ## Why
@@ -105,8 +105,8 @@ Not fixed here (follow-ups):
 
 | ID | Packet | Depends on | Status |
 |---|---|---|---|
-| LP-01 | Per-instance user folder and client cap | none | shipped with 9 review fixes |
-| LP-02 | One lease book per supervisor | none | reviewed, waits for LP-01 to merge |
+| LP-01 | Per-instance user folder and client cap | none | merged, #1321 (9 review fixes) |
+| LP-02 | One lease book per supervisor | none | merged (3 review fixes; p2 is not relaunched mid-UAT, accepted) |
 | LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | merged, #1319 (4 review fixes) |
 | LP-04 | Docs and memory | LP-01, LP-05b | planned |
 | LP-05a | Instance registry and routing in one daemon | LP-02 | planned |

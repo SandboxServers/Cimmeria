@@ -17,9 +17,11 @@
 //! - An expired lease is logged and gone; with no lease the watchdog does
 //!   not relaunch a dead client (`watchdog_idle_no_lease`).
 //!
-//! One book per process ([`global`]), shared by the default supervisor and
-//! the in-process second-player supervisor: the lease covers the lab, not
-//! one client.
+//! One book per supervisor: each lab instance (one lab account, one
+//! client) has its own lease, so several agents can drive several clients
+//! at once. The in-process second-player supervisor of a UAT run has its
+//! own book too; the run's permit (from the first player's book) covers its
+//! actions ([`permit::ensure`] checks the permit's book).
 //!
 //! Telemetry: one `lab.lease` event per acquire, renew, release, expire and
 //! force (target `lab.lease`, field `event`), with owner and purpose. A touch
@@ -32,7 +34,7 @@ pub mod run;
 pub use run::RunLease;
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -111,15 +113,6 @@ impl Default for LeaseBook {
             changes: tokio::sync::watch::Sender::new(0),
         }
     }
-}
-
-static GLOBAL: OnceLock<Arc<LeaseBook>> = OnceLock::new();
-
-/// The process-wide book every supervisor shares.
-pub fn global() -> Arc<LeaseBook> {
-    GLOBAL
-        .get_or_init(|| Arc::new(LeaseBook::default()))
-        .clone()
 }
 
 /// Log expired leases promptly, not only when the next call notices.

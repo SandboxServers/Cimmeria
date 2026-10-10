@@ -242,7 +242,9 @@ fn is_same_instance(own: Option<&str>, p2: &str) -> bool {
 /// An in-process supervisor for the second instance, made on first use
 /// and kept for this server's life so its client survives between runs.
 /// It has its own session file, credentials, logs and bridge port, like a
-/// separate `cimmeria-lab` started with `CIMMERIA_LAB_INSTANCE=p2`.
+/// separate `cimmeria-lab` started with `CIMMERIA_LAB_INSTANCE=p2`. Its
+/// watchdog consults its own lease book, which a UAT run does not hold, so
+/// it does not relaunch p2 after a crash.
 static P2_LAB: OnceLock<LabServer> = OnceLock::new();
 
 fn p2_lab(name: &str) -> &'static LabServer {
@@ -384,7 +386,7 @@ impl LabServer {
                 server,
                 ctx,
                 names: router_names(server),
-                // One lease covers the lab: both players' steps touch it.
+                // The run's lease (from p1's book) covers p2's steps too.
                 lease: run_lease.as_ref(),
             }
         });

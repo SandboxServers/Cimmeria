@@ -26,10 +26,11 @@ touches it before every step, plus a `KeepAlive` task renews every ttl/3 and wak
 `LeaseBook::subscribe` (holder changes); `Runner::with_revocation` races each row
 against it and BLOCKs the rest. Any other in-process dispatcher must do the same.
 
-**One lease book per process** (`lease::global()`), shared by the default supervisor and
-the in-process p2 supervisor. Tests must give each supervisor its own book
-(`Supervisor::with_leases`), or parallel tests see each other's leases.
-`daemon::http_tests::test_server()` already does.
+**One lease book per supervisor** since LP-02 (#1312, 2026-10-10); `lease::global()` is
+gone. The in-process UAT p2 supervisor has its own empty book: the run's permit (p1's
+book, carried in the task-local `Permit::Lease`) covers p2's actions, but p2's watchdog
+sees no lease and does not relaunch p2 after a crash mid-run.
+`Supervisor::with_leases` (test-only) still lets tests share one book.
 
 **Watchdog.** `after_death` returns `IdleNoLease` when no lease is held; test it with a
 fresh supervisor per death, or the 3-in-10-minutes recovery cap decides the outcome
