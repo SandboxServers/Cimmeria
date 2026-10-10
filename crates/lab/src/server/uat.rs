@@ -158,7 +158,14 @@ impl ToolInvoker for RouterInvoker<'_> {
         };
         let params = CallToolRequestParams::new(name.to_string()).with_arguments(obj);
         let tcc = ToolCallContext::new(self.server, params, self.ctx.clone());
-        match self.server.tool_router.call(tcc).await {
+        let routed = self.server.tool_router.call(tcc);
+        let result = match self.lease {
+            // Under the lease's own permit, so each guarded action re-checks
+            // this lease: p2's own when p2 is hosted, not p1's.
+            Some(l) if l.is_own() => crate::lease::permit::scope(l.permit(), routed).await,
+            _ => routed.await,
+        };
+        match result {
             Ok(CallToolResponse::Complete(r)) => {
                 normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null))
             }
@@ -254,27 +261,33 @@ impl LabServer {
     /// that instance drives it through its own supervisor (its lease book
     /// and watchdog); otherwise the in-process [`P2_LAB`] stands in.
     fn p2_lab(&self, name: &str) -> LabServer {
-        match self.instances.by_name(name) {
+        match self.instances.by_label(name) {
             Some(hosted) => LabServer {
                 supervisor: hosted.supervisor.clone(),
                 ..self.clone()
             },
-            None => P2_LAB
-                .get_or_init(|| {
-                    let mut config = SupervisorConfig::from_env();
-                    let port = std::env::var(P2_PORT_ENV)
-                        .ok()
-                        .and_then(|s| s.trim().parse().ok())
-                        .unwrap_or(config.port.wrapping_add(1));
-                    config.instance = Some(name.to_string());
-                    config.port = port;
-                    let bridge = Arc::new(BridgeClient::new(
-                        format!("127.0.0.1:{port}"),
-                        String::new(),
-                    ));
-                    LabServer::new(Arc::new(Supervisor::new(bridge, config)))
-                })
-                .clone(),
+            None => {
+                if self.instances.len() > 1 {
+                    tracing::warn!(target: "lab.instance", p2 = name,
+                        "two-player rows use an in-process p2 although this daemon hosts several instances; add it to CIMMERIA_LAB_INSTANCES");
+                }
+                P2_LAB
+                    .get_or_init(|| {
+                        let mut config = SupervisorConfig::from_env();
+                        let port = std::env::var(P2_PORT_ENV)
+                            .ok()
+                            .and_then(|s| s.trim().parse().ok())
+                            .unwrap_or(config.port.wrapping_add(1));
+                        config.instance = Some(name.to_string());
+                        config.port = port;
+                        let bridge = Arc::new(BridgeClient::new(
+                            format!("127.0.0.1:{port}"),
+                            String::new(),
+                        ));
+                        LabServer::new(Arc::new(Supervisor::new(bridge, config)))
+                    })
+                    .clone()
+            }
         }
     }
 }
@@ -403,7 +416,7 @@ impl LabServer {
         let hosted_p2 = p2
             .as_ref()
             .ok()
-            .and_then(|(name, _, _)| self.instances.by_name(name));
+            .and_then(|(name, _, _)| self.instances.by_label(name));
         let p2_lease = match hosted_p2 {
             Some(hosted) if !req.plan_only => {
                 let book = hosted.supervisor.leases().clone();
@@ -454,7 +467,7 @@ impl LabServer {
         }
         // p2's lease is renewed for the run too, declared after it so it
         // stops first.
-        let _p2_keep = p2_lease.as_ref().map(RunLease::keep_alive);
+        let p2_keep = p2_lease.as_ref().map(RunLease::keep_alive);
         let out = match &run_lease {
             // The run's own lease: its flows' actions re-check it (with a
             // caller's lease, `call_tool` already set this scope).
@@ -464,21 +477,28 @@ impl LabServer {
             _ => runner.run_all().await,
         }
         .map_err(|e| McpError::internal_error(e, None))?;
-        if let Some(reason) = keep.as_ref().and_then(|k| k.revoked().borrow().clone()) {
-            // A row cut off mid-press may have left a key or button down;
-            // letting go is allowed without the lease.
+        let p1_revoked = keep.as_ref().and_then(|k| k.revoked().borrow().clone());
+        let p2_revoked = p2_keep.as_ref().and_then(|k| k.revoked().borrow().clone());
+        if let Some(reason) = &p2_revoked {
+            tracing::warn!(target: "lab.lease", event = "uat_run_p2_lease_lost", %reason,
+                "UAT run: p2's lease lost");
+        }
+        if let Some(reason) = &p1_revoked {
             tracing::warn!(target: "lab.lease", event = "uat_run_revoked", %reason,
                 "UAT run stopped: lease lost");
             let _ = self
                 .supervisor
                 .bridge_call("input_release", json!({}))
                 .await;
-            if let Some(server) = &p2_server {
-                let _ = server
-                    .supervisor
-                    .bridge_call("input_release", json!({}))
-                    .await;
-            }
+        }
+        // A row cut off mid-press may have left a key or button down;
+        // letting go is allowed without the lease. p2's input goes once,
+        // whichever lease was lost.
+        if let (Some(server), true) = (&p2_server, p1_revoked.is_some() || p2_revoked.is_some()) {
+            let _ = server
+                .supervisor
+                .bridge_call("input_release", json!({}))
+                .await;
         }
         let mut blocks = vec![ContentBlock::text(
             serde_json::to_string_pretty(&json!({ "run_dir": out.run_dir, "rows": out.rows }))
