@@ -203,15 +203,16 @@ const P2_ENV: &str = "CIMMERIA_LAB_UAT_P2";
 const P2_PORT_ENV: &str = "CIMMERIA_LAB_UAT_P2_BRIDGE_PORT";
 
 /// The second player's instance: `(instance, account, character)` from
-/// `lab-account.<instance>.json`, or why two-player rows cannot run.
-fn p2_account() -> Result<(String, Option<String>, String), String> {
+/// `lab-account.<instance>.json`, or why two-player rows cannot run. `own`
+/// is this lab's instance (`None` for the default).
+fn p2_account(own: Option<&str>) -> Result<(String, Option<String>, String), String> {
     let name = std::env::var(P2_ENV)
         .ok()
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| "p2".into());
     let name = instance::validate_name(name.trim())?;
     let dir = install_dir().ok_or("players = 2: CIMMERIA_LAB_INSTALL_DIR is unset")?;
-    if is_same_instance(instance::from_env().ok().flatten().as_deref(), &name) {
+    if is_same_instance(own, &name) {
         return Err(format!(
             "players = 2: this lab is instance {name} itself; run two-player rows from the default instance"
         ));
@@ -244,24 +245,38 @@ fn is_same_instance(own: Option<&str>, p2: &str) -> bool {
 /// It has its own session file, credentials, logs and bridge port, like a
 /// separate `cimmeria-lab` started with `CIMMERIA_LAB_INSTANCE=p2`. Its
 /// watchdog consults its own lease book, which a UAT run does not hold, so
-/// it does not relaunch p2 after a crash.
+/// it does not relaunch p2 after a crash. Used only when this daemon does
+/// not host the p2 instance (CIMMERIA_LAB_INSTANCES).
 static P2_LAB: OnceLock<LabServer> = OnceLock::new();
 
-fn p2_lab(name: &str) -> &'static LabServer {
-    P2_LAB.get_or_init(|| {
-        let mut config = SupervisorConfig::from_env();
-        let port = std::env::var(P2_PORT_ENV)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(config.port.wrapping_add(1));
-        config.instance = Some(name.to_string());
-        config.port = port;
-        let bridge = Arc::new(BridgeClient::new(
-            format!("127.0.0.1:{port}"),
-            String::new(),
-        ));
-        LabServer::new(Arc::new(Supervisor::new(bridge, config)))
-    })
+impl LabServer {
+    /// The server that drives the second player `name`. A daemon hosting
+    /// that instance drives it through its own supervisor (its lease book
+    /// and watchdog); otherwise the in-process [`P2_LAB`] stands in.
+    fn p2_lab(&self, name: &str) -> LabServer {
+        match self.instances.by_name(name) {
+            Some(hosted) => LabServer {
+                supervisor: hosted.supervisor.clone(),
+                ..self.clone()
+            },
+            None => P2_LAB
+                .get_or_init(|| {
+                    let mut config = SupervisorConfig::from_env();
+                    let port = std::env::var(P2_PORT_ENV)
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(config.port.wrapping_add(1));
+                    config.instance = Some(name.to_string());
+                    config.port = port;
+                    let bridge = Arc::new(BridgeClient::new(
+                        format!("127.0.0.1:{port}"),
+                        String::new(),
+                    ));
+                    LabServer::new(Arc::new(Supervisor::new(bridge, config)))
+                })
+                .clone(),
+        }
+    }
 }
 
 fn router_names(server: &LabServer) -> HashSet<String> {
@@ -324,6 +339,8 @@ impl LabServer {
                 })?,
             })
         };
+        // The hosted p2's lease carries the same purpose, marked as p2's.
+        let p2_purpose = format!("{} (p2)", run_purpose(&a));
         let dir = a
             .specs_dir
             .map(PathBuf::from)
@@ -375,27 +392,43 @@ impl LabServer {
             .iter()
             .flat_map(|s| &s.spec.rows)
             .any(|r| r.players == 2);
-        let p2 = if wants_p2 && self.instances.len() > 1 {
-            // The in-process p2 would duplicate a hosted p2's session file,
-            // port and account; LP-05b routes p2 to the hosted instance.
-            Err(format!(
-                "players = 2: not yet supported in a multi-instance daemon ({})",
-                crate::supervisor::instance::INSTANCES_ENV
-            ))
-        } else if wants_p2 {
-            p2_account()
+        let mut p2 = if wants_p2 {
+            p2_account(self.supervisor.instance())
         } else {
             Err("no row in this run needs a second player".into())
         };
-        let p2_inv = p2.as_ref().ok().map(|(name, _, _)| {
-            let server = p2_lab(name);
-            RouterInvoker {
-                server,
-                ctx,
-                names: router_names(server),
-                // The run's lease (from p1's book) covers p2's steps too.
-                lease: run_lease.as_ref(),
+        // A hosted p2 is leased for the run: no other agent drives it
+        // mid-run, and its watchdog relaunches it if it crashes. A plan
+        // drives nothing, so it takes no lease.
+        let hosted_p2 = p2
+            .as_ref()
+            .ok()
+            .and_then(|(name, _, _)| self.instances.by_name(name));
+        let p2_lease = match hosted_p2 {
+            Some(hosted) if !req.plan_only => {
+                let book = hosted.supervisor.leases().clone();
+                match RunLease::acquire_own(book, p2_purpose) {
+                    Ok(lease) => Some(lease),
+                    Err(e) => {
+                        p2 = Err(format!(
+                            "players = 2: instance {} is leased: {e}",
+                            hosted.label
+                        ));
+                        None
+                    }
+                }
             }
+            _ => None,
+        };
+        // The second player's server: the hosted instance, else in-process.
+        let p2_server = p2.as_ref().ok().map(|(name, _, _)| self.p2_lab(name));
+        let p2_inv = p2_server.as_ref().map(|server| RouterInvoker {
+            server,
+            ctx,
+            names: router_names(server),
+            // p2's own lease covers its steps when it is hosted; the run's
+            // lease (from p1's book) covers an in-process p2.
+            lease: p2_lease.as_ref().or(run_lease.as_ref()),
         });
         let second = match (&p2, &p2_inv) {
             (Ok((instance, account, character)), Some(inv)) => Ok(SecondPlayer {
@@ -419,6 +452,9 @@ impl LabServer {
         if let Some(k) = &keep {
             runner = runner.with_revocation(k.revoked());
         }
+        // p2's lease is renewed for the run too, declared after it so it
+        // stops first.
+        let _p2_keep = p2_lease.as_ref().map(RunLease::keep_alive);
         let out = match &run_lease {
             // The run's own lease: its flows' actions re-check it (with a
             // caller's lease, `call_tool` already set this scope).
@@ -437,8 +473,8 @@ impl LabServer {
                 .supervisor
                 .bridge_call("input_release", json!({}))
                 .await;
-            if let Ok((name, _, _)) = &p2 {
-                let _ = p2_lab(name)
+            if let Some(server) = &p2_server {
+                let _ = server
                     .supervisor
                     .bridge_call("input_release", json!({}))
                     .await;
@@ -530,5 +566,41 @@ mod tests {
         assert!(is_same_instance(Some("p2"), "P2"));
         assert!(!is_same_instance(None, "p2"));
         assert!(!is_same_instance(Some("p3"), "p2"));
+    }
+
+    fn supervisor(instance: Option<&str>) -> Arc<Supervisor> {
+        let config = SupervisorConfig {
+            install_dir: None,
+            dll_path: None,
+            patches_dll: None,
+            helper_path: None,
+            bind: "127.0.0.1".into(),
+            port: 8770,
+            instance: instance.map(String::from),
+            telemetry: Default::default(),
+        };
+        let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", ""));
+        Arc::new(Supervisor::new(bridge, config))
+    }
+
+    /// A hosted p2 is the second player's own supervisor; a single-instance
+    /// daemon falls back to the in-process p2, never its own supervisor.
+    #[test]
+    fn p2_is_the_hosted_instance_or_the_in_process_fallback() {
+        let s2 = supervisor(Some("p2"));
+        let hosted = LabServer::new_multi(crate::server::Instances::new(vec![
+            crate::server::Hosted {
+                label: "default".into(),
+                supervisor: supervisor(None),
+            },
+            crate::server::Hosted {
+                label: "p2".into(),
+                supervisor: s2.clone(),
+            },
+        ]));
+        assert!(Arc::ptr_eq(&hosted.p2_lab("p2").supervisor, &s2));
+        let own = supervisor(None);
+        let single = LabServer::new(own.clone());
+        assert!(!Arc::ptr_eq(&single.p2_lab("p2").supervisor, &own));
     }
 }
