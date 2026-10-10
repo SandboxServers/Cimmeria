@@ -730,7 +730,6 @@ dependencies = [
  "simd-adler32",
  "slab",
  "smallvec",
- "socket2",
  "sqlx-core",
  "sqlx-postgres",
  "subtle",
