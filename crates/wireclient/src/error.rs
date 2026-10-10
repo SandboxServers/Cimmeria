@@ -24,9 +24,16 @@ pub enum Error {
     #[error("SOAP HTTP status {status} from {endpoint}")]
     SoapStatus { status: u16, endpoint: &'static str },
 
-    /// Phase 1 response missing a `Set-Cookie: SID=...` header. Either the
-    /// server hit `<SGWLoginError>` (bad credentials, disabled account) or
-    /// the cookie format drifted.
+    /// Phase 1 came back as an `<SGWLoginError>` envelope: bad credentials,
+    /// disabled account, unknown SKU, no shards, a failed database query.
+    /// Carries the envelope's `ErrorStr` verbatim. The server always sends
+    /// `ErrorNum="1"`, so the text is the only thing that tells the causes
+    /// apart (a database failure and a wrong password both reject).
+    #[error("Phase 1 login rejected: {0}")]
+    LoginRejected(String),
+
+    /// Phase 1 response missing a `Set-Cookie: SID=...` header although it
+    /// was not an `<SGWLoginError>` envelope: the cookie format drifted.
     #[error("Phase 1 response carried no SID cookie")]
     NoSidCookie,
 

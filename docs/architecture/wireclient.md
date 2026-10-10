@@ -1,6 +1,6 @@
 # ADR: `wireclient` — headless wire-level test client for end-to-end validation
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-10-10
 > **Audience**: Engineers writing end-to-end tests for the SGW server emulator
 > **Type**: Architecture decision record
 > **Owner**: Network / test-infra
@@ -64,8 +64,10 @@ bytes as `map_loaded(id)` and `on_client_ready()`; the unit tests in
 [`world_entry.rs`](../../crates/wireclient/src/world_entry.rs)) is the
 character-select and world-entry sequence as a library call, returning an
 error instead of panicking. The integration tests' `enter_castle` wraps
-it, and the crate's one binary, [`sparbot`](#sparbot-a-duel-partner-for-solo-testing),
-uses it to put a second player in the world.
+it, and the [`sparbot`](#sparbot-a-duel-partner-for-solo-testing) binary
+uses it to put a second player in the world. The crate's other binary,
+[`login-probe`](#login-probe-the-container-login-smoke), stops after the
+handshake: it is the container smoke tests' login check.
 
 ## TL;DR
 
@@ -142,6 +144,8 @@ crates/wireclient/
 │   ├── sparbot.rs        # The duel test partner: duel builders, the
 │   │                     #   Sparbot state machine, the keep-alive run loop
 │   ├── bin/sparbot.rs    # The `sparbot` binary (SS-U2)
+│   ├── login_probe.rs    # The container smoke's login checks (#1291)
+│   ├── bin/login-probe.rs # The `login-probe` binary (#1291)
 │   ├── bundle.rs         # decode_bundle(): structural (msg_id/entity_id/
 │   │                     #   class_id/method_index) server->client bundle
 │   │                     #   decoder -- NOT the Phase 3 semantic decoder,
@@ -153,6 +157,8 @@ crates/wireclient/
     ├── it/                                    # ONE integration-test binary
     │   ├── main.rs                            # Declares the modules below
     │   ├── auth_smoke.rs                      # In-process AuthService + Phase 1/2 round trip
+    │   ├── login_probe.rs                     # login-probe: fails on accept-any auth;
+    │   │                                      #   live-DB full run + wrong-endpoint run
     │   ├── trace_load.rs                      # Loads the checked-in head fixture
     │   ├── two_client_castle_visibility.rs    # Live-DB: two real GameSessions,
     │   │                                      #   one shared Castle world, both
@@ -406,6 +412,39 @@ send_failed`). The server's side of the same duel is in SigNoz under
   disabled it fails: the session is reaped and the bot stops with
   `ServerSilent`.
 
+## login-probe: the container login smoke
+
+`login-probe` (issue #1291) logs in to a running server the way a client
+does and exits non-zero when any hop is broken. [`tools/container-smoke.sh`](../../tools/container-smoke.sh)
+runs it against the freshly built image in `pr-container.yml` and
+`release-container.yml`; see [container distribution § CI login smoke](../operations/container.md#ci-login-smoke).
+The checks live in [`login_probe.rs`](../../crates/wireclient/src/login_probe.rs), in order:
+
+1. Phase 1 with a wrong password must come back as an `<SGWLoginError>` whose
+   reason is "The account name or password is incorrect." A success fails
+   the probe (the server is not checking credentials, as in developer mode
+   without a database), and so does any other reason (a database failure
+   also rejects). `AuthClient::phase1` surfaces the reason as
+   `Error::LoginRejected`.
+2. The real password must pass Phase 1 + 2, with `--expect-account-id`
+   when given.
+3. Phase 2 must advertise `--expect-base` when given.
+4. Unless `--no-handshake`, `GameSession::from_auth_session` runs the
+   Mercury handshake against the endpoint Phase 2 advertised.
+
+```text
+login-probe --user test --password test --shard Test \
+            [--auth-url http://127.0.0.1:8081] \
+            [--expect-base 127.0.0.1:32832] [--expect-account-id 2] [--no-handshake]
+```
+
+Every option also reads `LOGIN_PROBE_<OPTION>` (`LOGIN_PROBE_PASSWORD`
+keeps the password off the command line); for the `--no-handshake` switch,
+`LOGIN_PROBE_NO_HANDSHAKE` takes `1` or `true`. The image's builder stage
+compiles it in a second `cargo build` (one invocation with the server
+would unify features into the server binary), and the Dockerfile's
+`login-probe` target exports it; it is never in the runtime image.
+
 ## Phasing & status
 
 | Phase | Work | Status |
@@ -418,6 +457,7 @@ send_failed`). The server's side of the same duel is in SigNoz under
 | 5 | Combat at step 9 + server-side LOS parity check | Pending |
 | 6 | `#[cfg(test)]` force-victory hook | Pending |
 | SS-U2 | `sparbot` binary + `GameSession::enter_world` | **Done** (2026-09-27) — see [sparbot](#sparbot-a-duel-partner-for-solo-testing); `tests/it/sparbot_duel.rs` (one wire pin, one live-DB accept, one ignored 70 s keep-alive run) |
+| #1291 | `login-probe` binary + `Error::LoginRejected` | **Done** (2026-10-10) — see [login-probe](#login-probe-the-container-login-smoke); run by the container smoke in `pr-container.yml` / `release-container.yml`; `tests/it/login_probe.rs` (one no-DB accept-any-password run, two live-DB runs) |
 | 7 | nextest `wireclient-e2e` profile + CI workflow | Pending — `two_client_castle_visibility.rs` is live-DB-gated (skips without `DATABASE_URL`) and is **not** wired into `.github/workflows/test.yml`'s `ci-live-db` job yet (that job runs the lib tests of the crates in `tools/test-live-db.sh` only); run it manually per the header comment in the test file until this phase lands |
 
 ## Risks & open questions

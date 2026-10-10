@@ -177,14 +177,21 @@ impl AuthClient {
         let sid = resp
             .headers()
             .get(SET_COOKIE)
-            .and_then(parse_sid_from_set_cookie)
-            .ok_or(Error::NoSidCookie)?;
+            .and_then(parse_sid_from_set_cookie);
+
+        // A rejected login is still HTTP 200, with an `<SGWLoginError>`
+        // envelope and no cookie. Surface the server's reason before the
+        // cookie check, so a caller can tell "wrong password" from "the
+        // database query failed" (both reject).
+        let xml = resp.text().await?;
+        if let Some(reason) = login_error_reason(&xml) {
+            return Err(Error::LoginRejected(reason));
+        }
+        let sid = sid.ok_or(Error::NoSidCookie)?;
 
         // Parse account_id out of the response body — `<AccountInfo
         // AccountId="42" />`. The auth server emits this on every
-        // successful login; absence implies an error envelope we should
-        // surface rather than silently masking.
-        let xml = resp.text().await?;
+        // successful login.
         let account_id_s =
             extract_attr(&xml, "AccountId").ok_or(Error::MissingAttribute("AccountId"))?;
         let account_id: u32 = account_id_s
@@ -274,6 +281,15 @@ pub fn parse_sid_from_set_cookie(h: &HeaderValue) -> Option<String> {
     })
 }
 
+/// The `ErrorStr` of a Phase 1 `<SGWLoginError … ns3:ErrorStr="…" />`
+/// envelope, or `None` when the response is not one. The attribute is
+/// namespace-prefixed on the wire (`ns3:ErrorStr`), which `extract_attr`
+/// still finds because it matches the `ErrorStr="` suffix.
+pub fn login_error_reason(xml: &str) -> Option<String> {
+    let start = xml.find("<SGWLoginError")?;
+    Some(extract_attr(&xml[start..], "ErrorStr").unwrap_or_default())
+}
+
 /// Locate `key="value"` in the response XML. Same strategy as
 /// `login_smoke::extract_attr` — fixed-shape responses don't warrant a full
 /// XML reader.
@@ -319,6 +335,22 @@ mod tests {
     fn extract_attr_missing_returns_none() {
         let xml = r#"<ServerLocation Port="32832" />"#;
         assert!(extract_attr(xml, "SessionKey").is_none());
+    }
+
+    #[test]
+    fn login_error_reason_reads_namespaced_error_str() {
+        // Shape of `cimmeria_auth`'s `login_error` envelope.
+        let xml = r#"<?xml version="1.0"?><ns2:SGWLoginResponse xmlns:ns2="x"><SGWLoginError ns3:ErrorStr="The account name or password is incorrect." ns3:ErrorNum="1" /></ns2:SGWLoginResponse>"#;
+        assert_eq!(
+            login_error_reason(xml).as_deref(),
+            Some("The account name or password is incorrect.")
+        );
+    }
+
+    #[test]
+    fn login_error_reason_is_none_for_a_success_envelope() {
+        let xml = r#"<ns2:SGWLoginResponse><SGWLoginSuccess><AccountInfo ExpireDate="0000-00-00T00:00:00.000Z" AccountId="2" /><SGWShardListResp><Shard ServerName="Test" Fullness="LOW" Busy="LOW" /></SGWShardListResp></SGWLoginSuccess></ns2:SGWLoginResponse>"#;
+        assert_eq!(login_error_reason(xml), None);
     }
 
     #[test]

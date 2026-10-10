@@ -7,9 +7,6 @@
 //! consumes them correctly and produces a load-bearing [`AuthSession`].
 //! Together they pin both sides of the SOAP handshake.
 
-use std::net::TcpListener as StdTcpListener;
-
-use cimmeria_common::ServerConfig;
 use cimmeria_services::auth::{AuthService, ShardInfo};
 use cimmeria_wireclient::auth::{AuthClient, Credentials};
 use cimmeria_wireclient::Error;
@@ -18,35 +15,19 @@ const SHARD: &str = "WireclientSmoke";
 const SHARD_HOST: &str = "127.0.0.1";
 const SHARD_PORT: u16 = 32832;
 
-fn ephemeral_port() -> u16 {
-    let listener = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral TCP listener");
-    let port = listener.local_addr().expect("local_addr").port();
-    drop(listener);
-    port
-}
-
+/// Developer-mode auth (no database) with this module's shard, through the
+/// shared retrying helper in `support`.
 async fn start_auth() -> (AuthService, u16) {
-    const MAX_ATTEMPTS: usize = 5;
-    let base_config = ServerConfig {
-        developer_mode: true,
-        ..ServerConfig::loopback()
-    };
-    for _ in 0..MAX_ATTEMPTS {
-        let port = ephemeral_port();
-        let mut config = base_config.clone();
-        config.logon_port = port;
-        let mut auth = AuthService::new(&config);
-        auth.register_shard(ShardInfo {
+    crate::support::start_auth(
+        true,
+        ShardInfo {
             name: SHARD.into(),
             host: SHARD_HOST.into(),
             port: SHARD_PORT,
             protected: false,
-        });
-        if auth.start().await.is_ok() {
-            return (auth, port);
-        }
-    }
-    panic!("could not bind AuthService on an ephemeral port after 5 attempts");
+        },
+    )
+    .await
 }
 
 #[tokio::test]
@@ -124,6 +105,31 @@ async fn wireclient_phase1_returns_sid_cookie() {
         "SID must be ASCII alphanumeric (got {sid:?})"
     );
     assert_eq!(account_id, 1, "developer_mode account_id is 1");
+
+    auth.stop().await;
+}
+
+/// A rejected Phase 1 surfaces the server's reason, not a bare "no cookie".
+/// The container login probe (`login-probe`) relies on this to tell a wrong
+/// password from a database failure. Developer-mode auth without a database
+/// accepts any password, so the rejection here is the unknown-SKU path, which
+/// is checked before credentials and goes through the same envelope.
+#[tokio::test]
+async fn wireclient_phase1_rejection_carries_server_reason() {
+    let (mut auth, port) = start_auth().await;
+    let client = AuthClient::new(format!("http://127.0.0.1:{port}"));
+    let creds = Credentials {
+        sku: "NOT_SGW".into(),
+        ..Credentials::test_account()
+    };
+
+    let err = client.phase1(&creds).await.unwrap_err();
+    match err {
+        Error::LoginRejected(reason) => {
+            assert_eq!(reason, "The specified service does not exist.");
+        }
+        other => panic!("expected Error::LoginRejected, got: {other:?}"),
+    }
 
     auth.stop().await;
 }

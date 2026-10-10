@@ -164,6 +164,28 @@ jobs:
           vuln-type: os,library
           trivyignores: .trivyignore
 
+      # The login probe (cimmeria-wireclient's `login-probe`) for the smoke
+      # step. Compiled in the same builder layer as the server, so this is a
+      # cache hit on the scan build above. Exported before anything is
+      # pushed, so a probe that fails to build blocks the release too.
+      - name: export the login probe
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: login-probe
+          push: false
+          outputs: type=local,dest=${{ runner.temp }}/login-probe
+          # Must match the scan build exactly so the builder layer is shared.
+          build-args: |
+            CIMMERIA_GIT_SHA=${{ github.sha }}
+            APT_UPGRADE_DATE=${{ steps.aptdate.outputs.date }}
+          cache-from: type=gha
+          # No cache-to: a second gha export would overwrite the scope's
+          # cache index with this small target's.
+          provenance: false
+          sbom: false
+
       # Push only the dated tag at this point. `latest-prerelease` is
        # promoted AFTER the smoke test passes, so a smoke failure can't
        # leave the rolling pointer aimed at a broken image. The dated
@@ -193,53 +215,30 @@ jobs:
           provenance: true
           sbom: true
 
-      - name: smoke-test the published image
+      # Log in to the published image as a client (tools/container-smoke.sh):
+      # wrong password rejected, seeded account accepted (SOAP Phase 1 + 2),
+      # advertised BaseApp endpoint = 127.0.0.1 and the port Docker published
+      # (image defaults here, as in pr-container.yml), and the Mercury
+      # handshake against it. Must stay BEFORE "promote latest-prerelease":
+      # a failure here ends the job with the rolling tag untouched.
+      - name: smoke-test the published image (login probe)
         env:
           IMAGE: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
-        # Note: NOT using `--rm`. If the container exits early `--rm`
-        # would remove it before we could pull logs.
         run: |
-          set -uo pipefail
+          set -euo pipefail
           docker pull "$IMAGE"
-          docker run -d --name smoke \
-            -p 13001:13001 \
-            -p 32832:32832/udp \
-            -p 50000:50000/udp \
-            -p 8443:8443 \
-            "$IMAGE"
-          # Postgres + login listener — ~120 s budget for cold pgdata boot
-          # + s6 service init. Probed from INSIDE the container: a host-side
-          # probe of a published port always connects (docker-proxy accepts
-          # the TCP handshake itself), which is how a probe of 13001, a port
-          # nothing binds, passed anyway.
-          ok=0
-          for i in $(seq 1 60); do
-            if docker exec smoke pg_isready -h 127.0.0.1 -U w-testing -d sgw >/dev/null 2>&1 \
-               && docker exec smoke timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/8081" 2>/dev/null; then
-              echo "smoke ok at iteration $i"
-              ok=1
-              break
-            fi
-            if [ "$(docker inspect -f '{{.State.Status}}' smoke 2>/dev/null)" = "exited" ]; then
-              echo "::error::container exited before becoming ready"
-              break
-            fi
-            sleep 2
-          done
+          bash tools/container-smoke.sh "$IMAGE" \
+            "${{ runner.temp }}/login-probe/login-probe" \
+            "${{ runner.temp }}/container-smoke-logs"
 
-          echo "::group::container state"
-          docker inspect -f 'Status: {{.State.Status}}  ExitCode: {{.State.ExitCode}}  Error: {{.State.Error}}' smoke || true
-          echo "::endgroup::"
-          echo "::group::container logs"
-          docker logs smoke || true
-          echo "::endgroup::"
-
-          docker rm -f smoke >/dev/null 2>&1 || true
-
-          if [ "$ok" -ne 1 ]; then
-              echo "::error::smoke test never saw postgres + auth listener within 120s"
-              exit 1
-          fi
+      - name: upload container smoke logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: container-smoke-logs
+          path: ${{ runner.temp }}/container-smoke-logs
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Smoke passed — only NOW move the rolling pointer. `docker pull`
        # in the smoke step already loaded the image into the runner's

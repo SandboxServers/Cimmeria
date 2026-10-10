@@ -20,6 +20,7 @@ use sqlx::PgPool;
 
 use cimmeria_common::ServerConfig;
 use cimmeria_mercury::transport::BidirectionalTransport;
+use cimmeria_services::auth::{AuthService, ShardInfo};
 use cimmeria_services::orchestrator::Orchestrator;
 use cimmeria_wireclient::auth::Credentials;
 use cimmeria_wireclient::bundle::{decode_bundle, S2CMessage};
@@ -145,6 +146,34 @@ pub fn credentials_for(username: &str) -> Credentials {
     }
 }
 
+// ── In-process auth (no database) ────────────────────────────────────────
+
+/// Start an `AuthService` with no database on an ephemeral login port,
+/// registering `shard`. Returns the service and its port.
+///
+/// `developer_mode = true` accepts every credential as account 1;
+/// `developer_mode = false` without a database answers every login with
+/// "A request to the database server failed." The port is found by binding
+/// and dropping a listener, which can race another test under parallel
+/// nextest, so the bind is retried on a fresh port.
+pub async fn start_auth(developer_mode: bool, shard: ShardInfo) -> (AuthService, u16) {
+    const MAX_ATTEMPTS: usize = 5;
+    for _ in 0..MAX_ATTEMPTS {
+        let port = ephemeral_port();
+        let config = ServerConfig {
+            developer_mode,
+            logon_port: port,
+            ..ServerConfig::loopback()
+        };
+        let mut auth = AuthService::new(&config);
+        auth.register_shard(shard.clone());
+        if auth.start().await.is_ok() {
+            return (auth, port);
+        }
+    }
+    panic!("could not bind AuthService on an ephemeral port after {MAX_ATTEMPTS} attempts");
+}
+
 // ── Orchestrator bring-up ────────────────────────────────────────────────
 
 pub fn ephemeral_port() -> u16 {
@@ -168,6 +197,8 @@ pub fn ephemeral_udp_port() -> u16 {
 pub struct RunningServer {
     pub orchestrator: Orchestrator,
     pub auth_url: String,
+    /// The BaseApp's UDP port, which Phase 2 advertises.
+    pub base_port: u16,
 }
 
 /// `CellService::start()` loads `entities/spaces.xml` /
@@ -228,7 +259,8 @@ pub async fn start_server(db_url: &str) -> RunningServer {
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
     for _ in 0..MAX_ATTEMPTS {
-        let config = base_config(db_url, ephemeral_udp_port());
+        let base_port = ephemeral_udp_port();
+        let config = base_config(db_url, base_port);
         let auth_url = format!("http://127.0.0.1:{}", config.logon_port);
         let orchestrator = Orchestrator::new(config);
         match orchestrator.start_all().await {
@@ -236,6 +268,7 @@ pub async fn start_server(db_url: &str) -> RunningServer {
                 return RunningServer {
                     orchestrator,
                     auth_url,
+                    base_port,
                 }
             }
             Err(e) => last_err = Some(e),
@@ -281,6 +314,7 @@ pub async fn start_server_with_base_transport(
     RunningServer {
         orchestrator,
         auth_url,
+        base_port,
     }
 }
 
