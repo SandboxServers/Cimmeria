@@ -75,6 +75,33 @@ try {
     Check ((Get-SlotHolderState $slot) -eq 'dead') 'a bash holder with no MSYS shell running is dead'
     Check (Enter-LaneSlot $slot 'x') 'and its slot is reclaimed'
 
+    # Breaking re-checks who it moved aside: if another lane broke and retook the slot
+    # between our dead-check and the move, its slot goes back untouched.
+    Exit-LaneSlot $slot
+    $other = [ordered]@{ winpid = $live.Id; winstart = $liveStart; what = '00:00:00 racer :: cargo build' }
+    [void](New-AtomicDir $slot $other)
+    $realIdentity = ${function:Get-SlotIdentity}
+    $realState = ${function:Get-SlotHolderState}
+    function Get-SlotHolderState { 'dead' }                              # as judged a moment ago
+    $script:calls = 0
+    function Get-SlotIdentity([string]$s) { $script:calls++; if ($script:calls -eq 1) { 'the dead holder' } else { & $realIdentity $s } }
+    Check (-not (Enter-LaneSlot $slot '00:00:00 me :: x')) 'a slot retaken mid-break is not taken'
+    ${function:Get-SlotIdentity} = $realIdentity
+    ${function:Get-SlotHolderState} = $realState
+    Check ((Read-SlotFile $slot 'what') -eq '00:00:00 racer :: cargo build') 'and the racer''s slot is back in place'
+    Check (@(Get-ChildItem $lock -Force -Filter '.broken-*').Count -eq 0) 'no broken-slot dirs left behind'
+
+    # lane.sh's WINPID_PROBE, run as lane.sh runs it (Windows PowerShell, env vars in).
+    $probe = (Select-String -LiteralPath (Join-Path $PSScriptRoot 'lane.sh') -Pattern "^WINPID_PROBE='(.*)'$").Matches[0].Groups[1].Value
+    function Invoke-Probe($id, $start) {
+        $env:LANE_WINPID = $id; $env:LANE_WINSTART = $start
+        try { (& powershell.exe -NoProfile -NonInteractive -Command $probe | Out-String).Trim() } finally { Remove-Item Env:LANE_WINPID, Env:LANE_WINSTART -ErrorAction SilentlyContinue }
+    }
+    Check ((Invoke-Probe $live.Id $liveStart) -eq 'alive') 'lane.sh probe: a live lane.ps1 holder is alive'
+    Check ((Invoke-Probe $live.Id '') -eq 'alive') 'lane.sh probe: no winstart, live pid is alive'
+    Check ((Invoke-Probe $gone.Id $liveStart) -eq 'dead') 'lane.sh probe: an exited holder is dead'
+    Check ((Invoke-Probe $live.Id '2001-01-01T00:00:00.0000000Z') -eq 'dead') 'lane.sh probe: a reused pid is dead'
+
     # mkdir done, `pid` not yet written: busy, as lane.sh treats it.
     Exit-LaneSlot $slot
     [void][System.IO.Directory]::CreateDirectory($slot)
@@ -102,6 +129,15 @@ try {
     Check ($peak -eq 2) "SLOTS=2: at most two ran at once (peak $peak)"
     Check (@(Get-SlotDirs $lock).Count -eq 0) 'every slot released afterwards'
 
+    # CARGO_TARGET_DIR is spelled as lane.sh spells it: "$CIMMERIA_TARGET_ROOT/<name>".
+    $name = Split-Path -Leaf (git rev-parse --show-toplevel)   # the lane names the cwd's worktree
+    $troot = Join-Path $tmp 'troot'
+    New-Item -ItemType Directory (Join-Path $troot $name) -Force | Out-Null
+    $env:CIMMERIA_TARGET_ROOT = $troot
+    $seen = & pwsh -NoProfile -File $lane pwsh -NoProfile -Command 'Write-Output $env:CARGO_TARGET_DIR' 2>$null
+    Check ("$seen".Trim() -eq "$troot/$name") "CARGO_TARGET_DIR is lane.sh's spelling (got $seen)"
+    Remove-Item Env:CIMMERIA_TARGET_ROOT
+
     $env:LANE_SLOTS = '1'
     # A holder killed mid-job: its slot is reclaimed by the next lane.
     $holder = Start-Process pwsh -ArgumentList '-NoProfile', '-File', $lane, 'pwsh', '-NoProfile', '-Command', 'Start-Sleep 60' -PassThru -WindowStyle Hidden
@@ -115,7 +151,6 @@ try {
     Check ($out -match 'breaking stale slot slot\.1 held by dead pid') 'and said it broke the stale slot'
 
     # rm-worktree's retiring mark stops a build in that worktree (exit 75).
-    $name = Split-Path -Leaf (git rev-parse --show-toplevel)   # the lane names the cwd's worktree
     New-Item -ItemType Directory (Join-Path $lock "retiring.$name") | Out-Null
     & pwsh -NoProfile -File $lane pwsh -NoProfile -Command 'exit 0' 2>&1 | Out-Null
     Check ($LASTEXITCODE -eq 75) 'a worktree being retired is not built (exit 75)'

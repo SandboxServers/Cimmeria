@@ -22,12 +22,16 @@
 #     out its own pids from a shared counter, unrelated to Windows pids, and `kill -0`
 #     only knows MSYS pids. So lane.ps1 never writes `pid` (lane.sh would find our
 #     Windows pid "dead" and break a live slot); it writes `winpid` (and `winstart`, the
-#     process start time, against pid reuse). lane.sh treats a slot without `pid` as busy
-#     and never breaks it, so mutual exclusion holds both ways. The cost:
-#       - a dead lane.ps1 holder is reclaimed only by a lane.ps1 (lane.sh waits on it);
-#       - lane.ps1 cannot test an MSYS pid, so it breaks a lane.sh slot only when no
-#         Git Bash / MSYS shell process is running at all (a live lane.sh holder is
-#         itself a running bash.exe). Otherwise the bash lanes reclaim it.
+#     process start time, against pid reuse). lane.sh asks Windows PowerShell whether that
+#     process still runs (its WINPID_PROBE) and breaks the slot only when it doesn't, so
+#     mutual exclusion holds both ways and either lane reclaims a dead lane.ps1 holder.
+#     The one gap: lane.ps1 cannot test an MSYS pid, so it breaks a lane.sh slot only when
+#     no Git Bash / MSYS shell process is running at all (a live lane.sh holder is itself
+#     a running bash.exe). Otherwise the bash lanes reclaim it.
+#
+# Breaking a dead holder's slot renames it to a private name first and deletes only what
+# it moved, after checking the moved holder is the one it judged dead: another lane may
+# have broken and retaken the slot in between, and a plain delete would remove theirs.
 
 Set-StrictMode -Version Latest
 
@@ -58,10 +62,10 @@ function New-AtomicDir([string]$Path, [System.Collections.IDictionary]$Files = @
     }
 }
 
-# Staging dirs left by a lane.ps1 that was killed between create and rename.
+# Staging and broken-slot dirs left by a lane.ps1 that was killed mid-rename.
 function Clear-StaleStaging([string]$LockDir) {
-    foreach ($d in @(Get-ChildItem -LiteralPath $LockDir -Directory -Force -Filter '.stage-*' -ErrorAction SilentlyContinue)) {
-        if ($d.Name -match '^\.stage-(\d+)-' -and -not (Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue)) {
+    foreach ($d in @(Get-ChildItem -LiteralPath $LockDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object Name -Match '^\.(stage|broken)-')) {
+        if ($d.Name -match '^\.(?:stage|broken)-(\d+)-' -and -not (Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue)) {
             Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
@@ -115,13 +119,25 @@ function Enter-LaneSlot([string]$Slot, [string]$What) {
     $me = Get-Process -Id $PID
     $files = [ordered]@{ winpid = $PID; winstart = $me.StartTime.ToUniversalTime().ToString('o'); what = $What }
     if (New-AtomicDir $Slot $files) { return $true }
+    $dead = Get-SlotIdentity $Slot
     if ((Get-SlotHolderState $Slot) -ne 'dead') { return $false }
-    $who = (Read-SlotFile $Slot 'winpid'), (Read-SlotFile $Slot 'pid') -ne '' | Select-Object -First 1
-    # Re-read just before deleting: another lane may have broken it and taken it since.
-    if ((Get-SlotHolderState $Slot) -ne 'dead') { return $false }
+    # Move it aside, then make sure what moved is the holder judged dead; if another lane
+    # broke and retook the slot in between, put theirs back and leave it alone.
+    $aside = Join-Path (Split-Path -Parent $Slot) (".broken-{0}-{1}" -f $PID, [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try { [System.IO.Directory]::Move($Slot, $aside) } catch { return $false }
+    if ((Get-SlotIdentity $aside) -ne $dead) {
+        try { [System.IO.Directory]::Move($aside, $Slot) } catch { }
+        return $false
+    }
+    $who = (Read-SlotFile $aside 'winpid'), (Read-SlotFile $aside 'pid') -ne '' | Select-Object -First 1
     [Console]::Error.WriteLine("[lane] breaking stale slot $(Split-Path -Leaf $Slot) held by dead pid $who")
-    Remove-Item -LiteralPath $Slot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue
     New-AtomicDir $Slot $files
+}
+
+# Who holds a slot, as one string: its holder files' contents.
+function Get-SlotIdentity([string]$Slot) {
+    (('pid', 'winpid', 'winstart', 'what') | ForEach-Object { Read-SlotFile $Slot $_ }) -join '|'
 }
 
 function Exit-LaneSlot([string]$Slot) {

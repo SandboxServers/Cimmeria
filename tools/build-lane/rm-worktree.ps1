@@ -116,14 +116,16 @@ function Test-Building([string]$n) {
     $false
 }
 
-# MERGED, OPEN, CLOSED, ADVANCED, ON_MAIN or UNMERGED. ADVANCED: a merged PR whose branch
+# MERGED, OPEN, CLOSED, NO_PR, ADVANCED, ON_MAIN or UNMERGED. ADVANCED: a merged PR whose branch
 # has local commits past the head that merged.
 function Get-MergeState([string]$br) {
     $st = ''; $head = ''
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         $line = gh pr list --state all --head $br --limit 1 --json 'state,headRefOid' -q '.[0] | "\(.state) \(.headRefOid)"' 2>$null | Select-Object -First 1
         if ($line) { $st, $head = "$line".Trim() -split ' ', 2 }
-        if ($st -eq 'null') { $st = '' }   # no PR: jq renders `.[0].state` of [] as null
+        # No PR (jq renders `.[0].state` of [] as null). Not ON_MAIN: a fresh worker branch
+        # with no commits yet is an ancestor of origin/main too, and --merged must keep it.
+        if ($st -eq 'null') { $st = 'NO_PR' }
     }
     if ($st -eq 'MERGED') {
         git merge-base --is-ancestor $br $head 2>$null

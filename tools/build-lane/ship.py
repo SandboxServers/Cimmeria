@@ -308,7 +308,10 @@ def rm_worktree_cmd() -> list[str]:
     """rm-worktree.ps1 under PowerShell 7 on Windows, so no bash is needed there;
     rm-worktree.sh under bash elsewhere."""
     if os.name == "nt":
-        return [os.environ.get("SHIP_PWSH") or shutil.which("pwsh") or "pwsh", "-NoProfile", "-File", RM_WORKTREE]
+        pwsh = os.environ.get("SHIP_PWSH") or shutil.which("pwsh")
+        if not pwsh:
+            raise Stop(2, "refused", "retire: pwsh (PowerShell 7) is not on PATH; install it or set SHIP_PWSH")
+        return [pwsh, "-NoProfile", "-File", RM_WORKTREE]
     return [os.environ.get("SHIP_BASH") or shutil.which("bash") or "bash", RM_WORKTREE]
 
 
@@ -322,6 +325,7 @@ def retire_target(repo: str, name: str, branch: str) -> str:
         raise Stop(2, "refused", f"retire: {name} is on {on or 'a detached HEAD'}, not the PR's branch {branch}")
     if git(path, "status", "--porcelain").stdout.strip():
         raise Stop(2, "refused", f"retire: {name} has uncommitted changes")
+    rm_worktree_cmd()   # refuse now, not after the merge, if rm-worktree can't run
     return path
 
 

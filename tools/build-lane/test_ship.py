@@ -397,6 +397,15 @@ class RetireTests(MergeCase):
         self.assertTrue(self.stale.exists(), "no git worktree prune")
         self.assertIn('DROP DATABASE "sgw_feat"', (self.tmp / "psql.log").read_text())
 
+    @unittest.skipUnless(os.name == "nt", "pwsh runs rm-worktree only on Windows")
+    def test_missing_pwsh_refuses_before_merging(self):
+        with mock.patch.dict(os.environ, {"SHIP_PWSH": ""}), mock.patch.object(ship.shutil, "which", return_value=None):
+            code, f, _ = self.merge("--retire", "feat")
+        self.assertEqual((code, f["status"]), (2, "refused"))
+        self.assertIn("pwsh", f["reason"])
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+        self.assertTrue(self.wt.exists())
+
     def test_uncommitted_changes_refuse_before_merging(self):
         self.edit("dirty.rs")
         code, f, _ = self.merge("--retire", "feat")

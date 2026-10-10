@@ -217,11 +217,31 @@ release() {
 }
 trap 'release' EXIT INT TERM HUP
 
+# A lane.ps1 holder writes `winpid` (its Windows pid) and `winstart` (that process's start
+# time, against pid reuse) instead of `pid`: under Git Bash, kill -0 knows only MSYS pids.
+# So ask Windows PowerShell; anything but "dead" (an error, say) counts as alive. Without
+# powershell.exe (not Windows), pwsh's $PID is a native pid and kill -0 works.
+# test-lane-slots.ps1 runs this probe line.
+WINPID_PROBE='$p = Get-Process -Id $env:LANE_WINPID -ErrorAction SilentlyContinue; if (-not $p) { "dead" } elseif ($env:LANE_WINSTART -and [math]::Abs(($p.StartTime.ToUniversalTime() - [datetime]::Parse($env:LANE_WINSTART, $null, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()).TotalSeconds) -gt 2) { "dead" } else { "alive" }'
+winpid_dead() {  # $1 = slot dir; true if its lane.ps1 holder is gone
+  local wp ws
+  [ -f "$1/winpid" ] || return 1
+  wp="$(tr -d '\r\n ' < "$1/winpid")"; [ -n "$wp" ] || return 1
+  ws="$(tr -d '\r\n ' 2>/dev/null < "$1/winstart")"
+  if command -v powershell.exe >/dev/null 2>&1; then
+    [ "$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' LANE_WINPID="$wp" LANE_WINSTART="$ws" \
+        powershell.exe -NoProfile -NonInteractive -Command "$WINPID_PROBE" 2>/dev/null | tr -d '\r\n')" = dead ]
+  else
+    ! kill -0 "$wp" 2>/dev/null
+  fi
+}
+
 try_slot() {  # $1 = slot dir, rest = command (for the "what" note); returns 0 if acquired
   local slot="$1"; shift
   if mkdir "$slot" 2>/dev/null; then echo "$$" > "$slot/pid"; echo "$(date '+%H:%M:%S') $NAME :: $*" > "$slot/what"; return 0; fi
   local pid; pid="$(cat "$slot/pid" 2>/dev/null || true)"
-  if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+  if { [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; } ||
+     { [ -z "$pid" ] && winpid_dead "$slot" && pid="$(cat "$slot/winpid")"; }; then
     echo "[lane] breaking stale slot $(basename "$slot") held by dead pid $pid" >&2; rm -rf "$slot"
     if mkdir "$slot" 2>/dev/null; then echo "$$" > "$slot/pid"; echo "$(date '+%H:%M:%S') $NAME :: $*" > "$slot/what"; return 0; fi
   fi

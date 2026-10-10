@@ -64,7 +64,10 @@ if ($TRoot -and (Test-Path -LiteralPath $TRoot -PathType Container)) {
         -not (Test-Path -LiteralPath (Join-Path $Top 'target') -PathType Container) -or
         $env:CIMMERIA_FORCE_DEV_DRIVE -eq '1') { $UseDevDrive = $true }
 }
-if ($UseDevDrive) { $env:CARGO_TARGET_DIR = ConvertTo-LanePath (Join-Path $TRoot $Name) }
+# Spelled exactly as lane.sh spells it ("$CIMMERIA_TARGET_ROOT/$NAME", e.g. B:\targets/x):
+# cargo records the target dir in dep-info, so a different spelling would make bash and
+# PowerShell builds of one worktree rebuild each other's work.
+if ($UseDevDrive) { $env:CARGO_TARGET_DIR = "$TRoot/$Name" }
 else { Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue }   # <worktree>/target
 
 $SccacheBin = $env:SCCACHE_BIN
