@@ -52,7 +52,7 @@ No volume mount for the database — the container reseeds pgdata from the image
 | 32832 | UDP | BaseApp |
 | 8081  | TCP | Auth HTTP (SOAP login); also launcher telemetry upload (`/api/auth/dev-session`, `/api/telemetry/*`) |
 | 8443  | TCP | Admin REST API (no authentication; publish on loopback) |
-| 30000 | TCP | Minigame SmartFoxServer (Livewire, Hack, Bypass, GoauldCrystals, Alignment, Activate, Analyze, Converse) |
+| 30000 | TCP | Minigame SmartFoxServer (Livewire, Hack, Bypass, GoauldCrystals, Alignment, Activate, Analyze, Converse). Connection caps and timeouts: [Connection limits](../gameplay/minigame-system.md#connection-limits) |
 
 > The image also `EXPOSE`s `13001/tcp` (`AUTH_PORT`) and `50000/udp` (`CELL_PORT`), but nothing binds either: client login is the SOAP listener on `8081`, and the CellApp runs in-process. Don't publish them.
 >

@@ -2,12 +2,12 @@
 title: "Minigame System"
 type: reference
 audience: engineers
-last_updated: 2026-09-18
+last_updated: 2026-10-10
 ---
 
 # Minigame System
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-10-10
 > **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
 
 ## Overview
@@ -40,7 +40,8 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
+| SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `accept.rs`, `limits.rs`, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
+| Connection limits | DONE | Total and per-address connection caps, a login deadline, a 4 KiB frame cap and an idle timeout on the public port. See [Connection limits](#connection-limits) |
 | Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
 | Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
 | Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
@@ -145,11 +146,16 @@ the connection task that owns it finishes. Two things end it:
 
 1. **The connection task.** Login validates the ticket and claims the
    session in one locked step (`authenticate_and_claim`), so a task can
-   only ever own the session it authenticated against. When the socket
+   only ever own the session it authenticated against. A ticket
+   authenticates one live connection: a second login with it while the
+   first is connected is refused (WARN `reason=ticket_already_claimed`).
+   When the socket
    closes — win,
    loss, or the player closing the window — the task unregisters it. A
    connected session is never expired by age, because a Livewire round can
-   run longer than the TTL.
+   run longer than the TTL. It does end if the client sends nothing for the
+   idle timeout (30 minutes), which reports a cancel like a closed window;
+   see [Connection limits](#connection-limits).
 2. **The expiry sweep.** A session whose SWF never connects has no task to
    clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
    every unconnected session older than `PENDING_SESSION_TTL` (180 s).
@@ -169,11 +175,66 @@ those through to `SessionRegistry::remove` is the faithful fix; the TTL
 still earns its place afterwards for the case the original had no answer to
 either, a client that crashes without sending anything.
 
+### Connection limits
+
+The SmartFox port (TCP 30000 by default) is published on every host
+interface, so anyone can open a socket to it. The original C++ host had no
+connection cap and no read timeout. Cimmeria adds limits sized to how the
+client behaves: one character runs at most one minigame at a time, and the
+SWF sends `verChk` and `login` on its own as soon as it loads, so a player
+holds one socket (briefly two while a closed SWF's socket drains) and logs
+in within a second.
+
+| Limit | Default | On breach |
+|---|---|---|
+| Open connections, all peers | 256 | The new socket is closed at once. INFO row `reason=total_connection_cap`, at most once a minute, with a `suppressed` count |
+| Open connections per source address | 8 | The new socket is closed at once. DEBUG row `reason=per_ip_connection_cap` |
+| Accept to successful `login` | 30 s | Closed. DEBUG row `reason=handshake_timeout` |
+| Frame size (`MAX_MESSAGE_LEN`, the read buffer) | 4096 bytes | Closed. Before login, DEBUG `reason=preauth_message_too_long`; in a session, WARN `reason=message_too_long` and result code 0 |
+| No inbound frame in a logged-in session | 30 min | The session ends as a cancel (result code 0). INFO row `reason=idle_timeout` |
+
+The defaults are `ListenerLimits::default()` in
+[`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
+`server::run_with_limits` takes other values; the server configuration has
+no keys for them yet. The idle timeout counts inbound frames only, because a
+Livewire board keeps sending timer updates to a client that has gone. It is
+long on purpose: the board can sit unstarted while the player reads it.
+
+The per-address cap needs the real client address. On Linux, Docker's
+default (iptables) port publishing keeps it for traffic from other hosts.
+Where something in front of the port replaces it (Docker's userland proxy,
+Docker Desktop, a TCP proxy), every peer shares one address and that cap
+behaves like a second, lower total cap.
+
+### Logging
+
+Everything a peer sends before it logs in is unauthenticated, and on a
+public port most of it is scanner traffic: TLS ClientHellos, HTTP requests,
+RDP probes. A TLS or RDP probe has a `0x00` byte within its first few bytes,
+which ends an SFS frame, so the server parses a few bytes of binary with no
+`<msg>` envelope. Before 2026-10-10 the codec logged each one as the WARN
+`Unknown SFS message type` with empty `msg_type` and `body_action` fields,
+and the Discord warn harvest posted them.
+
+The codec no longer logs. `parse_message` returns a `ParseError`
+(`Malformed`, `NotSfs`, `UnknownType`, `BadExtensionData`), and the
+connection task decides the level:
+
+| Who sent it | Level | Fields |
+|---|---|---|
+| A peer that has not logged in | DEBUG | `reason=non_sfs_preauth`, `peer`, `phase`, `parse_error`, `len`, an escaped 48-character `sample`. A well-formed frame in the wrong phase logs `reason=unexpected_preauth_message`, a bad API version INFO `reason=bad_api_version` |
+| A logged-in session | WARN | `Unknown SFS message type` with `entity_id`, `player_id`, their names, `game`, `msg_type`, `body_action`, `reason` (`unknown_sfs_type`, `malformed_xml`, `no_sfs_envelope`, `bad_extension_data`) and `sample` |
+
+DEBUG reaches SigNoz (`cimmeria_minigame=debug` in the OTLP filter), so the
+pre-login rows stay queryable there. Only WARN and ERROR reach Discord. A
+ticket mismatch for a registered entity is still a WARN from the registry:
+it needs a real entity id and is worth an operator's attention.
+
 ### Result codes
 
 | Code | Name | When |
 |---|---|---|
-| 0 | Canceled | The session ended with no outcome — socket dropped, SWF closed. Inert on the cell today, but it is what the original used to clear `BSF_PlayingMinigame` and release the movement lock |
+| 0 | Canceled | The session ended with no outcome — socket dropped, SWF closed, idle timeout, oversized frame. Inert on the cell today, but it is what the original used to clear `BSF_PlayingMinigame` and release the movement lock |
 | 1 | Victory | The game reported a win. The only code that fires `on_victory_chains` |
 | 2 | Defeat | The game reported a loss, including a Livewire timeout. Carries no chains |
 

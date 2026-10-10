@@ -228,6 +228,21 @@ impl SessionRegistry {
             );
             return None;
         }
+        // One live connection per ticket. The session leaves the registry
+        // when its connection ends, so a SWF that reconnects after a drop
+        // finds no session at all, never this branch; a second login while the
+        // first is still playing would otherwise run a second game against
+        // the same victory chains.
+        if session.connected {
+            tracing::warn!(
+                entity_id,
+                entity_name = session.player_name.as_deref(),
+                game = %game_name,
+                reason = "ticket_already_claimed",
+                "Minigame ticket already in use by a live connection",
+            );
+            return None;
+        }
         session.connected = true;
         Some(session.clone())
     }

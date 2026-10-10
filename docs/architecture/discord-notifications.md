@@ -1,6 +1,6 @@
 # Discord notifications
 
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-10
 
 The server posts structured events to Discord channels via webhooks for
 development-time ops visibility — login bursts, world entry, errors,
@@ -329,6 +329,17 @@ teardown paths now record the departed witness
 whose session ended in the last 30 s logs at DEBUG with
 `reason=witness_session_ended`. A miss for a live witness still posts. This is
 a fix at the source, not a Discord filter.
+
+**Pre-login minigame traffic logs at DEBUG.** The SmartFox port `30000/tcp`
+is public, and scanners send it TLS ClientHellos, HTTP requests and RDP
+probes. Each posted `Unknown SFS message type` with empty `msg_type` and
+`body_action` fields: the codec logged at WARN for any frame without a
+`<msg>` envelope. The codec no longer logs; a frame from a peer that has not
+logged in logs at DEBUG with `reason=non_sfs_preauth` and the `peer`, and
+connection-cap refusals log at DEBUG or INFO. An unknown frame from a
+logged-in session still posts, now with the session and type fields filled.
+This is a fix at the source, not a Discord filter. See
+[minigame-system.md § Logging](../gameplay/minigame-system.md#logging).
 
 **Cell-side name cache.** The cell service has no character/GM display name of
 its own — names live in the base `ConnectedClientState`. `GmCommand` and the

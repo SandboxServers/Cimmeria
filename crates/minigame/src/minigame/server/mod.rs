@@ -4,97 +4,92 @@
 //! game instance and tick timer. This module owns the connection lifecycle;
 //! the siblings hold the pieces it leans on:
 //!
+//! - [`accept`] — the listener and its accept loop.
+//! - [`limits`] — connection caps and timeouts for the public port.
 //! - [`framing`] — null-terminated message framing over the socket.
 //! - [`handshake`] — the pre-game version check and ticket login.
 //! - [`result_dispatch`] — the single seam every outcome leaves through.
 //!
 //! Reference: `deprecated/cpp/src/baseapp/minigame_connection.cpp`.
 
+mod accept;
 mod framing;
 mod handshake;
+mod limits;
 mod result_dispatch;
 
 #[cfg(test)]
+mod listener_tests;
+#[cfg(test)]
 mod tests;
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use cimmeria_wire::cell::messages::CellToBaseMsg;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
-use self::framing::{read_null_terminated, send_null_terminated, MAX_MESSAGE_LEN};
+pub use self::accept::{run, run_with_limits};
+pub use self::limits::ListenerLimits;
+
+use self::framing::{read_null_terminated, send_null_terminated, ReadError, MAX_MESSAGE_LEN};
 use self::handshake::{read_and_handle_login, read_and_handle_version};
+use self::limits::ConnectionPermit;
 use self::result_dispatch::{send_minigame_result, RESULT_CANCELED, RESULT_DEFEAT, RESULT_VICTORY};
 use super::game::{GameOutput, MinigameInstance};
 use super::protocol::{self, SfsMessage};
-use super::session::{MinigameSession, SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL};
-
-/// Start the minigame TCP server.
-pub async fn run(
-    addr: &str,
-    port: u16,
-    external_port: u16,
-    registry: SessionRegistry,
-    result_tx: mpsc::Sender<CellToBaseMsg>,
-) {
-    let listen_addr = format!("{addr}:{port}");
-    let listener = match TcpListener::bind(&listen_addr).await {
-        Ok(l) => {
-            tracing::info!(addr = %listen_addr, "Minigame server listening");
-            l
-        }
-        Err(e) => {
-            tracing::error!(addr = %listen_addr, error = %e, "Failed to bind minigame server");
-            return;
-        }
-    };
-
-    // Defect B4: a session whose SWF never connects has no connection task
-    // to clean it up, so without this sweep it pins its entity id in the
-    // registry until the player relogs.
-    registry.spawn_sweep(PENDING_SESSION_TTL, SWEEP_INTERVAL);
-
-    loop {
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                tracing::debug!(peer = %peer, "Minigame connection accepted");
-                let reg = registry.clone();
-                let tx = result_tx.clone();
-                tokio::spawn(handle_connection(stream, reg, tx, external_port));
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Minigame accept error");
-            }
-        }
-    }
-}
+use super::session::{MinigameSession, SessionRegistry};
 
 /// Handle a single minigame connection through the full lifecycle.
+///
+/// `_permit` is this connection's slot in the listener's caps; holding it
+/// for the whole function gives the slot back on every exit path.
 async fn handle_connection(
     mut stream: TcpStream,
+    peer: SocketAddr,
+    _permit: ConnectionPermit,
     registry: SessionRegistry,
     result_tx: mpsc::Sender<CellToBaseMsg>,
     external_port: u16,
+    limits: ListenerLimits,
 ) {
     let mut buf = vec![0u8; MAX_MESSAGE_LEN];
     let mut buf_len = 0usize;
 
-    // Phase 1: Version check
-    let api_version =
-        match read_and_handle_version(&mut stream, &mut buf, &mut buf_len, external_port).await {
-            Some(v) => v,
-            None => return,
-        };
-
-    // Phase 2: Login
-    let (session, game) =
-        match read_and_handle_login(&mut stream, &mut buf, &mut buf_len, api_version, &registry)
-            .await
-        {
-            Some(pair) => pair,
-            None => return,
-        };
+    // Phases 1 and 2 share one deadline, measured from accept. The SWF
+    // sends verChk and login on its own as soon as it loads, so a real
+    // client finishes in well under a second; a peer that connects and
+    // says nothing would otherwise hold its slot forever. Cancelling here
+    // is safe: the only await after the registry claim is on the
+    // unreachable `create_game` failure branch.
+    let handshake = async {
+        let api_version =
+            read_and_handle_version(&mut stream, &mut buf, &mut buf_len, external_port, peer)
+                .await?;
+        read_and_handle_login(
+            &mut stream,
+            &mut buf,
+            &mut buf_len,
+            api_version,
+            &registry,
+            peer,
+        )
+        .await
+    };
+    let (session, game) = match tokio::time::timeout(limits.handshake_timeout, handshake).await {
+        Ok(Some(pair)) => pair,
+        Ok(None) => return,
+        Err(_) => {
+            tracing::debug!(
+                %peer,
+                reason = "handshake_timeout",
+                timeout_s = limits.handshake_timeout.as_secs(),
+                "Minigame peer did not log in before the deadline; closing",
+            );
+            return;
+        }
+    };
 
     let entity_id = session.entity_id;
 
@@ -110,7 +105,16 @@ async fn handle_connection(
     // For the closing row, which outlives the session `run_session` takes.
     let player = session.discord_player();
 
-    run_session(stream, &registry, &result_tx, session, game, buf, buf_len).await;
+    run_session(
+        stream,
+        &registry,
+        &result_tx,
+        session,
+        game,
+        ReadState { buf, len: buf_len },
+        limits.idle_timeout,
+    )
+    .await;
 
     registry.remove_if_ticket(entity_id, &ticket).await;
     tracing::info!(
@@ -123,6 +127,25 @@ async fn handle_connection(
     );
 }
 
+/// The read buffer and how much of it holds unconsumed bytes, carried from
+/// the handshake into the session (a login frame can arrive coalesced with
+/// the first game frame).
+struct ReadState {
+    buf: Vec<u8>,
+    len: usize,
+}
+
+impl ReadState {
+    /// A fresh, empty buffer of the framing size cap.
+    #[cfg(test)]
+    fn empty() -> Self {
+        Self {
+            buf: vec![0u8; MAX_MESSAGE_LEN],
+            len: 0,
+        }
+    }
+}
+
 /// Drive one authenticated session: room join, game loop, teardown.
 ///
 /// Split out of [`handle_connection`] so the caller owns the single
@@ -132,16 +155,21 @@ async fn handle_connection(
 /// with a phantom session until relog" shape as defect B4.
 ///
 /// Takes the socket and read buffer by value because nothing after it in
-/// [`handle_connection`] needs them.
+/// [`handle_connection`] needs them. `idle_timeout` ends the session as a
+/// cancel when the client sends nothing for that long.
 async fn run_session(
     mut stream: TcpStream,
     registry: &SessionRegistry,
     result_tx: &mpsc::Sender<CellToBaseMsg>,
     session: MinigameSession,
     mut game: Box<dyn MinigameInstance>,
-    mut buf: Vec<u8>,
-    mut buf_len: usize,
+    read: ReadState,
+    idle_timeout: Duration,
 ) {
+    let ReadState {
+        mut buf,
+        len: mut buf_len,
+    } = read;
     let entity_id = session.entity_id;
     let room_id = registry.allocate_room_id().await;
     let user_id = entity_id.to_string();
@@ -273,15 +301,21 @@ async fn run_session(
         let mut game_complete = false;
         let mut tick_interval = tick_interval;
 
+        // Reset on every inbound frame. Outbound ticks don't count: a
+        // Livewire board keeps sending timer updates to a client that left.
+        let idle = tokio::time::sleep(idle_timeout);
+        tokio::pin!(idle);
+
         loop {
             tokio::select! {
                 // Read incoming messages
                 result = read_null_terminated(&mut stream, &mut buf, &mut buf_len) => {
                     match result {
-                        Some(msg) => {
+                        Ok(msg) => {
+                            idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
                             let parsed = protocol::parse_message(&msg);
                             match parsed {
-                                Some(SfsMessage::ExtensionRequest { cmd, params }) => {
+                                Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
                                     let outputs = game.message(&cmd, &params);
                                     for output in outputs {
                                         match output {
@@ -340,16 +374,55 @@ async fn run_session(
                                         }
                                     }
                                 }
-                                _ => {
+                                // The authenticated SWF sent something this
+                                // server does not handle: a real protocol
+                                // gap, so WARN, naming the session and the
+                                // `(t, action)` the client used.
+                                Ok(other) => {
+                                    let (msg_type, body_action) = other.kind();
                                     tracing::warn!(
                                         entity_id,
                                         entity_name = player.name(),
-                                        "Unexpected message type during game",
+                                        player_id = player.id,
+                                        player_name = player.name(),
+                                        game = %game_name,
+                                        msg_type,
+                                        body_action,
+                                        reason = "unexpected_sfs_message",
+                                        "Unexpected SFS message during game",
+                                    );
+                                }
+                                Err(e) => {
+                                    let (msg_type, body_action) = e.kind();
+                                    tracing::warn!(
+                                        entity_id,
+                                        entity_name = player.name(),
+                                        player_id = player.id,
+                                        player_name = player.name(),
+                                        game = %game_name,
+                                        msg_type,
+                                        body_action,
+                                        reason = e.reason(),
+                                        sample = %framing::frame_sample(&msg),
+                                        "Unknown SFS message type",
                                     );
                                 }
                             }
                         }
-                        None => {
+                        Err(ReadError::TooLong) => {
+                            tracing::warn!(
+                                entity_id,
+                                entity_name = player.name(),
+                                player_id = player.id,
+                                player_name = player.name(),
+                                game = %game_name,
+                                limit = MAX_MESSAGE_LEN,
+                                reason = "message_too_long",
+                                "Minigame frame over the size limit; closing",
+                            );
+                            game_complete = true;
+                        }
+                        Err(ReadError::Closed | ReadError::Io(_)) => {
                             // Connection closed
                             tracing::debug!(
                                 entity_id,
@@ -359,6 +432,22 @@ async fn run_session(
                             game_complete = true;
                         }
                     }
+                }
+
+                // Idle deadline: nothing from the client for `idle_timeout`.
+                // Ends like a closed window: `aborted()`, then Canceled.
+                () = &mut idle => {
+                    tracing::info!(
+                        entity_id,
+                        entity_name = player.name(),
+                        player_id = player.id,
+                        player_name = player.name(),
+                        game = %game_name,
+                        reason = "idle_timeout",
+                        timeout_s = idle_timeout.as_secs(),
+                        "Minigame session idle; closing",
+                    );
+                    game_complete = true;
                 }
 
                 // Tick timer
