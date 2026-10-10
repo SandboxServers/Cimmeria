@@ -5,8 +5,9 @@
 > clients campaign ([../lab-parallel-clients/README.md](../lab-parallel-clients/README.md), #1312).
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): wave 1 dispatched.** D-LC1 to D-LC5
-> accepted; D-LC5 amended to allow `-Force`.
+> **Campaign status (2026-10-10): code complete, UAT pending.** LC-01 to
+> LC-05 merged; LC-06 (docs) is the last PR; LC-07, the live UAT, waits
+> on the owner. D-LC1 to D-LC5 accepted; D-LC5 amended to allow `-Force`.
 
 ## Why
 
@@ -36,16 +37,17 @@ campaign puts one `lab` command in front of it.
 | `lab start` / `stop` / `restart` | The scheduled task, through `daemon.ps1`. |
 | `lab logs [-Follow] [-Instance p2] [-Level warn] [-Lines 50]` | `labd.log`, filtered by the per-instance `instance=` field the spans carry. |
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | Reads or edits `labd.env` with a timestamped backup. A change prints the restart hint. Token values are masked on print. |
-| `lab install [-From <worktree>]` | Builds the lab through the PowerShell lane (no bash) and installs it. Refreshes the CLI's own installed copy. |
+| `lab install -From <worktree> [-SkipBuild]` | Builds the lab through the PowerShell lane (no bash) and installs it. Refreshes the CLI's own installed copy. |
 | `lab instances [init \| status]` | `instances.ps1`, run from the installed copy. |
 | `lab clients stop [<instance> \| all] [-Force]` | Closes lab clients whose instance has no lease. Refuses a leased one, naming the holder, unless `-Force` is given with a named instance. |
 | `lab doctor` | Checks the setup, one PASS, WARN or FAIL line each. |
+| `lab setup [-From <checkout>] [-NoPath] [-Yes]` | Installs the CLI copy and the shim, and offers to add the `bin` folder to the user `PATH`. |
 | `lab version`, `lab help` | Version, and help listing each command's first help line. |
 
 `lab` is `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd`, which runs the installed
 copy of the scripts in `%LOCALAPPDATA%\cimmeria-lab\cli\`. It never runs a
 checkout's copy. `lab setup` writes the shim and adds the `bin` folder to the
-user `PATH` once.
+user `PATH` once. Operating detail: [The `lab` command](../../guides/live-research-lab.md#the-lab-command).
 
 ## Decisions
 
@@ -61,19 +63,58 @@ user `PATH` once.
 
 | ID | Packet | Worker | Depends on | Status |
 |---|---|---|---|---|
-| LC-01 | Daemon `GET /status` | packet-coder (Rust) | D-LC2 | Writing |
-| LC-02 | CLI skeleton: dispatcher, common library, `status`, `start`/`stop`/`restart`, `version`, `help` | packet-coder | D-LC1, contract | Writing |
-| LC-03 | `logs` and `env` | packet-coder | LC-02 | BlockedDependency |
-| LC-04 | `install` without bash, and `setup` (shim, installed copy, PATH) | packet-coder | D-LC3, D-LC4 | Writing |
-| LC-05 | `instances`, `clients stop`, `doctor` | packet-coder | LC-02, LC-01 | BlockedDependency |
-| LC-06 | Docs and memory | documentation-writer | LC-01 to LC-05 | BlockedDependency |
-| LC-07 | Live UAT of every command on this machine | coordinator | all | BlockedDependency |
+| LC-01 | Daemon `GET /status` | packet-coder (Rust) | D-LC2 | Integrated (#1334) |
+| LC-02 | CLI skeleton: dispatcher, common library, `status`, `start`/`stop`/`restart`, `version`, `help` | packet-coder | D-LC1, contract | Integrated (#1336) |
+| LC-03 | `logs` and `env` | packet-coder | LC-02 | Integrated (#1338) |
+| LC-04 | `install` without bash, and `setup` (shim, installed copy, PATH) | packet-coder | D-LC3, D-LC4 | Integrated (#1335) |
+| LC-05 | `instances`, `clients stop`, `doctor` | packet-coder | LC-02, LC-01 | Integrated (#1337) |
+| LC-06 | Docs and memory | documentation-writer | LC-01 to LC-05 | InReview (this PR, branch `docs/lab-cli-docs`) |
+| LC-07 | Live UAT of every command on this machine | coordinator | all | UATPending (needs the owner: `lab setup` edits the user `PATH`) |
 
 Waves:
 
 1. LC-01, LC-02 and LC-04 run in parallel (different files). LC-02 builds against the `/status` contract and works without it, reporting "status endpoint unavailable".
 2. LC-03 and LC-05, each in its own files under `tools/lab/cli/`.
 3. LC-06, then LC-07.
+
+## Review outcomes
+
+Where the merged code differs from [work-packets.md](work-packets.md). The
+code and the [operating guide](../../guides/live-research-lab.md#the-lab-command)
+are the reference; the packet specs are not updated.
+
+- **Dispatcher (LC-02).** It skips `common`, `test-*` and `*-lib` files.
+  Named flags pass through to the command, and a command that falls off the
+  end exits 0 (`$global:LASTEXITCODE` is reset first). `$Rest` is assigned
+  directly: an if-expression unrolled a one-element array to a string, and
+  `lab instances status` splatted one character at a time.
+- **`CIMMERIA_LAB_HOME` (LC-02).** A test-only override. `daemon.ps1`
+  ignores it, so with it set, `lab status` reads a different `labd.pid` than
+  `lab restart` acts on.
+- **`lab logs` (LC-03).** A continuation line (no leading timestamp) is
+  kept or dropped with the entry above it, so a level word inside a
+  backtrace never ranks it alone.
+- **`lab env` (LC-03).** Masking is wider than the spec: keys containing
+  `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `AUTH` or `CREDENTIAL`, a URL's
+  userinfo and host, 64-hex and bearer tokens; a stray line shows
+  `<unparsed line>`. Keys match ignoring case, as the daemon reads them. A
+  value starting with `-` is written `-Value:-x`; a value with edge spaces is
+  refused. `labd.env` is replaced by a move after the timestamped backup.
+- **`lab install` (LC-04).** `-From` is required. It builds through
+  `lane.ps1`, then copies the CLI with the worktree's own `install-lib.ps1`
+  in a child `pwsh`, so a newer file list applies. A reinstall removes
+  command files the checkout no longer has, and `VERSION` is written last.
+- **`lab setup` (LC-04).** From the installed copy it needs `-From`. It asks
+  `[y/N]` before adding `<LabHome>\bin` to the user `PATH` unless `-Yes`
+  (D-LC3). It writes `HKCU\Environment` directly to keep `REG_EXPAND_SZ`
+  (`SetEnvironmentVariable(..., 'User')` writes `REG_SZ`) and broadcasts
+  `WM_SETTINGCHANGE`. The shim holds the real path, not `%LOCALAPPDATA%`.
+- **`lab clients stop` (LC-05).** `-Force` only with a named instance. Exit
+  codes 0, 1 (daemon down), 2 (usage), 3 (a leased client refused) and 4 (a
+  client could not be stopped); the spec had no 4.
+- **`lab doctor` (LC-05).** The last check compares the copy's `tools/lab`
+  with `origin/main` by content, not ancestry: squash merges mean a
+  worktree sha never becomes an ancestor of `origin/main`.
 
 ## Dispatch rules
 
@@ -87,5 +128,3 @@ Waves:
   direct `cargo`. Ship with
   `python tools/build-lane/ship.py pr -C <worktree> -m <msg>`. Merge once the
   build-proving CI jobs pass, or per the owner's current merge rule.
-</content>
-</invoke>

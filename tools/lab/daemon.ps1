@@ -33,6 +33,9 @@
     Code reads it through tools/lab/labd-headers.ps1 (`headersHelper`), so
     the token never lands in .mcp.json.
 
+    Day to day, use the lab command instead (lab start / stop / restart /
+    status / doctor; tools/lab/lab.ps1, set up with tools/lab/cli/setup.ps1).
+
 .PARAMETER Command
     install | uninstall | start | stop | restart | status | run
     `run` is what the scheduled task executes; you do not call it yourself.

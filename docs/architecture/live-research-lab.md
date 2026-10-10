@@ -274,9 +274,22 @@ that nothing enforced.
   the lab and when is reconstructable after the fact.
 - The same lease book covers the in-process second-player supervisor:
   the lease is for the lab, not for one client.
+- **`GET /status`** (added 2026-10-10, D-LC2 of the
+  [lab CLI campaign](../analysis/lab-cli/README.md)). Beside `/mcp`, the
+  daemon serves a read-only JSON summary for the `lab` command: the daemon's
+  pid, version, start time and uptime, and per hosted instance its label,
+  account, bridge port, client pid and lease status. It sits behind the same
+  bearer middleware as `/mcp` (no token, `401`). The lease part is the lease
+  book's own status, so it never carries a lease id. It reads only what the
+  supervisor already holds in memory and makes no bridge call, so a hung
+  client can't hang it. The rmcp `Host` and `Origin` guards belong to the
+  MCP service and don't cover `/status`; a DNS-rebinding page can't supply
+  the bearer token, so the token is the guard there. A plain GET replaced
+  the alternative, an MCP streamable-HTTP client written in PowerShell
+  (initialize, session id, SSE parsing).
 
 Implementation: `crates/lab/src/daemon/` (transport, auth, single
-instance, log rotation), `crates/lab/src/lease/` (book, policy, run lease),
+instance, log rotation, `status.rs`), `crates/lab/src/lease/` (book, policy, run lease),
 `crates/lab/src/server/lease.rs` (tools and gate). Operating detail:
 [live-research-lab.md, The shared daemon](../guides/live-research-lab.md#the-shared-daemon-cimmeria-lab---http).
 
