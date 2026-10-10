@@ -1,6 +1,6 @@
 # ADR: Live Research Lab — MCP access to the running client and server
 
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-10
 > **Audience**: Engineers and AI agents (Claude Code) doing reverse engineering and live verification against a running SGW.exe and a running `cimmeria-server`
 > **Type**: Architecture decision record
 > **Status**: Proposed — owner decisions in §2 are settled; spikes in §8 gate Phases 2 and 3
@@ -91,7 +91,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 **Activation is double-gated.** The code exists only when the DLL is built with `--features lab-bridge`, which is off by default, so any telemetry DLL handed to someone else physically lacks it. Even when present, it starts only if `current-session.json` carries a `lab` block, which only the supervisor writes.
 
-**Transport.** Same shape as the Atrea bridge so both can share framing code: JSON-RPC 2.0 over TCP, 4-byte little-endian length prefix, single client, 32-byte token regenerated per launch and passed through the session file. Default bind `127.0.0.1:8770`; the bind address is configurable for a second PC on the LAN or VPN. The bridge stays single-client per process; two game clients are two bridges, one per named instance (`CIMMERIA_LAB_INSTANCE`, its own port and session file), see [the guide](../guides/live-research-lab.md#two-clients-two-player-scenarios). Port 8765 is avoided because both the Atrea ADR and the SigNoz MCP already claim it.
+**Transport.** Same shape as the Atrea bridge so both can share framing code: JSON-RPC 2.0 over TCP, 4-byte little-endian length prefix, single client, 32-byte token regenerated per launch and passed through the session file. Default bind `127.0.0.1:8770`; the bind address is configurable for a second PC on the LAN or VPN. The bridge stays single-client per process; two game clients are two bridges, one per lab instance (its own port and session file, all hosted by one daemon since §12), see [the guide](../guides/live-research-lab.md#parallel-clients-up-to-five). Port 8765 is avoided because both the Atrea ADR and the SigNoz MCP already claim it.
 
 **Threading.** The IO thread parses and queues only. All Lua, all UObject access, and all native calls run in the existing `FEngineLoop::Tick` hook (`hooks/inline_hooks/engine_frame.rs`), which drains a bounded queue before the original tick. Memory reads run on the IO thread behind `VirtualQuery` checks and never fault. Every main-thread dispatch is wrapped in a structured exception guard; Rust has no native SEH, so this needs `microseh` or a small C shim (see §8).
 
@@ -279,3 +279,71 @@ Implementation: `crates/lab/src/daemon/` (transport, auth, single
 instance, log rotation), `crates/lab/src/lease/` (book, policy, run lease),
 `crates/lab/src/server/lease.rs` (tools and gate). Operating detail:
 [live-research-lab.md, The shared daemon](../guides/live-research-lab.md#the-shared-daemon-cimmeria-lab---http).
+
+## 12. Addendum (2026-10-10): one daemon, many instances, a lease per instance
+
+**Status:** Accepted (owner choice, 2026-10-10; #1312, campaign ledger
+[lab-parallel-clients](../analysis/lab-parallel-clients/README.md)). Amends
+§11: the lease is now per lab client, not for the whole lab.
+
+### Context
+
+Parallel lab testing and two-player rows need several `SGW.exe` clients at
+once. §11's daemon hosted one supervisor with one lease book, and its
+single-instance lock refused a second daemon, so a second client meant a
+stdio supervisor beside the daemon, the two-owner problem §11 removed. The
+clients themselves also froze each other: a running client locks its
+cooked-data cache, so a second client on the same Documents folder gets a
+full resync at every login
+([multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)).
+
+### Decision
+
+1. **One daemon hosts every instance.** `CIMMERIA_LAB_INSTANCES=default,p2,...`
+   (at most five, the seeded `lab` to `lab5`) makes the daemon build one
+   `Supervisor` per label, each with its own client, watchdog, bridge
+   (`CIMMERIA_LAB_BRIDGE_PORT` + its position) and account file. The
+   daemon lock stays: one daemon per logon session is right now that it
+   hosts every instance. The owner chose this over the alternative, one
+   daemon per account, on 2026-10-10: with one daemon, every session keeps
+   one MCP entry and picks a client per call.
+2. **A lease per instance.** Each supervisor owns its `LeaseBook`. A lease
+   id is valid only on the instance that issued it, so five agents can each
+   hold one client. `lab_lease_status` with no `instance` reports every
+   instance; it never shows a lease id.
+3. **Routing in `call_tool`.** The target instance is the `instance`
+   argument (a label, or a lab account name; a label wins), else the
+   instance whose book holds the call's `lease_id`, else the first listed
+   instance. The tool runs on a clone of `LabServer` whose supervisor is the
+   target's, so no tool body changed. The `instance` argument is advertised
+   only when more than one instance is hosted, and refusals then name the
+   instance (`(instance p3)`).
+4. **A per-instance Documents folder.** Every client launches with
+   `USERPROFILE` at its instance's `profile` folder, seeded once from the
+   real `SGWGame` folder, so no two clients share a cache.
+   `CIMMERIA_LAB_SHARED_USER_DIR=1` opts out. A Documents folder
+   redirected to an absolute path (OneDrive) defeats the redirect and gets
+   a warning; the durable fix is a `SHGetFolderPathW` hook in the lab DLL
+   (backlog).
+5. **A watchdog boot grace** (90 s until the bridge first answers), because
+   several clients booting at once made a bridge take about 25 s to come up.
+
+### Consequences
+
+- The client cap defaults to the number of hosted instances (at least 2),
+  ceiling 5.
+- A call without `instance` or `lease_id` lands on the first instance. A
+  read-only tool aimed at another client has to name it.
+- Logs are per instance: every routed call runs in a `lab_call` span, each
+  watchdog in `lab_watchdog`, each lease sweeper in `lab_instance`, all
+  with an `instance` field.
+- Two-player UAT rows in a multi-instance daemon drive the hosted `p2`
+  instance; a single-instance daemon keeps the in-process p2 supervisor
+  that §11's last consequence describes.
+
+Implementation: `crates/lab/src/server/instances.rs` (registry, routing,
+the `instance` argument), `crates/lab/src/server/lease.rs` (per-instance
+grants and status), `crates/lab/src/supervisor/instance.rs` and
+`instance_profile.rs` (layout, cap, profile), `crates/lab/src/main.rs`
+(`build_hosted_server`). Operating detail:
+[live-research-lab.md, Parallel clients](../guides/live-research-lab.md#parallel-clients-up-to-five).
