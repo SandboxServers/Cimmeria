@@ -163,7 +163,7 @@ pub async fn read_only_query(
 ///
 /// Parses key=value pairs (host, port, user, password, dbname) from the
 /// format used in the original C++ config files.
-fn libpq_to_url(conn_str: &str) -> String {
+pub(crate) fn libpq_to_url(conn_str: &str) -> String {
     let mut host = "localhost";
     let mut port = "5432";
     let mut user = "postgres";

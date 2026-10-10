@@ -1,6 +1,16 @@
-#!/command/execlineb -S0
+#!/bin/sh
 # If the server exits for any reason, tell s6 to bring the supervision
 # tree down so the container exits and the orchestrator (Docker,
 # compose, Kubernetes) restarts it cleanly. Postgres without the server
 # is a useless zombie.
-s6-svscanctl -t /run/service
+#
+# s6 passes the run script's exit code as $1 (256 when a signal killed
+# it). A non-zero exit (the database login check in `run` failing, or the
+# server refusing to start because it cannot connect to DB_URL) becomes
+# the container's exit code: s6-overlay v3 reads it from the file below.
+# Without this the container stopped with code 0 and looked like a clean
+# shutdown.
+if [ "${1:-0}" -gt 0 ] && [ "${1:-0}" -lt 256 ]; then
+    echo "$1" > /run/s6-linux-init-container-results/exitcode
+fi
+exec s6-svscanctl -t /run/service

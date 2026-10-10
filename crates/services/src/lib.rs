@@ -8,6 +8,7 @@
 //!   server ran AuthenticationServer, BaseApp and CellApp as separate
 //!   processes talking over Mercury.
 //! - [`database`]: the PostgreSQL pool and the lab's read-only query.
+//! - [`database_check`]: the one-shot login check behind `cimmeria-server --check-db`.
 //!
 //! Everything else is a re-export. The services themselves live in their own
 //! crates since the services crate split
@@ -25,7 +26,11 @@
 pub mod base;
 pub mod cell;
 pub mod database;
+pub mod database_check;
+#[cfg(test)]
+mod fake_postgres;
 pub mod orchestrator;
+mod orchestrator_database;
 mod orchestrator_postgres;
 mod orchestrator_shards;
 pub mod plugins;

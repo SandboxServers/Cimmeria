@@ -152,7 +152,9 @@ pub(super) async fn handle_user_auth(
 
     // Credential check.
     // If DB is available, validate against the account table.
-    // In developer mode without DB, any valid-format credentials are accepted.
+    // Only in developer mode with NO database configured are valid-format
+    // credentials accepted without a check. A configured database whose pool
+    // is missing refuses every login (fail closed).
     let (account_id, access_level): (u32, u32) = if let Some(ref db) = state.db {
         match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level),
@@ -184,10 +186,28 @@ pub(super) async fn handle_user_auth(
                 return login_error(10, "A request to the database server failed.");
             }
         }
-    } else if state.developer_mode {
-        tracing::debug!(user = %req.account_name, "developer mode: accepting credentials (no DB)");
-        (1, 99) // dev mode: max access level
+    } else if state.developer_mode && !state.db_configured {
+        tracing::warn!(
+            user = %req.account_name,
+            reason = "dev_mode_no_db_login",
+            "Developer mode with no database configured: accepting credentials \
+             unchecked as account 1, access level 99"
+        );
+        (1, 99) // dev mode, no database configured: max access level
     } else {
+        // Either a database is configured but no pool is wired (the
+        // orchestrator refuses to start in that state, so this is a wiring
+        // bug), or there is no database and developer mode is off.
+        let reason = if state.db_configured {
+            "db_pool_missing"
+        } else {
+            "no_database"
+        };
+        tracing::error!(
+            user = %req.account_name,
+            reason,
+            "Login refused: no database connection to check credentials against"
+        );
         audit!(LoginOutcome::DbError);
         return login_error(10, "A request to the database server failed.");
     };
@@ -467,10 +487,15 @@ mod tests {
     }
 
     /// Build a minimal `HandlerState` for driving `handle_user_auth` through
-    /// the Router without a DB or event channel. `developer_mode` is true so
-    /// the credential check short-circuits — but the plaintext-over-HTTP gate
-    /// runs *before* that, which is exactly what the test below pins.
+    /// the Router without a DB or event channel. `developer_mode` is true and
+    /// no database is configured, so the credential check short-circuits —
+    /// but the plaintext-over-HTTP gate runs *before* that, which is exactly
+    /// what the test below pins.
     fn test_handler_state() -> Arc<HandlerState> {
+        test_handler_state_with(true, false)
+    }
+
+    fn test_handler_state_with(developer_mode: bool, db_configured: bool) -> Arc<HandlerState> {
         use std::collections::HashMap;
         use std::sync::Mutex;
         Arc::new(HandlerState {
@@ -482,7 +507,8 @@ mod tests {
             }],
             sessions: Arc::new(Mutex::new(HashMap::new())),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
-            developer_mode: true,
+            developer_mode,
+            db_configured,
             db: None,
             login_tx: None,
             login_buffer: None,
@@ -540,6 +566,95 @@ mod tests {
             !xml.contains("SGWLoginSuccess"),
             "plaintext over plain HTTP must NOT succeed, got: {xml}"
         );
+    }
+
+    /// POST a well-formed Phase 1 request (legacy SHA-1 hex credential, the
+    /// stock protocol digest) to a plain-HTTP Router over `state`; returns
+    /// the `Set-Cookie` header (if any) and the response body.
+    async fn post_user_auth(state: Arc<HandlerState>) -> (Option<String>, String) {
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::routing::post;
+        use axum::Router;
+        use tower::ServiceExt; // oneshot
+
+        let app = Router::new()
+            .route("/SGWLogin/UserAuth", post(handle_user_auth))
+            .with_state(state);
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="anyone" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+        let request = Request::builder()
+            .method("POST")
+            .uri("/SGWLogin/UserAuth")
+            .header("Content-Type", "text/xml")
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:5555".parse::<SocketAddr>().unwrap(),
+            ))
+            .body(Body::from(body))
+            .unwrap();
+        let response = app.oneshot(request).await.expect("request");
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .map(|v| v.to_str().unwrap().to_string());
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (cookie, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    /// **Fail-closed guard.** Developer mode with a database *configured*
+    /// but no pool must refuse the login with the database error, never accept
+    /// it as account 1 / access level 99. Reverting the `!db_configured`
+    /// condition on the developer fallback turns this into a success.
+    #[tokio::test]
+    async fn dev_mode_with_configured_db_and_no_pool_refuses_login() {
+        let capture = crate::test_support::LogCapture::install();
+        let state = test_handler_state_with(true, true);
+        let sessions = Arc::clone(&state.sessions);
+
+        let (cookie, xml) = post_user_auth(state).await;
+
+        assert!(
+            xml.contains("SGWLoginError") && !xml.contains("SGWLoginSuccess"),
+            "a configured database with no pool must refuse the login, got: {xml}"
+        );
+        assert!(
+            xml.contains("database server failed"),
+            "refusal must be the database error (code 10), got: {xml}"
+        );
+        assert!(cookie.is_none(), "a refused login must not set a SID");
+        assert!(
+            sessions.lock().unwrap().is_empty(),
+            "a refused login must not create a session"
+        );
+        capture
+            .find_event(tracing::Level::ERROR, "Login refused", "db_pool_missing")
+            .expect("refusal must log reason=db_pool_missing at ERROR");
+    }
+
+    /// Developer mode off and no database at all: refused as well.
+    #[tokio::test]
+    async fn no_dev_mode_and_no_database_refuses_login() {
+        let (cookie, xml) = post_user_auth(test_handler_state_with(false, false)).await;
+        assert!(xml.contains("SGWLoginError"), "got: {xml}");
+        assert!(cookie.is_none());
+    }
+
+    /// The deliberate developer fallback (developer mode, no database
+    /// configured) still logs in, and says so at WARN on every acceptance.
+    #[tokio::test]
+    async fn dev_mode_without_configured_db_accepts_and_warns() {
+        let capture = crate::test_support::LogCapture::install();
+        let (cookie, xml) = post_user_auth(test_handler_state_with(true, false)).await;
+        assert!(xml.contains("SGWLoginSuccess"), "got: {xml}");
+        assert!(cookie.is_some_and(|c| c.starts_with("SID=")));
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "accepting credentials unchecked",
+                "dev_mode_no_db_login",
+            )
+            .expect("the developer fallback must log reason=dev_mode_no_db_login at WARN");
     }
 
     /// **Cross-IP SID guard (#442).** A Phase-1 SID issued to IP A and

@@ -276,8 +276,8 @@ RUN chmod +x /usr/local/bin/cimmeria-entrypoint
 # `docker run` time: pgdata was initdb'd as $POSTGRES_USER owning
 # $POSTGRES_DB with $POSTGRES_PASSWORD, and changing any of these on
 # a running container won't re-initialise the DB — it will just
-# desync the s6 wait loop / healthcheck (which read these vars to
-# call pg_isready) from the actual cluster contents. Reset by
+# desync the s6 wait loop (which reads these vars to call
+# pg_isready) from the actual cluster contents. Reset by
 # removing the named volume, not by overriding env.
 ENV PGDATA=/var/lib/postgresql/data \
     POSTGRES_USER=w-testing \
@@ -307,7 +307,11 @@ ENV AUTH_HOST=0.0.0.0 \
     # auto-start probe default to localhost:5433 and emit spurious warnings
     # in the container even though sqlx itself accepts either form.
     DB_URL="host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw" \
-    DEVELOPER_MODE=true \
+    # Off in the published image. Developer mode skips the client
+    # protocol-digest check; it never bypasses the credential check while
+    # DB_URL is set, and the server refuses to start when it cannot connect
+    # to DB_URL. Opt in per deployment (docker/compose.yml passes it through).
+    DEVELOPER_MODE=false \
     RUST_LOG=info \
     S6_KEEP_ENV=1
 
@@ -318,13 +322,16 @@ EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
-# Liveness probe: postgres accepts connections AND the SOAP login listener
-# (LOGON_PORT, the port game clients log in through) is bound. Not
-# AUTH_PORT: nothing binds 13001, so probing it marked every container
-# unhealthy. Bash's /dev/tcp gives us a zero-dep TCP probe without pulling
-# in netcat/curl just for this.
+# Liveness probe: the server's own DB_URL can log in and run a query (not
+# just pg_isready, which passes while the configured user, password or
+# database is wrong). `cimmeria-server --check-db` reads DB_URL from the
+# environment, so the password never appears in argv, and parses it as the
+# server does. The SOAP login listener (LOGON_PORT, the port game
+# clients log in through) must also be bound. Not AUTH_PORT: nothing binds 13001, so
+# probing it marked every container unhealthy. Bash's /dev/tcp gives us a
+# zero-dep TCP probe without pulling in netcat/curl just for this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null \
+    CMD PGCONNECT_TIMEOUT=5 /opt/cimmeria/bin/cimmeria-server --check-db >/dev/null 2>&1 \
         && bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" \
         || exit 1
 

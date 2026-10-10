@@ -252,6 +252,10 @@ Upgrading SigNoz: [signoz-deployment.md → Upgrading SigNoz](signoz-deployment.
 
 **Watchtower never updates.** `docker logs watchtower --tail 20` should show a `Session done ... Scanned=1` line every five minutes. `Scanned=0`: the label is missing from `cimmeria`. `client version 1.25 is too old`: `DOCKER_API_VERSION` is missing (Docker 29+).
 
+**The container restarts over and over, and the log says `cannot log in to the database with DB_URL` or `Database connection failed; refusing to start`.** The server refuses to run without its database. `docker ps -a` shows `Exited (1)`. The bundled database needs no `DB_URL`; if `.env` or the compose file sets one, check its user, password and database name. See [container.md → Database login check](container.md#database-login-check).
+
+**Developer mode turns off at the first update to an image with this change.** Earlier images set `DEVELOPER_MODE=true` as an image default, and the colo inherited it: `.env` and `compose.yml` never set it. Watchtower drops the environment values that equal the old image's defaults when it builds the replacement, so the new image's default, `false`, applies after the swap, with no edit on the host. The visible effect is that the server checks the client's protocol digest at login again; clients with a different digest get "Protocol version mismatch". To keep the check relaxed, set `DEVELOPER_MODE=true` in `.env`, copy the new `compose.yml` (which passes the value through), and run `docker compose up -d` before or at the update. Developer mode never bypasses the password check while the server has its database.
+
 **A setting I changed isn't in effect.** You edited a file but didn't run `docker compose up -d`; see [What happens on every update](#what-happens-on-every-update).
 
 **`docker compose` complains `required variable BASE_EXTERNAL is missing`.** You're running it outside `/opt/cimmeria`, or `.env` lacks the value.

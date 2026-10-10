@@ -11,6 +11,7 @@
 - [baseapp-login-retry-train.md](baseapp-login-retry-train.md) — 300 ms train of 41-byte "ciphertext length 25" decrypt failures = client re-sending plaintext baseAppLogin after acking the reply; client-side, unresolved (colo 2026-09-26).
 - [player-id-zero-sentinel-trap.md](player-id-zero-sentinel-trap.md) — `player_id: 0` is a DB-failure sentinel that reaches `PendingClientReadyInfo`; any fail-closed check keyed on it silently denies for the whole session after a DB blip. Read before adding an authorization read in `client_ready.rs`.
 - [relaunch-takeover-gate.md](relaunch-takeover-gate.md) — relaunch on same addr:port takes over its dead session; address claim (same account / squatter reclaim / refuse), liveness = fresh traffic only, re-verify addr ownership after awaits (2026-10-04).
+- [db-fail-closed-startup.md](db-fail-closed-startup.md) — configured DB_URL is fatal on connect failure; unchecked dev login needs developer_mode AND empty DB_URL; s6 psql check (2026-10-10).
 
 Inline-content section status:
 
@@ -41,7 +42,7 @@ Inline-content section status:
 See [security-audit.md](security-audit.md) for full details.
 
 ### OPEN -- High Priority
-- **developer_mode defaults to true** in Rust (config.rs:79), C++ defaults to false
+- ~~developer_mode defaults to true~~ STALE: `ServerConfig` default is false; container image default false since 2026-10-10. See [db-fail-closed-startup.md](db-fail-closed-startup.md)
 - **Session key logged at DEBUG** in auth.rs:370 (exposes AES-256 key)
 
 ### OPEN -- Medium Priority

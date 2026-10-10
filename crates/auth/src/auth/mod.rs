@@ -194,6 +194,10 @@ struct HandlerState {
     sessions: Arc<Mutex<HashMap<String, SessionRecord>>>,
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     developer_mode: bool,
+    /// A database is configured (`ServerConfig::database_configured`).
+    /// While it is, a missing pool refuses every login: the developer-mode
+    /// fallback login is only for a server with no database configured.
+    db_configured: bool,
     db: Option<Arc<PgPool>>,
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     login_buffer: Option<LoginEventBuffer>,
