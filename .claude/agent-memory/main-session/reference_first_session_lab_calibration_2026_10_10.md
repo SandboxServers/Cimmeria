@@ -15,4 +15,12 @@ The `first-session` spec (`docs/guides/uat-specs/first-session.toml`) FS-01 to F
 - **The lab client logged in to a stale `Local` row.** The lab's `LoginInternal.lua` held a `Local` row (127.0.0.1:18081) from an earlier ability UAT, so the client played on a local server while `server_db_query` read the colo. Check the row before trusting DB clauses.
 - **Stop/start race.** Before the fix in this PR, `lab_client_stop` returned before SGW.exe exited, and the runner's next `lab_client_start` refused it as "outside the lab". `stop` now waits for the exit, which needs a daemon rebuild.
 
+Two lab clients at once (`default` and `p2`, 5 runs each on 2026-10-10) shook out three more failures:
+
+- **The stop race, again.** `lab_client_stop` first waited only on the exit code. That is set the moment the process is terminated, but its window lingers, and the start guard enumerates windows. `stop` now waits for the window too.
+- **The password box read empty after typing.** It happened twice, both on fresh p2 clients that needed 16 Escape presses to reach the login screen; the likely cause is late Escapes clearing the box's focus. The login now types the account and password again once. That has no regression test yet: it waits for the CI fake-client harness.
+- **Frost dropped by the client under load.** The server introduced him (he was in the witness list), but the client never created him. The 16 s hold timer released while the slower client was still in its post-movie garbage collection: the #838 class. This is a product bug; the spec does not hide it.
+
+One watchdog relaunch on p2 also left an orphan `SGW.exe` that no instance owned, started in the same second. The cause is unexplained.
+
 The 9-call client wire sequence for the same flow is in `docs/architecture/wireclient.md` § Praxis start.

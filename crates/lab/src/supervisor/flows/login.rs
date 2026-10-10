@@ -225,10 +225,33 @@ impl Supervisor {
         );
 
         if screen == StartScreen::Login {
-            run.type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, false)
-                .await?;
-            run.type_into("password", LOGIN_PASSWORD_EDIT, &creds.password, true)
-                .await?;
+            // On a freshly booted client the password box sometimes reads
+            // empty after typing (twice on 2026-10-10, both after 16 Escape
+            // presses to skip the intro movies; late Escapes are the likely
+            // cause). Type the pair again, once.
+            let mut attempt = 1;
+            loop {
+                let typed = match run
+                    .type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, false)
+                    .await
+                {
+                    Ok(()) => {
+                        run.type_into("password", LOGIN_PASSWORD_EDIT, &creds.password, true)
+                            .await
+                    }
+                    Err(e) => Err(e),
+                };
+                match typed {
+                    Ok(()) => break,
+                    // No regression test yet: the flow needs a client. It
+                    // waits for the CI fake-client harness.
+                    Err(_) if attempt < CREDENTIAL_TRIES => {
+                        attempt += 1;
+                        settle(1000).await;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
             run.click("login", LOGIN_BUTTON).await?;
         }
 
@@ -337,6 +360,9 @@ impl Supervisor {
         Ok(run.finish(json!({ "at": "character_select", "characters": characters })))
     }
 }
+
+/// How many times the login types the account and password.
+const CREDENTIAL_TRIES: u32 = 2;
 
 #[cfg(test)]
 mod tests {

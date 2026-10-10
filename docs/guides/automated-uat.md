@@ -371,7 +371,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 
 103 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
 
-0. `first-session`, the whole section: boot, login, character creation for both factions, world entry and each faction's first quest, graded on the server's own `sgw_mission` rows. Its stand-off points and the unnamed-corpse point clicks are unproven; fix the coordinates from what the first run shows.
+0. `first-session`, the whole section: boot, login, character creation for both factions, world entry and each faction's first quest, graded on the server's own `sgw_mission` rows. The Praxis rows FS-01 to FS-P5 have run live (2026-10-10): calibrated on the colo, then five clean runs in a row and concurrent runs on two lab instances. The SGU rows' stand-off points are still computed, not calibrated.
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
 2. `chat` 9a and 9c, `black-market` U1 and U22: exact-count clauses, refusals, teardown.
 3. `pets` U12, then `chat` 6: setup in G, captures feeding a later command.

@@ -309,8 +309,10 @@ pub use win::{
 
 /// Poll `alive` until it reports false or `timeout` passes; true when the
 /// process is gone. `TerminateProcess` returns before the process has
-/// exited, so a stop that returned at once let the next start see the
-/// dying `SGW.exe` as "running outside the lab" (2026-10-10).
+/// gone, so a stop that returned at once let the next start see the
+/// dying `SGW.exe` as "running outside the lab" (2026-10-10). `alive`
+/// must test what the start guard tests (the process's window), not just
+/// its exit code, which is set at once.
 pub fn wait_for_exit(
     mut alive: impl FnMut() -> bool,
     timeout: std::time::Duration,

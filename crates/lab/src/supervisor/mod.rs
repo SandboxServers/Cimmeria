@@ -525,11 +525,15 @@ impl Supervisor {
         match pid {
             Some(pid) => {
                 // Wait for the exit, not just the request: a start right
-                // after would otherwise refuse the dying client.
+                // after would otherwise refuse the dying client. The exit
+                // code is set at once, but the start guard enumerates
+                // SGW.exe windows, and a terminated client's window outlives
+                // it (2026-10-10: `exited` after 1 ms, then the next start
+                // refused the same pid), so wait for both to go.
                 let exited = tokio::task::spawn_blocking(move || {
                     process::terminate(pid);
                     process::wait_for_exit(
-                        || process::is_alive(pid),
+                        || process::is_alive(pid) || process::running_sgw_pids().contains(&pid),
                         Duration::from_secs(10),
                         Duration::from_millis(100),
                     )

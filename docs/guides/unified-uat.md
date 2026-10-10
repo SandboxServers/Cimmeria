@@ -213,7 +213,7 @@ Relog at every step boundary that a section asks for. Most defects these campaig
 
 What every new player does in their first ten minutes, once per faction. Run it first on any new build: nothing in it depends on NPC movement, combat, abilities or AI, so a failure here means the build is broken for every new player. The lab runs it with no one at the keyboard (`lab_uat_run {sections: ["first-session"]}`, spec [first-session.toml](uat-specs/first-session.toml)); a tester can follow the same rows by hand.
 
-**Status:** Specced 2026-10-10; not yet run live.
+**Status:** Praxis rows (FS-01 to FS-P5) calibrated and passing on the colo, 2026-10-10: five clean runs in a row from a one-line Haiku brief, then concurrent runs on two lab clients. The SGU rows (FS-S1 to FS-S6) and FS-99 have not been run live.
 
 **Prerequisites:** a GM account with two free character slots. The rows create, play and delete their own characters. GM commands used: `/gmgotoxyz` (to stand next to each quest object) and `/gmsetgodmode 1`.
 
@@ -224,7 +224,7 @@ What every new player does in their first ten minutes, once per faction. Run it 
 | FS-P1 | Create a Praxis Soldier | Created and listed; stored as Praxis in Castle_CellBlock | |
 | FS-P2 | Play it | Castle_CellBlock (world 12) loads; dialog 2982 ("The last thing you remember..."); mission 622 on step 2113 | |
 | FS-P3 | Search Corporal Frost's corpse; finish the dialog | Dialog 3995; Frost's Letter (mission 1360 accepted); 622 on step 80623 | |
-| FS-P4 | Search the NID Guard's corpse; finish the dialog | Dialog 3996; an SI 3 9mm Pistol in the backpack; 622 on step 80622 | K5: the Guard corpse may be invisible |
+| FS-P4 | Search the NID Guard's corpse; close the "Equipping a Weapon" tutorial, then finish the dialog | Dialog 3996; an SI 3 9mm Pistol in the backpack; 622 on step 80622 | K5: the Guard corpse may be invisible. The tutorial opens on top of the dialog: close it first (its X) |
 | FS-P5 | Equip the looted pistol | The stasis door sequence plays; 622 completes | |
 | FS-S1 | Create an SGU Soldier | Created and listed; stored as SGU in SGC_W1 | |
 | FS-S2 | Play it | SGC_W1 (world 58) loads; mission 1559 on step 4612 | |
