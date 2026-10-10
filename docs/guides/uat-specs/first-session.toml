@@ -39,6 +39,19 @@
 # - Corpses with no display name (the Guard, the SGC firearm body) are
 #   clicked by their spawn point; named ones by name.
 # - FS-99 deletes both characters.
+#
+# Resuming a run that stopped part-way:
+# - Pass the stopped run's `run_dir`: run.json keeps the run id, so the
+#   rows still name Px<run id> and Sx<run id>.
+# - The rows are not idempotent: progress is in sgw_mission, so a stage
+#   that already passed fails when rerun (its step has moved on). Resume
+#   from the first row that did not pass, never from the top.
+# - A row assumes the client is in world as its faction's character. After
+#   a client restart or relog, rerun FS-01, FS-02 and the faction's enter
+#   row (FS-P2 or FS-S2) first; skip FS-P1/FS-S1, which would fail with
+#   the name taken. Then `rows: [<the failed row>, ...]`.
+# - To start over instead, run FS-99 on the old run_dir (it deletes both
+#   characters), then a fresh run.
 
 schema = 1
 
