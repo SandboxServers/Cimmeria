@@ -14,9 +14,12 @@
 
     `status` prints one line for the default instance and p2..p<Count>:
     the account's username and character, whether the instance's profile
-    is seeded under Binaries\sessions\instances\<label>, and whether that
-    instance's lab-instance.json names a live client process. It prints
-    "missing" rather than failing when the install or a file is absent.
+    is seeded under <root>\<label>\profile, and whether that instance's
+    lab-instance.json (under Binaries\sessions\instances\<label>) names a
+    live client process. The root is the CIMMERIA_LAB_PROFILE_ROOT line of
+    labd.env, else $env:CIMMERIA_LAB_PROFILE_ROOT, else
+    %LOCALAPPDATA%\cimmeria-lab\instances. It prints "missing" rather than
+    failing when the install or a file is absent.
 
     InstallDir defaults to $env:CIMMERIA_LAB_INSTALL_DIR, else the
     CIMMERIA_LAB_INSTALL_DIR line of %LOCALAPPDATA%\cimmeria-lab\labd.env.
@@ -86,6 +89,17 @@ function Get-InstancePath([string]$Label, [string]$Leaf) {
     return Join-Path $sessions "instances\$Label\$Leaf"
 }
 
+# Where the game's profiles live. The daemon applies labd.env over the
+# process environment, so the file's value wins, then the variable, then
+# the default. Whitespace-only values count as unset.
+function Get-ProfileRoot {
+    $map = Read-LabdEnvFile $LabdEnv
+    foreach ($raw in @($map['CIMMERIA_LAB_PROFILE_ROOT'], $env:CIMMERIA_LAB_PROFILE_ROOT)) {
+        if ("$raw".Trim()) { return "$raw".Trim() }
+    }
+    return Join-Path $env:LOCALAPPDATA 'cimmeria-lab\instances'
+}
+
 # The instances in order: the default account, then p2..p<Count>.
 function Get-Instances {
     $list = @([pscustomobject]@{ Number = 1; Label = 'default'; Account = 'lab-account.json' })
@@ -150,7 +164,8 @@ function Invoke-Status {
         if (-not $username) { $username = 'missing' }
         if (-not $character) { $character = 'missing' }
 
-        $profile = if (Test-Present (Get-InstancePath $inst.Label 'profile\Documents\My Games\Firesky\SGWGame')) { 'seeded' } else { 'not seeded' }
+        $seed = Join-Path (Get-ProfileRoot) "$($inst.Label)\profile\Documents\My Games\Firesky\SGWGame"
+        $profile = if (Test-Present $seed) { 'seeded' } else { 'not seeded' }
 
         $info = Read-Json (Get-InstancePath $inst.Label 'lab-instance.json')
         $clientPid = Get-OptionalProperty $info 'pid'

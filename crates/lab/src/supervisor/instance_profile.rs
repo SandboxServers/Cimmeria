@@ -13,9 +13,11 @@
 //! `SHGetFolderPathW(CSIDL_PERSONAL)` (`0x004c6333`), and Windows resolves
 //! that from the registry value `%USERPROFILE%\Documents` with the calling
 //! process's own `USERPROFILE`. So a named instance launches the game with
-//! `USERPROFILE` pointed at `sessions/instances/<name>/profile`, seeded once
-//! from the real folder (config, shader cache and a warm cooked-data cache,
-//! never the per-account folders). Nothing else in the client reads
+//! `USERPROFILE` pointed at `<root>/<name>/profile`, seeded once from the
+//! real folder (config, shader cache and a warm cooked-data cache, never the
+//! per-account folders). The root is `%LOCALAPPDATA%\cimmeria-lab\instances`
+//! (or `CIMMERIA_LAB_PROFILE_ROOT`), outside the game install: `SGW.exe`
+//! refuses a `USERPROFILE` inside its own install folder (#1312). Nothing else in the client reads
 //! `USERPROFILE`; its one other folder lookup is `CSIDL_LOCAL_APPDATA`
 //! (`0x004935ad`), which moves into the profile too and is created on demand.
 //!
@@ -25,12 +27,16 @@
 //! launch and the shared folder; the durable fix there is a
 //! `SHGetFolderPathW` hook in the lab DLL (#1312).
 
-use std::path::{Path, PathBuf};
-
-use super::session_file::sessions_dir;
+use std::path::{Component, Path, PathBuf, Prefix};
 
 /// The variable the game resolves My Documents through.
 pub const USER_PROFILE_ENV: &str = "USERPROFILE";
+
+/// The folder holding every instance's profile, `<root>\<label>\profile`.
+/// Default `%LOCALAPPDATA%\cimmeria-lab\instances`. It must be outside the
+/// game install: `SGW.exe` refuses a `USERPROFILE` inside its own install
+/// folder (#1312).
+pub const PROFILE_ROOT_ENV: &str = "CIMMERIA_LAB_PROFILE_ROOT";
 
 /// `My Games\Firesky\SGWGame` under a Documents folder.
 const SGWGAME: [&str; 3] = ["My Games", "Firesky", "SGWGame"];
@@ -40,13 +46,61 @@ const SGWGAME: [&str; 3] = ["My Games", "Firesky", "SGWGame"];
 /// (`<account>\<character>\* - Saved Vars.lua`), a log or a dump: left out.
 const SEED_DIRS: [&str; 3] = ["Config", "Content", "Cache.en-US"];
 
-/// `sessions/instances/<label>/profile`: the profile root the game sees as
-/// `USERPROFILE`. Its `Documents` folder is the instance's My Documents.
-pub fn profile_dir(install_dir: &Path, label: &str) -> PathBuf {
-    sessions_dir(install_dir)
-        .join("instances")
-        .join(label)
-        .join("profile")
+/// `<root>\<label>\profile`: the profile the game sees as `USERPROFILE`. Its
+/// `Documents` folder is the instance's My Documents.
+pub fn profile_dir(root: &Path, label: &str) -> PathBuf {
+    root.join(label).join("profile")
+}
+
+/// The profile root from the raw [`PROFILE_ROOT_ENV`] value (a non-empty
+/// trimmed value wins), else `<local_app_data>\cimmeria-lab\instances`, else
+/// `None`.
+pub fn profile_root_from(raw: Option<&str>, local_app_data: Option<&Path>) -> Option<PathBuf> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(root) => Some(PathBuf::from(root)),
+        None => local_app_data.map(|l| l.join("cimmeria-lab").join("instances")),
+    }
+}
+
+/// Whether `path` is `dir` or lies under it. Windows paths: the comparison
+/// ignores case and works on whole components, so `C:\Games\SGW2` is not
+/// inside `C:\Games\SGW`. Both paths are normalised lexically first: `.` is
+/// dropped, `..` pops, and a `\\?\` verbatim prefix matches its plain form.
+/// Junctions, symlinks and 8.3 short names are not resolved. An empty `dir`
+/// counts as containing everything (fail-safe: the caller refuses the root).
+pub fn inside(path: &Path, dir: &Path) -> bool {
+    let (dir_anchor, dir_parts) = lexical(dir);
+    if dir_anchor.is_empty() && dir_parts.is_empty() {
+        return true;
+    }
+    let (path_anchor, path_parts) = lexical(path);
+    path_anchor == dir_anchor && path_parts.starts_with(&dir_parts)
+}
+
+/// The drive or UNC anchor (lowercased, `C:` and `\\?\C:` alike) and the
+/// normal components below it (lowercased), with `.` dropped and `..` popped.
+fn lexical(path: &Path) -> (String, Vec<String>) {
+    let mut anchor = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for c in path.components() {
+        match c {
+            Component::Prefix(prefix) => {
+                anchor = match prefix.kind() {
+                    Prefix::Disk(d) | Prefix::VerbatimDisk(d) => {
+                        format!("{}:", char::from(d).to_lowercase())
+                    }
+                    _ => prefix.as_os_str().to_string_lossy().to_lowercase(),
+                }
+            }
+            Component::RootDir => anchor.push('\\'),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                parts.pop();
+            }
+            Component::Normal(s) => parts.push(s.to_string_lossy().to_lowercase()),
+        }
+    }
+    (anchor, parts)
 }
 
 /// `<documents>\My Games\Firesky\SGWGame`.
@@ -227,18 +281,26 @@ pub fn shared_user_dir_from(raw: Option<&str>) -> bool {
 
 /// Get instance `label`'s profile ready and return the environment entry
 /// that points the game at it, or `None` to launch on the shared folder
-/// (opted out, a non-redirectable Documents folder, or a seed failure; each
-/// logged). Called on every launch; the seed itself happens once.
+/// (opted out, a non-redirectable Documents folder, no profile root, a root
+/// inside the install, or a seed failure; each logged). Called on every
+/// launch; the seed itself happens once.
 pub fn prepare(install_dir: &Path, label: &str) -> Option<(String, String)> {
     let shared = shared_user_dir_from(std::env::var(SHARED_USER_DIR_ENV).ok().as_deref());
-    prepare_from(shared, real_sgwgame, install_dir, label)
+    let root = profile_root_from(
+        std::env::var(PROFILE_ROOT_ENV).ok().as_deref(),
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .as_deref(),
+    );
+    prepare_from(shared, real_sgwgame, root, install_dir, label)
 }
 
-/// [`prepare`] over its inputs: the opt-out, and how to find the real
-/// `SGWGame` folder (only asked when not opted out).
+/// [`prepare`] over its inputs: the opt-out, how to find the real `SGWGame`
+/// folder (only asked when not opted out), and the profile root.
 fn prepare_from(
     shared: bool,
     real: impl FnOnce() -> Result<PathBuf, String>,
+    root: Option<PathBuf>,
     install_dir: &Path,
     label: &str,
 ) -> Option<(String, String)> {
@@ -256,7 +318,26 @@ fn prepare_from(
             return None;
         }
     };
-    let profile = profile_dir(install_dir, label);
+    let Some(root) = root else {
+        tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
+            reason = "no_profile_root",
+            "lab client uses the shared Firesky folder; set {PROFILE_ROOT_ENV} or LOCALAPPDATA");
+        return None;
+    };
+    if !root.is_absolute() {
+        tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
+            reason = "profile_root_not_absolute", root = %root.display(),
+            "a relative profile root would resolve inside the install; set {PROFILE_ROOT_ENV} to an absolute path");
+        return None;
+    }
+    if inside(&root, install_dir) {
+        tracing::warn!(target: "lab.instance", event = "user_dir_shared", instance = label,
+            reason = "profile_root_inside_install", root = %root.display(),
+            install = %install_dir.display(),
+            "SGW.exe refuses a user folder inside its install; set {PROFILE_ROOT_ENV} outside it");
+        return None;
+    }
+    let profile = profile_dir(&root, label);
     match seed(&source, &profile) {
         Ok(outcome) => {
             let (seeded, files, bytes) = match outcome {
@@ -296,9 +377,64 @@ mod tests {
     }
 
     #[test]
-    fn profile_lives_in_the_instance_dir() {
-        let p = profile_dir(Path::new("C:/Games/SGW"), "p3");
-        assert!(p.ends_with("Binaries/sessions/instances/p3/profile"));
+    fn profile_lives_under_the_root() {
+        let p = profile_dir(Path::new("C:/cimmeria-lab/instances"), "p3");
+        assert!(p.ends_with("cimmeria-lab/instances/p3/profile"));
+    }
+
+    #[test]
+    fn profile_root_prefers_the_override_then_local_app_data() {
+        let local = Path::new(r"C:\Users\tester\AppData\Local");
+        let default = local.join("cimmeria-lab").join("instances");
+        assert_eq!(
+            profile_root_from(Some(r" D:\lab\profiles "), Some(local)),
+            Some(PathBuf::from(r"D:\lab\profiles"))
+        );
+        for raw in [None, Some(""), Some("   ")] {
+            assert_eq!(
+                profile_root_from(raw, Some(local)),
+                Some(default.clone()),
+                "{raw:?}"
+            );
+        }
+        assert_eq!(profile_root_from(None, None), None);
+        assert_eq!(profile_root_from(Some(""), None), None);
+    }
+
+    #[test]
+    fn inside_ignores_case_and_needs_a_component_boundary() {
+        let install = Path::new(r"c:\games\sgw");
+        assert!(inside(Path::new(r"C:\Games\SGW\binaries\x"), install));
+        assert!(inside(Path::new(r"C:\Games\SGW"), install));
+        assert!(inside(Path::new("C:/Games/SGW/Binaries"), install));
+        assert!(!inside(Path::new(r"C:\Games\SGW2"), install));
+        assert!(!inside(Path::new(r"C:\Games"), install));
+        assert!(!inside(Path::new(r"D:\Games\SGW\x"), install));
+    }
+
+    #[test]
+    fn inside_normalises_dots_verbatim_prefixes_and_non_ascii_case() {
+        let install = Path::new(r"C:\Games\SGW");
+        // `..` pops: this path is the install's own sibling folder walked back in.
+        assert!(inside(Path::new(r"C:\Games\Other\..\SGW\x"), install));
+        assert!(!inside(Path::new(r"C:\Games\SGW\..\Other"), install));
+        // `.` is dropped.
+        assert!(inside(Path::new(r"C:\Games\.\SGW\x"), install));
+        // A verbatim prefix matches its plain drive form.
+        assert!(inside(Path::new(r"\\?\C:\Games\SGW\x"), install));
+        assert!(inside(Path::new(r"\\?\c:\games\sgw"), install));
+        assert!(!inside(Path::new(r"\\?\C:\Games\SGW2"), install));
+        // Lowercasing is not ASCII-only.
+        assert!(inside(
+            Path::new(r"C:\Jeux\ÉTÉ\x"),
+            Path::new(r"c:\jeux\été")
+        ));
+    }
+
+    #[test]
+    fn inside_treats_an_empty_dir_as_containing_everything() {
+        assert!(inside(Path::new(r"C:\Games\SGW\x"), Path::new("")));
+        assert!(!inside(Path::new(""), Path::new(r"C:\Games\SGW")));
     }
 
     #[test]
@@ -433,8 +569,16 @@ mod tests {
         let src = tmp.path().join("real/SGWGame");
         write(&src.join("Config/SGWEngine.ini"), "ini");
         let install = tmp.path().join("install");
-        let env = prepare_from(false, || Ok(src.clone()), &install, "default").unwrap();
-        let profile = profile_dir(&install, "default");
+        let root = tmp.path().join("profiles");
+        let env = prepare_from(
+            false,
+            || Ok(src.clone()),
+            Some(root.clone()),
+            &install,
+            "default",
+        )
+        .unwrap();
+        let profile = profile_dir(&root, "default");
         assert_eq!(
             env,
             (
@@ -452,22 +596,79 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let install = tmp.path().join("install");
         let src = tmp.path().join("real/SGWGame");
+        let root = tmp.path().join("profiles");
         write(&src.join("Config/SGWEngine.ini"), "ini");
 
         // Opted out: the real folder is not even looked up.
         assert_eq!(
-            prepare_from(true, || panic!("not asked"), &install, "p2"),
+            prepare_from(
+                true,
+                || panic!("not asked"),
+                Some(root.clone()),
+                &install,
+                "p2"
+            ),
             None
         );
         // Documents not redirectable (OneDrive, a registry error).
         assert_eq!(
-            prepare_from(false, || Err("absolute".into()), &install, "p2"),
+            prepare_from(
+                false,
+                || Err("absolute".into()),
+                Some(root.clone()),
+                &install,
+                "p2"
+            ),
             None
         );
         // The seed fails: the profile's Documents is a file.
-        write(&profile_dir(&install, "p3").join("Documents"), "not a dir");
+        write(&profile_dir(&root, "p3").join("Documents"), "not a dir");
         assert_eq!(
-            prepare_from(false, || Ok(src.clone()), &install, "p3"),
+            prepare_from(
+                false,
+                || Ok(src.clone()),
+                Some(root.clone()),
+                &install,
+                "p3"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn prepare_refuses_an_unsafe_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let install = tmp.path().join("install");
+        let src = tmp.path().join("real/SGWGame");
+        write(&src.join("Config/SGWEngine.ini"), "ini");
+
+        let inside_root = install.join("Binaries/sessions/instances");
+        assert_eq!(
+            prepare_from(false, || Ok(src.clone()), Some(inside_root), &install, "p2"),
+            None
+        );
+        // No root at all (no override, no LOCALAPPDATA): also shared.
+        assert_eq!(
+            prepare_from(false, || Ok(src.clone()), None, &install, "p2"),
+            None
+        );
+        // A relative root would resolve against the game's cwd (Binaries).
+        let relative = PathBuf::from(r"profiles\instances");
+        assert_eq!(
+            prepare_from(false, || Ok(src.clone()), Some(relative), &install, "p2"),
+            None
+        );
+        // An empty LOCALAPPDATA gives the same relative default root.
+        let from_empty_local = profile_root_from(None, Some(Path::new(""))).unwrap();
+        assert!(!from_empty_local.is_absolute());
+        assert_eq!(
+            prepare_from(
+                false,
+                || Ok(src.clone()),
+                Some(from_empty_local),
+                &install,
+                "p2"
+            ),
             None
         );
     }

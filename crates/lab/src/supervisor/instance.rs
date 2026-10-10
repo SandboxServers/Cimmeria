@@ -16,7 +16,7 @@
 //! | `sessions/lab-account.json` | `sessions/lab-account.<name>.json` (never the default account: a duplicate login kicks the first client) |
 //! | `cimmeria-client-*.log` | `cimmeria-client-*-<name>.log` |
 //! | "refuse while any SGW.exe runs" | refuse only for a client the lab does not own, or past the client cap |
-//! | the shared `Documents\My Games\Firesky` folder | `sessions/instances/<label>/profile` as the game's `USERPROFILE` ([`super::instance_profile`]) |
+//! | the shared `Documents\My Games\Firesky` folder | `%LOCALAPPDATA%\cimmeria-lab\instances\<label>\profile` (or `CIMMERIA_LAB_PROFILE_ROOT`) as the game's `USERPROFILE` ([`super::instance_profile`]) |
 //!
 //! The default instance (no name) keeps the old layout exactly. Findings
 //! and the reasoning: `docs/reverse-engineering/findings/multi-client-lab.md`.
