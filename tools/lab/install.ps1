@@ -89,7 +89,7 @@ if (-not $InstallDir) {
     $mcp = if ($common) { Join-Path (Split-Path $common -Parent) '.mcp.json' } else { $null }
     if ($mcp -and (Test-Path $mcp)) {
         $json = Get-Content $mcp -Raw | ConvertFrom-Json
-        $entry = if ($json.PSObject.Properties['mcpServers'] -and $json.mcpServers.PSObject.Properties['cimmeria-lab']) { $json.mcpServers.'cimmeria-lab' }
+        $entry = if ($json -and $json.PSObject.Properties['mcpServers'] -and $json.mcpServers -and $json.mcpServers.PSObject.Properties['cimmeria-lab']) { $json.mcpServers.'cimmeria-lab' }
         $envBlock = if ($entry -and $entry.PSObject.Properties['env']) { $entry.env }
         if ($envBlock -and $envBlock.PSObject.Properties['CIMMERIA_LAB_INSTALL_DIR']) { $InstallDir = $envBlock.CIMMERIA_LAB_INSTALL_DIR }
     }

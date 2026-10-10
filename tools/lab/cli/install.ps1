@@ -37,7 +37,7 @@ $From = (Resolve-Path -LiteralPath $From).Path
 $installer = Join-Path $From 'tools\lab\install.ps1'
 if (-not (Test-Path -LiteralPath $installer)) { throw "$From has no tools\lab\install.ps1" }
 
-$installArgs = @('-NoProfile', '-File', $installer, '-Worktree', $From)
+$installArgs = @('-NoProfile', '-File', $installer, '-Worktree', $From, '-LabHome', (Get-InstallLabHome))
 if ($SkipBuild) { $installArgs += '-SkipBuild' }
 $installDir = (Get-LabdEnv)['CIMMERIA_LAB_INSTALL_DIR']
 if ($installDir) { $installArgs += @('-InstallDir', $installDir) }
@@ -45,5 +45,10 @@ if ($installDir) { $installArgs += @('-InstallDir', $installDir) }
 & pwsh @installArgs
 if ($LASTEXITCODE -ne 0) { throw "install.ps1 failed (exit $LASTEXITCODE); the CLI copy was not refreshed" }
 
-Install-LabCli $From
+# Copy with <From>'s own Install-LabCli, in a child pwsh, so a newer checkout's
+# file list applies rather than this installed copy's.
+$fromLib = Join-Path $From 'tools\lab\cli\install-lib.ps1'
+$q = { param($s) "'" + ($s -replace "'", "''") + "'" }
+& pwsh -NoProfile -Command ". $(& $q $fromLib); Install-LabCli $(& $q $From)"
+if ($LASTEXITCODE -ne 0) { throw "the CLI copy from $From failed (exit $LASTEXITCODE)" }
 Write-Host "CLI copy refreshed from $From"
