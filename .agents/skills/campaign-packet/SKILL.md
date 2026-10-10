@@ -71,9 +71,10 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 
 - One worktree and one test database (`sgw_<worktree>`) per worker. Never
   run two implementers in one checkout.
-- Implementer: the `packet-coder` agent (a Haiku-tier coder that edits only
-  the named files, compiles through the lane and commits locally) where your
-  harness has it. Otherwise use `rust-gameserver-dev` with the same brief.
+- Implementer: the [`packet-coder`](../../agents/packet-coder.md) agent (a
+  Haiku-tier coder that edits only the named files, compiles through the lane
+  and commits locally). A packet that needs judgment goes to
+  `rust-gameserver-dev` with the same brief instead.
   The brief carries the worktree path, the packet section, and the commit
   message with attribution lines.
 - **Workers use PowerShell and the lane only.** No bash, no direct `cargo`,
@@ -85,9 +86,9 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 ## 4. Review, fix, ship
 
 1. Run an adversarial read-only reviewer on the packet's diff: the
-   `packet-reviewer` agent (Sonnet tier) where available, otherwise
-   `testing-validation-engineer` plus the matching domain advisor or
-   `server-authority-enforcer`. Give it the worktree, the commit range and
+   [`packet-reviewer`](../../agents/packet-reviewer.md) agent (Sonnet tier),
+   plus the matching domain advisor or `server-authority-enforcer` when the
+   packet touches their area. Give it the worktree, the commit range and
    the packet spec.
 2. The coordinator verifies each finding, fixes what's real in the worktree,
    and reruns the packet's lane checks.

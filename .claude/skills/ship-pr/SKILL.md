@@ -68,7 +68,7 @@ exits. Alternatively let `ship.py merge` do the waiting (step 6).
 
 Copilot reviews are not requested at the moment (owner decision, 2026-10-04: out of usage). Launch a **fresh, read-only reviewer
 subagent** that did not write the code. Give it the PR number and the packet spec. Use the
-`code-review` skill in `.github/skills/code-review/`, or a `packet-reviewer` agent where your harness defines one (otherwise `testing-validation-engineer` plus the matching domain advisor). Post its
+`code-review` skill in `.github/skills/code-review/`, or the [`packet-reviewer`](../../agents/packet-reviewer.md) agent (in a harness without subagents, read its definition as the brief). Post its
 verified findings as **one** PR comment. The coordinator routes the fixes, then ships them
 with `ship.py pr` again.
 
