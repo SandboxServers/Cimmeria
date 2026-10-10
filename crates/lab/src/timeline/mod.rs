@@ -27,6 +27,7 @@
 pub mod client_events;
 pub mod clock;
 pub mod event;
+pub mod mcp_session;
 pub mod packet_tap;
 
 use serde_json::{json, Value};

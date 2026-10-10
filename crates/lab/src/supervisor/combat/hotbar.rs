@@ -27,6 +27,12 @@ local function clean(s) if s == nil then return "" end return (string.gsub(tostr
 local function enum_name(tbl, v)
   if type(tbl) ~= "table" then return "" end
   for k, x in pairs(tbl) do if x == v then return tostring(k) end end
+  -- A tolua enum keeps its values behind the metatable, so pairs() finds
+  -- nothing (#1243: every ability button read type 1, name ""). Ask by name.
+  for _, k in ipairs({{"Ability", "Item", "Macro", "PetAbility", "PetCommand", "Emote", "Command"}}) do
+    local ok, x = pcall(function() return tbl[k] end)
+    if ok and x ~= nil and x == v then return k end
+  end
   return ""
 end
 if type(ActionButtonMod) ~= "table" or type(ActionButtonMod.buttons) ~= "table" then
@@ -266,6 +272,19 @@ mod tests {
         assert_eq!(j["quantity"], Value::Null, "-1 means no count");
         assert_eq!(j["cooldown"]["total_s"], 4.0);
         assert_eq!(j["keys"][0]["lab_key"], "1");
+    }
+
+    #[test]
+    fn enum_names_are_asked_for_by_name() {
+        // tolua enums hide their values from pairs(); without the by-name
+        // probe every live ability button read action_type_name "" and
+        // ability_id null (#1243, DA-06: Pistol Shot, type 1, sub 592).
+        let chunk = hotbar_chunk(false);
+        assert!(
+            chunk.contains(r#"{"Ability", "Item", "Macro", "PetAbility""#),
+            "{chunk}"
+        );
+        assert!(chunk.contains("pcall(function() return tbl[k] end)"));
     }
 
     #[test]
