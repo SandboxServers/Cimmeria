@@ -14,12 +14,9 @@
 //!   → [`TapRow`]s, tolerant of the exact field names #688 settles on).
 //! - **Transport** — [`PacketTapClient::fetch`], a thin `reqwest` POST.
 //!
-//! LIVE-VALIDATION SEAM: streamable-HTTP MCP servers may require an
-//! `initialize` handshake and an `Mcp-Session-Id` header before
-//! `tools/call`. That negotiation is confirmed against the running colo
-//! endpoint (the #689 exit criterion); if #695 requires it, add it in
-//! [`PacketTapClient::fetch`] — the pure request/response/parse helpers
-//! do not change.
+//! The endpoint needs an MCP `initialize` handshake and an
+//! `Mcp-Session-Id` header before `tools/call` (a bare call gets HTTP 422,
+//! #1243); [`super::mcp_session::McpHttpSession`] does it.
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -203,17 +200,13 @@ pub struct TapFetch {
 
 /// HTTP client for the in-server lab endpoint.
 pub struct PacketTapClient {
-    config: PacketTapConfig,
-    http: reqwest::Client,
-    next_id: std::sync::atomic::AtomicI64,
+    session: super::mcp_session::McpHttpSession,
 }
 
 impl PacketTapClient {
     pub fn new(config: PacketTapConfig) -> Self {
         Self {
-            config,
-            http: reqwest::Client::new(),
-            next_id: std::sync::atomic::AtomicI64::new(1),
+            session: super::mcp_session::McpHttpSession::new(config),
         }
     }
 
@@ -226,32 +219,23 @@ impl PacketTapClient {
         since_ms: Option<i64>,
         limit: u32,
     ) -> Result<TapFetch, String> {
-        let id = self
-            .next_id
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let req = build_tap_request(id, session_id, since_ms, limit);
+        let req = build_tap_request(0, session_id, since_ms, limit);
+        let args = req["params"]["arguments"].clone();
 
+        // Handshake first, so the clock ping times the tap read alone.
+        self.session
+            .ensure_session(std::time::Duration::from_secs(30))
+            .await?;
         let local_send_ms = now_ms();
-        let resp = self
-            .http
-            .post(&self.config.url)
-            .bearer_auth(&self.config.token)
-            .header("Accept", "application/json, text/event-stream")
-            .json(&req)
-            .send()
-            .await
-            .map_err(|e| format!("lab-mcp POST failed: {e}"))?;
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| format!("lab-mcp read body failed: {e}"))?;
+        let result = self
+            .session
+            .call_tool(
+                "server_packet_tap_read",
+                args,
+                std::time::Duration::from_secs(30),
+            )
+            .await?;
         let local_recv_ms = now_ms();
-        if !status.is_success() {
-            return Err(format!("lab-mcp HTTP {status}: {body}"));
-        }
-
-        let result = extract_jsonrpc_result(&body)?;
         let rows = parse_tap_result(&result);
 
         let ping = rows

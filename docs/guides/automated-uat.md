@@ -373,4 +373,6 @@ The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists t
 | A chat clause FAIL with "the chat box was cleared or overflowed" | More than 150 lines arrived, or a relog cleared the box: put the clause `at` an earlier step |
 | A Lua clause UNVERIFIED "Lua read failed" | The stock binding name is wrong or not loaded yet; read it once with `client_lua_eval` and fix the spec |
 | `.bug` anchor shows "no bookmark reply seen" | The reply took over 4 s or the account is not a GM; the row still runs, but the server clock offset is missing |
-| The run stops mid-section | An MCP call timeout: rerun the remaining rows with the same `run_dir` |
+| `lab_uat_run` fails with "The operation timed out." after about a minute | Claude Code's per-request timer for HTTP MCP servers: give the HTTP `cimmeria-lab` entry in `.mcp.json` a `"timeout"` (milliseconds; `1800000` in [`.mcp.json.example`](../../.mcp.json.example)), then reconnect it with `/mcp` (#1243) |
+| Every server or packet clause UNVERIFIED "lab-mcp HTTP 422 Unprocessable Entity" | A lab build older than #1243 called `cimmeria-lab-mcp` without the MCP handshake; install a current build and restart the daemon |
+| The run stops mid-section | An MCP call timeout (see the "operation timed out" row above): rerun the remaining rows with the same `run_dir` |

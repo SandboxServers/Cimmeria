@@ -23,7 +23,9 @@
     "                 the bearer token comes from labd-headers.ps1, which reads",
     "                 the CIMMERIA_LAB_DAEMON_TOKEN user env var. To switch,",
     "                 rename it to cimmeria-lab and delete the stdio entry",
-    "                 (runbook: docs/guides/live-research-lab.md).",
+    "                 (runbook: docs/guides/live-research-lab.md). Its",
+    "                 timeout (ms) lifts Claude Code's 60 s per-request",
+    "                 timer for HTTP servers, which cut lab_uat_run rows off.",
     "  cimmeria-lab-p2 : optional second lab client (named instance; its own port,",
     "                 session file and lab-account.p2.json). See the two-clients",
     "                 section of docs/guides/live-research-lab.md.",
@@ -81,7 +83,8 @@
     "cimmeria-lab-http": {
       "type": "http",
       "url": "http://127.0.0.1:8779/mcp",
-      "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
+      "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1",
+      "timeout": 1800000
     },
     "cimmeria-lab-p2": {
       "type": "stdio",

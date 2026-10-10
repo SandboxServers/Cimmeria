@@ -11,9 +11,10 @@ use std::future::Future;
 use std::pin::Pin;
 
 use base64::Engine as _;
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::timeline::packet_tap::{extract_jsonrpc_result, PacketTapConfig};
+use crate::timeline::mcp_session::McpHttpSession;
+use crate::timeline::packet_tap::PacketTapConfig;
 
 /// A tool call's result, normalized from the MCP `CallToolResult`.
 #[derive(Debug, Clone, Default)]
@@ -118,56 +119,33 @@ pub trait ServerInvoker: Send + Sync {
 /// "Host header is not allowed" seen 2026-09-29) every server clause is
 /// UNVERIFIED with that error, and the SigNoz clauses carry the row.
 pub struct ServerTools {
-    config: PacketTapConfig,
-    http: reqwest::Client,
-    next_id: std::sync::atomic::AtomicI64,
+    session: McpHttpSession,
 }
 
 impl ServerTools {
     pub fn from_env() -> Option<Self> {
-        PacketTapConfig::from_env().map(|config| Self {
-            config,
-            http: reqwest::Client::new(),
-            next_id: std::sync::atomic::AtomicI64::new(1),
-        })
+        PacketTapConfig::from_env().map(Self::new)
+    }
+
+    pub fn new(config: PacketTapConfig) -> Self {
+        Self {
+            session: McpHttpSession::new(config),
+        }
     }
 
     pub fn url(&self) -> &str {
-        &self.config.url
+        self.session.url()
     }
 
-    /// One `tools/call`. Transport and JSON-RPC errors come back as a
-    /// failed outcome, never a panic.
+    /// One `tools/call` in the MCP session (opened on first use).
+    /// Transport and JSON-RPC errors come back as a failed outcome, never
+    /// a panic.
     pub async fn call(&self, name: &str, args: Value) -> ToolOutcome {
-        let id = self
-            .next_id
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": "tools/call",
-            "params": { "name": name, "arguments": args },
-        });
-        let resp = self
-            .http
-            .post(&self.config.url)
-            .bearer_auth(&self.config.token)
-            .header("Accept", "application/json, text/event-stream")
-            .timeout(std::time::Duration::from_secs(20))
-            .json(&body)
-            .send()
-            .await;
-        let resp = match resp {
-            Ok(r) => r,
-            Err(e) => return ToolOutcome::err(format!("lab-mcp {}: {e}", self.config.url)),
-        };
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        if !status.is_success() {
-            let snippet: String = text.chars().take(200).collect();
-            return ToolOutcome::err(format!("lab-mcp HTTP {status}: {snippet}"));
-        }
-        match extract_jsonrpc_result(&text) {
+        match self
+            .session
+            .call_tool(name, args, std::time::Duration::from_secs(20))
+            .await
+        {
             Ok(result) => normalize_result(&result),
             Err(e) => ToolOutcome::err(e),
         }
@@ -187,6 +165,7 @@ impl ServerInvoker for ServerTools {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn text_json_is_parsed_and_images_decoded() {
