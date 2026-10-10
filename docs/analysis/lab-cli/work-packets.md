@@ -149,15 +149,19 @@ whether DNS rebinding matters with a bearer).
 
 Files (all new unless named):
 
-1. `tools/lab/lab.ps1`: `param([Parameter(Position=0)][string]$Command = 'help', [Parameter(ValueFromRemainingArguments)][string[]]$Rest)`.
-   Commands are the base names of `$PSScriptRoot\cli\*.ps1` except
-   `common` and `test-*`.
+1. `tools/lab/lab.ps1`: no `param()` block. The command is `$args[0]`
+   (`help` when absent) and the rest is `$args[1..]`, splatted as is: a
+   `ValueFromRemainingArguments [string[]]` turns `-Lines 5` into positional
+   strings, so `lab logs -Lines 5` would fail. Commands are the base names
+   of `$PSScriptRoot\cli\*.ps1` except `common`, `test-*` and `*-lib`.
    - `help`, or no command: list `<name>  <first .SYNOPSIS line>`, sorted.
      Read the first non-blank line after `.SYNOPSIS` in each file.
    - An unknown command: write `unknown command '<x>'; run: lab help` to
      stderr and exit 2.
-   - Otherwise `& "$PSScriptRoot\cli\$Command.ps1" @Rest` and
-     `exit $LASTEXITCODE`, treating `$null` as 0.
+   - Otherwise set `$global:LASTEXITCODE = 0`, run
+     `& "$PSScriptRoot\cli\$Command.ps1" @Rest` and `exit $global:LASTEXITCODE`
+     (under StrictMode an unset `$LASTEXITCODE` throws, so a command that
+     ends without `exit` must still read as 0).
 2. `tools/lab/cli/common.ps1`: every function in the contract table,
    functions only, each with a one-line comment.
 3. `tools/lab/cli/status.ps1`:
