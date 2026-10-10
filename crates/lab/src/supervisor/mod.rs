@@ -278,7 +278,7 @@ impl Supervisor {
         }
     }
 
-    /// Use `leases` instead of the process-wide book (tests).
+    /// Use `leases` as this supervisor's lease book (tests that share one).
     #[cfg(test)]
     pub fn with_leases(mut self, leases: Arc<crate::lease::LeaseBook>) -> Self {
         self.leases = leases;

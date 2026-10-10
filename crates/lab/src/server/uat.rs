@@ -386,7 +386,7 @@ impl LabServer {
                 server,
                 ctx,
                 names: router_names(server),
-                // One lease covers the lab: both players' steps touch it.
+                // The run's lease (from p1's book) covers p2's steps too.
                 lease: run_lease.as_ref(),
             }
         });
