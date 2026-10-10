@@ -340,7 +340,6 @@ full resync at every login
 - Two-player UAT rows in a multi-instance daemon drive the hosted `p2`
   instance; a single-instance daemon keeps the in-process p2 supervisor
   that §11's last consequence describes.
-  <!-- LP-05b2 -->
 
 Implementation: `crates/lab/src/server/instances.rs` (registry, routing,
 the `instance` argument), `crates/lab/src/server/lease.rs` (per-instance

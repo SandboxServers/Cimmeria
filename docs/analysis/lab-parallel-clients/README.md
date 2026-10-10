@@ -78,7 +78,7 @@ Not fixed here (follow-ups):
 | Instances in one daemon | `CIMMERIA_LAB_INSTANCES=default,p2,p3,p4,p5` (unset: the one instance `CIMMERIA_LAB_INSTANCE` names, as today). Instance `i` (0-based) gets bridge port `CIMMERIA_LAB_BRIDGE_PORT + i` (8770, 8771, ...). Accounts: `lab-account.json` for `default`, `lab-account.<label>.json` otherwise (unchanged). |
 | Routing | `call_tool` picks the target instance: the `instance` argument (a label such as `p3`, or the account name such as `lab3`), else the instance whose book holds the call's `lease_id`, else the first instance. It runs the tool on a clone of `LabServer` whose `supervisor` is the target's. No tool body changes. |
 | Leases | One `LeaseBook` per supervisor (per instance, so per account). `lab_lease_acquire` acquires on the routed instance; `lab_lease_status` with no `instance` reports every instance. A lease id is only valid on its own instance. |
-| Cap | `DEFAULT_MAX_CLIENTS` = number of hosted instances; `CEILING_MAX_CLIENTS = 5` (the five seeded lab accounts). |
+| Cap | Default cap = the number of hosted instances, at least `DEFAULT_MAX_CLIENTS` (2); `CEILING_MAX_CLIENTS = 5` (the five seeded lab accounts). |
 | Watchdog | A boot grace: until the bridge has answered once, failed heartbeats within 90 s of launch do not count. |
 | Daemon lock | Kept. One daemon per logon session is right now that it hosts every instance. |
 
@@ -108,7 +108,7 @@ Not fixed here (follow-ups):
 | LP-01 | Per-instance user folder and client cap | none | merged, #1321 (9 review fixes) |
 | LP-02 | One lease book per supervisor | none | merged (3 review fixes; p2 is not relaunched mid-UAT, accepted) |
 | LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | merged, #1319 (4 review fixes) |
-| LP-04 | Docs and memory | LP-01, LP-05b | written |
+| LP-04 | Docs and memory | LP-01, LP-05b | merged |
 | LP-05a | Instance registry and routing in one daemon | LP-02 | merged (review: per-instance UI memory, two-player refused until LP-05b, routing tests, instance log spans) |
 | LP-05b1 | Account-name routing and per-instance lease tools (split from LP-05b) | LP-05a | merged (2 review rounds, fixed by the Haiku coder) |
 | LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | merged (2 review rounds, fixed by the Haiku coder; guard verified to fail on revert) |

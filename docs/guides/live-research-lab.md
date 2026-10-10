@@ -435,7 +435,7 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 
 ### Two-player UAT rows
 
-`lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). <!-- LP-05b2 --> In a daemon that hosts several instances, the run drives the hosted `p2` instance and holds p2's lease for the length of the run. In a single-instance daemon it makes an in-process supervisor for the second instance on the first such row, with that instance's session file, credentials, logs and bridge port, and keeps it for the life of the server, so p2's client stays up between runs. You need:
+`lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). In a daemon that hosts several instances, the run drives the hosted `p2` instance and holds p2's lease for the length of the run. In a single-instance daemon it makes an in-process supervisor for the second instance on the first such row, with that instance's session file, credentials, logs and bridge port, and keeps it for the life of the server, so p2's client stays up between runs. You need:
 
 - `sessions\lab-account.p2.json` with its own account (`lab2`) and a `character`. Without it, two-player rows are BLOCKED and the reason names the file;
 - in a single-instance daemon only: `CIMMERIA_LAB_UAT_P2` to use another instance name (default `p2`), and `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` to use another bridge port (default: this instance's port + 1, so 8771).
