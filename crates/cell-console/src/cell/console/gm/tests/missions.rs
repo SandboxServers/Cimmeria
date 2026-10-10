@@ -292,3 +292,148 @@ async fn mission_details_non_numeric_design_id_reports_guidance() {
         "non-numeric details must report guidance, got: {fb}"
     );
 }
+
+/// The `MissionUpdate`s (the base's `sgw_mission` UPSERT) in `msgs`, as
+/// `(player_id, mission_id, status, current_step_id, active_objective_ids)`.
+fn mission_updates(msgs: &[CellToBaseMsg]) -> Vec<(i32, i32, i8, Option<i32>, Vec<i32>)> {
+    msgs.iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::MissionUpdate {
+                player_id,
+                mission_id,
+                status,
+                current_step_id,
+                active_objective_ids,
+                ..
+            } => Some((
+                *player_id,
+                *mission_id,
+                *status,
+                *current_step_id,
+                active_objective_ids.clone(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// **Regression guard (CS-08 F9).** `gmMissionAssign` must persist the
+/// mission like a content accept: exactly one `MissionUpdate` for the caller's
+/// player id, read back from the live instance (status active, the def's
+/// first step, its objective). Before the fix the handler changed cell memory
+/// only, so the assigned mission was gone after a relog. Removing the
+/// `send_mission_update` call fails this.
+#[tokio::test]
+async fn gm_mission_assign_persists_the_mission() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    seed_mission_1001(&mut mgr);
+    let (tx, mut rx) = mpsc::channel(32);
+
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ASSIGN,
+            &assign_args("1001", 1),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert_eq!(
+        mission_updates(&drain(&mut rx)),
+        vec![(
+            100,
+            1001,
+            cimmeria_entity::missions::MISSION_ACTIVE,
+            Some(200),
+            vec![300]
+        )],
+        "the assign must persist one active row at the first step"
+    );
+
+    // A second assign is refused by the offer guard: nothing changed, so
+    // nothing is persisted (a refused accept that persisted is #411).
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ASSIGN,
+            &assign_args("1001", 1),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        mission_updates(&drain(&mut rx)).is_empty(),
+        "a refused assign must not persist"
+    );
+}
+
+/// **Regression guard (CS-08 F9).** `gmMissionAdvance` persists the new step
+/// as the content `advance_step` action does; an advance of a mission the
+/// caller does not hold persists nothing. Removing its
+/// `send_mission_update` call fails this.
+#[tokio::test]
+async fn gm_mission_advance_persists_the_new_step() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    seed_mission_1001(&mut mgr);
+    let (tx, mut rx) = mpsc::channel(32);
+
+    let mut advance_args = Vec::new();
+    write_wstring_arg(&mut advance_args, "1001");
+    advance_args.extend_from_slice(&201i32.to_le_bytes());
+
+    // Not held yet: no row.
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ADVANCE,
+            &advance_args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        mission_updates(&drain(&mut rx)).is_empty(),
+        "advancing a mission the caller does not hold must not persist"
+    );
+
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ASSIGN,
+            &assign_args("1001", 1),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    drain(&mut rx);
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ADVANCE,
+            &advance_args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert_eq!(
+        mission_updates(&drain(&mut rx)),
+        vec![(
+            100,
+            1001,
+            cimmeria_entity::missions::MISSION_ACTIVE,
+            Some(201),
+            vec![301]
+        )],
+        "the advance must persist the mission at the new step"
+    );
+}

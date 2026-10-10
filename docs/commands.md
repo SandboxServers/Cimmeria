@@ -366,8 +366,8 @@ Assign, advance, and inspect missions on yourself.
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmmissionabandon` | Alias of `/missionclear` | ✅ Yes | `<missionId>` | `/gmmissionabandon 1001` |
-| `/gmmissionadvance` | Jump a mission to a specific step | ✅ Yes | `<missionId> <step>` (step positive) | `/gmmissionadvance 1001 3` |
-| `/gmmissionassign` | Assign a mission to yourself by numeric id | ✅ Yes | `<missionId> <popup>` (popup is a UI hint) | `/gmmissionassign 1001 1` |
+| `/gmmissionadvance` | Jump a mission to a specific step; saved, so it survives a relog | ✅ Yes | `<missionId> <step>` (step positive) | `/gmmissionadvance 1001 3` |
+| `/gmmissionassign` | Assign a mission to yourself by numeric id, as a real accept: saved, and its `mission_accepted` chains run | ✅ Yes | `<missionId> <popup>` (popup is a UI hint) | `/gmmissionassign 1001 1` |
 | `/gmmissionclear` | Abandon one mission by numeric id | ✅ Yes | `<missionId>` | `/gmmissionclear 1001` |
 | `/gmmissionclearactive` | Clear all active missions | ❌ Not yet | none | `/gmmissionclearactive` |
 | `/gmmissionclearhistory` | Clear mission history | ❌ Not yet | none | `/gmmissionclearhistory` |

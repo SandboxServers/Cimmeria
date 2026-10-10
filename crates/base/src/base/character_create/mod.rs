@@ -16,9 +16,14 @@ use super::helpers::{
 };
 use super::ConnectedClientState;
 
+mod fail_code;
 mod name;
 mod start_profile;
 mod starter_kit;
+use fail_code::{
+    INVALID_CHARACTER_NAME, INVALID_CHARACTER_TYPE, INVALID_SKIN_COLOR, NOT_ENOUGH_INFORMATION,
+    UNSPECIFIED,
+};
 use name::validate_character_name;
 use start_profile::{resolve_start, starting_points};
 use starter_kit::{
@@ -62,15 +67,8 @@ pub(super) async fn create_character(
     db_pool: &Option<Arc<PgPool>>,
     force_debug_kit: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::warn!(%addr, "createCharacter: no DB pool");
-            send_char_create_failed(transport, addr, key, connected, 3).await?;
-            return Ok(());
-        }
-    };
-
+    // Parse and check the arguments before touching the database, so a bad
+    // payload gets its own code whether or not a database is attached.
     // Parse createCharacter args (from Account.def):
     // [WSTRING Name][WSTRING ExtraName][INT32 CharDefId][ARRAY<VisualChoices> VisualChoiceList][INT32 SkinTintColorID]
     let mut off = 0;
@@ -79,7 +77,8 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(%addr, "createCharacter: failed to parse name: {e}");
-            send_char_create_failed(transport, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
+                .await?;
             return Ok(());
         }
     };
@@ -88,7 +87,7 @@ pub(super) async fn create_character(
     // Name validation (matches Python Account.py:isCharacterNameAllowed).
     if let Err(reason) = validate_character_name(&name) {
         tracing::info!(%addr, %name, %reason, "createCharacter: name rejected");
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME).await?;
         return Ok(());
     }
 
@@ -96,7 +95,8 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(%addr, "createCharacter: failed to parse extraName: {e}");
-            send_char_create_failed(transport, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
+                .await?;
             return Ok(());
         }
     };
@@ -106,14 +106,15 @@ pub(super) async fn create_character(
     if !extra_name.is_empty() {
         if let Err(reason) = validate_character_name(&extra_name) {
             tracing::info!(%addr, %extra_name, %reason, "createCharacter: extra_name rejected");
-            send_char_create_failed(transport, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME)
+                .await?;
             return Ok(());
         }
     }
 
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for CharDefId");
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let char_def_id = i32::from_le_bytes([
@@ -127,7 +128,7 @@ pub(super) async fn create_character(
     // Parse ARRAY<VisualChoices> -- count + entries
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for visuals count");
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let visual_count = u32::from_le_bytes([
@@ -140,7 +141,7 @@ pub(super) async fn create_character(
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
     if off + visual_count * 8 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for visual choices");
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let mut visual_choices: Vec<(i32, i32)> = Vec::with_capacity(visual_count);
@@ -164,7 +165,7 @@ pub(super) async fn create_character(
 
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for SkinTintColorID");
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let skin_tint_color_id = i32::from_le_bytes([
@@ -181,7 +182,7 @@ pub(super) async fn create_character(
             skin_tint_color_id, // nt:id-only palette index 0-15, not a named row
             "createCharacter: invalid skin tint"
         );
-        send_char_create_failed(transport, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, INVALID_SKIN_COLOR).await?;
         return Ok(());
     }
 
@@ -199,7 +200,17 @@ pub(super) async fn create_character(
                 char_def_id, // nt:id-only CharDef rows carry no name column to pair
                 "createCharacter: unknown CharDefId"
             );
-            send_char_create_failed(transport, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_TYPE)
+                .await?;
+            return Ok(());
+        }
+    };
+
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(%addr, "createCharacter: no DB pool");
+            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -249,7 +260,7 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::error!(%addr, error = %e, "createCharacter: failed to query visgroups");
-            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -311,7 +322,7 @@ pub(super) async fn create_character(
                     char_def_id, // nt:id-only CharDef rows carry no name column to pair
                     "Invalid visual group"
                 );
-                send_char_create_failed(transport, addr, key, connected, 10003).await?;
+                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
         };
@@ -321,7 +332,7 @@ pub(super) async fn create_character(
                 vg_id, // nt:id-only visual groups carry no name column to pair
                 "Choice not allowed for forced visual group"
             );
-            send_char_create_failed(transport, addr, key, connected, 10003).await?;
+            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
         let choice = match group.choices.get(&choice_id) {
@@ -333,7 +344,7 @@ pub(super) async fn create_character(
                     choice_id, // nt:id-only visual choices carry no name column to pair
                     "Invalid choice for visual group"
                 );
-                send_char_create_failed(transport, addr, key, connected, 10003).await?;
+                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
         };
@@ -367,7 +378,8 @@ pub(super) async fn create_character(
                     char_def_id, // nt:id-only CharDef rows carry no name column to pair
                     "Missing choice for optional visual group"
                 );
-                send_char_create_failed(transport, addr, key, connected, 10000).await?;
+                send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
+                    .await?;
                 return Ok(());
             }
         }
@@ -408,7 +420,7 @@ pub(super) async fn create_character(
     let (starter_abilities, kit_items) = match start_kit(pool.as_ref(), &start).await {
         Ok(kit) => kit,
         Err(_) => {
-            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -469,7 +481,7 @@ pub(super) async fn create_character(
                 error = %e,
                 "character_create: could not open the creation transaction"
             );
-            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -524,7 +536,8 @@ pub(super) async fn create_character(
                     Err(_) => {
                         // `insert_starter_inventory` logged the item and reason.
                         let _ = tx.rollback().await;
-                        send_char_create_failed(transport, addr, key, connected, 3).await?;
+                        send_char_create_failed(transport, addr, key, connected, UNSPECIFIED)
+                            .await?;
                         return Ok(());
                     }
                 };
@@ -535,7 +548,7 @@ pub(super) async fn create_character(
                 .is_err()
             {
                 let _ = tx.rollback().await;
-                send_char_create_failed(transport, addr, key, connected, 3).await?;
+                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
             if let Err(e) = tx.commit().await {
@@ -550,7 +563,7 @@ pub(super) async fn create_character(
                     error = %e,
                     "character_create: commit failed"
                 );
-                send_char_create_failed(transport, addr, key, connected, 3).await?;
+                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
 
@@ -618,10 +631,10 @@ pub(super) async fn create_character(
             let error_str = e.to_string();
             let error_code = if error_str.contains("sgw_player_player_name_key") {
                 tracing::info!(%addr, player_name = %name, "Character name already taken");
-                1 // name taken
+                INVALID_CHARACTER_NAME
             } else {
                 tracing::error!(%addr, error = %e, "Character creation DB error");
-                3 // DB error
+                UNSPECIFIED
             };
             send_char_create_failed(transport, addr, key, connected, error_code).await?;
         }
@@ -629,6 +642,9 @@ pub(super) async fn create_character(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod fail_code_tests;
 
 #[cfg(test)]
 mod live_db_tests;

@@ -65,3 +65,41 @@ async fn feat_onphysics_truncated_args_rejected_without_mutation() {
         "truncated args must feed back a rejection"
     );
 }
+
+/// **Regression guard (CS-08 F2).** The GM client sends `onPhysics(1)` by
+/// itself at every world entry, when the bypass is already off. That must
+/// not print "movement validation restored" (or anything else): only a real
+/// change gets a line. Removing the no-change early return fails this.
+#[tokio::test]
+async fn feat_onphysics_no_change_sends_no_feedback() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(!mgr.get_entity(1).unwrap().movement_unrestricted);
+
+    assert!(dispatch(1, GM_PHYSICS, &[1u8], &tx, &mut mgr, &test_engine()).await);
+
+    assert!(
+        !mgr.get_entity(1).unwrap().movement_unrestricted,
+        "bTurnOn=1 with the bypass already off leaves it off"
+    );
+    let msgs = drain(&mut rx);
+    assert_eq!(
+        feedback_text(&msgs, 1),
+        None,
+        "an onPhysics that changes nothing must stay silent"
+    );
+
+    // The same holds for a repeated fly toggle: the second press is silent.
+    assert!(dispatch(1, GM_PHYSICS, &[0u8], &tx, &mut mgr, &test_engine()).await);
+    assert!(
+        feedback_text(&drain(&mut rx), 1).is_some(),
+        "the real change speaks"
+    );
+    assert!(dispatch(1, GM_PHYSICS, &[0u8], &tx, &mut mgr, &test_engine()).await);
+    assert_eq!(
+        feedback_text(&drain(&mut rx), 1),
+        None,
+        "a second fly toggle changes nothing and stays silent"
+    );
+    assert!(mgr.get_entity(1).unwrap().movement_unrestricted);
+}

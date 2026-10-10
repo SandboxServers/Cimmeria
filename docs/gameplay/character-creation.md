@@ -94,6 +94,20 @@ Entry point: `createCharacter(name, extraName, charDefId, visualChoices, skinTin
 
 4. **Validate skin tint** - Checks the submitted `skinTintColorId` against the `Constants.SKIN_TINTS` list. An unrecognized tint ID causes failure.
 
+### Refusal codes
+
+`onCharacterCreateFailed` (0x83) carries one `INT32`, and the client shows the `error_texts` row with that id, so every refusal must send a real `ERROR_*` row. The Rust handler (`crates/base/src/base/character_create/fail_code.rs`) sends python's codes:
+
+| Code | `error_texts` moniker | When |
+|---|---|---|
+| 10000 | `ERROR_CharacterCreationNotEnoughInformation` | The payload is short or malformed, or a required (`VIS_Optional`) visual group has no choice |
+| 10001 | `ERROR_CharacterCreationInvalidCharacterType` | An unknown char_def, or a start profile that cannot be used (lock L3, below) |
+| 10002 | `ERROR_CharacterCreationInvalidSkinColor` | A skin tint outside 0-15 |
+| 10003 | `ERROR_CharacterCreationUnspecifiedError` | An invalid visual group or choice, no database, or a database error |
+| 20001 | `ERROR_InvalidCharacterName` | The name or extra name breaks the format rules (3-20 characters; letters, digits, spaces, hyphens, apostrophes), or the name is taken |
+
+Before Class Start v6 CS-08 the handler sent 1 (name taken), 2 (bad payload, name, tint or char_def) and 3 (no database or a database error). Those ids are `CONDITION_FEEDBACK_*` rows, so a rejected name showed `CONDITION_FEEDBACK_PositionCheckNotBelow`. The payload, names, tint and char_def are checked before the database, so a malformed request gets its own code even with no database attached.
+
 ### Database Writes
 
 5. **Insert player row** - Inserts into `sgw_player` with values sourced from the character definition and the account:
@@ -116,7 +130,7 @@ The Rust handler is `crates/base/src/base/character_create/` (`mod.rs` parses, v
 | `PRA_OPCORE_SOLDIER` / `_COMMANDO` / `_SCIENTIST` / `_ARCHAEOLOGIST` | 1, 11 / 3, 13 / 20, 22 / 5, 15 | Castle_CellBlock (-334.231, 73.472, -228.026) | 1 | none | none | `CANONICAL` |
 | `PRA_LOYALIST_JAFFA` | 7, 17 | Castle_CellBlock | 1 | none | none | `CANONICAL` |
 | `SGU_HUMAN_SOLDIER` / `_COMMANDO` / `_SCIENTIST` / `_ARCHAEOLOGIST` | 2, 12 / 4, 14 / 21, 23 / 6, 16 | SGC_W1 (201.5, 1.31, 49.724) | 1 | none | none | `CANONICAL` |
-| `SGU_FREE_JAFFA` | 8, 18 | Dakara_E1 (100, -17.4, 230), the gate plaza | 1 | 597 Heal Focus, 1218 Recuperation (`racial_core`); 1984 Staff Swing (`signature`) | 2797 Serpent Staff, 4342 Standard Chestplate | `CANONICAL` |
+| `SGU_FREE_JAFFA` | 8, 18 | Dakara_E1 (100, -17.4, 230), the gate plaza | 1 | 597 Heal Focus, 1218 Recuperation (`racial_core`); 1984 Staff Swing (`signature`) | 2797 Serpent Staff (4342 Standard Chestplate is the forced Torso choice, worn from creation) | `CANONICAL` |
 | `PRA_GOAULD` | 10, 19 | Castle_CellBlock | 1 | 592, 594, 597, 1218, 1646 (`legacy_kit`) | 55 SI 3 9mm Pistol | `NON_CANONICAL_BLOCKED_LEGACY` (OD-CS08) |
 | `SGU_ASGARD` | 9 | SGC_W1 | 1 | 592, 594, 597, 1218, 1646 (`legacy_kit`) | 55 | `NON_CANONICAL_BLOCKED_LEGACY` (OD-CS09) |
 
@@ -129,6 +143,7 @@ Pistol 55 (the debug kit's and the holding states' weapon) carries `ITEM_Pistol`
 - **Guns start empty.** Every gun placed at creation has 0 rounds (OD-CS13 amendment, 2026-10-05); default reload is free, so the player reloads once. The holding states' pistol 55 is empty too: the one intended change to their otherwise literal behaviour.
 - **Debug kit (lock L2).** `char_creation.debug_kit = true` adds the debug kit, `resources.char_creation_debug_kit_abilities` / `_items` (592, 594, 597, 1218, 1646 and an empty pistol 55), with no provenance rows, and sets `sgw_player.debug_kit` so the GM / Debug NPC reset gives the kit back. It is never derived from access level. No profile sets it today; the seeded playtest characters below are debug-kit characters.
 - **Holding states.** `NON_CANONICAL_BLOCKED_LEGACY` rows keep today's runtime literally while their real start is blocked (Goa'uld B4, Asgard B1-B3) and are removed as one unit. A canonical profile carrying a `legacy_kit` ability is refused.
+- **One chestplate.** The Free Jaffa's 4342 Standard Chestplate comes from its forced Torso visual choice (`char_creation_choices` 540 and 1217), which places it in the Chest slot. Until CS-08 the profile listed it too, so a second one landed in the backpack.
 - **Fail closed (lock L3).** Creation refuses, with `onCharacterCreateFailed` code 10001 (`ERROR_CharacterCreationInvalidCharacterType`) and an ERROR `event = "character_create_failed"`, a char_def with no profile (`no_start_profile`), a profile with a problem (`empty_world`, `origin_position`, `start_level_out_of_range`, `legacy_kit_on_canonical_profile`, ...), a world missing from `resources.worlds` (`start_world_unknown`), or a world the cell announced no space for (`start_world_not_loaded`; the cell sends `EnterableWorlds` at startup). The cell also audits every profile at boot (`event = "start_profile_invalid"`).
 
 The other start-world readers use the same profiles: the GM-only world redirect sends a refused player to their own profile's home (a Free Jaffa to Dakara_E1), `.gotolocation <world>` lands on a start world's profile point, and a death in a start world with no respawner respawns at its profile point. Dakara_E1 also has respawner 610 at the plaza point. The base's space fallback no longer lands an unknown world in Castle_CellBlock: it fails closed with an ERROR (`unknown_world_no_space`).

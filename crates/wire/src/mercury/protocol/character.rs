@@ -123,7 +123,10 @@ pub fn build_on_character_list(
 /// Build and encrypt `onCharacterCreateFailed` (0x83).
 ///
 /// Sent when character creation fails (duplicate name, invalid data, etc.).
-/// Error codes: 1 = name taken, 2 = invalid data, 3 = DB error.
+/// `error_code` is an `error_texts` id the client shows: 10000-10003 are the
+/// `ERROR_CharacterCreation*` rows and 20001 is `ERROR_InvalidCharacterName`
+/// (the base's `character_create::fail_code`). Small ids are
+/// `CONDITION_FEEDBACK_*` rows, never creation errors.
 pub fn build_char_create_failed(
     key: &[u8; 32],
     seq_id: u32,

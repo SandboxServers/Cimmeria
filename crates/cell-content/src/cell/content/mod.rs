@@ -56,6 +56,8 @@ pub use executor::apply_tutorial_recorded;
 // The H52 step-activation region replay. Its re-entrancy guard lives on
 // `SpaceManager` (`space_manager::StepRegionReplayGuard`).
 pub use event_dispatch::{fire_mission_abandoned, fire_step_activation_regions};
+// `gmMissionAssign` runs the same follow-up event as a content accept (CS-08 F9).
+pub use event_dispatch::fire_mission_accepted;
 
 // Test hooks for the content tests above this crate, which drive code they
 // sit beside: the gate dial's replay in `cimmeria-cell-interactions` and the

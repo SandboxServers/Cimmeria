@@ -536,14 +536,14 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `/MissionAssign` | **`gm/missions.rs` → `accept_mission` (mission-def first step + objectives)** | **DONE** |
+| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `/MissionAssign` | **`gm/missions.rs` → `accept_mission` (mission-def first step + objectives), then `send_mission_update` and `fire_mission_accepted`, as a content accept** | **DONE** |
 | 110 | `gmMissionClear(WSTRING DesignID)` | `/MissionClear` | `cell/console/gm/missions.rs` → `abandon_mission` | **DONE** |
 | 111 | `gmMissionClearActive()` | `/MissionClearActive` | loop `abandon_mission` over `active_missions()` | ADAPT |
 | 112 | `gmMissionClearHistory()` | `/MissionClearHistory` | — (no history-clear) | NEW |
 | 113 | `gmMissionList()` | `/MissionList` | **`gm/query.rs` → `active_missions` + feedback** | **DONE** |
 | 114 | `gmMissionListFull()` | `/MissionListFull` | **`gm/query.rs` → `all_missions` + feedback** | **DONE** |
 | 115 | `gmMissionDetails(WSTRING DesignID)` | `/MissionDetails` | **`gm/query.rs` → `get_mission` + feedback (numeric id)** | **DONE** |
-| 116 | `gmMissionAdvance(WSTRING DesignID, INT32 step)` | `/MissionAdvance` | `cell/console/gm/missions.rs` → `advance_step` | **DONE** |
+| 116 | `gmMissionAdvance(WSTRING DesignID, INT32 step)` | `/MissionAdvance` | `cell/console/gm/missions.rs` → `advance_step`, then `send_mission_update` | **DONE** |
 | 117 | `gmMissionReset(WSTRING DesignID, INT32 step)` | `/MissionReset` | — (no revert primitive) | NEW |
 | 118 | `gmMissionComplete(WSTRING DesignID, INT8 turnIn)` | `/MissionComplete` | `cell/missions.rs:409 complete_mission_direct` (does NOT fire rewards) | ADAPT |
 | 119 | `gmMissionSetAvailable(WSTRING DesignID)` | `/MissionSetAvailable` | — (availability not tracked in entity state) | NEW |

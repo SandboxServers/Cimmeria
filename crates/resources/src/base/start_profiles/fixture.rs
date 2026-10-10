@@ -101,12 +101,10 @@ pub fn seeded() -> StartProfiles {
                         },
                     ],
                     vec![
+                        // 4342 Standard Chestplate is the forced Torso
+                        // choice, not a profile item (CS-08 F4).
                         KitItem {
                             item_id: 2797,
-                            stack_size: 1,
-                        },
-                        KitItem {
-                            item_id: 4342,
                             stack_size: 1,
                         },
                     ],
