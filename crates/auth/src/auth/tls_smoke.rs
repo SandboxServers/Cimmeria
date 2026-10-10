@@ -296,7 +296,7 @@ async fn live_db_tls_phase1_accepts_xml_escaped_plaintext_password() {
     let name = "tlsesc1b20";
 
     delete_account(&pool, ESCAPED_PW_ACCOUNT_ID).await;
-    let phc = super::credentials::hash_argon2id(PASSWORD).expect("hash fixture password");
+    let phc = super::password_hash::hash_argon2id(PASSWORD).expect("hash fixture password");
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password, password_hash_v2, password_algo, accesslevel, enabled) \
          VALUES ($1, $2, NULL, $3, 2, 0, true)",

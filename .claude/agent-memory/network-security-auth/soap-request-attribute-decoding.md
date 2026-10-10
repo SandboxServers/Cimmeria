@@ -26,4 +26,9 @@ directly; map it to a reason code. `LoginReq` deliberately has no `Debug`
 malformed-entity test and the live-DB escaped-password TLS smoke in
 `tls_smoke.rs` (sentinel account `0x7000_1B20`).
 
+Follow-up on the same PR: `handle_user_auth` checks the account-name format right after
+the SKU check, BEFORE recording `account_name` into the span or any audit
+row (guard: `account_name_guard.rs`). Response XML builders live in
+`soap_response.rs`; argon2id hash/verify/migrate in `password_hash.rs`.
+
 Related: [[password-storage-argon2id]]

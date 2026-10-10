@@ -58,12 +58,15 @@ change, re-run them serially to confirm before chasing them. Use
 `cargo nextest run` locally if you want a result that matches CI. Only treat a
 log-capture failure as real if it still fails at `--test-threads=1`.
 
-## 3. `bash` from PowerShell is WSL, not Git Bash; restored files keep old mtimes
+## 3. No bash at all; restored files keep old mtimes
 
 (2026-10-10, #1289.) On this workstation `bash` on the PowerShell PATH resolves
 to `C:\Windows\system32\bash.exe` (WSL), so `bash tools/build-lane/lane.sh ...`
-runs the lane inside Linux (logs under `/home/...`, no `cargo nextest`). Call
-`& "C:\Program Files\Git\bin\bash.exe" tools/build-lane/lane.sh ...` instead.
+runs the lane inside Linux (logs under `/home/...`, no `cargo nextest`).
+As of 2026-10-10 the user forbids bash in any form (WSL, Git Bash,
+`Git\bin\bash.exe`): use PowerShell only, `python tools/build-lane/ship.py` to
+ship. lane.sh has no PowerShell port, so compiling cargo checks cannot run;
+say so plainly in the report rather than calling cargo outside the lane.
 
 For a revert check, a file restored with `Copy-Item` keeps the backup's old
 LastWriteTime, which is older than the build artifacts, so cargo does NOT

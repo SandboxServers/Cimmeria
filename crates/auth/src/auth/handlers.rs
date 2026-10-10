@@ -1,5 +1,6 @@
 //! HTTP/SOAP handlers for Phase 1 (UserAuth) and Phase 2 (ServerSelection),
-//! plus XML parsing, credential validation, and random generators.
+//! plus credential validation and random generators. Request parsing is in
+//! `soap_request.rs`, response XML in `soap_response.rs`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -20,10 +21,8 @@ use super::credentials::{
     classify_credential, validate_credentials, AuthCredError, CredentialGateError,
 };
 use super::soap_request::{parse_login_request, parse_server_selection};
-use super::{
-    HandlerState, PendingLogin, SessionRecord, TlsConn, LOGIN_NS, PROTOCOL_DIGEST, SELECT_NS,
-    SESSION_TTL, XML_DECL,
-};
+use super::soap_response::{login_error, login_success_xml, select_error, server_location_xml};
+use super::{HandlerState, PendingLogin, SessionRecord, TlsConn, PROTOCOL_DIGEST, SESSION_TTL};
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
@@ -69,7 +68,6 @@ pub(super) async fn handle_user_auth(
             return login_error(13, "Internal error.");
         }
     };
-    tracing::Span::current().record("account_name", req.account_name.as_str());
 
     // Helper macro to emit audit events concisely.
     macro_rules! audit {
@@ -108,6 +106,25 @@ pub(super) async fn handle_user_auth(
     if req.sku != "SGW_BETA" {
         return login_error(3, "The specified service does not exist.");
     }
+    // Validate the account name before it reaches the span or any audit row:
+    // it is client-controlled, and after XML decoding a control character or
+    // newline can arrive as `&#10;` as well as raw. Log only its length.
+    let name_ok = req.account_name.len() >= 3
+        && req.account_name.len() <= 20
+        && req
+            .account_name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+    if !name_ok {
+        tracing::Span::current().record("result", "bad_request");
+        tracing::info!(
+            reason = "malformed_account_name",
+            account_name_len = req.account_name.len(),
+            "Phase 1 login rejected: account name fails the format check"
+        );
+        return login_error(1, "The specified account name is invalid.");
+    }
+    tracing::Span::current().record("account_name", req.account_name.as_str());
     // Classify the supplied credential: a 40-char hex string is the original
     // client's SHA-1 hash (allowed over HTTP or TLS); anything else is treated
     // as a plaintext password, which is only honoured over TLS.
@@ -124,17 +141,8 @@ pub(super) async fn handle_user_auth(
             return login_error(2, "The specified password is invalid.");
         }
     };
-    let name_ok = req.account_name.len() >= 3
-        && req.account_name.len() <= 20
-        && req
-            .account_name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
-    if !name_ok {
-        return login_error(1, "The specified account name is invalid.");
-    }
     if !state.developer_mode && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST {
-        tracing::warn!(got = %req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
+        tracing::warn!(got = ?req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
         audit!(LoginOutcome::ProtocolMismatch);
         return login_error(
             17,
@@ -382,78 +390,6 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(|s| s["SID=".len()..].to_string())
 }
 
-fn login_error(_code: u32, msg: &str) -> Response {
-    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
-    // The client uses ErrorStr for display and ignores ErrorNum.
-    let xml = format!(
-        "{XML_DECL}\
-         <ns2:SGWLoginResponse {ns}>\
-         <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"1\" />\
-         </ns2:SGWLoginResponse>",
-        ns = LOGIN_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
-    )
-        .into_response()
-}
-
-fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
-    let entries: String = shards
-        .iter()
-        .map(|s| {
-            format!(
-                "<Shard ServerName=\"{}\" Fullness=\"LOW\" Busy=\"LOW\" />",
-                s.name
-            )
-        })
-        .collect();
-
-    format!(
-        "{XML_DECL}\
-         <ns2:SGWLoginResponse {ns}>\
-         <SGWLoginSuccess>\
-         <AccountInfo ExpireDate=\"0000-00-00T00:00:00.000Z\" AccountId=\"{account_id}\" />\
-         <SGWShardListResp>{entries}</SGWShardListResp>\
-         </SGWLoginSuccess>\
-         </ns2:SGWLoginResponse>",
-        ns = LOGIN_NS,
-    )
-}
-
-fn select_error(_code: u32, msg: &str) -> Response {
-    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
-    let xml = format!(
-        "{XML_DECL}\
-         <ns3:SGWServerLocationResponse {ns}>\
-         <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"1\" />\
-         </ns3:SGWServerLocationResponse>",
-        ns = SELECT_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
-    )
-        .into_response()
-}
-
-fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str) -> String {
-    format!(
-        "{XML_DECL}\
-         <ns3:SGWServerLocationResponse {ns}>\
-         <ServerLocation SessionKey=\"{session_key}\" Port=\"{port}\" IP=\"{ip}\" BWMailBox=\"1\">\
-         <TICKET Ticket=\"{ticket}\" />\
-         </ServerLocation>\
-         </ns3:SGWServerLocationResponse>",
-        ns = SELECT_NS,
-        port = shard.port,
-        ip = shard.host,
-    )
-}
-
 /// Generate `byte_count` random bytes as uppercase hex.
 pub(super) fn random_hex(byte_count: usize) -> String {
     let mut rng = rand::rng();
@@ -528,37 +464,6 @@ mod tests {
         let sid = random_alphanumeric(40);
         assert_eq!(sid.len(), 40);
         assert!(sid.chars().all(|c| c.is_ascii_alphanumeric()));
-    }
-
-    #[test]
-    fn login_success_xml_contains_shard() {
-        let shards = vec![super::super::ShardInfo {
-            name: "Shard".into(),
-            host: "127.0.0.1".into(),
-            port: 32832,
-            protected: false,
-        }];
-        let xml = login_success_xml(42, &shards);
-        assert!(xml.contains(r#"AccountId="42""#));
-        assert!(xml.contains(r#"ServerName="Shard""#));
-        // Bare XML — no SOAP envelope (matches C++ LogonConnection output).
-        assert!(!xml.contains("SOAP-ENV:Envelope"));
-        assert!(xml.starts_with(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#));
-        assert!(xml.contains("ns2:SGWLoginResponse"));
-    }
-
-    #[test]
-    fn server_location_xml_contains_key_and_ticket() {
-        let shard = super::super::ShardInfo {
-            name: "Shard".into(),
-            host: "127.0.0.1".into(),
-            port: 32832,
-            protected: false,
-        };
-        let xml = server_location_xml(&shard, "AAAA", "BBBB");
-        assert!(xml.contains(r#"SessionKey="AAAA""#));
-        assert!(xml.contains(r#"Ticket="BBBB""#));
-        assert!(xml.contains(r#"Port="32832""#));
     }
 
     /// Build a minimal `HandlerState` for driving `handle_user_auth` through
