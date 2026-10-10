@@ -51,8 +51,9 @@
 //! reliable ones whose fragments the receive window has already acked
 //! and the sender will never resend. Evicting the earliest arrival keeps
 //! the channel able to reassemble: a legitimate in-progress bundle is
-//! only lost if 16 newer bundles open while it waits, which in-order
-//! reliable delivery does not produce.
+//! only lost if 16 newer bundles open while it waits, or newer bundles
+//! together push the held payload past 256 KiB. In-order reliable
+//! delivery produces neither.
 //!
 //! ## Cost per fragment
 //!
@@ -279,7 +280,9 @@ impl FragmentAssembler {
         }
 
         // Store a copy so the held allocation is exactly the counted
-        // bytes, not the whole datagram buffer `data` may be a view of.
+        // bytes. The live path already gets an owned body from
+        // `parse_incoming`; this guards direct callers whose `Bytes` may
+        // be a view into a larger buffer.
         let data = Bytes::copy_from_slice(&data);
         let Some(pending) = self.pending.get_mut(&key) else {
             return Ok(None);
@@ -327,26 +330,35 @@ impl FragmentAssembler {
     /// Evict the earliest-arrived pending bundle other than `keep`,
     /// recording the drop. Returns `false` when there is none.
     fn evict_earliest_except(&mut self, keep: u32, reason: FragmentCapReason) -> bool {
-        let Some(victim) = self
+        let Some((ticket, victim)) = self
             .by_arrival
-            .values()
-            .copied()
-            .find(|&candidate| candidate != keep)
+            .iter()
+            .map(|(&ticket, &key)| (ticket, key))
+            .find(|&(_, candidate)| candidate != keep)
         else {
             return false;
         };
-        if let Some(msg) = self.remove(victim) {
-            tracing::debug!(
-                target: "mercury.fragment_caps",
-                reason = reason.as_str(),
-                evicted_first_seq = victim,
-                evicted_received = msg.received_count,
-                evicted_total = msg.total_fragments,
-                evicted_bytes = msg.bytes,
-                "Evicting incomplete fragmented bundle to stay within the reassembly caps"
+        let Some(msg) = self.remove(victim) else {
+            // `by_arrival` names a bundle `pending` no longer holds. Drop
+            // the stale entry and report no progress, so the cap loops in
+            // `add_fragment` end instead of spinning.
+            debug_assert!(
+                false,
+                "by_arrival ticket {ticket} names first_seq {victim}, which is not pending"
             );
-            self.cap_hits.record(reason, &msg, victim);
-        }
+            self.by_arrival.remove(&ticket);
+            return false;
+        };
+        tracing::debug!(
+            target: "mercury.fragment_caps",
+            reason = reason.as_str(),
+            evicted_first_seq = victim,
+            evicted_received = msg.received_count,
+            evicted_total = msg.total_fragments,
+            evicted_bytes = msg.bytes,
+            "Evicting incomplete fragmented bundle to stay within the reassembly caps"
+        );
+        self.cap_hits.record(reason, &msg, victim);
         true
     }
 

@@ -247,3 +247,52 @@ fn indexed_overlap_matches_the_full_scan_including_the_28_bit_wrap() {
     }
     assert!(asm.take_cap_hits().is_empty());
 }
+
+/// The overlap window reaches exactly `MAX_FRAGMENTS - 1` keys before the
+/// incoming `first_seq`: a 64-fragment bundle at `base` overlaps a bundle
+/// starting at `base + 63` and not one starting at `base + 64`. Checked
+/// in the middle of the ring and on both sides of the 28-bit wrap.
+#[test]
+fn overlap_window_boundary_is_exact_across_the_wrap() {
+    let bases = [1_000, SEQUENCE_MASK - 30, SEQUENCE_MASK - 62, 0, 62, 63];
+    for base in bases {
+        // (a) A newer bundle starting on `base`'s last sequence evicts it.
+        let mut asm = FragmentAssembler::new();
+        let last = base.wrapping_add(63) & SEQUENCE_MASK;
+        asm.add_fragment(base, 0, 64, Bytes::from_static(b"old"))
+            .unwrap();
+        asm.add_fragment(last, 0, 2, Bytes::from_static(b"new"))
+            .unwrap();
+        assert!(
+            !asm.pending.contains_key(&base),
+            "base {base:#x}: bundle overlapped at its last seq must be evicted"
+        );
+        assert!(asm.pending.contains_key(&last));
+
+        // (b) A late fragment of the evicted bundle is dropped, not
+        // re-admitted.
+        let r = asm
+            .add_fragment(base, 1, 64, Bytes::from_static(b"late"))
+            .unwrap();
+        assert!(r.is_none());
+        assert!(
+            !asm.pending.contains_key(&base),
+            "base {base:#x}: late fragment of an evicted bundle must be dropped"
+        );
+        assert_eq!(asm.pending_count(), 1);
+
+        // (c) A bundle starting one past `base`'s range leaves it alone.
+        let mut asm = FragmentAssembler::new();
+        let past = base.wrapping_add(64) & SEQUENCE_MASK;
+        asm.add_fragment(base, 0, 64, Bytes::from_static(b"old"))
+            .unwrap();
+        asm.add_fragment(past, 0, 2, Bytes::from_static(b"next"))
+            .unwrap();
+        assert!(
+            asm.pending.contains_key(&base),
+            "base {base:#x}: non-overlapping bundle must survive"
+        );
+        assert_eq!(asm.pending_count(), 2);
+        assert!(asm.take_cap_hits().is_empty());
+    }
+}
