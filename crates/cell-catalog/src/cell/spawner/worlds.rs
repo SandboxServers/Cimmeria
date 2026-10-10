@@ -238,7 +238,8 @@ mod live_db_tests {
     ///   map. It runs on that map's `ihpet_crater_light.nav` (D-DA5), which is
     ///   advisory for world 73 too.
     /// - `CimmeriaLab` (1301) and `MapperDebug` (1302): custom-map client-load
-    ///   test worlds (#1318) with no navmesh built yet.
+    ///   test worlds (#1318). Their meshes were built from the locally
+    ///   installed packages on 2026-10-10 and have not been walked.
     ///
     /// `Castle_CellBlock` (12) is the one meshed world left on `enforce`:
     /// its mesh was rebuilt on 2026-09-19 and has been walked since.

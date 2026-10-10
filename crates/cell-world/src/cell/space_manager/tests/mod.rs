@@ -10,6 +10,7 @@ mod aoi_npc_corpse;
 mod aoi_npc_display_name;
 mod aoi_player_intro;
 mod aoi_view_radius;
+mod custom_maps;
 mod debug_area;
 mod entity_labels;
 mod entity_lifecycle;
