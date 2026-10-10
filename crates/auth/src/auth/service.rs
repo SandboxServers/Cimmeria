@@ -51,6 +51,8 @@ pub struct AuthService {
     /// Pending logins keyed by ticket; shared with the BaseService for Phase 3 validation.
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     developer_mode: bool,
+    /// A database is configured (`ServerConfig::database_configured`).
+    db_configured: bool,
     /// Database connection pool for credential validation.
     db_pool: Option<Arc<PgPool>>,
     /// Login event broadcast channel.
@@ -86,6 +88,7 @@ impl AuthService {
             shards: Vec::new(),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             developer_mode: config.developer_mode,
+            db_configured: config.database_configured(),
             db_pool: None,
             login_tx: None,
             login_buffer: None,
@@ -148,6 +151,7 @@ impl AuthService {
             developer_mode = self.developer_mode,
             "Auth service config"
         );
+        self.log_credential_mode();
 
         let sessions = Arc::new(Mutex::new(HashMap::new()));
         let pending_logins = Arc::clone(&self.pending_logins);
@@ -161,6 +165,7 @@ impl AuthService {
             sessions,
             pending_logins,
             developer_mode: self.developer_mode,
+            db_configured: self.db_configured,
             db: self.db_pool.clone(),
             login_tx: self.login_tx.clone(),
             login_buffer: self.login_buffer.clone(),
@@ -305,6 +310,37 @@ impl AuthService {
         Ok(())
     }
 
+    /// Whether Phase 1 accepts any well-formed credential unchecked as
+    /// account 1 / access level 99: developer mode on, no database
+    /// configured and no pool. Every other state checks credentials against
+    /// the database, or refuses the login when there is none.
+    pub fn dev_login_fallback_active(&self) -> bool {
+        self.developer_mode && !self.db_configured && self.db_pool.is_none()
+    }
+
+    /// Log, once at start, how Phase 1 checks credentials. The developer
+    /// fallback is a WARN so it cannot go unnoticed in an operator's logs.
+    fn log_credential_mode(&self) {
+        if self.dev_login_fallback_active() {
+            tracing::warn!(
+                reason = "dev_mode_no_db_login",
+                "Developer mode is on and no database is configured: every \
+                 well-formed login is accepted unchecked as account 1 with \
+                 access level 99. Never run this on a reachable network."
+            );
+        } else if self.db_pool.is_none() {
+            let reason = if self.db_configured {
+                "db_pool_missing"
+            } else {
+                "no_database"
+            };
+            tracing::error!(
+                reason,
+                "Auth service has no database connection: every login will be refused"
+            );
+        }
+    }
+
     /// Hot-reload the auth TLS certificate from the configured cert/key paths.
     ///
     /// Re-reads the PEM files and atomically swaps the live `rustls::ServerConfig`
@@ -365,6 +401,31 @@ mod tests {
         assert!(!svc.is_running);
         assert_eq!(svc.listener_addr.port(), 13001);
         assert_eq!(svc.logon_addr.port(), 8081);
+    }
+
+    /// The unchecked developer login needs developer mode AND no database
+    /// configured. Developer mode alone, with the default (configured)
+    /// connection string, must not enable it.
+    #[test]
+    fn dev_login_fallback_needs_dev_mode_and_no_configured_db() {
+        let dev_with_db = ServerConfig {
+            developer_mode: true,
+            ..ServerConfig::loopback()
+        };
+        assert!(!AuthService::new(&dev_with_db).dev_login_fallback_active());
+
+        let no_dev_no_db = ServerConfig {
+            db_connection_string: String::new(),
+            ..ServerConfig::loopback()
+        };
+        assert!(!AuthService::new(&no_dev_no_db).dev_login_fallback_active());
+
+        let dev_no_db = ServerConfig {
+            developer_mode: true,
+            db_connection_string: String::new(),
+            ..ServerConfig::loopback()
+        };
+        assert!(AuthService::new(&dev_no_db).dev_login_fallback_active());
     }
 
     #[tokio::test]

@@ -252,6 +252,10 @@ Upgrading SigNoz: [signoz-deployment.md → Upgrading SigNoz](signoz-deployment.
 
 **Watchtower never updates.** `docker logs watchtower --tail 20` should show a `Session done ... Scanned=1` line every five minutes. `Scanned=0`: the label is missing from `cimmeria`. `client version 1.25 is too old`: `DOCKER_API_VERSION` is missing (Docker 29+).
 
+**The container restarts over and over, and the log says `cannot log in to the database with DB_URL` or `Database connection failed; refusing to start`.** The server refuses to run without its database. `docker ps -a` shows `Exited (1)`. The bundled database needs no `DB_URL`; if `.env` or the compose file sets one, check its user, password and database name. See [container.md → Database login check](container.md#database-login-check).
+
+**Developer mode.** `docker/compose.yml` sets `DEVELOPER_MODE` from `.env`, default `false`. Images before this change defaulted it to `true`, which skipped the client protocol-digest check at login; set `DEVELOPER_MODE=true` in `.env` and `docker compose up -d` only if clients with a different digest must log in. It never bypasses the password check while the server has its database.
+
 **A setting I changed isn't in effect.** You edited a file but didn't run `docker compose up -d`; see [What happens on every update](#what-happens-on-every-update).
 
 **`docker compose` complains `required variable BASE_EXTERNAL is missing`.** You're running it outside `/opt/cimmeria`, or `.env` lacks the value.

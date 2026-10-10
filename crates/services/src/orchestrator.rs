@@ -25,7 +25,7 @@ use crate::cell::messages::{
 };
 use crate::cell::CellService;
 use crate::database::DatabasePool;
-use crate::orchestrator_postgres::ensure_postgresql_running;
+use crate::orchestrator_database::{connect_database, DB_CONNECT_TIMEOUT};
 use crate::orchestrator_shards::{query_all_shards, ShardRow};
 
 /// Errors specific to the orchestrator.
@@ -85,6 +85,10 @@ pub struct Orchestrator {
     state: Arc<RwLock<ServerState>>,
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     login_buffer: Option<LoginEventBuffer>,
+    /// Longest `start_all` waits for the configured database before it
+    /// refuses to start. sqlx retries a refused connection until its own
+    /// acquire timeout (30 s), so this matches it by default.
+    db_connect_timeout: Duration,
 }
 
 impl Orchestrator {
@@ -169,6 +173,7 @@ impl Orchestrator {
             state: Arc::new(RwLock::new(state)),
             login_tx: None,
             login_buffer: None,
+            db_connect_timeout: DB_CONNECT_TIMEOUT,
         }
     }
 
@@ -186,6 +191,12 @@ impl Orchestrator {
 
     /// Start all services in dependency order.
     ///
+    /// Fails closed on the database: when one is configured
+    /// ([`ServerConfig::database_configured`]) and the connection fails or
+    /// times out, this returns [`OrchestratorError::DatabaseFailed`] before
+    /// any listener is bound. Only an empty connection string starts the
+    /// server without a database.
+    ///
     /// Startup sequence:
     /// 1. Database connection pool
     /// 2. Authentication service
@@ -197,25 +208,19 @@ impl Orchestrator {
         tracing::trace!("Acquiring state write lock");
         let mut state = self.state.write().await;
 
-        // 0. Ensure PostgreSQL is running (auto-start if possible)
-        ensure_postgresql_running(&state.config.db_connection_string).await;
-
-        // 1. Connect to the database
-        let db_conn = state.config.db_connection_string.clone();
-        tracing::trace!(db_conn = %db_conn, "Connecting to database");
-        let db_pool: Option<Arc<PgPool>> = match DatabasePool::connect(&db_conn).await {
-            Ok(pool) => {
-                let arc_pool = Arc::new(pool.pool().clone());
-                state.db = Some(pool);
-                tracing::info!("Database connected");
-                Some(arc_pool)
-            }
-            Err(e) => {
-                tracing::warn!("Database connection failed (continuing without DB): {e}");
-                // Non-fatal for now: allows starting in dev mode without a database
-                None
-            }
-        };
+        // 0-1. Connect to the configured database (auto-starting the bundled
+        // PostgreSQL if possible). A configured database that cannot be
+        // reached is fatal: the server never serves logins without the
+        // database it was configured with.
+        let db_pool: Option<Arc<PgPool>> =
+            match connect_database(&state.config, self.db_connect_timeout).await? {
+                Some(pool) => {
+                    let arc_pool = Arc::new(pool.pool().clone());
+                    state.db = Some(pool);
+                    Some(arc_pool)
+                }
+                None => None,
+            };
 
         // Pass DB pool to auth, base, and cell services
         if let Some(ref pool) = db_pool {
@@ -356,6 +361,12 @@ impl Orchestrator {
     /// Used by the admin API to inspect and modify server state.
     pub fn state(&self) -> Arc<RwLock<ServerState>> {
         Arc::clone(&self.state)
+    }
+
+    /// Set how long [`start_all`](Self::start_all) waits for the configured
+    /// database before refusing to start. Default 30 s.
+    pub fn set_db_connect_timeout(&mut self, timeout: Duration) {
+        self.db_connect_timeout = timeout;
     }
 
     /// Get the server uptime since the last successful start.

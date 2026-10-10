@@ -26,6 +26,7 @@ pub mod base;
 pub mod cell;
 pub mod database;
 pub mod orchestrator;
+mod orchestrator_database;
 mod orchestrator_postgres;
 mod orchestrator_shards;
 pub mod plugins;

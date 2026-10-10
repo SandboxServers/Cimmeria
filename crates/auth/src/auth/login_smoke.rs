@@ -19,7 +19,7 @@
 //!   response carries the SessionKey + Ticket attributes that Phase 3
 //!   consumes; a drift in the XML shape would catch here.
 //!
-//! Runs in `developer_mode` so no DB is required — the credential
+//! Runs in `developer_mode` with no database configured, so no DB is required — the credential
 //! check is short-circuited to "any well-formed request succeeds".
 //! The DB-credential path is exercised by the per-handler unit tests
 //! in `handlers.rs`.
@@ -91,6 +91,8 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
     // covered by the per-handler tests in handlers.rs.
     let base_config = ServerConfig {
         developer_mode: true,
+        // No database configured: the developer fallback login applies.
+        db_connection_string: String::new(),
         ..ServerConfig::loopback()
     };
     let shards = vec![ShardInfo {

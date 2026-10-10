@@ -103,6 +103,12 @@ services:
       CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP:-}"
+      # Developer mode, off unless .env sets DEVELOPER_MODE=true. Set here
+      # rather than inherited from the image so the value is the same after
+      # every swap. With the bundled database it only skips the client
+      # protocol-digest check; it never bypasses the password check while
+      # DB_URL is set. Images before this change defaulted it to true.
+      DEVELOPER_MODE: "${DEVELOPER_MODE:-false}"
       RUST_LOG: "${RUST_LOG:-info}"
     # No volume for /var/lib/postgresql/data on purpose: the entrypoint
     # (docker/entrypoint.sh) reseeds it from the image on every container

@@ -19,6 +19,30 @@ while ! pg_isready -h 127.0.0.1 -U "${POSTGRES_USER:-w-testing}" -d "${POSTGRES_
     sleep 0.5
 done
 
+# pg_isready only proves postgres accepts connections. The server's own
+# DB_URL can still name a wrong user, password or database, and the server
+# refuses to start then. Log in with the same connection string first, so
+# the failure is stated plainly and the container exits through `finish`
+# (non-zero, see there) instead of reporting healthy without a database.
+# An empty DB_URL would start the server with no database at all; this image
+# always ships one, so refuse that too.
+if [ -z "$(printf '%s' "${DB_URL:-}" | tr -d '[:space:]')" ]; then
+    echo "[cimmeria-server] DB_URL is empty; this image runs only with a database. Exiting." >&2
+    exit 1
+fi
+attempts="${DB_AUTH_CHECK_ATTEMPTS:-10}"
+n=0
+# psql's error names the host, port, user and database, never the password.
+while ! err=$(psql -X -q -t -A -v ON_ERROR_STOP=1 -d "$DB_URL" -c 'SELECT 1' 2>&1 >/dev/null); do
+    n=$((n + 1))
+    if [ "$n" -ge "$attempts" ]; then
+        echo "[cimmeria-server] cannot log in to the database with DB_URL after ${attempts} attempts; exiting:" >&2
+        echo "$err" >&2
+        exit 1
+    fi
+    sleep 1
+done
+
 # Wait for the OTLP collector too, so a cold start (host reboot, Docker
 # restart) doesn't open with a burst of export errors while SigNoz is still
 # booting. Telemetry is optional: after OTEL_WAIT_TIMEOUT seconds start

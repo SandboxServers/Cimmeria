@@ -87,6 +87,11 @@ pub struct ServerConfig {
 
     /// PostgreSQL connection string.
     /// Default matches the test credentials in the existing config files.
+    ///
+    /// A non-empty value means a database is configured, and the server
+    /// refuses to start when it cannot connect to it. Only an empty (or
+    /// all-whitespace) value runs the server without a database; see
+    /// [`database_configured`](ServerConfig::database_configured).
     pub db_connection_string: String,
 
     /// Protocol digest sent in the auth login response.
@@ -94,8 +99,12 @@ pub struct ServerConfig {
     /// Maps to `AuthenticationService.config:protocol_digest`.
     pub protocol_digest: String,
 
-    /// Enable developer mode (relaxed auth, elevated logging, multi-login).
-    /// Default: true in dev builds (from `BaseService.config:developer_mode`)
+    /// Enable developer mode. It skips the Phase 1 protocol-digest check,
+    /// and, only when no database is configured (`db_connection_string`
+    /// empty), accepts any well-formed credential as account 1 with access
+    /// level 99. With a database configured it never bypasses the
+    /// credential check.
+    /// Default: false.
     pub developer_mode: bool,
 
     /// Minigame SmartFoxServer TCP bind address.
@@ -177,6 +186,16 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
+    /// Whether a database is configured: `db_connection_string` is not
+    /// empty or whitespace.
+    ///
+    /// A configured database is required. The orchestrator refuses to start
+    /// when it cannot connect, and the auth service never falls back to the
+    /// developer-mode login while one is configured.
+    pub fn database_configured(&self) -> bool {
+        !self.db_connection_string.trim().is_empty()
+    }
+
     /// The defaults, with every listener bound to `127.0.0.1`.
     ///
     /// Tests that start a real listener build their config from this, not
@@ -312,6 +331,22 @@ mod tests {
     fn default_config_developer_mode_off() {
         let config = ServerConfig::default();
         assert!(!config.developer_mode);
+    }
+
+    /// The defaults configure a database, so a server started from them
+    /// fails closed when it cannot connect. Only an explicitly empty
+    /// connection string means "no database".
+    #[test]
+    fn database_configured_only_when_connection_string_is_set() {
+        assert!(ServerConfig::default().database_configured());
+        assert!(ServerConfig::loopback().database_configured());
+        for empty in ["", "   ", "\t"] {
+            let config = ServerConfig {
+                db_connection_string: empty.to_string(),
+                ..ServerConfig::loopback()
+            };
+            assert!(!config.database_configured(), "{empty:?} is not a database");
+        }
     }
 
     #[test]

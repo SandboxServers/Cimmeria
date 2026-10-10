@@ -150,3 +150,48 @@ jobs:
           path: ${{ runner.temp }}/container-smoke-logs
           if-no-files-found: ignore
           retention-days: 14
+
+      # The image must refuse to serve when the server cannot log in to its
+      # database. pg_isready passes here (postgres is up); only DB_URL names a
+      # database that does not exist. The container must exit non-zero and
+      # never bind the login port (docker/s6/cimmeria-server/run, finish).
+      - name: smoke-test refusal with an unusable DB_URL
+        env:
+          IMAGE: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
+        run: |
+          set -uo pipefail
+          docker run -d --name dbcheck \
+            -e DB_URL="host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=cimmeria_missing_db" \
+            -e DB_AUTH_CHECK_ATTEMPTS=3 \
+            "$IMAGE"
+          status=""
+          served=0
+          for i in $(seq 1 60); do
+            status="$(docker inspect -f '{{.State.Status}}' dbcheck 2>/dev/null)"
+            [ "$status" = "exited" ] && break
+            if docker exec dbcheck timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/8081" 2>/dev/null; then
+              served=1
+              break
+            fi
+            sleep 2
+          done
+          code="$(docker inspect -f '{{.State.ExitCode}}' dbcheck 2>/dev/null)"
+          echo "::group::container logs"
+          docker logs dbcheck || true
+          echo "::endgroup::"
+          logs="$(docker logs dbcheck 2>&1 || true)"
+          docker rm -f dbcheck >/dev/null 2>&1 || true
+
+          if [ "$served" -eq 1 ]; then
+            echo "::error::login port was bound although DB_URL cannot log in"
+            exit 1
+          fi
+          if [ "$status" != "exited" ] || [ "$code" = "0" ]; then
+            echo "::error::expected the container to exit non-zero (status=$status exit=$code)"
+            exit 1
+          fi
+          if ! printf '%s' "$logs" | grep -q 'cannot log in to the database'; then
+            echo "::error::the database login check did not report the failure"
+            exit 1
+          fi
+          echo "refused as expected (exit $code)"

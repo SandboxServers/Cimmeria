@@ -307,7 +307,11 @@ ENV AUTH_HOST=0.0.0.0 \
     # auto-start probe default to localhost:5433 and emit spurious warnings
     # in the container even though sqlx itself accepts either form.
     DB_URL="host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw" \
-    DEVELOPER_MODE=true \
+    # Off in the published image. Developer mode skips the client
+    # protocol-digest check; it never bypasses the credential check while
+    # DB_URL is set, and the server refuses to start when it cannot connect
+    # to DB_URL. Opt in per deployment (docker/compose.yml passes it through).
+    DEVELOPER_MODE=false \
     RUST_LOG=info \
     S6_KEEP_ENV=1
 
@@ -318,13 +322,14 @@ EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
-# Liveness probe: postgres accepts connections AND the SOAP login listener
-# (LOGON_PORT, the port game clients log in through) is bound. Not
-# AUTH_PORT: nothing binds 13001, so probing it marked every container
-# unhealthy. Bash's /dev/tcp gives us a zero-dep TCP probe without pulling
-# in netcat/curl just for this.
+# Liveness probe: the server's own DB_URL can log in and run a query (not
+# just pg_isready, which passes while the configured user, password or
+# database is wrong) AND the SOAP login listener (LOGON_PORT, the port game
+# clients log in through) is bound. Not AUTH_PORT: nothing binds 13001, so
+# probing it marked every container unhealthy. Bash's /dev/tcp gives us a
+# zero-dep TCP probe without pulling in netcat/curl just for this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD pg_isready -h 127.0.0.1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" >/dev/null \
+    CMD psql -X -q -t -A -v ON_ERROR_STOP=1 -d "${DB_URL}" -c "SELECT 1" >/dev/null 2>&1 \
         && bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" \
         || exit 1
 

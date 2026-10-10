@@ -29,6 +29,8 @@ async fn phase1_and_phase2_never_log_full_credentials() {
 
     let base_config = ServerConfig {
         developer_mode: true,
+        // No database configured: the developer fallback login applies.
+        db_connection_string: String::new(),
         ..ServerConfig::loopback()
     };
     let shards = vec![ShardInfo {

@@ -74,7 +74,7 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `ADMIN_PORT` | `8443` | |
 | `ADMIN_BIND` | `0.0.0.0` (image) / `127.0.0.1` (bare binary) | The admin API has no auth (#439). The bare binary binds loopback; the image binds wide because a Docker published port forwards to the container's bridge address and cannot reach an in-container loopback bind. **In a container the `-p` publish is the exposure control**, not this variable: publish as `-p 127.0.0.1:8443:8443` for operator-only access, or drop the publish. A plain `-p 8443:8443` exposes unauthenticated admin control to every host that can route to the port. Launcher telemetry ingest is also served on the login port (`8081`), so launchers on other hosts don't need `8443`. |
 | `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below. Note this differs from the non-container default (`port=5433`). |
-| `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
+| `DEVELOPER_MODE` | `false` | Skips the client protocol-digest check at login. It never bypasses the password check while `DB_URL` is set. Images built before this default changed shipped `true`; see [Database login check](#database-login-check). |
 | `RUST_LOG` | `info` | tracing-subscriber filter |
 
 Not baked into the image, but read by the server and worth setting on a real deployment:
@@ -99,6 +99,8 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests per peer address per minute on the anonymous launcher-summary route; `0` disables. Everyone behind one address shares it, so raise it for a large deployment behind one. See [telemetry operations](telemetry.md). |
 | `DISCORD_CONFIG_TOML` | (unset) | Read by the entrypoint, not the server: when set, its contents are written to `/opt/cimmeria/config/discord.toml` (mode 0440) before the server starts. [`docker/compose.discord.yml`](../../docker/compose.discord.yml) sets it. Unset leaves any existing file alone. |
 | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | (unset) | Extra `Host` header values the lab MCP endpoint accepts, comma-separated, on top of `localhost`, `127.0.0.1` and `::1`. [`docker/compose.lab.yml`](../../docker/compose.lab.yml) sets it to `CIMMERIA_WG_IP`. |
+
+> `DB_URL` must not be empty in this image. An empty value makes the server run with no database, so the container refuses to start with it (see [Database login check](#database-login-check)).
 
 > `DB_URL` must be in libpq key-value form, not URL DSN form. `crates/services/src/orchestrator_postgres.rs::ensure_postgresql_running` parses `host=` / `port=` tokens to decide whether to auto-start the bundled Postgres. A URL like `postgres://...` would silently fall back to `localhost:5433` and emit warnings, even though sqlx itself accepts either form.
 
@@ -129,7 +131,7 @@ docker run ...   # same flags as before — the entrypoint reseeds pgdata on sta
 - `data/cache/*.pak` — cooked game data (22 files, required at runtime).
 - `data/spaces/*.nav` — navmeshes (5 files, optional but shipped — without them combat AI / line-of-sight degrades).
 - Postgres 17.9 + pgdata pre-loaded from `db/database.sql` (schema + seeds, `\ir`'d from `db/sgw/` and `db/resources/`).
-- s6-overlay v3 supervising postgres + cimmeria-server. Postgres starts first, server waits for `pg_isready`, server death brings the container down so the orchestrator restarts it cleanly.
+- s6-overlay v3 supervising postgres + cimmeria-server. Postgres starts first, the server waits for `pg_isready` and then for a working login with `DB_URL`, and server death brings the container down so the orchestrator restarts it cleanly.
 
 ## What's NOT inside
 
@@ -148,7 +150,7 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 ## Healthcheck
 
 `HEALTHCHECK` checks two things:
-1. `pg_isready` against the bundled Postgres.
+1. `psql -d "$DB_URL" -c 'SELECT 1'`: the server's own connection string can log in and run a query. `pg_isready` alone passes while the user, password or database name is wrong.
 2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
 
 It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing it marked every container unhealthy. A bound port also says nothing about whether a login works, which is why the CI smoke below logs in.
@@ -180,6 +182,29 @@ bash tools/container-smoke.sh cimmeria-server:local /tmp/probe/login-probe /tmp/
 ```
 
 In `release-container.yml` the order is: build for scan, Trivy, export the probe, push the dated tag, smoke, then promote `latest-prerelease`. A smoke failure ends the job before the promote, so the rolling tag never points at an image that fails to log in. The dated tag is already pushed by then; it is immutable, and the next release's version step skips past it.
+
+## Database login check
+
+The server never runs without the database `DB_URL` names. Three layers enforce it:
+
+1. **Before the server starts**, the s6 run script ([`docker/s6/cimmeria-server/run`](../../docker/s6/cimmeria-server/run)) waits for `pg_isready`, then logs in with `psql -d "$DB_URL" -c 'SELECT 1'`. It retries `DB_AUTH_CHECK_ATTEMPTS` times (default 10, one second apart), then prints psql's error, which names the host, user and database but never the password, and exits 1. An empty `DB_URL` exits 1 at once.
+2. **The server itself** refuses to start when `DB_URL` is set and the connection fails or times out (30 s). It logs `reason=database_connect_failed` and exits 1.
+3. **The container exits non-zero.** The s6 finish script ([`docker/s6/cimmeria-server/finish`](../../docker/s6/cimmeria-server/finish)) passes the server's non-zero exit code on as the container's, so `docker ps -a` shows `Exited (1)`, not a clean stop, and a `restart:` policy retries it.
+
+To check it by hand, start the image with a database name that does not exist and confirm it exits 1 without binding the login port:
+
+```bash
+docker run --name dbcheck \
+  -e DB_URL="host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=does_not_exist" \
+  ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
+docker inspect -f '{{.State.ExitCode}}' dbcheck   # 1
+docker logs dbcheck 2>&1 | grep 'cannot log in to the database'
+docker rm dbcheck
+```
+
+`pr-container.yml` runs the same check on every container PR. The bundled Postgres trusts loopback connections, so in this image a wrong password is not refused, but a wrong user or database name is. Against an external Postgres that checks passwords, a wrong password fails the same way.
+
+The login fallback that accepts any credential as account 1 with access level 99 now needs developer mode **and** an empty `DB_URL`, and logs a WARN (`reason=dev_mode_no_db_login`) at startup and on every login it accepts. This image never meets the second condition.
 
 ## Logs
 

@@ -163,6 +163,9 @@ pub async fn start_auth(developer_mode: bool, shard: ShardInfo) -> (AuthService,
         let config = ServerConfig {
             developer_mode,
             logon_port: port,
+            // No database configured: in developer mode the fallback login
+            // applies; without it every login is refused.
+            db_connection_string: String::new(),
             ..ServerConfig::loopback()
         };
         let mut auth = AuthService::new(&config);

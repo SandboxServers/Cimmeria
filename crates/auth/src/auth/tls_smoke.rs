@@ -16,10 +16,11 @@
 //!   verifies against the decoded one (live DB), and malformed entity syntax
 //!   is refused with a logged reason that never quotes the password.
 //!
-//! The first two tests run in `developer_mode` so no DB is required — the
-//! credential check is short-circuited exactly as the plain-HTTP
-//! `login_smoke` does. The escaped-password test needs the real credential
-//! check, so it is live-DB.
+//! The first two tests run in `developer_mode` with no database configured
+//! (`db_connection_string` empty), so no DB is required — the credential
+//! check is short-circuited exactly as the plain-HTTP `login_smoke` does.
+//! The escaped-password test needs the real credential check, so it is
+//! live-DB.
 
 use std::net::TcpListener as StdTcpListener;
 use std::path::PathBuf;
@@ -104,6 +105,13 @@ async fn start_tls_auth(shard_name: &str, db: Option<Arc<PgPool>>) -> TlsAuth {
                 auth_tls_cert_path: Some(cert_path.clone()),
                 auth_tls_key_path: Some(key_path.clone()),
                 developer_mode: db.is_none(),
+                // No pool means no database configured, so the developer
+                // fallback login applies; with a pool the real check runs.
+                db_connection_string: if db.is_none() {
+                    String::new()
+                } else {
+                    ServerConfig::loopback().db_connection_string
+                },
                 ..ServerConfig::loopback()
             };
             let mut auth = AuthService::new(&config);

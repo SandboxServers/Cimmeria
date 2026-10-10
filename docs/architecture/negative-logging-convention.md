@@ -266,6 +266,24 @@ Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
 
+## Database startup and credential-check seams
+
+A configured database (`DB_URL` not empty) is required. The server
+refuses to start without it, and Phase 1 never accepts a credential it
+could not check. These rows say which state the server is in:
+
+| Seam | Level | `reason` | Meaning |
+|---|---|---|---|
+| `orchestrator_database.rs::connect_database` | `error!` | `database_connect_failed` | `DB_URL` is set and the connection failed or timed out (refused, wrong user, password or database). `start_all` returns `DatabaseFailed` and the process exits 1. Field: `error`. |
+| `orchestrator_database.rs::connect_database` | `warn!` | `no_database_configured` | `DB_URL` is empty: the server starts with no database. Field: `developer_mode`. |
+| `AuthService::start` (once) and `handle_user_auth` (each login) | `warn!` | `dev_mode_no_db_login` | Developer mode with no database configured: every well-formed login is accepted unchecked as account 1, access level 99. Developer use only. |
+| `AuthService::start` (once) and `handle_user_auth` (each login) | `error!` | `db_pool_missing` | A database is configured but the auth service has no pool. The orchestrator never starts this way, so it is a wiring fault; every login is refused with code 10. |
+| `AuthService::start` (once) and `handle_user_auth` (each login) | `error!` | `no_database` | No database and developer mode off: every login is refused with code 10. |
+
+The guards are the `start_all_fails_when_configured_database_*` tests in
+`crates/services/src/orchestrator_database.rs` and the
+`dev_mode_*` / `no_dev_mode_*` tests in `crates/auth/src/auth/handlers.rs`.
+
 ## NPC attack-animation seams (NA43)
 
 An NPC attack that cannot resolve its Ability_End `onSequence` still
