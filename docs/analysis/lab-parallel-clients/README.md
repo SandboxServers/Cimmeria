@@ -113,4 +113,5 @@ Not fixed here (follow-ups):
 | LP-05b1 | Account-name routing and per-instance lease tools (split from LP-05b) | LP-05a | merged (2 review rounds, fixed by the Haiku coder) |
 | LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | merged (2 review rounds, fixed by the Haiku coder; guard verified to fail on revert) |
 | LP-06 | Watchdog boot grace | none | merged, #1320 (test-gap fix) |
+| LP-08 | Instance profiles outside the game install (found by LP-07: SGW.exe refuses a user folder inside its install) | LP-01 | merged (1 review round, fixed by the Haiku coder) |
 | LP-07 | Live UAT: five clients, one daemon, five leases | all | planned |
