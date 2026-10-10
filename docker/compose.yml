@@ -79,22 +79,30 @@ services:
       # port, e.g. http://<public-host>:8081/api/telemetry. Blank falls back
       # to http://localhost:8443/api/telemetry, usable only on this host.
       CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT: "${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}"
-      # Two optional operator controls, from the same .env file. Blank (no
-      # line in .env) keeps the server's defaults: ingest on, and 12
-      # requests per address per minute on /api/telemetry/launcher-summary.
+      # Optional operator controls, from the same .env file. Blank (no
+      # line in .env) keeps the server's defaults: ingest on, 12 requests
+      # per address per minute on /api/telemetry/launcher-summary, 600
+      # chunk uploads per address per minute and 30 bundle uploads per
+      # address per hour.
       #
-      # Pause the dev-session mint, the refresh and the launcher-summary
-      # route (503). Only the literal 1 does it:
+      # Pause the dev-session mint, the refresh, the launcher-summary
+      # route and the uploads (503). Only the literal 1 does it:
       #   CIMMERIA_TELEMETRY_KILL_SWITCH=1
       # The launcher-summary rate limit; 0 turns it off. 12 a minute is
       # shared by everyone behind one address; raise it for a large
       # deployment behind one:
       #   CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60
-      # Either change needs the container recreated, which restarts the
+      # The per-address upload limits, shared the same way; 0 turns one
+      # off:
+      #   CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP=3000
+      #   CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP=150
+      # Any change needs the container recreated, which restarts the
       # game server and reseeds the database (see below). Recipes:
       # docs/operations/telemetry.md, "Kill switch" and "Changing a quota".
       CIMMERIA_TELEMETRY_KILL_SWITCH: "${CIMMERIA_TELEMETRY_KILL_SWITCH:-}"
       CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
+      CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP:-}"
+      CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP:-}"
       RUST_LOG: "${RUST_LOG:-info}"
     # No volume for /var/lib/postgresql/data on purpose: the entrypoint
     # (docker/entrypoint.sh) reseeds it from the image on every container

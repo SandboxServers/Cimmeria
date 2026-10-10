@@ -53,8 +53,9 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/tail.rs` | Polling tailer (2 s) over `Binaries/sessions/*.log` + `sgwdebuglog*`. Handles per-minute Atera rotation. |
 | `crates/launcher/src/telemetry/events.rs` | NDJSON event schema + Atera log-line parser. |
 | `crates/launcher/src/telemetry/queue.rs` | Crash-safe on-disk JSONL queue (100 MiB cap, drop-oldest). |
-| `crates/launcher/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`. |
-| `crates/launcher/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`. |
+| `crates/launcher/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`, and the split of a drained queue into chunks. |
+| `crates/launcher/src/telemetry/flush.rs` | Flushes the queue as chunks of at most `chunk_max_bytes` of NDJSON and 1,000 rows. A 413, or any 4xx but 401, 408 and 429, drops that chunk into the dropped-lines count; a 429 or 503 holds further flushes off for its `Retry-After`; any other failure re-queues the unsent chunks. |
+| `crates/launcher/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`, carrying the log files written to since the session started. |
 | `crates/launcher/src/telemetry/session.rs` | `current-session.json` writer (reserved for future Lua-side hook). |
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |
 | `crates/launcher/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
@@ -203,11 +204,13 @@ session and injects the client patches only.
    b. parse_client_log_line → TelemetryEvent
    c. telemetry.enqueue (writes to DiskQueue)
    d. telemetry.refresh_if_due (rotates token at 75% TTL elapsed)
-   e. telemetry.flush → POST /api/upload-chunk (gzip NDJSON)
+   e. telemetry.flush → POST /api/upload-chunk (gzip NDJSON), one chunk
+      per chunk_max_bytes / 1,000 rows of the drained queue
 5. process_watch::wait_for_exit resolves
 6. Final tick + final flush
 7. telemetry.upload_bundle:
-   a. build zip via logs::build_log_zip
+   a. build zip via logs::build_session_log_zip (files modified since
+      the session started, less 10 s)
    b. multipart POST /api/upload-bundle (metadata JSON + zip)
 8. Worker emits Event::TelemetrySessionComplete(outcome)
 ```
@@ -348,7 +351,7 @@ Three things stand in for the authentication the mint endpoint does
 not have.
 
 **Scope.** A minted token carries only `telemetry.write`, and
-`verify_bearer` in `crates/admin-api/src/routes/telemetry/handlers.rs`
+`verify_bearer` in `crates/admin-api/src/routes/telemetry/upload_gate.rs`
 refuses a token without it. The scope is checked at ingest rather
 than assumed from the mint path, so narrowing what a token may do
 stays a one-line change on the server.
@@ -361,6 +364,22 @@ address shared with real launchers cannot lock them out. Over quota
 returns 429 with a `Retry-After` the launcher's back-off path already
 honours. Defaults and env-var names are in
 [telemetry.md](../operations/telemetry.md#mint-and-refresh-quotas).
+
+**Upload limits.** Because a token costs nothing to mint, the upload
+routes cannot trust a token holder either. Each upload passes the kill
+switch, the token, a per-session and a per-address rate quota and a
+concurrency slot (server-wide, and one per address) before its body is
+read, and the body has a deadline. The compressed size is refused past
+its cap (413). The expansion budgets, expanded bytes and rows for a
+chunk and files, expanded bytes and lines for a bundle, truncate
+instead: what fits is replayed and the answer is a 200 with
+`truncated: true`. Launchers released before these limits post their
+whole queue as one chunk and re-queue it on any error, and bundle every
+past session's logs, so a refusal there would be retried forever. Past the per-session event
+budget, priority rows have an allowance of their own rather than a
+bypass. Client strings are length-capped before they reach a log row.
+Values and refusal rows: [telemetry.md § Upload size and rate
+limits](../operations/telemetry.md#upload-size-and-rate-limits).
 
 Two properties are worth stating because they shaped the
 implementation:

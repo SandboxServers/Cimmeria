@@ -27,6 +27,56 @@ pub enum ChunkError {
     TokenRejected,
     #[error("Kill switch active (503) — retry after {retry_after_secs}s")]
     KillSwitch { retry_after_secs: u64 },
+    #[error("Rate limited (429) — retry after {retry_after_secs}s")]
+    RateLimited { retry_after_secs: u64 },
+    /// A 4xx other than 401, 408 and 429 (413 too large, 400 not gzip,
+    /// ...): the server will never take this chunk. The caller drops it
+    /// rather than re-queueing it, or it would be refused on every retry.
+    #[error("Chunk rejected ({status}): {body}")]
+    Rejected { status: u16, body: String },
+}
+
+impl ChunkError {
+    /// The wait a 429 or 503 asked for, if it was one.
+    pub fn retry_after_secs(&self) -> Option<u64> {
+        match self {
+            ChunkError::KillSwitch { retry_after_secs }
+            | ChunkError::RateLimited { retry_after_secs } => Some(*retry_after_secs),
+            _ => None,
+        }
+    }
+}
+
+/// Rows per chunk. The server replays up to 10,000 rows of one chunk; the
+/// launcher stays well under it so a chunk is never cut there.
+pub const MAX_CHUNK_ROWS: usize = 1_000;
+
+/// Split `events` into consecutive batches of at most `max_rows` rows and
+/// at most `max_bytes` of NDJSON each (the mint's `chunk_max_bytes`, before
+/// gzip). An event larger than `max_bytes` on its own goes alone. Returns
+/// index ranges into `events`, in order.
+pub fn split_batches(
+    events: &[TelemetryEvent],
+    max_bytes: u64,
+    max_rows: usize,
+) -> Result<Vec<std::ops::Range<usize>>, ChunkError> {
+    let max_rows = max_rows.max(1);
+    let mut batches = Vec::new();
+    let (mut start, mut bytes) = (0usize, 0u64);
+    for (i, ev) in events.iter().enumerate() {
+        let len = serde_json::to_vec(ev)?.len() as u64 + 1;
+        let rows = i - start;
+        if rows > 0 && (rows >= max_rows || bytes + len > max_bytes) {
+            batches.push(start..i);
+            start = i;
+            bytes = 0;
+        }
+        bytes += len;
+    }
+    if start < events.len() {
+        batches.push(start..events.len());
+    }
+    Ok(batches)
 }
 
 /// Serialize events to NDJSON, gzip, return the compressed bytes.
@@ -77,7 +127,20 @@ pub async fn post_chunk(
             retry_after_secs: retry_after,
         });
     }
+    if status.as_u16() == 429 {
+        return Err(ChunkError::RateLimited {
+            retry_after_secs: parse_retry_after(&resp),
+        });
+    }
     let body = resp.text().await.unwrap_or_default();
+    // 401 and 429 are handled above; 408 is a timeout worth retrying.
+    // Every other 4xx says this chunk itself is unacceptable.
+    if status.is_client_error() && status.as_u16() != 408 {
+        return Err(ChunkError::Rejected {
+            status: status.as_u16(),
+            body,
+        });
+    }
     Err(ChunkError::Status {
         status: status.as_u16(),
         body,
@@ -224,6 +287,44 @@ mod tests {
         match err {
             ChunkError::KillSwitch { retry_after_secs } => assert_eq!(retry_after_secs, 120),
             other => panic!("expected KillSwitch, got {other:?}"),
+        }
+    }
+
+    // A 4xx other than 401/408/429 is a rejection the flush drops; 429 is
+    // a back-off; 408 is an ordinary retryable status.
+    #[tokio::test]
+    async fn post_chunk_classifies_client_errors() {
+        for (status, retry) in [
+            (413u16, None),
+            (400, None),
+            (422, None),
+            (429, Some("30")),
+            (408, None),
+        ] {
+            let server = MockServer::start().await;
+            let mut resp = ResponseTemplate::new(status);
+            if let Some(r) = retry {
+                resp = resp.insert_header("retry-after", r);
+            }
+            Mock::given(method("POST"))
+                .and(path("/api/upload-chunk"))
+                .respond_with(resp)
+                .mount(&server)
+                .await;
+            let http = reqwest::Client::new();
+            let err = post_chunk(&http, &format!("{}/api", server.uri()), "t", &[ev(0)])
+                .await
+                .unwrap_err();
+            match (status, err) {
+                (400 | 413 | 422, ChunkError::Rejected { status: s, .. }) => {
+                    assert_eq!(s, status);
+                }
+                (408, ChunkError::Status { status: 408, .. }) => {}
+                (429, e @ ChunkError::RateLimited { .. }) => {
+                    assert_eq!(e.retry_after_secs(), Some(30));
+                }
+                (s, other) => panic!("{s}: unexpected {other:?}"),
+            }
         }
     }
 

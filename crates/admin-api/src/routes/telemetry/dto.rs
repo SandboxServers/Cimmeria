@@ -86,6 +86,13 @@ pub(super) struct ChunkResponse {
     /// event budget (`session_budget`). The launcher and the DLL ignore
     /// the body; the server's `launcher.ingest` warn is the report.
     pub suppressed: u64,
+    /// The chunk passed an expansion budget (decompressed bytes or rows):
+    /// only the rows before it were parsed and replayed, the rest were
+    /// dropped. Additive; uploaders that predate it ignore it.
+    pub truncated: bool,
+    /// Rows skipped because they were not UTF-8 or not an event the server
+    /// knows. Additive.
+    pub bad_rows: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +101,9 @@ pub(super) struct BundleResponse {
     pub files: u64,
     /// Number of lines replayed through tracing across all files.
     pub lines: u64,
+    /// The bundle passed an expansion budget (entries, expanded bytes or
+    /// lines): replay stopped there, newest files first. Additive.
+    pub truncated: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -110,8 +120,62 @@ pub(super) enum IngestError {
     Zip(String),
     #[error("multipart parse failed: {0}")]
     Multipart(String),
-    #[error("ndjson parse failed at line {line}: {err}")]
-    Ndjson { line: u64, err: String },
+    /// The upload passed one of its budgets (expanded bytes, rows, zip
+    /// entries, lines). Processing stopped at the first one hit.
+    #[error("Upload exceeds the {what} limit ({limit})")]
+    OverBudget { what: &'static str, limit: u64 },
+    /// The request body failed part-way (broken framing, a peer that left).
+    #[error("request body could not be read")]
+    Body,
+    /// Every upload slot of the route is in use.
+    #[error("Telemetry ingest is busy, retry shortly")]
+    Busy,
+}
+
+impl IngestError {
+    /// `Retry-After` on an [`IngestError::Busy`] answer, in seconds: about
+    /// two uploader flushes.
+    pub(super) const BUSY_RETRY_AFTER_SECS: u64 = 5;
+
+    /// The refusal's `reason` on its log row: a fixed string, never
+    /// anything the caller sent.
+    pub(super) fn reason(&self) -> &'static str {
+        match self {
+            IngestError::Auth(AuthError::KillSwitchActive) => "kill_switch",
+            IngestError::Auth(AuthError::QuotaExceeded(_)) => "rate_limited",
+            IngestError::Auth(AuthError::SecretMissing | AuthError::SecretTooShort { .. }) => {
+                "secret_unusable"
+            }
+            IngestError::Auth(AuthError::Expired { .. }) => "token_expired",
+            IngestError::Auth(_) => "bad_token",
+            IngestError::MissingAuth => "missing_token",
+            IngestError::TooLarge(_, _) => "body_too_large",
+            IngestError::Gzip(_) => "bad_gzip",
+            IngestError::Zip(_) => "bad_zip",
+            IngestError::Multipart(_) => "bad_multipart",
+            IngestError::OverBudget { .. } => "over_budget",
+            IngestError::Body => "body_read_failed",
+            IngestError::Busy => "busy",
+        }
+    }
+
+    /// The budget a refusal names, for its log row.
+    pub(super) fn budget(&self) -> Option<&'static str> {
+        match self {
+            IngestError::OverBudget { what, .. } => Some(what),
+            IngestError::TooLarge(_, _) => Some("body bytes"),
+            _ => None,
+        }
+    }
+
+    /// The limit a refusal hit, for its log row.
+    pub(super) fn limit(&self) -> Option<u64> {
+        match self {
+            IngestError::OverBudget { limit, .. } => Some(*limit),
+            IngestError::TooLarge(_, cap) => Some(*cap as u64),
+            _ => None,
+        }
+    }
 }
 
 impl IntoResponse for IngestError {
@@ -123,7 +187,16 @@ impl IntoResponse for IngestError {
             IngestError::Gzip(_) | IngestError::Zip(_) | IngestError::Multipart(_) => {
                 StatusCode::BAD_REQUEST
             }
-            IngestError::Ndjson { .. } => StatusCode::BAD_REQUEST,
+            IngestError::OverBudget { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+            IngestError::Body => StatusCode::BAD_REQUEST,
+            IngestError::Busy => {
+                let mut resp = (StatusCode::SERVICE_UNAVAILABLE, self.to_string()).into_response();
+                resp.headers_mut().insert(
+                    axum::http::header::RETRY_AFTER,
+                    axum::http::HeaderValue::from(Self::BUSY_RETRY_AFTER_SECS),
+                );
+                return resp;
+            }
         };
         (status, self.to_string()).into_response()
     }
