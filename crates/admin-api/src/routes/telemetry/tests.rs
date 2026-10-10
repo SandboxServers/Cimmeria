@@ -9,8 +9,8 @@ use std::io::Write;
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::{ClientNativeEvent, IngestError, TelemetryEvent};
-use super::handlers::verify_bearer;
 use super::replay_native::replay_client_native;
+use super::upload_gate::verify_bearer;
 
 fn gzip_lines(lines: &[&str]) -> Vec<u8> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());

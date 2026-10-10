@@ -348,7 +348,7 @@ Three things stand in for the authentication the mint endpoint does
 not have.
 
 **Scope.** A minted token carries only `telemetry.write`, and
-`verify_bearer` in `crates/admin-api/src/routes/telemetry/handlers.rs`
+`verify_bearer` in `crates/admin-api/src/routes/telemetry/upload_gate.rs`
 refuses a token without it. The scope is checked at ingest rather
 than assumed from the mint path, so narrowing what a token may do
 stays a one-line change on the server.
@@ -361,6 +361,17 @@ address shared with real launchers cannot lock them out. Over quota
 returns 429 with a `Retry-After` the launcher's back-off path already
 honours. Defaults and env-var names are in
 [telemetry.md](../operations/telemetry.md#mint-and-refresh-quotas).
+
+**Upload limits.** Because a token costs nothing to mint, the upload
+routes cannot trust a token holder either. Each upload passes the kill
+switch, the token, a per-session and a per-address rate quota and a
+server-wide concurrency slot before its body is read, then fixed budgets
+on compressed size, expanded size, rows (chunks) or entries and lines
+(bundles), refusing at the first one hit. Past the per-session event
+budget, priority rows have an allowance of their own rather than a
+bypass. Client strings are length-capped before they reach a log row.
+Values and refusal rows: [telemetry.md § Upload size and rate
+limits](../operations/telemetry.md#upload-size-and-rate-limits).
 
 Two properties are worth stating because they shaped the
 implementation:

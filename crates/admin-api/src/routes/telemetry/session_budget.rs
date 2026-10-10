@@ -11,9 +11,12 @@
 //! Over budget, the chunk is still accepted (a refused chunk is retried by
 //! the uploader and would only add load), but only **priority** events are
 //! replayed: warn/error levels, session metadata, and the DLL's boot, hook,
-//! entity-lifecycle, Mercury-anomaly and governor reports. Everything else
-//! is counted as suppressed, and the handler logs every chunk that
-//! suppressed something at `warn` with the session's totals. Never silent.
+//! entity-lifecycle, Mercury-anomaly and governor reports. They have an
+//! allowance of their own, [`PRIORITY_EVENTS_PER_WINDOW`], so a client that
+//! marks every row as a warning is held too. Everything else, and priority
+//! events past their allowance, is counted as suppressed, and the handler
+//! logs every chunk that suppressed something at `warn` with the session's
+//! totals. Never silent.
 //!
 //! The table holds at most [`MAX_SESSIONS`] sessions. A new session evicts
 //! the least recently seen session whose window has already ended, so an
@@ -35,6 +38,12 @@ pub(super) const WINDOW_SECS: i64 = 60;
 /// Events replayed per session per window before only priority events are.
 pub(super) const EVENTS_PER_WINDOW: u64 = 30_000;
 
+/// Priority events replayed per session per window once
+/// [`EVENTS_PER_WINDOW`] is spent: 50 a second of warnings, errors and
+/// must-keep DLL rows, far above what a client that is merely noisy sends.
+/// Past it, priority events are suppressed and counted like the rest.
+pub(super) const PRIORITY_EVENTS_PER_WINDOW: u64 = 3_000;
+
 /// Sessions tracked at once.
 pub(super) const MAX_SESSIONS: usize = 1024;
 
@@ -53,6 +62,9 @@ pub(super) struct SessionTotals {
     pub(super) window_start: i64,
     /// Events counted against the current window.
     pub(super) window_count: u64,
+    /// Priority events replayed past the window's budget, against
+    /// [`PRIORITY_EVENTS_PER_WINDOW`].
+    pub(super) window_priority_extra: u64,
     /// Last time the session uploaded, in seconds.
     pub(super) last_seen: i64,
 }
@@ -62,6 +74,7 @@ pub(super) struct SessionTotals {
 pub(super) struct SessionLedger {
     sessions: HashMap<String, SessionTotals>,
     budget: u64,
+    priority_allowance: u64,
     window_secs: i64,
     max_sessions: usize,
 }
@@ -78,13 +91,23 @@ impl SessionLedger {
         Self {
             sessions: HashMap::new(),
             budget,
+            priority_allowance: PRIORITY_EVENTS_PER_WINDOW,
             window_secs,
             max_sessions,
         }
     }
 
+    /// The same ledger with its own priority allowance, for tests.
+    #[cfg(test)]
+    pub(super) fn with_priority_allowance(mut self, allowance: u64) -> Self {
+        self.priority_allowance = allowance;
+        self
+    }
+
     /// Decide for one event of session `sid` at `now_secs`: `true` means
-    /// replay it. Priority events are always replayed (and counted).
+    /// replay it. Every event spends the window's budget while it lasts;
+    /// past it, priority events spend the priority allowance, and an event
+    /// with neither left is suppressed (and counted).
     pub(super) fn admit(&mut self, sid: &str, priority: bool, now_secs: i64) -> bool {
         let key = self.slot_for(sid, now_secs);
         let t = self.sessions.entry(key).or_insert(SessionTotals {
@@ -95,9 +118,14 @@ impl SessionLedger {
         if now_secs - t.window_start >= self.window_secs {
             t.window_start = now_secs;
             t.window_count = 0;
+            t.window_priority_extra = 0;
         }
-        if priority || t.window_count < self.budget {
+        if t.window_count < self.budget {
             t.window_count += 1;
+            t.accepted_total += 1;
+            true
+        } else if priority && t.window_priority_extra < self.priority_allowance {
+            t.window_priority_extra += 1;
             t.accepted_total += 1;
             true
         } else {

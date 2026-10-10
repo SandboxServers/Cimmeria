@@ -51,8 +51,8 @@ The server reads `std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET")` at
 mint and upload-verify time through a single loader,
 `crates/admin-api/src/routes/dev_session.rs::load_secret` (line 266).
 The ingest side deliberately calls that same function rather than
-loading the secret itself — see
-`crates/admin-api/src/routes/telemetry/handlers.rs:268-271`.
+loading the secret itself — see `verify_bearer` in
+`crates/admin-api/src/routes/telemetry/upload_gate.rs`.
 
 The `SandboxServers/Cimmeria-MCP` repo previously held a mirror copy
 of this secret for token verification on its end of the upload flow.
@@ -223,19 +223,20 @@ see [the lab guide](../guides/live-research-lab.md).
 `CIMMERIA_TELEMETRY_KILL_SWITCH=1` on the cimmeria-server process →
 every `/api/auth/dev-session` call returns 503 with `Retry-After: 60`.
 The launcher logs a warn and continues launching the game without
-telemetry. In-flight upload requests are NOT rejected by the kill
-switch — they complete using the token they already hold — but new
-sessions can't start until the switch is released.
+telemetry. Uploads stop too, including those from sessions that
+started before the switch was thrown: a token already issued does not
+get past it. The launcher keeps its queued events on disk and retries
+after `Retry-After`; the DLL keeps its batch, as for any failed upload.
 
-Three routes check the switch, and two do not:
+Every telemetry route checks the switch:
 
 | Route | Under the kill switch |
 |---|---|
 | `/api/auth/dev-session` (every session kind) | 503 + `Retry-After: 60` |
 | `/api/auth/dev-session/refresh` | 503 + `Retry-After: 60` |
 | `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota is charged and before anything the caller sent, the body included, is read |
-| `/api/telemetry/upload-chunk` | Not checked: answers as usual |
-| `/api/telemetry/upload-bundle` | Not checked: answers as usual |
+| `/api/telemetry/upload-chunk` | 503 + `Retry-After: 60`, before the token is checked or the body read |
+| `/api/telemetry/upload-bundle` | 503 + `Retry-After: 60`, before the token is checked or the body read |
 
 ```bash
 # Pause ingest without redeploy
@@ -313,6 +314,10 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
 | `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per minute (owner decision, 2026-10-04). The window is a fixed 60 s of the route's own. The route is anonymous, so this is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
+| `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_SESSION` | `120` | Requests to `/api/telemetry/upload-chunk` per session (the token's `session_id`) per minute. The launcher and its DLL share one token and each post about every 2 s. See [Upload size and rate limits](#upload-size-and-rate-limits). |
+| `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` | `600` | Requests to `/api/telemetry/upload-chunk` per peer address per minute, across every session behind it. |
+| `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_SESSION` | `6` | Requests to `/api/telemetry/upload-bundle` per session per hour. |
+| `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP` | `30` | Requests to `/api/telemetry/upload-bundle` per peer address per hour. |
 
 Setting a quota to `0` disables that counter. A value that does not
 parse falls back to the default rather than refusing to serve — an
@@ -351,10 +356,12 @@ Recreating the container restarts the game server and reseeds its
 database, as under [Kill switch](#kill-switch), and this compose form has
 not been run on the colo either.
 
-`docker/compose.yml` passes four telemetry variables to the server:
+`docker/compose.yml` passes six telemetry variables to the server:
 `CIMMERIA_TELEMETRY_HMAC_SECRET`, `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`,
-`CIMMERIA_TELEMETRY_KILL_SWITCH` and
-`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`. The other variables in the
+`CIMMERIA_TELEMETRY_KILL_SWITCH`,
+`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`,
+`CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` and
+`CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP`. The other variables in the
 table above are not passed through: a line for one of them in `.env`
 reaches nothing until the variable is also added to the `cimmeria`
 service's `environment:` block.
@@ -374,6 +381,11 @@ rest of the window. Raise the limit there, or set it to `0`. Refresh
 is not exposed the same way, because it charges its main counter only
 after the token verifies.
 
+The per-address upload quotas share the same caveat: behind one proxy
+or NAT, every session counts against one address. 600 chunks a minute
+covers about ten sessions; raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP`
+(and `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP`) for more.
+
 ### Symptoms and what to change
 
 | Symptom | Cause | Fix |
@@ -382,11 +394,64 @@ after the token verifies.
 | Mint returns `400 Invalid branch: must not contain control characters` (or another metadata field) | The launcher sent a field with a control character or over 256 bytes; refused so it cannot forge a log line | Fix the launcher-side value; the server does not strip it |
 | One machine repeatedly refused while others are fine | A launcher relaunching in a loop | Investigate that install before raising `..._PER_INSTALL` |
 | Telemetry stops partway through a very long session | Session passed `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | Expected; the next launch mints a fresh session. Raise the cap only with a reason |
+| Uploads answer 429, server logs a WARN on `launcher.ingest` with `reason=rate_limited` | Many sessions behind one address, or one uploader posting too often | Raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` for a shared address; investigate a single session first |
+| Uploads answer 413, `reason=over_budget` with a `budget` | One upload passed a size budget | See [Upload size and rate limits](#upload-size-and-rate-limits); the budgets are fixed in code |
 
 Session-lifetime cap: `iat` records the original mint and is not
 reset by a refresh, so chained refreshes cannot extend one token
 indefinitely. Near the cap the last refresh hands back a token
 expiring exactly at the deadline rather than a full 8 hours past it.
+
+## Upload size and rate limits
+
+`/api/telemetry/upload-chunk` and `/api/telemetry/upload-bundle` check,
+in this order and before any of the body is read: the kill switch (503),
+the bearer token (401), the session's and then the address's rate quota
+(429 + `Retry-After`, see the table above), and a free upload slot (503 +
+`Retry-After: 5`; 4 chunks and 2 bundles are worked on at once
+server-wide). Then the body is read against fixed size budgets, and the
+first budget an upload passes refuses it with 413:
+
+| Route | Budget | Limit | Why this value |
+|---|---|---|---|
+| chunk | compressed body | 4 MiB | The launcher is told to send 1 MiB of NDJSON per chunk (`chunk_max_bytes`), which gzips far smaller |
+| chunk | decompressed NDJSON | 8 MiB | 8× `chunk_max_bytes`; 4× the DLL's largest retained batch |
+| chunk | rows | 10,000 | 5× the DLL's largest retained batch (`max_batch` 1,000, about 2,000 after a failed POST) |
+| bundle | zip part | 32 MiB | A session's logs are about 50 MiB before zipping |
+| bundle | `metadata` part | 16 KiB | A dozen JSON fields |
+| bundle | multipart parts, zip parts | 8, 1 | The launcher sends one of each |
+| bundle | zip entries | 1,024 | Session logs rotate every minute; a long session leaves a few hundred |
+| bundle | expanded bytes, all entries | 64 MiB | Checked on the declared sizes before anything is expanded, then on the bytes read |
+| bundle | replayed lines | 250,000 | Lines replayed before the budget stay replayed |
+
+A refused chunk replays nothing. Uploaded strings are cut before they
+reach a log row: log messages to 4 KiB, file names, levels, categories and
+event names to 256 bytes, each value in a DLL `fields` bag to 2 KiB, and
+the bag to 64 keys. A cut value ends in `...[truncated, N bytes]`, with
+the original length, and a cut bag gains `_truncated_keys`.
+
+Every refusal writes a `warn` on `launcher.ingest`:
+
+```text
+service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
+  AND route IN ('upload-chunk', 'upload-bundle')
+```
+
+with `reason` (`kill_switch`, `missing_token`, `bad_token`,
+`token_expired`, `rate_limited`, `busy`, `body_too_large`, `over_budget`,
+`bad_gzip`, `bad_ndjson`, `bad_zip`, `bad_multipart`, `body_read_failed`,
+`secret_unusable`),
+`budget` and `limit` for a size refusal, `peer`, and `session_id` /
+`install_id` once the token verified. The row never carries the payload.
+Repeats are throttled: one row per uploader and reason per 10 s, the next
+row's `suppressed` counting the ones held back, and at most 50 rows per
+10 s in all.
+
+The launcher posts its whole on-disk queue as one chunk, so a backlog
+left by a launcher that was killed mid-session can pass the row or size
+budget. That chunk is refused on every retry until the launcher splits
+it; the refusal rows show `budget = rows` or `decompressed bytes` for
+that `session_id`.
 
 ## Where the data lives
 
@@ -402,7 +467,7 @@ server:
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events. Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled `warn` per refused upload, with its `route` and `reason` ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
@@ -483,7 +548,10 @@ Over the budget the chunk is still accepted, so the uploader does not
 retry it, but only warn/error rows, session metadata and the must-keep DLL
 families (boot, hooks, entity lifecycle, Mercury anomalies, governor
 reports, and the ability rows `client.ability.*`, which the DLL already
-throttles per name) are replayed. Every chunk that suppressed something logs:
+throttles per name) are replayed, up to 3,000 more per session per minute.
+Past that allowance they are suppressed too, so a client that marks every
+row as a warning is held like any other. Every chunk that suppressed
+something logs:
 
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
@@ -491,7 +559,7 @@ service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
 ```
 
 with `suppressed`, `session_accepted_total`, `session_suppressed_total`,
-`budget_per_window` and `window_secs`. The per-chunk `debug` line carries
+`budget_per_window`, `priority_allowance_per_window` and `window_secs`. The per-chunk `debug` line carries
 the same session totals. The session table holds 1,024 sessions. A new
 session evicts the least recently seen one whose one-minute window has
 ended; if every tracked session is inside its window, the newcomer is
@@ -645,14 +713,16 @@ While it is off:
 |---|---|---|---|
 | `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, or a lab session with `"session_kind": "lab"` (any other value is a 400). |
 | `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
-| `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
-| `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |
+| `/api/telemetry/upload-chunk` | POST | bearer, rate- and size-limited | Streaming events (gzip(NDJSON)). |
+| `/api/telemetry/upload-bundle` | POST | bearer, rate- and size-limited | End-of-session zip (multipart). |
 | `/api/telemetry/launcher-summary` | POST | none (anonymous), strict payload, rate-limited per address | Desktop-launcher attempt summaries (JSON). Takes no token. See [Launcher summaries](#launcher-summaries). |
 
-A 503 with `Retry-After` on the mint, the refresh or the summary route
-means the kill switch is on; the two upload routes do not check it.
-A 429 with `Retry-After` means a quota was hit — see
-[Mint and refresh quotas](#mint-and-refresh-quotas). A 401 on upload
+A 503 with `Retry-After: 60` on any of these routes means the kill switch
+is on; a 503 with `Retry-After: 5` on an upload route means every upload
+slot was busy. A 429 with `Retry-After` means a quota was hit — see
+[Mint and refresh quotas](#mint-and-refresh-quotas). A 413 on an upload
+route means it passed a size budget — see
+[Upload size and rate limits](#upload-size-and-rate-limits). A 401 on upload
 endpoints means the token expired, was never valid, or does not carry
 the `telemetry.write` scope; a 401 on refresh additionally means the
 session passed its lifetime cap, and the launcher's answer to all of
