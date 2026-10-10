@@ -37,6 +37,8 @@ jobs:
   # them; a skipped job reports as passed. docs/protocol/ always counts as
   # code, because cimmeria-patch-wire's tests read the dispatch tables there,
   # and so does tools/token-profile/, whose contract tests read its Markdown.
+  # The generated weapon-requirement audit doc counts as code: the
+  # test-live-db job's `--check` is what catches a hand edit to it.
   # Pushes to main always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
   changes:
@@ -61,6 +63,7 @@ jobs:
             nocode='\.md$|^\.claude/|^docs/.*\.(svg|png|jpe?g|gif)$'
             if ! echo "$files" | grep -Ev "$nocode" | grep -q . \
               && ! echo "$files" | grep -q '^docs/protocol/' \
+              && ! echo "$files" | grep -q '^docs/analysis/class-start-v6/weapon-requirement-audit\.md$' \
               && ! echo "$files" | grep -q '^tools/token-profile/'; then
               code=false
             fi

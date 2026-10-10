@@ -139,9 +139,13 @@ impl AbilityManager {
         self.known_abilities.contains(&ability_id)
     }
 
-    /// Add a known ability.
+    /// Add a known ability. The player now owns it outright, so a
+    /// weapon-granted tag on it is dropped: otherwise the next weapon change
+    /// would revoke an ability content or a trainer granted for good (597
+    /// Heal Focus is both a tutorial grant and a USE binding on 158 items).
     pub fn add_ability(&mut self, ability_id: i32) {
         self.known_abilities.insert(ability_id);
+        self.weapon_granted_abilities.remove(&ability_id);
     }
 
     /// Get the first known ability (for NPCs using their default attack).

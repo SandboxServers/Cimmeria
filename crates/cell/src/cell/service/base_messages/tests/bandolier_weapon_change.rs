@@ -151,7 +151,7 @@ async fn grant_into_the_active_slot_swaps_grants_and_drops_the_old_weapons_state
 #[tokio::test]
 async fn drag_unequip_of_the_active_weapon_revokes_its_attack() {
     let mut mgr = fixture();
-    deliver(
+    let methods = deliver(
         &mut mgr,
         BaseToCellMsg::SyncBandolierItems {
             entity_id: 1,
@@ -163,6 +163,58 @@ async fn drag_unequip_of_the_active_weapon_revokes_its_attack() {
     let p = mgr.get_entity(1).unwrap();
     assert!(!p.abilities.has_ability(PISTOL_RANGED));
     assert!(p.pending_cast.is_none());
+    assert!(
+        methods.contains(&crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE),
+        "the client is told the shot left: {methods:?}"
+    );
+    assert!(!p.abilities.auto_cycle);
+    assert_eq!(
+        p.state_field & crate::cell::combat::BSF_AUTO_CYCLING,
+        0,
+        "the loop's button goes dark"
+    );
+    assert!(
+        methods.contains(&crate::mercury::method_idx::ON_STATE_FIELD_UPDATE),
+        "the BSF clear is sent: {methods:?}"
+    );
+}
+
+/// **Regression guard (review S1).** A reload in flight for the outgoing
+/// weapon is cancelled, as a slot change cancels it: the completion tick
+/// refills the pinned slot index, so it would load the new weapon for free
+/// and the fire gate would block it until the old deadline. A reload queued
+/// behind the draw (`pending_reload_at`) goes too.
+#[tokio::test]
+async fn a_weapon_change_cancels_a_reload_in_flight() {
+    for msg in [
+        BaseToCellMsg::SyncBandolierItems {
+            entity_id: 1,
+            active_bandolier_slot: 0,
+            bandolier_items: vec![(0, item(2, SMG))],
+        },
+        BaseToCellMsg::UpdateBandolierItem {
+            entity_id: 1,
+            slot_id: 0,
+            item: item(2, SMG),
+            make_active: false,
+        },
+    ] {
+        let mut mgr = fixture();
+        {
+            let p = mgr.get_entity_mut(1).unwrap();
+            p.reload_complete_at = Some(Instant::now() + Duration::from_secs(2));
+            p.reload_slot_id = Some(0);
+            p.pending_reload_at = Some(Instant::now() + Duration::from_secs(1));
+        }
+        deliver(&mut mgr, msg).await;
+        let p = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            p.reload_complete_at, None,
+            "the pistol's reload is cancelled"
+        );
+        assert_eq!(p.reload_slot_id, None);
+        assert_eq!(p.pending_reload_at, None, "a queued reload goes too");
+    }
 }
 
 /// A resync that leaves the same weapon in the active slot (an ammo or
@@ -182,6 +234,10 @@ async fn a_same_weapon_resync_changes_nothing() {
     .await;
     let p = mgr.get_entity(1).unwrap();
     assert!(p.pending_cast.is_some(), "the warmup survives");
+    assert!(
+        p.reload_complete_at.is_none(),
+        "the fixture has no reload; this resync must not start one"
+    );
     assert_eq!(p.abilities.last_fired_ability_id, Some(PISTOL_RANGED));
     assert!(p.abilities.auto_cycle);
     assert!(p.abilities.has_ability(PISTOL_RANGED));

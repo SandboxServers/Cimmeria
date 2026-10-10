@@ -141,8 +141,8 @@ async fn right_click_with_no_ranged_binding_says_so_and_fires_nothing() {
     assert_eq!(p.current_target_id, Some(npc as i32));
 }
 
-/// Unarmed still swings 594 Strike, and an armed weapon fires its RANGED
-/// binding (here the rifle's 581, which its ITEM_Rifle meets).
+/// An armed weapon fires its RANGED binding (here the rifle's 581, which
+/// its ITEM_Rifle meets).
 #[tokio::test]
 async fn right_click_fires_the_weapons_ranged_binding() {
     let (mut mgr, npc) = scene(SNIPER_RIFLE, vec![ITEM_RIFLE], 2.0);
@@ -167,6 +167,45 @@ async fn right_click_fires_the_weapons_ranged_binding() {
         "the rifle's RANGED binding fires: {sent:?}"
     );
     assert_eq!(p.active_ammo(), 29);
+}
+
+/// Unarmed right-click presses 594 Strike (no requirement in the seed), not
+/// 592, and gets no "no ranged attack" line, which is for an armed player.
+/// The fixture's 594 has no effect, so the launch answers it with the
+/// no-mechanics refusal (167) naming 594: that names the ability chosen.
+#[tokio::test]
+async fn unarmed_right_click_swings_strike() {
+    const STRIKE: i32 = 594;
+    let (mut mgr, npc) = scene(COMBAT_KNIFE, vec![ITEM_BLADE], 2.0);
+    mgr.get_entity_mut(PLAYER).unwrap().bandolier_items.clear();
+    mgr.ability_defs.insert(
+        STRIKE,
+        AbilityDef {
+            ability_id: STRIKE,
+            name: "Strike".into(),
+            cooldown: 2.0,
+            is_ranged: false,
+            max_range: 5.0,
+            required_ammo: 0,
+            item_monikers: vec![],
+            ..mgr.ability_defs[&PISTOL_SHOT].clone()
+        },
+    );
+    let sent = right_click(&mut mgr, npc).await;
+    let p = mgr.get_entity(PLAYER).unwrap();
+    let pressed: Vec<i32> = sent
+        .iter()
+        .filter(|(m, _)| *m == crate::mercury::method_idx::ON_ERROR_CODE)
+        .map(|(_, a)| i32::from_le_bytes([a[1], a[2], a[3], a[4]]))
+        .collect();
+    assert_eq!(
+        pressed,
+        vec![STRIKE],
+        "right-click unarmed presses 594: {sent:?}"
+    );
+    assert!(!p.abilities.is_on_cooldown(PISTOL_SHOT));
+    let line = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, NO_RANGED_ATTACK_TEXT);
+    assert!(!sent.iter().any(|(_, a)| *a == line));
 }
 
 /// **Live-DB regression guard (seed).** Every ITEM_Rifle sniper rifle now

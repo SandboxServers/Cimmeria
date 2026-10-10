@@ -54,14 +54,19 @@ the Rust loader never selected the column, so any ability fired with any gun.
   tags before the world-entry known-list send, no extra send), slot change
   (`active_slot.rs`), and `SyncBandolierItems` / `UpdateBandolierItem`
   (`bandolier::on_active_weapon_changed`, which also interrupts the warmup
-  with `InterruptReason::ActiveWeaponChanged` and clears last-fired,
-  auto-cycle and the queued attack). "Changed" = different
+  with `InterruptReason::ActiveWeaponChanged`, cancels a reload in flight or
+  queued, and clears last-fired, auto-cycle and the queued attack). The
+  reload completion refills the pinned slot INDEX, not the weapon, so any
+  weapon-change path that skips the reload cancel loads the new gun for free.
+- `AbilityManager::add_ability` drops a weapon-granted tag: a content or
+  trainer grant of an ability the weapon also grants (597 is a USE binding on
+  158 items) must survive the next weapon change. "Changed" = different
   `(instance_id, item_id)` in the active slot; a same-weapon resync must not call it.
 - Right-click (`interaction/hostile_attack.rs`): RANGED binding, else 594
   unarmed, else NOTHING + "This weapon has no ranged attack." (no 592
   fallback). 50 ITEM_Rifle sniper rifles got 581 (items_event_sets 2768-2817).
-  Item 5481 Crafted Pistol of the Whale is the one pistol with no RANGED
-  binding: right-click now says "no ranged attack" though 592 works with it.
+  Item 5481 Crafted Pistol of the Whale (no bindings at all) got 579 RANGED
+  (row 2818) in the second review round.
 - Python parity is narrower than "did the same": TargetTarget only, after the
   cooldown, and `SGWPlayer.useAbility` never sent onErrorCode for a refusal
   (`if not status` on a truthy code).

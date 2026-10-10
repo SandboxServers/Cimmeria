@@ -46,7 +46,10 @@ async fn the_requirement_is_checked_before_the_cooldown() {
     );
 }
 
-/// **Regression guard.** The ground-target path goes through the same gate:
+/// Coverage, not a guard of its own: `handle_use_ability_on_ground` hands
+/// the primary to `handle_use_ability`, so this fails only when the whole
+/// gate goes, which the unit guards already catch. It pins that the ground
+/// path goes through the same gate:
 /// Launch Grenade: Single (ITEM_Grenade_Launcher, ground-targeted, so python
 /// never checked it) on the hostile's feet with the SK37 LMG is refused
 /// with WrongWeaponType; it charges nothing and hurts no one.
@@ -137,6 +140,32 @@ async fn the_refusal_row_is_throttled_per_player() {
     let rows = refusal_rows(&logs.all());
     assert_eq!(rows.len(), 2, "another player's first refusal is written");
     assert!(rows[1].has_field("entity_id", &OTHER.to_string()));
+
+    // The next row that is admitted after the window carries the count of
+    // presses held back meanwhile (4 for PLAYER). The window is wound back
+    // by recreating the slot at a past instant.
+    mgr.ability_refusal_log = Default::default();
+    let past = std::time::Instant::now()
+        .checked_sub(Duration::from_secs(60))
+        .expect("monotonic clock is past a minute");
+    for _ in 0..5 {
+        let _ = mgr.ability_refusal_log.admit(
+            PLAYER,
+            "wrong_weapon_type",
+            past,
+            Duration::from_secs(10),
+        );
+    }
+    let _ = handle_use_ability(OTHER, QUICK_BURST, TARGET as i32, &tx, &mut mgr).await;
+    let (committed, _) = press(&mut mgr, QUICK_BURST).await;
+    assert!(!committed);
+    let rows = refusal_rows(&logs.all());
+    let last = rows.last().expect("a row after the window");
+    assert!(last.has_field("entity_id", &PLAYER.to_string()), "{last:?}");
+    assert!(
+        last.has_field("suppressed", "4"),
+        "the row after the window reports the held-back presses: {last:?}"
+    );
 
     // The window is per entity and released with it.
     assert_eq!(mgr.ability_refusal_log.tracked(), 2);

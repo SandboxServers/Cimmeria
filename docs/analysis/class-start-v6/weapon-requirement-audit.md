@@ -32,7 +32,7 @@ so it is not checked and is not a source here.
 - FAIL (no shipped weapon satisfies it): 4
 - Weapon-granted abilities their own weapon does not satisfy: 133
 - Gated by the Rust server only (python checked `TargetTarget` alone): 25
-- Bandolier weapons with no RANGED binding (right-click fires nothing): 270
+- Bandolier weapons with no RANGED binding (right-click fires nothing): 269
 
 ## Starter cases
 
@@ -114,7 +114,6 @@ CS-07 seeded 581 onto them (decided 2026-10-10).
 | Item_Flamethrower | no | melee | 25 | Baby Mongoose Flamethrower, Mongoose Flamethrower, Papa Mongoose Flamethrower, Papa Polecat Flamethrower (+1 more) |
 | none | no | use | 3 | "Creative" Weapon, Anti-Straegis Blaster, Unstable Anti-Straegis Blaster |
 | ITEM_Fists | no | melee | 1 | Fists |
-| ITEM_Pistol | yes | none | 1 | Crafted Pistol of the Whale |
 | ITEM_Staff | no | none | 1 | Reigns of the Sun Chariot |
 
 ## Weapon-granted abilities refused by their own weapon

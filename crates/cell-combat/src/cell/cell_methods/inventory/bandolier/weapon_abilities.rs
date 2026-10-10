@@ -138,9 +138,12 @@ pub(super) async fn swap_weapon_granted_abilities_for_slot(
 /// 1. interrupts a cast warming up with it (python's `onBandolierSlotChange`
 ///    fired for a swapped or removed active item too; the warmup tick's
 ///    weapon check stays as the backstop);
-/// 2. clears the auto-cycle loop, the queued attack and the last-fired stash,
-///    which all resolved against the old weapon: `setAutoCycle` would
-///    otherwise re-press a shot the new weapon refuses;
+/// 2. cancels a reload in flight or queued (the reload completion refills
+///    the pinned slot index, so it would fill the new weapon for free and
+///    the fire gate would block it until the old deadline), and clears the
+///    auto-cycle loop, the queued attack and the last-fired stash, which all
+///    resolved against the old weapon: `setAutoCycle` would otherwise
+///    re-press a shot the new weapon refuses;
 /// 3. swaps the weapon-granted abilities and sends `onKnownAbilitiesUpdate`,
 ///    so the new weapon's own attacks reach the client's known list (and the
 ///    weapon-shot bar patch 015 has something to rebind to).
@@ -161,6 +164,17 @@ pub async fn on_active_weapon_changed(
     .await;
     let (slot_id, auto_cycle_cleared) = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => {
+            if e.reload_complete_at.is_some() || e.pending_reload_at.is_some() {
+                tracing::debug!(
+                    entity_id,
+                    entity_name = e.log_names.player_name,
+                    reload_slot_id = e.reload_slot_id, // nt:id-only bandolier slot index
+                    "active weapon change cancelled in-flight reload"
+                );
+            }
+            e.pending_reload_at = None;
+            e.reload_complete_at = None;
+            e.reload_slot_id = None;
             e.pending_attack_at = None;
             e.pending_attack_ability_id = None;
             e.pending_attack_target_id = None;

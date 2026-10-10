@@ -29,6 +29,8 @@ mod defs;
 mod effect_monikers;
 mod implemented;
 mod manager;
+#[cfg(test)]
+mod manager_weapon_grant_tests;
 mod range;
 mod shield_nvps;
 mod weapon_requirement;

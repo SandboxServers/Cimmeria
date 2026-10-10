@@ -5645,11 +5645,17 @@ INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALU
 
 INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2817, 4973, 581, 7);
 
+-- CS-07 review (2026-10-10): 5481 Crafted Pistol of the Whale is an ITEM_Pistol
+-- with no bindings at all; it takes the pistols' RANGED binding, 579 Pistol
+-- Auto Attack, so right-click fires it as with every other pistol.
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2818, 5481, 579, 7);
+
 --
 -- TOC entry 3321 (class 0 OID 0)
 -- Dependencies: 307
 -- Name: items_event_sets_2_item_event_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2817, true);
+SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2818, true);
 
