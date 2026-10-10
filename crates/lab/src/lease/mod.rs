@@ -262,6 +262,13 @@ impl LeaseBook {
             .map(|l| l.ttl_s)
     }
 
+    /// Whether `id` is the current, unexpired lease (no renewal).
+    pub fn holds(&self, id: &str) -> bool {
+        let mut st = self.lock();
+        st.expire_if_due(now_ms());
+        st.current.as_ref().is_some_and(|l| l.lease_id == id)
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         // A panic while holding the lock leaves plain data; keep going.
         self.inner.lock().unwrap_or_else(|p| p.into_inner())

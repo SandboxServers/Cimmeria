@@ -290,6 +290,11 @@ impl Supervisor {
         &self.leases
     }
 
+    /// The named lab instance this supervisor drives, or `None` for the default.
+    pub fn instance(&self) -> Option<&str> {
+        self.config.instance.as_deref()
+    }
+
     /// Proxy a phase-1 client tool call through the bridge, journaling it
     /// so `lab_crash_report` can show the last N and quarantine the
     /// in-flight one on a crash.
@@ -478,7 +483,7 @@ impl Supervisor {
             &running,
             &peers,
             self.config.port,
-            instance::max_clients_from_env(),
+            instance::max_clients_from_env(instance::hosted_count_from_env()),
         )?;
         let pid = self.launch_client(server_override).await?;
         self.spawn_watchdog(pid);

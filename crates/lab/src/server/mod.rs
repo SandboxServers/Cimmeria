@@ -32,10 +32,13 @@ mod combat;
 pub(crate) mod compact;
 mod composite;
 mod flows;
+mod instances;
 mod lease;
 mod uat;
 mod ui;
 mod world;
+
+pub use instances::{parse_list, Hosted, Instances, INSTANCES_ENV};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -245,14 +248,25 @@ pub struct LabServer {
     supervisor: Arc<Supervisor>,
     timeline: Arc<Timeline>,
     tool_router: ToolRouter<LabServer>,
+    instances: Arc<Instances>,
 }
 
 #[tool_router(router = tool_router)]
 impl LabServer {
     pub fn new(supervisor: Arc<Supervisor>) -> Self {
+        let label = supervisor.instance().unwrap_or("default").to_string();
+        let hosted = Hosted { label, supervisor };
+        Self::new_multi(Instances::new(vec![hosted]))
+    }
+
+    /// A server hosting every instance in `instances`. A call runs on the
+    /// instance it names, else the one holding its lease, else the first.
+    pub fn new_multi(instances: Instances) -> Self {
+        let supervisor = instances.first().supervisor.clone();
         Self {
             supervisor,
             timeline: Arc::new(Timeline::from_env()),
+            instances: Arc::new(instances),
             tool_router: Self::tool_router()
                 + Self::flows_router()
                 + Self::client_state_router()
@@ -664,8 +678,9 @@ impl ServerHandler for LabServer {
         mut request: CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        let target = self.route(&mut request)?;
         // Shaping arguments the tool declares itself stay with the tool.
-        let own: Vec<String> = self
+        let own: Vec<String> = target
             .tool_router
             .get(request.name.as_ref())
             .and_then(|t| {
@@ -682,13 +697,13 @@ impl ServerHandler for LabServer {
             })
             .unwrap_or_default();
         let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut(), &own);
-        let permit = self.gate_call(&mut request)?;
-        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let permit = target.gate_call(&mut request)?;
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(&target, request, context);
         let out = match permit {
             // The gate admits once; the permit makes every action of the
             // tool re-check the lease, so a takeover stops it mid-flow.
-            Some(p) => crate::lease::permit::scope(p, self.tool_router.call(tcc)).await,
-            None => self.tool_router.call(tcc).await,
+            Some(p) => crate::lease::permit::scope(p, target.tool_router.call(tcc)).await,
+            None => target.tool_router.call(tcc).await,
         };
         shape_response(&shape, out)
     }
@@ -703,9 +718,9 @@ impl ServerHandler for LabServer {
             .is_some_and(|v| v >= ProtocolVersion::V_2026_07_28);
         Ok(ListToolsResult {
             result_type: Some(ResultType::COMPLETE),
-            tools: compact::slim(compact::advertise(lease::advertise_lease(
-                self.tool_router.list_all(),
-            ))),
+            tools: compact::slim(compact::advertise(
+                self.advertise_hosted(lease::advertise_lease(self.tool_router.list_all())),
+            )),
             meta: None,
             next_cursor: None,
             ttl_ms: cache_hints.then_some(0),
