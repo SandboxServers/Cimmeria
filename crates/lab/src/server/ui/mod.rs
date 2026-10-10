@@ -89,7 +89,7 @@ fn drag_end(which: &str, a: &DragEndArg) -> Result<DragEnd, String> {
 #[tool_router(router = ui_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Read an open UI window: title, visible buttons with enabled state, visible text, list rows (Listbox / MultiColumnList with selection), node rectangles on request. `window` reads any CEGUI window by name; `kind` is a typed reader that also returns the module's state through the stock bindings: vault/bank (vault items), org_vault, trainer (abilities with id, cost, trainable), discipline_trainer, crafting (allowed per craft type, known blueprint counts), pet, organization, mail (headers), loot (items), dhd (active), dialog/blurb, greet (topics), vendor (stock), trade, character. Native level: client_ui_lua (read)."
+        description = "Read an open UI window: title, buttons (enabled), text, list rows; node rectangles with include_nodes. `window` reads any CEGUI window by name; `kind` is a typed reader that adds the module state: vault/bank, org_vault, trainer, discipline_trainer, crafting, pet, organization, mail, loot, dhd, dialog/blurb, greet, vendor, trade, character. Read-only (client_ui_lua)."
     )]
     async fn client_window_read(
         &self,
@@ -137,7 +137,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Chat lines the client showed (network chat, feedback and /tell errors, Server Message lines, combat chatter), with channel name and number, speaker and speaker-flag names, the colour and tabs the chat window uses, and the event store seq. Reads the lab's one chat capture (the chat.line ring that wraps ChatMod.onMessageReceived, pumped into the supervisor's event store) through its own named `cursor`, so it never takes lines from client_wait_event or client_events_read; `since_seq` overrides the cursor, `peek` does not advance it. Filters: channel, contains, speaker. Lines shown before the ring was first installed, and centre-screen splash text, are not in the log. Native tier: read."
+        description = "Chat lines the client showed (chat, feedback and /tell errors, Server Message, combat chatter): channel, speaker, colour, tabs, store seq. Reads through its own named `cursor`, so it never takes lines from client_wait_event or client_events_read; `since_seq` overrides the cursor, `peek` does not advance it. Filters: channel, contains, speaker. Lines from before the capture was first installed, and splash text, are not in the log. Native tier: read."
     )]
     async fn client_chat_log(
         &self,
@@ -228,7 +228,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Drag an item from one UI slot to another with real input: press on the source slot, walk the cursor to the target in steps, release; `split` holds Ctrl (the stock UI pulls one item off the stack; its Shift-drag split is unimplemented). Ends are container + slot (the slot's window is put on screen first) or a named window (a trade, crafting or vault slot). Verified by an inventory diff: returns drag_started, moved, snap_back and the diff. If posted motion does not start a CEGUI drag, the motion is replayed through CEGUI's injectMousePosition (reported as client_ui_lua)."
+        description = "Drag an item between UI slots through the client's own CEGUI injectors: press on the source, walk the cursor to the target (at least 3 steps), release; `split` holds Ctrl (one item off the stack). Ends: container + slot (put on screen first) or a named window; the source must be a CEGUI DragContainer, and a press CEGUI does not take is refused. When CEGUI resolves no drop target and the source is dragging, fires the target's DragDropItemDropped before release (native_call, N3) unless allow_fallback is false; otherwise native_cegui (N1). Verified by an inventory diff: moved (source item reached the target slot, or any change for a window end), effect_ok and native_pass false when nothing moved; also drag_started, drop_target_resolved, drop_notified, snap_back, diff."
     )]
     async fn client_drag_drop(
         &self,

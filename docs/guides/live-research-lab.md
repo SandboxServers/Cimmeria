@@ -258,6 +258,9 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | Tool | Purpose |
 |---|---|
 | `lab_lease_acquire` / `_renew` / `_release` / `_status` | Take, extend, give back and inspect the one-driver lab lease. A refusal names the holder; `force` with a `reason` takes over. |
+| `lab_ensure_in_world` | One call from any state to in the world as a character: start, wait for the window and bridge, log in, play (create when `create` is given), finish the intro dialog, virtual focus. Returns at once when already there. See [Fewer calls](#fewer-calls-composites-and-compact-results). |
+| `client_batch` | Ordered read and probe steps in one call (`lua`, `mem_read`, `call_native`, `wait`, `player_state`, `window_text`) with `$id` references to earlier results. |
+| `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
@@ -272,11 +275,11 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_die_and_respawn` | Optional GM setup, wait for the defeat window, read its respawners, click Release (or let it time out), verify alive, position and world. |
 | `client_entity_table` | Walk the client's BigWorld entity maps: per entity id, vtable, enter count, rendered, `isReady()`; limbo and pending enter counts. |
 | `lab_screenshot_region` / `lab_pixel_probe` | Crop of the capture as an image; count pixels in an RGB box (a nameplate colour, a HUD element). |
-| `lab_screenshot` | Window capture by PID → MCP image. |
+| `lab_screenshot` | The client window's game area (client rect, the UI's pixel space) → MCP image. Refuses a minimised window or an all-black frame. |
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
-| `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre, real button messages. |
+| `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre (native `injectMousePosition`, a real CEGUI `MouseMove`), real button messages. |
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
 | `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
 | `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
@@ -286,7 +289,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_inventory` | Every loaded container, the bandolier's ammo and cash; `snapshot` / `diff_against` for before-and-after checks. |
 | `client_player_state` | Position, world, level, experience, every stat, effects, the active weapon's ammo, the target. |
 | `client_item_action` | Use, equip, unequip (a right-click on the slot), double-click, Loot All, loot one row; slash-command fallback. |
-| `client_drag_drop` | A real drag between slots or onto a named window; `split` is the stock Ctrl-drag (one off the stack). Verified by an inventory diff. |
+| `client_drag_drop` | A drag between slots or onto a named window through the client's own CEGUI injectors; `split` is the stock Ctrl-drag (one off the stack). Verified by an inventory diff. |
 | `client_entity_find` | Entities the client knows, by id, name, mob id (the client's template id), hostility or distance: name, level, hostility, rendered, targetable, position (client and server coordinates), distance, screen point. Read-only. See [World tools](#world-tools). |
 | `client_world_click` / `client_target` | Click an entity or world point in the 3D view with real input (camera turned onto it if needed, mouse-over checked for occluders), then report the target and windows it changed. `client_target` left-clicks and requires `Unit.Target` to become the entity. |
 | `client_move_to` | Walk to a point, an entity or through waypoints with `W` and mouse-look, closed loop on the player's position; stuck detection, arrival radius, timeout. |
@@ -329,10 +332,12 @@ Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
 
 ## Driving the client with its own input
 
-The input tools press nothing through Lua: Lua only reads where a widget is and places the UI cursor. What the live client showed (2026-09-29):
+The input tools press nothing through Lua: Lua only reads where a widget is. What the live client showed (2026-09-29, cursor and drag findings 2026-10-10):
 
 - Keys and typing are window messages. A posted `WM_KEYDOWN`/`WM_KEYUP` reaches the game; a bare posted `WM_CHAR` is ignored, because the game turns keys into characters itself with `GetKeyboardState` + `ToUnicodeEx`. The bridge makes Shift virtual by answering those two calls.
-- Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates. The cursor does not follow posted mouse moves or DirectInput motion, so the supervisor places it through CEGUI's own cursor and mirrors it into a virtual `GetCursorPos`.
+- Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates.
+- The game feeds CEGUI's cursor only when DirectInput reports mouse motion: its input pump then calls `CEGUI::System::injectMousePosition`. A posted `WM_MOUSEMOVE` never reaches CEGUI, Lua's `MouseCursor:setPosition` moves the pointer without a `MouseMove` event, and the client's Lua has no `CEGUI.System` binding. So the supervisor moves the cursor by calling `injectMousePosition` natively on the game's main thread (`call_native`), which gives CEGUI a real `MouseMove` (hover, drag thresholds, minigame input), and mirrors the point into a virtual `GetCursorPos`. If the native call fails it falls back to `setPosition` and says so (`cursor_via: lua_set_position`, `client_ui_lua`). Addresses and evidence: [CEGUI mouse input feed](../reverse-engineering/findings/cegui-mouse-input-feed.md).
+- A UI drag is driven with native CEGUI input: `injectMousePosition` onto the source, `injectMouseButtonDown(0)`, one `injectMousePosition` step per frame to the target, `injectMouseButtonUp(0)`. These are the calls the game's own input path makes, so those steps count as N1 (`native_cegui`). But CEGUI has never resolved a drop target in the live client, so every live drag so far landed through the explicit drop (`notifyDragDropItemDropped`, `native_call`), which makes the drag as a whole N3. A drag that moves nothing is no pass at any level (`effect_ok: false`).
 - The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
 - Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
 - `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Two clients](#two-clients-two-player-scenarios)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
@@ -384,6 +389,8 @@ Do not also run a separate `cimmeria-lab-p2` server for the same instance while 
 
 ## The display: screensaver and D3D
 
+**Windowed, 16:9.** The supervisor launches the client with `-windowed ResX=1280 ResY=720` (UE3's command-line overrides, which SGW.exe parses). `CIMMERIA_LAB_WINDOW` in `labd.env` sets another size (`1600x900`) or `off` (no arguments; the client's own settings decide). The stock `SystemOptions.xml` defaults `windowedMode` to false, so a profile that never saved its options opened a borderless window at the desktop resolution (5120x1440 on the lab box, 2026-10-10), and `lab_screenshot` captured it black. The lab's own client profile (`Documents\My Games\<game>\SGWGame`) also carries a `SavedSystemOptions.xml` with `windowedMode` true, so a client started outside the supervisor opens windowed too.
+
 Lab input goes through the client's hooked DirectInput, which never resets Windows' idle timer, so an unattended run reaches the screensaver after about ten minutes. While a screensaver owns the display, Direct3D 9 reports no adapter (`D3DERR_NOTAVAILABLE` from `GetDeviceCaps`): a client launched then dies on a "GetDeviceCaps failed" message box and an R6025 box, each with a Windows error sound, and the watchdog relaunches it until its cap. The supervisor prevents this:
 
 - While any `SGW.exe` runs, a supervisor thread holds `ES_DISPLAY_REQUIRED` (released when none runs), so the screensaver doesn't start.
@@ -411,11 +418,48 @@ A spinning main thread also reads as busy, and so does a deadlock that strikes m
 
 After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min); not relaunching`). The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
 
+## Fewer calls: composites and compact results
+
+A lab-driving agent re-sends its whole context on every turn, so the cost of a session grows with the number of calls, and each result stays in that context for every later turn. Measured 2026-10-10: a four-call probe (lease, status, player state, release) by the Haiku `lab-driver` agent ended at 37.3k tokens of context, 33.9k of it there before the first result (the system prompt and the agent's 27 tool schemas). So the lab offers fewer, larger calls, and keeps results small.
+
+**`lab_ensure_in_world {server?, shard?, character?, focus = true, create?}`** observes the client and runs the existing flows until it is in the world as `character` (default `lab-account.json`'s): `lab_client_start` when nothing runs, a wait for the window and the bridge heartbeat (up to 120 s), `lab_login` (server row `shard`, else `server`), `lab_logout` when in the world as someone else, `lab_play_character` (with `create: {alignment, archetype, gender, first?}`, a missing character is made first, `character` being its last name), `lab_finish_dialog` once for an intro dialog, then virtual focus. Already there, it returns after one observation with `already: true`. The result is `{in_world, character, world_id, pos, steps_ms}`; a failure names the step. `stop_at: "running"` stops once the window and bridge are up, on any screen; `stop_at: "character_select"` stops at character select (logging out of the world first if needed) and returns `{at, characters}`.
+
+**`client_batch {steps, stop_on_error = true}`** runs read and probe steps in order and returns `{steps: {id: value | {error}}, ms, stopped_at?}`:
+
+| `op` | Arguments | Value |
+|---|---|---|
+| `lua` | `chunk` | its return values (one: a scalar; none: `true`) |
+| `mem_read` | `addr`, `len?` (default 4), `as` = `hex` / `u8` / `u16` / `u32` / `i32` / `f32` / `f64` (default `u32` for a 4-byte read, else `hex`) | the decoded value, an array when `len` holds several |
+| `call_native` | `addr`, `conv?`, `args?`, `ret?` = `u32` / `i32` / `f32` / `f64` / `void` / `hex` | the return value |
+| `wait` | `frames` (bridge heartbeat ticks) or `ms` (up to 30 s) | none |
+| `player_state` | `fields?` | `client_player_state` without stats and effects, projected |
+| `window_text` | `window`, `children?` | the window's text and visibility, and its visible children's names and texts |
+
+A string argument that is exactly `$id`, `$id.key` or `$id+0x270` (`-4`, decimal or hex) is an earlier step's value, plus the offset: read a pointer, then `{"op": "mem_read", "addr": "$ptr+0x270", "as": "f32"}`. `${id}` inside a longer string (a Lua chunk) is replaced by the value's text. In `call_native` arguments a JSON float (`1.5`, `2.0`) is passed as its single-precision bits, `{"f32": x}` says so explicitly, and `{"f64": x}` passes a double as two words, low first. `call_native` goes through the same journaled, exception-guarded bridge call as `client_call_native` and is never replayed after a crash. A step without an `id` is named by its position.
+
+**`client_ui_sequence {actions, stop_on_error = true}`** runs `{do: click, window, button?}`, `{do: key, key, action?}`, `{do: type, text, into?}`, `{do: drag, from, to, split?}` (ends `{container, slot}` or `{window}`), `{do: wait_window, window, gone?, timeout_ms?}` and `{do: wait, ms}` through the same paths as the single tools, and stamps the least native level used (`native_level`, `native_tier`, `native_pass`).
+
+A composite is admitted under one lease like any guarded tool; every bridge call and posted input inside it renews the lease, and its idle waits renew it every 5 s.
+
+**Compact results.** What an MCP client receives is compacted at the server's edge: one-line JSON; null, empty-string, empty-list and empty-object fields left out (`false` stays); floats rounded to 2 decimals; lists capped at 50 items with `<key>_total` and `truncated: true`; and the per-step native trail (`native_steps`, `trail`) left out, while `native_level`, `native_tier` / `tier` and `native_pass` / `counts_as_native_pass` stay. The cursor reads (`client_events_read`, `client_chat_log`, `client_combat_log`, `client_wait_event`) are not capped, because their cursor has already moved past what they return; their own `max` bounds them. The probe tools (`client_batch`, `client_call_native`, `client_mem_read`, `client_lua_eval`, `client_events_read`, `client_wait_event`) keep their floats exact, because a measurement rounded to 2 decimals is a different measurement. Inside a list, an empty item stays in place; a capped list with no key of its own ends with `{"truncated_total": n}`. Any tool takes `verbose: true` for the full result and `fields: ["position", "world_id"]` (or `"a.b"`) to keep only some keys; the heaviest tools list both in their schemas. A tool that declares one of these names itself keeps it: `client_wait_event`'s `fields` is its equality filter. A field that matches nothing comes back in `fields_missing`, with the result's keys in `fields_available`. At the top level, empty lists and objects stay (`windows: []` means "none open"); below it they are left out. `lab_uat_run` calls the tools in-process and grades the full results, never the compacted ones.
+
+**Images as files.** An image block (`lab_screenshot`, `lab_screenshot_region`) is saved to `%LOCALAPPDATA%\cimmeria-lab\screenshots\<tool>-<time>.png` and the result says `image saved: <path>`; `image: true` (or `verbose: true`) returns it inline. An inline 1280x720 capture costs an agent over a thousand tokens on every later turn, and the session that briefed the agent can open the file.
+
+**Lean schemas.** `tools/list` strips what the schema generator adds but a caller never needs (`"default": null`, `["T", "null"]` types, integer formats, `minimum: 0`, `$schema`, null-wrapping `anyOf`): about 12% of every schema, which an agent pays on every turn.
+
+**The camera is native.** The world tools turn and zoom the camera through its own handlers (`ASGWCamera_Player` vtable thunks), found by scanning the level's actors for the player controller, so mouse-look no longer depends on DirectInput (#1243). A turn reports `native_level: native_camera` (N1). Pitch turns are clamped to ±78.75°, because the handler does not clamp the stored offset. `client_camera` takes `zoom_to` (distance 100 to 775) and returns `view_before` / `view_after` (`zoom`, `yaw_offset_deg`, `pitch_offset_deg`, `gain`). Findings: `docs/reverse-engineering/findings/cegui-mouse-input-feed.md` §10.
+
+**Click retries.** When every point on a `client_world_click` target is covered or off screen, the tool changes the view and tries again before failing: pitch up twice, yaw each way, then zoom in. The yaw and pitch steps sum to zero, and the result lists them under `view_retries`. `rotate_camera: false` turns this off.
+
+**Off-screen windows.** A window position saved at another resolution can leave a visible window off screen, where every click in it misses. Before a slot action, the lab moves the host window (inventory, character, vault) fully on screen and reports `moved_on_screen`. This is layout setup, not the action under test, so it stays out of the native trail.
+
 ## Client flows
 
 To run whole unified-UAT rows (steps, checks, evidence and ledger text) rather than single flows, use `lab_uat_run`: [automated-uat.md](automated-uat.md).
 
 The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fresh character, play it, click through the intro dialog, log out) into single calls. Each is supervisor-side orchestration over the input tools above: every button press is a real click or key, and Lua only reads (visibility, widget text, the character list). The one Lua-driven step is picking a server row by name, because list rows are not named windows; the Select button is still clicked.
+
+For the common case, getting in the world as the lab character, `lab_ensure_in_world` does all of this in one call ([Fewer calls](#fewer-calls-composites-and-compact-results)). `lab_login` itself now waits up to 90 s for a fresh client's window before its first step; it used to fail at `focus` after 0 ms.
 
 A typical run on a fresh character:
 
@@ -491,7 +535,7 @@ These tools drive combat the way a player does and say how they did it. Every re
 **`client_use_ability {ability_id | name}`** resolves the ability against the hotbar and the Ability window's training trees, then fires it:
 
 1. On the hotbar: presses the button's bound key (the binding's virtual-key code mapped to a lab key), or clicks the button when the key is one the lab cannot post (`press: key | click` forces one). N1.
-2. Not on the hotbar, `place: true`: puts it on the first visible empty button with the calls the drop handler makes (`getUnusedAction`, `ActionProfileMod.setButtonCurrentAction`, `setActionToAbility`), reported as N3 because a CEGUI drag cannot be started from posted mouse moves yet, then presses it (N1). The placement stays in the player's profile.
+2. Not on the hotbar, `place: true`: puts it on the first visible empty button with the calls the drop handler makes (`getUnusedAction`, `ActionProfileMod.setButtonCurrentAction`, `setActionToAbility`), reported as N3, then presses it (N1). Posted mouse moves cannot start a CEGUI drag; the native drag `client_drag_drop` uses (above) could, but the hotbar placement has not been moved onto it yet. The placement stays in the player's profile.
 3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
 4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
 
@@ -648,7 +692,7 @@ The ability-mechanics rows are [docs/guides/uat-specs/abilities.toml](uat-specs/
 
 These tools serve automated UAT: read what the client shows, and act on items the way a player does. Readers use the stock UI's own Lua bindings (`getItemIDForSlot`, `getUnitStat`, `getEffectInfo`, `getLootInfo`, the CEGUI window tree); actions put the UI cursor on a widget's screen rectangle and send real button and key messages through the input path above. Container, stat and channel ids are read from the client's `Container`, `Stat` and `UIChannel` tables at run time, never hard-coded.
 
-**Native level.** Every result carries `native_level`, `native_tier` (the UAT matrix labels the world and combat tools use) and a `native_steps` list. The levels, most native first: `real_input` (N1, key and mouse messages), `slash_command` (N2, a line typed into chat, which the client parses and sends itself), `client_ui_lua` (N3, a call into the stock UI's Lua). The overall level is the least native step; `native_pass` is true only when every step was real input, so a UAT runner can refuse to count a pass that fell back. Readers report `native_tier: "read"` and `mode: "read"`. A failure is an MCP error naming the tool, the widget or step, and the elapsed time.
+**Native level.** Every result carries `native_level`, `native_tier` (the UAT matrix labels the world and combat tools use) and a `native_steps` list. The levels, most native first: `real_input` (N1, key and mouse messages), `native_cegui` (N1, the client's own CEGUI input injectors called natively: the calls its input pump makes, minus the DirectInput read in front of them), `slash_command` (N2, a line typed into chat, which the client parses and sends itself), `client_ui_lua` (N3, a call into the stock UI's Lua), `native_call` (N3, a native call that stands in for a decision the UI should have made itself, such as firing a drop the client did not resolve). The overall level is the least native step; `native_pass` is true only when every step was N1, so a UAT runner can refuse to count a pass that fell back. Readers report `native_tier: "read"` and `mode: "read"`. A failure is an MCP error naming the tool, the widget or step, and the elapsed time.
 
 | Tool | How it drives or reads | Fallback (reported) |
 |---|---|---|
@@ -658,13 +702,14 @@ These tools serve automated UAT: read what the client shows, and act on items th
 | `client_inventory` | Every container the client has loaded, the bandolier's ammo per slot, cash. `snapshot` / `diff_against` give slot changes, per-item quantity deltas and the cash delta. | — |
 | `client_player_state` | Position, facing (`unitOrientation` is a 0..1 turn fraction; `heading_deg` too), world, level, experience, every stat, effects, the active weapon's ammo, the target. | — |
 | `client_item_action` | `use` / `equip` / `unequip` / `rightclick`: a right-click on the item's slot, which the stock UI turns into `contextSensitiveUseItem`. The inventory or character window is opened with its bound key (`getBindingKey`) and the right tab and the All filter are clicked first. `loot_all` clicks Loot All; `loot_slot` pages the loot window and double-clicks the row. | Window toggle unbound: the window's toggle handler (`client_ui_lua`). Slot beyond the 40 visible: the scrollbar (`client_ui_lua`). Slot cannot be put on screen: `/useitem`, `/equip`, `/lootitem` (`slash_command`). |
-| `client_drag_drop` | Button down on the source slot, the cursor walked to the target in steps (CEGUI cursor placement plus a posted `WM_MOUSEMOVE` with the button held), button up. `split` holds Ctrl: the stock inventory pulls one item off the stack on a Ctrl-drag; its Shift-drag split is an unimplemented `TODO`. Verified by an inventory diff: `drag_started`, `moved`, `snap_back`. | Posted motion does not start a drag: the motion is replayed through CEGUI's `injectMousePosition` (`client_ui_lua`). |
+| `client_drag_drop` | Native CEGUI input (`native_cegui`): `injectMousePosition` onto the source slot, `injectMouseButtonDown(0)`, the cursor walked to the target one `injectMousePosition` per frame (a bridge round trip between steps; at least 3 steps, since the move that crosses the threshold only starts the drag), `injectMouseButtonUp(0)`. The source must be a CEGUI `DragContainer` (checked by vtable before anything is pressed). `split` holds Ctrl: the stock inventory pulls one item off the stack on a Ctrl-drag; its Shift-drag split is an unimplemented `TODO`. A press CEGUI does not take is refused. Verified by an inventory diff: `drag_started` (the source container's own dragging byte, `+0x23e`), `drop_target_resolved` (the container's `d_dropTarget` before release), `drop_notified`, `moved`, `snap_back`, and the raw `diff`. With slot ends `moved` means the source slot's item reached the target slot (`moved_check: slots`); with a named-window end any inventory change counts (`any_change`). Nothing moved: `effect_ok: false` and `native_pass: false`, and the UAT runner fails the action. | No drop target at the end of a drag of the source container itself (every live drag so far): fires the target window's `DragDropItemDropped` (`notifyDragDropItemDropped`) before release, so the stock handlers send `moveItem` (`native_call`, N3). A drag `getDragInfo` reports for some other item never triggers it. `allow_fallback: false` skips it and the drag snaps back. |
 
 Quirks to keep in mind:
 
 - The chat log only has lines shown after the chat ring was first installed (by any pump); read `client_ui_state`'s chat tail for older ones. Centre-screen splash text does not go through the chat handler and is not in the log.
 - Items in the Mission and Crafting tabs share `InventoryWin` with Main: a drag between two tabs of the same window is refused, because both ends cannot be on screen at once.
 - Vault slots can be read and dragged only while the vault window is open at a banker.
+- `d_dropTarget` stays null over an inventory slot in the live client (2026-10-10), so a drag only lands through the explicit drop. Why is open: the leading suspect is that no window from the slot up to the GUI sheet has `DragDropTarget` set ([findings, section 8](../reverse-engineering/findings/cegui-mouse-input-feed.md#8-follow-up-d_droptarget-stays-0-after-a-live-injected-drag-2026-10-10)). When that is fixed, drags report `drop_target_resolved: true` and N1 with no change to the tool.
 
 **Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client; still true on 2026-10-04. After the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), the first live session should check:
 
@@ -673,7 +718,7 @@ Quirks to keep in mind:
 3. `client_window_click` on a `Trainer_Choices` row: `method: "item_at_point"` and `selected: true` with no `fallback`.
 4. `client_item_action {action: "use"}` on a consumable: the inventory window opens with its bound key (`getBindingKey('ToggleInventory', 1)` returns a key), the right-click consumes one (diff `delta: -1`), `native_level: "real_input"`.
 5. `client_item_action {action: "equip"}` and `unequip`: the item moves between `Main` and its equipment container.
-6. `client_drag_drop` between two `Main` slots: `drag_started` true without `motion_injected` (if the drag only starts after injection, posted motion does not reach CEGUI); with `split: true`, one item moves (Ctrl reaches CEGUI's button state as 9).
+6. `client_drag_drop` between two `Main` slots: `drag_started` true and `moved` true, with `drop_target_resolved` and `drop_notified` saying which drop landed it; with `split: true`, one item moves (Ctrl reaches CEGUI's button state as 9).
 7. `client_item_action {action: "loot_all"}` on the loot crate: loot count drops to 0 and the items appear in the diff.
 8. `client_player_state`: `position` matches `unitPosition`, `stats.Health` and the active weapon's ammo match the HUD.
 
@@ -909,7 +954,7 @@ a test fails until every routed tool is classified. Guarded tools list
 | `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
-| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_attest`; `lab_uat_run` (see below) |
+| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; the composites `lab_ensure_in_world`, `client_batch` (caller-chosen Lua and native calls) and `client_ui_sequence`; `lab_uat_attest`; `lab_uat_run` (see below) |
 
 The four cursor reads are leased because they share one event store: two
 sessions reading through the same named cursor take events from each other,

@@ -178,10 +178,31 @@ async fn an_occluder_stops_the_click() {
     .await
     .unwrap_err();
     assert_eq!(e.step, "hover");
-    assert!(e.to_json()["state"]
-        .to_string()
-        .contains("\"other_entity\":20"));
+    let state = e.to_json()["state"].to_string();
+    assert!(state.contains("\"other_entity\":20"), "{state}");
     assert!(sim.buttons.is_empty());
+    // The view retries ran (pitch up twice, yaw both ways, zoom), are
+    // reported, and leave yaw and pitch where they started.
+    assert!(state.contains("view_retries"), "{state}");
+    let retries: Vec<_> = sim.looks.iter().filter(|l| **l != (0, 0, 0)).collect();
+    assert!(
+        retries.len() >= click::VIEW_RETRIES.len(),
+        "{:?}",
+        sim.looks
+    );
+    let (dx, dy): (i32, i32) = click::VIEW_RETRIES
+        .iter()
+        .fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
+    assert_eq!((dx, dy), (0, 0), "the retries end where they began");
+    // Regression guard (review of #1309): a failed retry run zooms back out.
+    let zoom: i32 = click::VIEW_RETRIES.iter().map(|r| r.2).sum();
+    assert_eq!(
+        sim.looks.last(),
+        Some(&(0, 0, -zoom * 120)),
+        "{:?}",
+        sim.looks
+    );
+    assert!(state.contains("\"view_restored\":true"), "{state}");
 }
 
 #[tokio::test]

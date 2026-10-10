@@ -12,7 +12,9 @@ use serde_json::{json, Value};
 
 use super::geometry::{Pose, Screen, Vec3};
 use super::lua::{self, UnitInfo, UnitSlots};
-use super::memory::{self, WorldSnapshot};
+use super::memory::{self, PlayerCamera, WorldSnapshot};
+use super::NativeLevel;
+use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
 use crate::supervisor::flows::ui_state::lua_results_of;
 use crate::supervisor::{process, Supervisor};
@@ -53,8 +55,15 @@ pub trait WorldIo {
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String>;
     /// The local camera actor's pose, when the chain resolves.
     async fn camera_pose(&mut self) -> Result<Pose, String>;
-    /// Mouse-look motion / wheel (DirectInput counts).
-    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<(), String>;
+    /// The camera's zoom and yaw/pitch offsets, for results. A client
+    /// without a readable camera says why.
+    async fn camera_readout(&mut self) -> Result<Value, String> {
+        Err("no camera readout".into())
+    }
+    /// Look motion (mouse counts) and wheel (120 per notch). Returns the
+    /// level it drove at: the camera's own handlers when the camera
+    /// resolves, else DirectInput.
+    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String>;
     /// Press (`down`) or release a key.
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String>;
     /// Place the UI cursor (UI pixels); also posts a `WM_MOUSEMOVE` there
@@ -77,6 +86,9 @@ pub struct LiveWorld<'a> {
     slide: Option<i64>,
     manager: Option<u32>,
     units: Option<UnitSlots>,
+    /// The player controller and camera, re-checked by vtable on each use
+    /// (a relog or zone change replaces them).
+    camera: Option<PlayerCamera>,
 }
 
 impl<'a> LiveWorld<'a> {
@@ -87,7 +99,76 @@ impl<'a> LiveWorld<'a> {
             slide: None,
             manager: None,
             units: None,
+            camera: None,
         }
+    }
+
+    /// The player's controller and camera: the cached pair while both
+    /// vtables still match, else a fresh actor scan.
+    async fn player_camera(&mut self) -> Result<PlayerCamera, String> {
+        let slide = self.slide().await?;
+        let mut r = Reader(self.sup);
+        if let Some(c) = self.camera {
+            if memory::has_vtable(
+                &mut r,
+                c.controller,
+                memory::PLAYER_CONTROLLER_VTABLE_VA,
+                slide,
+            )
+            .await
+                && memory::has_vtable(&mut r, c.camera, memory::PLAYER_CAMERA_VTABLE_VA, slide)
+                    .await
+            {
+                return Ok(c);
+            }
+        }
+        self.camera = None;
+        let c = memory::find_player_camera(&mut r, slide).await?;
+        self.camera = Some(c);
+        Ok(c)
+    }
+
+    /// One of the camera's own handlers (`thiscall`, `ecx` = camera),
+    /// journaled like every native call.
+    async fn camera_call(&mut self, camera: u32, va: u32, args: &[u32]) -> Result<(), String> {
+        let slide = self.slide().await?;
+        let func = (va as i64 + slide) as u32;
+        let v = self
+            .sup
+            .bridge_call("call_native", thiscall_params(func, camera, args, "void"))
+            .await
+            .map_err(|e| format!("camera call {func:#x}: {e}"))?;
+        if v.get("ok").and_then(Value::as_bool) == Some(false) {
+            return Err(format!("camera call {func:#x}: {v}"));
+        }
+        Ok(())
+    }
+
+    /// Turn and zoom through the camera's handlers (findings §10.4).
+    async fn native_look(&mut self, cam: u32, dx: i32, dy: i32, wheel: i32) -> Result<(), String> {
+        if dx != 0 {
+            self.camera_call(cam, memory::CAMERA_TURN_YAW_VA, &[float_word(dx as f32)])
+                .await?;
+        }
+        if dy != 0 {
+            // The handler does not clamp the stored pitch: keep it usable.
+            let state = memory::camera_state(&mut Reader(self.sup), cam).await?;
+            let counts = memory::clamped_pitch_counts(state.pitch, state.pitch_gain(), dy as f32);
+            if counts != 0.0 {
+                self.camera_call(cam, memory::CAMERA_TURN_PITCH_VA, &[float_word(counts)])
+                    .await?;
+            }
+        }
+        let notches = (f64::from(wheel) / 120.0).round() as i32;
+        let va = if notches > 0 {
+            memory::CAMERA_ZOOM_IN_VA
+        } else {
+            memory::CAMERA_ZOOM_OUT_VA
+        };
+        for _ in 0..notches.unsigned_abs().min(30) {
+            self.camera_call(cam, va, &[]).await?;
+        }
+        Ok(())
     }
 
     async fn slide(&mut self) -> Result<i64, String> {
@@ -277,20 +358,39 @@ impl WorldIo for LiveWorld<'_> {
     }
 
     async fn camera_pose(&mut self) -> Result<Pose, String> {
-        let slide = self.slide().await?;
-        let mut r = Reader(self.sup);
-        let actor = memory::camera_actor(&mut r, slide).await?;
-        memory::actor_pose(&mut r, actor).await
+        let c = self.player_camera().await?;
+        memory::actor_pose(&mut Reader(self.sup), c.camera).await
     }
 
-    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<(), String> {
-        if dx == 0 && dy == 0 && wheel == 0 {
-            return Ok(());
+    async fn camera_readout(&mut self) -> Result<Value, String> {
+        let c = self.player_camera().await?;
+        let mut r = Reader(self.sup);
+        let mut out = memory::camera_state(&mut r, c.camera).await?.to_json();
+        if let Ok(p) = memory::actor_pose(&mut r, c.camera).await {
+            out["pose"] = p.to_json();
         }
-        self.sup
-            .bridge_call("input_mouse", json!({ "dx": dx, "dy": dy, "wheel": wheel }))
-            .await
-            .map(|_| ())
+        Ok(out)
+    }
+
+    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String> {
+        if dx == 0 && dy == 0 && wheel == 0 {
+            return Ok(NativeLevel::Read);
+        }
+        match self.player_camera().await {
+            Ok(c) => {
+                self.native_look(c.camera, dx, dy, wheel).await?;
+                Ok(NativeLevel::NativeCamera)
+            }
+            // No camera to call (not in the world, or an unknown build):
+            // DirectInput, which the game reads only under mouse-look.
+            Err(why) => {
+                tracing::debug!(%why, "native camera unavailable; using DirectInput look");
+                self.sup
+                    .bridge_call("input_mouse", json!({ "dx": dx, "dy": dy, "wheel": wheel }))
+                    .await
+                    .map(|_| NativeLevel::RealInput)
+            }
+        }
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {

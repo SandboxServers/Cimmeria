@@ -22,6 +22,11 @@ use super::inventory::ITEMS_FN;
 use super::{NativeLevel, NativeTrail, Supervisor};
 use crate::supervisor::flows::widgets::lua_quote;
 
+/// The `Container.*` names the stock UI Lua uses. The live `Container` is a
+/// tolua class, so these are looked up by index; `pairs()` finds none.
+/// `ITEMS_FN` carries the same list (pinned by a test).
+pub const CONTAINER_NAMES_LUA: &str = "{'Main','Mission','Crafting','Vault','TeamVault','CommandVault','TeamBank','CommandBank','Bandolier','Head','Face','Neck','Chest','Back','Waist','Hands','Legs','Feet','Artifact1','Artifact2'}";
+
 /// A container named by its `Container.*` name or its number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContainerRef {
@@ -42,9 +47,15 @@ impl ContainerRef {
     pub fn lua_id(&self) -> String {
         match self {
             Self::Id(n) => n.to_string(),
+            // The live Container is a tolua class whose ids resolve through
+            // __index (pairs() sees only metamethods), so try the known
+            // names by index before falling back to pairs().
             Self::Name(n) => format!(
                 "(function() local want = string.lower({}) \
-                 for k, v in pairs(Container or {{}}) do if string.lower(k) == want then return v end end \
+                 for _, k in ipairs({CONTAINER_NAMES_LUA}) do if string.lower(k) == want then \
+                 local ok, v = pcall(function() return Container[k] end) \
+                 if ok and type(v) == 'number' then return v end end end \
+                 for k, v in pairs(Container or {{}}) do if type(k) == 'string' and string.lower(k) == want then return v end end \
                  return nil end)()",
                 lua_quote(n)
             ),
@@ -141,6 +152,29 @@ pub fn toggle_chunk(handler: &str) -> String {
 /// How many reveal rounds (open, tab, filter, scroll) before giving up.
 pub const MAX_REVEAL_ROUNDS: u32 = 5;
 
+/// Lua body: if the top-level window `host` reaches outside the screen
+/// (the `Root` window), move it fully on screen. Returns `{ok, moved,
+/// from, to}`. A window position saved at another resolution can leave a
+/// visible window off screen, where every click and drag in it misses
+/// (`InventoryWin` at x 2400 in a 1280x720 client, 2026-10-10).
+pub fn on_screen_chunk(host: &str) -> String {
+    format!(
+        r#"local w = _G[{h}]
+if w == nil then return __jenc({{ ok = false }}) end
+local root = getWindow('Root'):getPixelSize()
+local r = w:getUnclippedPixelRect()
+if r.left >= 0 and r.top >= 0 and r.right <= root.width and r.bottom <= root.height then
+  return __jenc({{ ok = true, moved = false }})
+end
+local x = math.max(0, math.min(r.left, root.width - (r.right - r.left)))
+local y = math.max(0, math.min(r.top, root.height - (r.bottom - r.top)))
+local ok = pcall(function() w:setPosition(CEGUI.UVector2(CEGUI.UDim(0, x), CEGUI.UDim(0, y))) end)
+local r2 = w:getUnclippedPixelRect()
+return __jenc({{ ok = ok, moved = true, from = {{ r.left, r.top }}, to = {{ r2.left, r2.top }} }})"#,
+        h = lua_quote(host)
+    )
+}
+
 impl Supervisor {
     /// Get slot `slot` of `container` on screen and return its locate
     /// result (with `window` and `rect`). Records each step's native level.
@@ -151,8 +185,9 @@ impl Supervisor {
         trail: &mut NativeTrail,
     ) -> Result<Value, String> {
         let mut last = Value::Null;
+        let mut moved = Value::Null;
         for _ in 0..MAX_REVEAL_ROUNDS {
-            let loc = self.lua_json(&locate_chunk(container, slot)).await?;
+            let mut loc = self.lua_json(&locate_chunk(container, slot)).await?;
             let need = loc["need"].as_str().map(str::to_string);
             match need.as_deref() {
                 None => {
@@ -161,6 +196,22 @@ impl Supervisor {
                             "slot window {} for {} slot {slot} is not visible",
                             loc["window"], loc["container"]
                         ));
+                    }
+                    // Layout setup, not the action under test: kept out of
+                    // the native trail and reported as `moved_on_screen`.
+                    if let Some(host) = loc["host"].as_str().filter(|_| moved.is_null()) {
+                        let r = self.lua_json(&on_screen_chunk(host)).await?;
+                        if r["moved"] == json!(true) {
+                            if r["ok"] != json!(true) {
+                                return Err(format!("{host} is off screen and could not be moved"));
+                            }
+                            moved = json!({ "window": host, "from": r["from"], "to": r["to"] });
+                            last = loc;
+                            continue;
+                        }
+                    }
+                    if !moved.is_null() {
+                        loc["moved_on_screen"] = moved;
                     }
                     return Ok(loc);
                 }
@@ -235,6 +286,17 @@ mod tests {
         let l = ContainerRef::Name("bandolier".into()).lua_id();
         assert!(l.contains(r#"string.lower("bandolier")"#));
         assert!(l.contains("pairs(Container or {})"));
+        // The tolua Container resolves ids through __index only.
+        assert!(l.contains("return Container[k]"));
+        assert!(l.contains(CONTAINER_NAMES_LUA));
+    }
+
+    #[test]
+    fn the_reader_and_the_lookup_share_one_container_name_list() {
+        assert!(ITEMS_FN.contains(&format!(
+            "local __LAB_CONTAINER_NAMES = {CONTAINER_NAMES_LUA}"
+        )));
+        assert!(ITEMS_FN.contains("return Container[k]"));
     }
 
     #[test]
@@ -250,6 +312,17 @@ mod tests {
             assert!(c.contains(w), "{w}");
         }
         assert!(c.contains("'Inventory_FilterAllInactive'"));
+    }
+
+    /// Regression guard (2026-10-10): a host window saved off screen is
+    /// moved on screen against the Root window's size, not left there.
+    #[test]
+    fn off_screen_hosts_are_clamped_to_the_root_window() {
+        let c = on_screen_chunk("InventoryWin");
+        assert!(c.contains(r#"_G["InventoryWin"]"#));
+        assert!(c.contains("getWindow('Root'):getPixelSize()"));
+        assert!(c.contains("r.right <= root.width and r.bottom <= root.height"));
+        assert!(c.contains("CEGUI.UVector2(CEGUI.UDim(0, x), CEGUI.UDim(0, y))"));
     }
 
     #[test]

@@ -181,6 +181,11 @@ impl ToolInvoker for Fake {
                 ok(json!({ "native_level": "ui_lua", "counts_as_native_pass": false }))
             }
             "client_target" => ok(json!({ "native_level": "real_input", "target": args["name"] })),
+            // A drag that ran natively but moved nothing.
+            "client_drag_drop" => ok(json!({
+                "native_level": "native_cegui", "native_pass": false,
+                "moved": false, "effect_ok": false,
+            })),
             "lab_screenshot" => ToolOutcome {
                 ok: true,
                 json: json!("client window 8x8"),
@@ -731,6 +736,39 @@ lua_condition = "true"
         .find(|a| a.tool.as_deref() == Some("client_target"))
         .unwrap();
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
+}
+
+/// A drag that ran at N1 but moved nothing (`effect_ok: false`) fails its
+/// action, so the row cannot pass on it.
+#[tokio::test]
+async fn a_drag_that_moved_nothing_fails_its_action() {
+    let rows = r#"
+[[row]]
+id = "INV1"
+title = "drag a medkit"
+expected = "it moves"
+step = [{ tool = "client_drag_drop", args = { from_container = "Main", from_slot = 1, to_container = "Main", to_slot = 2 } }]
+[[row.expect]]
+id = "c"
+text = "t"
+source = "wait"
+lua_condition = "true"
+"#;
+    let mut fake = Fake::new(&[]);
+    fake.tools.insert("client_drag_drop".into());
+    let (row, _) = run_one(&fake, rows).await;
+    assert_eq!(row.result, RowResult::Fail, "{:?}", row.reasons);
+    let step = row
+        .actions
+        .iter()
+        .find(|a| a.tool.as_deref() == Some("client_drag_drop"))
+        .unwrap();
+    assert!(!step.ok);
+    assert!(
+        step.error.as_deref().unwrap().contains("effect_ok: false"),
+        "{:?}",
+        step.error
+    );
 }
 
 /// AB-U20 and AB-U22 stage their NPC cast with the `.dummy caster` GM

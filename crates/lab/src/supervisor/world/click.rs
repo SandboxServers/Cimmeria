@@ -263,7 +263,136 @@ pub async fn run<W: WorldIo>(
     }
 
     // 3. Hover: find a point on the body the client says is the entity.
+    // When every point is covered or off screen, change the view (pitch
+    // up over the occluder, yaw each way, zoom in) and try again; the bank
+    // UAT needed a hand-made pitch for exactly this (2026-10-10).
     let t_hover = io.now_ms();
+    let mut adjusted = Vec::new();
+    let mut tried = Vec::new();
+    let mut chosen = None;
+    let mut start_view: Option<Value> = None;
+    let mut zoomed = 0;
+    for (i, adj) in std::iter::once(None)
+        .chain(VIEW_RETRIES.iter().map(Some))
+        .enumerate()
+    {
+        if let Some(&(dx, dy, notches)) = adj {
+            if entity.is_none() || !req.rotate_camera.unwrap_or(true) {
+                break;
+            }
+            if start_view.is_none() {
+                start_view = io.camera_readout().await.ok();
+            }
+            zoomed += notches;
+            let level = io
+                .look(dx, dy, notches * super::camera::WHEEL_NOTCH)
+                .await
+                .map_err(|e| steps.fail(io.now_ms(), "view_retry", e))?;
+            steps.used(level);
+            io.sleep(super::camera::LOOK_SETTLE_MS).await;
+            adjusted.push(json!({ "retry": i, "yaw_counts": dx, "pitch_counts": dy, "zoom_notches": notches }));
+        }
+        let (c, t) = hover_once(
+            io,
+            &mut steps,
+            &mut aim,
+            entity,
+            units.mouse_over,
+            req.force,
+        )
+        .await?;
+        tried = t;
+        chosen = c;
+        if chosen.is_some() {
+            break;
+        }
+    }
+    let mut hover_detail = json!({ "tried": tried });
+    if !adjusted.is_empty() {
+        hover_detail["view_retries"] = json!(adjusted);
+    }
+    // Every retry failed: put the view back as it was (review of #1309).
+    // Yaw already nets to zero; zoom and a clamped pitch do not.
+    if chosen.is_none() && !adjusted.is_empty() {
+        let now = io.camera_readout().await.ok();
+        let dy = match (&start_view, &now) {
+            (Some(a), Some(b)) => restore_pitch_counts(a, b),
+            _ => 0,
+        };
+        let restored = io
+            .look(0, dy, -zoomed * super::camera::WHEEL_NOTCH)
+            .await
+            .is_ok();
+        hover_detail["view_restored"] = json!(restored);
+    }
+    steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
+    let Some((pixel, hover)) = chosen else {
+        return Err(steps.fail_with(
+            io.now_ms(),
+            "hover",
+            "every point on the target is off screen or covered by another entity, after the view retries (force=true clicks anyway)",
+            hover_detail,
+        ));
+    };
+    let (x, y) = (pixel.0.round() as i32, pixel.1.round() as i32);
+    if !matches!(hover, Hover::Matched) || tried.len() > 1 {
+        io.place_cursor(x, y, true)
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
+        io.sleep(HOVER_WAIT_MS).await;
+    }
+    let plan = ClickPlan {
+        button,
+        expect,
+        entity,
+        units,
+        before,
+        at: (x, y),
+        hover_verified: matches!(hover, Hover::Matched),
+        face_json,
+        found,
+    };
+    click_and_observe(io, steps, &req, plan).await
+}
+
+/// View changes tried, in order and cumulatively, when the target is
+/// covered: (yaw counts, pitch counts, zoom notches). At the live gain (20
+/// units per count) 300 counts is about 33 degrees.
+pub const VIEW_RETRIES: [(i32, i32, i32); 5] = [
+    (0, -300, 0),
+    (0, -300, 0),
+    (250, 0, 0),
+    (-500, 0, 0),
+    (250, 600, 4),
+];
+
+/// Pitch counts that take the camera from readout `now` back to `start`
+/// (`pitch_offset_deg` and `pitch_gain` from `camera_readout`); 0 when
+/// either readout lacks them.
+pub fn restore_pitch_counts(start: &Value, now: &Value) -> i32 {
+    let (Some(a), Some(b), Some(g)) = (
+        start["pitch_offset_deg"].as_f64(),
+        now["pitch_offset_deg"].as_f64(),
+        now["pitch_gain"].as_f64(),
+    ) else {
+        return 0;
+    };
+    if g.abs() < 1e-3 {
+        return 0;
+    }
+    ((a - b) * 65536.0 / 360.0 / g).round() as i32
+}
+
+/// One hover pass over the target's body heights: the chosen point and how
+/// each height went.
+async fn hover_once<W: WorldIo>(
+    io: &mut W,
+    steps: &mut Steps,
+    aim: &mut Aim,
+    entity: Option<u32>,
+    mo_slot: i32,
+    force: bool,
+) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
         Some(_) => HOVER_OFFSETS
@@ -301,7 +430,7 @@ pub async fn run<W: WorldIo>(
                 .slots()
                 .await
                 .map_err(|err| steps.fail(io.now_ms(), "read_mouse_over", err))?;
-            let mo = slot_entity(&slots, units.mouse_over);
+            let mo = slot_entity(&slots, mo_slot);
             hover = if mo == e {
                 Hover::Matched
             } else if mo == 0 {
@@ -330,27 +459,44 @@ pub async fn run<W: WorldIo>(
             // may only update mouse-over on its own schedule): keep it as
             // a candidate but prefer a verified height.
             Hover::Nothing if chosen.is_none() => chosen = Some((p, Hover::Nothing)),
-            Hover::Other(o) if req.force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
+            Hover::Other(o) if force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
             _ => {}
         }
     }
-    steps.record("hover", t_hover, io.now_ms(), json!({ "tried": tried }));
-    let Some((pixel, hover)) = chosen else {
-        return Err(steps.fail_with(
-            io.now_ms(),
-            "hover",
-            "every point on the target is off screen or covered by another entity (force=true clicks anyway)",
-            json!({ "tried": tried }),
-        ));
-    };
-    let (x, y) = (pixel.0.round() as i32, pixel.1.round() as i32);
-    if !matches!(hover, Hover::Matched) || tried.len() > 1 {
-        io.place_cursor(x, y, true)
-            .await
-            .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
-        io.sleep(HOVER_WAIT_MS).await;
-    }
+    Ok((chosen, tried))
+}
 
+/// What the click step needs from the resolve and hover steps.
+struct ClickPlan {
+    button: usize,
+    expect: Expect,
+    entity: Option<u32>,
+    units: super::lua::UnitSlots,
+    before: UiSnap,
+    at: (i32, i32),
+    hover_verified: bool,
+    face_json: Value,
+    found: Option<Found>,
+}
+
+/// Steps 4 and 5: click, then watch what the client did.
+async fn click_and_observe<W: WorldIo>(
+    io: &mut W,
+    mut steps: Steps,
+    req: &ClickRequest,
+    plan: ClickPlan,
+) -> Result<Value, WorldError> {
+    let ClickPlan {
+        button,
+        expect,
+        entity,
+        units,
+        before,
+        at: (x, y),
+        hover_verified,
+        face_json,
+        found,
+    } = plan;
     // 4. Click and watch.
     let t_click = io.now_ms();
     io.button(button, true)
@@ -438,7 +584,7 @@ pub async fn run<W: WorldIo>(
         "entity": found.as_ref().map(Found::to_json),
         "button": if button == 0 { "left" } else { "right" },
         "clicked_at": [x, y],
-        "hover_verified": matches!(hover, Hover::Matched),
+        "hover_verified": hover_verified,
         "expect": format!("{expect:?}").to_lowercase(),
         "result": evidence,
         "camera": face_json,
@@ -450,6 +596,18 @@ pub async fn run<W: WorldIo>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Restoring pitch inverts the clamped retries, with the invert flag.
+    #[test]
+    fn pitch_restore_counts_undo_the_offset_change() {
+        let start = json!({ "pitch_offset_deg": 0.0, "pitch_gain": 20.0 });
+        let now = json!({ "pitch_offset_deg": -66.0, "pitch_gain": 20.0 });
+        // +66 degrees = 12014 units = 601 counts at 20 units per count.
+        assert_eq!(restore_pitch_counts(&start, &now), 601);
+        let inverted = json!({ "pitch_offset_deg": -66.0, "pitch_gain": -20.0 });
+        assert_eq!(restore_pitch_counts(&start, &inverted), -601);
+        assert_eq!(restore_pitch_counts(&start, &json!({})), 0);
+    }
 
     fn snap(target: u32, windows: &[&str]) -> UiSnap {
         UiSnap {

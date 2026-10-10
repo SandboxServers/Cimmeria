@@ -12,8 +12,9 @@ use serde_json::{json, Value};
 use super::find::{find_entities, FindRequest};
 use super::geometry::{bearing, wrap_pi, Pose, Screen, Vec3};
 use super::io::WorldIo;
+use super::memory;
 use super::steer::{FaceConfig, FaceController, FaceStep, TurnModel};
-use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
+use super::{PointArg, Steps, TargetArg, WorldError};
 
 /// Frames for a mouse-look motion to show up in the next projection.
 pub const LOOK_SETTLE_MS: u64 = 120;
@@ -32,9 +33,12 @@ pub struct CameraRequest {
     /// Raw vertical mouse-look motion, DirectInput counts.
     #[serde(default)]
     pub pitch_counts: Option<i32>,
-    /// Mouse-wheel notches (positive = wheel forward).
+    /// Mouse-wheel notches (positive = wheel forward = zoom in).
     #[serde(default)]
     pub zoom_notches: Option<i32>,
+    /// Zoom to this camera distance (100..775, 30 per notch) instead.
+    #[serde(default)]
+    pub zoom_to: Option<f32>,
     /// Face this entity id ...
     #[serde(default)]
     pub face_entity_id: Option<u32>,
@@ -148,10 +152,11 @@ pub async fn face<W: WorldIo>(
                 if report.looks == max_steps {
                     break;
                 }
-                io.look(dx, dy, 0)
+                let level = io
+                    .look(dx, dy, 0)
                     .await
                     .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
-                steps.used(NativeLevel::RealInput);
+                steps.used(level);
                 report.looks += 1;
                 io.sleep(LOOK_SETTLE_MS).await;
             }
@@ -218,15 +223,27 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         .await
         .map_err(|e| steps.fail(io.now_ms(), "focus", e))?;
     let camera_before = io.camera_pose().await.ok();
+    let readout_before = io.camera_readout().await;
 
     let (dx, dy) = (req.yaw_counts.unwrap_or(0), req.pitch_counts.unwrap_or(0));
-    let wheel = req.zoom_notches.unwrap_or(0) * WHEEL_NOTCH;
+    let notches = match (req.zoom_to, &readout_before) {
+        (Some(to), Ok(r)) => r["zoom"]
+            .as_f64()
+            .map(|from| memory::zoom_notches(from as f32, to))
+            .unwrap_or(0),
+        (Some(_), Err(e)) => {
+            return Err(steps.fail(io.now_ms(), "zoom_to", format!("no camera readout: {e}")))
+        }
+        (None, _) => req.zoom_notches.unwrap_or(0),
+    };
+    let wheel = notches * WHEEL_NOTCH;
     if dx != 0 || dy != 0 || wheel != 0 {
         let t0 = io.now_ms();
-        io.look(dx, dy, wheel)
+        let level = io
+            .look(dx, dy, wheel)
             .await
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
-        steps.used(NativeLevel::RealInput);
+        steps.used(level);
         io.sleep(LOOK_SETTLE_MS).await;
         steps.record(
             "look",
@@ -267,9 +284,12 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     }
 
     let camera_after = io.camera_pose().await.ok();
+    let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
     let out = json!({
         "camera_before": camera_before.map(|p| p.to_json()),
         "camera_after": camera_after.map(|p| p.to_json()),
+        "view_before": readout(readout_before),
+        "view_after": readout(io.camera_readout().await),
         "target": resolved,
         "face": face_json,
     });

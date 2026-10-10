@@ -18,6 +18,8 @@
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
 //! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
+//! - [`cegui_native`] — the client's own CEGUI `System` injectors (cursor
+//!   motion, buttons, drag-drop), called on its main thread.
 //! - [`flows`] — login, character select, play, dialog and logout flows
 //!   over the native input, plus UI reads (`client_ui_state`,
 //!   `client_wait_for`).
@@ -28,7 +30,11 @@
 //!   cursors (`client_wait_event`, `client_events_read`).
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
+#[cfg(test)]
+mod cegui_fake;
+pub mod cegui_native;
 pub mod combat;
+pub mod composite;
 pub mod crash_report;
 pub mod display;
 pub mod entity_table;
@@ -293,6 +299,18 @@ impl Supervisor {
         if method != "input_release" {
             crate::lease::permit::ensure(&format!("bridge {method}"))?;
         }
+        self.bridge_call_unguarded(method, params).await
+    }
+
+    /// [`Self::bridge_call`] without the lease check, for a call that only
+    /// lets go of something the same tool pressed (a native button-up,
+    /// clearing a held modifier): like `input_release`, cleanup must still
+    /// run when the lease was revoked mid-press. Still journaled.
+    pub async fn bridge_release_call(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.bridge_call_unguarded(method, params).await
+    }
+
+    async fn bridge_call_unguarded(&self, method: &str, params: Value) -> Result<Value, String> {
         let seq = {
             let mut st = self.state.lock().await;
             st.journal.record(method, now_ms())

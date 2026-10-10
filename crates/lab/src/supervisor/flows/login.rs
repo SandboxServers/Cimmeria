@@ -18,6 +18,8 @@ use crate::supervisor::{LoginState, Supervisor};
 
 /// How long the intro movies may take before the login screen shows.
 const REACH_LOGIN_TIMEOUT: Duration = Duration::from_secs(90);
+/// How long a fresh client may take to show its window.
+const WINDOW_TIMEOUT: Duration = Duration::from_secs(90);
 /// Login and server-select round trips.
 const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -158,6 +160,16 @@ impl Supervisor {
         run: &mut FlowRun<'_>,
         creds: &ResolvedLogin,
     ) -> Result<Value, FlowError> {
+        // A fresh client has no window for about 30 s; virtual focus needs
+        // one. Wait for it instead of failing at once (2026-10-10).
+        let t0 = Instant::now();
+        let waited = self
+            .wait_main_window(WINDOW_TIMEOUT)
+            .await
+            .map_err(|e| run.fail("window", e))?;
+        if waited > 0 {
+            run.record("window", t0, json!({ "waited_ms": waited }));
+        }
         self.input_focus(true)
             .await
             .map_err(|e| run.fail("focus", e))?;

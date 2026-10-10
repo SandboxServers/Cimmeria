@@ -135,6 +135,24 @@ pub struct CreateRequest {
     pub gender: String,
 }
 
+impl CreateRequest {
+    /// Every argument check `lab_create_character` makes, with no client
+    /// call: alignment, archetype, gender, letters-only names. Run it
+    /// before anything that cannot be undone (freeing a slot deletes a
+    /// character).
+    pub fn check(&self) -> Result<(), String> {
+        let alignment = Alignment::parse(&self.alignment)?;
+        alignment.archetype_button(&self.archetype)?;
+        widgets::gender_button(&self.gender)?;
+        for (what, v) in [("first", &self.first), ("last", &self.last)] {
+            if v.is_empty() || !v.chars().all(|c| c.is_ascii_alphabetic()) {
+                return Err(format!("{what} name {v:?} must be letters only"));
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Supervisor {
     /// The character list (errors when not at character select).
     pub async fn read_characters(
@@ -192,16 +210,12 @@ impl Supervisor {
     /// `lab_create_character`.
     pub async fn create_character_flow(&self, req: CreateRequest) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "lab_create_character");
+        req.check().map_err(|e| run.fail("args", e))?;
         let alignment = Alignment::parse(&req.alignment).map_err(|e| run.fail("args", e))?;
         let archetype_btn = alignment
             .archetype_button(&req.archetype)
             .map_err(|e| run.fail("args", e))?;
         let gender_btn = widgets::gender_button(&req.gender).map_err(|e| run.fail("args", e))?;
-        for (what, v) in [("first", &req.first), ("last", &req.last)] {
-            if v.is_empty() || !v.chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(run.fail("args", format!("{what} name {v:?} must be letters only")));
-            }
-        }
         self.input_focus(true)
             .await
             .map_err(|e| run.fail("focus", e))?;
