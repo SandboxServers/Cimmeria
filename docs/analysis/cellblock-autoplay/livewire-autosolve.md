@@ -40,7 +40,7 @@ The extracted movies (`Livewire.gfx`, `Hack.gfx`), their disassembly and the gen
 3. It waits for the SWF's own `processover{wirename=g…}` to arrive at the server. That rollover is proof the goal wire is topmost under the cursor.
 4. Only then does it left-click, as a real window message. The SWF sends `processmove`, and the server validates it as usual.
 
-**What SGW.exe says about input.** The decompile shows that mouse motion reaches the movie only through a CEGUI MouseMove event on the ExternalWindow [V]. The game feeds CEGUI from `GetCursorPos`, which the lab already virtualises (`focus.rs:8-9`). So the lab's existing cursor path should work [U: one live check].
+**What SGW.exe says about input.** The decompile shows that mouse motion reaches the movie only through a CEGUI MouseMove event on the ExternalWindow [V]. The game feeds CEGUI only when DirectInput reports motion (it then reads `GetCursorPos`), so a posted move or a Lua cursor placement never reaches the movie [V, 2026-10-10]. The lab's cursor path now calls CEGUI's `injectMousePosition` natively, which fires that MouseMove (Q1) [U: one live check on the movie].
 
 **Fallbacks.** No minigame GM command exists today [V]. In order of preference:
 
@@ -84,10 +84,9 @@ Consequences:
 
 - **The movie's mouse position changes only on a CEGUI MouseMove event.** A button press lands at the last *moved-to* point. The flow must move, let at least one frame pass, and only then click.
 - The movie maps local coordinates proportionally (normalised, then multiplied by the viewport). That supports the stage-to-UI mapping in §2.2 [V]. Letterboxing inside the viewport is [U].
-- The CEGUI Lua bindings expose no `injectMouse*` function (no such strings in SGW.exe) [V]. A MouseMove therefore has to come from the game's own feed.
-  - `crates/client-telemetry/src/bridge/input/focus.rs:8-9` records that "the UI cursor follows the OS cursor". The game polls `GetCursorPos`, which the bridge virtualises.
-  - `Supervisor::move_cursor` sets the bridge virtual cursor and *then* calls CEGUI `MouseCursor:setPosition` (`crates/lab/src/supervisor/input.rs:258-266`).
-  - [U] Whether the game still injects a MouseMove when Lua has already moved CEGUI's cursor to the same point. If it does not, the flow uses a virtual-cursor-only move and waits one frame. See Q1.
+- The CEGUI Lua bindings expose no `injectMouse*` function (no such strings in SGW.exe) [V]. A MouseMove therefore has to come from a native call to the injector.
+  - Correction (2026-10-10): the game does **not** poll `GetCursorPos`. It calls `System::injectMousePosition` only when DirectInput reports mouse motion; `GetCursorPos` is just where that pump reads the position from. Posted `WM_MOUSEMOVE` and Lua `MouseCursor:setPosition` produce no MouseMove ([CEGUI mouse input feed](../../reverse-engineering/findings/cegui-mouse-input-feed.md)) [V].
+  - `Supervisor::move_cursor` now sets the bridge virtual cursor and then calls `injectMousePosition` natively on the main thread (`crates/lab/src/supervisor/cegui_native.rs`), which fires the MouseMove. See Q1.
 
 ### 1.3 Livewire SWF logic [V, AS2 disassembly]
 
@@ -272,11 +271,10 @@ Runner tiers are defined in `crates/lab/src/uat/tier.rs:8-14`, and a step graded
 
 ### RE or live checks (MG-L0)
 
-1. **[U] Does `move_cursor` produce a CEGUI MouseMove on the ExternalWindow?**
-   - The lab sets the virtual `GetCursorPos` and then Lua `MouseCursor:setPosition` (`input.rs:259-266`).
-   - If the game injects only when its polled position differs from CEGUI's cursor, the Lua step could suppress the event.
-   - Fallback: a virtual-cursor-only move, then a one-frame wait.
-   - Tell-tale: `processover` never arrives, or the click lands at the old point (the MouseDown uses the stored position, `0x0093aa70`).
+1. **Answered (2026-10-10): the old `move_cursor` produced no MouseMove; it does now.**
+   - The game injects only when DirectInput reports motion, and Lua `MouseCursor:setPosition` fires no event, so the old virtual-cursor-plus-`setPosition` path never reached the ExternalWindow. A virtual-cursor-only move would not either: nothing polls the position on a timer ([CEGUI mouse input feed](../../reverse-engineering/findings/cegui-mouse-input-feed.md), sections 2 and 4) [V].
+   - `move_cursor` now calls `System::injectMousePosition` natively on the main thread (`crates/lab/src/supervisor/cegui_native.rs`), the same call the game's pump makes. That fires a real MouseMove through the normal hit-test, and it moved and dragged inventory items live.
+   - Still to see in a Livewire session: `processover` arrives on hover and the click lands at the moved-to point (the MouseDown uses the stored position, `0x0093aa70`).
 2. **[U] Letterbox and offset of the movie inside `Minigame_Movie_Area`.** Proportional mapping is expected; the `pe1` calibration probe settles it.
 3. **[U] Rollover feedback latency** (SWF → TCP → server tap → lab-mcp HTTP → lab). It should stay well under 150 ms per probe.
 4. **[U] `cover_mc` after `openDoor`.** The rasterisation used frame 1, and the door animates away. The plan's blocked band ignores it; the pe1 probe confirms it.
@@ -289,7 +287,7 @@ Runner tiers are defined in `crates/lab/src/uat/tier.rs:8-14`, and a step graded
 3. Fix the §7 library-suffix bug?
    - It makes boards visibly harder for human UAT: 5 more visible mouse-opaque playfield wires at difficulty 1.
    - The simulation shows the solver copes either way [S].
-4. Tier convention: confirm that cursor placement through the virtual `GetCursorPos` plus CEGUI Lua inside an N1 flow stays N1, as `input.rs:1-22` already assumes.
+4. Tier convention: confirm that cursor placement through native `injectMousePosition` inside an N1 flow stays N1. The lab now reports it as `native_cegui`, which counts as N1 (see the [lab guide's native levels](../../guides/live-research-lab.md#ui-readers-and-item-tools)).
 
 ### Out of scope, noted
 

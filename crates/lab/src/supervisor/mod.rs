@@ -18,6 +18,8 @@
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
 //! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
+//! - [`cegui_native`] — the client's own CEGUI `System` injectors (cursor
+//!   motion, buttons, drag-drop), called on its main thread.
 //! - [`flows`] — login, character select, play, dialog and logout flows
 //!   over the native input, plus UI reads (`client_ui_state`,
 //!   `client_wait_for`).
@@ -28,6 +30,9 @@
 //!   cursors (`client_wait_event`, `client_events_read`).
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
+#[cfg(test)]
+mod cegui_fake;
+pub mod cegui_native;
 pub mod combat;
 pub mod crash_report;
 pub mod display;

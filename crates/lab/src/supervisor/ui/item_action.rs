@@ -217,7 +217,9 @@ impl Supervisor {
                     };
                     match native {
                         Some((x, y)) => {
-                            self.click_at(x, y, 0, true).await?;
+                            self.click_at(x, y, 0, true)
+                                .await?
+                                .note_fallback(&mut trail);
                             trail.push(format!("double-click {icon}"), NativeLevel::RealInput);
                         }
                         None if allow_fallback => {
@@ -252,7 +254,9 @@ impl Supervisor {
                             .await?;
                         let (x, y) = super::window_click::click_point(&r)
                             .ok_or_else(|| format!("{window} has no screen rectangle"))?;
-                        self.click_at(x, y, button, double).await?;
+                        self.click_at(x, y, button, double)
+                            .await?
+                            .note_fallback(&mut trail);
                         let how = if double {
                             "double-click"
                         } else {

@@ -276,7 +276,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
-| `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre, real button messages. |
+| `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre (native `injectMousePosition`, a real CEGUI `MouseMove`), real button messages. |
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
 | `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
 | `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
@@ -286,7 +286,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_inventory` | Every loaded container, the bandolier's ammo and cash; `snapshot` / `diff_against` for before-and-after checks. |
 | `client_player_state` | Position, world, level, experience, every stat, effects, the active weapon's ammo, the target. |
 | `client_item_action` | Use, equip, unequip (a right-click on the slot), double-click, Loot All, loot one row; slash-command fallback. |
-| `client_drag_drop` | A real drag between slots or onto a named window; `split` is the stock Ctrl-drag (one off the stack). Verified by an inventory diff. |
+| `client_drag_drop` | A drag between slots or onto a named window through the client's own CEGUI injectors; `split` is the stock Ctrl-drag (one off the stack). Verified by an inventory diff. |
 | `client_entity_find` | Entities the client knows, by id, name, mob id (the client's template id), hostility or distance: name, level, hostility, rendered, targetable, position (client and server coordinates), distance, screen point. Read-only. See [World tools](#world-tools). |
 | `client_world_click` / `client_target` | Click an entity or world point in the 3D view with real input (camera turned onto it if needed, mouse-over checked for occluders), then report the target and windows it changed. `client_target` left-clicks and requires `Unit.Target` to become the entity. |
 | `client_move_to` | Walk to a point, an entity or through waypoints with `W` and mouse-look, closed loop on the player's position; stuck detection, arrival radius, timeout. |
@@ -329,10 +329,12 @@ Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
 
 ## Driving the client with its own input
 
-The input tools press nothing through Lua: Lua only reads where a widget is and places the UI cursor. What the live client showed (2026-09-29):
+The input tools press nothing through Lua: Lua only reads where a widget is. What the live client showed (2026-09-29, cursor and drag findings 2026-10-10):
 
 - Keys and typing are window messages. A posted `WM_KEYDOWN`/`WM_KEYUP` reaches the game; a bare posted `WM_CHAR` is ignored, because the game turns keys into characters itself with `GetKeyboardState` + `ToUnicodeEx`. The bridge makes Shift virtual by answering those two calls.
-- Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates. The cursor does not follow posted mouse moves or DirectInput motion, so the supervisor places it through CEGUI's own cursor and mirrors it into a virtual `GetCursorPos`.
+- Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates.
+- The game feeds CEGUI's cursor only when DirectInput reports mouse motion: its input pump then calls `CEGUI::System::injectMousePosition`. A posted `WM_MOUSEMOVE` never reaches CEGUI, Lua's `MouseCursor:setPosition` moves the pointer without a `MouseMove` event, and the client's Lua has no `CEGUI.System` binding. So the supervisor moves the cursor by calling `injectMousePosition` natively on the game's main thread (`call_native`), which gives CEGUI a real `MouseMove` (hover, drag thresholds, minigame input), and mirrors the point into a virtual `GetCursorPos`. If the native call fails it falls back to `setPosition` and says so (`cursor_via: lua_set_position`, `client_ui_lua`). Addresses and evidence: [CEGUI mouse input feed](../reverse-engineering/findings/cegui-mouse-input-feed.md).
+- A UI drag is native CEGUI input end to end: `injectMousePosition` onto the source, `injectMouseButtonDown(0)`, one `injectMousePosition` step per frame to the target, `injectMouseButtonUp(0)`. These are the calls the game's own input path makes, so they count as N1 (`native_cegui`).
 - The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
 - Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
 - `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Two clients](#two-clients-two-player-scenarios)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
@@ -491,7 +493,7 @@ These tools drive combat the way a player does and say how they did it. Every re
 **`client_use_ability {ability_id | name}`** resolves the ability against the hotbar and the Ability window's training trees, then fires it:
 
 1. On the hotbar: presses the button's bound key (the binding's virtual-key code mapped to a lab key), or clicks the button when the key is one the lab cannot post (`press: key | click` forces one). N1.
-2. Not on the hotbar, `place: true`: puts it on the first visible empty button with the calls the drop handler makes (`getUnusedAction`, `ActionProfileMod.setButtonCurrentAction`, `setActionToAbility`), reported as N3 because a CEGUI drag cannot be started from posted mouse moves yet, then presses it (N1). The placement stays in the player's profile.
+2. Not on the hotbar, `place: true`: puts it on the first visible empty button with the calls the drop handler makes (`getUnusedAction`, `ActionProfileMod.setButtonCurrentAction`, `setActionToAbility`), reported as N3, then presses it (N1). Posted mouse moves cannot start a CEGUI drag; the native drag `client_drag_drop` uses (above) could, but the hotbar placement has not been moved onto it yet. The placement stays in the player's profile.
 3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
 4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
 
@@ -648,7 +650,7 @@ The ability-mechanics rows are [docs/guides/uat-specs/abilities.toml](uat-specs/
 
 These tools serve automated UAT: read what the client shows, and act on items the way a player does. Readers use the stock UI's own Lua bindings (`getItemIDForSlot`, `getUnitStat`, `getEffectInfo`, `getLootInfo`, the CEGUI window tree); actions put the UI cursor on a widget's screen rectangle and send real button and key messages through the input path above. Container, stat and channel ids are read from the client's `Container`, `Stat` and `UIChannel` tables at run time, never hard-coded.
 
-**Native level.** Every result carries `native_level`, `native_tier` (the UAT matrix labels the world and combat tools use) and a `native_steps` list. The levels, most native first: `real_input` (N1, key and mouse messages), `slash_command` (N2, a line typed into chat, which the client parses and sends itself), `client_ui_lua` (N3, a call into the stock UI's Lua). The overall level is the least native step; `native_pass` is true only when every step was real input, so a UAT runner can refuse to count a pass that fell back. Readers report `native_tier: "read"` and `mode: "read"`. A failure is an MCP error naming the tool, the widget or step, and the elapsed time.
+**Native level.** Every result carries `native_level`, `native_tier` (the UAT matrix labels the world and combat tools use) and a `native_steps` list. The levels, most native first: `real_input` (N1, key and mouse messages), `native_cegui` (N1, the client's own CEGUI input injectors called natively: the calls its input pump makes, minus the DirectInput read in front of them), `slash_command` (N2, a line typed into chat, which the client parses and sends itself), `client_ui_lua` (N3, a call into the stock UI's Lua), `native_call` (N3, a native call that stands in for a decision the UI should have made itself, such as firing a drop the client did not resolve). The overall level is the least native step; `native_pass` is true only when every step was N1, so a UAT runner can refuse to count a pass that fell back. Readers report `native_tier: "read"` and `mode: "read"`. A failure is an MCP error naming the tool, the widget or step, and the elapsed time.
 
 | Tool | How it drives or reads | Fallback (reported) |
 |---|---|---|
@@ -658,13 +660,14 @@ These tools serve automated UAT: read what the client shows, and act on items th
 | `client_inventory` | Every container the client has loaded, the bandolier's ammo per slot, cash. `snapshot` / `diff_against` give slot changes, per-item quantity deltas and the cash delta. | — |
 | `client_player_state` | Position, facing (`unitOrientation` is a 0..1 turn fraction; `heading_deg` too), world, level, experience, every stat, effects, the active weapon's ammo, the target. | — |
 | `client_item_action` | `use` / `equip` / `unequip` / `rightclick`: a right-click on the item's slot, which the stock UI turns into `contextSensitiveUseItem`. The inventory or character window is opened with its bound key (`getBindingKey`) and the right tab and the All filter are clicked first. `loot_all` clicks Loot All; `loot_slot` pages the loot window and double-clicks the row. | Window toggle unbound: the window's toggle handler (`client_ui_lua`). Slot beyond the 40 visible: the scrollbar (`client_ui_lua`). Slot cannot be put on screen: `/useitem`, `/equip`, `/lootitem` (`slash_command`). |
-| `client_drag_drop` | Button down on the source slot, the cursor walked to the target in steps (CEGUI cursor placement plus a posted `WM_MOUSEMOVE` with the button held), button up. `split` holds Ctrl: the stock inventory pulls one item off the stack on a Ctrl-drag; its Shift-drag split is an unimplemented `TODO`. Verified by an inventory diff: `drag_started`, `moved`, `snap_back`. | Posted motion does not start a drag: the motion is replayed through CEGUI's `injectMousePosition` (`client_ui_lua`). |
+| `client_drag_drop` | Native CEGUI input (`native_cegui`): `injectMousePosition` onto the source slot, `injectMouseButtonDown(0)`, the cursor walked to the target one `injectMousePosition` per frame (a bridge round trip between steps; at least 3 steps, since the move that crosses the threshold only starts the drag), `injectMouseButtonUp(0)`. The source must be a CEGUI `DragContainer` (checked by vtable before anything is pressed). `split` holds Ctrl: the stock inventory pulls one item off the stack on a Ctrl-drag; its Shift-drag split is an unimplemented `TODO`. Verified by an inventory diff: `drag_started`, `drop_target_resolved` (the container's `d_dropTarget` before release), `drop_notified`, `moved`, `snap_back`. | No drop target at the end of a started drag (every live drag so far): fires the target window's `DragDropItemDropped` (`notifyDragDropItemDropped`) before release, so the stock handlers send `moveItem` (`native_call`, N3). `allow_fallback: false` skips it and the drag snaps back. |
 
 Quirks to keep in mind:
 
 - The chat log only has lines shown after the chat ring was first installed (by any pump); read `client_ui_state`'s chat tail for older ones. Centre-screen splash text does not go through the chat handler and is not in the log.
 - Items in the Mission and Crafting tabs share `InventoryWin` with Main: a drag between two tabs of the same window is refused, because both ends cannot be on screen at once.
 - Vault slots can be read and dragged only while the vault window is open at a banker.
+- `d_dropTarget` stays null over an inventory slot in the live client (2026-10-10), so a drag only lands through the explicit drop. Why is open: the leading suspect is that no window from the slot up to the GUI sheet has `DragDropTarget` set ([findings, section 8](../reverse-engineering/findings/cegui-mouse-input-feed.md#8-follow-up-d_droptarget-stays-0-after-a-live-injected-drag-2026-10-10)). When that is fixed, drags report `drop_target_resolved: true` and N1 with no change to the tool.
 
 **Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client; still true on 2026-10-04. After the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), the first live session should check:
 
@@ -673,7 +676,7 @@ Quirks to keep in mind:
 3. `client_window_click` on a `Trainer_Choices` row: `method: "item_at_point"` and `selected: true` with no `fallback`.
 4. `client_item_action {action: "use"}` on a consumable: the inventory window opens with its bound key (`getBindingKey('ToggleInventory', 1)` returns a key), the right-click consumes one (diff `delta: -1`), `native_level: "real_input"`.
 5. `client_item_action {action: "equip"}` and `unequip`: the item moves between `Main` and its equipment container.
-6. `client_drag_drop` between two `Main` slots: `drag_started` true without `motion_injected` (if the drag only starts after injection, posted motion does not reach CEGUI); with `split: true`, one item moves (Ctrl reaches CEGUI's button state as 9).
+6. `client_drag_drop` between two `Main` slots: `drag_started` true and `moved` true, with `drop_target_resolved` and `drop_notified` saying which drop landed it; with `split: true`, one item moves (Ctrl reaches CEGUI's button state as 9).
 7. `client_item_action {action: "loot_all"}` on the loot crate: loot count drops to 0 and the items appear in the diff.
 8. `client_player_state`: `position` matches `unitPosition`, `stats.Health` and the active weapon's ammo match the HUD.
 

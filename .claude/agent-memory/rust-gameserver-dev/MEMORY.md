@@ -43,6 +43,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [sqlx-chain-id-is-i32-vacuous-guards](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is i32; a wrong decode type hides inside "no rows" guards.
 - [gitignore-swallows-new-dirs](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules hide a new `foo/mod.rs`.
 - [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
+- [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 
 ## Wire format
 
@@ -67,6 +68,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-native-cegui-input-and-levels](lab-native-cegui-input-and-levels.md) — cursor/drag via native CEGUI injectors; `cegui_fake.rs` test seam; new native-level words need a `from_reported` row.
 - [stacked-pr-ship-title-and-ab-lab-tools.md](stacked-pr-ship-title-and-ab-lab-tools.md) — ship.py mistitles stacked PRs; AB-T5 snapshot builder, lab dummy = AI-skip extension, cooldown clear is type 2.
 - [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
 - [lab-daemon-lease-gate.md](lab-daemon-lease-gate.md) — lease gate is hand-written call_tool; new tools need a policy line; runner touches its own lease; per-test lease books.

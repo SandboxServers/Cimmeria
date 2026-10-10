@@ -235,7 +235,9 @@ impl Supervisor {
             trail.push("scroll_row_into_view", NativeLevel::ClientUiLua);
         }
         let (x, y) = click_point(&loc).expect("refuse() checked the point");
-        let at = self.click_at(x, y, button, double).await?;
+        let placed = self.click_at(x, y, button, double).await?;
+        placed.note_fallback(&mut trail);
+        let at = placed.at;
         trail.push("click", NativeLevel::RealInput);
         let mut out = json!({
             "target": loc["name"].clone(),

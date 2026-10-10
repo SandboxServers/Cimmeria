@@ -8,10 +8,14 @@
 //!   keyboard is created but never read.
 //! - **Mouse buttons** are window messages too, and CEGUI applies them at
 //!   *its* cursor position, not at the message's coordinates.
-//! - **The UI cursor** is not moved by posted `WM_MOUSEMOVE` or by
-//!   DirectInput motion; it is placed through CEGUI's own cursor
-//!   (`MouseCursor:setPosition`), mirrored into the bridge's virtual
-//!   `GetCursorPos` so the viewport agrees.
+//! - **The UI cursor** is not moved by posted `WM_MOUSEMOVE`: the game
+//!   feeds CEGUI only when DirectInput reports motion, by calling
+//!   `System::injectMousePosition` (2026-10-10, see
+//!   [`super::cegui_native`]). The lab makes that same call natively, so
+//!   CEGUI gets a real `MouseMove` (hover, drag thresholds, minigame
+//!   input), mirrored into the bridge's virtual `GetCursorPos` so the
+//!   viewport agrees. Lua's `MouseCursor:setPosition` only moves the
+//!   pointer, with no event; it is the fallback when the native call fails.
 //! - **Mouse-look** is DirectInput relative motion (`input_mouse`), read
 //!   while the viewport has the mouse captured.
 //!
@@ -25,6 +29,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use super::cegui_native::Cegui;
+use super::ui::{NativeLevel, NativeTrail};
 use super::{keys, process, Supervisor};
 
 /// How long a tapped key or clicked button is held: long enough for at
@@ -89,13 +95,69 @@ pub fn parse_widget_rect(window: &str, results: &[String]) -> Result<Rect, Strin
 pub const CURSOR_CHUNK: &str =
     "local p = CEGUI.MouseCursor:getSingleton():getPosition() return p.x, p.y";
 
-/// Lua that places the UI cursor at `(x, y)` and returns where it is.
+/// Lua that places the UI cursor at `(x, y)` and returns where it is. It
+/// fires no `MouseMove`: the fallback when native injection fails.
 pub fn place_cursor_chunk(x: i32, y: i32) -> String {
     format!(
         "local c = CEGUI.MouseCursor:getSingleton() \
          c:setPosition(CEGUI.Vector2({x}, {y})) \
          local p = c:getPosition() return p.x, p.y"
     )
+}
+
+/// How the UI cursor got where it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CursorVia {
+    /// Native `System::injectMousePosition`: a real CEGUI `MouseMove`.
+    NativeInject,
+    /// Lua `MouseCursor:setPosition` (no `MouseMove`), because the native
+    /// call failed with this error.
+    LuaSetPosition { native_error: String },
+}
+
+/// A placed UI cursor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CursorPlaced {
+    pub at: (i32, i32),
+    pub via: CursorVia,
+}
+
+impl CursorPlaced {
+    /// Record a fallback placement in a tool's trail. A native placement
+    /// adds no step: the press that follows carries the level.
+    pub fn note_fallback(&self, trail: &mut NativeTrail) {
+        if let CursorVia::LuaSetPosition { native_error } = &self.via {
+            trail.push(
+                format!("cursor via Lua setPosition (native injection failed: {native_error})"),
+                NativeLevel::ClientUiLua,
+            );
+        }
+    }
+
+    /// The native level of the placement itself.
+    pub fn level(&self) -> NativeLevel {
+        match self.via {
+            CursorVia::NativeInject => NativeLevel::NativeCegui,
+            CursorVia::LuaSetPosition { .. } => NativeLevel::ClientUiLua,
+        }
+    }
+
+    /// `{cursor, cursor_via, cursor_fallback_reason, native_level}` for a
+    /// tool result (the UAT runner reads `native_level`).
+    pub fn to_json(&self) -> Value {
+        let (via, reason) = match &self.via {
+            CursorVia::NativeInject => ("native_inject", None),
+            CursorVia::LuaSetPosition { native_error } => {
+                ("lua_set_position", Some(native_error.as_str()))
+            }
+        };
+        json!({
+            "cursor": [self.at.0, self.at.1],
+            "cursor_via": via,
+            "cursor_fallback_reason": reason,
+            "native_level": self.level().as_str(),
+        })
+    }
 }
 
 const WM_KEYDOWN: u32 = 0x0100;
@@ -255,19 +317,56 @@ impl Supervisor {
         parse_point(&results_of(&v)).ok_or_else(|| "could not read the UI cursor".to_string())
     }
 
-    /// Place the UI cursor at `(x, y)` (UI pixels) and confirm it is there.
-    pub async fn move_cursor(&self, x: i32, y: i32) -> Result<(i32, i32), String> {
+    /// Move the UI cursor to `(x, y)` natively: the virtual `GetCursorPos`
+    /// first (so a DirectInput-triggered pump re-injects the same point),
+    /// then CEGUI's own `injectMousePosition`. No confirmation read.
+    pub(super) async fn inject_cursor(
+        &self,
+        cegui: &Cegui<'_>,
+        (x, y): (i32, i32),
+    ) -> Result<(), String> {
         self.bridge_call("input_cursor", json!({ "x": x, "y": y }))
             .await?;
+        cegui.inject_mouse_position(x as f32, y as f32).await
+    }
+
+    /// Place the UI cursor at `(x, y)` (UI pixels) and confirm it is there.
+    /// Natively when possible (a real CEGUI `MouseMove`); when the native
+    /// call fails, through Lua `setPosition`, and the result says so.
+    pub async fn place_cursor(&self, x: i32, y: i32) -> Result<CursorPlaced, String> {
+        let native = match self.cegui().await {
+            Ok(c) => self.inject_cursor(&c, (x, y)).await,
+            Err(e) => Err(e),
+        };
+        let (chunk, via) = match native {
+            Ok(()) => (CURSOR_CHUNK.to_string(), CursorVia::NativeInject),
+            Err(native_error) => {
+                tracing::warn!(error = %native_error, x, y,
+                    "native cursor injection failed; placing it through Lua");
+                self.bridge_call("input_cursor", json!({ "x": x, "y": y }))
+                    .await?;
+                (
+                    place_cursor_chunk(x, y),
+                    CursorVia::LuaSetPosition { native_error },
+                )
+            }
+        };
         let v = self
-            .bridge_call("lua_eval", json!({ "chunk": place_cursor_chunk(x, y) }))
+            .bridge_call("lua_eval", json!({ "chunk": chunk }))
             .await?;
         match parse_point(&results_of(&v)) {
-            Some(p) if (p.0 - x).abs() <= 1 && (p.1 - y).abs() <= 1 => Ok(p),
+            Some(p) if (p.0 - x).abs() <= 1 && (p.1 - y).abs() <= 1 => {
+                Ok(CursorPlaced { at: p, via })
+            }
             other => Err(format!(
                 "cursor did not reach ({x}, {y}); it is at {other:?}"
             )),
         }
+    }
+
+    /// [`Self::place_cursor`], for callers that only need the point.
+    pub async fn move_cursor(&self, x: i32, y: i32) -> Result<(i32, i32), String> {
+        self.place_cursor(x, y).await.map(|p| p.at)
     }
 
     /// `client_ui_click` — find a named UI window, put the cursor on its
@@ -278,11 +377,15 @@ impl Supervisor {
             .await?;
         let rect = parse_widget_rect(window, &results_of(&v))?;
         let (x, y) = rect.centre();
-        let at = self.move_cursor(x, y).await?;
+        let placed = self.place_cursor(x, y).await?;
+        let at = placed.at;
         // Give the UI a frame to register the hover before the press.
         tokio::time::sleep(Duration::from_millis(40)).await;
         self.post_button(button, "click", at, None).await?;
-        Ok(json!({ "window": window, "clicked_at": [at.0, at.1] }))
+        let mut out = placed.to_json();
+        out["window"] = json!(window);
+        out["clicked_at"] = json!([at.0, at.1]);
+        Ok(out)
     }
 
     /// `client_type_text` — type into the focused edit box, one key press

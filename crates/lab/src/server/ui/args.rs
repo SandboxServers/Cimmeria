@@ -174,11 +174,12 @@ pub struct DragDropArgs {
     /// Ctrl-drag: pull one item off the stack (the stock UI's split).
     #[serde(default)]
     pub split: Option<bool>,
-    /// Cursor steps between press and release (default 8).
+    /// Cursor steps between press and release (default 8, at least 3).
     #[serde(default)]
     pub steps: Option<u32>,
-    /// Replay the motion through CEGUI's input injection when the posted
-    /// motion does not start a drag (default true).
+    /// When CEGUI resolved no drop target, fire the target window's
+    /// DragDropItemDropped directly before release (reported as
+    /// native_call, N3). Default true; false leaves such a drag to snap back.
     #[serde(default)]
     pub allow_fallback: Option<bool>,
     /// How long to wait for the inventory to change, ms (default 3000).

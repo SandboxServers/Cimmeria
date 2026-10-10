@@ -478,13 +478,15 @@ impl LabServer {
         )
     }
 
-    #[tool(description = "Place the UI cursor at (x, y) in UI pixels and confirm it is there.")]
+    #[tool(
+        description = "Place the UI cursor at (x, y) in UI pixels and confirm it is there. Moves it through the client's own CEGUI injectMousePosition, so CEGUI sees a real MouseMove (hover, drag thresholds, minigames); cursor_via says native_inject, or lua_set_position (no MouseMove) with cursor_fallback_reason when the native call failed."
+    )]
     async fn client_cursor_move(
         &self,
         Parameters(a): Parameters<CursorMoveArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let r = self.supervisor.move_cursor(a.x, a.y).await;
-        self.wrap(r.map(|(x, y)| json!({ "cursor": [x, y] })))
+        let r = self.supervisor.place_cursor(a.x, a.y).await;
+        self.wrap(r.map(|p| p.to_json()))
     }
 
     #[tool(

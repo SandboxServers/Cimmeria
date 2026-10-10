@@ -228,7 +228,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Drag an item from one UI slot to another with real input: press on the source slot, walk the cursor to the target in steps, release; `split` holds Ctrl (the stock UI pulls one item off the stack; its Shift-drag split is unimplemented). Ends are container + slot (the slot's window is put on screen first) or a named window (a trade, crafting or vault slot). Verified by an inventory diff: returns drag_started, moved, snap_back and the diff. If posted motion does not start a CEGUI drag, the motion is replayed through CEGUI's injectMousePosition (reported as client_ui_lua)."
+        description = "Drag an item from one UI slot to another through the client's own CEGUI input injectors (posted mouse moves never reach CEGUI): cursor onto the source, button down, the cursor walked to the target one step per frame (at least 3 steps), button up; `split` holds Ctrl (the stock UI pulls one item off the stack; its Shift-drag split is unimplemented). Ends are container + slot (the slot's window is put on screen first) or a named window (a trade, crafting or vault slot); the source must be a CEGUI DragContainer. When CEGUI resolved no drop target (today's live client), fires the target window's DragDropItemDropped directly before release unless allow_fallback is false; that step is native_call (N3), and a drag without it is native_cegui (N1). Verified by an inventory diff: returns drag_started, drop_target_resolved, drop_notified, moved, snap_back and the diff."
     )]
     async fn client_drag_drop(
         &self,
