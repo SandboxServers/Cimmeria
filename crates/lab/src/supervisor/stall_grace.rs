@@ -44,6 +44,18 @@ pub const LOAD_GRACE_ENV: &str = "CIMMERIA_LAB_LOAD_GRACE_SECS";
 /// past any load, and the clamp keeps the millisecond maths in `i64`.
 pub const MAX_LOAD_GRACE: Duration = Duration::from_secs(3600);
 
+/// How long after a launch a client that has never answered the bridge
+/// is left alone. With several clients booting at once a bridge took
+/// about 25 s to come up (2026-10-10), past the 5-failure rule.
+pub const BOOT_GRACE: Duration = Duration::from_secs(90);
+
+/// Whether a failed heartbeat should be ignored: the bridge has not
+/// answered once since this launch and the launch is younger than
+/// `grace`.
+pub fn in_boot_grace(answered_once: bool, since_launch: Duration, grace: Duration) -> bool {
+    !answered_once && since_launch < grace
+}
+
 /// Main-thread CPU, in thousandths of the wall time between two samples,
 /// at or above which the stalled thread counts as busy. 20 = 2 %: over the
 /// ~6 s between two failed polls that is 120 ms of CPU, far below what a

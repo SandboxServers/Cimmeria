@@ -299,3 +299,21 @@ fn busy_is_a_share_of_the_interval() {
     assert!(!main_thread_busy(0, 6_000));
     assert!(!main_thread_busy(50, 0), "no interval, no verdict");
 }
+
+/// Before the bridge has answered once, a failed heartbeat inside the
+/// boot grace is ignored; after the grace it counts again.
+#[test]
+fn a_boot_failure_inside_the_grace_is_ignored() {
+    assert!(in_boot_grace(false, Duration::ZERO, BOOT_GRACE));
+    assert!(in_boot_grace(false, Duration::from_secs(89), BOOT_GRACE));
+    assert!(!in_boot_grace(false, BOOT_GRACE, BOOT_GRACE));
+    assert!(!in_boot_grace(false, Duration::from_secs(91), BOOT_GRACE));
+}
+
+/// Once the bridge has answered, the boot grace is over, however young
+/// the launch is.
+#[test]
+fn an_answered_bridge_has_no_boot_grace() {
+    assert!(!in_boot_grace(true, Duration::ZERO, BOOT_GRACE));
+    assert!(!in_boot_grace(true, Duration::from_secs(10), BOOT_GRACE));
+}
