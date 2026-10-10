@@ -88,6 +88,10 @@ const OBJECT_ARRAYS: [&str; 7] = [
     "Targets",
 ];
 
+/// UE3 StaticMeshComponent light GUIDs have no package-local names or refs.
+/// Observed cooked values are a count followed by exactly 16 bytes per GUID.
+const GUID_ARRAYS: [&str; 1] = ["IrrelevantLights"];
+
 /// Rewrite one array value (`count` then elements). Struct arrays are
 /// self-describing: each element is a tagged list ending in `None`.
 fn rewrite_array(value: &mut [u8], prop_name: &str, rm: &mut Remapper) -> Result<()> {
@@ -113,6 +117,15 @@ fn rewrite_array(value: &mut [u8], prop_name: &str, rm: &mut Remapper) -> Result
             rm.object_at(value, 4 + i * 4)?;
         }
         return Ok(());
+    }
+    if GUID_ARRAYS.contains(&prop_name) {
+        return if value.len() == 4 + count * 16 {
+            Ok(())
+        } else {
+            Err(UpkError::Parse(format!(
+                "{prop_name} is not 16 bytes per GUID"
+            )))
+        };
     }
     let mut pos = 4;
     for i in 0..count {

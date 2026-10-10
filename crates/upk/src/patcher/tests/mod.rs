@@ -5,7 +5,7 @@ pub(crate) mod fixtures;
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use super::{clone_objects, CloneRequest, PatchSession, Placement};
+use super::{clone_objects, clone_objects_with_options, CloneRequest, PatchSession, Placement};
 use crate::Package;
 use fixtures::{
     clone_actors, level_package, rig_package, source_package, source_package_with_lod_data,
@@ -125,6 +125,31 @@ fn clone_remaps_refs_names_component_map_and_level_list() {
 }
 
 #[test]
+fn retain_level_actors_removes_discovery_refs_without_changing_exports() {
+    let src = write_temp("retain-src", &target_package());
+    let mut session = PatchSession::open(&src).unwrap();
+    assert_eq!(session.retain_level_actors(&["WorldInfo"]).unwrap(), (1, 0));
+    let out = write_temp("retain-out", &session.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    assert_eq!(pkg.exports.len(), 2, "actor export remains for audit");
+    let level = pkg.read_export_data(&pkg.exports[0]).unwrap();
+    assert_eq!(LittleEndian::read_i32(&level[16..]), 0);
+    assert_eq!(&level[20..], b"TAIL", "native tail is preserved");
+    let _ = [src, out].map(std::fs::remove_file);
+
+    let src = write_temp("retain-keep-src", &target_package());
+    let mut session = PatchSession::open(&src).unwrap();
+    assert_eq!(session.retain_level_actors(&["Trigger"]).unwrap(), (1, 1));
+    let out = write_temp("retain-keep-out", &session.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let level = pkg.read_export_data(&pkg.exports[0]).unwrap();
+    assert_eq!(LittleEndian::read_i32(&level[16..]), 1);
+    assert_eq!(LittleEndian::read_i32(&level[20..]), 2);
+    assert_eq!(&level[24..], b"TAIL");
+    let _ = [src, out].map(std::fs::remove_file);
+}
+
+#[test]
 fn ensure_import_reuses_an_existing_import() {
     let src_path = write_temp("imp-src", &source_package());
     let source = PatchSession::open(&src_path).unwrap();
@@ -157,6 +182,30 @@ fn clone_rejects_an_array_it_cannot_type() {
     let e = clone_actors(&mut target, &source, &[1], Placement::Offset([0.0; 3])).unwrap_err();
     assert!(e.to_string().contains("Touching"), "{e}");
     assert!(e.to_string().contains("not a known object array"), "{e}");
+    let _ = [src_path, dst_path].map(std::fs::remove_file);
+}
+
+#[test]
+fn clone_preserves_irrelevant_light_guids() {
+    let mut b = Builder::default();
+    let actor_class = b.import("Core", "Class", 0, "StaticMeshActor");
+    let level = level_package(&mut b, &[]);
+    let mut actor = Vec::new();
+    Builder::i32s(&mut actor, &[actor_class, actor_class, -1, -1, 0, 0, -1, 1]);
+    b.vector_prop(&mut actor, "Location", [0.0, 0.0, 1.0]);
+    b.guid_array_prop(&mut actor, "IrrelevantLights", &[[0x5a; 16], [0xa5; 16]]);
+    b.none(&mut actor);
+    b.export(actor_class, level, "StaticMeshActor", actor);
+    b.mark_actor();
+    let src_path = write_temp("guid-src", &b.build());
+    let dst_path = write_temp("guid-dst", &target_package());
+
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    clone_actors(&mut target, &source, &[1], Placement::Offset([0.0; 3])).unwrap();
+    let output = target.finish().unwrap();
+    assert!(output.windows(16).any(|bytes| bytes == [0x5a; 16]));
+    assert!(output.windows(16).any(|bytes| bytes == [0xa5; 16]));
     let _ = [src_path, dst_path].map(std::fs::remove_file);
 }
 
@@ -202,6 +251,78 @@ fn a_lod_entry_with_baked_lighting_is_refused() {
             "{lod_data:?}: {e}"
         );
     }
+}
+
+#[test]
+fn baked_2d_lightmap_can_be_explicitly_stripped_without_copying_texture_refs() {
+    let mut b = Builder::default();
+    let actor_class = b.import("Core", "Class", 0, "StaticMeshActor");
+    let component_class = b.import("Core", "Class", 0, "StaticMeshComponent");
+    let texture_class = b.import("Core", "Class", 0, "LightMapTexture2D");
+    let level = level_package(&mut b, &[]);
+    let texture_refs: Vec<i32> = (0..3)
+        .map(|i| {
+            b.export(
+                texture_class,
+                0,
+                &format!("LightMapTexture2D_{i}"),
+                vec![0; 12],
+            )
+        })
+        .collect();
+    let actor_ref = 5;
+    let component_ref = 6;
+    let mut actor = Vec::new();
+    Builder::i32s(&mut actor, &[actor_class, actor_class, -1, -1, 0, 0, -1, 1]);
+    b.object_prop(&mut actor, "StaticMeshComponent", component_ref);
+    b.vector_prop(&mut actor, "Location", [0.0, 0.0, 1.0]);
+    b.none(&mut actor);
+    assert_eq!(
+        b.export(actor_class, level, "StaticMeshActor", actor),
+        actor_ref
+    );
+    b.mark_actor();
+    let mut component = Vec::new();
+    Builder::i32s(&mut component, &[0, -1]);
+    b.none(&mut component);
+    Builder::i32s(&mut component, &[1, 0, 0, 2, 1]);
+    component.extend_from_slice(&[0x5a; 16]);
+    for reference in texture_refs {
+        Builder::i32s(&mut component, &[reference, 0, 0, 0]);
+    }
+    Builder::i32s(&mut component, &[0, 0, 0, 0]);
+    assert_eq!(
+        b.export(component_class, actor_ref, "StaticMeshComponent", component),
+        component_ref
+    );
+    let src_path = write_temp("lightmap-src", &b.build());
+    let dst_path = write_temp("lightmap-dst", &target_package());
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    let request = CloneRequest {
+        roots: &[actor_ref as usize - 1],
+        mapped: &[],
+        placement: Placement::Offset([0.0; 3]),
+    };
+    assert!(clone_objects(
+        &mut PatchSession::open(&dst_path).unwrap(),
+        &source,
+        &request
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("post-property data"));
+    clone_objects_with_options(&mut target, &source, &request, true).unwrap();
+    let out_path = write_temp("lightmap-out", &target.finish().unwrap());
+    let output = Package::open(&out_path).unwrap();
+    let component = output
+        .read_export_data(output.exports.last().unwrap())
+        .unwrap();
+    assert_eq!(
+        &component[component.len() - 16..],
+        &[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    );
+    let _ = [src_path, dst_path, out_path].map(std::fs::remove_file);
 }
 
 #[test]
@@ -380,6 +501,40 @@ fn mapped_source_objects_are_redirected_not_cloned() {
         matches!(props[0].value, crate::PropValue::Object(8)),
         "{props:?}"
     );
+    let _ = [path, out].map(std::fs::remove_file);
+}
+
+#[test]
+fn first_actor_at_yaw_sets_absolute_rotation_and_position() {
+    let path = write_temp("absolute-yaw", &rig_package());
+    let source = PatchSession::open(&path).unwrap();
+    let mut target = PatchSession::open(&path).unwrap();
+    let report = clone_objects(
+        &mut target,
+        &source,
+        &CloneRequest {
+            roots: &[5],
+            mapped: &[],
+            placement: Placement::FirstActorAtYaw {
+                position: [2000.0, 3000.0, -128.0],
+                yaw: 32768,
+            },
+        },
+    )
+    .unwrap();
+    assert_eq!(report.objects[0].location, Some([2000.0, 3000.0, -128.0]));
+    let out = write_temp("absolute-yaw-out", &target.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let index = report.objects[0].target_ref as usize - 1;
+    let data = pkg.read_export_data(&pkg.exports[index]).unwrap();
+    let rotation = crate::parse_tagged_properties(&data, 32, &pkg.names)
+        .into_iter()
+        .find(|prop| prop.name == "Rotation")
+        .unwrap();
+    assert!(matches!(
+        rotation.value,
+        crate::PropValue::Rotator { yaw: 32768, .. }
+    ));
     let _ = [path, out].map(std::fs::remove_file);
 }
 

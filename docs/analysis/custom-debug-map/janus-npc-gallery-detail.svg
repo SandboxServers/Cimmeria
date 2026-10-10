@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+<title id="title">Janus NPC gallery room capacity plan</title>
+<desc id="desc">Five enclosed lineup halls with relative floor areas and labels for NPC capacities 42, 44, 30, 28 and 17. Numbers are NPC standing capacity, not altar or fixture counts. A sixth isolation room remains empty. Full walls, dogleg entries and independent spawn controls are required.</desc>
+<defs>
+<style><![CDATA[text{font-family:Arial,Helvetica,sans-serif;fill:#23383c}.title{font-size:42px;font-weight:800}.subtitle{font-size:18px}.roomTitle{font-size:25px;font-weight:800}.capacity{font-size:54px;font-weight:800;fill:#254b54}.detail{font-size:17px}.micro{font-size:15px}.wall{stroke:#344d55;stroke-width:10}.door{stroke:#e8c575;stroke-width:14}.tag{fill:#fff;stroke:#566c6e;stroke-width:2}]]></style>
+</defs>
+<rect width="1800" height="1200" fill="#f5f6f0"/>
+<rect x="24" y="22" width="1752" height="1156" fill="none" stroke="#43575a" stroke-width="4"/>
+<rect x="48" y="44" width="1704" height="82" fill="#dce6dd" stroke="#43575a" stroke-width="2"/>
+<text x="68" y="96" class="title">JANUS / NPC LINEUP GALLERIES</text>
+<text x="1130" y="78" class="subtitle">Relative room sizing · mapper concept</text>
+<text x="1130" y="103" class="micro">Counts indicate NPC capacity, not placed altars</text>
+<rect x="48" y="150" width="1704" height="947" rx="12" fill="#d5e5c5" stroke="#3f674c" stroke-width="4"/>
+
+<!-- Five rooms have deliberately different footprints. The mapper sets final dimensions from actor bounds, clearance and sightline tests. -->
+<rect x="95" y="220" width="475" height="280" rx="10" fill="#a9cfbe" class="wall"/>
+<rect x="640" y="220" width="570" height="280" rx="10" fill="#c2d3aa" class="wall"/>
+<rect x="1280" y="220" width="425" height="280" rx="10" fill="#d9cba4" class="wall"/>
+<rect x="210" y="755" width="505" height="265" rx="10" fill="#d1bcd4" class="wall"/>
+<rect x="800" y="755" width="550" height="265" rx="10" fill="#b8cbdc" class="wall"/>
+<rect x="1435" y="755" width="265" height="265" rx="10" fill="#e5e7dd" class="wall"/>
+
+<!-- A single repeatable display motif per hall, leaving the floor open for data-driven NPC placements. -->
+<path d="M144 416H521M694 416H1157M1325 416H1660M257 942H667M849 942H1300" stroke="#6c8581" stroke-width="7" stroke-dasharray="32 18"/>
+<path d="M144 433H521M694 433H1157M1325 433H1660M257 959H667M849 959H1300" stroke="#e2e1cc" stroke-width="4"/>
+<text x="144" y="472" class="micro">Open floor · inspection aisle · repeatable display motif</text>
+<text x="699" y="472" class="micro">Open floor · inspection aisle · repeatable display motif</text>
+<text x="1325" y="472" class="micro">Open floor · inspection aisle</text>
+<text x="259" y="997" class="micro">Open floor · inspection aisle</text>
+<text x="849" y="997" class="micro">Allow extra clearance for large bodies</text>
+
+<text x="130" y="266" class="roomTitle">HUMANS</text><text x="130" y="342" class="capacity">42 NPCs</text><text x="130" y="374" class="detail">Spawn set 1301</text>
+<text x="678" y="266" class="roomTitle">JAFFA / MALE</text><text x="678" y="342" class="capacity">44 NPCs</text><text x="678" y="374" class="detail">Spawn set 1302</text>
+<text x="1318" y="266" class="roomTitle">JAFFA / FEMALE</text><text x="1318" y="342" class="capacity">30 NPCs</text><text x="1318" y="374" class="detail">Spawn set 1303</text>
+<text x="245" y="802" class="roomTitle">GOA'ULD / ASGARD / CHILDREN</text><text x="245" y="875" class="capacity">28 NPCs</text><text x="245" y="906" class="detail">Spawn set 1304</text>
+<text x="840" y="802" class="roomTitle">CREATURES / MACHINES</text><text x="840" y="875" class="capacity">17 NPCs</text><text x="840" y="906" class="detail">Spawn set 1305</text>
+<text x="1463" y="802" class="roomTitle">ISOLATION</text><text x="1463" y="864" class="detail">One NPC at a time</text><text x="1463" y="893" class="detail">Empty at boot</text>
+
+<!-- Baffled vestibules prevent straight lines from corridor into the five halls. -->
+<path d="M282 500V552H390V500M875 500V552H983V500M1439 500V552H1547V500M405 755V701H513V755M1021 755V701H1129V755" fill="none" class="wall"/>
+<path d="M298 526H370M891 526H963M1455 526H1527M421 727H493M1037 727H1109" fill="none" class="wall"/>
+<path d="M311 500H358M903 500H950M1468 500H1515M437 755H484M1052 755H1099" class="door"/>
+<path d="M312 552H360M905 552H953M1468 552H1516M436 701H485M1051 701H1100" class="door"/>
+
+<path d="M96 604H1703" stroke="#3d595b" stroke-width="113" stroke-linecap="round"/>
+<path d="M96 604H1703" stroke="#bbc7b7" stroke-width="92" stroke-linecap="round"/>
+<text x="688" y="599" class="roomTitle">SAFE INSPECTION CORRIDOR</text>
+<text x="645" y="630" class="detail">Full walls + ceilings · offset entries · independent activate / clear controls</text>
+<path d="M1600 754H1650" class="door"/>
+
+<rect x="66" y="1117" width="1668" height="44" fill="#e7ebdf" stroke="#566b69" stroke-width="2"/>
+<text x="85" y="1145" class="micro">One active set is the proven baseline. Occlusion breaks sightlines; it does not stop nearby active NPCs from entering client AoI. Raise concurrent load after measured server/client tests.</text>
+</svg>

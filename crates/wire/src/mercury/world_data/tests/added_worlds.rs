@@ -32,6 +32,27 @@ fn debug_area_is_world_1300_on_ihpet_crater_light() {
     assert!(added_world("debugarea").is_none());
 }
 
+#[test]
+fn cimmeria_lab_resolves_to_its_installed_client_map() {
+    let world = added_world("CimmeriaLab").expect("test world is registered");
+    assert_eq!(world.world_id, 1301);
+    assert_eq!(world.client_map, "Cimmeria_Lab1");
+    assert_eq!(world.world_info_flags, 1);
+    assert_eq!(world.origin, AddedWorldOrigin::CimmeriaLab);
+    assert_eq!(known_world_id(world.world), Some(1301));
+    assert_eq!(client_map_for_world(world.world), "Cimmeria_Lab1");
+}
+
+#[test]
+fn mapper_debug_resolves_to_separate_debug_package() {
+    let world = added_world("MapperDebug").expect("mapper QA world is registered");
+    assert_eq!(world.world_id, 1302);
+    assert_eq!(world.client_map, "Debug");
+    assert_eq!(world.origin, AddedWorldOrigin::MapperDebug);
+    assert_eq!(known_world_id(world.world), Some(1302));
+    assert_eq!(client_map_for_world(world.world), "Debug");
+}
+
 /// Ids, names and lookups are unique, and no added world reuses a shipped
 /// world's id or name (the shipped catalogue tops out at 92).
 #[test]
@@ -83,6 +104,8 @@ fn every_declared_space_resolves_to_its_seed_world_id_and_client_map() {
     let spaces = declared_spaces();
     assert!(spaces.len() >= 32, "parsed {} spaces", spaces.len());
     assert!(spaces.iter().any(|s| s == "DebugArea"));
+    assert!(spaces.iter().any(|s| s == "CimmeriaLab"));
+    assert!(spaces.iter().any(|s| s == "MapperDebug"));
     for world in &spaces {
         let row = rows
             .iter()
@@ -145,6 +168,28 @@ fn debug_area_seed_row_copies_ihpet_crater_light() {
             continue;
         }
         assert_eq!(&row[column], value, "DebugArea.{column}");
+    }
+}
+
+#[test]
+fn cimmeria_lab_seed_row_matches_its_scaffold_world() {
+    let rows = seed_rows();
+    let stock = rows
+        .iter()
+        .find(|row| row["world_id"] == "88")
+        .expect("Tollana_Curia seed row");
+    let lab = rows
+        .iter()
+        .find(|row| row["world_id"] == "1301")
+        .expect("CimmeriaLab seed row");
+    assert_eq!(lab["world"], "CimmeriaLab");
+    assert_eq!(lab["client_map"], "Cimmeria_Lab1");
+    assert_eq!(lab["navmesh_mode"], "advisory");
+    for (column, value) in stock {
+        if matches!(column.as_str(), "world_id" | "world" | "client_map") {
+            continue;
+        }
+        assert_eq!(&lab[column], value, "CimmeriaLab.{column}");
     }
 }
 

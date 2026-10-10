@@ -8,6 +8,8 @@
 //!   property list the audit could not follow)
 //!   upk-patch clone-objects <target_in> <source> <out> --roots A,B,C
 //!             [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]
+//!             [--yaw-degrees 0|90|180|270 with --first-at]
+//!             [--strip-lightmaps]
 //!
 //! `roundtrip` rewrites a package uncompressed with no content change.
 //! `clone-objects` copies each root (a 0-based export index in <source>) and
@@ -21,7 +23,9 @@
 //! Both refuse to overwrite <in>, and both re-open the output to verify it.
 
 use cimmeria_upk::patcher::name_audit::audit_client_names;
-use cimmeria_upk::patcher::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
+use cimmeria_upk::patcher::{
+    clone_objects_with_options, CloneReport, CloneRequest, PatchSession, Placement,
+};
 use cimmeria_upk::{extract_actors, Package};
 use std::env;
 use std::path::Path;
@@ -34,7 +38,7 @@ fn fail(msg: &str) -> ! {
 
 fn usage() -> ! {
     eprintln!(
-        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST]"
+        "Usage:\n  upk-patch roundtrip <in> <out>\n  upk-patch retain-level-actors <in> <out> --classes WorldInfo,Brush\n  upk-patch audit-names <package> [--from N]\n  upk-patch clone-objects <target_in> <source> <out> --roots A,B,C [--map SRC:DST,...] [--first-at X,Y,Z ... | --offset DX,DY,DZ | --anchor SRC:DST] [--yaw-degrees 0|90|180|270] [--strip-lightmaps]"
     );
     process::exit(1);
 }
@@ -251,12 +255,45 @@ fn main() {
                 process::exit(3);
             }
         }
+        Some("retain-level-actors") if args.len() >= 5 => {
+            let (input, output) = (&args[2], &args[3]);
+            refuse_in_place(input, output);
+            let classes: Vec<&str> = flag(&args, "--classes")
+                .unwrap_or_else(|| usage())
+                .split(',')
+                .filter(|name| !name.is_empty())
+                .collect();
+            if classes.is_empty() {
+                fail("at least one retained actor class is required");
+            }
+            let mut session = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
+            let level_index = session
+                .level_export_index()
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            let (before, after) = session
+                .retain_level_actors(&classes)
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            let bytes = session.finish().unwrap_or_else(|e| fail(&e.to_string()));
+            std::fs::write(output, bytes).unwrap_or_else(|e| fail(&e.to_string()));
+            println!(
+                "level actor refs: {before} -> {after}; retained classes: {}",
+                classes.join(",")
+            );
+            verify(input, output, &[level_index]);
+        }
         Some("clone-objects") if args.len() >= 5 => {
             let (input, source, output) = (&args[2], &args[3], &args[4]);
             refuse_in_place(input, output);
             let roots = parse_indices(flag(&args, "--roots").unwrap_or_else(|| usage()));
             let mapped = parse_pairs(flag(&args, "--map").unwrap_or(""));
             let first_at = flags(&args, "--first-at");
+            let yaw = flag(&args, "--yaw-degrees").map(|raw| match raw {
+                "0" => 0,
+                "90" => 16384,
+                "180" => 32768,
+                "270" => 49152,
+                _ => fail("--yaw-degrees must be 0, 90, 180 or 270"),
+            });
             let placements: Vec<Placement> = match (
                 first_at.is_empty(),
                 flag(&args, "--offset"),
@@ -264,7 +301,13 @@ fn main() {
             ) {
                 (false, None, None) => first_at
                     .iter()
-                    .map(|p| Placement::FirstActorAt(parse_vec3(p)))
+                    .map(|p| match yaw {
+                        Some(yaw) => Placement::FirstActorAtYaw {
+                            position: parse_vec3(p),
+                            yaw,
+                        },
+                        None => Placement::FirstActorAt(parse_vec3(p)),
+                    })
                     .collect(),
                 (true, Some(d), None) => vec![Placement::Offset(parse_vec3(d))],
                 (true, None, Some(a)) => match parse_pairs(a)[..] {
@@ -274,6 +317,9 @@ fn main() {
                 (true, None, None) => vec![Placement::Offset([0.0; 3])],
                 _ => usage(),
             };
+            if yaw.is_some() && first_at.is_empty() {
+                fail("--yaw-degrees requires --first-at");
+            }
 
             let src = PatchSession::open(source).unwrap_or_else(|e| fail(&e.to_string()));
             let mut dst = PatchSession::open(input).unwrap_or_else(|e| fail(&e.to_string()));
@@ -286,8 +332,13 @@ fn main() {
                     mapped: &mapped,
                     placement,
                 };
-                let report = clone_objects(&mut dst, &src, &request)
-                    .unwrap_or_else(|e| fail(&e.to_string()));
+                let report = clone_objects_with_options(
+                    &mut dst,
+                    &src,
+                    &request,
+                    args.iter().any(|arg| arg == "--strip-lightmaps"),
+                )
+                .unwrap_or_else(|e| fail(&e.to_string()));
                 print_report(&report);
                 if report.level_actor_count.is_some() {
                     changed.push(

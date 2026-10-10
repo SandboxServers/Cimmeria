@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080">
+<defs>
+ <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#0a1720"/><stop offset="1" stop-color="#102a32"/></linearGradient>
+ <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#ffffff" stroke-opacity=".055"/></pattern>
+ <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ <style><![CDATA[
+ text{font-family:'Segoe UI',Arial,sans-serif;fill:#e9f4ee} .title{font-size:42px;font-weight:700;letter-spacing:3px}.sub{font-size:18px;fill:#9fc7c6;letter-spacing:2px}.zone{stroke:#79c9bb;stroke-width:3;fill:#1a3f48}.out{stroke:#b4ba8d;stroke-width:3;fill:#364a42}.roomtitle{font-size:23px;font-weight:700;letter-spacing:1px}.desc{font-size:16px;fill:#c7ddd8}.small{font-size:15px;fill:#9dbdbb}.num{font-size:18px;font-weight:700;fill:#092029}.badge{fill:#d7ac6b}.line{stroke:#79c9bb;stroke-width:10;stroke-linecap:round;opacity:.8}.detail{stroke:#c8ac79;stroke-width:2;fill:none;opacity:.8}
+ ]]></style>
+</defs>
+<rect width="1600" height="1080" fill="url(#bg)"/><rect width="1600" height="1080" fill="url(#grid)"/>
+<path d="M55 125H1545" stroke="#b5a47f" stroke-width="2" opacity=".6"/>
+<text x="60" y="68" class="title">JANUS / THE WORLDFORGE</text>
+<text x="62" y="102" class="sub">ANCIENT RESEARCH ANNEX · FINAL WORLD PLAN · CONCEPT / NOT YET BUILT</text>
+<text x="1450" y="74" class="sub">N ↑</text>
+<text x="70" y="166" class="small">180 m E–W × 140 m N–S · 1 main floor + observation mezzanine</text>
+
+<!-- main outline and circulation -->
+<rect x="65" y="187" width="1120" height="755" rx="20" fill="#102c36" stroke="#bd9b68" stroke-width="4"/>
+<path d="M353 558H534M781 558H899M610 402V448M610 669V720M1058 410V447M1058 671V718" class="line"/>
+
+<!-- Gate court -->
+<rect x="88" y="446" width="262" height="285" rx="16" class="out"/>
+<circle cx="172" cy="558" r="58" fill="none" stroke="#71d7d7" stroke-width="11" filter="url(#glow)"/>
+<circle cx="172" cy="558" r="44" fill="#1b6972" opacity=".45"/>
+<circle cx="283" cy="627" r="22" fill="#c7ad77" stroke="#ebd49d" stroke-width="4"/>
+<path d="M224 558H340" stroke="#d1b176" stroke-width="6" stroke-dasharray="12 8"/>
+<circle cx="105" cy="462" r="19" class="badge"/><text x="99" y="469" class="num">1</text>
+<text x="103" y="696" class="roomtitle">GATE COURT</text>
+<text x="103" y="719" class="desc">arrival · DHD · safe apron</text>
+
+<!-- North outdoor -->
+<rect x="88" y="210" width="437" height="224" rx="15" class="out"/>
+<path d="M123 259Q227 194 324 260T488 280M117 367Q218 307 316 367T488 371" class="detail" stroke-dasharray="7 6"/>
+<circle cx="105" cy="228" r="19" class="badge"/><text x="99" y="235" class="num">2</text>
+<text x="132" y="316" class="roomtitle">TERRAFORMING GARDEN</text>
+<text x="132" y="343" class="desc">terrain · daylight · water / flora</text>
+<text x="132" y="370" class="desc">ramps · long range sightline</text>
+
+<!-- North central combat -->
+<rect x="537" y="210" width="276" height="224" rx="15" class="zone"/>
+<path d="M575 284h60m75 0h62M575 331h100m33 0h65" stroke="#b7a276" stroke-width="12" stroke-linecap="square"/>
+<circle cx="554" cy="228" r="19" class="badge"/><text x="548" y="235" class="num">3</text>
+<text x="558" y="378" class="roomtitle">COVER GALLERY</text>
+<text x="558" y="405" class="desc">low / high · LOS · NPC cover</text>
+
+<!-- North east combat -->
+<rect x="826" y="210" width="333" height="224" rx="15" class="zone"/>
+<circle cx="843" cy="228" r="19" class="badge"/><text x="837" y="235" class="num">4</text>
+<path d="M870 299h246M870 335h246" stroke="#b7a276" stroke-width="2" stroke-dasharray="9 10"/>
+<text x="850" y="377" class="roomtitle">ENCOUNTER CHAMBER</text>
+<text x="850" y="405" class="desc">spawns · threat · death / reset</text>
+
+<!-- center -->
+<rect x="537" y="447" width="346" height="223" rx="18" class="zone"/>
+<path d="M602 510l46-26 46 26v53l-46 26-46-26z" fill="none" stroke="#79d8d0" stroke-width="4"/>
+<circle cx="554" cy="465" r="19" class="badge"/><text x="548" y="472" class="num">5</text>
+<text x="566" y="616" class="roomtitle">THE INDEX / CONTROL HUB</text>
+<text x="566" y="646" class="desc">orientation · consoles · return point</text>
+
+<!-- east wing -->
+<rect x="897" y="447" width="262" height="223" rx="15" class="zone"/>
+<circle cx="914" cy="465" r="19" class="badge"/><text x="908" y="472" class="num">6</text>
+<path d="M952 510h45v45h-45zm71 0h45v45h-45z" class="detail"/>
+<text x="919" y="615" class="roomtitle">FABRICATION LAB</text>
+<text x="919" y="644" class="desc">artifacts · power · effects</text>
+
+<!-- south west -->
+<rect x="88" y="743" width="437" height="176" rx="15" class="out"/>
+<circle cx="105" cy="761" r="19" class="badge"/><text x="99" y="768" class="num">7</text>
+<circle cx="196" cy="824" r="34" fill="none" stroke="#d3b779" stroke-width="5"/><circle cx="196" cy="824" r="19" fill="none" stroke="#88d6ce" stroke-width="4"/>
+<text x="262" y="809" class="roomtitle">TRANSFER TERRACE</text>
+<text x="262" y="839" class="desc">ring pad candidate · return loop</text>
+<text x="262" y="864" class="small">animation and transport require proof</text>
+
+<!-- south central -->
+<rect x="537" y="720" width="346" height="199" rx="15" class="zone"/>
+<circle cx="554" cy="738" r="19" class="badge"/><text x="548" y="745" class="num">8</text>
+<path d="M604 790h225M604 807h225" stroke="#b7a276" stroke-width="3"/>
+<text x="560" y="855" class="roomtitle">ARCHIVE / FIXTURE HALL</text>
+<text x="560" y="884" class="desc">doors · interactions · mission tests</text>
+
+<!-- south east -->
+<rect x="897" y="720" width="262" height="199" rx="15" class="zone"/>
+<circle cx="914" cy="738" r="19" class="badge"/><text x="908" y="745" class="num">9</text>
+<text x="921" y="810" class="roomtitle">OBSERVATION</text>
+<text x="921" y="841" class="roomtitle">MEZZANINE</text>
+<text x="921" y="876" class="desc">upper floor · stairs · overview</text>
+
+<!-- side panel -->
+<rect x="1215" y="187" width="330" height="755" rx="18" fill="#17353d" stroke="#597d79" stroke-width="2"/>
+<text x="1241" y="228" class="roomtitle">DESIGN INTENT</text>
+<text x="1241" y="270" class="desc">A concealed Ancient annex</text>
+<text x="1241" y="295" class="desc">for testing habitat, gate</text>
+<text x="1241" y="320" class="desc">and autonomous systems.</text>
+<path d="M1241 348H1518" stroke="#bba372"/>
+<text x="1241" y="386" class="roomtitle">PLAYER LOOP</text>
+<text x="1241" y="424" class="desc">1 Gate arrival → 5 Index</text>
+<text x="1241" y="452" class="desc">→ 2 environment → 3 cover</text>
+<text x="1241" y="480" class="desc">→ 4 encounter → 6 lab</text>
+<text x="1241" y="508" class="desc">→ 8 fixtures → 7 return</text>
+<path d="M1241 537H1518" stroke="#bba372"/>
+<text x="1241" y="576" class="roomtitle">VISUAL LANGUAGE</text>
+<text x="1241" y="613" class="desc">dark stone + pale alloy</text>
+<text x="1241" y="641" class="desc">bronze inlays + cyan light</text>
+<text x="1241" y="669" class="desc">repeating ribs and arches</text>
+<text x="1241" y="697" class="desc">open sky against sealed labs</text>
+<path d="M1241 724H1518" stroke="#bba372"/>
+<text x="1241" y="762" class="roomtitle">CONSTRUCTION</text>
+<text x="1241" y="800" class="desc">new authored floor / walls</text>
+<text x="1241" y="828" class="desc">dressed with SGW assets</text>
+<text x="1241" y="856" class="desc">cover / nav rebuilt from</text>
+<text x="1241" y="884" class="desc">the finished collision</text>
+<text x="62" y="1000" class="small">DIAGRAMMATIC PLAN · ZONES AND ROUTES ARE DESIGN TARGETS, NOT VERIFIED CLIENT GEOMETRY · 06 OCT 2026</text>
+<path d="M70 1021H370" stroke="#d7ac6b" stroke-width="5"/><text x="70" y="1048" class="small">0</text><text x="215" y="1048" class="small">25 m</text><text x="356" y="1048" class="small">50 m</text>
+</svg>

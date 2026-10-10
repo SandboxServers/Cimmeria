@@ -1,0 +1,17 @@
+{
+  "packages_total": 361,
+  "packages_scanned": 62,
+  "chunks_total": 5078,
+  "chunks_scanned": 336,
+  "asset_exports": 1716,
+  "placed_actor_count": 18191,
+  "worlds": {
+    "Agnos": 16398,
+    "Agnos_Library": 1747,
+    "Harset": 22,
+    "Menfa_Dark": 1,
+    "Menfa_Light": 1,
+    "Omega_Site": 1,
+    "Tollana": 21
+  }
+}

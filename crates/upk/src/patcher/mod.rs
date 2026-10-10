@@ -34,7 +34,9 @@ use crate::error::{Result, UpkError};
 use crate::package::Package;
 use raw_tables::{RawExport, RawImport, SummaryLayout, EXPORT_SERIAL_SIZE_AT, IMPORT_ENTRY_SIZE};
 
-pub use object_clone::{clone_objects, CloneReport, CloneRequest, ClonedObject, Placement};
+pub use object_clone::{
+    clone_objects, clone_objects_with_options, CloneReport, CloneRequest, ClonedObject, Placement,
+};
 
 /// `RF_LoadForClient | RF_LoadForServer | RF_LoadForEdit`, the bits of a name
 /// entry's flags that decide which builds read it as a real name.
@@ -243,6 +245,14 @@ impl PatchSession {
                 "package has more than one Level export".into(),
             )),
         }
+    }
+
+    /// Remove actor references from this package's Level except exports of
+    /// the listed classes. Exports are preserved but no longer discovered as
+    /// placed actors. The output must still be validated in the game client.
+    pub fn retain_level_actors(&mut self, classes: &[&str]) -> Result<(i32, i32)> {
+        let level = self.level_export_index()?;
+        host_splice::retain_level_actors(self, level, classes)
     }
 
     /// `ClassPackage.ClassName|Outer.Path.Name`, lowercased: identifies an import

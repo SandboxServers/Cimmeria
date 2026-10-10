@@ -65,6 +65,8 @@ pub enum Placement {
     Offset([f32; 3]),
     /// Translate the group so the first root that is an actor lands here.
     FirstActorAt([f32; 3]),
+    /// Place the first root at this point with an absolute UE rotator yaw.
+    FirstActorAtYaw { position: [f32; 3], yaw: i32 },
     /// Carry the group from one reference actor's frame to another's: the clone
     /// sits relative to `target` (an export in the target package) as the
     /// originals sit relative to `source`, including the yaw difference.
@@ -158,6 +160,18 @@ pub fn clone_objects(
     source: &PatchSession,
     request: &CloneRequest,
 ) -> Result<CloneReport> {
+    clone_objects_with_options(target, source, request, false)
+}
+
+/// Clone while replacing only the precisely identified baked 2D lightmap
+/// component tail with an unlit LOD entry. This deliberately discards the
+/// source map's package-local lightmap texture references.
+pub fn clone_objects_with_options(
+    target: &mut PatchSession,
+    source: &PatchSession,
+    request: &CloneRequest,
+    strip_lightmaps: bool,
+) -> Result<CloneReport> {
     if request.roots.is_empty() {
         return err("nothing to clone".into());
     }
@@ -218,6 +232,17 @@ pub fn clone_objects(
                 yaw_delta: 0,
             }
         }
+        Placement::FirstActorAtYaw { position, yaw } => {
+            let Some(&(index, _)) = first_actor else {
+                return err("FirstActorAtYaw placement needs an actor among the roots".into());
+            };
+            let (from, source_yaw) = actor_frame(source, index)?;
+            Transform {
+                from,
+                to: position,
+                yaw_delta: yaw.wrapping_sub(source_yaw),
+            }
+        }
         Placement::Anchor {
             source: s,
             target: t,
@@ -248,6 +273,7 @@ pub fn clone_objects(
             kind,
             is_root,
             &transform,
+            strip_lightmaps,
         )?;
         if kind == Kind::Actor {
             new_actor_refs.push(cloned.target_ref);
@@ -317,6 +343,65 @@ fn tail_copies_verbatim(class: &str, tail: &[u8]) -> bool {
     false
 }
 
+/// One LOD with no shadow maps/buffers and an FLightMap2D. The client's
+/// FLightMap2D serializer reads a GUID array, three texture object refs with
+/// three floats each, and four final floats. Refuse any other native shape.
+fn is_baked_2d_tail(source: &PatchSession, tail: &[u8]) -> bool {
+    if tail.len() < 84
+        || [0, 4, 8, 12].map(|at| LittleEndian::read_i32(&tail[at..at + 4])) != [1, 0, 0, 2]
+    {
+        return false;
+    }
+    let guid_count = LittleEndian::read_i32(&tail[16..20]);
+    if guid_count < 0 || tail.len() != 84 + guid_count as usize * 16 {
+        return false;
+    }
+    let texture_start = 20 + guid_count as usize * 16;
+    (0..3).all(|i| {
+        let reference = LittleEndian::read_i32(&tail[texture_start + i * 16..]);
+        reference > 0
+            && source
+                .package
+                .exports
+                .get(reference as usize - 1)
+                .is_some_and(|export| {
+                    source.package.export_class_name(export) == "LightMapTexture2D"
+                })
+    })
+}
+
+/// One LOD with an FLightMap1D. In the SGW foliage donors this is a GUID
+/// array, a vertex bulk-data header, twelve bytes per vertex, then 36 bytes
+/// of scale/bias data. The source bulk-data offset is package-local, so copy
+/// neither it nor the vertex bytes into a different map. Require the bulk
+/// counts and the complete tail length to agree before replacing the LOD.
+fn is_baked_1d_tail(tail: &[u8]) -> bool {
+    if tail.len() < 76
+        || [0, 4, 8, 12].map(|at| LittleEndian::read_i32(&tail[at..at + 4])) != [1, 0, 0, 1]
+    {
+        return false;
+    }
+    let guid_count = LittleEndian::read_i32(&tail[16..20]);
+    if !(0..=16).contains(&guid_count) {
+        return false;
+    }
+    let header = 40 + guid_count as usize * 16;
+    if tail.len() < header + 36 {
+        return false;
+    }
+    let vertex_count = LittleEndian::read_i32(&tail[header - 12..]);
+    let bulk_bytes = LittleEndian::read_i32(&tail[header - 8..]);
+    vertex_count >= 0
+        && bulk_bytes >= 0
+        && (vertex_count as usize).checked_mul(12) == Some(bulk_bytes as usize)
+        && tail.len() == header + bulk_bytes as usize + 36
+}
+
+fn is_world_position(kind: Kind, name: &str) -> bool {
+    (kind == Kind::Actor && name == "Location")
+        || (kind == Kind::Component && name == "OldPosition")
+}
+
 fn clone_one(
     target: &mut PatchSession,
     source: &PatchSession,
@@ -325,6 +410,7 @@ fn clone_one(
     kind: Kind,
     is_root: bool,
     transform: &Transform,
+    strip_lightmaps: bool,
 ) -> Result<ClonedObject> {
     let src = source.raw_export(index)?.clone();
     let mut data = source.export_data(index)?.to_vec();
@@ -397,10 +483,7 @@ fn clone_one(
         props_at,
         &mut rm,
         &mut |name, value_kind, value| {
-            if kind != Kind::Actor {
-                return Ok(());
-            }
-            if name == "Location" && value_kind == "Vector" && value.len() == 12 {
+            if is_world_position(kind, name) && value_kind == "Vector" && value.len() == 12 {
                 let from = [
                     LittleEndian::read_f32(&value[0..]),
                     LittleEndian::read_f32(&value[4..]),
@@ -410,8 +493,14 @@ fn clone_one(
                 for (i, c) in to.iter().enumerate() {
                     LittleEndian::write_f32(&mut value[i * 4..], *c);
                 }
-                location = Some(to);
-            } else if name == "Rotation" && value_kind == "Rotator" && value.len() == 12 {
+                if kind == Kind::Actor {
+                    location = Some(to);
+                }
+            } else if kind == Kind::Actor
+                && name == "Rotation"
+                && value_kind == "Rotator"
+                && value.len() == 12
+            {
                 let yaw = LittleEndian::read_i32(&value[4..]).wrapping_add(transform.yaw_delta);
                 LittleEndian::write_i32(&mut value[4..], yaw);
             }
@@ -427,7 +516,13 @@ fn clone_one(
         .export_class_name(&source.package.exports[index])
         .to_string();
     let tail = &data[end..];
-    if !tail_copies_verbatim(&class, tail) {
+    if strip_lightmaps
+        && class.ends_with("StaticMeshComponent")
+        && (is_baked_2d_tail(source, tail) || is_baked_1d_tail(tail))
+    {
+        data.truncate(end);
+        data.extend_from_slice(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    } else if !tail_copies_verbatim(&class, tail) {
         return err(format!(
             "export {index} has {} bytes of post-property data the cloner does not understand",
             tail.len()
@@ -448,4 +543,29 @@ fn clone_one(
         location,
         is_root,
     })
+}
+
+#[cfg(test)]
+mod native_tail_tests {
+    use super::{is_baked_1d_tail, is_world_position, Kind};
+
+    #[test]
+    fn foliage_1d_lightmap_requires_consistent_vertex_bulk_length() {
+        let mut tail = vec![0u8; 56 + 50 * 12 + 36];
+        tail[0..4].copy_from_slice(&1i32.to_le_bytes());
+        tail[12..16].copy_from_slice(&1i32.to_le_bytes());
+        tail[16..20].copy_from_slice(&1i32.to_le_bytes());
+        tail[44..48].copy_from_slice(&50i32.to_le_bytes());
+        tail[48..52].copy_from_slice(&600i32.to_le_bytes());
+        assert!(is_baked_1d_tail(&tail));
+        tail[48..52].copy_from_slice(&588i32.to_le_bytes());
+        assert!(!is_baked_1d_tail(&tail));
+    }
+
+    #[test]
+    fn cloned_particle_component_cached_position_moves_with_actor() {
+        assert!(is_world_position(Kind::Actor, "Location"));
+        assert!(is_world_position(Kind::Component, "OldPosition"));
+        assert!(!is_world_position(Kind::Component, "Translation"));
+    }
 }

@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+<title id="title">Janus Worldforge mapper overview</title>
+<desc id="desc">Illustrated top-down game-map style concept of the Ancient research annex. Five isolated NPC lineup rooms have NPC capacities 42, 44, 30, 28 and 17, matching the Ihpet appearance groups; these counts are room sizing targets, not fixture counts. They have independent activation, with one group active as the proven initial limit. The gate court and transfer terrace sit west, garden and river north, and the Index hub, cover, encounter, fabrication, archive, and observation spaces elsewhere. Paths, landmarks, reset points and safe routes are marked.</desc>
+<defs>
+  <linearGradient id="land" x2="0" y2="1"><stop stop-color="#8aba62"/><stop offset=".6" stop-color="#6fa65b"/><stop offset="1" stop-color="#527f50"/></linearGradient>
+  <linearGradient id="stone" x2=".1" y2="1"><stop stop-color="#aeb9a9"/><stop offset="1" stop-color="#717f77"/></linearGradient>
+  <pattern id="grass" width="35" height="35" patternUnits="userSpaceOnUse"><circle cx="6" cy="9" r="2" fill="#a7cd79" opacity=".5"/><path d="M23 28l4-7 3 7" fill="none" stroke="#56884b" opacity=".4"/></pattern>
+  <pattern id="floor" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M0 0H48V48H0Z" fill="none" stroke="#536a6d" stroke-width="2" opacity=".4"/></pattern>
+  <filter id="shadow"><feDropShadow dx="3" dy="5" stdDeviation="4" flood-opacity=".28"/></filter>
+  <g id="tree"><path d="M0 16V36" stroke="#5d452c" stroke-width="5"/><circle cy="9" r="14" fill="#2e7645" stroke="#194f36" stroke-width="3"/><circle cx="-5" cy="4" r="5" fill="#62a95a" opacity=".7"/></g>
+  <g id="rock"><path d="M-18 13L-8-13L1-5L11-15L20 13Z" fill="#778276" stroke="#414e4b" stroke-width="3"/><path d="M-8-13L1-5L-2 13" fill="none" stroke="#c4cabe" stroke-width="3"/></g>
+  <g id="star"><path d="M0-17L5-6L17-5L8 3L11 16L0 9L-11 16L-8 3L-17-5L-5-6Z" fill="#ffc857" stroke="#935a24" stroke-width="2"/></g>
+  <g id="reset"><circle r="16" fill="#39b8c5" stroke="white" stroke-width="3"/><text y="6" text-anchor="middle" class="iconText">R</text></g>
+  <g id="ring"><circle r="21" fill="#b5e7e7" stroke="#386f82" stroke-width="5"/><text y="6" text-anchor="middle" font-size="14" font-weight="800" fill="#245666">RT</text></g>
+  <style><![CDATA[
+    text{font-family:Arial,Helvetica,sans-serif;fill:#243439}.heading{font-size:44px;font-weight:800;letter-spacing:1px}.sub{font-size:17px;fill:#5d7377}.zone{font-size:20px;font-weight:800}.small{font-size:15px;font-weight:600}.tiny{font-size:13px}.iconText{font-size:17px;font-weight:800;fill:white}.tag{fill:white;stroke:#384e52;stroke-width:2}.road{fill:none;stroke:#59645c;stroke-width:29;stroke-linecap:round;stroke-linejoin:round}.roadInner{fill:none;stroke:#b9b7a7;stroke-width:19;stroke-linecap:round;stroke-linejoin:round}.walk{fill:none;stroke:#d4b879;stroke-width:13;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:23 13}.river{fill:none;stroke:#338bc4;stroke-width:45;stroke-linecap:round}.riverLight{fill:none;stroke:#7dc9d9;stroke-width:18;stroke-linecap:round;opacity:.8}.building{fill:url(#stone);stroke:#344d53;stroke-width:9;stroke-linejoin:round;filter:url(#shadow)}.floor{fill:#768d88;stroke:#36525a;stroke-width:4}.wall{stroke:#34505a;stroke-width:10;fill:none;stroke-linejoin:round}.door{stroke:#ecce7e;stroke-width:12}.label{font-size:18px;font-weight:800}.legend{font-size:16px}.routeLabel{font-size:14px;fill:#4e5f5a}.waterText{font-size:16px;fill:#e9f8ff;font-style:italic}
+  ]]></style>
+</defs>
+<rect width="1800" height="1200" fill="#edf0e8"/>
+<rect x="20" y="20" width="1760" height="1160" fill="#fff" stroke="#516166" stroke-width="4"/>
+<rect x="44" y="40" width="1712" height="77" fill="#dce6de" stroke="#516166" stroke-width="2"/>
+<text x="69" y="91" class="heading">JANUS / THE WORLDFORGE</text>
+<text x="1130" y="69" class="small">ANCIENT RESEARCH ANNEX</text>
+<text x="1130" y="93" class="sub">Mapper overview · concept revision 3 · 07 Oct 2026</text>
+
+<!-- Game-map field: irregular island and open sky/void boundary. -->
+<rect x="255" y="137" width="1498" height="989" rx="12" fill="#5ca8c6" stroke="#41606c" stroke-width="3"/>
+<path d="M280 285Q323 193 490 192L626 162Q739 158 862 197Q1027 156 1160 197L1401 172Q1605 187 1704 307L1725 488Q1752 570 1705 682L1730 850Q1692 1020 1506 1084L1280 1095Q1124 1064 988 1101L690 1071Q523 1090 370 1000Q248 888 268 748L300 579Q263 459 280 285Z" fill="url(#land)" stroke="#355e44" stroke-width="8"/>
+<path d="M280 285Q323 193 490 192L626 162Q739 158 862 197Q1027 156 1160 197L1401 172Q1605 187 1704 307L1725 488Q1752 570 1705 682L1730 850Q1692 1020 1506 1084L1280 1095Q1124 1064 988 1101L690 1071Q523 1090 370 1000Q248 888 268 748L300 579Q263 459 280 285Z" fill="url(#grass)"/>
+<path d="M295 459Q389 419 477 471Q619 566 699 512Q790 463 893 485Q1057 519 1215 476Q1437 416 1695 467M378 944Q535 1003 682 957Q849 915 935 1008Q1101 1048 1226 974Q1478 894 1690 948" fill="none" stroke="#d7d199" stroke-width="4" opacity=".5"/>
+
+<!-- Terraforming garden: water, path, terraces and vegetation. -->
+<path d="M424 213Q468 298 557 335Q608 372 572 440Q567 491 672 525Q711 556 679 623" class="river"/>
+<path d="M424 213Q468 298 557 335Q608 372 572 440Q567 491 672 525Q711 556 679 623" class="riverLight"/>
+<path d="M478 237Q620 232 710 277Q774 313 727 370Q659 399 658 463Q735 463 809 408" fill="none" stroke="#e1cc8f" stroke-width="8" stroke-dasharray="12 10"/>
+<path d="M746 250Q819 259 849 330Q868 387 821 442M395 366Q448 409 501 381" fill="none" stroke="#d9ce96" stroke-width="6"/>
+<use href="#tree" x="344" y="297"/><use href="#tree" x="374" y="345"/><use href="#tree" x="505" y="272"/><use href="#tree" x="534" y="263"/><use href="#tree" x="623" y="239"/><use href="#tree" x="760" y="398"/><use href="#tree" x="817" y="296"/><use href="#tree" x="811" y="456"/>
+<use href="#rock" x="348" y="452"/><use href="#rock" x="845" y="219"/><use href="#rock" x="838" y="482"/>
+<text x="615" y="224" class="zone">[02] TERRAFORMING GARDEN</text>
+<text x="619" y="248" class="small">Terrain · slope · water · flora · daylight</text>
+<text x="352" y="485" class="waterText">test stream</text>
+<use href="#star" x="707" y="348"/>
+<use href="#ring" x="794" y="433"/>
+
+<!-- Paths under footprints: road loop and safe pedestrian bypass. -->
+<path d="M478 701Q580 670 718 660L893 663L1038 667L1265 658Q1435 654 1510 738Q1534 830 1478 908L1275 963Q1129 983 1018 941L895 883Q799 923 655 908Q499 885 470 794Z" class="road"/>
+<path d="M478 701Q580 670 718 660L893 663L1038 667L1265 658Q1435 654 1510 738Q1534 830 1478 908L1275 963Q1129 983 1018 941L895 883Q799 923 655 908Q499 885 470 794Z" class="roadInner"/>
+<path d="M885 664Q947 557 1033 459Q1171 413 1306 443Q1441 457 1500 587" class="road"/>
+<path d="M885 664Q947 557 1033 459Q1171 413 1306 443Q1441 457 1500 587" class="roadInner"/>
+<path d="M674 669Q703 573 777 498" class="walk"/>
+<path d="M893 884Q847 973 722 1005" class="walk"/>
+<text x="931" y="606" class="routeLabel">SAFE BYPASS</text>
+
+<!-- Gate apron. -->
+<path d="M332 574Q443 532 559 565L636 636L593 816Q463 858 334 790Z" fill="#c5c5aa" stroke="#64786c" stroke-width="7"/>
+<path d="M355 602Q467 569 566 600L593 649L568 772Q465 803 362 760Z" fill="#a7b0a3" stroke="#81948b" stroke-width="3"/>
+<circle cx="457" cy="682" r="82" fill="#536e75" stroke="#d2d6c8" stroke-width="13"/>
+<circle cx="457" cy="682" r="63" fill="#46a8b9" stroke="#e7d198" stroke-width="11"/>
+<circle cx="557" cy="735" r="24" fill="#cfb76f" stroke="#6f6546" stroke-width="5"/>
+<path d="M547 709L533 695" stroke="#d1ac67" stroke-width="6" stroke-dasharray="9 6"/>
+<text x="351" y="594" class="zone">[01] GATE COURT</text>
+<text x="358" y="615" class="small">Arrival · Stargate · DHD</text>
+<use href="#star" x="552" y="765"/>
+
+<!-- Index hub, distinct from the outside. -->
+<path d="M790 568L910 552L1012 600L1030 732L955 814L805 815L748 735L752 626Z" class="building"/>
+<path d="M792 613L899 582L983 619L994 721L938 781L820 779L784 723Z" fill="url(#floor)" stroke="#4c6569" stroke-width="5"/>
+<path d="M894 609L938 653L920 712L860 721L842 661Z" fill="#3c7982" stroke="#a2c5b8" stroke-width="5"/>
+<text x="804" y="554" class="zone">[05] THE INDEX</text>
+<text x="834" y="748" class="small">Safe control hub</text>
+<use href="#reset" x="966" y="772"/>
+
+<!-- Five sealed lineup halls sized by NPC capacity; interior marks show bays, not individual fixtures. Sixth cell is empty isolation/staging. -->
+<path d="M1019 245L1203 230L1261 300L1246 482L1048 478L993 398Z" class="building"/>
+<path d="M1032 299H1218V450H1032Z" fill="#6e8581" stroke="#344e55" stroke-width="6"/>
+<path d="M1033 370H1217M1093 300V450M1155 300V450" stroke="#344e55" stroke-width="8"/>
+<path d="M1037 368H1054M1081 368H1091M1098 368H1116M1144 368H1153M1160 368H1178M1207 368H1215" stroke="#e9cb7c" stroke-width="5"/>
+<path d="M1037 449H1054M1081 449H1091M1098 449H1116M1144 449H1153M1160 449H1178M1207 449H1215" stroke="#e9cb7c" stroke-width="5"/>
+<path d="M1047 320H1079M1107 320H1139M1169 320H1201M1047 397H1079M1107 397H1139" stroke="#d5b475" stroke-width="5"/>
+<text x="1041" y="353" class="tiny">H · 42</text><text x="1101" y="353" class="tiny">JM · 44</text><text x="1162" y="353" class="tiny">JF · 30</text>
+<text x="1041" y="431" class="tiny">G/A/C · 28</text><text x="1101" y="431" class="tiny">M · 17</text><text x="1166" y="405" class="tiny">ISOL.</text><text x="1166" y="422" class="tiny">EMPTY</text>
+<path d="M1095 472L1145 475" class="door"/>
+<rect x="1021" y="217" width="246" height="36" class="tag"/><text x="1034" y="242" class="label">[03A] NPC LINEUP</text>
+<text x="1016" y="507" class="small">5 halls · capacity 161 NPCs · independent sets</text>
+<use href="#ring" x="1006" y="463"/>
+
+<!-- Cover gallery uses narrow partitioned tactical lanes. -->
+<path d="M1300 273L1532 247L1603 318L1593 504L1351 501L1287 426Z" class="building"/>
+<path d="M1322 329L1574 319M1323 383L1576 380M1331 439L1579 445" class="wall"/>
+<path d="M1382 341H1424M1490 344H1536M1364 398H1413M1491 398H1540M1395 457H1443M1501 458H1550" stroke="#ab733f" stroke-width="14"/>
+<path d="M1359 500L1400 500" class="door"/>
+<rect x="1318" y="225" width="239" height="36" class="tag"/><text x="1331" y="250" class="label">[03B] COVER GALLERY</text>
+<text x="1329" y="529" class="small">Four sealed low/high cover lanes</text>
+
+<!-- Bounded encounter arena, with deliberate choke from cover. -->
+<path d="M1351 569L1609 568L1660 676L1633 855L1424 866L1332 780Z" class="building"/>
+<path d="M1386 616L1571 608L1603 704L1572 811L1435 815L1382 742Z" fill="#8d9287" stroke="#9ab0a3" stroke-width="5"/>
+<path d="M1407 679L1444 645L1473 672L1449 711Z" fill="#a7784e"/><path d="M1540 755L1570 720L1590 749L1568 779Z" fill="#a7784e"/>
+<path d="M1490 573L1531 572" class="door"/>
+<rect x="1394" y="542" width="224" height="36" class="tag"/><text x="1407" y="567" class="label">[04] ENCOUNTER</text>
+<text x="1424" y="839" class="small">Combat · spawn · death / reset</text>
+<use href="#reset" x="1610" y="811"/><use href="#star" x="1488" y="687"/>
+
+<!-- Fabrication lab. -->
+<path d="M1082 574L1273 573L1330 645L1320 814L1234 853L1065 809L1037 653Z" class="building"/>
+<path d="M1081 642L1255 624L1288 687L1254 787L1091 779Z" fill="url(#floor)" stroke="#586e72" stroke-width="4"/>
+<rect x="1111" y="676" width="58" height="49" fill="#537984" stroke="#ace6e1" stroke-width="4"/><circle cx="1221" cy="705" r="34" fill="#577b89" stroke="#afdcde" stroke-width="6"/>
+<path d="M1062 708L1063 749" class="door"/>
+<rect x="1082" y="544" width="225" height="36" class="tag"/><text x="1095" y="569" class="label">[06] FABRICATION LAB</text>
+<text x="1090" y="831" class="small">Power · effects · artifacts</text>
+<use href="#reset" x="1275" y="793"/>
+
+<!-- Archive and individual fixture stations. -->
+<path d="M1028 887L1307 875L1366 933L1327 1045L1041 1050L994 980Z" class="building"/>
+<path d="M1057 922H1308M1114 929V1028M1183 929V1028M1254 929V1028" class="wall"/>
+<rect x="1047" y="853" width="255" height="36" class="tag"/><text x="1060" y="878" class="label">[08] ARCHIVE / FIXTURES</text>
+<text x="1050" y="1075" class="small">Doors · containers · missions · items</text>
+<use href="#ring" x="1373" y="931"/>
+<use href="#star" x="1090" y="974"/><use href="#star" x="1220" y="975"/>
+
+<!-- Transfer terrace and its return loop. -->
+<path d="M408 860Q513 833 623 861L688 962L626 1049L444 1038L382 946Z" fill="#b9b8a4" stroke="#6a7c72" stroke-width="7"/>
+<circle cx="531" cy="949" r="65" fill="#647d81" stroke="#d8c588" stroke-width="13"/>
+<circle cx="531" cy="949" r="35" fill="#5daeb2" stroke="#dae5d2" stroke-width="6"/>
+<text x="404" y="849" class="zone">[07] TRANSFER TERRACE</text>
+<text x="425" y="1059" class="small">Ring hub · outbound / return</text>
+<use href="#ring" x="531" y="949"/>
+<use href="#reset" x="619" y="1000"/>
+
+<!-- Raised observation deck footprint and ramp. -->
+<path d="M718 893L862 869L978 916L966 1031L793 1047L702 989Z" fill="#879dab" stroke="#344e5c" stroke-width="8" stroke-dasharray="17 8" filter="url(#shadow)"/>
+<path d="M749 950L818 921L891 938L924 987" fill="none" stroke="#dce4d9" stroke-width="8"/>
+<path d="M782 895Q817 850 841 812" fill="none" stroke="#cbbb83" stroke-width="15" stroke-linecap="round"/>
+<rect x="703" y="1026" width="258" height="40" class="tag"/><text x="715" y="1054" class="label">[09] OBSERVATION  +1</text>
+<use href="#ring" x="937" y="984"/>
+
+<!-- Scattered scenery and non-overlapping route notes. -->
+<use href="#tree" x="318" y="840"/><use href="#tree" x="378" y="999"/><use href="#tree" x="699" y="771"/><use href="#tree" x="1381" y="971"/><use href="#tree" x="1608" y="956"/><use href="#tree" x="1658" y="401"/>
+<use href="#rock" x="337" y="551"/><use href="#rock" x="687" y="1028"/><use href="#rock" x="1674" y="551"/><use href="#rock" x="1429" y="1026"/>
+<text x="294" y="1104" class="waterText">Sky / boundary outside the authored playable footprint</text>
+
+<!-- Paper legend similar to historical level-flow maps. -->
+<rect x="44" y="137" width="195" height="989" fill="#f7f6ee" stroke="#516166" stroke-width="3"/>
+<text x="67" y="177" class="zone">LEGEND</text><path d="M63 190H218" stroke="#6e8080" stroke-width="2"/>
+<circle cx="86" cy="224" r="19" fill="#46a8b9" stroke="#e7d198" stroke-width="5"/><text x="115" y="230" class="legend">Stargate</text>
+<use href="#star" x="85" y="285"/><text x="115" y="291" class="legend">Test point</text>
+<use href="#reset" x="85" y="344"/><text x="115" y="351" class="legend">Reset</text>
+<use href="#ring" x="85" y="813"/><text x="115" y="819" class="legend">Ring pad</text>
+<use href="#tree" x="84" y="400"/><text x="115" y="414" class="legend">Forest</text>
+<use href="#rock" x="85" y="476"/><text x="115" y="481" class="legend">Rock / edge</text>
+<path d="M65 539H106" stroke="#338bc4" stroke-width="14"/><text x="115" y="545" class="legend">Water</text>
+<path d="M65 598H106" stroke="#59645c" stroke-width="21"/><path d="M65 598H106" stroke="#b9b7a7" stroke-width="13"/><text x="115" y="604" class="legend">Safe route</text>
+<path d="M65 655H106" stroke="#d4b879" stroke-width="10" stroke-dasharray="14 8"/><text x="115" y="661" class="legend">Trail / ramp</text>
+<path d="M65 716H106" stroke="#34505a" stroke-width="10"/><text x="115" y="722" class="legend">Sealed wall</text>
+<path d="M65 773H106" class="door"/><text x="115" y="779" class="legend">Controlled door</text>
+<path d="M61 843H215" stroke="#6e8080" stroke-width="2"/>
+<text x="66" y="879" class="small">ROOM RULE</text>
+<text x="66" y="902" class="tiny">Full walls + ceilings.</text>
+<text x="66" y="921" class="tiny">Offset doors block sight;</text>
+<text x="66" y="940" class="tiny">sets bound initial load.</text>
+<text x="66" y="984" class="small">PLAYER LOOP</text>
+<text x="66" y="1007" class="tiny">Gate → Index → station</text>
+<text x="66" y="1026" class="tiny">→ reset → safe return</text>
+<text x="66" y="1092" class="tiny">N ↑  ·  schematic scale</text>
+
+<!-- Border labels, north and scale. -->
+<rect x="255" y="1138" width="1498" height="35" fill="#e7ebdf" stroke="#516166" stroke-width="2"/>
+<text x="276" y="1162" class="tiny">CONCEPT / NOT SURVEYED CLIENT GEOMETRY · Exact dimensions, footprints, approach grades and fixture spacing to be set by mapper</text>
+<path d="M1587 146L1612 184L1637 146M1612 184V220" fill="none" stroke="#293c40" stroke-width="7"/>
+<text x="1603" y="143" class="zone">N</text>
+</svg>

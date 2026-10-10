@@ -37,6 +37,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp
 - [reference_quick_xml_042_migration.md](reference_quick_xml_042_migration.md) — 2026-10-07 quick-xml 0.42 string API, escaped dialog attributes, and GUI check boundary
 - [reference_client_action_bar_events.md](reference_client_action_bar_events.md) — stock action bar Lua (2026-10-05): hidden windows are deaf without `DeafWhenHidden=False`, subscribe takes several handlers, bandolier-bound buttons, `InventoryUpdateContainerActiveSlot`; from patch 015
+- [reference_custom_debug_map_editor_2026_10_06.md](reference_custom_debug_map_editor_2026_10_06.md) — Ghidra confirms New Level, BigWorld chunk save, map-thumbnail and cover build paths; editor-to-game package load remains untested; prior wizard label corrected
+- [reference_debug_area_map_selection_2026_10_06.md](reference_debug_area_map_selection_2026_10_06.md) — current QA/nav extraction and station layout for Castle, Tollana, Dakara_E1 and Agnos; Castle remains first pending client-memory and ring/clearance UAT
 - [reference_physxloader_local_core.md](reference_physxloader_local_core.md) — bundled PhysXLoader uses bundled PhysXCore iff HKLM `enableLocalPhysXCore` == last adapter MAC (or `"AGEIA\0"` if GetAdaptersInfo fails); registry-only PhysX fix for #1121/#1150
 
 - [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
@@ -85,3 +87,5 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_launcher_updater_integration_2026_10_04.md](reference_launcher_updater_integration_2026_10_04.md) — early mutation gates and updater revision refresh across other operations.
 - [reference_adoption_contract_audit_2026_10_04.md](reference_adoption_contract_audit_2026_10_04.md) — verified separate-copy adoption and effective settings remain distinct from settings import.
 - [reference_launcher_game_update_review.md](reference_launcher_game_update_review.md) — native signed game offers, stale-review invalidation and actual store-reopen Effect UAT; Apply UI integration remains pending.
+
+- [reference_custom_debug_map.md](reference_custom_debug_map.md) — purpose-built Debug Map means newly authored geometry, not a stock-map alias; native editor commands are statically confirmed, but editor-save to clean-game load is the CM-00 gate

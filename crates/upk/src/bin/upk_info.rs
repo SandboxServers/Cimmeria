@@ -1,8 +1,8 @@
 //! CLI tool to dump UE3 package information.
 //!
-//! Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names]
+//! Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names] [--properties INDEX] [--tail INDEX]
 
-use cimmeria_upk::Package;
+use cimmeria_upk::{parse_tagged_properties, parse_tagged_properties_with_end, Package, PropValue};
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -11,7 +11,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         eprintln!(
-            "Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names]"
+            "Usage: upk-info <file.upk|file.umap> [--classes] [--exports N] [--imports] [--names] [--properties INDEX] [--tail INDEX]"
         );
         process::exit(1);
     }
@@ -20,6 +20,15 @@ fn main() {
     let show_classes = args.contains(&"--classes".to_string());
     let show_imports = args.contains(&"--imports".to_string());
     let show_names = args.contains(&"--names".to_string());
+    let show_mesh_actors = args.contains(&"--mesh-actors".to_string());
+    let property_index: Option<usize> = args
+        .windows(2)
+        .find(|w| w[0] == "--properties")
+        .and_then(|w| w[1].parse().ok());
+    let tail_index: Option<usize> = args
+        .windows(2)
+        .find(|w| w[0] == "--tail")
+        .and_then(|w| w[1].parse().ok());
     let export_limit: usize = args
         .windows(2)
         .find(|w| w[0] == "--exports")
@@ -33,6 +42,128 @@ fn main() {
             process::exit(1);
         }
     };
+    if let Some(index) = tail_index {
+        let export = pkg.exports.get(index).unwrap_or_else(|| {
+            eprintln!("ERROR: export {index} out of range");
+            process::exit(1);
+        });
+        let class = pkg.export_class_name(export);
+        let start = if class.ends_with("Component") { 8 } else { 4 };
+        let data = pkg.read_export_data(export).unwrap_or_else(|e| {
+            eprintln!("ERROR: {e}");
+            process::exit(1);
+        });
+        let (_, end) = parse_tagged_properties_with_end(&data, start, &pkg.names);
+        let tail = &data[end..];
+        println!(
+            "export {index} {} ({class}); property end {end}; tail {} bytes",
+            pkg.export_full_path(export),
+            tail.len()
+        );
+        for (offset, chunk) in tail.chunks(16).enumerate() {
+            print!("{:04x}: ", offset * 16);
+            for byte in chunk {
+                print!("{byte:02x} ");
+            }
+            println!();
+        }
+        return;
+    }
+    if show_mesh_actors {
+        for (index, export) in pkg.exports.iter().enumerate() {
+            if pkg.export_class_name(export) != "StaticMeshActor" {
+                continue;
+            }
+            let Ok(actor_data) = pkg.read_export_data(export) else {
+                continue;
+            };
+            let props = parse_tagged_properties(&actor_data, 32, &pkg.names);
+            let component_ref = props.iter().find_map(|prop| {
+                (prop.name == "StaticMeshComponent")
+                    .then_some(&prop.value)
+                    .and_then(|value| match value {
+                        PropValue::Object(reference) => Some(*reference),
+                        _ => None,
+                    })
+            });
+            let location = props.iter().find_map(|prop| {
+                (prop.name == "Location")
+                    .then_some(&prop.value)
+                    .and_then(|value| match value {
+                        PropValue::Vector { x, y, z } => Some([*x, *y, *z]),
+                        _ => None,
+                    })
+            });
+            let mut mesh = String::new();
+            if let Some(reference) = component_ref {
+                if reference > 0 {
+                    if let Some(component) = pkg.exports.get(reference as usize - 1) {
+                        if let Ok(data) = pkg.read_export_data(component) {
+                            for prop in parse_tagged_properties(&data, 8, &pkg.names) {
+                                if prop.name == "StaticMesh" {
+                                    if let PropValue::Object(mesh_ref) = prop.value {
+                                        mesh = pkg.resolve_object_path(mesh_ref);
+                                    }
+                                }
+                            }
+                        }
+                        if mesh.is_empty() {
+                            mesh = format!(
+                                "archetype:{}",
+                                pkg.resolve_object_path(component.archetype)
+                            );
+                        }
+                    }
+                }
+            }
+            println!(
+                "{index}\t{}\t{:?}\t{mesh}",
+                pkg.export_full_path(export),
+                location
+            );
+        }
+        return;
+    }
+
+    if let Some(index) = property_index {
+        let export = pkg.exports.get(index).unwrap_or_else(|| {
+            eprintln!("ERROR: export {index} out of range");
+            process::exit(1);
+        });
+        let class = pkg.export_class_name(export);
+        let start = if class.ends_with("Component") {
+            8
+        } else if cimmeria_upk::objects::actor::is_actor_class(class) {
+            32
+        } else {
+            4
+        };
+        let data = pkg.read_export_data(export).unwrap_or_else(|e| {
+            eprintln!("ERROR: {e}");
+            process::exit(1);
+        });
+        println!(
+            "=== Properties of export {index}: {} ({class}) ===",
+            pkg.export_full_path(export)
+        );
+        println!(
+            "archetype = {} ({})",
+            pkg.resolve_object_path(export.archetype),
+            export.archetype
+        );
+        for prop in parse_tagged_properties(&data, start, &pkg.names) {
+            if let PropValue::Object(reference) = &prop.value {
+                println!(
+                    "{} = {} ({reference})",
+                    prop.name,
+                    pkg.resolve_object_path(*reference)
+                );
+            } else {
+                println!("{} = {:?}", prop.name, prop.value);
+            }
+        }
+        return;
+    }
 
     let h = &pkg.header;
     println!("=== Package: {} ===", filepath);
