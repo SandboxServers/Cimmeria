@@ -5,8 +5,8 @@
 > clients campaign ([../lab-parallel-clients/README.md](../lab-parallel-clients/README.md), #1312).
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): planned.** Decisions D-LC1 to D-LC5 await
-> the owner.
+> **Campaign status (2026-10-10): wave 1 dispatched.** D-LC1 to D-LC5
+> accepted; D-LC5 amended to allow `-Force`.
 
 ## Why
 
@@ -38,7 +38,7 @@ campaign puts one `lab` command in front of it.
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | Reads or edits `labd.env` with a timestamped backup. A change prints the restart hint. Token values are masked on print. |
 | `lab install [-From <worktree>]` | Builds the lab through the PowerShell lane (no bash) and installs it. Refreshes the CLI's own installed copy. |
 | `lab instances [init \| status]` | `instances.ps1`, run from the installed copy. |
-| `lab clients stop [<instance> \| all]` | Closes lab clients whose instance has no lease. Refuses a leased one, naming the holder. |
+| `lab clients stop [<instance> \| all] [-Force]` | Closes lab clients whose instance has no lease. Refuses a leased one, naming the holder, unless `-Force` is given with a named instance. |
 | `lab doctor` | Checks the setup, one PASS, WARN or FAIL line each. |
 | `lab version`, `lab help` | Version, and help listing each command's first help line. |
 
@@ -51,20 +51,20 @@ user `PATH` once.
 
 | ID | Decision | Status | Reason |
 |---|---|---|---|
-| D-LC1 | PowerShell 7 scripts under `tools/lab/cli/`, one file per command, found by the dispatcher `tools/lab/lab.ps1`. | Proposed | All existing lab tooling is PowerShell. One file per command lets packets run in parallel without touching a shared file, and Haiku handles it well. A Rust subcommand of `cimmeria-lab.exe` would add a rebuild to every CLI change. |
-| D-LC2 | The daemon gains `GET /status`, behind the same bearer token as `/mcp`, returning the JSON in the contract. | Proposed | `lab status` would otherwise need an MCP streamable-HTTP client in PowerShell (initialize, session id, SSE parsing): fragile, and the wrong job for a small model. The endpoint is read-only and shows no lease ids. |
-| D-LC3 | `lab setup` adds `%LOCALAPPDATA%\cimmeria-lab\bin` to the **user** `PATH` (registry `HKCU\Environment`), once, after asking. | Proposed (needs owner OK) | It is a machine-level change. Without it, the command is `pwsh <path>\lab.ps1`. |
-| D-LC4 | The CLI runs from an installed copy (`%LOCALAPPDATA%\cimmeria-lab\cli\`), refreshed by `lab install` and `lab setup`. | Proposed | The same reason `daemon.ps1` copies itself to `labd\`: a checkout on an old branch must not drive the lab. |
-| D-LC5 | `lab clients stop` closes only clients whose instance holds no lease, with no `-Force` in v1. | Proposed | Killing a leased client makes its watchdog relaunch it, and it takes the client from under another agent. |
+| D-LC1 | PowerShell 7 scripts under `tools/lab/cli/`, one file per command, found by the dispatcher `tools/lab/lab.ps1`. | Accepted 2026-10-10 | All existing lab tooling is PowerShell. One file per command lets packets run in parallel without touching a shared file, and Haiku handles it well. A Rust subcommand of `cimmeria-lab.exe` would add a rebuild to every CLI change. |
+| D-LC2 | The daemon gains `GET /status`, behind the same bearer token as `/mcp`, returning the JSON in the contract. | Accepted 2026-10-10 | `lab status` would otherwise need an MCP streamable-HTTP client in PowerShell (initialize, session id, SSE parsing): fragile, and the wrong job for a small model. The endpoint is read-only and shows no lease ids. |
+| D-LC3 | `lab setup` adds `%LOCALAPPDATA%\cimmeria-lab\bin` to the **user** `PATH` (registry `HKCU\Environment`), once, after asking. | Accepted 2026-10-10 | It is a machine-level change. Without it, the command is `pwsh <path>\lab.ps1`. |
+| D-LC4 | The CLI runs from an installed copy (`%LOCALAPPDATA%\cimmeria-lab\cli\`), refreshed by `lab install` and `lab setup`. | Accepted 2026-10-10 | The same reason `daemon.ps1` copies itself to `labd\`: a checkout on an old branch must not drive the lab. |
+| D-LC5 | `lab clients stop` closes only clients whose instance holds no lease. `-Force` overrides that for one named instance (never with `all`), and says the holder loses the client. | Accepted 2026-10-10, amended | Killing a leased client takes it from under another agent, and its watchdog relaunches it, so the default refuses. The owner wanted an override for stuck leases; scoping it to one named instance keeps it deliberate. |
 
 ## Packets
 
 | ID | Packet | Worker | Depends on | Status |
 |---|---|---|---|---|
-| LC-01 | Daemon `GET /status` | packet-coder (Rust) | D-LC2 | BlockedDecision |
-| LC-02 | CLI skeleton: dispatcher, common library, `status`, `start`/`stop`/`restart`, `version`, `help` | packet-coder | D-LC1, contract | BlockedDecision |
+| LC-01 | Daemon `GET /status` | packet-coder (Rust) | D-LC2 | Writing |
+| LC-02 | CLI skeleton: dispatcher, common library, `status`, `start`/`stop`/`restart`, `version`, `help` | packet-coder | D-LC1, contract | Writing |
 | LC-03 | `logs` and `env` | packet-coder | LC-02 | BlockedDependency |
-| LC-04 | `install` without bash, and `setup` (shim, installed copy, PATH) | packet-coder | D-LC3, D-LC4 | BlockedDecision |
+| LC-04 | `install` without bash, and `setup` (shim, installed copy, PATH) | packet-coder | D-LC3, D-LC4 | Writing |
 | LC-05 | `instances`, `clients stop`, `doctor` | packet-coder | LC-02, LC-01 | BlockedDependency |
 | LC-06 | Docs and memory | documentation-writer | LC-01 to LC-05 | BlockedDependency |
 | LC-07 | Live UAT of every command on this machine | coordinator | all | BlockedDependency |

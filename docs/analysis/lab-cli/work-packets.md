@@ -330,16 +330,22 @@ Files:
 
 1. `tools/lab/cli/instances.ps1`: forwards to
    `pwsh -NoProfile -File "$PSScriptRoot\..\instances.ps1" @args`.
-2. `tools/lab/cli/clients.ps1`: `lab clients stop [<instance>|all]`.
+2. `tools/lab/cli/clients.ps1`: `lab clients stop [<instance>|all] [-Force]` (D-LC5).
+   - `-Force` with `all` (or with no instance) is refused: print
+     `-Force needs a named instance` to stderr and exit 2.
    - `Get-LabStatus`; if `$null`, exit 1 with "daemon not running".
    - For each targeted instance with a `client_pid`:
-     - when `lease.held`, print `p2: leased to <owner> (<purpose>); not stopped` and count a refusal;
-     - else, if the process name is `SGW`, call `CloseMainWindow()`; after
+     - when `lease.held` and no `-Force`, print `p2: leased to <owner> (<purpose>); not stopped (use -Force to override)` and count a refusal;
+     - when `lease.held` and `-Force`, print
+       `p2: leased to <owner> (<purpose>); stopping anyway (-Force). The holder loses the client and the watchdog may relaunch it.`
+       and stop it as below;
+     - to stop: if the process name is `SGW`, call `CloseMainWindow()`; after
        8 s, `Stop-Process -Force` if it is still alive; print `p2: stopped pid N`.
    - An instance without a client prints `p2: no client`.
    - Exit 0 if no refusals, else 3.
-   - Pure helper, for tests: `Select-StopTargets($status, $which)` returns
-     `@{ stop = @(...); refuse = @(...); none = @(...) }`.
+   - Pure helper, for tests: `Select-StopTargets($status, $which, [bool]$force)`
+     returns `@{ stop = @(...); forced = @(...); refuse = @(...); none = @(...) }`
+     (`forced` is the leased instances stopped because of `-Force`).
 3. `tools/lab/cli/doctor.ps1`: one line per check,
    `PASS|WARN|FAIL  <check>  <detail>`. Exit 1 if any check fails.
 
@@ -359,15 +365,18 @@ Files:
    The checks are functions returning `[pscustomobject]@{ Status; Check; Detail }`,
    so tests can call them with fakes.
 4. `tools/lab/cli/test-ops.ps1`: `Select-StopTargets` with a fake status of
-   one leased, one free with a client and one free without a client; and the
-   profile-root doctor check with an inside and an outside root.
+   one leased, one free with a client and one free without a client, both
+   without `-Force` (the leased one is refused) and with `-Force` on the
+   leased instance by name (it lands in `forced`); `-Force` with `all` exits
+   2; and the profile-root doctor check with an inside and an outside root.
 
 Checks: `test-ops.ps1` exits 0. `lab.ps1 doctor` runs live and prints lines.
 Do NOT run `clients stop` live, because it closes game clients; only the
 pure tests.
 
 Reviewer focus:
-- a leased client is never killed;
+- a leased client is never killed without `-Force`, and `-Force` never
+  applies to `all`;
 - pid reuse: check `ProcessName` before acting;
 - strict mode on a `/status` without `client_pid`;
 - the doctor never prints a token.
@@ -397,7 +406,9 @@ Reviewer focus:
 4. `lab logs -Lines 20 -Instance p2`, then `lab restart`, then `lab status`.
 5. `lab install -From <a worktree on main>`, then `lab doctor` (binary check PASS).
 6. With one lab-driver holding p2: `lab clients stop p2` refuses, naming the
-   holder. After release, it stops the client.
+   holder. `lab clients stop all -Force` exits 2. After release, it stops
+   the client. (`-Force` on a leased client is checked only with the
+   owner's say-so, and only on a lease the coordinator holds.)
 
 Record the results in the ledger.
 </content>
