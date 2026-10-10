@@ -58,6 +58,28 @@ try {
     # --- status probes the recorded bind ---
     Check ((Get-DaemonBind $info '127.0.0.1:8779') -eq '127.0.0.1:9000') 'recorded bind wins'
     Check ((Get-DaemonBind $null '127.0.0.1:8779') -eq '127.0.0.1:8779') 'default without a pidfile'
+
+    # --- a daemon stop closes its clients, refusing leased ones (F-LC1) ---
+    $status = @'
+{"daemon":{"pid":7},"instances":[
+ {"instance":"default","client_pid":100,"lease":{"held":false}},
+ {"instance":"p2","client_pid":200,"lease":{"held":true,"lease":{"owner":"agent-a","purpose":"uat"}}},
+ {"instance":"p3","client_pid":null,"lease":{"held":true,"lease":{"owner":"agent-b"}}},
+ {"instance":"p4","lease":{"held":false}}
+]}
+'@ | ConvertFrom-Json
+    $sel = Select-LabClientsToClose $status $false
+    Check (@($sel.close).Count -eq 1 -and $sel.close[0].instance -eq 'default' -and $sel.close[0].pid -eq 100) 'an unleased client is closed'
+    Check (@($sel.refuse).Count -eq 1 -and $sel.refuse[0].instance -eq 'p2') 'a leased client is refused'
+    Check ($sel.refuse[0].holder -eq 'agent-a (uat)') 'the refusal names owner and purpose'
+    Check (-not (@($sel.close) | Where-Object { $_.instance -in 'p3', 'p4' })) 'a lease without a client, or no client_pid, closes nothing'
+    $forced = Select-LabClientsToClose $status $true
+    Check ((@($forced.close) | ForEach-Object { $_.instance }) -join ',' -eq 'default,p2') '-Force closes the leased client too'
+    Check (@($forced.refuse).Count -eq 1) '-Force still reports the holder it overrides'
+    $none = Select-LabClientsToClose ('{"daemon":{"pid":7},"instances":[]}' | ConvertFrom-Json) $false
+    Check (@($none.close).Count -eq 0 -and @($none.refuse).Count -eq 0) 'no instances -> nothing to close'
+    $odd = Select-LabClientsToClose ('{"daemon":{"pid":7},"instances":[{"instance":"p5","client_pid":"x","lease":{"held":true,"lease":{}}}]}' | ConvertFrom-Json) $false
+    Check (@($odd.close).Count -eq 0 -and @($odd.refuse).Count -eq 0) 'a non-numeric client_pid is skipped'
 } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }

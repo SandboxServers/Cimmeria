@@ -7,7 +7,8 @@
 >
 > **Campaign status (2026-10-10): done.** LC-01 to LC-06 merged; LC-07,
 > the live UAT, passed on this machine (results below). D-LC1 to D-LC5
-> accepted; D-LC5 amended to allow `-Force`. One follow-up: F-LC1.
+> accepted; D-LC5 amended to allow `-Force`. One follow-up, F-LC1, since
+> fixed.
 
 ## Why
 
@@ -140,9 +141,17 @@ Not checked: that a terminal opened from Explorer sees the new `PATH` (the
 - **F-LC1.** `lab restart` leaves running lab clients orphaned: the new
   daemon does not adopt them (`lab status` shows no client, the bridge is
   unreachable), and `lab doctor` flags them as unlisted SGW.exe. This predates
-  the CLI. The `install.ps1` hint now says to close idle clients first.
-  Possible fix: have the daemon adopt a live client on its bridge port at
-  start, or have `daemon.ps1 restart` close unleased clients.
+  the CLI. **Fixed 2026-10-10:** `daemon.ps1` `stop`, `restart`, `install`
+  and `uninstall` read `/status` before the stop and close the listed clients
+  once the daemon is down. While any client is leased they refuse with exit 3,
+  naming the holder; `-Force` closes it anyway (`lab stop -Force`,
+  `lab restart -Force`). Adoption was not chosen: leases, persistent hooks and
+  the watchdog's process handle live in the old daemon's memory, so an adopted
+  client would come back without them. Live check, with two idle clients
+  (`default`, `p2`) and no leases: `daemon.ps1 restart` stopped the daemon,
+  closed both clients, exit 0; the new daemon listed no clients, and
+  `lab doctor` passed its unlisted-`SGW.exe` check. The leased refusal is
+  covered by `tools/lab/test-labd-lib.ps1` only.
 
 ## Dispatch rules
 

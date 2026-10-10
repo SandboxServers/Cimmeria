@@ -56,6 +56,12 @@
 
 .PARAMETER Force
     install: overwrite an existing labd.env from -EnvFrom.
+    install, uninstall, stop, restart: also close lab clients a session
+    holds a lease on. Each of these stops the daemon, and a new daemon does
+    not adopt the clients the old one launched, so the stop closes every
+    lab client (read from GET /status) once the daemon is down. While any
+    client is leased the stop is refused with exit code 3, because the
+    lease ends with the daemon and the holder would lose the client.
 
 .EXAMPLE
     pwsh tools/lab/daemon.ps1 install
@@ -179,10 +185,78 @@ function Copy-DaemonExe([string]$src) {
     Write-Host "installed $src -> $DaemonExe"
 }
 
+function Get-DaemonStatus($info) {
+    # The running daemon's GET /status (crates/lab/src/daemon/status.rs), or
+    # $null when it is down, has no /status yet, or something else answers.
+    $token = Get-Token
+    if (-not $token) { return $null }
+    $probe = Get-DaemonBind $info $Bind
+    try {
+        $status = Invoke-RestMethod -Uri "http://$probe/status" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5
+    } catch { return $null }
+    if (-not (Get-LabdField $status 'daemon') -or $null -eq (Get-LabdField $status 'instances')) { return $null }
+    return $status
+}
+
+function Close-LabClients($rows) {
+    # Asks every client window to close, then force-stops the ones still
+    # alive after 8 s. Only a process named SGW is touched; the process
+    # object is held, so a reused pid cannot be swapped in.
+    $procs = @()
+    foreach ($r in $rows) {
+        $p = Get-Process -Id $r.pid -ErrorAction SilentlyContinue
+        if (-not $p -or $p.ProcessName -ne 'SGW') {
+            Write-Host "$($r.instance): pid $($r.pid) is not a running SGW; nothing to close"
+            continue
+        }
+        try { $null = $p.CloseMainWindow() } catch { }
+        $procs += @{ row = $r; proc = $p }
+    }
+    if (-not $procs) { return }
+    $alive = { param($p) try { -not $p.HasExited } catch { $true } }
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline -and @($procs | Where-Object { & $alive $_.proc }).Count) {
+        Start-Sleep -Milliseconds 250
+    }
+    foreach ($e in $procs) {
+        if (& $alive $e.proc) {
+            Stop-Process -InputObject $e.proc -Force -ErrorAction SilentlyContinue
+            $null = $e.proc.WaitForExit(2000)
+        }
+        if (& $alive $e.proc) {
+            Write-Warning "$($e.row.instance): could not stop client pid $($e.row.pid)"
+        } else {
+            Write-Host "$($e.row.instance): closed client pid $($e.row.pid)"
+        }
+    }
+}
+
 function Stop-Daemon {
+    # A new daemon does not adopt the clients this one launched (F-LC1), so
+    # read them before the stop and close them after it, once no watchdog
+    # can relaunch them. A leased client would be taken from its holder
+    # (leases die with the daemon): refuse, unless -Force.
+    $info = Read-DaemonPid
+    $status = Get-DaemonStatus $info
+    $clients = $null
+    if ($status) {
+        $clients = Select-LabClientsToClose $status ([bool]$Force)
+        if ($clients.refuse.Count -and -not $Force) {
+            foreach ($r in $clients.refuse) {
+                Write-Host "$($r.instance): client pid $($r.pid) leased to $($r.holder)"
+            }
+            Write-Host "not stopped: the daemon's leases end with it, and its clients are closed. Wait for the lease, or pass -Force to close them anyway."
+            exit 3
+        }
+        foreach ($r in $clients.refuse) {
+            Write-Host "$($r.instance): leased to $($r.holder); closing its client anyway (-Force)"
+        }
+    } elseif ($info -and $info.pid -and (Get-Process -Id $info.pid -ErrorAction SilentlyContinue)) {
+        Write-Warning 'could not read the daemon''s GET /status; any lab clients it runs are left open (close them by hand, or lab doctor lists them)'
+    }
+
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($task -and $task.State -eq 'Running') { Stop-ScheduledTask -TaskName $TaskName }
-    $info = Read-DaemonPid
     if ($info -and $info.pid) {
         $p = Get-Process -Id $info.pid -ErrorAction SilentlyContinue
         # labd.pid outlives a daemon that died abruptly, and the pid may now
@@ -201,6 +275,7 @@ function Stop-Daemon {
         Where-Object { $_.Path -eq $DaemonExe } |
         ForEach-Object { Stop-Process -Id $_.Id -Force; Write-Host "stopped daemon pid $($_.Id)" }
     Remove-Item -Force $PidFile -ErrorAction SilentlyContinue
+    if ($clients -and $clients.close.Count) { Close-LabClients $clients.close }
 }
 
 function Copy-TaskScripts {

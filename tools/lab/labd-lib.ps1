@@ -71,3 +71,41 @@ function Get-DaemonBind($Info, [string]$Default) {
     if ($Info -and $Info.bind) { return [string]$Info.bind }
     return $Default
 }
+
+# A property of a JSON object, or $null when the object lacks it.
+function Get-LabdField($Object, [string]$Name) {
+    if ($null -eq $Object) { return $null }
+    if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+    return $null
+}
+
+# Which lab clients a daemon stop closes (F-LC1), from the daemon's
+# GET /status body. A new daemon does not adopt the clients the old one
+# launched, so stop, restart and install close them once the daemon is down.
+# Leases live in the daemon's memory and die with it, so a leased client
+# would be taken from its holder: those are refused unless $Force.
+# Returns @{ close = rows; refuse = rows }, each row
+# @{ instance; pid; holder }. With $Force every client is in close and the
+# leased ones are in refuse as well, so the caller can name the holders.
+# Pure: no process is touched.
+function Select-LabClientsToClose($Status, [bool]$Force) {
+    $result = @{ close = @(); refuse = @() }
+    foreach ($inst in @(Get-LabdField $Status 'instances')) {
+        $clientPid = Get-LabdField $inst 'client_pid'
+        if ("$clientPid" -notmatch '^\d+$') { continue }
+        $lease = Get-LabdField $inst 'lease'
+        $row = @{ instance = [string](Get-LabdField $inst 'instance'); pid = [int]$clientPid; holder = $null }
+        if (Get-LabdField $lease 'held') {
+            $held = Get-LabdField $lease 'lease'
+            $owner = [string](Get-LabdField $held 'owner')
+            $purpose = [string](Get-LabdField $held 'purpose')
+            if (-not $owner) { $owner = '-' }
+            if (-not $purpose) { $purpose = '-' }
+            $row.holder = "$owner ($purpose)"
+            $result.refuse += $row
+            if (-not $Force) { continue }
+        }
+        $result.close += $row
+    }
+    return $result
+}
