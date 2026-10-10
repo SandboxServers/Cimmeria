@@ -8,25 +8,21 @@
     arguments. Its first .SYNOPSIS line is its help line. common.ps1,
     test-*.ps1 and *-lib.ps1 (dot-sourced libraries) are not commands. Adding a command never edits this file.
 
-.PARAMETER Command
-    The command to run, or help (the default).
-
-.PARAMETER Rest
-    The arguments passed to the command.
+    The first argument is the command (help when there is none); the rest go to
+    the command unchanged. There is no param() block on purpose: splatting the
+    automatic $args keeps named parameters (-Lines 5) named, where a
+    ValueFromRemainingArguments [string[]] turns them into positional strings.
 
 .EXAMPLE
     pwsh tools/lab/lab.ps1 help
     pwsh tools/lab/lab.ps1 status
 #>
-param(
-    [Parameter(Position = 0)]
-    [string]$Command = 'help',
-    [Parameter(ValueFromRemainingArguments)]
-    [string[]]$Rest
-)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$Command = if ($args.Count) { [string]$args[0] } else { 'help' }
+$Rest = if ($args.Count -gt 1) { $args[1..($args.Count - 1)] } else { @() }
 
 $CliDir = Join-Path $PSScriptRoot 'cli'
 $Commands = @(Get-ChildItem -LiteralPath $CliDir -Filter '*.ps1' -File |
@@ -59,7 +55,8 @@ if (-not $match) {
     exit 2
 }
 
+# A command that ends without `exit` and runs nothing native leaves
+# $LASTEXITCODE as it was, so reset it first: falling off the end is success.
+$global:LASTEXITCODE = 0
 & (Join-Path $CliDir "$Command.ps1") @Rest
-$code = $LASTEXITCODE
-if ($null -eq $code) { $code = 0 }
-exit $code
+exit $global:LASTEXITCODE

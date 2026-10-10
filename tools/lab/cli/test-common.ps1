@@ -31,6 +31,26 @@ try {
     Check ((Format-Ago 59) -eq '59s') 'Format-Ago 59 is 59s'
     Check ((Format-Ago 61) -eq '1m') 'Format-Ago 61 is 1m'
     Check ((Format-Ago 7380) -eq '2h 3m') 'Format-Ago 7380 is 2h 3m'
+    Check ((Format-Ago 90) -eq '1m') 'Format-Ago 90 is 1m (truncates, not rounds)'
+    Check ((Format-Ago 3599) -eq '59m') 'Format-Ago 3599 is 59m'
+    Check ((Format-Ago 5400) -eq '1h 30m') 'Format-Ago 5400 is 1h 30m'
+
+    # --- lab.ps1: named arguments reach the command, exit codes pass through ---
+    # A copy of the dispatcher with two fake commands, run the way lab.cmd runs it.
+    $disp = Join-Path $tmp 'dispatch'
+    New-Item -ItemType Directory (Join-Path $disp 'cli') | Out-Null
+    Copy-Item (Join-Path $PSScriptRoot '..\lab.ps1') $disp
+    Set-Content (Join-Path $disp 'cli\echoargs.ps1') -Value @(
+        'param([int]$Lines = 10, [switch]$Follow, [string]$Instance)',
+        '"$Lines|$Follow|$Instance"')
+    Set-Content (Join-Path $disp 'cli\seven.ps1') -Value 'exit 7'
+    $labPs1 = Join-Path $disp 'lab.ps1'
+    $out = pwsh -NoProfile -File $labPs1 echoargs -Instance p2 -Lines 5 -Follow
+    Check ($LASTEXITCODE -eq 0 -and "$out" -eq '5|True|p2') "named arguments reach the command (got '$out', exit $LASTEXITCODE)"
+    $null = pwsh -NoProfile -File $labPs1 seven
+    Check ($LASTEXITCODE -eq 7) "a command's exit code passes through (got $LASTEXITCODE)"
+    $null = pwsh -NoProfile -File $labPs1 nope 2>$null
+    Check ($LASTEXITCODE -eq 2) 'an unknown command exits 2'
 
     # --- lab home: CIMMERIA_LAB_HOME moves labd.env and labd.pid ---
     $labHome = Join-Path $tmp 'home'

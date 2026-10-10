@@ -6,7 +6,10 @@
 
 .DESCRIPTION
     CIMMERIA_LAB_HOME overrides the lab home (%LOCALAPPDATA%\cimmeria-lab);
-    the tests in test-common.ps1 use it to point at a temp folder.
+    the tests in test-common.ps1 use it to point at a temp folder. It is for
+    tests only: daemon.ps1 (behind start, stop and restart) always uses
+    %LOCALAPPDATA%\cimmeria-lab, so with the override set, status would read a
+    different labd.pid than the one those commands act on.
 #>
 
 Set-StrictMode -Version Latest
@@ -65,8 +68,12 @@ function Get-LabStatus {
     } catch {
         return $null
     }
-    if ($status -is [pscustomobject]) { return $status }
-    return $null
+    # Only the daemon's own shape: something else answering on the port, or an
+    # older /status, reads as unavailable rather than failing later under StrictMode.
+    if ($status -isnot [pscustomobject]) { return $null }
+    $names = $status.PSObject.Properties.Name
+    if ($names -notcontains 'daemon' -or $names -notcontains 'instances' -or $null -eq $status.daemon) { return $null }
+    return $status
 }
 
 # The game's profile root: labd.env's CIMMERIA_LAB_PROFILE_ROOT, else the
@@ -82,8 +89,9 @@ function Get-ProfileRoot {
 # A duration as "12s", "5m" or "2h 3m".
 function Format-Ago([int]$seconds) {
     if ($seconds -lt 60) { return "${seconds}s" }
-    if ($seconds -lt 3600) { return '{0}m' -f [int]($seconds / 60) }
-    return '{0}h {1}m' -f [int]($seconds / 3600), [int](($seconds % 3600) / 60)
+    # Truncating division: [int](x / y) rounds (90 s would read 2m).
+    if ($seconds -lt 3600) { return '{0}m' -f [math]::Floor($seconds / 60) }
+    return '{0}h {1}m' -f [math]::Floor($seconds / 3600), [math]::Floor(($seconds % 3600) / 60)
 }
 
 # Rows (objects whose property names are the column names) as an aligned table string.
