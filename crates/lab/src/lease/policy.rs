@@ -117,6 +117,12 @@ pub const LEASED: &[&str] = &[
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",
+    // Composites: each drives the client (ensure_in_world), runs
+    // caller-chosen Lua and native calls (client_batch) or input
+    // (client_ui_sequence).
+    "lab_ensure_in_world",
+    "client_batch",
+    "client_ui_sequence",
     // Flows.
     "lab_login",
     "lab_logout",

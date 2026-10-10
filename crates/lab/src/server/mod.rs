@@ -29,6 +29,8 @@ use crate::timeline::{Timeline, TimelineArgs};
 
 mod client_state;
 mod combat;
+pub(crate) mod compact;
+mod composite;
 mod flows;
 mod lease;
 mod uat;
@@ -258,6 +260,7 @@ impl LabServer {
                 + Self::combat_router()
                 + Self::uat_router()
                 + Self::ui_router()
+                + Self::composite_router()
                 + Self::lease_router(),
         }
     }
@@ -521,7 +524,9 @@ impl LabServer {
         self.proxy("input_release", json!({})).await
     }
 
-    #[tool(description = "Capture the client's main window and return it as a PNG image.")]
+    #[tool(
+        description = "Capture the client window's game area (client rect, UI pixel space) as a PNG. Refuses a minimised window or an all-black frame."
+    )]
     async fn lab_screenshot(&self) -> Result<CallToolResult, McpError> {
         match self.supervisor.screenshot().await {
             Ok((b64, w, h)) => Ok(CallToolResult::success(vec![
@@ -576,6 +581,34 @@ impl LabServer {
     }
 }
 
+/// Compact a tool's text results and its error data for the MCP client
+/// ([`compact`]). Images and non-JSON text pass through.
+fn shape_response(
+    shape: &compact::Shape,
+    out: Result<CallToolResponse, McpError>,
+) -> Result<CallToolResponse, McpError> {
+    match out {
+        Ok(CallToolResponse::Complete(mut r)) => {
+            for block in &mut r.content {
+                if let ContentBlock::Text(t) = block {
+                    if let Some(s) = shape.apply_text(&t.text) {
+                        t.text = s;
+                    }
+                }
+            }
+            if let Some(sc) = r.structured_content.take() {
+                r.structured_content = Some(shape.apply(sc));
+            }
+            Ok(CallToolResponse::Complete(r))
+        }
+        Ok(other) => Ok(other),
+        Err(mut e) => {
+            e.data = e.data.map(|d| shape.apply(d));
+            Err(e)
+        }
+    }
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for LabServer {
     fn get_info(&self) -> ServerConfig {
@@ -593,7 +626,14 @@ impl ServerHandler for LabServer {
                  One agent drives at a time: call lab_lease_acquire {owner, \
                  purpose} first and pass its lease_id to every tool that \
                  drives the client (they list it as a required argument); \
-                 read-only tools need none. lab_lease_release when done."
+                 read-only tools need none. lab_lease_release when done. \
+                 Fewest calls: lab_ensure_in_world gets in the world as a \
+                 character from any state; client_batch runs many reads and \
+                 probes in one call; client_ui_sequence runs one scripted UI \
+                 step. Results are compact (no nulls or empties, floats to 2 \
+                 decimals, lists capped at 50, no per-step native trail); any \
+                 tool takes verbose: true for the full result and fields: [..] \
+                 to keep only some top-level keys."
                     .to_string(),
             )
     }
@@ -607,14 +647,16 @@ impl ServerHandler for LabServer {
         mut request: CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut());
         let permit = self.gate_call(&mut request)?;
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        match permit {
+        let out = match permit {
             // The gate admits once; the permit makes every action of the
             // tool re-check the lease, so a takeover stops it mid-flow.
             Some(p) => crate::lease::permit::scope(p, self.tool_router.call(tcc)).await,
             None => self.tool_router.call(tcc).await,
-        }
+        };
+        shape_response(&shape, out)
     }
 
     async fn list_tools(
@@ -627,7 +669,7 @@ impl ServerHandler for LabServer {
             .is_some_and(|v| v >= ProtocolVersion::V_2026_07_28);
         Ok(ListToolsResult {
             result_type: Some(ResultType::COMPLETE),
-            tools: lease::advertise_lease(self.tool_router.list_all()),
+            tools: compact::advertise(lease::advertise_lease(self.tool_router.list_all())),
             meta: None,
             next_cursor: None,
             ttl_ms: cache_hints.then_some(0),

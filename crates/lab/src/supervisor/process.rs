@@ -34,14 +34,43 @@ pub fn resolve_helper(override_path: Option<PathBuf>, exe_dir: Option<&Path>) ->
     override_path.or_else(|| exe_dir.map(|d| d.join(HELPER_EXE_NAME)))
 }
 
+/// The lab client's window size when `CIMMERIA_LAB_WINDOW` is unset: 16:9,
+/// and small enough for a 2009 client to stay quick beside other windows.
+pub const DEFAULT_WINDOW: (u32, u32) = (1280, 720);
+
+/// The game arguments that keep the lab client in a window: UE3's
+/// `-windowed ResX= ResY=` (SGW.exe parses all three). `spec` is
+/// `CIMMERIA_LAB_WINDOW`: `WIDTHxHEIGHT`, `off` for no arguments (the
+/// client's own settings decide), or unset/unparseable for
+/// [`DEFAULT_WINDOW`].
+///
+/// Why: the stock `SystemOptions.xml` defaults `windowedMode` to false, so
+/// a profile that never saved its options opens a borderless window at the
+/// desktop resolution (5120x1440 on the lab box, 2026-10-10), which also
+/// left `lab_screenshot` capturing black.
+pub fn window_args(spec: Option<&str>) -> Vec<String> {
+    let spec = spec.map(str::trim).unwrap_or_default();
+    if spec.eq_ignore_ascii_case("off") {
+        return Vec::new();
+    }
+    let (w, h) = spec
+        .split_once(['x', 'X'])
+        .and_then(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?)))
+        .filter(|&(w, h): &(u32, u32)| (320..=7680).contains(&w) && (240..=4320).contains(&h))
+        .unwrap_or(DEFAULT_WINDOW);
+    vec!["-windowed".into(), format!("ResX={w}"), format!("ResY={h}")]
+}
+
 /// The helper request for one supervised launch: start `exe` suspended in
-/// `install_dir`, inject the bridge DLL (the only DLL), resume. Pure so the
-/// command line the helper receives is testable without Windows.
+/// `install_dir` with the windowed-mode arguments, inject the bridge DLL
+/// (after the client-patches DLL, if any), resume. Pure so the command line
+/// the helper receives is testable without Windows.
 pub fn launch_request(
     install_dir: &Path,
     exe: &Path,
     dll_path: &Path,
     patches_dll: Option<&Path>,
+    game_args: Vec<String>,
 ) -> Request {
     // Same order as the launcher: client-patches first, then telemetry, so
     // a lab client runs the patched code paths a player's client runs.
@@ -51,7 +80,7 @@ pub fn launch_request(
         target: Target::Spawn {
             exe: exe.to_path_buf(),
             cwd: Some(install_dir.to_path_buf()),
-            args: Vec::new(),
+            args: game_args.into_iter().map(Into::into).collect(),
         },
         dlls,
     }
@@ -89,7 +118,7 @@ pub fn pick_window(candidates: &[WindowCandidate], target_pid: u32) -> Option<is
 
 #[cfg(windows)]
 mod win {
-    use super::{launch_request, pick_window, WindowCandidate, HELPER_EXE_NAME};
+    use super::{launch_request, pick_window, window_args, WindowCandidate, HELPER_EXE_NAME};
     use std::path::Path;
 
     use cimmeria_client_launch::inject::RunningProcess;
@@ -143,7 +172,13 @@ mod win {
         }
         let pid = start32::run_with_env(
             helper,
-            &launch_request(&dir, &exe, dll_path, patches_dll),
+            &launch_request(
+                &dir,
+                &exe,
+                dll_path,
+                patches_dll,
+                window_args(std::env::var("CIMMERIA_LAB_WINDOW").ok().as_deref()),
+            ),
             envs,
         )
         .map_err(|e| format!("launch+inject via {HELPER_EXE_NAME}: {e}"))?;
@@ -330,7 +365,7 @@ mod tests {
         let install = Path::new("C:/SGW");
         let exe = Path::new("C:/SGW/SGW.exe");
         let dll = Path::new("C:/lab/cimmeria-client-telemetry.dll");
-        let req = launch_request(install, exe, dll, None);
+        let req = launch_request(install, exe, dll, None, Vec::new());
         assert_eq!(req.dlls, vec![dll.to_path_buf()]);
         let args: Vec<String> = req
             .to_args()
@@ -357,8 +392,36 @@ mod tests {
         let exe = Path::new("C:/SGW/SGW.exe");
         let dll = Path::new("C:/lab/cimmeria-client-telemetry.dll");
         let patches = Path::new("C:/lab/cimmeria-client-patches.dll");
-        let req = launch_request(Path::new("C:/SGW"), exe, dll, Some(patches));
+        let req = launch_request(Path::new("C:/SGW"), exe, dll, Some(patches), Vec::new());
         assert_eq!(req.dlls, vec![patches.to_path_buf(), dll.to_path_buf()]);
+    }
+
+    /// Regression guard (2026-10-10): the lab client opened fullscreen at
+    /// the desktop resolution. It now launches `-windowed` at 16:9, after
+    /// `--` on the helper's command line so the helper hands them to SGW.exe.
+    #[test]
+    fn the_lab_client_launches_windowed_at_16_9() {
+        assert_eq!(
+            window_args(None),
+            vec!["-windowed", "ResX=1280", "ResY=720"]
+        );
+        assert_eq!(window_args(Some("1600x900"))[1], "ResX=1600");
+        assert_eq!(window_args(Some("garbage")), window_args(None));
+        assert_eq!(window_args(Some("10x10")), window_args(None));
+        assert!(window_args(Some("off")).is_empty());
+        let exe = Path::new("C:/SGW/SGW.exe");
+        let dll = Path::new("C:/lab/bridge.dll");
+        let req = launch_request(Path::new("C:/SGW"), exe, dll, None, window_args(None));
+        let args: Vec<String> = req
+            .to_args()
+            .into_iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        let tail = args.iter().position(|a| a == "--").map(|i| &args[i + 1..]);
+        assert_eq!(
+            tail,
+            Some(&["-windowed".to_string(), "ResX=1280".into(), "ResY=720".into()][..])
+        );
     }
 
     #[test]

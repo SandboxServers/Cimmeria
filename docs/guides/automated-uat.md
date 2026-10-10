@@ -173,6 +173,8 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `optional` | An error is recorded but does not fail the row |
 | `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
 
+The composites ([live-research-lab.md](live-research-lab.md#fewer-calls-composites-and-compact-results)) are routed tools like any other: `tool = "client_ui_sequence"` runs a scripted UI step as one action and reports the least native level it used, and a `tool` clause on `client_batch` reads one step's value with `pointer = "/steps/<id>"`. The runner calls tools in-process, so it always sees full results, never the compacted ones an MCP client gets. Reaching a row's state still uses the single flows (step 2 above), so each one's timing and failure stay in the evidence.
+
 `${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 
 **Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua`, `wait` and `client_event` clauses: read `p2` instead of `p1`).
