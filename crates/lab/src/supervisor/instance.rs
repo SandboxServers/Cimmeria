@@ -1,4 +1,4 @@
-//! Named lab instances: two `SGW.exe` clients side by side on one
+//! Named lab instances: up to five `SGW.exe` clients side by side on one
 //! workstation, each driven by its own `cimmeria-lab` supervisor.
 //!
 //! The lab was written for one client (`current-session.json`, bridge port
@@ -16,6 +16,7 @@
 //! | `sessions/lab-account.json` | `sessions/lab-account.<name>.json` (never the default account: a duplicate login kicks the first client) |
 //! | `cimmeria-client-*.log` | `cimmeria-client-*-<name>.log` |
 //! | "refuse while any SGW.exe runs" | refuse only for a client the lab does not own, or past the client cap |
+//! | the shared `Documents\My Games\Firesky` folder | `sessions/instances/<label>/profile` as the game's `USERPROFILE` ([`super::instance_profile`]) |
 //!
 //! The default instance (no name) keeps the old layout exactly. Findings
 //! and the reasoning: `docs/reverse-engineering/findings/multi-client-lab.md`.
@@ -41,9 +42,10 @@ pub const SESSION_FILE_ENV: &str = "CIMMERIA_LAB_SESSION_FILE";
 pub const MAX_CLIENTS_ENV: &str = "CIMMERIA_LAB_MAX_CLIENTS";
 /// Two clients: the second player of a two-player scenario.
 pub const DEFAULT_MAX_CLIENTS: usize = 2;
-/// Ceiling for `CIMMERIA_LAB_MAX_CLIENTS`. Each client is a 32-bit
-/// process with a D3D9 device and its own Mercury session.
-pub const CEILING_MAX_CLIENTS: usize = 4;
+/// Ceiling for `CIMMERIA_LAB_MAX_CLIENTS`: the five seeded lab accounts
+/// (`lab`, `lab2` to `lab5`). Each client is a 32-bit process with a D3D9
+/// device and its own Mercury session.
+pub const CEILING_MAX_CLIENTS: usize = 5;
 
 const REGISTRY_FILE: &str = "lab-instance.json";
 /// Registry label of the unnamed instance.

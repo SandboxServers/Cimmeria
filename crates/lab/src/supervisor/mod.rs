@@ -43,6 +43,7 @@ pub mod flows;
 pub mod heartbeat;
 pub mod input;
 pub mod instance;
+pub mod instance_profile;
 pub mod keys;
 pub mod login_servers;
 pub mod main_thread;
@@ -401,7 +402,12 @@ impl Supervisor {
             session.tags.push(format!("instance:{name}"));
         }
         session_file::write_session_at(&session_path, &session)?;
-        let envs = instance::launch_env(&install_dir, inst);
+        let mut envs = instance::launch_env(&install_dir, inst);
+        // Every lab client gets its own Firesky folder, so two clients never
+        // lock each other's cooked-data cache (#1312).
+        if let Some(profile) = instance_profile::prepare(&install_dir, inst.unwrap_or("default")) {
+            envs.push(profile);
+        }
 
         // Native launch runs on a blocking thread. SGW.exe lives in
         // `<install>/Binaries`, next to the `sessions/` dir the session file

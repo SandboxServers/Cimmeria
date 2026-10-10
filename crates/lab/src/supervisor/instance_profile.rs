@@ -51,7 +51,9 @@ pub fn profile_dir(install_dir: &Path, label: &str) -> PathBuf {
 
 /// `<documents>\My Games\Firesky\SGWGame`.
 pub fn sgwgame_dir(documents: &Path) -> PathBuf {
-    SGWGAME.iter().fold(documents.to_path_buf(), |p, s| p.join(s))
+    SGWGAME
+        .iter()
+        .fold(documents.to_path_buf(), |p, s| p.join(s))
 }
 
 /// What [`seed`] did.
@@ -304,13 +306,22 @@ mod tests {
         write(&src.join("Config/SGWEngine.ini"), "ini");
         write(&src.join("Content/LocalShaderCache-PC-D3D-SM3.upk"), "upk");
         write(&src.join("SavedSystemOptions.xml"), "xml");
-        write(&src.join("lab/Labone/ActionButtons - Saved Vars.lua"), "account");
+        write(
+            &src.join("lab/Labone/ActionButtons - Saved Vars.lua"),
+            "account",
+        );
         write(&src.join("Logs/Launch.log"), "log");
         write(&src.join("CrashDumps/x.dmp"), "dump");
         let profile = tmp.path().join("profile");
 
         let out = seed(&src, &profile).unwrap();
-        assert_eq!(out, Seeded::Copied { files: 4, bytes: 12 });
+        assert_eq!(
+            out,
+            Seeded::Copied {
+                files: 4,
+                bytes: 12
+            }
+        );
         let dst = sgwgame_dir(&profile.join("Documents"));
         for kept in [
             "Cache.en-US/TextStrings.pak",
@@ -364,7 +375,10 @@ mod tests {
         let half = sgwgame_dir(&profile.join("Documents")).with_file_name("SGWGame.seeding");
         write(&half.join("partial.tmp"), "x");
 
-        assert_eq!(seed(&src, &profile).unwrap(), Seeded::Copied { files: 1, bytes: 3 });
+        assert_eq!(
+            seed(&src, &profile).unwrap(),
+            Seeded::Copied { files: 1, bytes: 3 }
+        );
         assert!(!half.exists());
     }
 }
