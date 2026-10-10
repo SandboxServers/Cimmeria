@@ -7,6 +7,7 @@ use super::heartbeat::HeartbeatState;
 use super::main_thread::MainThreadCpu;
 use super::stall_grace::{self, BootGrace, Heartbeat, Poll, StallTracker, Verdict};
 use serde_json::Value;
+use tracing::Instrument;
 
 use super::flows::{self, login::LoginRequest};
 use super::{now_ms, process, LoginState, Supervisor, MAX_HEARTBEAT_FAILS, WATCHDOG_POLL};
@@ -17,7 +18,9 @@ impl Supervisor {
     /// this launch's death.
     pub(super) fn spawn_watchdog(&self, pid: u32) {
         let this = self.clone();
-        tokio::spawn(async move { this.watchdog_loop(pid).await });
+        // Several instances share one process: tag every watchdog line.
+        let span = tracing::info_span!("lab_watchdog", instance = self.label(), pid);
+        tokio::spawn(async move { this.watchdog_loop(pid).await }.instrument(span));
     }
 
     async fn watchdog_loop(&self, my_pid: u32) {

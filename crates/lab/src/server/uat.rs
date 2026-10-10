@@ -182,13 +182,13 @@ fn install_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// lab-account.json of this instance: (username, character).
-fn lab_account() -> (Option<String>, Option<String>) {
+/// The lab-account file of instance `inst` (the routed supervisor's):
+/// (username, character).
+fn lab_account(inst: Option<&str>) -> (Option<String>, Option<String>) {
     let Some(dir) = install_dir() else {
         return (None, None);
     };
-    let inst = instance::from_env().ok().flatten();
-    match session_file::read_lab_account_at(&instance::account_path(&dir, inst.as_deref())) {
+    match session_file::read_lab_account_at(&instance::account_path(&dir, inst)) {
         Ok(a) => (
             Some(a.username),
             Some(a.character).filter(|c| !c.is_empty()),
@@ -336,7 +336,7 @@ impl LabServer {
             })?;
         let sections = load_sections(&dir, a.sections.as_deref())
             .map_err(|e| McpError::invalid_params(e, None))?;
-        let (account, character) = lab_account();
+        let (account, character) = lab_account(self.supervisor.instance());
         let dll = std::env::var("CIMMERIA_LAB_DLL").ok().map(PathBuf::from);
         let patches = std::env::var("CIMMERIA_LAB_PATCHES_DLL")
             .ok()
@@ -375,7 +375,14 @@ impl LabServer {
             .iter()
             .flat_map(|s| &s.spec.rows)
             .any(|r| r.players == 2);
-        let p2 = if wants_p2 {
+        let p2 = if wants_p2 && self.instances.len() > 1 {
+            // The in-process p2 would duplicate a hosted p2's session file,
+            // port and account; LP-05b routes p2 to the hosted instance.
+            Err(format!(
+                "players = 2: not yet supported in a multi-instance daemon ({})",
+                crate::supervisor::instance::INSTANCES_ENV
+            ))
+        } else if wants_p2 {
             p2_account()
         } else {
             Err("no row in this run needs a second player".into())

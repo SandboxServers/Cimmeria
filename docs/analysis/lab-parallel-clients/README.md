@@ -4,7 +4,7 @@
 > Opened 2026-10-10 against `main`. Prefix `LP-`. Tracking issue #1312.
 > Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): wave 1 merged; LP-05a next.** The fix is proven by hand
+> **Campaign status (2026-10-10): LP-05a merged; LP-05b next.** The fix is proven by hand
 > (five clients at once, 2026-10-10); the packets turn it into lab code.
 
 ## Why
@@ -109,7 +109,7 @@ Not fixed here (follow-ups):
 | LP-02 | One lease book per supervisor | none | merged (3 review fixes; p2 is not relaunched mid-UAT, accepted) |
 | LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | merged, #1319 (4 review fixes) |
 | LP-04 | Docs and memory | LP-01, LP-05b | planned |
-| LP-05a | Instance registry and routing in one daemon | LP-02 | planned |
+| LP-05a | Instance registry and routing in one daemon | LP-02 | merged (review: per-instance UI memory, two-player refused until LP-05b, routing tests, instance log spans) |
 | LP-05b | Lease tools and UAT p2 across instances | LP-05a | planned |
 | LP-06 | Watchdog boot grace | none | merged, #1320 (test-gap fix) |
 | LP-07 | Live UAT: five clients, one daemon, five leases | all | planned |

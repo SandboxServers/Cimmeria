@@ -20,7 +20,7 @@ use std::sync::Arc;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
+    schemars, tool, tool_router, ErrorData as McpError,
 };
 use serde_json::{json, Value};
 
@@ -32,10 +32,14 @@ mod combat;
 pub(crate) mod compact;
 mod composite;
 mod flows;
+mod handler;
+mod instances;
 mod lease;
 mod uat;
 mod ui;
 mod world;
+
+pub use instances::{parse_list, Hosted, Instances, INSTANCES_ENV};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -245,14 +249,20 @@ pub struct LabServer {
     supervisor: Arc<Supervisor>,
     timeline: Arc<Timeline>,
     tool_router: ToolRouter<LabServer>,
+    instances: Arc<Instances>,
 }
 
 #[tool_router(router = tool_router)]
 impl LabServer {
     pub fn new(supervisor: Arc<Supervisor>) -> Self {
+        let hosted = Hosted {
+            label: supervisor.label().to_string(),
+            supervisor: supervisor.clone(),
+        };
         Self {
             supervisor,
             timeline: Arc::new(Timeline::from_env()),
+            instances: Arc::new(Instances::new(vec![hosted])),
             tool_router: Self::tool_router()
                 + Self::flows_router()
                 + Self::client_state_router()
@@ -578,138 +588,5 @@ impl LabServer {
             }
             Err(e) => Err(McpError::internal_error(e, None)),
         }
-    }
-}
-
-/// Compact a tool's text results and its error data for the MCP client
-/// ([`compact`]). Images and non-JSON text pass through.
-fn shape_response(
-    shape: &compact::Shape,
-    out: Result<CallToolResponse, McpError>,
-) -> Result<CallToolResponse, McpError> {
-    match out {
-        Ok(CallToolResponse::Complete(mut r)) => {
-            for block in &mut r.content {
-                match block {
-                    ContentBlock::Text(t) => {
-                        if let Some(s) = shape.apply_text(&t.text) {
-                            t.text = s;
-                        }
-                    }
-                    ContentBlock::Image(img) if !shape.image && !shape.verbose => {
-                        let note = match compact::save_image_in(
-                            &compact::image_dir(),
-                            &shape.tool,
-                            &img.data,
-                        ) {
-                            Ok(p) => format!(
-                                "image saved: {} (image: true returns it inline)",
-                                p.display()
-                            ),
-                            Err(e) => format!("image not saved ({e}); image: true returns it"),
-                        };
-                        *block = ContentBlock::text(note);
-                    }
-                    _ => {}
-                }
-            }
-            if let Some(sc) = r.structured_content.take() {
-                r.structured_content = Some(shape.apply(sc));
-            }
-            Ok(CallToolResponse::Complete(r))
-        }
-        Ok(other) => Ok(other),
-        Err(mut e) => {
-            e.data = e.data.map(|d| shape.apply(d));
-            Err(e)
-        }
-    }
-}
-
-#[tool_handler(router = self.tool_router)]
-impl ServerHandler for LabServer {
-    fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::from_build_env())
-            .with_instructions(
-                "Live Research Lab supervisor. Probe tools (client_lua_eval, \
-                 client_module_info, client_mem_read) forward to the injected \
-                 cimmeria-client-telemetry DLL over a token-gated loopback TCP \
-                 channel. Supervisor tools (lab_client_start/stop/restart/status, \
-                 lab_screenshot, lab_crash_report, and the lab_* flows) own the \
-                 SGW.exe process lifecycle and crash recovery. lab_timeline merges \
-                 local client events with server packet-tap rows (from \
-                 cimmeria-lab-mcp over HTTP) into one clock-aligned window. \
-                 One agent drives at a time: call lab_lease_acquire {owner, \
-                 purpose} first and pass its lease_id to every tool that \
-                 drives the client (they list it as a required argument); \
-                 read-only tools need none. lab_lease_release when done. \
-                 Fewest calls: lab_ensure_in_world gets in the world as a \
-                 character from any state; client_batch runs many reads and \
-                 probes in one call; client_ui_sequence runs one scripted UI \
-                 step. Results are compact (no nulls or empties, floats to 2 \
-                 decimals, lists capped at 50, no per-step native trail); any \
-                 tool takes verbose: true for the full result and fields: [..] \
-                 to keep only some top-level keys. Images (lab_screenshot) come back as a saved file path; image: true returns them inline."
-                    .to_string(),
-            )
-    }
-
-    // Written out instead of generated by `tool_handler` so every call
-    // passes the lease gate and every guarded tool advertises `lease_id`.
-    // The UAT runner dispatches through `tool_router` directly (in-process),
-    // under the run's own lease.
-    async fn call_tool(
-        &self,
-        mut request: CallToolRequestParams,
-        context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<CallToolResponse, McpError> {
-        // Shaping arguments the tool declares itself stay with the tool.
-        let own: Vec<String> = self
-            .tool_router
-            .get(request.name.as_ref())
-            .and_then(|t| {
-                t.input_schema
-                    .get("properties")
-                    .and_then(Value::as_object)
-                    .map(|p| {
-                        compact::SHAPE_ARGS
-                            .iter()
-                            .filter(|a| p.contains_key(**a))
-                            .map(|a| a.to_string())
-                            .collect()
-                    })
-            })
-            .unwrap_or_default();
-        let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut(), &own);
-        let permit = self.gate_call(&mut request)?;
-        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        let out = match permit {
-            // The gate admits once; the permit makes every action of the
-            // tool re-check the lease, so a takeover stops it mid-flow.
-            Some(p) => crate::lease::permit::scope(p, self.tool_router.call(tcc)).await,
-            None => self.tool_router.call(tcc).await,
-        };
-        shape_response(&shape, out)
-    }
-
-    async fn list_tools(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<ListToolsResult, McpError> {
-        let cache_hints = context
-            .protocol_version()
-            .is_some_and(|v| v >= ProtocolVersion::V_2026_07_28);
-        Ok(ListToolsResult {
-            result_type: Some(ResultType::COMPLETE),
-            tools: compact::slim(compact::advertise(lease::advertise_lease(
-                self.tool_router.list_all(),
-            ))),
-            meta: None,
-            next_cursor: None,
-            ttl_ms: cache_hints.then_some(0),
-            cache_scope: cache_hints.then_some(CacheScope::Public),
-        })
     }
 }

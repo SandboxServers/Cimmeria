@@ -40,6 +40,10 @@ pub const INSTANCE_ENV: &str = "CIMMERIA_LAB_INSTANCE";
 pub const SESSION_FILE_ENV: &str = "CIMMERIA_LAB_SESSION_FILE";
 /// How many `SGW.exe` clients may run at once (default and ceiling below).
 pub const MAX_CLIENTS_ENV: &str = "CIMMERIA_LAB_MAX_CLIENTS";
+/// Comma-separated instance labels one daemon hosts: `default,p2,p3`. Unset
+/// or empty: the one instance [`INSTANCE_ENV`] names. Parsed by the server
+/// (`server::instances`); defined here so the supervisor can count them.
+pub const INSTANCES_ENV: &str = "CIMMERIA_LAB_INSTANCES";
 /// Two clients: the second player of a two-player scenario.
 pub const DEFAULT_MAX_CLIENTS: usize = 2;
 /// Ceiling for `CIMMERIA_LAB_MAX_CLIENTS`: the five seeded lab accounts
@@ -85,15 +89,50 @@ pub fn parse(raw: Option<&str>) -> Result<Option<String>, String> {
     }
 }
 
-/// The client cap from [`MAX_CLIENTS_ENV`], clamped to `1..=CEILING`.
-pub fn max_clients_from_env() -> usize {
-    clamp_max(std::env::var(MAX_CLIENTS_ENV).ok().as_deref())
+/// The client cap from [`MAX_CLIENTS_ENV`], clamped to `1..=CEILING`. The
+/// default is one client per hosted instance, or [`DEFAULT_MAX_CLIENTS`] if
+/// that is more.
+pub fn max_clients_from_env(hosted: usize) -> usize {
+    clamp_max_for(
+        std::env::var(MAX_CLIENTS_ENV).ok().as_deref(),
+        hosted.max(DEFAULT_MAX_CLIENTS),
+    )
 }
 
-/// [`max_clients_from_env`] over an explicit value, for tests.
+/// [`max_clients_from_env`] over an explicit value with the default of one
+/// instance, for tests.
+#[cfg(test)]
 pub fn clamp_max(raw: Option<&str>) -> usize {
+    clamp_max_for(raw, DEFAULT_MAX_CLIENTS)
+}
+
+/// [`clamp_max`] with an explicit default for an unset or junk value.
+pub fn clamp_max_for(raw: Option<&str>, default: usize) -> usize {
     raw.and_then(|s| s.trim().parse::<usize>().ok())
-        .map_or(DEFAULT_MAX_CLIENTS, |n| n.clamp(1, CEILING_MAX_CLIENTS))
+        .unwrap_or(default)
+        .clamp(1, CEILING_MAX_CLIENTS)
+}
+
+/// How many instances [`INSTANCES_ENV`] names: 1 when unset, and 1 when the
+/// list does not parse (the server refuses to start on such a list).
+pub fn hosted_count_from_env() -> usize {
+    std::env::var(INSTANCES_ENV)
+        .ok()
+        .map_or(1, |raw| hosted_count(&raw))
+}
+
+/// [`hosted_count_from_env`] over an explicit value, for tests.
+fn hosted_count(raw: &str) -> usize {
+    let mut seen: Vec<String> = Vec::new();
+    for item in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let label = item.to_ascii_lowercase();
+        let bad = label != "default" && validate_name(item).is_err();
+        if bad || seen.contains(&label) {
+            return 1;
+        }
+        seen.push(label);
+    }
+    seen.len().max(1)
 }
 
 /// Where this instance's session file, crash marker and minidumps live:
@@ -331,6 +370,26 @@ mod tests {
         // The ceiling is the five seeded lab accounts (#1312).
         assert_eq!(clamp_max(Some("5")), 5);
         assert_eq!(clamp_max(Some("6")), 5);
+    }
+
+    #[test]
+    fn hosted_instances_raise_the_default_cap() {
+        // One client per hosted instance, still under the ceiling.
+        assert_eq!(clamp_max_for(None, 3), 3);
+        assert_eq!(clamp_max_for(Some("junk"), 4), 4);
+        assert_eq!(clamp_max_for(Some("1"), 4), 1);
+        assert_eq!(clamp_max_for(None, 9), CEILING_MAX_CLIENTS);
+    }
+
+    #[test]
+    fn hosted_count_reads_the_instance_list() {
+        assert_eq!(hosted_count(""), 1);
+        assert_eq!(hosted_count("default"), 1);
+        assert_eq!(hosted_count("default,p2,p3"), 3);
+        assert_eq!(hosted_count(" default , , P2 "), 2);
+        // A list that does not parse counts as one; the server refuses it.
+        assert_eq!(hosted_count("default,p2,P2"), 1);
+        assert_eq!(hosted_count("default,bad name"), 1);
     }
 
     #[test]

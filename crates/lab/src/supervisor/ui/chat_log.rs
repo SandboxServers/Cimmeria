@@ -26,7 +26,7 @@ use std::time::Instant;
 
 use serde_json::{json, Map, Value};
 
-use super::{memory, stamp_read, Supervisor};
+use super::{memory, memory_key, stamp_read, Supervisor};
 use crate::supervisor::events::store::{StoredEvent, STORE_CAP};
 use crate::supervisor::events::KIND_CHAT;
 
@@ -225,7 +225,8 @@ impl Supervisor {
             out
         };
         if let (Ok(mut m), Some(n)) = (memory().lock(), out["next_seq"].as_u64()) {
-            m.chat_cursors.insert(cursor.to_string(), n);
+            m.chat_cursors
+                .insert(memory_key(self.instance(), cursor), n);
         }
         out["cursor"] = json!(cursor);
         out["capture"] = rep.to_json();

@@ -29,6 +29,9 @@
 //!   `lab-account.<name>.json`, logs and (with `_PORT`) bridge port.
 //!   `CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2). Unset = the
 //!   single-client layout.
+//! - `CIMMERIA_LAB_INSTANCES=default,p2,...` — one daemon hosts a supervisor
+//!   per listed instance, on bridge ports `CIMMERIA_LAB_BRIDGE_PORT` + i;
+//!   each call routes by its `instance` argument (`server::instances`).
 //! - `CIMMERIA_LAB_UAT_P2`, `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` — the second
 //!   instance `lab_uat_run` drives for two-player rows (default `p2`, this
 //!   port + 1); its account is `lab-account.<name>.json`.
@@ -61,7 +64,7 @@ mod uat;
 
 use client::BridgeClient;
 use daemon::config::Mode;
-use server::LabServer;
+use server::{parse_list, Hosted, Instances, LabServer, INSTANCES_ENV};
 use supervisor::{Supervisor, SupervisorConfig};
 
 fn env_filter() -> EnvFilter {
@@ -97,6 +100,11 @@ fn main() -> Result<()> {
 
 /// Build the shared supervisor + MCP server from the environment.
 fn build_server() -> Result<LabServer> {
+    if let Ok(raw) = std::env::var(INSTANCES_ENV) {
+        if !raw.trim().is_empty() {
+            return build_hosted_server(&raw);
+        }
+    }
     // A bad instance name must stop the server: silently becoming the
     // default instance would put two clients on one session file.
     if let Err(e) = supervisor::instance::from_env() {
@@ -121,6 +129,61 @@ fn build_server() -> Result<LabServer> {
     // Expired leases are logged when they run out, not when someone next asks.
     lease::spawn_sweeper(supervisor.leases().clone());
     Ok(LabServer::new(supervisor))
+}
+
+/// One daemon hosting every instance `CIMMERIA_LAB_INSTANCES` names: each
+/// gets its own supervisor on the base bridge port plus its position in the
+/// list (#1312, LP-05a). Only the first instance takes `CIMMERIA_LAB_TOKEN`.
+fn build_hosted_server(raw: &str) -> Result<LabServer> {
+    let entries = parse_list(raw).map_err(anyhow::Error::msg)?;
+    if std::env::var("CIMMERIA_LAB_BRIDGE").is_ok() {
+        tracing::warn!(
+            "CIMMERIA_LAB_BRIDGE is ignored when {INSTANCES_ENV} is set: each instance bridges on 127.0.0.1:<port>"
+        );
+    }
+    let base = SupervisorConfig::from_env().port;
+    let mut hosted = Vec::with_capacity(entries.len());
+    for (i, entry) in entries.into_iter().enumerate() {
+        let port = u16::try_from(i)
+            .ok()
+            .and_then(|i| base.checked_add(i))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "bridge port {base} + {i} for instance {} overflows; lower CIMMERIA_LAB_BRIDGE_PORT",
+                    entry.as_deref().unwrap_or("default")
+                )
+            })?;
+        let mut config = SupervisorConfig::from_env();
+        config.instance = entry.clone();
+        config.port = port;
+        let addr = format!("127.0.0.1:{port}");
+        let token = if i == 0 {
+            let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
+            if token.is_empty() {
+                tracing::warn!(
+                    "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will fail until lab_client_start mints its own token"
+                );
+            }
+            token
+        } else {
+            String::new()
+        };
+        tracing::info!(instance = ?config.instance, port, "cimmeria-lab instance");
+
+        let bridge = Arc::new(BridgeClient::new(addr, token));
+        let supervisor = Arc::new(Supervisor::new(bridge, config));
+        {
+            // The sweeper's expiry lines carry the instance label.
+            let _span =
+                tracing::info_span!("lab_instance", instance = supervisor.label()).entered();
+            lease::spawn_sweeper(supervisor.leases().clone());
+        }
+        hosted.push(Hosted {
+            label: entry.unwrap_or_else(|| "default".to_string()),
+            supervisor,
+        });
+    }
+    Ok(LabServer::new_multi(Instances::new(hosted)))
 }
 
 async fn run_stdio() -> Result<()> {

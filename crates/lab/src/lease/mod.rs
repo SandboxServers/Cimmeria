@@ -35,6 +35,7 @@ pub use run::RunLease;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use tracing::Instrument;
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -117,12 +118,16 @@ impl Default for LeaseBook {
 
 /// Log expired leases promptly, not only when the next call notices.
 pub fn spawn_sweeper(book: Arc<LeaseBook>) {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            book.sweep();
+    // Runs in the caller's span, so a hosted instance's expiries carry its label.
+    tokio::spawn(
+        async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                book.sweep();
+            }
         }
-    });
+        .in_current_span(),
+    );
 }
 
 pub fn rfc3339(ms: i64) -> String {
@@ -260,6 +265,13 @@ impl LeaseBook {
             .as_ref()
             .filter(|l| l.lease_id == id)
             .map(|l| l.ttl_s)
+    }
+
+    /// Whether `id` is the current, unexpired lease (no renewal).
+    pub fn holds(&self, id: &str) -> bool {
+        let mut st = self.lock();
+        st.expire_if_due(now_ms());
+        st.current.as_ref().is_some_and(|l| l.lease_id == id)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
