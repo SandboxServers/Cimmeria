@@ -12,14 +12,21 @@
 //! - The `axum::serve::Listener` impl on `TlsListener` end to end: a real
 //!   rustls handshake + HTTP/1.1 request/response over the wrapped stream.
 //! - The HSTS header on the live TLS path (spec item 4).
+//! - XML-escaped plaintext passwords over TLS (#1289): an escaped password
+//!   verifies against the decoded one (live DB), and malformed entity syntax
+//!   is refused with a logged reason that never quotes the password.
 //!
-//! Runs in `developer_mode` so no DB is required — the credential check is
-//! short-circuited exactly as the plain-HTTP `login_smoke` does.
+//! The first two tests run in `developer_mode` so no DB is required — the
+//! credential check is short-circuited exactly as the plain-HTTP
+//! `login_smoke` does. The escaped-password test needs the real credential
+//! check, so it is live-DB.
 
 use std::net::TcpListener as StdTcpListener;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use cimmeria_common::ServerConfig;
+use sqlx::PgPool;
 
 use super::{AuthService, ShardInfo};
 
@@ -63,9 +70,20 @@ fn self_signed_pem() -> (String, String) {
     (certified.cert.pem(), certified.signing_key.serialize_pem())
 }
 
-#[tokio::test]
-async fn tls_listener_serves_phase1_login_over_https() {
-    // ── 1. Write a runtime self-signed cert ─────────────────────────────
+/// A running `AuthService` with its TLS listener up, plus a reqwest client
+/// that trusts the throwaway cert. Holds the cert dir so it outlives the
+/// service.
+struct TlsAuth {
+    auth: AuthService,
+    client: reqwest::Client,
+    base_url: String,
+    _dir: TempDir,
+}
+
+/// Boot `AuthService` with TLS on an ephemeral port. `db` = `None` runs in
+/// `developer_mode` (no credential check); `Some` runs the real check.
+async fn start_tls_auth(shard_name: &str, db: Option<Arc<PgPool>>) -> TlsAuth {
+    // ── Write a runtime self-signed cert ────────────────────────────────
     let dir = TempDir::new();
     let (cert_pem, key_pem) = self_signed_pem();
     let cert_path = dir.0.join("cert.pem");
@@ -73,11 +91,9 @@ async fn tls_listener_serves_phase1_login_over_https() {
     std::fs::write(&cert_path, &cert_pem).expect("write cert");
     std::fs::write(&key_path, &key_pem).expect("write key");
 
-    // ── 2. Boot AuthService with TLS configured on an ephemeral port ────
-    // developer_mode short-circuits the DB credential check so this runs
-    // without DATABASE_URL.
+    // ── Boot AuthService with TLS configured on an ephemeral port ───────
     const MAX_ATTEMPTS: usize = 5;
-    let (mut auth, tls_port) = {
+    let (auth, tls_port) = {
         let mut started = None;
         for _ in 0..MAX_ATTEMPTS {
             let http_port = ephemeral_port();
@@ -87,12 +103,15 @@ async fn tls_listener_serves_phase1_login_over_https() {
                 auth_tls_port: tls_port,
                 auth_tls_cert_path: Some(cert_path.clone()),
                 auth_tls_key_path: Some(key_path.clone()),
-                developer_mode: true,
+                developer_mode: db.is_none(),
                 ..ServerConfig::loopback()
             };
             let mut auth = AuthService::new(&config);
+            if let Some(pool) = &db {
+                auth.set_db_pool(Arc::clone(pool));
+            }
             auth.register_shard(ShardInfo {
-                name: "TlsShard".to_string(),
+                name: shard_name.to_string(),
                 host: "127.0.0.1".to_string(),
                 port: 32832,
                 protected: false,
@@ -105,7 +124,7 @@ async fn tls_listener_serves_phase1_login_over_https() {
         started.expect("AuthService failed to start with TLS after retries")
     };
 
-    // ── 3. Build a reqwest client that trusts our self-signed cert ──────
+    // ── A reqwest client that trusts our self-signed cert ───────────────
     // The cert SAN is `localhost`; force `localhost` to resolve to the
     // loopback TLS port so the rustls SAN check passes.
     let root = reqwest::Certificate::from_pem(cert_pem.as_bytes()).expect("parse root cert");
@@ -120,16 +139,53 @@ async fn tls_listener_serves_phase1_login_over_https() {
         .build()
         .expect("build TLS client");
 
-    let base_url = format!("https://localhost:{tls_port}");
+    TlsAuth {
+        auth,
+        client,
+        base_url: format!("https://localhost:{tls_port}"),
+        _dir: dir,
+    }
+}
 
-    // ── 4. Phase 1 login over HTTPS ─────────────────────────────────────
-    let phase1_body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="tls-user" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+/// A Phase 1 body whose `Password` attribute is `raw_password`, spelled
+/// exactly as it sits between the quotes on the wire.
+fn phase1_body(account: &str, raw_password: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="{account}" Password="{raw_password}" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#
+    )
+}
 
-    let resp = client
-        .post(format!("{base_url}/SGWLogin/UserAuth"))
+/// POST a Phase 1 body over TLS and return the response XML.
+async fn post_phase1(tls: &TlsAuth, body: String) -> String {
+    let resp = tls
+        .client
+        .post(format!("{}/SGWLogin/UserAuth", tls.base_url))
         .header("Content-Type", "text/xml")
-        .body(phase1_body)
+        .body(body)
+        .send()
+        .await
+        .expect("Phase 1 POST over TLS must succeed");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "auth always returns 200"
+    );
+    resp.text().await.expect("Phase 1 body")
+}
+
+#[tokio::test]
+async fn tls_listener_serves_phase1_login_over_https() {
+    let mut tls = start_tls_auth("TlsShard", None).await;
+
+    let resp = tls
+        .client
+        .post(format!("{}/SGWLogin/UserAuth", tls.base_url))
+        .header("Content-Type", "text/xml")
+        .body(phase1_body(
+            "tls-user",
+            "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3",
+        ))
         .send()
         .await
         .expect("Phase 1 POST over TLS must succeed");
@@ -162,5 +218,115 @@ async fn tls_listener_serves_phase1_login_over_https() {
         "Phase 1 over TLS must advertise the registered shard"
     );
 
-    auth.stop().await;
+    tls.auth.stop().await;
+}
+
+/// **#1289 malformed-entity guard.** A plaintext password with an unknown
+/// entity (`&SecretFragment;`) over TLS must be refused, and the refusal must
+/// log `reason = "unrecognized_entity"` / `attribute = "Password"` without
+/// quoting any part of the password. Runs in `developer_mode`, where any
+/// password that reaches the credential check succeeds — so with the decode
+/// reverted (raw value passed through) this login *succeeds* and the guard
+/// trips.
+// Default `#[tokio::test]` is current-thread, so the spawned axum handlers
+// run on this thread and `LogCapture` sees their events.
+#[tokio::test]
+async fn tls_phase1_malformed_password_entity_is_rejected_and_logged() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut tls = start_tls_auth("TlsShard", None).await;
+
+    let xml = post_phase1(&tls, phase1_body("tls-user", "pw&SecretFragment;x")).await;
+    tls.auth.stop().await;
+
+    assert!(
+        xml.contains("SGWLoginError") && !xml.contains("SGWLoginSuccess"),
+        "a malformed entity in Password must fail the login, got: {xml}"
+    );
+
+    let warn = capture
+        .find_event(
+            tracing::Level::WARN,
+            "Phase 1 SOAP request rejected",
+            "unrecognized_entity",
+        )
+        .expect("malformed Password entity must log reason=unrecognized_entity at WARN");
+    assert_eq!(
+        warn.fields.get("attribute").map(String::as_str),
+        Some("Password")
+    );
+
+    for event in capture.all() {
+        let leaked = event
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("SecretFragment"))
+            || event.fields.values().any(|v| v.contains("SecretFragment"));
+        assert!(
+            !leaked,
+            "password fragment leaked into a log event: {event:?}"
+        );
+    }
+}
+
+/// Sentinel account id for the escaped-password smoke. Inside the crate's
+/// `0x7000_1B00` credential window, past the slots `credentials.rs` uses
+/// (`+1`..`+7`) and clear of `audit.rs`'s `0x7000_1B40`.
+const ESCAPED_PW_ACCOUNT_ID: i32 = 0x7000_1B20;
+
+async fn delete_account(pool: &PgPool, account_id: i32) {
+    let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+        .bind(account_id)
+        .execute(pool)
+        .await;
+}
+
+/// **#1289 regression guard (live DB, real TLS).** An argon2id account whose
+/// password contains `&`, `<` and `"` logs in over TLS when the client
+/// escapes those characters in the SOAP attribute, as XML requires. Before
+/// the fix the server compared the escaped wire spelling
+/// (`a&amp;b&lt;c&quot;d`) against the stored hash of `a&b<c"d` and returned
+/// "The account name or password is incorrect."
+#[tokio::test]
+async fn live_db_tls_phase1_accepts_xml_escaped_plaintext_password() {
+    use crate::test_support::require_db_or_skip;
+    let pool = require_db_or_skip!();
+
+    const PASSWORD: &str = r#"a&b<c"d"#;
+    const WIRE_PASSWORD: &str = "a&amp;b&lt;c&quot;d";
+    let name = "tlsesc1b20";
+
+    delete_account(&pool, ESCAPED_PW_ACCOUNT_ID).await;
+    let phc = super::password_hash::hash_argon2id(PASSWORD).expect("hash fixture password");
+    sqlx::query(
+        "INSERT INTO account (account_id, account_name, password, password_hash_v2, password_algo, accesslevel, enabled) \
+         VALUES ($1, $2, NULL, $3, 2, 0, true)",
+    )
+    .bind(ESCAPED_PW_ACCOUNT_ID)
+    .bind(name)
+    .bind(phc)
+    .execute(&pool)
+    .await
+    .expect("insert argon2id fixture account");
+
+    let mut tls = start_tls_auth("TlsShard", Some(Arc::new(pool.clone()))).await;
+    let ok_xml = post_phase1(&tls, phase1_body(name, WIRE_PASSWORD)).await;
+    // Positive control for the comparison itself: the raw (wrong) password
+    // spelled correctly still fails, so the success above is the decode, not
+    // a credential check that accepts anything.
+    let wrong_xml = post_phase1(&tls, phase1_body(name, "a&amp;b&lt;c&quot;X")).await;
+    tls.auth.stop().await;
+    delete_account(&pool, ESCAPED_PW_ACCOUNT_ID).await;
+
+    assert!(
+        ok_xml.contains("SGWLoginSuccess"),
+        "escaped plaintext password must verify against the decoded password, got: {ok_xml}"
+    );
+    assert!(
+        ok_xml.contains(&format!(r#"AccountId="{ESCAPED_PW_ACCOUNT_ID}""#)),
+        "success must be for the fixture account, got: {ok_xml}"
+    );
+    assert!(
+        wrong_xml.contains("SGWLoginError"),
+        "a wrong password must still fail, got: {wrong_xml}"
+    );
 }

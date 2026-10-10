@@ -1,5 +1,6 @@
 //! HTTP/SOAP handlers for Phase 1 (UserAuth) and Phase 2 (ServerSelection),
-//! plus XML parsing, credential validation, and random generators.
+//! plus credential validation and random generators. Request parsing is in
+//! `soap_request.rs`, response XML in `soap_response.rs`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -11,7 +12,6 @@ use axum::{
     response::{IntoResponse, Response},
     Extension,
 };
-use quick_xml::{events::Event, Reader};
 use rand::RngExt;
 
 use crate::audit::{emit_login_event, LoginOutcome};
@@ -20,10 +20,9 @@ use crate::credential_redaction::CredentialPrefix;
 use super::credentials::{
     classify_credential, validate_credentials, AuthCredError, CredentialGateError,
 };
-use super::{
-    HandlerState, LoginReq, PendingLogin, SessionRecord, TlsConn, LOGIN_NS, PROTOCOL_DIGEST,
-    SELECT_NS, SESSION_TTL, XML_DECL,
-};
+use super::soap_request::{parse_login_request, parse_server_selection};
+use super::soap_response::{login_error, login_success_xml, select_error, server_location_xml};
+use super::{HandlerState, PendingLogin, SessionRecord, TlsConn, PROTOCOL_DIGEST, SESSION_TTL};
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
@@ -57,12 +56,18 @@ pub(super) async fn handle_user_auth(
     let req = match parse_login_request(&body) {
         Ok(r) => r,
         Err(e) => {
+            // `e` names the attribute and the defect class only, never the
+            // value, so a malformed password is not echoed into the log.
             tracing::Span::current().record("result", "bad_request");
-            tracing::warn!("Bad login request: {e}");
+            tracing::warn!(
+                reason = e.reason(),
+                attribute = e.attribute(),
+                over_tls,
+                "Phase 1 SOAP request rejected: {e}"
+            );
             return login_error(13, "Internal error.");
         }
     };
-    tracing::Span::current().record("account_name", req.account_name.as_str());
 
     // Helper macro to emit audit events concisely.
     macro_rules! audit {
@@ -101,6 +106,25 @@ pub(super) async fn handle_user_auth(
     if req.sku != "SGW_BETA" {
         return login_error(3, "The specified service does not exist.");
     }
+    // Validate the account name before it reaches the span or any audit row:
+    // it is client-controlled, and after XML decoding a control character or
+    // newline can arrive as `&#10;` as well as raw. Log only its length.
+    let name_ok = req.account_name.len() >= 3
+        && req.account_name.len() <= 20
+        && req
+            .account_name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+    if !name_ok {
+        tracing::Span::current().record("result", "bad_request");
+        tracing::info!(
+            reason = "malformed_account_name",
+            account_name_len = req.account_name.len(),
+            "Phase 1 login rejected: account name fails the format check"
+        );
+        return login_error(1, "The specified account name is invalid.");
+    }
+    tracing::Span::current().record("account_name", req.account_name.as_str());
     // Classify the supplied credential: a 40-char hex string is the original
     // client's SHA-1 hash (allowed over HTTP or TLS); anything else is treated
     // as a plaintext password, which is only honoured over TLS.
@@ -117,17 +141,8 @@ pub(super) async fn handle_user_auth(
             return login_error(2, "The specified password is invalid.");
         }
     };
-    let name_ok = req.account_name.len() >= 3
-        && req.account_name.len() <= 20
-        && req
-            .account_name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
-    if !name_ok {
-        return login_error(1, "The specified account name is invalid.");
-    }
     if !state.developer_mode && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST {
-        tracing::warn!(got = %req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
+        tracing::warn!(got = ?req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
         audit!(LoginOutcome::ProtocolMismatch);
         return login_error(
             17,
@@ -280,7 +295,14 @@ pub(super) async fn handle_server_selection(
     let selected = match parse_server_selection(&body) {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!("Bad server selection: {e}");
+            tracing::Span::current().record("result", "bad_request");
+            tracing::warn!(
+                account_id = session.account_id,
+                account_name = %session.account_name,
+                reason = e.reason(),
+                attribute = e.attribute(),
+                "Phase 2 SOAP request rejected: {e}"
+            );
             return select_error(13, "Internal error.");
         }
     };
@@ -359,53 +381,6 @@ pub(super) async fn handle_server_selection(
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
 
-fn parse_login_request(body: &str) -> Result<LoginReq, String> {
-    let mut reader = Reader::from_str(body);
-    loop {
-        match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == b"SGWLoginRequest" =>
-            {
-                let mut req = LoginReq::default();
-                for attr in e.attributes().flatten() {
-                    let val = String::from_utf8_lossy(attr.value.as_ref()).into_owned();
-                    match attr.key.as_ref() {
-                        b"SKU" => req.sku = val,
-                        b"AccountName" => req.account_name = val,
-                        b"Password" => req.password = val,
-                        b"ProtocolDigest" => req.protocol_digest = val,
-                        _ => {}
-                    }
-                }
-                return Ok(req);
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
-        }
-    }
-    Err("SGWLoginRequest element not found".into())
-}
-
-fn parse_server_selection(body: &str) -> Result<String, String> {
-    let mut reader = Reader::from_str(body);
-    loop {
-        match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == b"SGWSelectServerRequest" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"ServerSelection" {
-                        return Ok(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
-                    }
-                }
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
-        }
-    }
-    Err("SGWSelectServerRequest/ServerSelection not found".into())
-}
-
 fn extract_sid(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
     cookie
@@ -413,78 +388,6 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(str::trim)
         .find(|s| s.starts_with("SID="))
         .map(|s| s["SID=".len()..].to_string())
-}
-
-fn login_error(_code: u32, msg: &str) -> Response {
-    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
-    // The client uses ErrorStr for display and ignores ErrorNum.
-    let xml = format!(
-        "{XML_DECL}\
-         <ns2:SGWLoginResponse {ns}>\
-         <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"1\" />\
-         </ns2:SGWLoginResponse>",
-        ns = LOGIN_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
-    )
-        .into_response()
-}
-
-fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
-    let entries: String = shards
-        .iter()
-        .map(|s| {
-            format!(
-                "<Shard ServerName=\"{}\" Fullness=\"LOW\" Busy=\"LOW\" />",
-                s.name
-            )
-        })
-        .collect();
-
-    format!(
-        "{XML_DECL}\
-         <ns2:SGWLoginResponse {ns}>\
-         <SGWLoginSuccess>\
-         <AccountInfo ExpireDate=\"0000-00-00T00:00:00.000Z\" AccountId=\"{account_id}\" />\
-         <SGWShardListResp>{entries}</SGWShardListResp>\
-         </SGWLoginSuccess>\
-         </ns2:SGWLoginResponse>",
-        ns = LOGIN_NS,
-    )
-}
-
-fn select_error(_code: u32, msg: &str) -> Response {
-    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
-    let xml = format!(
-        "{XML_DECL}\
-         <ns3:SGWServerLocationResponse {ns}>\
-         <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"1\" />\
-         </ns3:SGWServerLocationResponse>",
-        ns = SELECT_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
-    )
-        .into_response()
-}
-
-fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str) -> String {
-    format!(
-        "{XML_DECL}\
-         <ns3:SGWServerLocationResponse {ns}>\
-         <ServerLocation SessionKey=\"{session_key}\" Port=\"{port}\" IP=\"{ip}\" BWMailBox=\"1\">\
-         <TICKET Ticket=\"{ticket}\" />\
-         </ServerLocation>\
-         </ns3:SGWServerLocationResponse>",
-        ns = SELECT_NS,
-        port = shard.port,
-        ip = shard.host,
-    )
 }
 
 /// Generate `byte_count` random bytes as uppercase hex.
@@ -561,92 +464,6 @@ mod tests {
         let sid = random_alphanumeric(40);
         assert_eq!(sid.len(), 40);
         assert!(sid.chars().all(|c| c.is_ascii_alphanumeric()));
-    }
-
-    #[test]
-    fn parse_valid_login_request() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let req = parse_login_request(body).unwrap();
-        assert_eq!(req.sku, "SGW_BETA");
-        assert_eq!(req.account_name, "test");
-        assert_eq!(req.password, "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3");
-    }
-
-    #[test]
-    fn parse_server_selection_request() {
-        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" ServerSelection="Shard" />"#;
-        let sel = parse_server_selection(body).unwrap();
-        assert_eq!(sel, "Shard");
-    }
-
-    #[test]
-    fn login_success_xml_contains_shard() {
-        let shards = vec![super::super::ShardInfo {
-            name: "Shard".into(),
-            host: "127.0.0.1".into(),
-            port: 32832,
-            protected: false,
-        }];
-        let xml = login_success_xml(42, &shards);
-        assert!(xml.contains(r#"AccountId="42""#));
-        assert!(xml.contains(r#"ServerName="Shard""#));
-        // Bare XML — no SOAP envelope (matches C++ LogonConnection output).
-        assert!(!xml.contains("SOAP-ENV:Envelope"));
-        assert!(xml.starts_with(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#));
-        assert!(xml.contains("ns2:SGWLoginResponse"));
-    }
-
-    #[test]
-    fn server_location_xml_contains_key_and_ticket() {
-        let shard = super::super::ShardInfo {
-            name: "Shard".into(),
-            host: "127.0.0.1".into(),
-            port: 32832,
-            protected: false,
-        };
-        let xml = server_location_xml(&shard, "AAAA", "BBBB");
-        assert!(xml.contains(r#"SessionKey="AAAA""#));
-        assert!(xml.contains(r#"Ticket="BBBB""#));
-        assert!(xml.contains(r#"Port="32832""#));
-    }
-
-    /// Pin the parser's narrow contract: when the SGWLoginRequest element
-    /// is present but required attributes (SKU/AccountName/Password) are
-    /// missing, the parse succeeds with default (empty) fields. The
-    /// handler validates above the parser; a refactor that pushed
-    /// validation down here would silently break that layering.
-    #[test]
-    fn parse_login_request_does_not_validate_missing_attributes() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
-        let req = parse_login_request(body).expect("element present must parse Ok");
-        assert_eq!(req.sku, "", "missing SKU must surface as empty, not error");
-        assert_eq!(req.account_name, "");
-        assert_eq!(req.password, "");
-    }
-
-    /// Same narrow-contract pin, but for password length: a password the
-    /// handler will reject (not 40 hex chars) parses through unchanged.
-    /// Validation lives in the handler — this guard keeps it there.
-    #[test]
-    fn parse_login_request_does_not_validate_password_length() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="short" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let req = parse_login_request(body).expect("well-formed element must parse Ok");
-        assert_eq!(
-            req.password, "short",
-            "parser must hand the raw password through; length check is the handler's job",
-        );
-    }
-
-    /// Unlike parse_login_request, parse_server_selection requires the
-    /// ServerSelection attribute — the function returns early on the
-    /// first ServerSelection it sees, otherwise falls through to Err.
-    /// A refactor that loosened this would let the auth flow accept a
-    /// server-selection message with no shard id.
-    #[test]
-    fn parse_server_selection_missing_attribute_returns_error() {
-        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
-        let sel = parse_server_selection(body);
-        assert!(sel.is_err(), "missing ServerSelection attribute must fail");
     }
 
     /// Build a minimal `HandlerState` for driving `handle_user_auth` through

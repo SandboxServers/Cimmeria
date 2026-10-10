@@ -45,6 +45,20 @@ The client sends credentials to the Authentication Server on port 8081 (configur
 | `Password` | string | Either a 40-char uppercase-hex SHA-1 hash (original client) **or** a plaintext password (patched client over TLS only). See *Credential formats* below. |
 | `ProtocolDigest` | string | 32-character MD5 hex string. Must match server's `protocol_digest` config |
 
+**Attribute encoding.** Every attribute the server reads is ordinary XML: the
+server decodes it once, with quick-xml's attribute-value normalization, before
+any check runs. Attributes it does not read are only syntax-checked. The predefined entities (`&amp;` `&lt;` `&gt;` `&quot;` `&apos;`) and character
+references (`&#38;`, `&#x26;`) become the characters they stand for, and a raw
+tab, CR or LF becomes a space (XML 1.0 §3.3.3). A client sending the plaintext
+password `a&b` writes `Password="a&amp;b"`; `&amp;amp;` decodes to the literal
+text `&amp;`. A malformed value (an unknown entity such as `&bogus;`, a bare
+`&`, a bad character reference) or broken attribute syntax on the request
+element, including a duplicated attribute, fails the request with the
+`Internal error.` login error, and the server logs `reason` and `attribute`
+without the value. The SHA-1 hex the original client sends has no `&`, so
+decoding leaves it unchanged. The `ServerSelection` attribute in Phase 2 is
+decoded the same way.
+
 **Credential formats (dual acceptance):**
 
 The server accepts two credential shapes and classifies by the supplied value:
@@ -69,9 +83,11 @@ Phase 2.
 **Server-side validation order:**
 
 1. SKU must equal `"SGW_BETA"` (else `InvalidService`)
-2. Classify the credential: a 40-char hex string is a legacy hash; anything else
+2. AccountName must be 3-20 chars from `[0-9a-zA-Z_-]` (else `MalformedUserId`).
+   This runs before the name reaches the request span or any audit row, so a
+   control character (raw, or decoded from `&#10;`) is never logged or stored.
+3. Classify the credential: a 40-char hex string is a legacy hash; anything else
    is plaintext and requires TLS, else `MalformedPassword`
-3. AccountName must be 3-20 chars from `[0-9a-zA-Z_-]` (else `MalformedUserId`)
 4. Database lookup: `SELECT account_id, password, password_hash_v2, password_algo, accesslevel, enabled FROM account WHERE account_name = :accname`
 5. Credential verified per `(password_algo, credential shape)`: argon2id verify, legacy uppercase-hex compare, or legacy plaintext → SHA-1 recompute + compare (then migrate)
 6. Account must be enabled (`enabled = 't'`)

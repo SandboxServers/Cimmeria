@@ -12,8 +12,14 @@
 mod cert_watcher;
 mod credentials;
 mod handlers;
+mod password_hash;
 mod service;
+mod soap_request;
+mod soap_response;
 mod tls;
+
+#[cfg(test)]
+mod account_name_guard;
 
 #[cfg(test)]
 mod credential_log_guard;
