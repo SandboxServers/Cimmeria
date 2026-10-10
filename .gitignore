@@ -229,3 +229,7 @@ ghidra/*
 lab-account.json
 # The per-instance copies (lab-account.p2.json...) tools/lab/instances.ps1 writes.
 **/lab-account.*.json
+
+# Codex: local config holds MCP credentials; only the shared hooks are tracked.
+.codex/*
+!.codex/hooks.json

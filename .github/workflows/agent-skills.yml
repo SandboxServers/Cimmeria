@@ -1,0 +1,38 @@
+# Agent skills and the shell guard hook.
+#
+# .claude/skills/ is the source; tools/agent-skills/sync.py mirrors it to
+# .agents/skills/ for Codex (Copilot reads both). This job fails when the mirror
+# is stale, and runs the unit tests for the sync script and the PreToolUse
+# shell guard in .claude/hooks/shell_guard.py.
+name: agent-skills
+
+on:
+  pull_request:
+    paths:
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - ".claude/hooks/**"
+      - "tools/agent-skills/**"
+      - ".github/workflows/agent-skills.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - ".claude/hooks/**"
+      - "tools/agent-skills/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: skills mirror + hook tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: unit tests
+        run: python3 -m unittest discover -s tools/agent-skills -p "test_*.py"
+      - name: mirror is current
+        run: python3 tools/agent-skills/sync.py --check

@@ -57,6 +57,24 @@ Fix warranted adjacent problems in the same pass: a file your change pushed over
 
 Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/agents/). If your harness has no subagents, read the agent's definition file and its `MEMORY.md` as briefing material.
 
+## Agent skills and the shell guard
+
+Repo skills live in [`.claude/skills/`](../../.claude/skills/), one directory each, in the shared Agent Skills format. Claude Code reads them there, Codex reads the mirror in `.agents/skills/`, and Copilot reads both. Edit only `.claude/skills/`, then run `python tools/agent-skills/sync.py`; the `agent-skills` CI job fails while the mirror is stale. Copilot's PR review skill, `.github/skills/code-review/`, is hand-written and not mirrored.
+
+| Skill | Use it for |
+|---|---|
+| `ship-pr` | Worktree to merged PR: pre-PR checks, `ship.py pr`/`merge`, waiting on CI without polling loops, the adversarial review, same-day retirement |
+| `lane-build` | Every compiling `cargo` call, live-DB tests, reading lane failures, disk-guard exits |
+| `lab-uat` | Driving the live client through the lab MCPs: asking first, the lease, briefing a lab-driver, checking claims against server evidence, attesting rows |
+| `telemetry-triage` | SigNoz and ClickHouse queries for server, client and network logs, and profiling Claude Code usage from the `claude-code` service |
+| `re-lookup` | Reverse-engineering questions in order: docs and dispatch tables, RE findings, Ghidra MCP, headless Ghidra, x64dbg; includes the re-verify parity loop |
+| `seed-change` | Changing game data in `db/resources/`, reloading the worktree database, live-DB guards, seeing it on a running server |
+| `campaign-packet` | Running a multi-PR campaign: ledger, prescriptive packets, one worker per worktree, review, close-out |
+
+The roster came from a week of Claude Code telemetry (2026-10-03 to 10-10): the 13 generic web and game-design commands it replaced were never loaded, while shipping, the lane, the lab, SigNoz, RE lookups and seed work made up most tool calls. Rerun that profile with the queries in the `telemetry-triage` skill before adding or retiring a skill.
+
+A `PreToolUse` hook, [`.claude/hooks/shell_guard.py`](../../.claude/hooks/shell_guard.py), backs two of the rules here. It refuses a compiling `cargo` command that does not go through the lane (Claude Code and Codex), and, in Claude Code only, a shell command that just reads or searches files (`grep`, `sed -n`, `cat`, `Get-Content`, piped only into filters), pointing at `Read` and `Grep` instead. Commands that mix in anything else, write a file, or end with the comment `# guard-ok` run unchanged. Its tests run in the `agent-skills` CI job.
+
 ## Running agents
 
 - **Parallel writers need isolated worktrees.** Two implementation agents in one checkout race on git state: one agent's `git checkout` reverts the other's edits. Give each its own worktree under `.claude/worktrees/` (ignored by git), with its own test database. Read-only agents do not need one. How to create one that builds is in the next section.
