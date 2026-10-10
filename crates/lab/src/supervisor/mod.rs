@@ -524,11 +524,22 @@ impl Supervisor {
         };
         match pid {
             Some(pid) => {
-                let _ = tokio::task::spawn_blocking(move || process::terminate(pid)).await;
+                // Wait for the exit, not just the request: a start right
+                // after would otherwise refuse the dying client.
+                let exited = tokio::task::spawn_blocking(move || {
+                    process::terminate(pid);
+                    process::wait_for_exit(
+                        || process::is_alive(pid),
+                        Duration::from_secs(10),
+                        Duration::from_millis(100),
+                    )
+                })
+                .await
+                .unwrap_or(false);
                 if let Some(d) = self.config.install_dir.as_deref() {
                     instance::remove_entry(d, self.config.instance.as_deref());
                 }
-                Ok(json!({ "stopped": true, "pid": pid }))
+                Ok(json!({ "stopped": true, "pid": pid, "exited": exited }))
             }
             None => Ok(json!({ "stopped": false, "reason": "no client running" })),
         }

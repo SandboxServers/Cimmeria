@@ -307,6 +307,27 @@ pub use win::{
     terminate,
 };
 
+/// Poll `alive` until it reports false or `timeout` passes; true when the
+/// process is gone. `TerminateProcess` returns before the process has
+/// exited, so a stop that returned at once let the next start see the
+/// dying `SGW.exe` as "running outside the lab" (2026-10-10).
+pub fn wait_for_exit(
+    mut alive: impl FnMut() -> bool,
+    timeout: std::time::Duration,
+    poll: std::time::Duration,
+) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !alive() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(poll);
+    }
+}
+
 // Non-Windows stubs so the crate compiles on Linux dev hosts / coverage
 // and the portable supervisor tests still run. The lab only runs on the
 // owner's Windows box.
@@ -428,6 +449,27 @@ mod tests {
                 ][..]
             )
         );
+    }
+
+    /// Regression guard (2026-10-10): `lab_client_stop` returned while the
+    /// terminated client was still alive, and an immediate start refused it
+    /// as "outside the lab". The wait returns only once the process is gone.
+    #[test]
+    fn wait_for_exit_returns_once_the_process_is_gone() {
+        use std::time::Duration;
+        let mut polls = 0;
+        let gone = wait_for_exit(
+            || {
+                polls += 1;
+                polls < 4
+            },
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert!(gone);
+        assert_eq!(polls, 4, "kept polling until the process was gone");
+        let stuck = wait_for_exit(|| true, Duration::from_millis(20), Duration::from_millis(1));
+        assert!(!stuck, "a process that never exits times out");
     }
 
     #[test]

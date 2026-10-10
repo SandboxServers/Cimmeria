@@ -31,14 +31,48 @@
 #   completed). That needs CIMMERIA_LAB_MCP_URL/_TOKEN; without them those
 #   clauses are UNVERIFIED, never a false PASS.
 # - Each interaction row moves the player next to its object in setup
-#   with /gmgotoxyz (tier G, 3-3.5 m off, interact range is 5 m) and makes
-#   the player immune with /gmsetgodmode 1, so the step is one real click.
-#   No player walking, no NPC pathing. The stand-off points are computed
-#   from the spawn rows and unproven against the live geometry: if a click
-#   misses because a wall is in the way, move the point, not the step.
+#   with /gmgotoxyz (tier G, 3-4.5 m off and to the side, interact range is
+#   5 m) and makes the player immune with /gmsetgodmode 1, so the step is
+#   one real click. No player walking, no NPC pathing. The Praxis points
+#   are calibrated (below); the SGU points are still computed from the
+#   spawn rows: if a click misses, move the point, not the step.
 # - Corpses with no display name (the Guard, the SGC firearm body) are
 #   clicked by their spawn point; named ones by name.
 # - FS-99 deletes both characters.
+#
+# Calibration (Praxis rows measured live on the colo, 2026-10-10, client
+# window 1280x720; the SGU rows are not calibrated yet). Every value is
+# fixed here so a driver needs no judgement:
+#
+#   What                     Value                    Why / what breaks without it
+#   first-login wait         17 s after Play          server HOLD_DURATION 16 s from onClientReady;
+#                                                     before it, no NPCs exist and clicks and chat
+#                                                     are swallowed. MoviePlayerWin is NOT the
+#                                                     signal (it hides after ~2 s).
+#   camera                   +200 pitch counts        a new character starts level (0 deg, zoom
+#                            = +21.97 deg down,       250). Level, a body on the floor sits under the
+#                            zoom 250                 avatar's legs and the HUD ring and the click
+#                                                     hovers nothing. Relative: FS-P3's `pitch`
+#                                                     clause fails if the start was not level.
+#   camera yaw               face the target, then    the teleport keeps whatever facing the player
+#                            +230 yaw counts          had, so a click could land on the avatar (hover
+#                            (= +25.3 deg)            = own entity). Facing puts the target behind
+#                                                     the avatar's head; +25 deg moves it to screen
+#                                                     x ~430. Clicks pass rotate_camera = false.
+#   Frost stand-off          (-325.0, 73.6, -212.8)   4.2 m to the side of Frost (-328.3, -210.27).
+#                                                     Straight behind (the first guess) put him
+#                                                     under the HUD ring.
+#   Guard stand-off          (-319.0, 73.6, -212.5)   4.4 m to the side of the body (-322.51,
+#                                                     -209.83); straight behind, the avatar eats
+#                                                     the click (hover = own entity 2).
+#   Guard click point        y 73.75 (origin +0.28)   the body never answers an entity hover; a
+#                                                     point click on its torso does.
+#   order after the Guard    tutorial X, then dialog  TutorialWin (dialog 5882, 3 pages) opens on
+#                                                     top of DialogWin, sometimes seconds later, and
+#                                                     a Done click on the dialog lands on the
+#                                                     tutorial's Next. Its title-bar X closes it
+#                                                     from any page.
+#   equip                    by name                  the item id is only known at grading time.
 #
 # Resuming a run that stopped part-way:
 # - Pass the stopped run's `run_dir`: run.json keeps the run id, so the
@@ -158,7 +192,14 @@ expected = "Play loads world 12; the HUD is up; dialog 2982 (\"The last thing yo
 state = "any"
 step = [
   { tool = "@play", args = { name = "Px${run_id}" }, label = "play" },
-  { wait_ms = 3000 },
+  # First login plays the 13 s logo movie (Cine-SGWLogo). The server holds
+  # every entity introduction for HOLD_DURATION = 16 s from onClientReady
+  # (crates/base-world-entry/.../cinematic_aoi_hold), and until then dialog
+  # clicks do nothing and chat commands are swallowed. The client sends
+  # nothing when the movie ends on its own and MoviePlayerWin hides within
+  # ~2 s, so no client signal marks the end: wait out the server's hold
+  # (Play returns just after onClientReady). `movie-over` proves it.
+  { wait_ms = 17000, label = "movie-over" },
 ]
 [[row.expect]]
 id = "world"
@@ -178,6 +219,15 @@ args = { stats = false, effects = false }
 pointer = "/name"
 op = "contains"
 value = "${run_id}"
+[[row.expect]]
+id = "movie-over"
+text = "the first-login movie has ended and the world is introduced (Corporal Frost is known)"
+source = "tool"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/count"
+op = "gte"
+value = 1
 [[row.expect]]
 id = "dialog-2982"
 text = "the arrival dialog is 2982"
@@ -211,15 +261,57 @@ state = "any"
 setup = [
   { tool = "@finish_dialog", args = {} },
   { chat = "/gmsetgodmode 1", tier = "G" },
-  { chat = "/gmgotoxyz -328.3 73.6 -213.5", tier = "G" },
+  { chat = "/gmgotoxyz -325.0 73.6 -212.8", tier = "G" },
   { wait_ms = 2500 },
 ]
 step = [
-  { tool = "@world_click", args = { name = "Corporal Frost", button = "right", expect = "window" }, label = "frost" },
+  # A new character's camera starts level (pitch 0, zoom 250) behind the
+  # avatar. 200 counts at the client's gain of 20 tilts it down 21.97 deg,
+  # so bodies on the floor clear the avatar and the HUD ring. Relative:
+  # the `pitch` clause fails if the start was not level.
+  { tool = "@camera", args = { pitch_counts = 200 }, label = "pitch" },
+  # Yaw is not fixed by the teleport. Face Frost (yaw only), then turn 230
+  # counts (+25.3 deg) so he sits left of the avatar instead of behind it;
+  # rotate_camera = false keeps the click from turning it back.
+  { tool = "@camera", args = { face_name = "Corporal Frost" } },
+  { tool = "@camera", args = { yaw_counts = 230 }, label = "aim" },
+  { tool = "@world_click", args = { name = "Corporal Frost", button = "right", expect = "window", rotate_camera = false }, label = "frost" },
   { wait_ms = 1500 },
   { tool = "@finish_dialog", args = {}, label = "close" },
   { wait_ms = 2000 },
 ]
+[[row.expect]]
+id = "pitch"
+text = "the camera is tilted 22 deg down at the default zoom"
+source = "tool"
+at = "pitch"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = 22.0
+tolerance = 1.0
+[[row.expect]]
+id = "aim"
+text = "Corporal Frost is on screen left of the avatar (screen x below 560 of 1280)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/screen/0"
+op = "lt"
+value = 560
+[[row.expect]]
+id = "zoom"
+text = "the camera is at the default zoom (250)"
+source = "tool"
+at = "pitch"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/zoom"
+op = "approx"
+value = 250.0
+tolerance = 1.0
 [[row.expect]]
 id = "step-80623"
 text = "sgw_mission: 622 on step 80623"
@@ -247,14 +339,24 @@ state = "any"
 known_issues = ["K5"]
 notes = "The Guard corpse has no display name, so the click goes to its spawn point. K5: if it is invisible, the click finds nothing and the row fails on step-80622."
 setup = [
-  { chat = "/gmgotoxyz -322.5 73.6 -213.0", tier = "G" },
+  { chat = "/gmgotoxyz -319.0 73.6 -212.5", tier = "G" },
   { wait_ms = 2500 },
 ]
 step = [
-  { tool = "@world_click", args = { point = { x = -322.5, y = 73.8, z = -209.83 }, button = "right", expect = "window" }, label = "guard" },
-  { wait_ms = 1500 },
+  # Same aim as FS-P3: face the body's point, turn 230 counts, click.
+  { tool = "@camera", args = { face_point = { x = -322.51, y = 73.75, z = -209.83 } } },
+  { tool = "@camera", args = { yaw_counts = 230 }, label = "aim" },
+  { tool = "@world_click", args = { point = { x = -322.51, y = 73.75, z = -209.83 }, button = "right", expect = "window", rotate_camera = false }, label = "guard" },
+  # The click also opens the "Equipping a Weapon" tutorial (dialog 5882),
+  # sometimes a few seconds later. It sits exactly on top of DialogWin, so
+  # a Done click on the dialog lands on the tutorial's Next arrow instead.
+  # Close the tutorial first with its title-bar X (works from any of its
+  # three pages; Done shows only on the last), then finish the dialog.
+  { tool = "@wait_for", args = { lua_condition = "TutorialWin ~= nil and TutorialWin:isVisible()", timeout_ms = 10000 } },
+  { tool = "client_window_click", args = { target = "TutorialWin__auto_closebutton__" }, tier = "N1", label = "tutorial-x" },
+  { wait_ms = 500 },
   { tool = "@finish_dialog", args = {}, label = "close" },
-  { wait_ms = 2000 },
+  { wait_ms = 1500 },
 ]
 [[row.expect]]
 id = "step-80622"
@@ -273,6 +375,15 @@ tool = "@inventory"
 args = { containers = ["Main"] }
 pointer = "/containers[name=Main]/slots[name=SI 3 9mm Pistol]/item_id"
 op = "exists"
+[[row.expect]]
+id = "tutorial-closed"
+text = "the weapon tutorial and the search dialog were shown and closed"
+source = "tool"
+tool = "@wait_for"
+args = { lua_condition = "TutorialWin ~= nil and not TutorialWin:isVisible() and not DialogWin:isVisible()", timeout_ms = 2000 }
+pointer = "/met"
+op = "eq"
+value = true
 
 [[row]]
 id = "FS-P5"
@@ -284,8 +395,11 @@ setup = [
 ]
 step = [
   { tool = "@inventory", args = { containers = ["Main"] }, label = "read-pack" },
-  { tool = "@item_action", args = { action = "equip", item_id = "${pistol_id}" }, label = "equip" },
+  { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
   { wait_ms = 3000 },
+  # item_action opened the bag; close it so the next row starts clean.
+  { tool = "@key", args = { key = "b" }, label = "close-bag" },
+  { tool = "@wait_for", args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 3000 } },
 ]
 [[row.expect]]
 id = "pistol-id"
@@ -296,7 +410,6 @@ tool = "@inventory"
 args = { containers = ["Main"] }
 pointer = "/containers[name=Main]/slots[name=SI 3 9mm Pistol]/item_id"
 op = "exists"
-capture_var = "pistol_id"
 [[row.expect]]
 id = "complete-622"
 text = "sgw_mission: 622 completed (status 2)"
@@ -306,6 +419,15 @@ args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player
 pointer = "/rows/0/status"
 op = "eq"
 value = 2
+[[row.expect]]
+id = "bag-closed"
+text = "the bag is closed again"
+source = "tool"
+tool = "@wait_for"
+args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 2000 }
+pointer = "/met"
+op = "eq"
+value = true
 
 # ================================================================ SGU
 
@@ -338,7 +460,8 @@ expected = "Play loads world 58; the HUD is up; mission 1559 is active on step 4
 state = "any"
 step = [
   { tool = "@play", args = { name = "Sx${run_id}" }, label = "play" },
-  { wait_ms = 3000 },
+  # The first-login movie's 16 s entity hold, as in FS-P2.
+  { wait_ms = 17000, label = "movie-over" },
 ]
 [[row.expect]]
 id = "world"

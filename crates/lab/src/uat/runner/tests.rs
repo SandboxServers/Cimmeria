@@ -579,7 +579,7 @@ lab_ensure_character_slot lab_finish_dialog lab_login lab_logout lab_pixel_probe
 lab_play_character lab_screenshot lab_screenshot_region lab_timeline \
 client_entity_find client_target client_world_click client_move_to client_camera \
 client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event \
-client_player_state client_inventory client_item_action client_drag_drop";
+client_player_state client_inventory client_item_action client_drag_drop client_window_click";
 
 /// Plan every committed spec against today's tools: the rows the lab can
 /// drive now come back SKIPPED (ready), and the rows waiting on a planned

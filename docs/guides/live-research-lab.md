@@ -266,7 +266,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_ensure_in_world` | One call from any state to in the world as a character: start, wait for the window and bridge, log in, play (create when `create` is given), finish the intro dialog, virtual focus. Returns at once when already there. See [Fewer calls](#fewer-calls-composites-and-compact-results). |
 | `client_batch` | Ordered read and probe steps in one call (`lua`, `mem_read`, `call_native`, `wait`, `player_state`, `window_text`) with `$id` references to earlier results. |
 | `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. |
-| `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
+| `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. `_stop` returns once the process has exited (`exited`), so a start right after it is not refused as "outside the lab". |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
 | `lab_characters` / `lab_create_character` / `lab_delete_character` / `lab_ensure_character_slot` | Character select: list, create, delete by name, keep free slots under the 8-character cap. |
@@ -578,7 +578,17 @@ How they work:
 - **Projection** uses the game's own `view:worldToPixel`, which only exists inside `Events.PreRender`. The tools re-subscribe `SCTWin`'s PreRender to `LabWorld.pre`, which calls `SCTMod.onPreRender` first (combat text keeps working) and then projects the queued points. `MinimapWin` is the fallback host. If the frame counter stops moving (a UI reload), the chain is re-installed once.
 - **Clicking** places the CEGUI cursor on the projected point (plus a `WM_MOUSEMOVE` when the mouse-over does not follow), reads `Unit.MouseOver` from the slot map, tries the body centre, chest, legs and head, and fails as occluded when another entity answers at every height. Then it presses and releases the real button and polls the target slot and the visible windows.
 - **Walking** holds `W` and turns with DirectInput mouse-look. The mouse-look gain and its sign are learned from each motion (`steer::TurnModel`), and so is whether the pawn turns while standing (if not, it turns while walking). No progress for 2.5 s while walking is a snag: jump, strafe right (`D`), strafe left (`A`), then fail. More than 30 m in one tick fails as a teleport. Every exit releases `W`, `A` and `D`.
-- **Facing** turns until the target projects within a quarter of the half-width of the centre. While it is behind the camera, it turns by the bearing from the camera actor (see below), or a quarter turn when that is unknown.
+- **Facing** turns until the target projects within a quarter of the half-width of the centre. While it is behind the camera, it turns by the bearing from the camera actor (see below), or a quarter turn when that is unknown. It turns yaw only; pitch is left as it was.
+
+### Clicking a body on the floor (measured 2026-10-10)
+
+The first-session spec's Castle_CellBlock corpses fixed these numbers on the live client (1280x720). The spec header has the full calibration table.
+
+- **The avatar eats clicks.** The camera orbits behind the avatar, so a target straight ahead or centred by a face sits behind the avatar's legs or head and under the HUD ring. The hover then answers the player's own entity id. Stand 4-4.5 m off and to the side of the target, never straight behind it.
+- **Pitch.** A new character starts level: `pitch_offset_deg` 0, zoom 250. `pitch_counts: 200` tilts it down by 21.97 deg (gain 20, about 9.1 counts per degree; positive is down). Pitch is relative, so assert `view_after.pitch_offset_deg` after the move rather than assume the start.
+- **Yaw.** A teleport keeps whatever facing the player had, so face the target first, then turn `yaw_counts: 230` (+25.3 deg). The target then projects left of the avatar (screen x about 430). Click with `rotate_camera: false`, or the click turns the camera back onto the avatar.
+- **Bodies that never hover.** Some corpses (the Cellblock NID Guard) answer no entity hover at their origin. A `point` click 0.25-0.3 m above the origin hits the torso and interacts.
+- **`camera_before` / `camera_after.pose` read zeros** on the live client; use `view_before` / `view_after`.
 
 ### Not yet verified on the live client
 
