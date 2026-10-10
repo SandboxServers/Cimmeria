@@ -26,6 +26,8 @@
     "                 (runbook: docs/guides/live-research-lab.md). Its",
     "                 timeout (ms) lifts Claude Code's 60 s per-request",
     "                 timer for HTTP servers, which cut lab_uat_run rows off.",
+    "                 One daemon serves every lab account: tools take an optional",
+    "                 instance (default, p2, ... or lab, lab2, ...).",
     "  cimmeria-lab-p2 : optional second lab client (named instance; its own port,",
     "                 session file and lab-account.p2.json). See the two-clients",
     "                 section of docs/guides/live-research-lab.md.",
