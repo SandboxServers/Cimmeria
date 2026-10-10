@@ -53,8 +53,8 @@ pub fn png_to_base64(png_bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(png_bytes)
 }
 
-/// A rectangle in capture pixels (the whole window, frame included — the
-/// same space a saved `lab_screenshot` PNG uses).
+/// A rectangle in capture pixels: the window's client area, the same space
+/// a saved `lab_screenshot` PNG and the UI's pixel coordinates use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Region {
     pub x: u32,
@@ -148,54 +148,169 @@ pub fn capture_pid(_pid: u32) -> Result<CapturedImage, String> {
     Err("window capture is Windows-only".to_string())
 }
 
+/// Whether a frame is black throughout (sampled): what `PrintWindow` gives
+/// for a Direct3D 9 surface it cannot read.
+pub fn all_black(rgba: &[u8]) -> bool {
+    let (pixels, _) = rgba.as_chunks::<4>();
+    // Every 97th pixel: enough to see any real frame, cheap at 5120x1440.
+    pixels
+        .iter()
+        .step_by(97)
+        .all(|p| p[0] < 8 && p[1] < 8 && p[2] < 8)
+}
+
 #[cfg(windows)]
 mod win {
-    use super::{bgra_to_rgba, CapturedImage};
+    use super::{all_black, bgra_to_rgba, CapturedImage};
     use core::ffi::c_void;
 
-    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetWindowDC,
-        ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER,
+        BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
+        GetDC, GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, SRCCOPY,
     };
     // PrintWindow lives in the Xps namespace in windows-sys (it is the
     // user32 print-to-DC entry point).
     use windows_sys::Win32::Storage::Xps::PrintWindow;
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetClientRect, IsIconic, WindowFromPoint, GA_ROOT,
+    };
 
     const BI_RGB: u32 = 0;
     const DIB_RGB_COLORS: u32 = 0;
+    /// `PW_CLIENTONLY` — the client area only (no frame or title bar).
+    const PW_CLIENTONLY: u32 = 0x0000_0001;
     /// `PW_RENDERFULLCONTENT` — render even for DirectX/occluded content.
     const PW_RENDERFULLCONTENT: u32 = 0x0000_0002;
 
+    /// Capture the window's client area (the game frame, which is what the
+    /// UI pixel coordinates refer to). `PrintWindow` first; when it gives
+    /// an all-black frame (a D3D9 surface it cannot read), the client
+    /// area's pixels on screen, which DWM has composed. A minimised window
+    /// has none, and a black frame is refused rather than returned.
     pub fn capture_window(hwnd_raw: isize) -> Result<CapturedImage, String> {
         let hwnd = hwnd_raw as HWND;
         // SAFETY: all handles checked; buffers sized from the rect.
         unsafe {
+            if IsIconic(hwnd) != 0 {
+                return Err("the client window is minimised; restore it to capture".to_string());
+            }
             let mut rect = RECT {
                 left: 0,
                 top: 0,
                 right: 0,
                 bottom: 0,
             };
-            if GetWindowRect(hwnd, &mut rect) == 0 {
-                return Err("GetWindowRect failed".to_string());
+            if GetClientRect(hwnd, &mut rect) == 0 {
+                return Err("GetClientRect failed".to_string());
             }
             let width = (rect.right - rect.left).max(0) as u32;
             let height = (rect.bottom - rect.top).max(0) as u32;
             if width == 0 || height == 0 {
                 return Err("window has zero area".to_string());
             }
+            let printed = grab(hwnd, width, height, Source::Print)?;
+            if !all_black(&printed.rgba) {
+                return Ok(printed);
+            }
+            // The screen copy is whatever is on top: refuse it when another
+            // window covers the client area (review of #1309).
+            if let Some(other) = covered(hwnd, width, height) {
+                return Err(format!(
+                    "PrintWindow gave a black frame and the client area is covered by window \
+                     {other:#x}; bring the client to the front to capture it"
+                ));
+            }
+            let shown = grab(hwnd, width, height, Source::Screen)?;
+            if all_black(&shown.rgba) {
+                return Err(format!(
+                    "captured an all-black {width}x{height} frame (PrintWindow and the screen \
+                     copy); the window may be covered or still loading"
+                ));
+            }
+            Ok(shown)
+        }
+    }
 
-            let hdc_window = GetWindowDC(hwnd);
+    /// The top-level window over any of the client area's centre and four
+    /// inset corners, when it is not `hwnd`.
+    unsafe fn covered(hwnd: HWND, width: u32, height: u32) -> Option<isize> {
+        unsafe {
+            let mut origin = POINT { x: 0, y: 0 };
+            ClientToScreen(hwnd, &mut origin);
+            let (w, h) = (width as i32, height as i32);
+            let inset = 8;
+            let points = [
+                (w / 2, h / 2),
+                (inset, inset),
+                (w - inset, inset),
+                (inset, h - inset),
+                (w - inset, h - inset),
+            ];
+            for (x, y) in points {
+                let top = WindowFromPoint(POINT {
+                    x: origin.x + x,
+                    y: origin.y + y,
+                });
+                let root = if top.is_null() {
+                    top
+                } else {
+                    GetAncestor(top, GA_ROOT)
+                };
+                if root != hwnd {
+                    return Some(root as isize);
+                }
+            }
+            None
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Source {
+        Print,
+        Screen,
+    }
+
+    /// One capture of the client area into a top-down RGBA image.
+    unsafe fn grab(
+        hwnd: HWND,
+        width: u32,
+        height: u32,
+        src: Source,
+    ) -> Result<CapturedImage, String> {
+        unsafe {
+            // The screen DC for a screen copy, the window's own otherwise.
+            let dc_owner = if src == Source::Screen {
+                core::ptr::null_mut()
+            } else {
+                hwnd
+            };
+            let hdc_window = GetDC(dc_owner);
             if hdc_window.is_null() {
-                return Err("GetWindowDC failed".to_string());
+                return Err("GetDC failed".to_string());
             }
             let hdc_mem = CreateCompatibleDC(hdc_window);
             let hbmp = CreateCompatibleBitmap(hdc_window, width as i32, height as i32);
             let old = SelectObject(hdc_mem, hbmp as _);
 
-            let printed = PrintWindow(hwnd, hdc_mem, PW_RENDERFULLCONTENT);
+            let printed = match src {
+                Source::Print => PrintWindow(hwnd, hdc_mem, PW_CLIENTONLY | PW_RENDERFULLCONTENT),
+                Source::Screen => {
+                    let mut origin = POINT { x: 0, y: 0 };
+                    ClientToScreen(hwnd, &mut origin);
+                    BitBlt(
+                        hdc_mem,
+                        0,
+                        0,
+                        width as i32,
+                        height as i32,
+                        hdc_window,
+                        origin.x,
+                        origin.y,
+                        SRCCOPY,
+                    )
+                }
+            };
 
             // Top-down 32bpp BI_RGB: negative height.
             let mut bmi: BITMAPINFO = core::mem::zeroed();
@@ -221,10 +336,14 @@ mod win {
             SelectObject(hdc_mem, old);
             DeleteObject(hbmp as _);
             DeleteDC(hdc_mem);
-            ReleaseDC(hwnd, hdc_window);
+            ReleaseDC(dc_owner, hdc_window);
 
             if printed == 0 {
-                return Err("PrintWindow failed".to_string());
+                return Err(match src {
+                    Source::Print => "PrintWindow failed",
+                    Source::Screen => "BitBlt from the screen failed",
+                }
+                .to_string());
             }
             if scanned == 0 {
                 return Err("GetDIBits returned 0 scanlines".to_string());
@@ -242,6 +361,18 @@ mod win {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression guard (2026-10-10): an all-black PrintWindow frame is
+    /// recognised (so the screen copy is tried) and a real frame is not.
+    #[test]
+    fn all_black_frames_are_recognised() {
+        assert!(all_black(&vec![0u8; 4 * 10_000]));
+        let mut frame = vec![0u8; 4 * 10_000];
+        for px in frame.as_chunks_mut::<4>().0.iter_mut().step_by(3) {
+            px[1] = 120;
+        }
+        assert!(!all_black(&frame));
+    }
 
     #[test]
     fn bgra_to_rgba_swaps_and_opaques() {

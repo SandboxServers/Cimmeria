@@ -29,7 +29,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click an entity (entity_id or name) or a world point in the 3D view like a player: project it with the game's view, turn the camera with mouse-look if it is off screen, put the cursor on it and check the client's own mouse-over (another entity in the way fails as occluded unless force), click with real button messages (default right = interact), then report the target and the windows opened/closed. `expect` (target, window, any, nothing) decides pass/fail. Reports native_level."
+        description = "Click an entity (entity_id or name) or a world point in the 3D view like a player: turn the camera onto it when off screen, put the cursor on it, check the client's mouse-over (another entity in the way fails as occluded unless force), click with real buttons (default right = interact), report the target and the windows opened or closed. `expect` (target, window, any, nothing) decides pass/fail. Reports native_level."
     )]
     async fn client_world_click(
         &self,

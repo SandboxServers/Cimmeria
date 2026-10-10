@@ -258,6 +258,9 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | Tool | Purpose |
 |---|---|
 | `lab_lease_acquire` / `_renew` / `_release` / `_status` | Take, extend, give back and inspect the one-driver lab lease. A refusal names the holder; `force` with a `reason` takes over. |
+| `lab_ensure_in_world` | One call from any state to in the world as a character: start, wait for the window and bridge, log in, play (create when `create` is given), finish the intro dialog, virtual focus. Returns at once when already there. See [Fewer calls](#fewer-calls-composites-and-compact-results). |
+| `client_batch` | Ordered read and probe steps in one call (`lua`, `mem_read`, `call_native`, `wait`, `player_state`, `window_text`) with `$id` references to earlier results. |
+| `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
@@ -272,7 +275,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_die_and_respawn` | Optional GM setup, wait for the defeat window, read its respawners, click Release (or let it time out), verify alive, position and world. |
 | `client_entity_table` | Walk the client's BigWorld entity maps: per entity id, vtable, enter count, rendered, `isReady()`; limbo and pending enter counts. |
 | `lab_screenshot_region` / `lab_pixel_probe` | Crop of the capture as an image; count pixels in an RGB box (a nameplate colour, a HUD element). |
-| `lab_screenshot` | Window capture by PID → MCP image. |
+| `lab_screenshot` | The client window's game area (client rect, the UI's pixel space) → MCP image. Refuses a minimised window or an all-black frame. |
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
@@ -386,6 +389,8 @@ Do not also run a separate `cimmeria-lab-p2` server for the same instance while 
 
 ## The display: screensaver and D3D
 
+**Windowed, 16:9.** The supervisor launches the client with `-windowed ResX=1280 ResY=720` (UE3's command-line overrides, which SGW.exe parses). `CIMMERIA_LAB_WINDOW` in `labd.env` sets another size (`1600x900`) or `off` (no arguments; the client's own settings decide). The stock `SystemOptions.xml` defaults `windowedMode` to false, so a profile that never saved its options opened a borderless window at the desktop resolution (5120x1440 on the lab box, 2026-10-10), and `lab_screenshot` captured it black. The lab's own client profile (`Documents\My Games\<game>\SGWGame`) also carries a `SavedSystemOptions.xml` with `windowedMode` true, so a client started outside the supervisor opens windowed too.
+
 Lab input goes through the client's hooked DirectInput, which never resets Windows' idle timer, so an unattended run reaches the screensaver after about ten minutes. While a screensaver owns the display, Direct3D 9 reports no adapter (`D3DERR_NOTAVAILABLE` from `GetDeviceCaps`): a client launched then dies on a "GetDeviceCaps failed" message box and an R6025 box, each with a Windows error sound, and the watchdog relaunches it until its cap. The supervisor prevents this:
 
 - While any `SGW.exe` runs, a supervisor thread holds `ES_DISPLAY_REQUIRED` (released when none runs), so the screensaver doesn't start.
@@ -413,11 +418,48 @@ A spinning main thread also reads as busy, and so does a deadlock that strikes m
 
 After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min); not relaunching`). The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
 
+## Fewer calls: composites and compact results
+
+A lab-driving agent re-sends its whole context on every turn, so the cost of a session grows with the number of calls, and each result stays in that context for every later turn. Measured 2026-10-10: a four-call probe (lease, status, player state, release) by the Haiku `lab-driver` agent ended at 37.3k tokens of context, 33.9k of it there before the first result (the system prompt and the agent's 27 tool schemas). So the lab offers fewer, larger calls, and keeps results small.
+
+**`lab_ensure_in_world {server?, shard?, character?, focus = true, create?}`** observes the client and runs the existing flows until it is in the world as `character` (default `lab-account.json`'s): `lab_client_start` when nothing runs, a wait for the window and the bridge heartbeat (up to 120 s), `lab_login` (server row `shard`, else `server`), `lab_logout` when in the world as someone else, `lab_play_character` (with `create: {alignment, archetype, gender, first?}`, a missing character is made first, `character` being its last name), `lab_finish_dialog` once for an intro dialog, then virtual focus. Already there, it returns after one observation with `already: true`. The result is `{in_world, character, world_id, pos, steps_ms}`; a failure names the step. `stop_at: "running"` stops once the window and bridge are up, on any screen; `stop_at: "character_select"` stops at character select (logging out of the world first if needed) and returns `{at, characters}`.
+
+**`client_batch {steps, stop_on_error = true}`** runs read and probe steps in order and returns `{steps: {id: value | {error}}, ms, stopped_at?}`:
+
+| `op` | Arguments | Value |
+|---|---|---|
+| `lua` | `chunk` | its return values (one: a scalar; none: `true`) |
+| `mem_read` | `addr`, `len?` (default 4), `as` = `hex` / `u8` / `u16` / `u32` / `i32` / `f32` / `f64` (default `u32` for a 4-byte read, else `hex`) | the decoded value, an array when `len` holds several |
+| `call_native` | `addr`, `conv?`, `args?`, `ret?` = `u32` / `i32` / `f32` / `f64` / `void` / `hex` | the return value |
+| `wait` | `frames` (bridge heartbeat ticks) or `ms` (up to 30 s) | none |
+| `player_state` | `fields?` | `client_player_state` without stats and effects, projected |
+| `window_text` | `window`, `children?` | the window's text and visibility, and its visible children's names and texts |
+
+A string argument that is exactly `$id`, `$id.key` or `$id+0x270` (`-4`, decimal or hex) is an earlier step's value, plus the offset: read a pointer, then `{"op": "mem_read", "addr": "$ptr+0x270", "as": "f32"}`. `${id}` inside a longer string (a Lua chunk) is replaced by the value's text. In `call_native` arguments a JSON float (`1.5`, `2.0`) is passed as its single-precision bits, `{"f32": x}` says so explicitly, and `{"f64": x}` passes a double as two words, low first. `call_native` goes through the same journaled, exception-guarded bridge call as `client_call_native` and is never replayed after a crash. A step without an `id` is named by its position.
+
+**`client_ui_sequence {actions, stop_on_error = true}`** runs `{do: click, window, button?}`, `{do: key, key, action?}`, `{do: type, text, into?}`, `{do: drag, from, to, split?}` (ends `{container, slot}` or `{window}`), `{do: wait_window, window, gone?, timeout_ms?}` and `{do: wait, ms}` through the same paths as the single tools, and stamps the least native level used (`native_level`, `native_tier`, `native_pass`).
+
+A composite is admitted under one lease like any guarded tool; every bridge call and posted input inside it renews the lease, and its idle waits renew it every 5 s.
+
+**Compact results.** What an MCP client receives is compacted at the server's edge: one-line JSON; null, empty-string, empty-list and empty-object fields left out (`false` stays); floats rounded to 2 decimals; lists capped at 50 items with `<key>_total` and `truncated: true`; and the per-step native trail (`native_steps`, `trail`) left out, while `native_level`, `native_tier` / `tier` and `native_pass` / `counts_as_native_pass` stay. The cursor reads (`client_events_read`, `client_chat_log`, `client_combat_log`, `client_wait_event`) are not capped, because their cursor has already moved past what they return; their own `max` bounds them. The probe tools (`client_batch`, `client_call_native`, `client_mem_read`, `client_lua_eval`, `client_events_read`, `client_wait_event`) keep their floats exact, because a measurement rounded to 2 decimals is a different measurement. Inside a list, an empty item stays in place; a capped list with no key of its own ends with `{"truncated_total": n}`. Any tool takes `verbose: true` for the full result and `fields: ["position", "world_id"]` (or `"a.b"`) to keep only some keys; the heaviest tools list both in their schemas. A tool that declares one of these names itself keeps it: `client_wait_event`'s `fields` is its equality filter. A field that matches nothing comes back in `fields_missing`, with the result's keys in `fields_available`. At the top level, empty lists and objects stay (`windows: []` means "none open"); below it they are left out. `lab_uat_run` calls the tools in-process and grades the full results, never the compacted ones.
+
+**Images as files.** An image block (`lab_screenshot`, `lab_screenshot_region`) is saved to `%LOCALAPPDATA%\cimmeria-lab\screenshots\<tool>-<time>.png` and the result says `image saved: <path>`; `image: true` (or `verbose: true`) returns it inline. An inline 1280x720 capture costs an agent over a thousand tokens on every later turn, and the session that briefed the agent can open the file.
+
+**Lean schemas.** `tools/list` strips what the schema generator adds but a caller never needs (`"default": null`, `["T", "null"]` types, integer formats, `minimum: 0`, `$schema`, null-wrapping `anyOf`): about 12% of every schema, which an agent pays on every turn.
+
+**The camera is native.** The world tools turn and zoom the camera through its own handlers (`ASGWCamera_Player` vtable thunks), found by scanning the level's actors for the player controller, so mouse-look no longer depends on DirectInput (#1243). A turn reports `native_level: native_camera` (N1). Pitch turns are clamped to ±78.75°, because the handler does not clamp the stored offset. `client_camera` takes `zoom_to` (distance 100 to 775) and returns `view_before` / `view_after` (`zoom`, `yaw_offset_deg`, `pitch_offset_deg`, `gain`). Findings: `docs/reverse-engineering/findings/cegui-mouse-input-feed.md` §10.
+
+**Click retries.** When every point on a `client_world_click` target is covered or off screen, the tool changes the view and tries again before failing: pitch up twice, yaw each way, then zoom in. The yaw and pitch steps sum to zero, and the result lists them under `view_retries`. `rotate_camera: false` turns this off.
+
+**Off-screen windows.** A window position saved at another resolution can leave a visible window off screen, where every click in it misses. Before a slot action, the lab moves the host window (inventory, character, vault) fully on screen and reports `moved_on_screen`. This is layout setup, not the action under test, so it stays out of the native trail.
+
 ## Client flows
 
 To run whole unified-UAT rows (steps, checks, evidence and ledger text) rather than single flows, use `lab_uat_run`: [automated-uat.md](automated-uat.md).
 
 The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fresh character, play it, click through the intro dialog, log out) into single calls. Each is supervisor-side orchestration over the input tools above: every button press is a real click or key, and Lua only reads (visibility, widget text, the character list). The one Lua-driven step is picking a server row by name, because list rows are not named windows; the Select button is still clicked.
+
+For the common case, getting in the world as the lab character, `lab_ensure_in_world` does all of this in one call ([Fewer calls](#fewer-calls-composites-and-compact-results)). `lab_login` itself now waits up to 90 s for a fresh client's window before its first step; it used to fail at `focus` after 0 ms.
 
 A typical run on a fresh character:
 
@@ -912,7 +954,7 @@ a test fails until every routed tool is classified. Guarded tools list
 | `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
-| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_attest`; `lab_uat_run` (see below) |
+| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; the composites `lab_ensure_in_world`, `client_batch` (caller-chosen Lua and native calls) and `client_ui_sequence`; `lab_uat_attest`; `lab_uat_run` (see below) |
 
 The four cursor reads are leased because they share one event store: two
 sessions reading through the same named cursor take events from each other,

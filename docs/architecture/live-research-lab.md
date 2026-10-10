@@ -118,9 +118,12 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |
 | `lab_client_status` | PID, uptime, bridge heartbeat age, login state, crash count. |
 | `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, ...) are listed in the operating guide. |
-| `lab_screenshot` | Window capture by PID, returned as an MCP image. |
+| `lab_screenshot` | Capture of the window's client area; over MCP it comes back as a saved file path unless the call passes `image: true`. |
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |
+| `lab_ensure_in_world`, `client_batch`, `client_ui_sequence` | Composites (2026-10-10): one call for a sequence an agent used to spend a turn per step on, built on the same flows and input paths. |
+
+Results an MCP client receives are compacted in `call_tool` (one-line JSON, defaults left out, lists capped, no per-step trail; `verbose` / `fields` per call), and `tools/list` strips schema noise. The in-process UAT runner bypasses both and grades full results. The reason is cost: a lab-driving agent re-sends its whole context, schemas included, on every turn. Details: the operating guide, "Fewer calls".
 
 Credentials live in `<install>/Binaries/sessions/lab-account.json`, gitignored, next to the existing session file.
 

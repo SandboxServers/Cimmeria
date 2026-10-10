@@ -130,7 +130,7 @@ pub fn is_read_only(tool: &str) -> bool {
 /// unknown words drove nothing the grade cares about and map to `None`.
 pub fn from_reported(level: &str) -> Option<Tier> {
     match level {
-        "real_input" | "native_cegui" | "N1" => Some(Tier::N1),
+        "real_input" | "native_cegui" | "native_camera" | "N1" => Some(Tier::N1),
         "slash_command" | "N2" => Some(Tier::N2),
         "ui_lua" | "client_ui_lua" | "native_call" | "N3" => Some(Tier::N3),
         "G" => Some(Tier::G),

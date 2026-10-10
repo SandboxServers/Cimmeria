@@ -157,6 +157,8 @@ since = "searchitem"                 # only lines after that step started
 matches = "searchitem 'pistol': [0-9]+ match"
 ```
 
+**Where rows run.** A row that tests a feature rather than a level (vendors, bankers, mail, trade, inventory, abilities, combat, chat) runs in the Debug Area (world 1300, `.gotolocation DebugArea`). It has a copy of every hub service, open ground and clear sight lines, where Castle_CellBlock's hub NPCs stand against walls the camera ends up behind. Use a level's own map only when the row is about that level: its missions, NPC placement, transitions or geometry.
+
 **Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `setup`, `step`, `teardown`, `expect`, `evidence`.
 
 **Actions** (exactly one of the first four):
@@ -172,6 +174,8 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `fallback` | Actions tried in order when the primary tool is not routed; their tier is what counts |
 | `optional` | An error is recorded but does not fail the row |
 | `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
+
+The composites ([live-research-lab.md](live-research-lab.md#fewer-calls-composites-and-compact-results)) are routed tools like any other: `tool = "client_ui_sequence"` runs a scripted UI step as one action and reports the least native level it used, and a `tool` clause on `client_batch` reads one step's value with `pointer = "/steps/<id>"`. The runner calls tools in-process, so it always sees full results, never the compacted ones an MCP client gets. Reaching a row's state still uses the single flows (step 2 above), so each one's timing and failure stay in the evidence.
 
 `${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 

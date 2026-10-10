@@ -13,6 +13,7 @@ use super::geometry::{horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{WorldEntity, WorldSnapshot};
+use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
 pub const PLAYER_ACTOR: u32 = 0x9000;
@@ -310,7 +311,7 @@ impl WorldIo for Sim {
         })
     }
 
-    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<(), String> {
+    async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String> {
         self.looks.push((dx, dy, wheel));
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
         // Mouse forward (negative dy) looks up.
@@ -318,7 +319,7 @@ impl WorldIo for Sim {
         if self.standing_turn {
             self.pawn_yaw = self.cam_yaw;
         }
-        Ok(())
+        Ok(NativeLevel::RealInput)
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
