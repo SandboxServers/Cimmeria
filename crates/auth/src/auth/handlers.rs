@@ -11,7 +11,6 @@ use axum::{
     response::{IntoResponse, Response},
     Extension,
 };
-use quick_xml::{events::Event, Reader};
 use rand::RngExt;
 
 use crate::audit::{emit_login_event, LoginOutcome};
@@ -20,9 +19,10 @@ use crate::credential_redaction::CredentialPrefix;
 use super::credentials::{
     classify_credential, validate_credentials, AuthCredError, CredentialGateError,
 };
+use super::soap_request::{parse_login_request, parse_server_selection};
 use super::{
-    HandlerState, LoginReq, PendingLogin, SessionRecord, TlsConn, LOGIN_NS, PROTOCOL_DIGEST,
-    SELECT_NS, SESSION_TTL, XML_DECL,
+    HandlerState, PendingLogin, SessionRecord, TlsConn, LOGIN_NS, PROTOCOL_DIGEST, SELECT_NS,
+    SESSION_TTL, XML_DECL,
 };
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
@@ -57,8 +57,15 @@ pub(super) async fn handle_user_auth(
     let req = match parse_login_request(&body) {
         Ok(r) => r,
         Err(e) => {
+            // `e` names the attribute and the defect class only, never the
+            // value, so a malformed password is not echoed into the log.
             tracing::Span::current().record("result", "bad_request");
-            tracing::warn!("Bad login request: {e}");
+            tracing::warn!(
+                reason = e.reason(),
+                attribute = e.attribute(),
+                over_tls,
+                "Phase 1 SOAP request rejected: {e}"
+            );
             return login_error(13, "Internal error.");
         }
     };
@@ -280,7 +287,14 @@ pub(super) async fn handle_server_selection(
     let selected = match parse_server_selection(&body) {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!("Bad server selection: {e}");
+            tracing::Span::current().record("result", "bad_request");
+            tracing::warn!(
+                account_id = session.account_id,
+                account_name = %session.account_name,
+                reason = e.reason(),
+                attribute = e.attribute(),
+                "Phase 2 SOAP request rejected: {e}"
+            );
             return select_error(13, "Internal error.");
         }
     };
@@ -358,53 +372,6 @@ pub(super) async fn handle_server_selection(
 }
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
-
-fn parse_login_request(body: &str) -> Result<LoginReq, String> {
-    let mut reader = Reader::from_str(body);
-    loop {
-        match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == b"SGWLoginRequest" =>
-            {
-                let mut req = LoginReq::default();
-                for attr in e.attributes().flatten() {
-                    let val = String::from_utf8_lossy(attr.value.as_ref()).into_owned();
-                    match attr.key.as_ref() {
-                        b"SKU" => req.sku = val,
-                        b"AccountName" => req.account_name = val,
-                        b"Password" => req.password = val,
-                        b"ProtocolDigest" => req.protocol_digest = val,
-                        _ => {}
-                    }
-                }
-                return Ok(req);
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
-        }
-    }
-    Err("SGWLoginRequest element not found".into())
-}
-
-fn parse_server_selection(body: &str) -> Result<String, String> {
-    let mut reader = Reader::from_str(body);
-    loop {
-        match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e))
-                if e.local_name().as_ref() == b"SGWSelectServerRequest" =>
-            {
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"ServerSelection" {
-                        return Ok(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
-                    }
-                }
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
-        }
-    }
-    Err("SGWSelectServerRequest/ServerSelection not found".into())
-}
 
 fn extract_sid(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -564,22 +531,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_valid_login_request() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let req = parse_login_request(body).unwrap();
-        assert_eq!(req.sku, "SGW_BETA");
-        assert_eq!(req.account_name, "test");
-        assert_eq!(req.password, "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3");
-    }
-
-    #[test]
-    fn parse_server_selection_request() {
-        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" ServerSelection="Shard" />"#;
-        let sel = parse_server_selection(body).unwrap();
-        assert_eq!(sel, "Shard");
-    }
-
-    #[test]
     fn login_success_xml_contains_shard() {
         let shards = vec![super::super::ShardInfo {
             name: "Shard".into(),
@@ -608,45 +559,6 @@ mod tests {
         assert!(xml.contains(r#"SessionKey="AAAA""#));
         assert!(xml.contains(r#"Ticket="BBBB""#));
         assert!(xml.contains(r#"Port="32832""#));
-    }
-
-    /// Pin the parser's narrow contract: when the SGWLoginRequest element
-    /// is present but required attributes (SKU/AccountName/Password) are
-    /// missing, the parse succeeds with default (empty) fields. The
-    /// handler validates above the parser; a refactor that pushed
-    /// validation down here would silently break that layering.
-    #[test]
-    fn parse_login_request_does_not_validate_missing_attributes() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
-        let req = parse_login_request(body).expect("element present must parse Ok");
-        assert_eq!(req.sku, "", "missing SKU must surface as empty, not error");
-        assert_eq!(req.account_name, "");
-        assert_eq!(req.password, "");
-    }
-
-    /// Same narrow-contract pin, but for password length: a password the
-    /// handler will reject (not 40 hex chars) parses through unchanged.
-    /// Validation lives in the handler — this guard keeps it there.
-    #[test]
-    fn parse_login_request_does_not_validate_password_length() {
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="short" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let req = parse_login_request(body).expect("well-formed element must parse Ok");
-        assert_eq!(
-            req.password, "short",
-            "parser must hand the raw password through; length check is the handler's job",
-        );
-    }
-
-    /// Unlike parse_login_request, parse_server_selection requires the
-    /// ServerSelection attribute — the function returns early on the
-    /// first ServerSelection it sees, otherwise falls through to Err.
-    /// A refactor that loosened this would let the auth flow accept a
-    /// server-selection message with no shard id.
-    #[test]
-    fn parse_server_selection_missing_attribute_returns_error() {
-        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
-        let sel = parse_server_selection(body);
-        assert!(sel.is_err(), "missing ServerSelection attribute must fail");
     }
 
     /// Build a minimal `HandlerState` for driving `handle_user_auth` through

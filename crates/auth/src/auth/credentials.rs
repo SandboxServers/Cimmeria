@@ -242,7 +242,9 @@ fn argon2id() -> Argon2<'static> {
 ///
 /// Returns `None` on the (practically impossible) hashing failure so callers
 /// can degrade gracefully rather than panic on a login path.
-fn hash_argon2id(plaintext: &str) -> Option<String> {
+///
+/// `pub(super)` so the TLS smoke can seed an argon2id fixture account.
+pub(super) fn hash_argon2id(plaintext: &str) -> Option<String> {
     // `hash_password` draws a fresh 16-byte salt from the OS RNG — the same
     // length `SaltString::generate` produced under argon2 0.5, so new PHC
     // strings keep the `$argon2id$v=19$m=65536,t=3,p=1$<22-char salt>$` shape.

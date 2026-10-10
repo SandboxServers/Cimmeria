@@ -45,6 +45,20 @@ The client sends credentials to the Authentication Server on port 8081 (configur
 | `Password` | string | Either a 40-char uppercase-hex SHA-1 hash (original client) **or** a plaintext password (patched client over TLS only). See *Credential formats* below. |
 | `ProtocolDigest` | string | 32-character MD5 hex string. Must match server's `protocol_digest` config |
 
+**Attribute encoding.** Every attribute value is ordinary XML: the server decodes
+it once, with quick-xml's attribute-value normalization, before any check runs.
+The predefined entities (`&amp;` `&lt;` `&gt;` `&quot;` `&apos;`) and character
+references (`&#38;`, `&#x26;`) become the characters they stand for, and a raw
+tab, CR or LF becomes a space (XML 1.0 §3.3.3). A client sending the plaintext
+password `a&b` writes `Password="a&amp;b"`; `&amp;amp;` decodes to the literal
+text `&amp;`. A malformed value (an unknown entity such as `&bogus;`, a bare
+`&`, a bad character reference) or broken attribute syntax on the request
+element, including a duplicated attribute, fails the request with the
+`Internal error.` login error, and the server logs `reason` and `attribute`
+without the value. The SHA-1 hex the original client sends has no `&`, so
+decoding leaves it unchanged. The `ServerSelection` attribute in Phase 2 is
+decoded the same way.
+
 **Credential formats (dual acceptance):**
 
 The server accepts two credential shapes and classifies by the supplied value:

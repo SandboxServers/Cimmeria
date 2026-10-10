@@ -13,6 +13,7 @@ mod cert_watcher;
 mod credentials;
 mod handlers;
 mod service;
+mod soap_request;
 mod tls;
 
 #[cfg(test)]
