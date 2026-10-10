@@ -445,8 +445,11 @@ and counted in the response's `bad_rows`;
 only a body that is not gzip is refused (400). Uploaded strings are cut before they
 reach a log row: log messages to 4 KiB, file names, levels, categories and
 event names to 256 bytes, each value in a DLL `fields` bag to 2 KiB, and
-the bag to 64 keys. A cut value ends in `...[truncated, N bytes]`, with
-the original length, and a cut bag gains `_truncated_keys`.
+the bag to 64 keys. A value in the bag that is itself an array or an
+object is replaced by its JSON text, so in the replayed `fields` attribute
+it appears as a quoted string (`"ids":"[1,2,3]"`), not as nested JSON. A
+cut value ends in `...[truncated, N bytes]`, with the original length,
+and a cut bag gains `_truncated_keys`.
 
 Every refusal and every truncation writes a `warn` on `launcher.ingest`:
 

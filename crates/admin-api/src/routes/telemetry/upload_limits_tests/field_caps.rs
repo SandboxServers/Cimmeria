@@ -43,6 +43,31 @@ fn a_cut_lands_on_a_character_boundary() {
     assert!(s.ends_with(&marker(2 * MAX_MESSAGE_BYTES)));
 }
 
+/// **A small nested value becomes its JSON text.** A dense array well
+/// under the 2 KiB value cap would otherwise stay parsed, costing many
+/// times its text in memory; scalars are left alone.
+#[test]
+fn a_small_nested_value_becomes_its_json_text() {
+    let mut fields = serde_json::Map::new();
+    fields.insert("ids".into(), json!([1, 2, 3]));
+    fields.insert("pos".into(), json!({ "x": 1 }));
+    fields.insert("n".into(), json!(7));
+    let mut ev = TelemetryEvent::ClientNative(ClientNativeEvent {
+        ts_ms: 0,
+        seq: 0,
+        target: "client.lua.pcall".into(),
+        level: "info".into(),
+        fields,
+    });
+    cap_event(&mut ev);
+    let TelemetryEvent::ClientNative(e) = ev else {
+        unreachable!()
+    };
+    assert_eq!(e.fields["ids"], Value::String("[1,2,3]".into()));
+    assert_eq!(e.fields["pos"], Value::String(r#"{"x":1}"#.into()));
+    assert_eq!(e.fields["n"], json!(7), "scalars stay as they are");
+}
+
 #[test]
 fn a_fields_bag_is_capped_in_keys_and_values() {
     let mut fields = serde_json::Map::new();

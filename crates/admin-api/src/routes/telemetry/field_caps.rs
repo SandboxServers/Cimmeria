@@ -12,7 +12,7 @@
 //! | `message` (client and debug log lines, bundle lines) | [`MAX_MESSAGE_BYTES`] |
 //! | `source_file`, `level`, `category`, `target`, `kind` | [`MAX_LABEL_BYTES`] |
 //! | `key_b64` | [`MAX_KEY_BYTES`] |
-//! | a `fields` bag | [`MAX_FIELD_KEYS`] keys, each key [`MAX_LABEL_BYTES`], each value [`MAX_FIELD_VALUE_BYTES`] |
+//! | a `fields` bag | [`MAX_FIELD_KEYS`] keys, each key [`MAX_LABEL_BYTES`], each value [`MAX_FIELD_VALUE_BYTES`]; a nested array or object becomes its JSON text |
 
 use serde_json::{Map, Value};
 
@@ -31,8 +31,8 @@ pub(super) const MAX_KEY_BYTES: usize = 1024;
 /// Keys kept from a `fields` bag. The DLL's richest rows carry about 20.
 pub(super) const MAX_FIELD_KEYS: usize = 64;
 
-/// One value in a `fields` bag: a string, or an object or array measured
-/// as JSON.
+/// One value in a `fields` bag: a string, or an object or array, which is
+/// always replaced by its JSON text and capped as a string.
 pub(super) const MAX_FIELD_VALUE_BYTES: usize = 2 * 1024;
 
 /// The key that records how many keys a `fields` bag lost to
@@ -97,11 +97,14 @@ pub(super) fn cap_fields(fields: &mut Map<String, Value>) {
             Value::String(s) => {
                 cap_string(s, MAX_FIELD_VALUE_BYTES);
             }
+            // Always flattened to its JSON text, whatever its size: a parsed
+            // array or object costs many times its text in memory (a dense
+            // array of small numbers about 16x), and nothing reads nested
+            // values (the replay renders `fields` as JSON text and lifts
+            // only top-level scalars).
             Value::Array(_) | Value::Object(_) => {
                 let json = value.to_string();
-                if json.len() > MAX_FIELD_VALUE_BYTES {
-                    *value = Value::String(capped(&json, MAX_FIELD_VALUE_BYTES).into_owned());
-                }
+                *value = Value::String(capped(&json, MAX_FIELD_VALUE_BYTES).into_owned());
             }
             _ => {}
         }
