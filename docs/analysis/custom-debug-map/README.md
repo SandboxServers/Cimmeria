@@ -7,7 +7,7 @@ last_updated: 2026-10-06
 
 # Custom Debug Map
 
-The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [visual floor plan](janus-worldforge-plan.svg) and a concise [functional requirements checklist](functional-requirements.md). The separate [human-authored Debug map import](mapper-debug-import.md) provides a QA comparison for terrain and fixture composition.
+The proposed final Ancient-themed layout is [Janus's Worldforge](janus-worldforge-design.md), with a [mapper concept map](janus-worldforge-mapper-map.png) ([editable SVG](janus-worldforge-mapper-map.svg)), a [161-altar NPC gallery detail](janus-npc-gallery-detail.png) ([editable SVG](janus-npc-gallery-detail.svg)), a [visual floor plan](janus-worldforge-plan.svg), and a concise [functional requirements checklist](functional-requirements.md). The separate [human-authored Debug map import](mapper-debug-import.md) provides a QA comparison for terrain and fixture composition.
 
 **Status: the custom Worldforge is an experimental, client-loadable assembly.** Its original slab and gate ring remain temporary, while the Ancient room layout is built from individual cooked modules. The [work-packet ledger](work-packets.md) and [test handoff](handoff-2026-10-06.md) track the remaining systems. The existing DebugArea (world 1300) remains the working proving ground.
 
