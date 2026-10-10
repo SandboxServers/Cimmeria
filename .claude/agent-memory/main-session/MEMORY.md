@@ -33,6 +33,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+
+- [reference_lab_parallel_clients_2026_10_10.md](reference_lab_parallel_clients_2026_10_10.md) — up to five lab clients in one daemon, a lease per instance; per-instance USERPROFILE fixes the cache-lock freeze; unrouted calls hit the first instance; LP-07 live check pending
 - [reference_cellblock_asset_audit.md](reference_cellblock_asset_audit.md) — 2026-10-06 static audit: map count correction, existing exit/cinematic wiring, parsed asset candidates, extraction coverage gaps; full restoration/UAT campaign indexed under docs/analysis/cellblock-asset-audit/
 - [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp
 - [reference_quick_xml_042_migration.md](reference_quick_xml_042_migration.md) — 2026-10-07 quick-xml 0.42 string API, escaped dialog attributes, and GUI check boundary

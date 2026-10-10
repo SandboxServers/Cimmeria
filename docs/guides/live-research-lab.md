@@ -2,7 +2,7 @@
 title: Live Research Lab — the research rulebook
 type: how-to
 audience: engineers and AI agents doing RE / live verification against a running SGW.exe + cimmeria-server
-last_updated: 2026-10-04
+last_updated: 2026-10-10
 companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
@@ -114,6 +114,9 @@ sessions may want it. Driving it takes the
    when the holder is gone; the takeover is logged and the holder's next
    call is told who took it. `lab_lease_status` shows the holder at any
    time, and reading tools (screenshots, UI readers, status) need no lease.
+   When the daemon hosts several clients, the lease is per client: pass
+   `instance` (such as `lab2`) to `lab_lease_acquire`
+   ([Parallel clients](#drive-your-own-client)).
 2. **Release it when you finish.** An idle lease expires after its
    `ttl_s` (default 600 s) anyway, and with no lease held the watchdog
    leaves a dead client down instead of relaunching it.
@@ -340,52 +343,108 @@ The input tools press nothing through Lua: Lua only reads where a widget is. Wha
 - A UI drag is driven with native CEGUI input: `injectMousePosition` onto the source, `injectMouseButtonDown(0)`, one `injectMousePosition` step per frame to the target, `injectMouseButtonUp(0)`. These are the calls the game's own input path makes, so those steps count as N1 (`native_cegui`). But CEGUI has never resolved a drop target in the live client, so every live drag so far landed through the explicit drop (`notifyDragDropItemDropped`, `native_call`), which makes the drag as a whole N3. A drag that moves nothing is no pass at any level (`effect_ok: false`).
 - The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
 - Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
-- `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Two clients](#two-clients-two-player-scenarios)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
+- `lab_client_start` refuses while an `SGW.exe` the lab does not own is running, and while its own instance's client runs. A second lab client is allowed only as a named instance ([Parallel clients](#parallel-clients-up-to-five)). It injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
 
-## Two clients: two-player scenarios
+## Parallel clients (up to five)
 
-Trade, duels, squads and teams, mail between players, player-to-player visibility and chat need two players. Two clients on one workstation work when each has its own **lab instance**; without that they collide on the session file, the bridge port, the credentials, the crash markers and the logs (evidence and the client-side findings: [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)).
+Trade, duels, squads and teams, mail between players, player-to-player visibility and chat need two players, and parallel testing needs several clients that don't wait for each other. One workstation runs up to five lab clients at once, one per seeded lab account (`lab`, `lab2` to `lab5`). Each client is a **lab instance**: its own account, session file, bridge port, crash markers, logs and Firesky folder. One shared daemon hosts every instance, and each instance has its own lease, so five agents can each drive their own client. Evidence and measurements: [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md).
 
-**Setup.** Run one `cimmeria-lab` per client, each its own MCP server entry with its own environment. The default entry is the first player; the second adds `CIMMERIA_LAB_INSTANCE` and its own port:
+**Why each client gets its own Firesky folder.** A running `SGW.exe` holds all 22 cooked-data archives (`Documents\My Games\Firesky\SGWGame\Cache.en-US\*.pak`) open for writing with read-only sharing for its whole life. A second client on the same folder can't open one, reports cooked version 0 for every category, and the server answers each of its logins with a full resync of about 59,000 entries, which pins its main thread for a minute or more. So the supervisor gives every client its own folder.
 
-```json
-"cimmeria-lab-p2": {
-  "type": "stdio",
-  "command": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\cimmeria-lab.exe",
-  "env": {
-    "CIMMERIA_LAB_INSTANCE": "p2",
-    "CIMMERIA_LAB_BRIDGE_PORT": "8771",
-    "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
-    "CIMMERIA_LAB_START32": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\sgw-start32.exe",
-    "CIMMERIA_LAB_PATCHES_DLL": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\cimmeria_client_patches.dll"
-  }
-}
+### Set it up
+
+1. In `%LOCALAPPDATA%\cimmeria-lab\labd.env`, list the instances the daemon hosts:
+
+   ```text
+   CIMMERIA_LAB_INSTANCES=default,p2,p3,p4,p5
+   ```
+
+   `default` is the unnamed instance on `lab-account.json`. A shorter list (`default,p2`) hosts fewer clients. Instance *i* in the list (counting from 0) bridges on `CIMMERIA_LAB_BRIDGE_PORT` + *i*, so 8770 to 8774 by default. In this mode the daemon ignores `CIMMERIA_LAB_BRIDGE`, and `CIMMERIA_LAB_TOKEN` applies to the first instance only. The daemon refuses to start on more than five instances, a name listed twice, or a bad name (1 to 16 letters, digits, `-` or `_`). Unset, the daemon hosts the one instance `CIMMERIA_LAB_INSTANCE` names (none: the default), as before.
+2. Write the account files for the extra instances:
+
+   ```powershell
+   pwsh tools/lab/instances.ps1 init
+   ```
+
+   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `-Force`, and `-Count 3` stops at `p3`. `pwsh tools/lab/instances.ps1 status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
+3. Restart the daemon so it reads `labd.env`: `pwsh tools/lab/daemon.ps1 restart`.
+4. Reconnect the lab MCP server in **every** Claude session (`/mcp`). With more than one instance hosted, every tool gains an optional `instance` argument, and a session that connected before the restart still has the old tool list.
+
+### Drive your own client
+
+Take the lease on the instance you were given, then pass its `lease_id` to every call. The lease routes the call, so you don't need to repeat `instance`:
+
+```text
+lab_lease_acquire { owner: "...", purpose: "...", instance: "lab2" }
+  -> { lease_id: "...", instance: "p2", account: "lab2", ... }
+lab_ensure_in_world { lease_id: "..." }        # runs on p2
 ```
 
-Its tools show up under the second server's name, so an agent addresses a player by the tool prefix. A named instance gets:
+Each call picks its instance in this order:
 
-| | Default instance | `CIMMERIA_LAB_INSTANCE=p2` |
+1. the `instance` argument: a label (`p2`) or a lab account name (`lab2`), ignoring case. A label wins over another instance's account name. An instance whose account file can't be read can be named only by its label;
+2. else the instance that issued the call's `lease_id` (this covers `lab_lease_renew` and `lab_lease_release` too);
+3. else the first instance in `CIMMERIA_LAB_INSTANCES`.
+
+A call with neither runs on the first instance. That matters for read-only tools, which need no lease: `lab_screenshot` without `instance` captures the first client, not yours. A lease is valid only on its own instance. Naming one instance and passing another instance's lease is refused, and every refusal in a multi-instance daemon ends with the instance that refused it, such as `(instance p3)`.
+
+`lab_lease_status` without `instance` lists every instance: its label, account, lease (holder, purpose, since, expiry and recent history) and client pid. With `instance` it reports that one instance, labelled with its instance and account. It never shows a lease id.
+
+In `labd.log`, every routed tool call runs in a `lab_call` span, each watchdog in a `lab_watchdog` span, and each lease sweeper in a `lab_instance` span, all with an `instance` field. Filter on it to follow one client.
+
+### What each instance gets
+
+| | Default instance | Named instance, such as `p2` |
 |---|---|---|
 | Session file | `sessions\current-session.json` | `sessions\instances\p2\current-session.json` (the DLL finds it through `CIMMERIA_LAB_SESSION_FILE`) |
-| Bridge port | 8770 | `CIMMERIA_LAB_BRIDGE_PORT` (give each instance its own; `CIMMERIA_LAB_BRIDGE` follows it by default) |
+| Bridge port | `CIMMERIA_LAB_BRIDGE_PORT` (8770) | that port + its position in `CIMMERIA_LAB_INSTANCES` |
 | Credentials | `sessions\lab-account.json` | `sessions\lab-account.p2.json`, never the default file |
 | Crash marker, minidumps | `sessions\` | `sessions\instances\p2\` |
 | DLL logs | `cimmeria-client-*.log` | `cimmeria-client-*-p2.log` |
+| Firesky folder | `sessions\instances\default\profile` | `sessions\instances\p2\profile` |
+| Lease | its own | its own |
 
-`CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2, ceiling 4). The start guard still refuses when an `SGW.exe` the lab does not own is running.
+All paths are under the install's `Binaries\`.
 
-**Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); give each instance its own account in its `lab-account.<instance>.json`, and keep all five in the Discord `muted_accounts` list.
+### The per-instance profile
 
-**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
+Every instance, the default one included, launches the game with `USERPROFILE` set to `Binaries\sessions\instances\<label>\profile`. The client finds My Documents in one place, `SHGetFolderPathW(CSIDL_PERSONAL)`, and Windows resolves the default `%USERPROFILE%\Documents` with the calling process's own `USERPROFILE`, so the client's whole `My Games\Firesky\SGWGame` folder moves into the profile. Its one other folder lookup, Local AppData, moves there too.
 
-**Two-player UAT rows.** `lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). It runs from the default instance and, on the first such row, makes an in-process supervisor for the second instance with that instance's session file, credentials, logs and bridge port. It keeps that supervisor for the life of the server, so p2's client stays up between runs. You need:
+The first launch seeds the profile's `SGWGame` from the real one: the top-level files (`SavedSystemOptions.xml`, `WindowStates.xml`, ...) and the `Config`, `Content` and `Cache.en-US` folders. The per-account folders (saved vars), `Logs`, `CrashDumps`, `Stats` and every other folder are left out. A warm `Cache.en-US` means the instance's first login is a routine one, not a full resync. After that the seed never runs again, so the instance keeps the cache its own logins bring up to date. The copy goes to `SGWGame.seeding` and is renamed when complete, so a seed cut short is redone on the next launch. With no real `SGWGame` folder (the game never ran on this Windows account), the profile starts empty and the server fills its cache at the first login.
+
+A change you make to the real `Config\*.ini` doesn't reach an instance that is already seeded. To reseed one, stop its client and delete its `profile` folder.
+
+`labd.log` records the outcome at every launch under `lab.instance`: `user_dir_ready` with `seeded` (`copied`, `already_there` or `no_source`), or a `user_dir_shared` warning with its `reason`.
+
+- **`CIMMERIA_LAB_SHARED_USER_DIR=1`** (also `true` or `yes`) in `labd.env` turns this off and puts every lab client back on the real, shared folder (`reason = opted_out`). Two clients then lock each other's cache again.
+- **OneDrive and redirected Documents.** The redirect works only where the `Personal` shell folder (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`) is `%USERPROFILE%`-relative, the Windows default. If OneDrive Known Folder Move or a policy points Documents at an absolute path, every launch logs `reason = documents_not_redirectable` and uses the shared folder, and so does a failed registry read. A seed that fails (`reason = seed_failed`) falls back the same way. On such a machine run one lab client at a time. The durable fix, a `SHGetFolderPathW` hook in the lab DLL, is on the [tooling backlog](../analysis/lab-automation/tooling-backlog.md#backlog-lab-bridge-and-supervisor-for-the-session-that-owns-them).
+
+### Accounts, characters, the cap and the windows
+
+**Accounts.** A second login on the same account evicts the first client (`duplicate_login`), so every instance needs its own account. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); keep all five in the Discord `muted_accounts` list.
+
+**Characters.** Characters belong to an account, so each instance plays the `character` in its own account file (`instances.ps1 init` writes `Labtwo` to `Labfive`). If an account has no such character yet, create it with `lab_ensure_in_world` and `create`.
+
+**The cap.** `CIMMERIA_LAB_MAX_CLIENTS` caps the lab clients. It defaults to the number of hosted instances (at least 2) and is clamped to 1 to 5, the five seeded accounts. The start guard still refuses when an `SGW.exe` the lab does not own is running.
+
+**Booting several at once.** With other clients running, a new client's bridge took about 25 s to come up on 2026-10-10. The watchdog leaves a client that has never answered its bridge alone for 90 s after launch ([the watchdog](#the-watchdog-hangs-world-loads-and-the-recovery-cap)).
+
+**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) on every instance: it answers `GetForegroundWindow` per process, so none is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so don't type while a scenario runs.
+
+**Windows.** Every client opens at the same place and size, stacked. Arranging them is up to you; no lab tool moves a window. Screenshots use `PrintWindow` per window, so an overlapped window still captures.
+
+### Two-player UAT rows
+
+`lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). <!-- LP-05b2 --> In a daemon that hosts several instances, the run drives the hosted `p2` instance and holds p2's lease for the length of the run. In a single-instance daemon it makes an in-process supervisor for the second instance on the first such row, with that instance's session file, credentials, logs and bridge port, and keeps it for the life of the server, so p2's client stays up between runs. You need:
 
 - `sessions\lab-account.p2.json` with its own account (`lab2`) and a `character`. Without it, two-player rows are BLOCKED and the reason names the file;
-- `CIMMERIA_LAB_UAT_P2` only to use another instance name (default `p2`), and `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` only to use another bridge port (default: this instance's port + 1, so 8771).
+- in a single-instance daemon only: `CIMMERIA_LAB_UAT_P2` to use another instance name (default `p2`), and `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` to use another bridge port (default: this instance's port + 1, so 8771).
 
-Do not also run a separate `cimmeria-lab-p2` server for the same instance while a run drives it. Both would own p2's session file, and whichever starts second has its client start refused, which BLOCKs the row with that error. Virtual focus is turned on for each client by the runner's chat macro.
+Don't also run a separate stdio `cimmeria-lab` with `CIMMERIA_LAB_INSTANCE=p2` while the daemon drives p2. Both would own p2's session file, and whichever starts second has its client start refused. Virtual focus is turned on for each client by the runner's chat macro.
 
-**When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
+### When to use `wireclient` instead
+
+A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no client cache, and needs its own account too. Use a full client when that player's UI is part of what is being tested.
 
 ## The display: screensaver and D3D
 
@@ -415,6 +474,8 @@ What `labd.log` shows:
 | `client process gone` | the process exited on its own |
 
 A spinning main thread also reads as busy, and so does a deadlock that strikes mid-load: both die at the cap instead of after about 30 s.
+
+A client still booting gets a **boot grace** too (`stall_grace::BOOT_GRACE`, 90 s). Until its bridge has answered once, a failed poll within 90 s of the launch doesn't count toward either rule; the watchdog logs `bridge not up yet; boot grace in effect` at debug instead. With several clients booting at once a bridge took about 25 s to come up, and the old rules killed it as `heartbeat unreachable` at about 17 s (2026-10-10). A client that dies during boot is still caught at once (the process check runs first), the grace ends at the first answer, and a client that never answers is judged by the normal rules after 90 s.
 
 After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min); not relaunching`). The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
 
@@ -670,7 +731,7 @@ Every state change also logs one `abilities.gm` row, so SigNoz shows who changed
 
 The ability-mechanics rows are [docs/guides/uat-specs/abilities.toml](uat-specs/abilities.toml), section `ability-mechanics` (AB-U1 to AB-U25 of the [unified UAT guide](unified-uat.md#ability-mechanics)). It runs on the colo with the GM lab account and a fresh Soldier per run. Each row places its ability on the bar in setup (N3), resets its cooldown, then makes the graded press with the bound hotbar key (N1); its clauses check the client's own `client.ability.*` rows, the server's `server_ability_state`, the packet tap and SigNoz.
 
-**Before you run it:** the lab lease (pass its `lease_id`, or let the run take its own), the AB-L0 smoke, `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` set (without them every `server` and `packet` clause is UNVERIFIED), and, for the two-player rows, `lab-account.p2.json` naming `lab2`, which must be a GM account for p2's own `/gm*` lines ([Two clients](#two-clients-two-player-scenarios)).
+**Before you run it:** the lab lease (pass its `lease_id`, or let the run take its own), the AB-L0 smoke, `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` set (without them every `server` and `packet` clause is UNVERIFIED), and, for the two-player rows, `lab-account.p2.json` naming `lab2`, which must be a GM account for p2's own `/gm*` lines ([Parallel clients](#parallel-clients-up-to-five)).
 
 **Run it in batches.** Long rows can outlast an MCP call's timeout, so take about five rows at a time on one `run_dir`:
 

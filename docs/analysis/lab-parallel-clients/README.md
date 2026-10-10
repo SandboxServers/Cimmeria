@@ -108,7 +108,7 @@ Not fixed here (follow-ups):
 | LP-01 | Per-instance user folder and client cap | none | merged, #1321 (9 review fixes) |
 | LP-02 | One lease book per supervisor | none | merged (3 review fixes; p2 is not relaunched mid-UAT, accepted) |
 | LP-03 | Lab tooling: `instances.ps1`, `labd.env` and `.mcp.json.example` | none | merged, #1319 (4 review fixes) |
-| LP-04 | Docs and memory | LP-01, LP-05b | planned |
+| LP-04 | Docs and memory | LP-01, LP-05b | written |
 | LP-05a | Instance registry and routing in one daemon | LP-02 | merged (review: per-instance UI memory, two-player refused until LP-05b, routing tests, instance log spans) |
 | LP-05b1 | Account-name routing and per-instance lease tools (split from LP-05b) | LP-05a | merged (2 review rounds, fixed by the Haiku coder) |
 | LP-05b2 | UAT p2 from the registry (rest of LP-05b) | LP-05b1 | merged (2 review rounds, fixed by the Haiku coder; guard verified to fail on revert) |

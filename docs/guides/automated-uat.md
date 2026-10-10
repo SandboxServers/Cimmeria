@@ -2,7 +2,7 @@
 title: Automated in-game UAT with the lab
 type: how-to
 audience: agents and developers running unified-UAT rows through the live research lab
-last_updated: 2026-10-04
+last_updated: 2026-10-10
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
@@ -321,7 +321,7 @@ contains = "${p2_character}"
 
 The runner does not put the two players in one place. Do that in the row's setup: `.summon <name>` always brings the player to the caller's instance and position, which also covers instanced maps such as `Castle_CellBlock`. Then add a visibility check before any targeting step, so a missing p2 FAILs on a clear clause rather than on a target click.
 
-p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own account or character, ignoring case (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Set-up: [Two clients](live-research-lab.md#two-clients-two-player-scenarios). Both players need to be in the same world for targeting, and the row's setup moves them there.
+p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own account or character, ignoring case (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Where p2 comes from depends on the daemon. <!-- LP-05b2 --> In a daemon that hosts several instances (`CIMMERIA_LAB_INSTANCES`), the run drives the hosted `p2` instance and holds p2's lease for the length of the run, so another agent can't drive p2 mid-row. A single-instance daemon keeps its own in-process p2. Set-up: [Parallel clients](live-research-lab.md#parallel-clients-up-to-five). Both players need to be in the same world for targeting, and the row's setup moves them there.
 
 ### The capability table
 
