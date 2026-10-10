@@ -61,7 +61,10 @@
     not adopt the clients the old one launched, so the stop closes every
     lab client (read from GET /status) once the daemon is down. While any
     client is leased the stop is refused with exit code 3, because the
-    lease ends with the daemon and the holder would lose the client.
+    lease ends with the daemon and the holder would lose the client. When
+    the live daemon refuses the token (401) its leases are unknown and the
+    stop is refused with exit code 4; -Force then stops it and leaves the
+    clients open.
 
 .EXAMPLE
     pwsh tools/lab/daemon.ps1 install
@@ -186,16 +189,25 @@ function Copy-DaemonExe([string]$src) {
 }
 
 function Get-DaemonStatus($info) {
-    # The running daemon's GET /status (crates/lab/src/daemon/status.rs), or
-    # $null when it is down, has no /status yet, or something else answers.
+    # The running daemon's GET /status (crates/lab/src/daemon/status.rs) as
+    # @{ status; unauthorized }. status is $null when the daemon is down, has
+    # no /status yet, or something else answers; unauthorized is true on a
+    # 401 (no token, or not this daemon's).
+    $result = @{ status = $null; unauthorized = $false }
     $token = Get-Token
-    if (-not $token) { return $null }
+    if (-not $token) { $result.unauthorized = $true; return $result }
     $probe = Get-DaemonBind $info $Bind
     try {
         $status = Invoke-RestMethod -Uri "http://$probe/status" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5
-    } catch { return $null }
-    if (-not (Get-LabdField $status 'daemon') -or $null -eq (Get-LabdField $status 'instances')) { return $null }
-    return $status
+    } catch {
+        # WebException (5.1) and HttpResponseException (7) both carry Response.StatusCode.
+        $code = 0
+        try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+        $result.unauthorized = ($code -eq 401)
+        return $result
+    }
+    if (Test-LabdStatusShape $status) { $result.status = $status }
+    return $result
 }
 
 function Close-LabClients($rows) {
@@ -236,24 +248,28 @@ function Stop-Daemon {
     # read them before the stop and close them after it, once no watchdog
     # can relaunch them. A leased client would be taken from its holder
     # (leases die with the daemon): refuse, unless -Force.
+    # The decision is Get-LabdStopPlan (labd-lib.ps1, tested).
     $info = Read-DaemonPid
-    $status = Get-DaemonStatus $info
-    $clients = $null
-    if ($status) {
-        $clients = Select-LabClientsToClose $status ([bool]$Force)
-        if ($clients.refuse.Count -and -not $Force) {
-            foreach ($r in $clients.refuse) {
+    $probe = Get-DaemonStatus $info
+    $alive = [bool]($info -and $info.pid -and (Get-Process -Id $info.pid -ErrorAction SilentlyContinue))
+    $plan = Get-LabdStopPlan $probe.status $probe.unauthorized $alive ([bool]$Force)
+    switch ($plan.action) {
+        'refuse-leased' {
+            foreach ($r in $plan.refused) {
                 Write-Host "$($r.instance): client pid $($r.pid) leased to $($r.holder)"
             }
             Write-Host "not stopped: the daemon's leases end with it, and its clients are closed. Wait for the lease, or pass -Force to close them anyway."
             exit 3
         }
-        foreach ($r in $clients.refuse) {
-            Write-Host "$($r.instance): leased to $($r.holder); closing its client anyway (-Force)"
+        'refuse-unauthorized' {
+            Write-Host "not stopped: the daemon refused $TokenVar on GET /status, so its leases are unknown. Fix the token, or pass -Force (its clients are then left open)."
+            exit 4
         }
-    } elseif ($info -and $info.pid -and (Get-Process -Id $info.pid -ErrorAction SilentlyContinue)) {
-        Write-Warning 'could not read the daemon''s GET /status; any lab clients it runs are left open (close them by hand, or lab doctor lists them)'
     }
+    foreach ($r in $plan.overridden) {
+        Write-Host "$($r.instance): leased to $($r.holder); closing its client anyway (-Force)"
+    }
+    if ($plan.warn) { Write-Warning $plan.warn }
 
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     if ($task -and $task.State -eq 'Running') { Stop-ScheduledTask -TaskName $TaskName }
@@ -275,7 +291,15 @@ function Stop-Daemon {
         Where-Object { $_.Path -eq $DaemonExe } |
         ForEach-Object { Stop-Process -Id $_.Id -Force; Write-Host "stopped daemon pid $($_.Id)" }
     Remove-Item -Force $PidFile -ErrorAction SilentlyContinue
-    if ($clients -and $clients.close.Count) { Close-LabClients $clients.close }
+    if (-not $plan.close.Count) { return }
+    # Close only once the daemon that listed them is gone: its watchdog
+    # would relaunch a closed client. Stop-Process does not wait.
+    $listed = Get-Process -Id ([int]$probe.status.daemon.pid) -ErrorAction SilentlyContinue
+    if ($listed -and $listed.ProcessName -eq 'cimmeria-lab' -and -not $listed.WaitForExit(5000)) {
+        Write-Warning "daemon pid $($listed.Id) is still running; its lab clients are left open"
+        return
+    }
+    Close-LabClients $plan.close
 }
 
 function Copy-TaskScripts {

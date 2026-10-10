@@ -109,3 +109,44 @@ function Select-LabClientsToClose($Status, [bool]$Force) {
     }
     return $result
 }
+
+# Whether a GET /status body has the daemon's shape: a daemon object and an
+# instances list, which may be empty (a property check, because an empty
+# array read through a function unrolls to $null).
+function Test-LabdStatusShape($Status) {
+    if ($null -eq $Status -or $Status -is [string]) { return $false }
+    $names = $Status.PSObject.Properties.Name
+    return ($names -contains 'daemon' -and $null -ne $Status.daemon -and $names -contains 'instances')
+}
+
+# What a daemon stop does about the clients (F-LC1). $Status is the GET
+# /status body or $null; $Unauthorized is true when the daemon answered 401
+# (a token that is not this daemon's); $DaemonAlive is whether labd.pid names
+# a live process. Returns @{ action; close; overridden; refused; warn }:
+#   action 'refuse-leased'       a client is leased and no -Force (exit 3)
+#   action 'refuse-unauthorized' the daemon is alive but refused our token,
+#                                so its leases are unknown (exit 4)
+#   action 'proceed'             stop the daemon, then close the close rows
+# overridden lists the leased clients -Force closes; warn is a message when
+# the clients cannot be known and are left open. Pure.
+function Get-LabdStopPlan($Status, [bool]$Unauthorized, [bool]$DaemonAlive, [bool]$Force) {
+    $plan = @{ action = 'proceed'; close = @(); overridden = @(); refused = @(); warn = $null }
+    if (Test-LabdStatusShape $Status) {
+        $sel = Select-LabClientsToClose $Status $Force
+        if ($sel.refuse.Count -and -not $Force) {
+            $plan.action = 'refuse-leased'
+            $plan.refused = $sel.refuse
+            return $plan
+        }
+        $plan.close = $sel.close
+        $plan.overridden = $sel.refuse
+        return $plan
+    }
+    if (-not $DaemonAlive) { return $plan }
+    if ($Unauthorized -and -not $Force) {
+        $plan.action = 'refuse-unauthorized'
+        return $plan
+    }
+    $plan.warn = 'could not read the daemon''s GET /status; any lab clients it runs are left open (close them by hand; lab doctor lists them)'
+    return $plan
+}
