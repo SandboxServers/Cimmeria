@@ -1,6 +1,6 @@
 ---
 name: weapon-moniker-requirement
-description: CS-07 (2026-10-05) player weapon-moniker gate: where it lives, what python did differently, the 592 redirect removal, and the seed rows it refuses (own-weapon-refused basic attacks, FAIL abilities)
+description: CS-07 (2026-10-05, review fixes 2026-10-10) player weapon-moniker gate: where it lives, what python did differently, the 592 redirect removal, weapon grants on every weapon change, right-click with no RANGED binding, the seed rows it refuses
 metadata:
   type: project
 ---
@@ -22,6 +22,7 @@ CHAN_FEEDBACK line, row `wrong_weapon_refused` (INFO), metric reason
 the Rust loader never selected the column, so any ability fired with any gun.
 
 **How to apply:**
+
 - Python checked it ONLY in the `TargetTarget` branch of `canUse`; Rust checks
   every target type (OD-CS11 is global). 7 self-target + 18 ground-target
   player abilities are newly gated (850 Scattershot, 1486 Rain of Steel, the
@@ -45,5 +46,29 @@ the Rust loader never selected the column, so any ability fired with any gun.
 - Rerun `python tools/ability_mechanics/weapon_requirement_audit.py` after any
   seed change to monikers or grants; doc at
   `docs/analysis/class-start-v6/weapon-requirement-audit.md`.
+
+**Review fixes (2026-10-10, decisions OD-CS14..16 in the class-start-v6 ledger).**
+
+- Weapon-granted abilities are transient, so EVERY path that changes the active
+  weapon must swap them: world entry (`player_init::grant_active_weapon_abilities`,
+  tags before the world-entry known-list send, no extra send), slot change
+  (`active_slot.rs`), and `SyncBandolierItems` / `UpdateBandolierItem`
+  (`bandolier::on_active_weapon_changed`, which also interrupts the warmup
+  with `InterruptReason::ActiveWeaponChanged` and clears last-fired,
+  auto-cycle and the queued attack). "Changed" = different
+  `(instance_id, item_id)` in the active slot; a same-weapon resync must not call it.
+- Right-click (`interaction/hostile_attack.rs`): RANGED binding, else 594
+  unarmed, else NOTHING + "This weapon has no ranged attack." (no 592
+  fallback). 50 ITEM_Rifle sniper rifles got 581 (items_event_sets 2768-2817).
+  Item 5481 Crafted Pistol of the Whale is the one pistol with no RANGED
+  binding: right-click now says "no ranged attack" though 592 works with it.
+- Python parity is narrower than "did the same": TargetTarget only, after the
+  cooldown, and `SGWPlayer.useAbility` never sent onErrorCode for a refusal
+  (`if not status` on a truthy code).
+- 592 itself: cooldown 0 floored to 0.5 s, 150F/15H; right-click's 579 is
+  1.5 s, 100F/10H, so the bar shot is ~4.5x right-click DPS (seed numbers).
+- `wrong_weapon_refused` and the right-click `weapon_unbound` rows are
+  throttled per player via `SpaceManager::ability_refusal_log` (10 s); the
+  metric still counts every press.
 
 Related: [[ability-mechanics-gaps]], [[ability-range-units]].

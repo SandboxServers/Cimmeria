@@ -731,8 +731,8 @@ Not here, on purpose:
 ### 015-weapon-shot-bar
 
 The server swaps a weapon's basic attacks in the known-abilities list when
-the player changes the active bandolier slot, but the action bar is client
-state: a button holding the old weapon's shot keeps it, and the server
+the active weapon changes (a slot change, a drag-equip, a grant into the
+active slot) and sends them at login, but the action bar is client state: a button holding the old weapon's shot keeps it, and the server
 refuses that shot with the new weapon out. 015 appends
 [WeaponShotBar.lua](015-weapon-shot-bar/WeaponShotBar.lua) to
 `ActionProfileDefault1.lua`, after [009](#009-starter-hotbar)'s block, byte
@@ -784,13 +784,17 @@ for byte.
   is logged once and switches the block off for the session; the bar stays
   as it was.
 - **What depends on the server.** The block reads the weapon from the known
-  list, so it follows the weapon only where the server sends the weapon's
-  shot: today on a slot-change request. After a login or a drag-equip with
-  a non-pistol weapon the server does not send it yet (a finding on PR
-  #1271), so the button follows on the next slot change.
-- **Sniper rifles.** `Rifle Auto Attack` (581) is bound to one item; 50
-  `ITEM_Rifle` rifles have no ranged binding, so the list holds no shot for
-  them and the bar is left alone. That is seed data, not this patch.
+  list, so it follows the weapon wherever the server sends the weapon's
+  shot. Since CS-07 (PR #1271) the server does on every active-weapon
+  change: at login (in the world-entry known list), on a slot-change
+  request, on a drag-equip into the active slot, and on a grant into it.
+  Each sends `onKnownAbilitiesUpdate` with the old weapon's shot revoked and
+  the new one's added, which is the update the block listens for.
+- **Sniper rifles.** CS-07 seeded `Rifle Auto Attack` (581) as the RANGED
+  binding of the 50 `ITEM_Rifle` sniper rifles that had none, so with one of
+  them out the list holds 581 and the button follows. A weapon with no
+  RANGED binding at all (a blade, a grenade launcher, a flamethrower) puts
+  no shot in the list, and the bar is left alone.
 - **If 009 is retired.** 015 starts from 009's output, so a manifest without
   009 cannot apply 015 to a fresh install. Retiring 009 (Class Start v6 rule
   L1) needs a successor to 015 that starts from the stock file.

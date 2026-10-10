@@ -64,6 +64,17 @@ D-AT09 (the 1646 starter / Goa'uld tree collision) is resolved for canonical
 profiles by OD-CS04, since 1646 leaves the universal kit; the legacy holding
 states of OD-CS08/09 still carry it until they are removed.
 
+### CS-07 review decisions
+
+Decided by Steven, the maintainer's playtester, on 2026-10-10, after the PR #1271
+review held the packet.
+
+| Id | Decision |
+|---|---|
+| OD-CS14 | **Hotbar shot follows the weapon (option A, client patch).** Patch `015-weapon-shot-bar` (#1281) moves a bar slot holding one weapon shot to the active weapon's shot, and back to 592 when the pistol returns; 592 is in the family. The server's part: the active weapon's granted abilities reach the known list at world entry, on a slot change, on a drag-equip and on a grant into the active slot, and the previous weapon's are revoked. A weapon change through the inventory also interrupts a warmup and clears the last-fired stash and the auto-cycle loop, as a slot change does. |
+| OD-CS15 | **Right-click with no RANGED binding.** The 50 `ITEM_Rifle` sniper rifles that shipped with a clip and a melee binding only are seeded with 581 Rifle Auto Attack (event 7, `items_event_sets`). Every other weapon with no RANGED binding fires nothing on right-click, charges nothing, and shows "This weapon has no ranged attack." instead of WrongWeaponType. |
+| OD-CS16 | **The four FAIL rows stay flagged; no seed change.** 997 Full Mag: Dart Pistol probably carries the wrong tag (`ITEM_Dart_Rifle`, which no item carries; the dart pistols carry `ITEM_DartPistol`). 1246 Stealthed Strike and 1355 Lethal Strike need `ITEM_Melee`, which no item carries (blades carry `ITEM_Blade`; inference). 1250 Escape needs stealth armour monikers a weapon can never carry, and python never checked it (a Self ability): a scope question, not a seed fix. |
+
 ## Preflight findings
 
 Facts checked against the repo and the local client copy. File paths are from
@@ -99,7 +110,8 @@ the repo root.
   visitor into M1561. CS-05 gates them `archetype neq 7` (OD-CS09).
 - **The Rust server enforces no weapon requirement.** The ability loader never
   selects `abilities.item_monikers`; any known ability fires with any weapon.
-  The Python server did (`AbilityManager.py`, WrongWeaponType).
+  The Python server did for `TargetTarget` abilities only, after the cooldown
+  (`AbilityManager.py:528-545`, WrongWeaponType).
   `docs/gameplay/ability-system.md` marks it DONE. Fixed in CS-07 (OD-CS11).
 - **Weapon monikers for the starter rows:** 592 needs ITEM_Pistol (55 has it);
   598 needs ITEM_Automatic_Weapon (21 SGHC 6 has it, **3260 SK37 LMG does not**:
@@ -217,7 +229,7 @@ the live UAT (CS-08).
 | CS-04 | CellBlock: M622 core grant and tutorials, M641 unchanged, M687 five-way loot tables and signatures. As built: chain 1005 (Guard search) grants the pistol, then 592/594/597/1218 as `tutorial`, then shows 5882; chain 1010 is the OD-CS08 holding state. The crate is chains 1192 (Soldier), 1098 (Commando), 1193 (Scientist), 1194 (Archaeologist), 1099 (Loyalist Jaffa) and 1195 (holding state), on loot tables 12, 10, 13, 14, 11 and 10, each class chain granting its `signature`. The class chains show the cooked per-class crate dialogs 2517/4408/4409. Client behaviour (tutorial windows, loot windows, the Abilities list) needs the lab UAT (CS-08). [Worknote](worknotes/CS-04.md). | CS-01a/b, CS-02, CS-03 | Integrated (#1278) |
 | CS-05 | SGC: M1559 core grant and tutorials, M1562 Carter desk SMG, M1569 class rewards and signatures; `archetype neq 7` on the SGC starter chains. | CS-01a/b, CS-02, CS-03 | Built, not yet integrated (#1279; merge after #1273; [worknote](worknotes/CS-05.md)); lab UAT in CS-08 |
 | CS-06 | Free Jaffa start on Dakara_E1 at level 1: authored navmesh-validated spawn and respawner, start gear and grants from the profile. | CS-02 | Folded into CS-02 (spawn (100, -17.4, 230), respawner 610) |
-| CS-07 | Player weapon-moniker requirement (OD-CS11) with the per-ability audit; remove the 592 redirect; weapon basic-attack transience guards; doc fixes. [Audit](weapon-requirement-audit.md): 122 PASS, 4 FAIL data rows, 133 weapon-granted bindings refused by their own weapon. PR #1271. | none | In review (#1271) |
+| CS-07 | Player weapon-moniker requirement (OD-CS11) with the per-ability audit; remove the 592 redirect; weapon basic-attack transience guards; doc fixes. After the review (2026-10-10): the active weapon's own attacks reach the known list at world entry, on a drag-equip and on a grant into the active slot (with the warmup interrupt and last-fired clear of a slot change, OD-CS14); right-click with no RANGED binding answers "This weapon has no ranged attack." and 581 is seeded onto the 50 sniper rifles (OD-CS15); the four FAIL rows stay flagged (OD-CS16). [Audit](weapon-requirement-audit.md): 122 PASS, 4 FAIL, 133 weapon-granted bindings refused by their own weapon, 25 abilities gated by the Rust server only, 270 bandolier weapons with no RANGED binding. PR #1271. | none | In review (#1271) |
 | CS-08 | Live UAT of every buildable profile; final PASS/BLOCKED matrix. | all | Planned |
 
 ## Grant provenance contract (CS-01a)

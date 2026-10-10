@@ -147,7 +147,7 @@ Reported instead of bound, by category: `scope` (a "Secondary" line or `EF_Resol
 
 ## Weapon-requirement audit (Class Start v6 CS-07)
 
-`weapon_requirement_audit.py` is a separate, read-only tool. It audits every player-reachable ability (char-creation grants, archetype tree nodes, trainer lists, `items_event_sets` bindings, content `grant_ability` actions) whose `abilities.item_monikers` is non-empty against the shipped bandolier items' `moniker_ids`, and writes [`docs/analysis/class-start-v6/weapon-requirement-audit.md`](../../docs/analysis/class-start-v6/weapon-requirement-audit.md): PASS/FAIL per ability, the data-correction rows, and the weapon-granted abilities their own weapon does not satisfy. It reads the seeds only, never a database.
+`weapon_requirement_audit.py` is a separate, read-only tool. It audits every player-reachable ability (char-creation and debug-kit grants, archetype tree nodes, trainer lists, `items_event_sets` bindings, and the `params.ability_ids` of content `grant_ability` actions, the only form the content loader accepts) whose `abilities.item_monikers` is non-empty against the shipped bandolier items' `moniker_ids`, and writes [`docs/analysis/class-start-v6/weapon-requirement-audit.md`](../../docs/analysis/class-start-v6/weapon-requirement-audit.md): PASS/FAIL per ability, the FAIL rows with a note each, the self- and ground-targeted abilities only the Rust server gates (python checked `TargetTarget` alone), the bandolier weapons with no RANGED binding (right-click fires nothing with them), and the weapon-granted abilities their own weapon does not satisfy. It reads the seeds only, never a database. `--check` compares content, not line endings, and a write keeps the doc's own line ending; CI runs `--check`.
 
 ```bash
 python tools/ability_mechanics/weapon_requirement_audit.py          # rewrite the doc
@@ -155,4 +155,4 @@ python tools/ability_mechanics/weapon_requirement_audit.py --check  # exit 1 if 
 python tools/ability_mechanics/weapon_requirement_audit.py --stdout # print, write nothing
 ```
 
-`test_weapon_requirement_audit.py` pins the five Class Start starter cases against the seeds. Rerun the script when a seed changes an ability's `item_monikers`, an item's `moniker_ids`, or a player grant.
+`test_weapon_requirement_audit.py` pins the five Class Start starter cases against the seeds, the content-grant parsing, the new sections and the line-ending rule. Rerun the script when a seed changes an ability's `item_monikers`, an item's `moniker_ids`, or a player grant.

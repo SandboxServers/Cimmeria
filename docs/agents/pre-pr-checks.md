@@ -69,10 +69,12 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 # sgw_<worktree> from db/database.sql and runs the same tier in a lane slot.
 tools/build-lane/live-db-test.sh <test-name filter>
 
-# Effect NVP generator (when db/resources/Effects/Seed/ or
-# tools/ability_mechanics/ changes; CI runs both in the test-live-db job).
-# --check fails when a generated block differs from what the tool writes:
+# Effect NVP generator and weapon-requirement audit (when db/resources/
+# seeds or tools/ability_mechanics/ change; CI runs all three in the
+# test-live-db job). --check fails when a generated block or the audit doc
+# differs from what the tool writes:
 python tools/ability_mechanics/effect_nvps_from_desc.py --check
+python tools/ability_mechanics/weapon_requirement_audit.py --check
 python -m unittest discover -s tools/ability_mechanics -p "test_*.py"
 
 # Markdown lint (warn-only — CI surfaces violations as PR annotations but
