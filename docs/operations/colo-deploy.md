@@ -260,7 +260,7 @@ Upgrading SigNoz: [signoz-deployment.md → Upgrading SigNoz](signoz-deployment.
 
 ## When to move off this setup
 
-- **Persistent characters** → an external Postgres via `DB_URL`, and a migration plan for each release.
+- **Persistent characters** → an external Postgres via `DB_URL`, and a migration plan for each release. The proposed design, with the owner decisions it needs, is [architecture/persistent-database-profile.md](../architecture/persistent-database-profile.md) (#1290).
 - **More than one host** → an orchestrator; watchtower doesn't coordinate across nodes.
 - **Staged rollouts** → a CI/CD pipeline with a canary, not a polling auto-updater.
 

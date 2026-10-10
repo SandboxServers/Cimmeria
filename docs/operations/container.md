@@ -110,7 +110,7 @@ That applies regardless of how the path is mounted: anonymous volume, named volu
 
 This is deliberate. The design intent is "ephemeral DB, fresh every deploy" while the schema is still churning, and the reseed lives in the entrypoint because the alternative (relying on `WATCHTOWER_REMOVE_VOLUMES=true` to drop the anonymous volume) does not actually work — watchtower attaches the old volume to the new container before removing the old one, so Docker refuses the deletion and the stale database survives. Observed on the colo on 2026-05-26. The entrypoint's header comment documents the full mechanic.
 
-If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to move off this setup](colo-deploy.md#when-to-move-off-this-setup).
+If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to move off this setup](colo-deploy.md#when-to-move-off-this-setup). A supported persistent profile with migrations is proposed, not built, in [architecture/persistent-database-profile.md](../architecture/persistent-database-profile.md) (#1290).
 
 ### Reset to a fresh server
 
