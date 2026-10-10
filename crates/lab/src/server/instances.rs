@@ -96,6 +96,8 @@ impl Instances {
 
     /// The instance called `name`: by label, else by its lab account name
     /// (both case-insensitive). Lets a caller say `lab2` for the `p2` client.
+    /// A label always wins over an account name; among accounts, the first
+    /// hosted instance wins.
     pub fn by_name(&self, name: &str) -> Option<&Hosted> {
         self.by_label(name).or_else(|| {
             self.iter().find(|h| {
@@ -549,5 +551,83 @@ mod tests {
             panic!("a lease from another instance must be refused");
         };
         assert!(err.message.contains("(instance p2)"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_label_wins_over_another_instances_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let default_account = instance::account_path(dir.path(), None);
+        std::fs::create_dir_all(default_account.parent().unwrap()).unwrap();
+        std::fs::write(&default_account, r#"{"username":"p2","password":"x"}"#).unwrap();
+        let s = LabServer::new_multi(Instances::new(vec![
+            hosted_in("default", None, Some(dir.path().into())),
+            hosted_in("p2", Some("p2"), Some(dir.path().into())),
+        ]));
+        let mut req = call("client_ui_state", json!({ "instance": "p2" }));
+        assert_eq!(routed_label(&s, &s.route(&mut req).unwrap()), "p2");
+    }
+
+    /// The text of a tool result's first content block.
+    fn result_text(result: &rmcp::model::CallToolResult) -> String {
+        let v = serde_json::to_value(result).unwrap();
+        v["content"][0]["text"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn unrouted_lease_status_lists_every_instance_without_the_lease_id() {
+        let s = two();
+        let id = lease_on(&s, "p2");
+        let text = result_text(&s.lab_lease_status().await.unwrap());
+        let v: Value = serde_json::from_str(&text).unwrap();
+        let rows = v["instances"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        for row in rows {
+            for key in ["instance", "account", "lease", "client_pid"] {
+                assert!(row.get(key).is_some(), "{key} missing in {text}");
+            }
+        }
+        assert!(!text.contains(&id), "{text}");
+    }
+
+    #[tokio::test]
+    async fn routed_lease_status_is_the_instances_own() {
+        let s = two();
+        let mut req = call("lab_lease_status", json!({ "instance": "p2" }));
+        let routed = s.route(&mut req).unwrap().unwrap();
+        let text = result_text(&routed.lab_lease_status().await.unwrap());
+        let v: Value = serde_json::from_str(&text).unwrap();
+        assert!(v.get("instances").is_none(), "{text}");
+        assert_eq!(v["instance"], "p2");
+    }
+
+    #[tokio::test]
+    async fn acquire_on_a_routed_instance_reports_it() {
+        let s = two();
+        let mut req = call("lab_lease_acquire", json!({ "instance": "p2" }));
+        let routed = s.route(&mut req).unwrap().unwrap();
+        let args = crate::server::lease::LeaseAcquireArgs {
+            owner: "agent".into(),
+            purpose: "routing test".into(),
+            ttl_s: None,
+            force: false,
+            reason: None,
+        };
+        let result = routed
+            .lab_lease_acquire(rmcp::handler::server::wrapper::Parameters(args))
+            .await
+            .unwrap();
+        let v: Value = serde_json::from_str(&result_text(&result)).unwrap();
+        assert_eq!(v["instance"], "p2");
+        assert!(v.get("account").is_some());
+    }
+
+    #[test]
+    fn a_single_instance_refusal_has_no_suffix() {
+        let s = LabServer::new(supervisor(None));
+        let mut req = call("client_lua_eval", json!({ "lease_id": "nope" }));
+        let Err(err) = s.gate_call(&mut req) else {
+            panic!("an unknown lease must be refused");
+        };
+        assert!(!err.message.contains("(instance"), "{}", err.message);
     }
 }

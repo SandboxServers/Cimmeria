@@ -65,7 +65,7 @@ impl LabServer {
     #[tool(
         description = "Take the lab lease before driving the client: every tool that changes the client, drives its input or UI, runs caller-chosen Lua or native code, or reads a shared event cursor needs the returned lease_id, and each such call renews the lease. One holder per lab instance (one lab account, one client) at a time; pass instance (p2, or an account such as lab2) to pick which client, else the default; a refusal names the holder, their purpose and since when. force: true with a reason takes it over (logged). Default ttl 600 s, max 3600. While nobody holds a lease the watchdog does not relaunch a dead client."
     )]
-    async fn lab_lease_acquire(
+    pub(super) async fn lab_lease_acquire(
         &self,
         Parameters(a): Parameters<LeaseAcquireArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -117,27 +117,27 @@ impl LabServer {
     #[tool(
         description = "Who holds the lab lease (owner, purpose, since, expires_at), the last few leases and how they ended (released, expired, taken over). Never shows a lease id. With several instances and no instance argument, lists every instance with its account, its lease and its client pid."
     )]
-    async fn lab_lease_status(&self) -> Result<CallToolResult, McpError> {
+    pub(super) async fn lab_lease_status(&self) -> Result<CallToolResult, McpError> {
         if self.instances.len() > 1 && !self.routed_explicitly() {
             let mut rows = Vec::new();
             for h in self.instances.iter() {
-                let pid = h
-                    .supervisor
-                    .status()
-                    .await
-                    .ok()
-                    .and_then(|v| v.get("pid").cloned())
-                    .unwrap_or(Value::Null);
                 rows.push((
                     h.label.clone(),
                     h.supervisor.account_name(),
                     h.supervisor.leases().status(),
-                    pid,
+                    json!(h.supervisor.client_pid().await),
                 ));
             }
             return Ok(text(&instances_status(&rows)));
         }
-        Ok(text(&self.supervisor.leases().status()))
+        let mut status = self.supervisor.leases().status();
+        if self.instances.len() > 1 {
+            if let Some(obj) = status.as_object_mut() {
+                obj.insert("instance".into(), json!(self.supervisor.label()));
+                obj.insert("account".into(), json!(self.supervisor.account_name()));
+            }
+        }
+        Ok(text(&status))
     }
 }
 

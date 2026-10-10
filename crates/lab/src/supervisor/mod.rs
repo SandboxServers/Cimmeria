@@ -264,6 +264,9 @@ pub struct Supervisor {
     /// so each lab instance (each lab account) is leased on its own. The
     /// watchdog relaunches a dead client only while it is held.
     leases: Arc<crate::lease::LeaseBook>,
+    /// This instance's lab account name, read once from its account file
+    /// (see [`Supervisor::account_name`]).
+    account: std::sync::OnceLock<Option<String>>,
 }
 
 impl Supervisor {
@@ -275,6 +278,7 @@ impl Supervisor {
             state: Arc::new(Mutex::new(SupervisorState::new())),
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
+            account: std::sync::OnceLock::new(),
         }
     }
 
@@ -300,9 +304,34 @@ impl Supervisor {
         self.instance().unwrap_or("default")
     }
 
-    /// This instance's lab account name (`username` of its lab-account file), if readable.
+    /// The running client's pid from supervisor state: no bridge call, so it
+    /// never blocks on a wedged client.
+    pub async fn client_pid(&self) -> Option<u32> {
+        self.state.lock().await.pid
+    }
+
+    /// This instance's lab account name (`username` of its lab-account file), if
+    /// readable. Read once and cached; an unreadable file is logged once.
     pub fn account_name(&self) -> Option<String> {
-        self.lab_account().map(|a| a.username)
+        self.account
+            .get_or_init(|| {
+                let dir = self.config.install_dir.as_deref()?;
+                let path = instance::account_path(dir, self.instance());
+                match session_file::read_lab_account_at(&path) {
+                    Ok(account) => Some(account.username),
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "lab.instance",
+                            instance = self.label(),
+                            path = %path.display(),
+                            error = %error,
+                            "lab account file unreadable; this instance cannot be routed by account name"
+                        );
+                        None
+                    }
+                }
+            })
+            .clone()
     }
 
     /// Proxy a phase-1 client tool call through the bridge, journaling it
