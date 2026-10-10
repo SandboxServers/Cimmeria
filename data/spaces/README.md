@@ -117,6 +117,8 @@ column as a comparison between meshes, not as a coverage figure.
 | `sewer_falls.nav` | 0.3 / 1.3 / chunk grid | 13,317 / 6,831 / 18,727 | 9.7 M | 139 | 0.77 MB | 7.5 s | none seeded | advisory |
 | `tollana.nav` | 0.45 / 2.5 / chunk grid, 1,554 tiles, `ch=0.3` | 96,191 / 45,493 / 124,603 | 115 K | 1,215 | 5.8 MB | 30 s | 5/5 | advisory |
 | `tollana_curia.nav` | 0.3 / 1.3 / chunk grid | 64 / 33 / 95 | 0.1 M | 1 | 4 KB | 0.1 s | none seeded | advisory |
+| `cimmerialab.nav` | 0.3 / 1.3 / `-53,-67,160,120` | 701 / 339 / 964 | 0.2 M | 7 | 39 KB | 0.1 s | none seeded | advisory |
+| `mapperdebug.nav` | 0.3 / 1.3 / chunk grid, Y-clipped | 753 / 420 / 1,112 | 1.1 M | 4 | 52 KB | 0.5 s | none seeded | advisory |
 
 Recast's caps, for reading the table: spans ≤ 16,777,215, contour vertices
 < 65,534, adjacency edges ≤ 65,535. Build time is NavBuilder alone; loading
@@ -217,10 +219,47 @@ terrain, where the two meshes' detail triangles disagree by more than the
 none of the seven has a component under 10 m² (NavBuilder's seam filter;
 without it Agnos had 1,262).
 
+### Custom-map worlds (2026-10-10)
+
+`cimmerialab.nav` (world 1301) and `mapperdebug.nav` (world 1302) were built
+from the locally installed package sets in
+[docs/analysis/custom-debug-map/](../../docs/analysis/custom-debug-map/README.md),
+not the 2009 client, with the NA26 parameters above and `--interp-actors
+classify`. They are named after the world, because no other world shares
+either client map. Each mesh only matches the package it was built from:
+**rebuild it whenever the installed map changes.** The packages it was built
+from, by SHA-256:
+
+| Mesh | Package | SHA-256 |
+|---|---|---|
+| `cimmerialab.nav` | `Cimmeria_Lab1-00000000.umap` (Worldforge v9) | `D1D7FD9DC656BC7BD0BD7244149EA1AB269C0B19DB32EE272A7AB6C016DE0C7B` |
+| `mapperdebug.nav` | `Debug.umap` | `7F3C7EB435439D77BF39ABB1079A76DF0C8DDCC99543A8752EF6F273B83B5D6A` |
+| | `Debug-00000000.umap` | `347CC506B48389D12E7214E19B0D7C1A776C6E68243FCFBC783F71E658198C41` |
+| | `Debug-00000001.umap` | `749389DF495EE7165BC94FA2CF8F841B43799C3C6D373536CA50D93D059EAF0B` |
+| | `Debug-00010000.umap` | `FBA34B31801B5CFC5A7E8740568DA30B96032333259EC25D032FCFB0F08BDFBB` |
+| | `Debug-00010001.umap` | `65487D788EBE5D47ADB091E724EFA6D96F38C1B7A192A890CE48C82A5F6BF34F` |
+
+- **CimmeriaLab**: one chunk, 81 of 82 mesh actors resolved plus terrain.
+  The crop is the geometry's extent plus 20 m. The four-hall assembly is one
+  2,936 m² component, and `.gotolocation CimmeriaLab 0 2 0` lands 1.06 m
+  from its edge. The terrain is a separate 9,995 m² component.
+- **MapperDebug**: four chunks, terrain-heavy. Only 13 of 38 actors resolve:
+  20 are prefab archetype instances with no component reference, so props
+  placed that way are missing from the mesh. Chunk `00000000` carries a
+  backdrop that spans about 1.6 km and reaches y −951. Its underside built
+  as a 58,000 m² walkable sheet, so every triangle with a vertex outside
+  y −50 to 100 was dropped from the chunk OBJs before NavBuilder ran (510
+  triangles, all in that chunk). The header's Y bounds still reflect the
+  unused backdrop vertices. The gate-apron arrival point (40, 2, 177) sits
+  0.10 m from the main 38,212 m² terrain component.
+
+Neither world has an occluder yet, so line of sight fails open there.
+
 ## Worlds without a mesh
 
 The server only creates spaces for the worlds in `entities/spaces.xml`.
-The 24 shipped-map worlds there each have a file; `DebugArea` reads its
+The 24 shipped-map worlds there each have a file, and so do `CimmeriaLab`
+and `MapperDebug`; `DebugArea` reads its
 client map's, and the seven historical CellBlocks have none (see the rule at
 the top). The other 67 `resources.worlds` rows (mission
 test maps, `Tol-Alpha` / `Ca-Alpha` pockets, and worlds whose map is not in

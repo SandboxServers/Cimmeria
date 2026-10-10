@@ -1,0 +1,698 @@
+# Unified UAT, section "First session" (the smoke run).
+# Guide: docs/guides/unified-uat.md#first-session-smoke
+#
+# What a brand-new player does in their first ten minutes, once per
+# faction: boot the client, log in, pick the server, create a character,
+# enter the world, and finish the first quest. Nothing here depends on
+# NPC movement, combat, abilities or AI, so every row should pass on any
+# healthy build. A failure here means the build is broken for every new
+# player; the subsystem sections take over from there.
+#
+#   Praxis: Castle_CellBlock (world 12), mission 622 "Arm Yourself!":
+#     search Cpl. Frost (step 2113 -> 80623), search the NID Guard
+#     (80623 -> 80622, pistol to the backpack), equip the pistol (complete).
+#     Chains 1001-1005 in db/resources/Content/Seed/castle_cellblock_chains.sql.
+#   SGU: SGC_W1 (world 58), mission 1559 "Orientation": General Hammond
+#     (4612 -> 4613), Teal'c (-> 4614), the elevator controls (dialog 5357
+#     moves you to the armory), the firearm body (complete).
+#     Chains 3001-3008 in db/resources/Content/Seed/sgc_w1_chains.sql.
+#
+# How the rows are built:
+# - Rows run in file order and build on each other: FS-01 boots, FS-02
+#   logs in, the P and S rows each make, enter and play one character.
+#   Run the whole section in one call, or pass the same run_dir.
+# - The rows make their own characters (Px<run id> and Sx<run id>) rather
+#   than using `character = "fresh"`: the runner names a fresh character
+#   from the run id alone, so two fresh sections in one run would collide.
+#   Every row is therefore `state = "any"` and drives login and play
+#   itself; there is no `.bug` anchor (it needs `state = "in_world"`).
+# - The graded proof of progress is the server's own record, sgw_mission
+#   and sgw_player, read with server_db_query (status 1 active, 2
+#   completed). That needs CIMMERIA_LAB_MCP_URL/_TOKEN; without them those
+#   clauses are UNVERIFIED, never a false PASS.
+# - Each interaction row moves the player next to its object in setup
+#   with /gmgotoxyz (tier G, 3-4.5 m off and to the side, interact range is
+#   5 m) and makes the player immune with /gmsetgodmode 1, so the step is
+#   one real click. No player walking, no NPC pathing. The Praxis points
+#   are calibrated (below); the SGU points are still computed from the
+#   spawn rows: if a click misses, move the point, not the step.
+# - Corpses with no display name (the Guard, the SGC firearm body) are
+#   clicked by their spawn point; named ones by name.
+# - FS-99 deletes both characters.
+#
+# Calibration (Praxis rows measured live on the colo, 2026-10-10, client
+# window 1280x720; the SGU rows are not calibrated yet). Every value is
+# fixed here so a driver needs no judgement:
+#
+#   What                     Value                    Why / what breaks without it
+#   first-login wait         17 s after Play          server HOLD_DURATION 16 s from onClientReady;
+#                                                     before it, no NPCs exist and clicks and chat
+#                                                     are swallowed. MoviePlayerWin is NOT the
+#                                                     signal (it hides after ~2 s).
+#   camera pitch             +200 counts (+21.97 deg  a new character starts level (0 deg, zoom
+#                            from level, zoom 250),   250), where a floor body sits under the
+#                            then the face re-pitches avatar and the HUD ring. The face that
+#                            to -28.8 deg             follows re-centres the target vertically and
+#                                                     lands on -28.8 deg each time; every passing
+#                                                     click ran there. Both are graded (`pitch`,
+#                                                     `aim-pitch`, FS-P4 `pitch`).
+#   camera yaw               face the target, then    the teleport keeps whatever facing the player
+#                            +230 yaw counts          had, so a click could land on the avatar (hover
+#                            (= +25.3 deg)            = own entity). Facing puts the target behind
+#                                                     the avatar's head; +25 deg moves it to screen
+#                                                     x ~430. Clicks pass rotate_camera = false.
+#   Frost stand-off          (-325.0, 73.6, -212.8)   4.2 m to the side of Frost (-328.3, -210.27).
+#                                                     Straight behind (the first guess) put him
+#                                                     under the HUD ring.
+#   Guard stand-off          (-319.0, 73.6, -212.5)   4.4 m to the side of the body (-322.51,
+#                                                     -209.83); straight behind, the avatar eats
+#                                                     the click (hover = own entity 2).
+#   Guard click point        y 73.75 (origin +0.28)   the body never answers an entity hover; a
+#                                                     point click on its torso does.
+#   order after the Guard    tutorial X, then dialog  TutorialWin (dialog 5882, 3 pages) opens on
+#                                                     top of DialogWin, sometimes seconds later, and
+#                                                     a Done click on the dialog lands on the
+#                                                     tutorial's Next. Its title-bar X closes it
+#                                                     from any page.
+#   equip                    by name                  the item id is only known at grading time.
+#
+# Resuming a run that stopped part-way:
+# - Pass the stopped run's `run_dir`: run.json keeps the run id, so the
+#   rows still name Px<run id> and Sx<run id>.
+# - The rows are not idempotent: progress is in sgw_mission, so a stage
+#   that already passed fails when rerun (its step has moved on). Resume
+#   from the first row that did not pass, never from the top.
+# - A row assumes the client is in world as its faction's character. After
+#   a client restart or relog, rerun FS-01, FS-02 and the faction's enter
+#   row (FS-P2 or FS-S2) first; skip FS-P1/FS-S1, which would fail with
+#   the name taken. Then `rows: [<the failed row>, ...]`.
+# - FS-P4 starts from FS-P3's camera, and a relog levels it. Resuming at
+#   FS-P4 after a relog, call `client_camera {pitch_counts: 200}` once
+#   first, so FS-P4's own face starts tilted as in a full run; from level
+#   it stops at about -19 deg and FS-P4's `pitch` clause fails.
+# - To start over instead, run FS-99 on the old run_dir (it deletes both
+#   characters), then a fresh run.
+
+schema = 1
+
+[section]
+id = "first-session"
+system = "First session smoke (boot to first quest, Praxis and SGU)"
+guide = "docs/guides/unified-uat.md#first-session-smoke"
+ledger = "docs/guides/automated-uat.md#spec-coverage"
+account = "gm"
+character = "lab"
+
+# ================================================================ Boot and login
+
+[[row]]
+id = "FS-01"
+title = "The client boots with the lab bridge alive"
+expected = "SGW.exe starts, the lab telemetry DLL is injected and its heartbeat is alive."
+state = "client_stopped"
+step = [
+  { tool = "lab_client_start", args = {}, tier = "N1", label = "boot" },
+  { wait_ms = 5000 },
+]
+[[row.expect]]
+id = "running"
+text = "the client process is running"
+source = "tool"
+tool = "lab_client_status"
+pointer = "/running"
+op = "truthy"
+[[row.expect]]
+id = "heartbeat"
+text = "the bridge heartbeat is alive"
+source = "tool"
+tool = "lab_client_status"
+pointer = "/heartbeat/state"
+op = "eq"
+value = "alive"
+
+[[row]]
+id = "FS-02"
+title = "Login and server select reach character select"
+expected = "Intro movies skip; the account logs in; the server row is picked and Select reaches character select."
+state = "any"
+step = [
+  { tool = "@login", args = {}, label = "login" },
+]
+[[row.expect]]
+id = "char-select"
+text = "the supervisor saw character select"
+source = "tool"
+tool = "lab_client_status"
+pointer = "/login_state"
+op = "eq"
+value = "character_select"
+[[row.expect]]
+id = "char-select-win"
+text = "the character select window is up"
+source = "lua"
+chunk = "return CharSelectWin ~= nil and CharSelectWin:isVisible()"
+op = "truthy"
+[[row.expect]]
+id = "list-read"
+text = "the character list reads"
+source = "tool"
+tool = "lab_characters"
+pointer = "/count"
+op = "gte"
+value = 0
+[[row.expect]]
+id = "timing"
+text = "boot-to-character-select login takes under two minutes"
+source = "timing"
+action = "login"
+max_ms = 120000
+required = false
+
+# ================================================================ Praxis
+
+[[row]]
+id = "FS-P1"
+title = "Create a Praxis Soldier"
+expected = "The character is created and listed; the server stores it as Praxis in Castle_CellBlock."
+state = "any"
+setup = [
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
+]
+step = [
+  { tool = "lab_create_character", args = { first = "Uat", last = "Px${run_id}", alignment = "praxis", archetype = "Soldier", gender = "male" }, tier = "N1", label = "create" },
+]
+[[row.expect]]
+id = "stored"
+text = "sgw_player holds the character as Praxis (1) in Castle_CellBlock"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM sgw_player WHERE player_name ILIKE '%px${run_id}%' AND alignment = 1 AND world_location = 'Castle_CellBlock'" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 1
+
+[[row]]
+id = "FS-P2"
+title = "The Praxis character enters Castle_CellBlock"
+expected = "Play loads world 12; the HUD is up; dialog 2982 (\"The last thing you remember...\") is open; mission 622 is active on step 2113."
+state = "any"
+step = [
+  { tool = "@play", args = { name = "Px${run_id}" }, label = "play" },
+  # First login plays the 13 s logo movie (Cine-SGWLogo). The server holds
+  # every entity introduction for HOLD_DURATION = 16 s from onClientReady
+  # (crates/base-world-entry/.../cinematic_aoi_hold), and until then dialog
+  # clicks do nothing and chat commands are swallowed. The client sends
+  # nothing when the movie ends on its own and MoviePlayerWin hides within
+  # ~2 s, so no client signal marks the end: wait out the server's hold
+  # (Play returns just after onClientReady). `movie-over` proves it.
+  { wait_ms = 17000, label = "movie-over" },
+]
+[[row.expect]]
+id = "world"
+text = "the client is in world 12 (Castle_CellBlock)"
+source = "tool"
+tool = "@player_state"
+args = { stats = false, effects = false }
+pointer = "/world_id"
+op = "eq"
+value = 12
+[[row.expect]]
+id = "who"
+text = "the client plays the new character"
+source = "tool"
+tool = "@player_state"
+args = { stats = false, effects = false }
+pointer = "/name"
+op = "contains"
+value = "${run_id}"
+[[row.expect]]
+id = "movie-over"
+text = "the first-login movie has ended and the world is introduced (Corporal Frost is known)"
+source = "tool"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/count"
+op = "gte"
+value = 1
+[[row.expect]]
+id = "dialog-2982"
+text = "the arrival dialog is 2982"
+source = "tool"
+tool = "client_ui_state"
+pointer = "/dialog/text"
+op = "contains"
+value = "The last thing you remember"
+[[row.expect]]
+id = "mission-622"
+text = "sgw_mission: 622 active on step 2113"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status, m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 2113
+[[row.expect]]
+id = "timing"
+text = "Play to HUD in under 90 s"
+source = "timing"
+action = "play"
+max_ms = 90000
+required = false
+
+[[row]]
+id = "FS-P3"
+title = "Search Cpl. Frost's corpse"
+expected = "Dialog 3995 opens; Frost's Letter is granted (mission 1360 accepted); 622 advances to step 80623."
+state = "any"
+setup = [
+  { tool = "@finish_dialog", args = {} },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = "/gmgotoxyz -325.0 73.6 -212.8", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  # A new character's camera starts level (pitch 0, zoom 250) behind the
+  # avatar. 200 counts at the client's gain of 20 tilts it down 21.97 deg,
+  # so bodies on the floor clear the avatar and the HUD ring. Relative:
+  # the `pitch` clause fails if the start was not level.
+  { tool = "@camera", args = { pitch_counts = 200 }, label = "pitch" },
+  # Yaw is not fixed by the teleport. Face Frost: from the +22 deg tilt he
+  # sits outside the vertical margin, so the face also re-pitches, to
+  # -28.8 deg every time (`aim-pitch` grades it). Then turn 230
+  # counts (+25.3 deg) so he sits left of the avatar instead of behind it;
+  # rotate_camera = false keeps the click from turning it back.
+  { tool = "@camera", args = { face_name = "Corporal Frost" } },
+  { tool = "@camera", args = { yaw_counts = 230 }, label = "aim" },
+  { tool = "@world_click", args = { name = "Corporal Frost", button = "right", expect = "window", rotate_camera = false }, label = "frost" },
+  { wait_ms = 1500 },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "pitch"
+text = "the camera is tilted 22 deg down at the default zoom"
+source = "tool"
+at = "pitch"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = 22.0
+tolerance = 1.0
+[[row.expect]]
+id = "aim"
+text = "Corporal Frost is on screen left of the avatar (screen x below 560 of 1280)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/screen/0"
+op = "lt"
+value = 560
+[[row.expect]]
+id = "aim-on-screen"
+text = "Corporal Frost projects inside the window (screen x above 0)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/screen/0"
+op = "gt"
+value = 0
+[[row.expect]]
+id = "aim-near"
+text = "the teleport landed: Corporal Frost is within interact range (5 m)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { name = "Corporal Frost" }
+pointer = "/matches/0/distance_m"
+op = "lt"
+value = 5
+[[row.expect]]
+id = "aim-pitch"
+text = "after facing Frost the camera looks at him at the calibrated pitch (-28.8 deg; the face re-centres him vertically)"
+source = "tool"
+at = "aim"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = -28.8
+tolerance = 3.0
+[[row.expect]]
+id = "zoom"
+text = "the camera is at the default zoom (250)"
+source = "tool"
+at = "pitch"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/zoom"
+op = "approx"
+value = 250.0
+tolerance = 1.0
+[[row.expect]]
+id = "step-80623"
+text = "sgw_mission: 622 on step 80623"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 80623
+[[row.expect]]
+id = "letter-1360"
+text = "sgw_mission: 1360 (Frost's Letter) active"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 1360" }
+pointer = "/rows/0/status"
+op = "eq"
+value = 1
+
+[[row]]
+id = "FS-P4"
+title = "Search the NID Guard's corpse"
+expected = "Dialog 3996 opens; a SI 3 9mm Pistol lands in the backpack; 622 advances to step 80622."
+state = "any"
+known_issues = ["K5"]
+notes = "The Guard corpse has no display name, so the click goes to its spawn point. K5: if it is invisible, the click finds nothing and the row fails on step-80622."
+setup = [
+  { chat = "/gmgotoxyz -319.0 73.6 -212.5", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  # Same aim as FS-P3: face the body's point, turn 230 counts, click.
+  { tool = "@camera", args = { face_point = { x = -322.51, y = 73.75, z = -209.83 } } },
+  { tool = "@camera", args = { yaw_counts = 230 }, label = "aim" },
+  { tool = "@world_click", args = { point = { x = -322.51, y = 73.75, z = -209.83 }, button = "right", expect = "window", rotate_camera = false }, label = "guard" },
+  # The click also opens the "Equipping a Weapon" tutorial (dialog 5882),
+  # sometimes a few seconds later. It sits exactly on top of DialogWin, so
+  # a Done click on the dialog lands on the tutorial's Next arrow instead.
+  # Close the tutorial first with its title-bar X (works from any of its
+  # three pages; Done shows only on the last), then finish the dialog.
+  { tool = "@wait_for", args = { lua_condition = "TutorialWin ~= nil and TutorialWin:isVisible()", timeout_ms = 10000 } },
+  { tool = "@window_click", args = { target = "TutorialWin__auto_closebutton__" }, label = "tutorial-x" },
+  { wait_ms = 500 },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+  { wait_ms = 1500 },
+]
+[[row.expect]]
+id = "pitch"
+text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a relog) the face stops at about -19 and the click is unproven: resume per the header"
+source = "tool"
+at = "aim"
+tool = "@camera"
+args = { pitch_counts = 0 }
+pointer = "/view_after/pitch_offset_deg"
+op = "approx"
+value = -28.8
+tolerance = 3.0
+[[row.expect]]
+id = "landed"
+text = "the teleport landed at the Guard stand-off (server x -319.0)"
+source = "tool"
+at = "aim"
+tool = "@entity_find"
+args = { include_player = true, limit = 1 }
+pointer = "/player/position/server/x"
+op = "approx"
+value = -319.0
+tolerance = 0.5
+[[row.expect]]
+id = "step-80622"
+text = "sgw_mission: 622 on step 80622 (equip the pistol)"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 80622
+[[row.expect]]
+id = "pistol-in-pack"
+text = "the client's backpack holds a pistol"
+source = "tool"
+tool = "@inventory"
+args = { containers = ["Main"] }
+pointer = "/containers[name=Main]/slots[name=SI 3 9mm Pistol]/item_id"
+op = "exists"
+[[row.expect]]
+id = "tutorial-closed"
+text = "the weapon tutorial and the search dialog were shown and closed"
+source = "tool"
+tool = "@wait_for"
+args = { lua_condition = "TutorialWin ~= nil and not TutorialWin:isVisible() and not DialogWin:isVisible()", timeout_ms = 2000 }
+pointer = "/met"
+op = "eq"
+value = true
+
+[[row]]
+id = "FS-P5"
+title = "Equip the looted pistol: 622 completes"
+expected = "Equipping the pistol from the backpack plays the door sequence and completes mission 622."
+state = "any"
+setup = [
+  { tool = "@finish_dialog", args = {}, optional = true },
+]
+step = [
+  { tool = "@inventory", args = { containers = ["Main"] }, label = "read-pack" },
+  { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
+  { wait_ms = 3000 },
+  # item_action opened the bag; close it so the next row starts clean.
+  { tool = "@key", args = { key = "b" }, label = "close-bag" },
+  { tool = "@wait_for", args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 3000 } },
+]
+[[row.expect]]
+id = "pistol-id"
+text = "the looted pistol's id is read from the backpack"
+source = "tool"
+at = "read-pack"
+tool = "@inventory"
+args = { containers = ["Main"] }
+pointer = "/containers[name=Main]/slots[name=SI 3 9mm Pistol]/item_id"
+op = "exists"
+[[row.expect]]
+id = "complete-622"
+text = "sgw_mission: 622 completed (status 2)"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+pointer = "/rows/0/status"
+op = "eq"
+value = 2
+[[row.expect]]
+id = "bag-closed"
+text = "the bag is closed again"
+source = "tool"
+tool = "@wait_for"
+args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 2000 }
+pointer = "/met"
+op = "eq"
+value = true
+
+# ================================================================ SGU
+
+[[row]]
+id = "FS-S1"
+title = "Create an SGU Soldier"
+expected = "The character is created and listed; the server stores it as SGU in SGC_W1."
+state = "any"
+setup = [
+  { tool = "@logout", args = {} },
+  { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}", "Px${run_id}"] } },
+]
+step = [
+  { tool = "lab_create_character", args = { first = "Uat", last = "Sx${run_id}", alignment = "sgu", archetype = "Soldier", gender = "male" }, tier = "N1", label = "create" },
+]
+[[row.expect]]
+id = "stored"
+text = "sgw_player holds the character as SGU (2) in SGC_W1"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM sgw_player WHERE player_name ILIKE '%sx${run_id}%' AND alignment = 2 AND world_location = 'SGC_W1'" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 1
+
+[[row]]
+id = "FS-S2"
+title = "The SGU character enters SGC_W1"
+expected = "Play loads world 58; the HUD is up; mission 1559 is active on step 4612."
+state = "any"
+step = [
+  { tool = "@play", args = { name = "Sx${run_id}" }, label = "play" },
+  # The first-login movie's 16 s entity hold, as in FS-P2.
+  { wait_ms = 17000, label = "movie-over" },
+]
+[[row.expect]]
+id = "world"
+text = "the client is in world 58 (SGC_W1)"
+source = "tool"
+tool = "@player_state"
+args = { stats = false, effects = false }
+pointer = "/world_id"
+op = "eq"
+value = 58
+[[row.expect]]
+id = "who"
+text = "the client plays the new character"
+source = "tool"
+tool = "@player_state"
+args = { stats = false, effects = false }
+pointer = "/name"
+op = "contains"
+value = "${run_id}"
+[[row.expect]]
+id = "mission-1559"
+text = "sgw_mission: 1559 active on step 4612"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status, m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%sx${run_id}%' AND m.mission_id = 1559" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 4612
+[[row.expect]]
+id = "timing"
+text = "Play to HUD in under 90 s"
+source = "timing"
+action = "play"
+max_ms = 90000
+required = false
+
+[[row]]
+id = "FS-S3"
+title = "General Hammond's briefing"
+expected = "Right-click Hammond: dialog 5354; finishing it advances 1559 to step 4613."
+state = "any"
+setup = [
+  { tool = "@finish_dialog", args = {}, optional = true },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = "/gmgotoxyz 200.5 1.4 47.0", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  { tool = "@world_click", args = { name = "General Hammond", button = "right", expect = "window" }, label = "hammond" },
+  { wait_ms = 1500 },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "step-4613"
+text = "sgw_mission: 1559 on step 4613"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%sx${run_id}%' AND m.mission_id = 1559" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 4613
+
+[[row]]
+id = "FS-S4"
+title = "Teal'c"
+expected = "Right-click Teal'c: dialog 5355; finishing it advances 1559 to step 4614."
+state = "any"
+setup = [
+  { chat = "/gmgotoxyz 177.3 1.4 46.7", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Teal", button = "right", expect = "window" }, label = "tealc" },
+  { wait_ms = 1500 },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "step-4614"
+text = "sgw_mission: 1559 on step 4614"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%sx${run_id}%' AND m.mission_id = 1559" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 4614
+
+[[row]]
+id = "FS-S5"
+title = "The elevator controls take you to the armory"
+expected = "Right-click the Elevator Controls: dialog 5357; finishing it completes objectives 5353 and 5358 and moves you to the armory (about -123.6, -246.9)."
+state = "any"
+setup = [
+  { chat = "/gmgotoxyz 237.6 1.4 18.1", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Elevator Controls", button = "right", expect = "window" }, label = "elevator" },
+  { wait_ms = 1500 },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+  { wait_ms = 4000 },
+]
+[[row.expect]]
+id = "objectives"
+text = "sgw_mission: objectives 5353 and 5358 completed"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT (m.completed_objective_ids @> ARRAY[5353, 5358]) AS done FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%sx${run_id}%' AND m.mission_id = 1559" }
+pointer = "/rows/0/done"
+op = "truthy"
+[[row.expect]]
+id = "moved"
+text = "the client stands near the armory drop point (server x about -123.6)"
+source = "tool"
+# Server metres: @player_state reports client units (x = server z * 100).
+tool = "@entity_find"
+args = { include_player = true, limit = 1 }
+pointer = "/player/position/server/x"
+op = "approx"
+value = -123.6
+tolerance = 6
+
+[[row]]
+id = "FS-S6"
+title = "Pick up the firearm: 1559 completes"
+expected = "Right-click the firearm body: 1559 completes, a pistol (item 55) lands in the backpack, dialog 5358 opens."
+state = "any"
+notes = "The firearm body's display name is empty, so the click goes to its spawn point."
+setup = [
+  { chat = "/gmgotoxyz -85.7 1.4 -245.2", tier = "G" },
+  { wait_ms = 2500 },
+]
+step = [
+  { tool = "@world_click", args = { point = { x = -85.67, y = 1.6, z = -248.61 }, button = "right", expect = "any" }, label = "firearm" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@finish_dialog", args = {}, optional = true },
+]
+[[row.expect]]
+id = "complete-1559"
+text = "sgw_mission: 1559 completed (status 2)"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%sx${run_id}%' AND m.mission_id = 1559" }
+pointer = "/rows/0/status"
+op = "eq"
+value = 2
+
+# ================================================================ Cleanup
+
+[[row]]
+id = "FS-99"
+title = "Delete both smoke characters"
+expected = "Back at character select, both Px and Sx characters are deleted."
+state = "any"
+setup = [
+  { tool = "@logout", args = {}, optional = true },
+]
+step = [
+  { tool = "lab_delete_character", args = { name = "Px${run_id}" }, tier = "N1", optional = true },
+  { tool = "lab_delete_character", args = { name = "Sx${run_id}" }, tier = "N1", optional = true },
+]
+[[row.expect]]
+id = "gone"
+text = "sgw_player holds neither character"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT count(*) AS n FROM sgw_player WHERE player_name ILIKE '%x${run_id}%'" }
+pointer = "/rows/0/n"
+op = "eq"
+value = 0

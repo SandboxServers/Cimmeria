@@ -290,6 +290,7 @@ corrupt shared state.
 | Path | Events | Coverage |
 |---|---:|---|
 | [`crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl`](../../crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl) | 5 (+1 header line) | Head of a Castle Cellblock capture — enough to pin the JSONL loader in `tests/it/trace_load.rs`. |
+| [`crates/wireclient/tests/fixtures/praxis_start_tap.json`](../../crates/wireclient/tests/fixtures/praxis_start_tap.json) | 84 | The lab server's packet tap (`server_packet_tap_read`, both directions, decoded) for one new Praxis character from the arrival dialog to mission 622 complete, on the colo, 2026-10-10. Not loaded by a test yet: it is the input and oracle for the Phase 4 script's first stage ([below](#praxis-start-the-wire-sequence)). |
 
 ### Planned, not in the repo
 
@@ -311,6 +312,28 @@ New corpora are added by:
    <slug>.jsonl --label <slug>`.
 3. Adding the JSONL to the test corpus directory and a smoke module to
    `crates/wireclient/tests/it/` (declared in its `main.rs`).
+
+## Praxis start: the wire sequence
+
+The lab's `first-session` UAT rows FS-P2 to FS-P5 drive the real client through mission 622 "Arm Yourself!" ([spec](../guides/uat-specs/first-session.toml)). With the packet tap on, a whole run is ten client calls besides movement (`avatarUpdateExplicit`), `perfStats` and `requestEntityUpdate`. This is what a wireclient script has to send; character creation happens before the tap can attach and is not in the capture.
+
+| # | Client call | Arguments | The server answers with |
+|---|---|---|---|
+| 1 | `dialogButtonChoice` (cell 75) | dialog 2982, choice -1 | (closes the arrival dialog) |
+| 2 | `gmGotoXYZ` (cell 163) | (-325.0, 73.6, -212.8) | SYSTEM chat confirming the teleport; an undecoded method 27 to a nearby NPC |
+| 2a | `triggerClientHintedGenericRegion` (cell 85) | region 14, leaving, at the new position | (the client reports leaving `Castle_Cellblock.Region1`) |
+| 3 | `interact` (cell 74) | Corporal Frost's entity id | `onDialogDisplay` 3995; `InteractionType` 0 on Frost and 0x40000000 on the Guard's body; 622's step 2113 done, step 80623 started; mission 1360 accepted |
+| 4 | `dialogButtonChoice` | 3995, -1 | |
+| 5 | `gmGotoXYZ` | (-319.0, 73.6, -212.5) | |
+| 6 | `interact` | the NID Guard body's entity id | `onDialogDisplay` 3996; step 80623 done, 80622 started; `onKnownAbilitiesUpdate` [597, 1218, 592, 594]; `onDialogDisplay` 5882 (the weapon tutorial) for the player |
+| 7 | `dialogButtonChoice` | 5882, -1 | |
+| 8 | `dialogButtonChoice` | 3996, -1 | |
+| 9 | `moveItem` (msg 166) | raw `[0, <pistol item id>, 3, 1, 1]`: the pistol to the bandolier, slot 1 (field meanings not confirmed) | `onSequence` 10000; step 80622 done; `onMissionUpdate` 622 status 1 (complete); `onSequence` 1872 |
+
+- Entity ids are per space instance (Frost was 100402, 100659, 100705 and 100751 in four runs), so a script finds Frost and the body by template from `CREATE_ENTITY`: that needs the Phase 3 entity mirror.
+- A new character's first `CREATE_ENTITY` burst arrives 16 s after `onClientReady` (the first-login movie's AoI hold, `cinematic_aoi_hold::HOLD_DURATION`) unless the client sends `cancelMovie`.
+- The server's own record is the oracle: `sgw_mission` 622 status 2, 1360 status 1 (what the lab rows grade).
+- No server inventory message appears in the tap after `moveItem`; check whether the tap covers base-entity traffic before relying on it for inventory.
 
 ## sparbot: a duel partner for solo testing
 

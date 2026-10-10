@@ -17,6 +17,7 @@
 //!   time, read from outside the process.
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
+//! - [`lifecycle`] — `lab_client_start` / `_stop` / `_restart`.
 //! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
 //! - [`cegui_native`] — the client's own CEGUI `System` injectors (cursor
 //!   motion, buttons, drag-drop), called on its main thread.
@@ -46,6 +47,7 @@ pub mod input;
 pub mod instance;
 pub mod instance_profile;
 pub mod keys;
+mod lifecycle;
 pub mod login_servers;
 pub mod main_thread;
 pub mod process;
@@ -472,74 +474,6 @@ impl Supervisor {
             st.watchdog = HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER);
         }
         Ok(pid)
-    }
-
-    /// `lab_client_start` — launch suspended, inject the lab DLL, resume.
-    pub async fn start(&self, server_override: Option<String>) -> Result<Value, String> {
-        {
-            let st = self.state.lock().await;
-            if let Some(pid) = st.pid {
-                if process::is_alive(pid) {
-                    return Err(format!(
-                        "a client is already running (pid {pid}); stop it first"
-                    ));
-                }
-            }
-        }
-        // A client the lab did not start (the launcher, a player) is not
-        // the lab's to stop or to share a machine with. Another lab
-        // instance's client is fine, up to the cap ([`instance::check_launch`]).
-        let running = process::running_sgw_pids();
-        let peers: Vec<_> = self
-            .config
-            .install_dir
-            .as_deref()
-            .map(|d| instance::read_peers(d, self.config.instance.as_deref()))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|p| process::is_alive(p.pid))
-            .collect();
-        instance::check_launch(
-            &running,
-            &peers,
-            self.config.port,
-            instance::max_clients_from_env(instance::hosted_count_from_env()),
-        )?;
-        let pid = self.launch_client(server_override).await?;
-        self.spawn_watchdog(pid);
-        let telemetry = self.state.lock().await.telemetry.clone();
-        Ok(
-            json!({ "pid": pid, "bridge_port": self.config.port, "started": true,
-                   "telemetry": telemetry }),
-        )
-    }
-
-    /// `lab_client_stop` — terminate the client.
-    pub async fn stop(&self) -> Result<Value, String> {
-        let pid = {
-            let mut st = self.state.lock().await;
-            let pid = st.pid.take();
-            st.login = LoginState::NotStarted;
-            pid
-        };
-        match pid {
-            Some(pid) => {
-                let _ = tokio::task::spawn_blocking(move || process::terminate(pid)).await;
-                if let Some(d) = self.config.install_dir.as_deref() {
-                    instance::remove_entry(d, self.config.instance.as_deref());
-                }
-                Ok(json!({ "stopped": true, "pid": pid }))
-            }
-            None => Ok(json!({ "stopped": false, "reason": "no client running" })),
-        }
-    }
-
-    /// `lab_client_restart` — stop then start.
-    pub async fn restart(&self, server_override: Option<String>) -> Result<Value, String> {
-        let _ = self.stop().await;
-        // Brief settle so the OS releases the port + the old process.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        self.start(server_override).await
     }
 
     /// `lab_client_status` — pid, uptime, heartbeat age, login state,

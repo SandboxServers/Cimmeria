@@ -209,6 +209,33 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
+## First session smoke
+
+What every new player does in their first ten minutes, once per faction. Run it first on any new build: nothing in it depends on NPC movement, combat, abilities or AI, so a failure here means the build is broken for every new player. The lab runs it with no one at the keyboard (`lab_uat_run {sections: ["first-session"]}`, spec [first-session.toml](uat-specs/first-session.toml)); a tester can follow the same rows by hand.
+
+**Status:** Praxis rows (FS-01 to FS-P5) calibrated and passing on the colo, 2026-10-10: five clean runs in a row from a one-line Haiku brief, then concurrent runs on two lab clients. The SGU rows (FS-S1 to FS-S6) and FS-99 have not been run live.
+
+**Prerequisites:** a GM account with two free character slots. The rows create, play and delete their own characters. GM commands used: `/gmgotoxyz` (to stand next to each quest object) and `/gmsetgodmode 1`.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| FS-01 | Start the client | It boots to the login screen | |
+| FS-02 | Log in; pick the server; Select | Character select shows the list | |
+| FS-P1 | Create a Praxis Soldier | Created and listed; stored as Praxis in Castle_CellBlock | |
+| FS-P2 | Play it | Castle_CellBlock (world 12) loads; dialog 2982 ("The last thing you remember..."); mission 622 on step 2113 | |
+| FS-P3 | Search Corporal Frost's corpse; finish the dialog | Dialog 3995; Frost's Letter (mission 1360 accepted); 622 on step 80623 | |
+| FS-P4 | Search the NID Guard's corpse; close the "Equipping a Weapon" tutorial, then finish the dialog | Dialog 3996; an SI 3 9mm Pistol in the backpack; 622 on step 80622 | K5: the Guard corpse may be invisible. The tutorial opens on top of the dialog: close it first (its X) |
+| FS-P5 | Equip the looted pistol | The stasis door sequence plays; 622 completes | |
+| FS-S1 | Create an SGU Soldier | Created and listed; stored as SGU in SGC_W1 | |
+| FS-S2 | Play it | SGC_W1 (world 58) loads; mission 1559 on step 4612 | |
+| FS-S3 | Talk to General Hammond; finish the dialog | Dialog 5354; 1559 on step 4613 | |
+| FS-S4 | Talk to Teal'c; finish the dialog | Dialog 5355; 1559 on step 4614 | |
+| FS-S5 | Use the Elevator Controls; finish the dialog | Dialog 5357; objectives 5353 and 5358 done; you are moved to the armory | |
+| FS-S6 | Search the body holding the firearm | 1559 completes; a pistol in the backpack; dialog 5358 | |
+| FS-99 | Delete both characters | Both gone | |
+
+**SigNoz:** search `body CONTAINS 'accepting mission'` and `body CONTAINS 'completing mission'` with the mission id (622, 1559) around the row's time; chain matching is `scope_name = 'content.resolve'`.
+
 ## Pets
 
 Summoned companions (Straegis, Jaffa, Prime, Lo'taur) that follow you, fight, obey stance and ability orders from the pet bar, and give you the kill credit.

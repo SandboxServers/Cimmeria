@@ -237,6 +237,9 @@ mod live_db_tests {
     /// - `DebugArea` (1300): the GM test map on the Ihpet_Crater_Light client
     ///   map. It runs on that map's `ihpet_crater_light.nav` (D-DA5), which is
     ///   advisory for world 73 too.
+    /// - `CimmeriaLab` (1301) and `MapperDebug` (1302): custom-map client-load
+    ///   test worlds (#1318). Their meshes were built from the locally
+    ///   installed packages on 2026-10-10 and have not been walked.
     ///
     /// `Castle_CellBlock` (12) is the one meshed world left on `enforce`:
     /// its mesh was rebuilt on 2026-09-19 and has been walked since.
@@ -265,6 +268,7 @@ mod live_db_tests {
                 "CellBlock60",
                 "CellBlock62",
                 "CellBlock63",
+                "CimmeriaLab",
                 "Dakara_E1",
                 "Dakara_E1_StoryRm",
                 "DebugArea",
@@ -275,6 +279,7 @@ mod live_db_tests {
                 "Ihpet_Crater_Dark",
                 "Ihpet_Crater_Light",
                 "Lucia",
+                "MapperDebug",
                 "Menfa_Dark",
                 "Menfa_Light",
                 "Omega_Site",

@@ -73,6 +73,9 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("target_player", TARGET_PLAYER_TOOL, Tier::N1),
     // UI and items (L1, L2, L3, L8, L9, L10).
     read("window_read", "client_window_read"),
+    // A named window by its real CEGUI name, Lua global or not (a frame's
+    // `__auto_closebutton__`): real input at the widget's centre.
+    drive("window_click", "client_window_click", Tier::N1),
     drive("window_click_row", "client_window_click_row", Tier::N1),
     read("chat_log", "client_chat_log"),
     read("inventory", "client_inventory"),

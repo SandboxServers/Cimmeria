@@ -307,6 +307,37 @@ pub use win::{
     terminate,
 };
 
+/// Whether a terminated client still counts as running: its exit code says
+/// alive, or the start guard still sees its window (`window_pids` is
+/// [`running_sgw_pids`]). The exit code is set the moment the process is
+/// terminated; the window outlives it.
+pub fn still_present(pid: u32, alive: bool, window_pids: &[u32]) -> bool {
+    alive || window_pids.contains(&pid)
+}
+
+/// Poll `alive` until it reports false or `timeout` passes; true when the
+/// process is gone. `TerminateProcess` returns before the process has
+/// gone, so a stop that returned at once let the next start see the
+/// dying `SGW.exe` as "running outside the lab" (2026-10-10). `alive`
+/// must test what the start guard tests (the process's window), not just
+/// its exit code, which is set at once.
+pub fn wait_for_exit(
+    mut alive: impl FnMut() -> bool,
+    timeout: std::time::Duration,
+    poll: std::time::Duration,
+) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if !alive() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(poll);
+    }
+}
+
 // Non-Windows stubs so the crate compiles on Linux dev hosts / coverage
 // and the portable supervisor tests still run. The lab only runs on the
 // owner's Windows box.
@@ -428,6 +459,37 @@ mod tests {
                 ][..]
             )
         );
+    }
+
+    /// Regression guard (2026-10-10): `lab_client_stop` returned while the
+    /// terminated client was still alive, and an immediate start refused it
+    /// as "outside the lab". The wait returns only once the process is gone.
+    #[test]
+    fn wait_for_exit_returns_once_the_process_is_gone() {
+        use std::time::Duration;
+        let mut polls = 0;
+        let gone = wait_for_exit(
+            || {
+                polls += 1;
+                polls < 4
+            },
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert!(gone);
+        assert_eq!(polls, 4, "kept polling until the process was gone");
+        let stuck = wait_for_exit(|| true, Duration::from_millis(20), Duration::from_millis(1));
+        assert!(!stuck, "a process that never exits times out");
+    }
+
+    /// Regression guard (2026-10-10): the stop's first wait looked at the
+    /// exit code only, which is set at once, and the next start still saw
+    /// the client's window. A client is gone only when both have gone.
+    #[test]
+    fn a_terminated_client_is_present_while_its_window_lingers() {
+        assert!(still_present(7, false, &[3, 7]), "window still listed");
+        assert!(still_present(7, true, &[]), "exit code still active");
+        assert!(!still_present(7, false, &[3]), "gone");
     }
 
     #[test]

@@ -56,6 +56,18 @@ Start with `plan_only: true` to see what can run. Each row then runs as:
 
 Long rows can outlast an MCP client's call timeout: run a section a few rows at a time and pass the same `run_dir`.
 
+### Hand a run to a cheap agent
+
+Put every step, wait, coordinate and camera move in the spec, and the driver needs no judgement: the [`lab-driver`](../../.claude/agents/lab-driver.md) agent (Haiku) makes one `lab_uat_run` call and reports each row's result. Its whole brief is the arguments:
+
+```text
+Run spec rows with no lease_id (the run takes and releases its own lease): sections ["first-session"],
+rows ["FS-01","FS-02","FS-P1","FS-P2","FS-P3","FS-P4","FS-P5"], specs_dir "<repo>\docs\guides\uat-specs",
+server_version "<service.version>".
+```
+
+That costs about 42k tokens and two tool calls per run, almost all of it the agent's fixed context. Leave the lease to the run: told to borrow a coordinator's lease and leave it alone, Haiku still released it at the end (2026-10-10). Then check its claims in the run's bundle, not its summary.
+
 ## Attest SigNoz rows and human answers
 
 The runner has no SigNoz client. Each SigNoz clause is written PENDING with its filter, the row's time window (10 s before the row to 2 min after it) and the `service.version` filter when the run knows the build. Run that query with the SigNoz MCP (see the [SigNoz log-mining notes](../../.claude/agent-memory/main-session/reference_signoz_log_mining.md)), then attest the result:
@@ -325,7 +337,7 @@ p2's account and character come from `lab-account.p2.json`. The section's `chara
 
 ### The capability table
 
-`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, `native_cegui` (N1) / `client_ui_lua` / `native_call` (both N3), as the UI and item tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3, and so does a `client_drag_drop` that had to fire the drop itself.
+`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), `@window_click` (`client_window_click`: a widget by its real CEGUI name, Lua global or not, such as a frame's `__auto_closebutton__`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, `native_cegui` (N1) / `client_ui_lua` / `native_call` (both N3), as the UI and item tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3, and so does a `client_drag_drop` that had to fire the drop itself.
 
 The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier G. The runner builds the line from `args`, types it, and waits up to 5 s for the command's own feedback line; a refusal (`.dummy: ...`) or no reply fails the action, so a teardown that cleared nothing is flagged, not trusted.
 
@@ -350,14 +362,16 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 | `bank` (fresh character) | 1, 12, 2 (`@world_click`, #1099) | |
 | `black-market` | U1, U22 | U0 (needs `owner_approvals: ["bm_seed"]`) |
 | `crafting` (fresh Scientist) | 1, 2, 3, 5, 19 | |
-| `consumables` | I1 | I2 (`@item_action`, `@inventory`) |
+| `consumables` | I1, I2 (the item tools are routed) | |
 | `cooked-data` | CD3, CD6 | CD1, CD5 (`@cache_files`), CD2 (owner-only files), CD4 (`@cache_files`, `@world_click`) |
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 25 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U20 and AB-U22 (`.dummy caster`), AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
+| `first-session` (makes and deletes its own Praxis and SGU Soldiers, 2026-10-10) | All 14: FS-01 boot, FS-02 login and server select, FS-P1 to FS-P5 (Praxis: create, enter Castle_CellBlock, complete 622), FS-S1 to FS-S6 (SGU: create, enter SGC_W1, complete 1559), FS-99 cleanup. Run this section first on a new build | |
 | `debug-area` (fresh Soldier, 2026-10-04) | 43 rows: DA-U1, DA-U3 to DA-U6, DA-U8 to DA-U43, DA-U45, DA-U46 (every Debug Area station, the outbound stargate, a ring trip, the starter kit, the patch-009 hotbar and a read of the seeded characters) | DA-U2 (non-GM account), DA-U7 (the store's buttons, L9), DA-U44 (a seeded account) |
 
-88 rows are ready (22 before `ability-mechanics`, which adds 23, and `debug-area` 43) and 25 are blocked (12, plus its 10, plus `debug-area`'s 3). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
+103 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). Only `first-session`'s Praxis rows have run against a live client so far (item 0 below). The first live run should take them in this order, each proving one more part of the runner:
 
+0. `first-session`, the whole section: boot, login, character creation for both factions, world entry and each faction's first quest, graded on the server's own `sgw_mission` rows. The Praxis rows FS-01 to FS-P5 have run live (2026-10-10): calibrated on the colo, then five clean runs in a row and concurrent runs on two lab instances. The SGU rows' stand-off points are still computed, not calibrated.
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
 2. `chat` 9a and 9c, `black-market` U1 and U22: exact-count clauses, refusals, teardown.
 3. `pets` U12, then `chat` 6: setup in G, captures feeding a later command.
