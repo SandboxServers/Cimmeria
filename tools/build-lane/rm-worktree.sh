@@ -126,13 +126,16 @@ building() {
   return 1
 }
 
-# Prints MERGED, OPEN, CLOSED, ADVANCED, ON_MAIN or UNMERGED for a branch. ADVANCED is a
+# Prints MERGED, OPEN, CLOSED, NO_PR, ADVANCED, ON_MAIN or UNMERGED for a branch. ADVANCED is a
 # merged PR whose branch has local commits past the head that merged: deleting the branch
 # would lose them.
 merge_state() {
   local br="$1" st="" head=""
   if command -v gh >/dev/null 2>&1; then
     read -r st head < <(gh pr list --state all --head "$br" --limit 1       --json state,headRefOid -q '.[0] | "\(.state) \(.headRefOid)"' 2>/dev/null)
+    # No PR (jq renders `.[0].state` of [] as null). Not ON_MAIN: a fresh worker branch
+    # with no commits yet is an ancestor of origin/main too, and --merged must keep it.
+    [ "$st" = null ] && st=NO_PR
   fi
   if [ "$st" = MERGED ] && ! git merge-base --is-ancestor "$br" "$head" 2>/dev/null; then
     echo ADVANCED; return

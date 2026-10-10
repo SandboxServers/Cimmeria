@@ -22,7 +22,10 @@ import lane_stats  # noqa: E402
 
 def find_bash() -> str | None:
     """A bash that runs lane.sh natively. On Windows that is Git Bash: the `bash` on PATH
-    is usually a WSL launcher (System32 or a WindowsApps alias), which runs elsewhere."""
+    is usually a WSL launcher (System32 or a WindowsApps alias), which runs elsewhere.
+    LANE_TESTS_NO_BASH=1 skips the bash tests, for Windows sessions that run no bash."""
+    if os.environ.get("LANE_TESTS_NO_BASH") == "1":
+        return None
     if os.name != "nt":
         return shutil.which("bash")
     git = shutil.which("git")

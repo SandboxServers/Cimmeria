@@ -35,7 +35,7 @@ packaged UI, signing or game UAT.
 
 ## The full checklist
 
-Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones (`bash tools/build-lane/lane.sh --exclusive cargo clippy …`).
+Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones: `bash tools/build-lane/lane.sh --exclusive cargo clippy …`, or from PowerShell with no bash, `pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy …`.
 
 ```bash
 cargo fmt --all -- --check
@@ -68,6 +68,7 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 # From a worktree, use the worktree's own database instead: this reloads
 # sgw_<worktree> from db/database.sql and runs the same tier in a lane slot.
 tools/build-lane/live-db-test.sh <test-name filter>
+# (pwsh tools/build-lane/live-db-test.ps1 <filter> from PowerShell)
 
 # Effect NVP generator and weapon-requirement audit (when db/resources/
 # seeds or tools/ability_mechanics/ change; CI runs all three in the

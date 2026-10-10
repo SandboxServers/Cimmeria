@@ -78,6 +78,8 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
   ```bash
   SHIP_TRAILERS=$'Co-Authored-By: ...\nClaude-Session: ...' SHIP_PR_FOOTER='...' \
     bash tools/build-lane/ship.sh pr -C <its worktree> -m "<message>" [--body-file <file>]
+  # From PowerShell: set $env:SHIP_TRAILERS and $env:SHIP_PR_FOOTER, then
+  pwsh tools/build-lane/ship.ps1 pr -C <its worktree> -m "<message>" [--body-file <file>]
   ```
 
   It stages every change, commits with the trailers, pushes and opens the PR (or finds the open one), and prints `status=ok branch=... pr=<N> url=... kind=docs|code`. It refuses (exit 2) unless `-C` is a registered worktree on a feature branch, so a worker whose worktree vanished cannot push the main checkout. The coordinator merges with `bash tools/build-lane/ship.sh merge <PR> --retire <worktree name>`: a `kind=docs` PR (only `*.md` and `.claude/agent-memory/`) merges at once; a code PR waits for fmt, clippy and build + nextest, not coverage or live-DB, then merges, and the worktree is retired. A failure prints the reason and a log path; the exit codes are in [`ship.py`](../../tools/build-lane/ship.py). Don't poll `gh pr checks` or chain `git add`/`commit`/`push` by hand.
@@ -139,9 +141,11 @@ Tip: `git config rerere.enabled true` makes git remember how you resolved a conf
 
 Development builds run natively on Windows, from PowerShell or Git Bash. The tools below live under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` and `tools/build-metrics/`; why they exist and what they measured is in [`docs/architecture/build-system.md`](../architecture/build-system.md).
 
+Every shell script in `tools/build-lane/` has a PowerShell 7 twin next to it (`lane.ps1`, `mk-worktree.ps1`, `rm-worktree.ps1`, `reload-db.ps1`, `live-db-test.ps1`, `ship.ps1`, `rebase-pr.ps1`) with the same options, output and exit codes, so a Windows session never needs bash. Run them as `pwsh tools/build-lane/<script>.ps1 ...`. The `.sh` scripts stay for CI, Linux and macOS, and for Git Bash. The examples below show both forms.
+
 ### Create a worktree that builds
 
-Run `bash tools/build-lane/mk-worktree.sh <branch> <name>` from any checkout. It creates `.claude/worktrees/<name>` on a new branch off `origin/main`, junctions `external/` in, and, when `CIMMERIA_TARGET_ROOT` points at a Dev Drive, seeds the new target dir from a warm one.
+Run `pwsh tools/build-lane/mk-worktree.ps1 <branch> <name>` (or `bash tools/build-lane/mk-worktree.sh <branch> <name>`) from any checkout. It creates `.claude/worktrees/<name>` on a new branch off `origin/main`, junctions `external/` in, and, when `CIMMERIA_TARGET_ROOT` points at a Dev Drive, seeds the new target dir from a warm one.
 
 A worktree without `external/` does not build. `external/` is populated by `setup.ps1` and is not in git, and `crates/entity/build.rs` reads `../../external/recast`. If you create a worktree by hand, link `external/` with a junction (Windows) or a symlink. On a Linux host without `setup.ps1` (CI's case), reproduce the `hydrate external/recast` step from [`.github/workflows/test.yml`](../../.github/workflows/test.yml), which downloads the pinned Recast release into `external/recast`. First-time setup is otherwise in [`docs/building.md`](../building.md).
 
@@ -153,13 +157,15 @@ A worktree holds a target dir (several GB, on the Dev Drive when one is set up),
 bash tools/build-lane/rm-worktree.sh <name>              # one worktree
 bash tools/build-lane/rm-worktree.sh --dry-run --merged  # show what a sweep would do
 bash tools/build-lane/rm-worktree.sh --merged            # every merged, idle worktree
+pwsh tools/build-lane/rm-worktree.ps1 --merged           # the same from PowerShell, no bash
 ```
 
 The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database and its live-DB slot clones (`sgw_<name>_0`, `sgw_<name>_1`, ...). It refuses a worktree when:
 
 - a lane job is building in it (nothing overrides this);
 - it has uncommitted changes, or it is locked (an agent may still be using it);
-- its branch's PR is still open or was closed unmerged, or the branch has unpushed commits.
+- its branch's PR is still open or was closed unmerged, or the branch has unpushed commits;
+- `gh` finds no PR for its branch (`NO_PR`): a worker's branch with no commits yet looks merged to git, so a sweep keeps it. Name it with `--force` to retire it; the branch is kept.
 
 `--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone. `ship.sh merge <PR> --retire <name>` runs it for you after the merge. It runs `git worktree prune` only when given `--prune`, because a prune deletes the entry of any worktree whose recorded path the pruning git can't resolve ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
 
@@ -174,9 +180,15 @@ Every agent or worker `cargo` call that compiles goes through the build lane:
 ```bash
 bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
 bash tools/build-lane/lane.sh --exclusive cargo nextest run --profile=ci --workspace ...   # workspace-wide or measurement runs
+# From PowerShell, with no bash:
+pwsh tools/build-lane/lane.ps1 cargo check -p cimmeria-cell
+pwsh tools/build-lane/lane.ps1 --exclusive cargo nextest run --profile=ci --workspace ...
 ```
 
+Call `lane.ps1` through `pwsh`, not with `&` from inside a PowerShell session: the in-session parser drops a bare `--` (as in `cargo test -- --nocapture`).
+
 - **The lane is per machine, not per worktree.** It is a counting semaphore: at most as many builds run as there are slots, and `--exclusive` takes all of them. The slot count is read from `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (currently 4). A slot whose holder died is freed by the next caller.
+- **`lane.sh` and `lane.ps1` share the slots.** Both lanes take the same `slot.N` directories, so a bash job and a PowerShell job count against one limit and never hold one slot together. They differ in one place: a bash holder records an MSYS pid, which PowerShell can't check. So either lane frees a dead PowerShell holder (`lane.sh` asks Windows PowerShell about its Windows pid), but `lane.ps1` frees a dead bash holder only when no Git Bash process is running; otherwise the next `lane.sh` frees it. [`lane-slots.ps1`](../../tools/build-lane/lane-slots.ps1) has the details.
 - **It sets up the build environment.** `CARGO_BUILD_JOBS` defaults to cores ÷ slots (at least 4). Workspace crates build incrementally, and sccache, when installed, caches third-party crates in one shared cache, so a third-party crate one worktree compiled is a cache hit in the next. Each worktree builds into its own target dir: `<worktree>\target`, or `$CIMMERIA_TARGET_ROOT\<worktree>` on the Dev Drive. The lane runs sccache through a small wrapper that hides that per-worktree `CARGO_TARGET_DIR` from it; set `RUSTC_WRAPPER` yourself and you lose that.
 - **It refuses to start on a nearly full disk.** Below `LANE_MIN_FREE_GB` free (default 10) on the target dir's drive, a job exits with code 28 and names the cleanup commands, instead of failing part-way with "os error 112". See [troubleshooting](../troubleshooting.md#lane-refuses-to-start-lane-refusing-to-start-n-gb-free-or-builds-fail-with-os-error-112).
 - **It prunes stale incremental sessions after each job** in its own worktree, unless another lane job is building there. rustc keeps the previous session of every unit next to the newest one, and never reads it again. `LANE_PRUNE=0` turns this off.
@@ -199,8 +211,8 @@ A worktree that already has a local `target\` keeps building there, so a job in 
 
 Live-DB tests reload and mutate the database, so each worktree uses its own on the bundled Postgres (`:5433`). Never reload a database another run is using.
 
-- `bash tools/build-lane/reload-db.sh`, run from the worktree root, drops and reloads the worktree's database from `db/database.sql` and prints the `DATABASE_URL` to use. The database is `sgw_<worktree name>`; the main checkout keeps `sgw`. `CIMMERIA_TEST_DB=<name>` overrides it.
-- `bash tools/build-lane/live-db-test.sh <test-name filter>` reloads that database, then runs the live-DB tier (`tools/test-live-db.sh`, the same crates and profile as CI) in one lane slot. The tier clones the database into one copy per live-DB slot, `sgw_<worktree name>_0` .. `_<N-1>`, and each running live-DB test uses its slot's copy.
+- `pwsh tools/build-lane/reload-db.ps1` or `bash tools/build-lane/reload-db.sh`, run from the worktree root, drops and reloads the worktree's database from `db/database.sql` and prints the `DATABASE_URL` to use. The database is `sgw_<worktree name>`; the main checkout keeps `sgw`. `CIMMERIA_TEST_DB=<name>` overrides it.
+- `pwsh tools/build-lane/live-db-test.ps1 <test-name filter>` or `bash tools/build-lane/live-db-test.sh <test-name filter>` reloads that database, then runs the live-DB tier (`tools/test-live-db.ps1` or `.sh`, the same crates and profile as CI) in one lane slot. The tier clones the database into one copy per live-DB slot, `sgw_<worktree name>_0` .. `_<N-1>`, and each running live-DB test uses its slot's copy.
 
 Starting the bundled Postgres is documented in [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md).
 

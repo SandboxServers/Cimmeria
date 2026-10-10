@@ -54,21 +54,26 @@ Windows artifacts or native Mac builds of the server and existing Windows tools.
 
 ### Build lane and concurrency
 
-Several sessions and agents build on one workstation at once. Every agent or worker `cargo` call that compiles (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane, [tools/build-lane/lane.sh](tools/build-lane/lane.sh):
+Several sessions and agents build on one workstation at once. Every agent or worker `cargo` call that compiles (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane, [tools/build-lane/lane.sh](tools/build-lane/lane.sh), or its PowerShell 7 twin [lane.ps1](tools/build-lane/lane.ps1) on Windows:
 
 ```bash
 bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
 bash tools/build-lane/lane.sh --exclusive cargo build --workspace ...   # workspace-wide or measurement runs
+# PowerShell, no bash needed (call it through pwsh, which keeps a bare `--`):
+pwsh tools/build-lane/lane.ps1 cargo check -p cimmeria-cell
+pwsh tools/build-lane/lane.ps1 --exclusive cargo build --workspace ...
 ```
+
+Every script in `tools/build-lane/` has a `.ps1` twin with the same options and output (`mk-worktree`, `rm-worktree`, `reload-db`, `live-db-test`, `ship`, `rebase-pr`). Bash and PowerShell lanes share the same slots.
 
 1. **One `cargo` per lane slot.** The lane is a machine-wide semaphore. The slot count lives in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` (currently 4), `--exclusive` takes every slot, and `CARGO_BUILD_JOBS` defaults to cores ÷ slots. A slot whose holder died is freed by the next caller, so there is nothing to kill.
 2. **Iterate per crate with `-p`.** `cimmeria-services` is a small facade over about 20 crates, so check and test the crate you changed (`-p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, …). Build the workspace only for final validation.
 3. **The lane sets up the build environment:** a target dir per worktree (on the Dev Drive when one is set up), incremental builds for workspace crates, and sccache for third-party crates, shared by every worktree (a wrapper hides the per-worktree target dir from sccache's key). A direct `cargo` call bypasses the slot count, which is why agents never make one.
-4. **The lane guards the disk.** After each job it deletes the worktree's stale incremental sessions (`LANE_PRUNE=0` turns that off). Below `LANE_MIN_FREE_GB` free (default 10) it refuses to start, with exit code 28 and the cleanup commands, instead of letting cargo die part-way with "os error 112": run `bash tools/build-lane/rm-worktree.sh --merged`, then `pwsh tools/build-hygiene/sweep.ps1` if that isn't enough.
+4. **The lane guards the disk.** After each job it deletes the worktree's stale incremental sessions (`LANE_PRUNE=0` turns that off). Below `LANE_MIN_FREE_GB` free (default 10) it refuses to start, with exit code 28 and the cleanup commands, instead of letting cargo die part-way with "os error 112": run `bash tools/build-lane/rm-worktree.sh --merged` (or `pwsh tools/build-lane/rm-worktree.ps1 --merged`), then `pwsh tools/build-hygiene/sweep.ps1` if that isn't enough.
 5. **Agents get a summary, not the output.** When stdout isn't a terminal, the lane logs the command's output and prints `status=`, the counts, the errors or failing tests, a failures file and the log path; `LANE_VERBOSE=1` prints it all. Read the failures file or the log rather than rerun the build.
 6. **Every lane job is logged.** `python tools/build-lane/lane_stats.py` reports on the log (`--recent 20` for the last jobs, `--html` for charts, `--csv` for a spreadsheet).
 
-Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md). **Retire a worktree the day its PR merges** with `bash tools/build-lane/rm-worktree.sh <name>`: it deletes the target dir and the test database, and unlinks `external/` safely. A session that dispatched workers retires their worktrees too; `--merged` sweeps every merged, idle one. `bash tools/build-lane/ship.sh pr -C <worktree> -m <msg>` commits, pushes and opens the PR, and `ship.sh merge <PR> --retire <name>` merges and retires, each in one call. Stale target dirs filled the Dev Drive once and stopped every lane build.
+Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md). **Retire a worktree the day its PR merges** with `bash tools/build-lane/rm-worktree.sh <name>` (`pwsh tools/build-lane/rm-worktree.ps1 <name>` from PowerShell): it deletes the target dir and the test database, and unlinks `external/` safely. A session that dispatched workers retires their worktrees too; `--merged` sweeps every merged, idle one. `bash tools/build-lane/ship.sh pr -C <worktree> -m <msg>` commits, pushes and opens the PR, and `ship.sh merge <PR> --retire <name>` merges and retires, each in one call. Stale target dirs filled the Dev Drive once and stopped every lane build.
 
 Quick reference (the seven `--exclude`s are CI's: the GUI apps and the Windows-only cdylibs):
 
@@ -78,9 +83,15 @@ bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
+# ...the same from PowerShell
+pwsh tools/build-lane/lane.ps1 --exclusive cargo check --workspace `
+  --exclude cimmeria-app --exclude cimmeria-content-editor `
+  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Full debug info for a debugger session (builds into target/dev-debug/)
 bash tools/build-lane/lane.sh cargo build -p cimmeria-server --profile dev-debug
+pwsh tools/build-lane/lane.ps1 cargo build -p cimmeria-server --profile dev-debug
 
 # What the lane has been doing
 python tools/build-lane/lane_stats.py --recent 20
@@ -88,7 +99,7 @@ python tools/build-lane/lane_stats.py --recent 20
 
 ## Pre-PR checklist
 
-Run this before pushing, or the pipeline fails and you round-trip. Agents run the compiling lines through the lane, with `--exclusive` for the workspace-wide ones. `fmt`, `clippy`, `build-and-test` and `test-live-db` block a merge, and so do the two figure checks when figures or `docs/drafts/spec/` chapters change; markdownlint and spec-lint only annotate. **Before your first PR, and whenever a check fails, read [docs/agents/pre-pr-checks.md](docs/agents/pre-pr-checks.md):** what each CI job gates and when it runs, the annotated command list, and the fix for each failing check.
+Run this before pushing, or the pipeline fails and you round-trip. Agents run the compiling lines through the lane (`lane.sh`, or `pwsh tools/build-lane/lane.ps1` from PowerShell), with `--exclusive` for the workspace-wide ones. `fmt`, `clippy`, `build-and-test` and `test-live-db` block a merge, and so do the two figure checks when figures or `docs/drafts/spec/` chapters change; markdownlint and spec-lint only annotate. **Before your first PR, and whenever a check fails, read [docs/agents/pre-pr-checks.md](docs/agents/pre-pr-checks.md):** what each CI job gates and when it runs, the annotated command list, and the fix for each failing check.
 
 ```bash
 # The same seven exclusions as CI.
@@ -103,7 +114,7 @@ cargo test --doc -p cimmeria-commands   # nextest skips doctests
 # Live-DB tier against the bundled Postgres (tools/test-live-db.ps1 on PowerShell)...
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw tools/test-live-db.sh
 # ...or, from a worktree, against its own sgw_<worktree> database in a lane slot.
-tools/build-lane/live-db-test.sh <test-name filter>
+tools/build-lane/live-db-test.sh <test-name filter>   # pwsh tools/build-lane/live-db-test.ps1 on PowerShell
 tools/lint-md.sh                        # warn-only; --fix for what's auto-fixable; .ps1 on PowerShell
 tools/check-figure-sources.sh           # blocking when docs/drafts/spec/figures/ changes
 tools/lint-figure-style.sh              # blocking when figures or docs/drafts/spec/ chapters change

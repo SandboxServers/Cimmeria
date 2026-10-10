@@ -76,6 +76,22 @@ print(out)
 sys.exit(code)
 '''
 
+# The same stand-in for psql, for Windows, where a .cmd shim runs it.
+FAKE_PSQL = r'''
+import os, sys
+line = " ".join(sys.argv[1:])
+with open(os.environ["FAKE_PSQL_LOG"], "a") as f:
+    f.write(line + "\n")
+if "SELECT datname" in line:
+    print("sgw_feat")
+'''
+
+
+def retire_shell() -> str | None:
+    """What runs rm-worktree: pwsh (rm-worktree.ps1) on Windows, bash elsewhere."""
+    return shutil.which("pwsh") if os.name == "nt" else find_bash()
+
+
 GREEN = {g: "pass" for g in ship.GATING}
 FIELD = re.compile(r'(\w+)=("[^"]*"|\S+)')
 
@@ -94,11 +110,18 @@ class ShipCase(unittest.TestCase):
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "fake_gh.py").write_text(FAKE_GH)
-        gh = bindir / "gh"   # for rm-worktree.sh, which finds gh on PATH
-        gh.write_text(f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{(bindir / "fake_gh.py").as_posix()}" "$@"\n')
-        psql = bindir / "psql"
-        psql.write_text('#!/bin/sh\necho "$*" >> "$FAKE_PSQL_LOG"\n'
-                        'case "$*" in *"SELECT datname"*) echo sgw_feat ;; esac\n')
+        if os.name == "nt":   # rm-worktree.ps1 runs these, through PATHEXT
+            (bindir / "fake_psql.py").write_text(FAKE_PSQL)
+            gh = bindir / "gh.cmd"
+            gh.write_text(f'@"{sys.executable}" "{bindir / "fake_gh.py"}" %*\r\n')
+            psql = bindir / "psql.cmd"
+            psql.write_text(f'@"{sys.executable}" "{bindir / "fake_psql.py"}" %*\r\n')
+        else:
+            gh = bindir / "gh"   # for rm-worktree.sh, which finds gh on PATH
+            gh.write_text(f'#!/bin/sh\nexec "{Path(sys.executable).as_posix()}" "{(bindir / "fake_gh.py").as_posix()}" "$@"\n')
+            psql = bindir / "psql"
+            psql.write_text('#!/bin/sh\necho "$*" >> "$FAKE_PSQL_LOG"\n'
+                            'case "$*" in *"SELECT datname"*) echo sgw_feat ;; esac\n')
         for f in (gh, psql):
             f.chmod(0o755)
         self.state = self.tmp / "gh.json"
@@ -337,7 +360,7 @@ class MergeTests(MergeCase):
         self.assertEqual(self.merge()[0], 2)
 
 
-@unittest.skipUnless(find_bash(), "no bash")
+@unittest.skipUnless(retire_shell(), "no shell for rm-worktree")
 class RetireTests(MergeCase):
     def setUp(self):
         super().setUp()
@@ -374,6 +397,15 @@ class RetireTests(MergeCase):
         self.assertTrue(self.stale.exists(), "no git worktree prune")
         self.assertIn('DROP DATABASE "sgw_feat"', (self.tmp / "psql.log").read_text())
 
+    @unittest.skipUnless(os.name == "nt", "pwsh runs rm-worktree only on Windows")
+    def test_missing_pwsh_refuses_before_merging(self):
+        with mock.patch.dict(os.environ, {"SHIP_PWSH": ""}), mock.patch.object(ship.shutil, "which", return_value=None):
+            code, f, _ = self.merge("--retire", "feat")
+        self.assertEqual((code, f["status"]), (2, "refused"))
+        self.assertIn("pwsh", f["reason"])
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+        self.assertTrue(self.wt.exists())
+
     def test_uncommitted_changes_refuse_before_merging(self):
         self.edit("dirty.rs")
         code, f, _ = self.merge("--retire", "feat")
@@ -399,6 +431,16 @@ class WrapperTests(ShipCase):
     def test_wrapper_runs_the_script(self):
         env = dict(os.environ, PYTHON=sys.executable)
         p = subprocess.run([find_bash(), str(HERE / "ship.sh"), "pr", "-C", str(self.tmp / "gone"), "-m", "x"],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("status=refused", p.stdout)
+
+
+@unittest.skipUnless(shutil.which("pwsh"), "no pwsh")
+class PowerShellWrapperTests(ShipCase):
+    def test_wrapper_runs_the_script(self):
+        env = dict(os.environ, PYTHON=sys.executable)
+        p = subprocess.run(["pwsh", "-NoProfile", "-File", str(HERE / "ship.ps1"), "pr", "-C", str(self.tmp / "gone"), "-m", "x"],
                            capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 2, p.stderr)
         self.assertIn("status=refused", p.stdout)
