@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     A command is a file tools/lab/cli/<command>.ps1, run with the remaining
-    arguments. Its first .SYNOPSIS line is its help line. common.ps1 and
-    test-*.ps1 are not commands. Adding a command never edits this file.
+    arguments. Its first .SYNOPSIS line is its help line. common.ps1,
+    test-*.ps1 and *-lib.ps1 (dot-sourced libraries) are not commands. Adding a command never edits this file.
 
 .PARAMETER Command
     The command to run, or help (the default).
@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 $CliDir = Join-Path $PSScriptRoot 'cli'
 $Commands = @(Get-ChildItem -LiteralPath $CliDir -Filter '*.ps1' -File |
-    Where-Object { $_.BaseName -ne 'common' -and $_.BaseName -notlike 'test-*' } |
+    Where-Object { $_.BaseName -ne 'common' -and $_.BaseName -notlike 'test-*' -and $_.BaseName -notlike '*-lib' } |
     Sort-Object BaseName)
 
 # The first non-blank line after a file's .SYNOPSIS line, or '' when it has none.
