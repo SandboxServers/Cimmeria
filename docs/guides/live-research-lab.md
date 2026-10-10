@@ -10,6 +10,8 @@ companion_docs:
   - ../commands.md
   - ../analysis/ability-mechanics/lab-uat-and-telemetry.md
   - ../../tools/lab/install.ps1
+  - ../../tools/lab/lab.ps1
+  - ../analysis/lab-cli/README.md
   - ../architecture/observability.md
   - re-toolchain-setup.md
   - reverse-engineering-with-claude.md
@@ -353,7 +355,7 @@ Trade, duels, squads and teams, mail between players, player-to-player visibilit
 
 ### Set it up
 
-1. In `%LOCALAPPDATA%\cimmeria-lab\labd.env`, list the instances the daemon hosts:
+1. In `%LOCALAPPDATA%\cimmeria-lab\labd.env`, list the instances the daemon hosts (`lab env set CIMMERIA_LAB_INSTANCES default,p2,p3,p4,p5` writes it with a backup):
 
    ```text
    CIMMERIA_LAB_INSTANCES=default,p2,p3,p4,p5
@@ -363,11 +365,11 @@ Trade, duels, squads and teams, mail between players, player-to-player visibilit
 2. Write the account files for the extra instances:
 
    ```powershell
-   pwsh tools/lab/instances.ps1 init
+   lab instances init                  # or: pwsh tools/lab/instances.ps1 init
    ```
 
-   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `-Force`, and `-Count 3` stops at `p3`. `pwsh tools/lab/instances.ps1 status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
-3. Restart the daemon so it reads `labd.env`: `pwsh tools/lab/daemon.ps1 restart`.
+   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `-Force`, and `-Count 3` stops at `p3`. `lab instances status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
+3. Restart the daemon so it reads `labd.env`: `lab restart` (or `pwsh tools/lab/daemon.ps1 restart`).
 4. Reconnect the lab MCP server in **every** Claude session (`/mcp`). With more than one instance hosted, every tool gains an optional `instance` argument, and a session that connected before the restart still has the old tool list.
 
 ### Drive your own client
@@ -854,8 +856,10 @@ resumes it (#985). The install script below builds and places it.
 The lab runs from installed copies, not from a target dir, so a build of
 `main` changes nothing until you install it. Nothing refreshes them on
 their own: on 2026-10-04 the installed DLL still dated from 2026-09-29.
-[`tools/lab/install.ps1`](../../tools/lab/install.ps1) builds the four
-pieces from a worktree and installs them:
+Use [`lab install -From <worktree>`](#the-lab-command): it runs
+[`tools/lab/install.ps1`](../../tools/lab/install.ps1) from that worktree,
+which builds the four pieces and installs them, then refreshes the `lab`
+command's own copy:
 
 | Built (through the build lane) | Installed to |
 |---|---|
@@ -867,15 +871,24 @@ pieces from a worktree and installs them:
 1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease).
    The script refuses while any `SGW.exe` runs and prints its PID and the
    supervisor that owns it; ask that session to `lab_client_stop`.
-2. See the plan, then install. From PowerShell, in the checkout you want
-   to install (default: the current repository):
+2. Install from the worktree you want:
+
+   ```powershell
+   lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+   ```
+
+   `lab install` passes `-InstallDir` from `labd.env`'s
+   `CIMMERIA_LAB_INSTALL_DIR` and `-SkipBuild` when you give it. To see the
+   plan first, or to install without the `lab` command, run the script
+   itself from that checkout:
 
    ```powershell
    pwsh tools/lab/install.ps1 -DryRun
    pwsh tools/lab/install.ps1                     # or -Worktree <path>
    ```
 
-   `-InstallDir` names the SGW install when neither
+   The script builds through `tools/build-lane/lane.ps1`; no bash is
+   involved. `-InstallDir` names the SGW install when neither
    `CIMMERIA_LAB_INSTALL_DIR` nor the main checkout's `.mcp.json` does.
    `-SkipBuild` installs what the target dir already holds. The script
    finds the outputs in the target dir the lane uses
@@ -885,7 +898,7 @@ pieces from a worktree and installs them:
    and writes the source commit to `bin\installed-from.txt`.
 3. Restart the supervisor. With the
    [shared daemon](#the-shared-daemon-cimmeria-lab---http),
-   `pwsh tools/lab/daemon.ps1 restart` copies the new
+   `lab restart` (or `pwsh tools/lab/daemon.ps1 restart`) copies the new
    `bin\cimmeria-lab.exe` and every session uses it from its next call.
    A stdio supervisor is still the old
    process (the script renamed its exe; it did not stop it). Run
@@ -894,11 +907,149 @@ pieces from a worktree and installs them:
    first; the reconnect then spawns the new one. The script lists the
    running supervisors' PIDs. Stop only your own session's: another
    session's supervisor is that session's lab.
-4. Verify: `lab_uat_run { plan_only: true }` lists the tools the new
-   build routes, and `lab_client_start` launches with the new DLL.
+4. Verify: `lab doctor` passes its binary check (the daemon runs the exe
+   you installed), `lab_uat_run { plan_only: true }` lists the tools the
+   new build routes, and `lab_client_start` launches with the new DLL.
 
 To roll back, rename the `.old` copies back over the installed files and
 reconnect again.
+
+## The `lab` command
+
+`lab` is one command in front of the lab scripts and the
+[shared daemon](#the-shared-daemon-cimmeria-lab---http): its status, its
+log, `labd.env`, installs, instances and clients. It runs an installed copy
+of the scripts, never a checkout's, so a checkout on an old branch can't
+drive the lab (D-LC4 in the
+[campaign ledger](../analysis/lab-cli/README.md)). It is PowerShell 7 only.
+
+### Set up the `lab` command
+
+Run setup once, from a checkout on a current `main`:
+
+```powershell
+pwsh tools/lab/cli/setup.ps1
+```
+
+It does three things:
+
+1. Copies the CLI into `%LOCALAPPDATA%\cimmeria-lab\cli\`: `lab.ps1`, the
+   commands in `cli\*.ps1`, and `daemon.ps1`, `instances.ps1` and
+   `labd-lib.ps1` beside `lab.ps1`. Tests are not copied, and a command
+   file the checkout no longer has is removed. `cli\cli\VERSION`, the
+   checkout's short commit, is written last, so a copy that failed part way
+   has no `VERSION`.
+2. Writes the shim `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd`, which runs
+   `pwsh -NoProfile -File <that copy>\lab.ps1` with your arguments. The
+   shim holds the real path.
+3. Asks `Add ...\cimmeria-lab\bin to your user PATH? [y/N]` when the
+   folder isn't on it yet. `-Yes` adds it without asking, and `-NoPath`
+   leaves the `PATH` alone. The edit goes through `HKCU\Environment`
+   directly, so a `REG_EXPAND_SZ` `PATH` keeps its type, and setup
+   broadcasts the change. Open a new terminal to see it.
+
+Run `setup` again to refresh the copy. From the installed copy (`lab setup`
+on the `PATH`) there is no checkout to copy from, so it needs one:
+`lab setup -From C:\src\Cimmeria`. `lab install` refreshes the copy too, from
+the worktree it builds.
+
+### Commands
+
+Every command prints its own help in its `.SYNOPSIS`; `lab help` lists the
+first line of each.
+
+| Command | What it does | Exit codes |
+|---|---|---|
+| `lab help` | lists the commands | 0 |
+| `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
+| `lab version` | the copy's `VERSION` (`dev` when run from a checkout) and the daemon version | 0 |
+| `lab start`, `lab stop`, `lab restart` | the `CimmeriaLabDaemon` task, through `daemon.ps1` | `daemon.ps1`'s |
+| `lab logs [-Lines 50] [-Instance p2] [-Level warn] [-Follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>` | 0; 1 when there is no log |
+| `lab env [get KEY \| set KEY VALUE \| unset KEY]` | reads or edits `labd.env`; see below | 0; 1 for `get` of an unset key or a missing `labd.env`; 2 for a bad verb, key or value |
+| `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
+| `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
+| `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
+| `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
+| `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
+
+An unknown command exits 2. Examples:
+
+```powershell
+lab status
+lab logs -Instance p2 -Level warn -Lines 20
+lab logs -Follow
+lab env get CIMMERIA_LAB_INSTANCES
+lab env set CIMMERIA_LAB_INSTANCES default,p2,p3
+lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+lab instances status
+lab clients stop p2
+lab doctor
+```
+
+**`lab env`.** With no verb it prints every line of `labd.env`. Values print
+masked: a key containing `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `AUTH` or
+`CREDENTIAL` shows `<redacted>`, so do bearer and 64-hex tokens, a URL's
+user, password and host show as `<host>`, and a line that is neither
+`KEY=VALUE` nor a comment shows `<unparsed line>`. The masking is display
+only: `set` and `unset` write values back unchanged. Keys are upper case
+(`^[A-Z][A-Z0-9_]*$`) and match existing lines ignoring case, as the daemon
+reads them. `set` replaces the key's line in place or appends it; `unset`
+removes it; comments and order stay. Before writing, `labd.env` is copied
+to `labd.env.bak-<yyyyMMdd-HHmmss>`, and the new file replaces the old one
+in a single move. The daemon reads `labd.env` only when it starts, so a
+change needs `lab restart`. Two value rules:
+
+- a value that starts with `-` must be written `-Value:<value>`, or
+  PowerShell reads it as a parameter name: `lab env set SOME_FLAGS -Value:-x`;
+- a value with leading or trailing spaces is refused, because `labd.env`
+  lines are trimmed when read.
+
+**`lab clients stop`.** It stops only clients whose instance holds no lease,
+because a leased client belongs to the agent driving it (D-LC5). A leased one
+is refused, naming the holder and purpose. `-Force` stops it anyway, but
+only with a named instance: `lab clients stop all -Force` exits 2 before
+asking the daemon anything. The holder loses the client, and its watchdog
+may relaunch it. The pid comes from the daemon's `/status`, and only a
+process named `SGW` is touched: the command asks its window to close and
+force-stops it after 8 seconds.
+
+**`lab doctor`.** Read-only; the token is only ever reported as set or not.
+
+| Check | Fails as |
+|---|---|
+| The scheduled task `CimmeriaLabDaemon` exists | FAIL |
+| The daemon answers `/status` | FAIL |
+| `CIMMERIA_LAB_DAEMON_TOKEN` is set | FAIL |
+| `labd.env` has `CIMMERIA_LAB_INSTALL_DIR`, and `Binaries\SGW.exe` is under it | FAIL |
+| The profile root is absolute and outside the install dir | FAIL |
+| Each instance's account file exists | WARN (`lab instances init`) |
+| Each instance's profile is seeded | WARN |
+| No `SGW.exe` runs that `/status` doesn't list | WARN, naming the pids |
+| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` have the same SHA-256 | WARN (`lab restart`) |
+| The copy's `VERSION` has the same `tools/lab` as `origin/main`, compared by content (`git diff --quiet <VERSION> origin/main -- tools/lab`); only inside a Cimmeria checkout | WARN (`lab setup`) |
+
+The last check compares content, not ancestry: PRs are squash-merged, so
+the commit of a worktree you installed from never becomes an ancestor of
+`origin/main`, even after it merges. It uses your last fetch.
+
+**Where things live**, all under `%LOCALAPPDATA%\cimmeria-lab\`:
+
+| Path | What it is |
+|---|---|
+| `bin\lab.cmd` | the shim on your `PATH` |
+| `cli\lab.ps1`, `cli\cli\*.ps1` | the installed dispatcher and commands |
+| `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts the commands run |
+| `cli\cli\VERSION` | the commit the copy came from |
+
+The dispatcher is [`tools/lab/lab.ps1`](../../tools/lab/lab.ps1). A command
+is a file `tools/lab/cli/<name>.ps1`, so adding one never edits the
+dispatcher; `common.ps1`, `test-*.ps1` and `*-lib.ps1` are not commands.
+Named flags reach the command as flags, and a command that ends without
+`exit` reads as success. The tests are `tools/lab/cli/test-*.ps1`, run with
+`pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points the CLI at another lab
+home for those tests only: `daemon.ps1` ignores it, so with it set,
+`lab status` would read a different `labd.pid` than the one `lab restart`
+acts on.
 
 ## The shared daemon (`cimmeria-lab --http`)
 
@@ -918,9 +1069,9 @@ What the daemon refuses:
 | `--http` is not a loopback address (`127.0.0.1`, `::1`) | exit 2 at start |
 | `CIMMERIA_LAB_DAEMON_TOKEN` unset or under 32 bytes | exit 2 at start |
 | another daemon holds the `Local\cimmeria-labd` mutex, or the port is taken | exit 3 at start; the log names the holder's pid from `labd.pid` |
-| a request without `Authorization: Bearer <token>` | `401`, before any MCP session |
-| a `Host` header other than `localhost`, `127.0.0.1` or `::1` (DNS rebinding) | `403` |
-| any `Origin` header (no browser has a reason to call it) | `403` |
+| a request without `Authorization: Bearer <token>`, to `/mcp` or `/status` | `401`, before any MCP session |
+| a `Host` header other than `localhost`, `127.0.0.1` or `::1` (DNS rebinding) | `403` on `/mcp` |
+| any `Origin` header (no browser has a reason to call it) | `403` on `/mcp` |
 
 ### Run it
 
@@ -932,6 +1083,11 @@ pwsh tools/lab/daemon.ps1 stop
 pwsh tools/lab/daemon.ps1 start
 pwsh tools/lab/daemon.ps1 uninstall
 ```
+
+`lab start`, `lab stop` and `lab restart` run the same three commands.
+`lab status` and `lab doctor` read the daemon's `GET /status`, a
+read-only summary behind the same bearer token as `/mcp` (see
+[The `lab` command](#the-lab-command)).
 
 `install` registers the per-user scheduled task `CimmeriaLabDaemon`: it
 starts at logon, in your interactive session (the client needs the

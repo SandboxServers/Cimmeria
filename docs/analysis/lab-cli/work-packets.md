@@ -415,5 +415,3 @@ Reviewer focus:
    owner's say-so, and only on a lease the coordinator holds.)
 
 Record the results in the ledger.
-</content>
-</invoke>
