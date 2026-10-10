@@ -179,6 +179,53 @@ async fn requests_without_the_token_are_refused() {
     }
 }
 
+/// `/status` is behind the same bearer gate as `/mcp`.
+#[tokio::test]
+async fn status_needs_the_bearer() {
+    let url = spawn_daemon(test_server()).await.replace("/mcp", "/status");
+    let http = reqwest::Client::new();
+    let r = http.get(&url).headers(headers(None)).send().await.unwrap();
+    assert_eq!(r.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let r = http
+        .get(&url)
+        .headers(headers(Some(TOKEN)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), reqwest::StatusCode::OK);
+}
+
+/// `/status` lists each instance with its lease state, never the lease id.
+#[tokio::test]
+async fn status_lists_instances_without_lease_ids() {
+    let server = test_server();
+    let lease = server
+        .instances()
+        .first()
+        .supervisor
+        .leases()
+        .acquire(crate::lease::AcquireRequest {
+            owner: "status-test".into(),
+            purpose: "status test".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let url = spawn_daemon(server).await.replace("/mcp", "/status");
+    let r = reqwest::Client::new()
+        .get(&url)
+        .headers(headers(Some(TOKEN)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), reqwest::StatusCode::OK);
+    let text = r.text().await.unwrap();
+    assert!(!text.contains(&lease.lease_id), "lease id leaked: {text}");
+    let body: Value = serde_json::from_str(&text).unwrap();
+    let rows = body["instances"].as_array().expect("instances array");
+    assert_eq!(rows.len(), 1, "{body}");
+    assert_eq!(rows[0]["lease"]["held"], true, "{body}");
+}
+
 /// Regression guard (DNS rebinding): a valid token from a page that resolved
 /// some other name to 127.0.0.1 is still refused by its `Host`, and any
 /// browser `Origin` is refused.

@@ -127,6 +127,11 @@ impl Instances {
 }
 
 impl LabServer {
+    /// Every instance this server hosts, in order (read-only views such as `/status`).
+    pub fn instances(&self) -> &Instances {
+        &self.instances
+    }
+
     /// A server hosting every instance in `instances`. A call runs on the
     /// instance it names, else the one holding its lease, else the first.
     pub fn new_multi(instances: Instances) -> Self {
