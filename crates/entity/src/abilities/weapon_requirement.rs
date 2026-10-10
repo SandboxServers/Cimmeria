@@ -1,13 +1,15 @@
 //! The player weapon-moniker requirement (Class Start v6 OD-CS11).
 //!
 //! `resources.abilities.item_monikers` lists the weapon monikers an ability
-//! needs. Python enforced it in `AbilityInstance.canUse`
-//! (`deprecated/python/cell/AbilityManager.py:543`): when the list is
-//! non-empty, the active bandolier item's `moniker_ids` must contain at
-//! least one of them (`SGWPlayer.hasItemMoniker`, any-match), or the launch
-//! returned `CONDITION_FEEDBACK_WrongWeaponType` (63). This is the pure
-//! rule; the launch gate that applies it to player casts is
-//! `cell-combat`'s `use_ability::weapon_requirement`.
+//! needs: when the list is non-empty, the active bandolier item's
+//! `moniker_ids` must contain at least one of them, or the launch is refused
+//! with `CONDITION_FEEDBACK_WrongWeaponType` (63). The any-match rule is
+//! python's `SGWPlayer.hasItemMoniker`; python applied it only to
+//! `TargetTarget` abilities, after the cooldown check
+//! (`deprecated/python/cell/AbilityManager.py:528-545`), while OD-CS11 applies
+//! it to every target type ahead of the cooldown. This is the pure rule; the
+//! launch gate that applies it to player casts is `cell-combat`'s
+//! `use_ability::weapon_requirement`, which records the differences.
 
 use super::AbilityDef;
 

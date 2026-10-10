@@ -13,10 +13,16 @@ This script reads the seeds (never a database) and writes
 - the weapon-granted abilities (``items_event_sets``) whose own requirement
   the granting weapon does not meet: those buttons would be refused by the
   weapon that grants them.
+- the audited abilities python never checked: it applied the rule only to
+  ``TargetTarget`` abilities, so the self- and ground-targeted ones are gated
+  by the Rust server alone.
+- the bandolier weapons with no RANGED binding (``items_event_sets`` event
+  7): right-click on a hostile fires nothing with them and says so.
 
-Player-reachable means: a char-creation grant, an archetype tree node, a
-trainer list entry, a weapon/item event binding, or a content
-``grant_ability`` action.
+Player-reachable means: a char-creation grant (start profile or debug kit),
+an archetype tree node, a trainer list entry, a weapon/item event binding, or
+a content ``grant_ability`` action (its ``params.ability_ids``, the only form
+the content loader accepts).
 
 Run from the repo root with stock Python 3:
 
@@ -28,6 +34,7 @@ Run from the repo root with stock Python 3:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import defaultdict
@@ -35,7 +42,7 @@ from pathlib import Path
 from typing import Dict, List, Set
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from seed_sql import REPO_ROOT, read_text, sql_rows  # noqa: E402
+from seed_sql import REPO_ROOT, InputError, Value, parse_values, read_text, sql_rows, write_text  # noqa: E402
 
 OUT = Path("docs/analysis/class-start-v6/weapon-requirement-audit.md")
 
@@ -46,6 +53,8 @@ ITEM_EVENTS = Path("db/resources/Items/Seed/items_event_sets.sql")
 MONIKERS = Path("db/resources/Entities/Seed/monikers.sql")
 CHAR_CREATION = Path("db/resources/Archetypes/Seed/char_creation_abilities.sql")
 CHAR_CREATION_ITEMS = Path("db/resources/Archetypes/Seed/char_creation_items.sql")
+DEBUG_KIT = Path("db/resources/Archetypes/Seed/char_creation_debug_kit_abilities.sql")
+DEBUG_KIT_ITEMS = Path("db/resources/Archetypes/Seed/char_creation_debug_kit_items.sql")
 TREE = Path("db/resources/Archetypes/Seed/archetype_ability_tree.sql")
 CONTENT_DIR = Path("db/resources/Content/Seed")
 
@@ -55,8 +64,29 @@ BANDOLIER_CONTAINER = 3
 
 # `items_event_sets.event_id` values (`spawner::EVENT_ITEM_*`).
 EVENT_NAMES = {5: "use", 6: "melee", 7: "ranged"}
+EVENT_RANGED = 7
+
+# `abilities.target_type_id` (`enumerations.xml`): python's `canUse` checked
+# the weapon only in the `TargetTarget` branch.
+TARGET_TYPES = {1: "Self", 2: "Target", 3: "Ground"}
+TARGET_TARGET = 2
+
+# What each FAIL row looks like (decided 2026-10-10: all stay flagged, no seed
+# change). Inference from the seeds, not from a CME source.
+FAIL_NOTES = {
+    997: "Likely a wrong tag: no item carries ITEM_Dart_Rifle, and the dart "
+    "pistols carry ITEM_DartPistol.",
+    1246: "No item carries ITEM_Melee; blades carry ITEM_Blade (inference).",
+    1250: "Needs stealth armour monikers, which a bandolier weapon can never "
+    "carry, and python never checked it (a Self ability). A scope question, "
+    "not a seed fix.",
+    1355: "No item carries ITEM_Melee; blades carry ITEM_Blade (inference).",
+}
 
 MAX_EXAMPLES = 4
+
+# The right-click feedback line (`interaction/hostile_attack.rs`).
+NO_RANGED_ATTACK_TEXT = "This weapon has no ranged attack."
 
 # The Class Start v6 starter cases (CS-07 brief): (ability, item, expected).
 STARTER_CASES = [
@@ -67,7 +97,7 @@ STARTER_CASES = [
     (1639, 4565, True),
 ]
 
-_GRANT_ABILITY = re.compile(r"'grant_ability'\s*,\s*(\d+)")
+_CONTENT_ACTIONS = re.compile(r"INSERT INTO content_actions \(([^)]*)\)\s*VALUES\s*")
 
 
 def int_array(text: str | None) -> List[int]:
@@ -82,6 +112,41 @@ def rows(path: Path, table: str):
     return sql_rows(text, table)
 
 
+def content_action_rows(text: str) -> List[Dict[str, Value]]:
+    """Every row of every multi-row ``INSERT INTO content_actions (...) VALUES
+    (...), (...);`` statement in a content seed (``sql_rows`` reads one row
+    per statement). ``--`` comments between rows are skipped."""
+    out = []
+    for m in _CONTENT_ACTIONS.finditer(text):
+        cols = [c.strip() for c in m.group(1).split(",")]
+        i = m.end()
+        while i < len(text):
+            c = text[i]
+            if c in " \t\n,":
+                i += 1
+            elif text.startswith("--", i):
+                i = text.find("\n", i)
+                i = len(text) if i < 0 else i
+            elif c == "(":
+                vals, i = parse_values(text, i)
+                if len(vals) != len(cols):
+                    raise InputError(f"content_actions: {len(cols)} columns but {len(vals)} values at offset {i}")
+                out.append(dict(zip(cols, vals)))
+            else:
+                break  # the statement's ';'
+    return out
+
+
+def granted_ability_ids(row: Dict[str, Value]) -> List[int]:
+    """The ``params.ability_ids`` of a ``grant_ability`` content action: the
+    only form ``content-engine``'s loader accepts (``loader/action_ability.rs``
+    refuses a ``target_id``)."""
+    if row["action_type"].text != "grant_ability" or not row["params"].text:
+        return []
+    ids = json.loads(row["params"].text).get("ability_ids") or []
+    return [int(i) for i in ids]
+
+
 def load():
     monikers = {int(r["moniker_id"].text): r["name"].text for r in rows(MONIKERS, "monikers")}
 
@@ -90,6 +155,7 @@ def load():
         abilities[int(r["ability_id"].text)] = {
             "name": (r["name"].text or "").strip(),
             "item_monikers": int_array(r["item_monikers"].text),
+            "target_type": int(r["target_type_id"].text or 0),
         }
 
     items = {}
@@ -98,11 +164,14 @@ def load():
             "name": (r["name"].text or "").strip(),
             "monikers": set(int_array(r["moniker_ids"].text)),
             "bandolier": BANDOLIER_CONTAINER in int_array(r["container_sets"].text),
+            "clip": int(r["clip_size"].text or 0),
         }
 
     sources: Dict[int, Set[str]] = defaultdict(set)
     for r in rows(CHAR_CREATION, "char_creation_abilities"):
         sources[int(r["ability_id"].text)].add("char_creation")
+    for r in rows(DEBUG_KIT, "char_creation_debug_kit_abilities"):
+        sources[int(r["ability_id"].text)].add("debug_kit")
     for r in rows(TREE, "archetype_ability_tree"):
         sources[int(r["ability_id"].text)].add("tree")
     for r in rows(TRAINER, "trainer_abilities"):
@@ -116,9 +185,11 @@ def load():
         sources[ability_id].add("item_event")
     for path in sorted((REPO_ROOT / CONTENT_DIR).glob("*.sql")):
         text, _ = read_text(path.relative_to(REPO_ROOT))
-        for m in _GRANT_ABILITY.finditer(text):
-            sources[int(m.group(1))].add("content_grant")
+        for row in content_action_rows(text):
+            for ability_id in granted_ability_ids(row):
+                sources[ability_id].add("content_grant")
     starter_items = {int(r["item_id"].text) for r in rows(CHAR_CREATION_ITEMS, "char_creation_items")}
+    starter_items |= {int(r["item_id"].text) for r in rows(DEBUG_KIT_ITEMS, "char_creation_debug_kit_items")}
     return monikers, abilities, items, sources, item_events, starter_items
 
 
@@ -165,6 +236,19 @@ def build() -> str:
         if not (set(a["item_monikers"]) & it["monikers"]):
             own_weapon_refused.append((item_id, ability_id, event_id, a, it))
 
+    # Python checked the weapon only for TargetTarget abilities.
+    rust_only = [x for x in audited if x[1]["target_type"] != TARGET_TARGET]
+
+    # Bandolier weapons with no RANGED binding: right-click fires nothing.
+    ranged_bound = {item_id for item_id, _, event_id in item_events if event_id == EVENT_RANGED}
+    events_of: Dict[int, Set[int]] = defaultdict(set)
+    for item_id, _, event_id in item_events:
+        events_of[item_id].add(event_id)
+    no_ranged = sorted(i for i, it in items.items() if it["bandolier"] and i not in ranged_bound)
+    rifle_581 = sorted(
+        item_id for item_id, ability_id, event_id in item_events if ability_id == 581 and event_id == EVENT_RANGED
+    )
+
     reachable_total = sum(1 for i in sources if i in abilities)
     lines: List[str] = []
     w = lines.append
@@ -178,11 +262,17 @@ def build() -> str:
     w("whose `abilities.item_monikers` is non-empty is refused with")
     w("`CONDITION_FEEDBACK_WrongWeaponType` (63) unless the active bandolier weapon")
     w("carries at least one of those monikers. An ability with no requirement is")
-    w("unchanged, and NPC casts are not checked.")
+    w("unchanged, and NPC casts are not checked. The match rule is python's")
+    w("(`SGWPlayer.hasItemMoniker`, any-match), but python applied it only to")
+    w("`TargetTarget` abilities and only after the cooldown check")
+    w("(`AbilityManager.py:528-545`); the Rust server checks every target type")
+    w("ahead of the cooldown.")
     w("")
-    w("Player-reachable sources: `char_creation` (char_creation_abilities), `tree`")
+    w("Player-reachable sources: `char_creation` (char_creation_abilities),")
+    w("`debug_kit` (char_creation_debug_kit_abilities), `tree`")
     w("(archetype_ability_tree), `trainer` (trainer_abilities), `item_event`")
-    w("(items_event_sets) and `content_grant` (a `grant_ability` content action).")
+    w("(items_event_sets) and `content_grant` (the `params.ability_ids` of a")
+    w("`grant_ability` content action, the only form the content loader accepts).")
     w("A valid weapon is an item that can sit in the bandolier (container 3) and")
     w("carries a required moniker. A content `launch_ability` action applies its")
     w("effects directly (`content::effect_apply`), not through a player's launch,")
@@ -195,6 +285,8 @@ def build() -> str:
     w(f"- PASS: {len(passes)}")
     w(f"- FAIL (no shipped weapon satisfies it): {len(fails)}")
     w(f"- Weapon-granted abilities their own weapon does not satisfy: {len(own_weapon_refused)}")
+    w(f"- Gated by the Rust server only (python checked `TargetTarget` alone): {len(rust_only)}")
+    w(f"- Bandolier weapons with no RANGED binding (right-click fires nothing): {len(no_ranged)}")
     w("")
     w("## Starter cases")
     w("")
@@ -208,22 +300,79 @@ def build() -> str:
         flag = "" if ok == expected else " **MISMATCH**"
         w(f"| {ability_id} {esc(a['name'])} | {item_label(item_id, items)} | {want} | {verdict}{flag} |")
     w("")
-    w("## Data-correction rows")
+    w("## FAIL rows")
     w("")
-    w("A FAIL is bad recovered data, not a reason to weaken the rule. Each row")
-    w("needs a seed fix (the ability's `item_monikers` or a weapon's `moniker_ids`)")
-    w("before the ability can be used by a player.")
+    w("No shipped bandolier weapon carries a required moniker, so no player can")
+    w("use these. They stay flagged and the rule is not weakened for them; no seed")
+    w("change was made (decided 2026-10-10). The notes are inferences from the")
+    w("seeds, not CME sources.")
     w("")
     if fails:
-        w("| ability_id | name | sources | required monikers |")
-        w("|---|---|---|---|")
+        w("| ability_id | name | target | sources | required monikers | note |")
+        w("|---|---|---|---|---|---|")
         for ability_id, a, src, _ in fails:
             req = ", ".join(moniker_label(m, monikers) for m in a["item_monikers"])
-            w(f"| {ability_id} | {esc(a['name'])} | {', '.join(src)} | {esc(req)} |")
+            target = TARGET_TYPES.get(a["target_type"], str(a["target_type"]))
+            note = FAIL_NOTES.get(ability_id, "")
+            w(f"| {ability_id} | {esc(a['name'])} | {target} | {', '.join(src)} | {esc(req)} | {esc(note)} |")
     else:
         w("None.")
     w("")
-    w("### Weapon-granted abilities refused by their own weapon")
+    w("## Gated by the Rust server only")
+    w("")
+    w("Python's `canUse` ran the weapon check only in its `TargetTarget` branch,")
+    w("so it never refused these self- and ground-targeted abilities. OD-CS11")
+    w("applies the rule to every target type, so the Rust server refuses them")
+    w("with the wrong weapon.")
+    w("")
+    if rust_only:
+        w("| ability_id | name | target | sources | required monikers | result |")
+        w("|---|---|---|---|---|---|")
+        for ability_id, a, src, valid in rust_only:
+            req = ", ".join(moniker_label(m, monikers) for m in a["item_monikers"])
+            target = TARGET_TYPES.get(a["target_type"], str(a["target_type"]))
+            w(
+                f"| {ability_id} | {esc(a['name'])} | {target} | {', '.join(src)} | {esc(req)} | "
+                f"{'PASS' if valid else 'FAIL'} |"
+            )
+    else:
+        w("None.")
+    w("")
+    w("## Right-click with no RANGED binding")
+    w("")
+    w("Right-click on a live hostile fires the active weapon's RANGED binding")
+    w("(`items_event_sets` event 7), or 594 Strike with no weapon. Before CS-07 a")
+    w("weapon with no RANGED binding fell back to 592 Pistol Shot, which the")
+    w("weapon requirement now refuses for anything but a pistol. Since CS-07 such")
+    w("a weapon fires nothing and charges nothing, and the player reads")
+    w(f"\"{NO_RANGED_ATTACK_TEXT}\" (decided 2026-10-10).")
+    w("")
+    w(f"{len(rifle_581)} rifles are bound to 581 Rifle Auto Attack (RANGED). All but one are the")
+    w("ITEM_Rifle sniper rifles that shipped with only a clip and a melee binding;")
+    w("CS-07 seeded 581 onto them (decided 2026-10-10).")
+    w("")
+    if no_ranged:
+        groups: Dict[tuple, List[int]] = defaultdict(list)
+        for item_id in no_ranged:
+            it = items[item_id]
+            tags = tuple(
+                sorted(monikers.get(m, str(m)) for m in it["monikers"] if monikers.get(m, "").upper().startswith("ITEM_"))
+            )
+            events = tuple(EVENT_NAMES.get(e, str(e)) for e in sorted(events_of[item_id]))
+            groups[(tags, it["clip"] > 0, events)].append(item_id)
+        w("| weapon monikers (ITEM_*) | magazine | other bindings | items | examples |")
+        w("|---|---|---|---|---|")
+        for (tags, has_clip, events), group in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+            names = sorted({items[i]["name"] for i in group})
+            more = f" (+{len(names) - MAX_EXAMPLES} more)" if len(names) > MAX_EXAMPLES else ""
+            w(
+                f"| {esc(', '.join(tags)) or 'none'} | {'yes' if has_clip else 'no'} | "
+                f"{', '.join(events) or 'none'} | {len(group)} | {esc(', '.join(names[:MAX_EXAMPLES]) + more)} |"
+            )
+    else:
+        w("None.")
+    w("")
+    w("## Weapon-granted abilities refused by their own weapon")
     w("")
     w("An `items_event_sets` row binds the ability to the weapon, but the weapon")
     w("carries none of the ability's required monikers, so pressing the granted")
@@ -284,23 +433,30 @@ def build() -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def main(argv: List[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--check", action="store_true", help="exit 1 if the committed doc drifted")
     ap.add_argument("--stdout", action="store_true", help="print the doc, write nothing")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     doc = build()
     if args.stdout:
         sys.stdout.write(doc)
         return 0
-    data = doc.replace("\n", "\r\n").encode("utf-8")
+    # Compare and write in LF, keeping the file's own line ending (the seeds'
+    # `read_text` / `write_text` rule): a checkout's CRLF or LF is not drift,
+    # and a run never rewrites the line endings.
     path = REPO_ROOT / OUT
+    old, eol = read_text(OUT) if path.exists() else (None, "\n")
     if args.check:
-        if not path.exists() or path.read_bytes() != data:
+        if old != doc:
             print(f"{OUT} is stale: rerun {Path(__file__).name}", file=sys.stderr)
             return 1
+        print(f"ok: {OUT} matches the seeds")
         return 0
-    path.write_bytes(data)
+    if old == doc:
+        print(f"{OUT} is up to date")
+        return 0
+    write_text(OUT, doc, eol)
     print(f"wrote {OUT}")
     return 0
 

@@ -283,6 +283,7 @@ impl SpaceManager {
                 // Missing here until NA02: `destroy_entity` released it,
                 // this path did not.
                 self.zero_health_npc_log.forget(eid);
+                self.ability_refusal_log.forget(eid);
                 self.npc_detectors.forget(eid);
                 // A pet dies with its instance; drop it from the owner map.
                 self.pets.forget_pet(eid);

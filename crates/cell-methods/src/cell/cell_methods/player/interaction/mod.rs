@@ -18,6 +18,9 @@ mod debug_hub_dispatch_tests;
 mod dialog;
 #[cfg(test)]
 mod dialog_choice_gate_tests;
+mod hostile_attack;
+#[cfg(test)]
+mod hostile_attack_tests;
 mod interact;
 #[cfg(test)]
 mod registrar_dispatch_tests;

@@ -18,6 +18,43 @@ pub(super) use crate::cell::respawn::send_known_abilities_update;
 
 pub(crate) mod mission_restore;
 
+/// Tag the active bandolier weapon's granted abilities on the cell entity at
+/// world entry, without a wire send of their own: the world-entry
+/// `onKnownAbilitiesUpdate` that follows carries them.
+fn grant_active_weapon_abilities(entity_id: u32, space_mgr: &mut SpaceManager) {
+    let Some(slot) = space_mgr
+        .get_entity(entity_id)
+        .map(|e| e.active_bandolier_slot)
+    else {
+        return;
+    };
+    let set = cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::weapon_ability_set(
+        space_mgr, entity_id, slot,
+    );
+    let Some((removed, added)) = space_mgr
+        .get_entity_mut(entity_id)
+        .map(|e| e.abilities.swap_weapon_granted_abilities(set))
+    else {
+        return;
+    };
+    let item_id = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.bandolier_items.get(&slot).map(|b| b.item_id));
+    tracing::info!(
+        target: "bandolier",
+        event = "weapon_ability_swap",
+        origin = "world_entry",
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        slot_id = slot, // nt:id-only inventory slot index, not a named object
+        item_id = ?item_id,
+        item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
+        removed = ?removed,
+        added = ?added,
+        "World entry: the active weapon's granted abilities join the known list"
+    );
+}
+
 /// Seed each populated bandolier slot's `AmmoSlot{N}` stat from its persisted
 /// `current_ammo` / `clip_size`.
 ///
@@ -246,6 +283,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // the client has to chew on. (PR #410)
         entity.abilities.clear_all_cooldowns();
     }
+
+    // The active weapon's own abilities (its `items_event_sets` bindings)
+    // join the known list before the hotbar seed below, as a slot change
+    // would add them: they are transient and never persisted, so without
+    // this a player who logs in holding an SMG never hears of 559 until the
+    // next slot change (CS-07 review finding 1).
+    grant_active_weapon_abilities(entity_id, space_mgr);
 
     // Passive abilities (`EF_AlwaysPersist` effects, e.g. 2852 Heed Our
     // Calling's `speedPet`) hold for as long as the ability is known, and

@@ -15,7 +15,7 @@ use cimmeria_common::{SpaceId, Vector3};
 /// python's `canUseAbility` rejected a launch while `currentAbility` was set.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PendingCast {
-    /// The ability being warmed up (after the weapon redirect).
+    /// The ability being warmed up: the id the launch accepted.
     pub ability_id: i32,
     /// The `useAbility` target id; `0` for a target-less cast.
     pub target_id: i32,

@@ -12,3 +12,5 @@ mod reload_on_activate;
 mod relog_mission_resurrection;
 #[cfg(test)]
 mod system_options_assignment;
+#[cfg(test)]
+mod weapon_grant_at_entry;

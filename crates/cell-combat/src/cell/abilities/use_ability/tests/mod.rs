@@ -62,6 +62,7 @@ mod warmup_interrupt;
 mod weapon_grant;
 mod weapon_range;
 mod weapon_requirement;
+mod weapon_requirement_gates;
 mod weapon_requirement_live_db;
 
 /// Every [`make_ability`] fixture carries the shared no-op mechanic effect,

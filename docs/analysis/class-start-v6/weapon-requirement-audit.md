@@ -8,11 +8,17 @@ The rule (OD-CS11, [ledger](README.md)): a **player** cast of an ability
 whose `abilities.item_monikers` is non-empty is refused with
 `CONDITION_FEEDBACK_WrongWeaponType` (63) unless the active bandolier weapon
 carries at least one of those monikers. An ability with no requirement is
-unchanged, and NPC casts are not checked.
+unchanged, and NPC casts are not checked. The match rule is python's
+(`SGWPlayer.hasItemMoniker`, any-match), but python applied it only to
+`TargetTarget` abilities and only after the cooldown check
+(`AbilityManager.py:528-545`); the Rust server checks every target type
+ahead of the cooldown.
 
-Player-reachable sources: `char_creation` (char_creation_abilities), `tree`
+Player-reachable sources: `char_creation` (char_creation_abilities),
+`debug_kit` (char_creation_debug_kit_abilities), `tree`
 (archetype_ability_tree), `trainer` (trainer_abilities), `item_event`
-(items_event_sets) and `content_grant` (a `grant_ability` content action).
+(items_event_sets) and `content_grant` (the `params.ability_ids` of a
+`grant_ability` content action, the only form the content loader accepts).
 A valid weapon is an item that can sit in the bandolier (container 3) and
 carries a required moniker. A content `launch_ability` action applies its
 effects directly (`content::effect_apply`), not through a player's launch,
@@ -25,6 +31,8 @@ so it is not checked and is not a source here.
 - PASS: 122
 - FAIL (no shipped weapon satisfies it): 4
 - Weapon-granted abilities their own weapon does not satisfy: 133
+- Gated by the Rust server only (python checked `TargetTarget` alone): 25
+- Bandolier weapons with no RANGED binding (right-click fires nothing): 270
 
 ## Starter cases
 
@@ -36,20 +44,80 @@ so it is not checked and is not a source here.
 | 1984 Staff Swing | 2797 Serpent Staff | fires | fires |
 | 1639 Ribbon Device:Destruction Beam | 4565 Serpent Ribbon Device | fires | fires |
 
-## Data-correction rows
+## FAIL rows
 
-A FAIL is bad recovered data, not a reason to weaken the rule. Each row
-needs a seed fix (the ability's `item_monikers` or a weapon's `moniker_ids`)
-before the ability can be used by a player.
+No shipped bandolier weapon carries a required moniker, so no player can
+use these. They stay flagged and the rule is not weakened for them; no seed
+change was made (decided 2026-10-10). The notes are inferences from the
+seeds, not CME sources.
 
-| ability_id | name | sources | required monikers |
-|---|---|---|---|
-| 997 | Full Mag: Dart Pistol | trainer, tree | ITEM_Dart_Rifle (3257416555) |
-| 1246 | Stealthed Strike | trainer, tree | ITEM_Melee (3756430796) |
-| 1250 | Escape | trainer, tree | ITEM_Stealth_Chest (2819009444), ITEM_Stealth_Feet (3481040701), ITEM_Stealth_Hands (896281579), ITEM_Stealth_Head (1450759534), ITEM_Stealth_Legs (210985080) |
-| 1355 | Lethal Strike | trainer, tree | ITEM_Melee (3756430796) |
+| ability_id | name | target | sources | required monikers | note |
+|---|---|---|---|---|---|
+| 997 | Full Mag: Dart Pistol | Target | trainer, tree | ITEM_Dart_Rifle (3257416555) | Likely a wrong tag: no item carries ITEM_Dart_Rifle, and the dart pistols carry ITEM_DartPistol. |
+| 1246 | Stealthed Strike | Target | trainer, tree | ITEM_Melee (3756430796) | No item carries ITEM_Melee; blades carry ITEM_Blade (inference). |
+| 1250 | Escape | Self | trainer, tree | ITEM_Stealth_Chest (2819009444), ITEM_Stealth_Feet (3481040701), ITEM_Stealth_Hands (896281579), ITEM_Stealth_Head (1450759534), ITEM_Stealth_Legs (210985080) | Needs stealth armour monikers, which a bandolier weapon can never carry, and python never checked it (a Self ability). A scope question, not a seed fix. |
+| 1355 | Lethal Strike | Target | trainer, tree | ITEM_Melee (3756430796) | No item carries ITEM_Melee; blades carry ITEM_Blade (inference). |
 
-### Weapon-granted abilities refused by their own weapon
+## Gated by the Rust server only
+
+Python's `canUse` ran the weapon check only in its `TargetTarget` branch,
+so it never refused these self- and ground-targeted abilities. OD-CS11
+applies the rule to every target type, so the Rust server refuses them
+with the wrong weapon.
+
+| ability_id | name | target | sources | required monikers | result |
+|---|---|---|---|---|---|
+| 808 | Cover Denial | Ground | trainer, tree | ITEM_LightMG (1115110575) | PASS |
+| 850 | Scattershot | Self | trainer, tree | ITEM_Shotgun (2035259765) | PASS |
+| 853 | Fire Zone | Self | trainer, tree | ITEM_LightMG (1115110575) | PASS |
+| 1250 | Escape | Self | trainer, tree | ITEM_Stealth_Chest (2819009444), ITEM_Stealth_Feet (3481040701), ITEM_Stealth_Hands (896281579), ITEM_Stealth_Head (1450759534), ITEM_Stealth_Legs (210985080) | FAIL |
+| 1332 | Point Blank Fire | Self | trainer, tree | ITEM_Shotgun (2035259765) | PASS |
+| 1475 | Flushing Fire | Ground | trainer, tree | ITEM_SMG (728213066) | PASS |
+| 1482 | Ground Blast | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 1486 | Rain of Steel | Self | trainer, tree | ITEM_LightMG (1115110575) | PASS |
+| 1487 | Penetrating Barrage | Ground | trainer, tree | ITEM_LightMG (1115110575) | PASS |
+| 1882 | Launch Grenade: Tear Gas | Ground | trainer, tree | ITEM_Grenade_Launcher (312541303) | PASS |
+| 1885 | Launch Grenade: Shockwave | Ground | trainer, tree | ITEM_Grenade_Launcher (312541303) | PASS |
+| 1889 | Incinerate Area | Ground | trainer, tree | Item_Flamethrower (4283851787) | PASS |
+| 2025 | Whirlwind | Self | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2026 | Starburst | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2029 | Bewilderment | Self | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2042 | Maximum Blast | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2058 | Devastating Blast | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2102 | Incinerate Ground | Ground | trainer, tree | Item_Flamethrower (4283851787) | PASS |
+| 2103 | Launch Grenade: Concussion | Ground | trainer, tree | ITEM_Grenade_Launcher (312541303) | PASS |
+| 2105 | Launch Grenade: Barrage | Ground | trainer, tree | ITEM_Grenade_Launcher (312541303) | PASS |
+| 2419 | Launch Grenade: Single | Ground | trainer, tree | ITEM_Grenade_Launcher (312541303) | PASS |
+| 2715 | Dominance Blast | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+| 2717 | Fist of an Angry God | Ground | trainer, tree | ITEM_RibbonDevice (4193235610) | PASS |
+| 2718 | Wrath of God | Ground | trainer, tree | ITEM_RibbonDevice (4193235610) | PASS |
+| 2841 | Destruction Pulse | Ground | trainer, tree | ITEM_Staff (1383013887) | PASS |
+
+## Right-click with no RANGED binding
+
+Right-click on a live hostile fires the active weapon's RANGED binding
+(`items_event_sets` event 7), or 594 Strike with no weapon. Before CS-07 a
+weapon with no RANGED binding fell back to 592 Pistol Shot, which the
+weapon requirement now refuses for anything but a pistol. Since CS-07 such
+a weapon fires nothing and charges nothing, and the player reads
+"This weapon has no ranged attack." (decided 2026-10-10).
+
+51 rifles are bound to 581 Rifle Auto Attack (RANGED). All but one are the
+ITEM_Rifle sniper rifles that shipped with only a clip and a melee binding;
+CS-07 seeded 581 onto them (decided 2026-10-10).
+
+| weapon monikers (ITEM_*) | magazine | other bindings | items | examples |
+|---|---|---|---|---|
+| none | no | none | 164 | Archaeologist Mini-game Instrument, Asgard Mini-game Instrument, Commando Mini-game Instrument, Generic TC10 Mini-game Instrument (+26 more) |
+| ITEM_Blade | no | melee | 50 | Combat Knife, Composite Combat Knife, Heavy Combat Knife, Microblade Combat Knife (+6 more) |
+| ITEM_Grenade_Launcher | no | melee | 25 | GL 21 Grenade Launcher, GL 22 Grenade Launcher, GL 23 Grenade Launcher, GL 24 Grenade Launcher (+1 more) |
+| Item_Flamethrower | no | melee | 25 | Baby Mongoose Flamethrower, Mongoose Flamethrower, Papa Mongoose Flamethrower, Papa Polecat Flamethrower (+1 more) |
+| none | no | use | 3 | "Creative" Weapon, Anti-Straegis Blaster, Unstable Anti-Straegis Blaster |
+| ITEM_Fists | no | melee | 1 | Fists |
+| ITEM_Pistol | yes | none | 1 | Crafted Pistol of the Whale |
+| ITEM_Staff | no | none | 1 | Reigns of the Sun Chariot |
+
+## Weapon-granted abilities refused by their own weapon
 
 An `items_event_sets` row binds the ability to the weapon, but the weapon
 carries none of the ability's required monikers, so pressing the granted
@@ -215,9 +283,9 @@ Every row:
 | 582 | LMG Auto Attack | item_event | ITEM_LightMG (1115110575) | 3260 SK37 LMG; 3261 SK37 LMG; 3262 SK37 LMG; 3263 SK37 LMG (+72 more) | PASS |
 | 583 | Shotgun Auto Attack | item_event | ITEM_Shotgun (2035259765) | 3313 Pump Shotgun; 3314 Pump Shotgun; 3315 Pump Shotgun; 3316 Pump Shotgun (+21 more) | PASS |
 | 584 | Staff Auto Attack | item_event | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
-| 592 | Pistol Shot | char_creation | ITEM_Pistol (2445422768) | 55 SI 3 9mm Pistol; 3235 SI 3 9mm Pistol; 3236 SI 3 9mm Pistol; 3237 SI 3 9mm Pistol (+49 more) | PASS |
+| 592 | Pistol Shot | char_creation, content_grant, debug_kit | ITEM_Pistol (2445422768) | 55 SI 3 9mm Pistol; 3235 SI 3 9mm Pistol; 3236 SI 3 9mm Pistol; 3237 SI 3 9mm Pistol (+49 more) | PASS |
 | 595 | Automatic Weapon Melee AA | item_event | ITEM_Automatic_Weapon (3175425141) | 21 SGHC 6 SMG; 3126 SGHC 6 SMG; 3127 SGHC 6 SMG; 3129 SGHC 6 SMG (+199 more) | PASS |
-| 598 | Quick Burst | trainer, tree | ITEM_Automatic_Weapon (3175425141) | 21 SGHC 6 SMG; 3126 SGHC 6 SMG; 3127 SGHC 6 SMG; 3129 SGHC 6 SMG (+199 more) | PASS |
+| 598 | Quick Burst | content_grant, trainer, tree | ITEM_Automatic_Weapon (3175425141) | 21 SGHC 6 SMG; 3126 SGHC 6 SMG; 3127 SGHC 6 SMG; 3129 SGHC 6 SMG (+199 more) | PASS |
 | 612 | Area Burst | trainer, tree | ITEM_LightMG (1115110575) | 3260 SK37 LMG; 3261 SK37 LMG; 3262 SK37 LMG; 3263 SK37 LMG (+72 more) | PASS |
 | 632 | Long Burst | trainer, tree | ITEM_LightMG (1115110575) | 3260 SK37 LMG; 3261 SK37 LMG; 3262 SK37 LMG; 3263 SK37 LMG (+72 more) | PASS |
 | 640 | Aimed Shot: Torso | trainer, tree | ITEM_Rifle (2882868408) | 3287 SR1 .50-Cal Rifle; 3288 SR1 .50-Cal Rifle; 3289 SR1 .50-Cal Rifle; 3290 SR1 .50-Cal Rifle (+47 more) | PASS |
@@ -301,7 +369,7 @@ Every row:
 | 1903 | LMG Melee AA | item_event | ITEM_Grenade_Launcher (312541303) | 4990 GL 21 Grenade Launcher; 4991 GL 21 Grenade Launcher; 4992 GL 21 Grenade Launcher; 4993 GL 21 Grenade Launcher (+21 more) | PASS |
 | 1905 | Radiated Blasts | trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
 | 1952 | Dart Rifle: Continuous | trainer, tree | ITEM_DartPistol (2389790449) | 3584 CO2 Pistol Dartgun; 3585 CO2 Pistol Dartgun; 3586 CO2 Pistol Dartgun; 3587 CO2 Pistol Dartgun (+21 more) | PASS |
-| 1984 | Staff Swing | trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
+| 1984 | Staff Swing | char_creation, content_grant, trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
 | 2001 | Arc of Fury | trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
 | 2025 | Whirlwind | trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |
 | 2026 | Starburst | trainer, tree | ITEM_Staff (1383013887) | 2797 Serpent Staff; 3470 Serpent Staff; 3471 Serpent Staff; 3472 Serpent Staff (+174 more) | PASS |

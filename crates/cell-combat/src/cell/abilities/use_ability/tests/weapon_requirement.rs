@@ -23,20 +23,20 @@ const ITEM_RIBBON_DEVICE: i64 = 4_193_235_610;
 const CATEGORY_WEAPONS: i64 = 3_901_383_057;
 
 const PISTOL_SHOT: i32 = 592;
-const QUICK_BURST: i32 = 598;
+pub(super) const QUICK_BURST: i32 = 598;
 const STAFF_SWING: i32 = 1984;
 const DESTRUCTION_BEAM: i32 = 1639;
 const SMG_AUTO_ATTACK: i32 = 559;
 
 const PISTOL: i32 = 55;
-const SGHC_SMG: i32 = 21;
-const SK37_LMG: i32 = 3260;
+pub(super) const SGHC_SMG: i32 = 21;
+pub(super) const SK37_LMG: i32 = 3260;
 const SERPENT_STAFF: i32 = 2797;
 const RIBBON_DEVICE: i32 = 4565;
 
-const PLAYER: u32 = 1;
-const TARGET: u32 = 2;
-const CLIP: i32 = 30;
+pub(super) const PLAYER: u32 = 1;
+pub(super) const TARGET: u32 = 2;
+pub(super) const CLIP: i32 = 30;
 
 /// The seeded `item_monikers` of an ability.
 fn requirement(ability_id: i32) -> Vec<i64> {
@@ -50,7 +50,7 @@ fn requirement(ability_id: i32) -> Vec<i64> {
 }
 
 /// A one-ammo weapon ability with its seeded requirement.
-fn weapon_ability(ability_id: i32) -> AbilityDef {
+pub(super) fn weapon_ability(ability_id: i32) -> AbilityDef {
     AbilityDef {
         item_monikers: requirement(ability_id),
         ..make_ability(ability_id, 1, 30)
@@ -60,7 +60,7 @@ fn weapon_ability(ability_id: i32) -> AbilityDef {
 /// Player 1 (weapon drawn) knowing `ability_id`, a hostile NPC 2 three
 /// metres away, the seeded monikers of every starter weapon, and `item` (if
 /// any) in the active bandolier slot with a full clip.
-fn scene(ability_id: i32, item: Option<i32>) -> SpaceManager {
+pub(super) fn scene(ability_id: i32, item: Option<i32>) -> SpaceManager {
     let mut mgr = make_mgr();
     make_player(&mut mgr, PLAYER, [0.0; 3]);
     mgr.create_entity(TARGET, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
@@ -110,7 +110,7 @@ fn wrong_weapon_error(ability_id: i32) -> Vec<u8> {
 
 /// Press `ability_id` at the hostile NPC; return whether it committed and
 /// the messages sent.
-async fn press(mgr: &mut SpaceManager, ability_id: i32) -> (bool, Vec<CellToBaseMsg>) {
+pub(super) async fn press(mgr: &mut SpaceManager, ability_id: i32) -> (bool, Vec<CellToBaseMsg>) {
     let (tx, mut rx) = mpsc::channel(256);
     let committed = handle_use_ability(PLAYER, ability_id, TARGET as i32, &tx, mgr).await;
     (committed, drain(&mut rx))
@@ -118,7 +118,7 @@ async fn press(mgr: &mut SpaceManager, ability_id: i32) -> (bool, Vec<CellToBase
 
 /// Assert a refused press: no commit, no cooldown, no ammo spent, no timer,
 /// and the exact WrongWeaponType `onErrorCode` plus the feedback line.
-fn assert_wrong_weapon(
+pub(super) fn assert_wrong_weapon(
     mgr: &SpaceManager,
     ability_id: i32,
     committed: bool,

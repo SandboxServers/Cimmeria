@@ -19,9 +19,11 @@
 //! 3. Return `Some(ability_id)` on hit, `None` on miss.
 //!
 //! These helpers do NOT pick a fallback — callers do. The right-click
-//! hostile-NPC path uses `592 Pistol Shot` as its fallback so an unbound
-//! item still produces a responsive click; other call sites pick what
-//! makes sense for their context (e.g., `594 Strike` for a melee path).
+//! hostile-NPC path fires `594 Strike` when unarmed and, since CS-07, fires
+//! nothing for a weapon with no RANGED binding: it answers with a feedback
+//! line ("This weapon has no ranged attack.") instead of the old `592
+//! Pistol Shot` fallback, which the weapon requirement would refuse for
+//! anything but a pistol.
 //! Centralising the lookup means the call sites can rely on a single
 //! `(item_id, event_id) → Option<i32>` shape without each one
 //! re-implementing the lookup-plus-default pattern.
@@ -48,12 +50,9 @@ pub fn ability_for_item(space_mgr: &SpaceManager, item_id: i32, event_id: i32) -
 /// - The entity has no active bandolier slot occupied (unarmed)
 /// - The slotted item has no `items_event_sets` row for `event_id`
 ///
-/// Callers MUST decide what to do with `None` — for the right-click
-/// hostile-NPC path the previous behavior was "fire Pistol Shot 592",
-/// which is preserved as an explicit fallback at the call site rather
-/// than baked into this helper. See
-/// `crates/cell-methods/src/cell/cell_methods/player/interaction/` for
-/// the canonical pattern.
+/// Callers MUST decide what to do with `None`. The right-click hostile-NPC
+/// path (`crates/cell-methods/src/cell/cell_methods/player/interaction/`)
+/// answers it with feedback and fires nothing (CS-07).
 pub fn ability_for_active_weapon(
     space_mgr: &SpaceManager,
     entity_id: u32,

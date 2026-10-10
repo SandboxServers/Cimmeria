@@ -1,5 +1,7 @@
 //! The abilities a bandolier weapon grants, and their swap when the active
-//! slot changes (split out of `active_slot` along that seam).
+//! weapon changes: on a slot change (split out of `active_slot` along that
+//! seam), and on a drag-equip or grant into the active slot
+//! ([`on_active_weapon_changed`]).
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -126,4 +128,59 @@ pub(super) async fn swap_weapon_granted_abilities_for_slot(
         new_known_count = ability_ids.len(),
         "Per-weapon ability grant — broadcast onKnownAbilitiesUpdate"
     );
+}
+
+/// The active bandolier weapon changed without a `requestActiveSlotChange`:
+/// a drag-equip into the active slot (`SyncBandolierItems`) or a grant into
+/// it (`UpdateBandolierItem`). Does for the outgoing weapon what the
+/// slot-change path does (CS-07 review finding 1):
+///
+/// 1. interrupts a cast warming up with it (python's `onBandolierSlotChange`
+///    fired for a swapped or removed active item too; the warmup tick's
+///    weapon check stays as the backstop);
+/// 2. clears the auto-cycle loop, the queued attack and the last-fired stash,
+///    which all resolved against the old weapon: `setAutoCycle` would
+///    otherwise re-press a shot the new weapon refuses;
+/// 3. swaps the weapon-granted abilities and sends `onKnownAbilitiesUpdate`,
+///    so the new weapon's own attacks reach the client's known list (and the
+///    weapon-shot bar patch 015 has something to rebind to).
+///
+/// The caller decides that the weapon changed; a same-weapon resync must not
+/// call this, or it would interrupt a cast for nothing.
+pub async fn on_active_weapon_changed(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    crate::cell::abilities::interrupt_pending_cast(
+        entity_id,
+        crate::cell::abilities::InterruptReason::ActiveWeaponChanged,
+        tx,
+        space_mgr,
+    )
+    .await;
+    let (slot_id, auto_cycle_cleared) = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => {
+            e.pending_attack_at = None;
+            e.pending_attack_ability_id = None;
+            e.pending_attack_target_id = None;
+            e.abilities.last_fired_ability_id = None;
+            let had_loop = e.abilities.auto_cycle;
+            e.abilities.auto_cycle = false;
+            e.abilities.auto_cycle_ability_id = None;
+            let cleared = if had_loop {
+                let old = e.state_field;
+                e.state_field &= !crate::cell::combat::BSF_AUTO_CYCLING;
+                (e.state_field != old).then_some(e.state_field)
+            } else {
+                None
+            };
+            (e.active_bandolier_slot, cleared)
+        }
+        None => return,
+    };
+    if let Some(new_state) = auto_cycle_cleared {
+        crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
+    }
+    swap_weapon_granted_abilities_for_slot(entity_id, slot_id, tx, space_mgr).await;
 }

@@ -430,6 +430,12 @@ pub struct SpaceManager {
     /// by the ability table, so nothing is released per entity. See
     /// `cell::abilities::use_ability::sequence`.
     pub ability_sequence_log: LogThrottle,
+    /// Gates the player weapon-refusal rows (`wrong_weapon_refused`, the
+    /// right-click `weapon_unbound`), keyed by the player's entity: both sit
+    /// on client-controlled paths a held key or a script can repeat (CS-07).
+    /// The refusal metric counts every press. Released in `destroy_entity`
+    /// and `destroy_space`.
+    pub ability_refusal_log: LogThrottle,
     /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
     /// trackers and their WARN throttles. Reporting only; released in
     /// `destroy_entity` and `destroy_space`. See
@@ -620,6 +626,7 @@ impl SpaceManager {
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
             ability_sequence_log: LogThrottle::default(),
+            ability_refusal_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_files: HashMap::new(),

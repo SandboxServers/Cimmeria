@@ -5538,11 +5538,118 @@ INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALU
 
 INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2767, 8946, 711, 6);
 
+-- Class Start v6 CS-07 (decided 2026-10-10): the 50 ITEM_Rifle sniper rifles
+-- (SR1-SR5 .50-Cal, Nenz 24/25) shipped with a clip and a melee binding (739)
+-- but no RANGED binding, so right-click had nothing to fire once the 592
+-- fallback went. They take 581 Rifle Auto Attack, the RANGED binding of the
+-- one rifle that has one (3299 Nenz 24 Rifle, row 426), whose ITEM_Rifle
+-- requirement they meet.
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2768, 3287, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2769, 3288, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2770, 3289, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2771, 3290, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2772, 3291, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2773, 3292, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2774, 3293, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2775, 3294, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2776, 3295, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2777, 3296, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2778, 3297, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2779, 3300, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2780, 3301, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2781, 3302, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2782, 3303, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2783, 3304, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2784, 3305, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2785, 3306, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2786, 3307, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2787, 3308, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2788, 3309, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2789, 3310, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2790, 4946, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2791, 4947, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2792, 4948, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2793, 4949, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2794, 4950, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2795, 4951, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2796, 4952, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2797, 4953, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2798, 4954, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2799, 4955, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2800, 4956, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2801, 4957, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2802, 4958, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2803, 4959, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2804, 4960, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2805, 4961, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2806, 4962, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2807, 4963, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2808, 4964, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2809, 4965, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2810, 4966, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2811, 4967, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2812, 4968, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2813, 4969, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2814, 4970, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2815, 4971, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2816, 4972, 581, 7);
+
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2817, 4973, 581, 7);
+
 --
 -- TOC entry 3321 (class 0 OID 0)
 -- Dependencies: 307
 -- Name: items_event_sets_2_item_event_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2767, true);
+SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2817, true);
 

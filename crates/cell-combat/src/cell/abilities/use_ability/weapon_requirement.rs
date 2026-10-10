@@ -3,22 +3,36 @@
 //! An ability whose `item_monikers` is non-empty fires for a player only if
 //! the active bandolier item carries at least one of those monikers. No
 //! requirement means no check, an empty active slot fails any requirement,
-//! and NPC casts (pets included) are never checked. Python did the same in
-//! `AbilityInstance.canUse` (`deprecated/python/cell/AbilityManager.py:543`,
-//! `SGWPlayer.hasItemMoniker`) and answered `onErrorCode(
-//! ERRORCODE_SYSTEM_Ability, abilityId, CONDITION_FEEDBACK_WrongWeaponType)`
-//! (`SGWPlayer.py:1231`).
+//! and NPC casts (pets included) are never checked.
+//!
+//! **Where this differs from python.** The match rule is python's
+//! (`SGWPlayer.hasItemMoniker`, any-match), but python applied it only in
+//! the `TargetTarget` branch of `AbilityInstance.canUse`
+//! (`deprecated/python/cell/AbilityManager.py:528-545`), after
+//! `canUseAbility` had already checked the cooldown. Self- and
+//! ground-targeted abilities were never checked; here every target type is
+//! (OD-CS11 is global), which gates 25 player-reachable abilities python
+//! let through (7 self, 18 ground; the CS-07 audit lists them). Python's
+//! `useAbility` also never told the client: it sent `onErrorCode` only
+//! `if not status`, and a refusal code is truthy (`SGWPlayer.py:1229-1231`).
 //!
 //! The refusal comes before the cooldown, the ammo check and the cost, so
-//! nothing is charged. It sends that `onErrorCode` plus a `CHAN_FEEDBACK`
-//! line (no client Lua renders `onErrorCode`, AT-E1, so the line is what
-//! the player reads on the first press) and logs one `wrong_weapon_refused`
-//! row naming the ability, the required monikers and the active item.
+//! nothing is charged and a press with the wrong weapon always gets
+//! feedback. It sends `onErrorCode(ERRORCODE_SYSTEM_Ability, id,
+//! CONDITION_FEEDBACK_WrongWeaponType)` plus a `CHAN_FEEDBACK` line (no
+//! client Lua renders `onErrorCode`, AT-E1, so the line is what the player
+//! reads on the first press). The `wrong_weapon_refused` row naming the
+//! ability, the required monikers and the active item is throttled per
+//! player (`SpaceManager::ability_refusal_log`); the refusal metric counts
+//! every press.
 //!
 //! This replaces the 592 → active-weapon redirect (#495): Pistol Shot now
 //! needs a pistol like every other weapon ability needs its weapon, and a
-//! weapon's own basic attack is the weapon-granted ability the bandolier
-//! swap puts on the hotbar (`weapon_abilities.rs`).
+//! weapon's own basic attack is the weapon-granted ability that joins the
+//! known list when the weapon becomes active (world entry, slot change,
+//! drag-equip or grant: `weapon_abilities.rs`). The server cannot rebind a
+//! hotbar slot; client patch 015 moves a bar slot holding one weapon shot to
+//! the active weapon's shot.
 
 use tokio::sync::mpsc;
 
@@ -37,6 +51,9 @@ pub(crate) const WRONG_WEAPON_TEXT: &str = "You need a different weapon to use t
 
 /// The `reason` the refusal row carries.
 pub(crate) const REASON_WRONG_WEAPON_TYPE: &str = "wrong_weapon_type";
+
+/// At most one `wrong_weapon_refused` row per player per this window.
+pub(crate) const REFUSAL_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// A player's cast the rule refuses: the active item, if any.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,8 +102,10 @@ fn moniker_labels(ids: &[i64]) -> String {
         .join(",")
 }
 
-/// Refuse a press [`wrong_weapon`] flagged: one INFO `abilities` row, then
-/// `onErrorCode(.., 63)` plus the feedback line. An auto-cycle loop armed on
+/// Refuse a press [`wrong_weapon`] flagged: one INFO `abilities` row (at most
+/// one per player per [`REFUSAL_LOG_INTERVAL`], carrying the presses it
+/// held back as `suppressed`), then `onErrorCode(.., 63)` plus the feedback
+/// line. An auto-cycle loop armed on
 /// this ability is stopped, or its tick would repeat the refusal every
 /// cooldown (a weapon swap clears the loop too, `active_slot`). The caller
 /// returns before the cooldown, so nothing is charged and no timer is sent.
@@ -98,35 +117,44 @@ pub(super) async fn refuse_wrong_weapon(
     space_mgr: &mut SpaceManager,
 ) {
     let id = space_mgr.player_identity(entity_id);
-    let active_item_monikers = wrong
-        .active_item_id
-        .and_then(|item| space_mgr.item_monikers.get(&item))
-        .map(|m| moniker_labels(m))
-        .unwrap_or_default();
-    // INFO, not DEBUG: the refusal is the visible symptom of a weapon/data
-    // mismatch (the CS-07 audit's data-correction rows), and each press
-    // costs the player a click, so the volume stays human-scale.
-    tracing::info!(
-        target: "abilities",
-        event = "wrong_weapon_refused",
-        decision_outcome = "refused",
-        reason = REASON_WRONG_WEAPON_TYPE,
+    // INFO, not DEBUG: the first refusal is the visible symptom of a
+    // weapon/data mismatch (the CS-07 audit's data-correction rows). But the
+    // press is client-controlled and comes before the cooldown, so a held
+    // key or a script could repeat it without limit: Pattern D throttle.
+    if let Some(suppressed) = space_mgr.ability_refusal_log.admit(
         entity_id,
-        entity_name = space_mgr.entity_label(entity_id),
-        account_id = id.account_id,
-        account_name = id.account_name,
-        player_id = id.player_id,
-        player_name = id.player_name,
-        ability_id = def.ability_id,
-        ability_name = %def.name,
-        required_monikers = %moniker_labels(&def.item_monikers),
-        active_item_id = wrong.active_item_id,
-        active_item_name =
-            cimmeria_cell_world::cell::effects::content_names::item_name(wrong.active_item_id),
-        active_item_monikers = %active_item_monikers,
-        "useAbility: the active weapon carries none of the ability's required monikers; \
-         refused with WrongWeaponType, no cooldown charged"
-    );
+        REASON_WRONG_WEAPON_TYPE,
+        std::time::Instant::now(),
+        REFUSAL_LOG_INTERVAL,
+    ) {
+        let active_item_monikers = wrong
+            .active_item_id
+            .and_then(|item| space_mgr.item_monikers.get(&item))
+            .map(|m| moniker_labels(m))
+            .unwrap_or_default();
+        tracing::info!(
+            target: "abilities",
+            event = "wrong_weapon_refused",
+            decision_outcome = "refused",
+            reason = REASON_WRONG_WEAPON_TYPE,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            ability_id = def.ability_id,
+            ability_name = %def.name,
+            required_monikers = %moniker_labels(&def.item_monikers),
+            active_item_id = wrong.active_item_id,
+            active_item_name =
+                cimmeria_cell_world::cell::effects::content_names::item_name(wrong.active_item_id),
+            active_item_monikers = %active_item_monikers,
+            suppressed,
+            "useAbility: the active weapon carries none of the ability's required monikers; \
+             refused with WrongWeaponType, no cooldown charged"
+        );
+    }
     super::no_mechanics::send_ability_refusal(
         entity_id,
         id,
