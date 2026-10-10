@@ -1,0 +1,47 @@
+name: build-lane-scripts
+
+# Path-filtered: the build lane's PowerShell (tools/build-lane/*.ps1), which
+# every agent and session compiles through. Its Python tests run in `ci`;
+# this covers the PowerShell twins' own tests (test-*.ps1), on Windows.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/build-lane/**'
+      - '.github/workflows/build-lane-scripts.yml'
+  pull_request:
+    paths:
+      - 'tools/build-lane/**'
+      - '.github/workflows/build-lane-scripts.yml'
+
+concurrency:
+  group: build-lane-scripts-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: build-lane PowerShell tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: pwsh tests
+        shell: pwsh
+        run: |
+          $failed = @()
+          $tests = Get-ChildItem tools/build-lane -Filter 'test-*.ps1' | Sort-Object Name
+          if (-not $tests) { Write-Error 'no tools/build-lane test scripts found'; exit 1 }
+          foreach ($t in $tests) {
+            Write-Host "::group::$($t.Name)"
+            pwsh -NoProfile -File $t.FullName
+            $code = $LASTEXITCODE
+            Write-Host '::endgroup::'
+            if ($code -ne 0) { $failed += $t.Name; Write-Host "::error::$($t.Name) exited $code" }
+          }
+          if ($failed) { exit 1 }

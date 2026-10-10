@@ -76,8 +76,9 @@ with `ship.py pr` again.
 ## 6. Merge
 
 The owner's rule is to merge on the minimum build-proving CI: `fmt`, `clippy`,
-`build + nextest` and any change-specific lanes. `ship.py merge` waits for exactly those;
-coverage and live-DB are not waited for.
+`build + nextest` and any change-specific lanes. `ship.py merge` waits for those three, plus
+the path-filtered lab and build-lane checks (`lab.yml`, `build-lane-scripts.yml`) whenever the
+PR's changes made them run (`CONDITIONAL` in `ship.py`). Coverage and live-DB are not waited for.
 
 ```powershell
 python tools/build-lane/ship.py merge <PR> --retire <name>              # waits up to --timeout 30m

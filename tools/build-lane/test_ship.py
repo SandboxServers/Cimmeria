@@ -324,6 +324,25 @@ class MergeTests(MergeCase):
         self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", "cargo clippy -D warnings"))
         self.assertEqual(self.calls(["pr", "merge"]), [])
 
+    def test_a_path_filtered_lab_check_that_ran_gates_the_merge(self):
+        lab = ship.CONDITIONAL[1]
+        self.add_pr(["crates/lab/src/x.rs"], checks=[dict(GREEN, **{lab: "fail"})])
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", lab))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+    def test_a_pending_lab_check_is_waited_for(self):
+        lab = ship.CONDITIONAL[2]
+        self.add_pr(["tools/lab/x.ps1"], checks=[dict(GREEN, **{lab: "pending"}), dict(GREEN, **{lab: "pass"})])
+        code, f, line = self.merge()
+        self.assertEqual(code, 0, line)
+        self.assertEqual(len(self.calls(["pr", "checks"])), 2, "pending lab check, then green")
+
+    def test_lab_checks_that_did_not_run_do_not_block(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        code, _, line = self.merge()
+        self.assertEqual(code, 0, line)
+
     def test_timeout_exits_3(self):
         self.add_pr(["src.rs"], checks=[{g: "pending" for g in ship.GATING}])
         code, f, _ = self.merge("--timeout", "0s")
