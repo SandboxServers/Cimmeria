@@ -20,6 +20,7 @@ use sqlx::PgPool;
 
 use cimmeria_common::ServerConfig;
 use cimmeria_mercury::transport::BidirectionalTransport;
+use cimmeria_services::auth::{AuthService, ShardInfo};
 use cimmeria_services::orchestrator::Orchestrator;
 use cimmeria_wireclient::auth::Credentials;
 use cimmeria_wireclient::bundle::{decode_bundle, S2CMessage};
@@ -143,6 +144,34 @@ pub fn credentials_for(username: &str) -> Credentials {
         protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
         sku: "SGW_BETA".to_string(),
     }
+}
+
+// ── In-process auth (no database) ────────────────────────────────────────
+
+/// Start an `AuthService` with no database on an ephemeral login port,
+/// registering `shard`. Returns the service and its port.
+///
+/// `developer_mode = true` accepts every credential as account 1;
+/// `developer_mode = false` without a database answers every login with
+/// "A request to the database server failed." The port is found by binding
+/// and dropping a listener, which can race another test under parallel
+/// nextest, so the bind is retried on a fresh port.
+pub async fn start_auth(developer_mode: bool, shard: ShardInfo) -> (AuthService, u16) {
+    const MAX_ATTEMPTS: usize = 5;
+    for _ in 0..MAX_ATTEMPTS {
+        let port = ephemeral_port();
+        let config = ServerConfig {
+            developer_mode,
+            logon_port: port,
+            ..ServerConfig::loopback()
+        };
+        let mut auth = AuthService::new(&config);
+        auth.register_shard(shard.clone());
+        if auth.start().await.is_ok() {
+            return (auth, port);
+        }
+    }
+    panic!("could not bind AuthService on an ephemeral port after {MAX_ATTEMPTS} attempts");
 }
 
 // ── Orchestrator bring-up ────────────────────────────────────────────────

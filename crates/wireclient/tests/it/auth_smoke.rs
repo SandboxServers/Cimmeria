@@ -7,9 +7,6 @@
 //! consumes them correctly and produces a load-bearing [`AuthSession`].
 //! Together they pin both sides of the SOAP handshake.
 
-use std::net::TcpListener as StdTcpListener;
-
-use cimmeria_common::ServerConfig;
 use cimmeria_services::auth::{AuthService, ShardInfo};
 use cimmeria_wireclient::auth::{AuthClient, Credentials};
 use cimmeria_wireclient::Error;
@@ -18,35 +15,19 @@ const SHARD: &str = "WireclientSmoke";
 const SHARD_HOST: &str = "127.0.0.1";
 const SHARD_PORT: u16 = 32832;
 
-fn ephemeral_port() -> u16 {
-    let listener = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral TCP listener");
-    let port = listener.local_addr().expect("local_addr").port();
-    drop(listener);
-    port
-}
-
+/// Developer-mode auth (no database) with this module's shard, through the
+/// shared retrying helper in `support`.
 async fn start_auth() -> (AuthService, u16) {
-    const MAX_ATTEMPTS: usize = 5;
-    let base_config = ServerConfig {
-        developer_mode: true,
-        ..ServerConfig::loopback()
-    };
-    for _ in 0..MAX_ATTEMPTS {
-        let port = ephemeral_port();
-        let mut config = base_config.clone();
-        config.logon_port = port;
-        let mut auth = AuthService::new(&config);
-        auth.register_shard(ShardInfo {
+    crate::support::start_auth(
+        true,
+        ShardInfo {
             name: SHARD.into(),
             host: SHARD_HOST.into(),
             port: SHARD_PORT,
             protected: false,
-        });
-        if auth.start().await.is_ok() {
-            return (auth, port);
-        }
-    }
-    panic!("could not bind AuthService on an ephemeral port after 5 attempts");
+        },
+    )
+    .await
 }
 
 #[tokio::test]

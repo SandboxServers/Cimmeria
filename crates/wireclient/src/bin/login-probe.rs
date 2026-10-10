@@ -11,7 +11,9 @@
 //! ```
 //!
 //! Every option also reads `LOGIN_PROBE_<OPTION>` (e.g.
-//! `LOGIN_PROBE_PASSWORD`); a flag wins. Exit 0 = every check passed,
+//! `LOGIN_PROBE_PASSWORD`); a flag wins. `--no-handshake` is a switch: its
+//! variable, `LOGIN_PROBE_NO_HANDSHAKE`, takes `1` or `true`.
+//! Exit 0 = every check passed,
 //! 1 = a check failed, 2 = bad arguments. The checks are in
 //! `cimmeria_wireclient::login_probe`.
 
@@ -41,6 +43,13 @@ fn option(argv: &[String], flag: &str) -> Option<String> {
     })
 }
 
+/// `--no-handshake`, or `LOGIN_PROBE_NO_HANDSHAKE` set to `1` or `true`.
+fn no_handshake(argv: &[String]) -> bool {
+    argv.iter().any(|a| a == "--no-handshake")
+        || std::env::var("LOGIN_PROBE_NO_HANDSHAKE")
+            .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+}
+
 fn parse_args(argv: &[String]) -> Result<ProbeConfig, String> {
     let required = |flag: &str| option(argv, flag).ok_or_else(|| format!("{flag} is required"));
     let expect_base = option(argv, "--expect-base")
@@ -62,7 +71,7 @@ fn parse_args(argv: &[String]) -> Result<ProbeConfig, String> {
         shard: required("--shard")?,
         expect_base,
         expect_account_id,
-        handshake: !argv.iter().any(|a| a == "--no-handshake"),
+        handshake: !no_handshake(argv),
     })
 }
 

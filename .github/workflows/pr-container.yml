@@ -131,8 +131,8 @@ jobs:
 
       # Log in to the running container as a client: wrong password rejected,
       # seeded account accepted (SOAP Phase 1 + 2), advertised BaseApp
-      # endpoint = the container's BASE_EXTERNAL:BASE_PORT, and the Mercury
-      # handshake against it. The script prints container state, `docker
+      # endpoint = 127.0.0.1 and the port Docker published (not the server's
+      # own BASE_* values), and the Mercury handshake against it. The script prints container state, `docker
       # logs` and copies the server's log files on every run. See
       # tools/container-smoke.sh and docs/operations/container.md.
       - name: smoke-test the locally-built image (login probe)

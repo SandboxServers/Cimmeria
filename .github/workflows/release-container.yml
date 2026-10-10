@@ -217,7 +217,7 @@ jobs:
 
       # Log in to the published image as a client (tools/container-smoke.sh):
       # wrong password rejected, seeded account accepted (SOAP Phase 1 + 2),
-      # advertised BaseApp endpoint = the container's BASE_EXTERNAL:BASE_PORT
+      # advertised BaseApp endpoint = 127.0.0.1 and the port Docker published
       # (image defaults here, as in pr-container.yml), and the Mercury
       # handshake against it. Must stay BEFORE "promote latest-prerelease":
       # a failure here ends the job with the rolling tag untouched.

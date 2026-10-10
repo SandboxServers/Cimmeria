@@ -13,15 +13,18 @@
 #
 # Checks, in order (any failure exits non-zero):
 #   1. Postgres answers, the SOAP login port is bound and the BaseApp UDP
-#      port is bound, all probed from INSIDE the container (a host-side probe
-#      of a published port always connects: docker-proxy accepts the TCP
-#      handshake itself). ~120 s budget.
+#      port the image declares is bound, all probed from INSIDE the container
+#      (a host-side probe of a published port always connects: docker-proxy
+#      accepts the TCP handshake itself). ~120 s budget. A container that
+#      exits during the wait is reported as such.
 #   2. login-probe, from the host through the published ports, as a client:
 #      a wrong password is rejected as a bad password; the seeded `test`
 #      account logs in (SOAP Phase 1 + 2) with the account id the database
-#      holds; Phase 2 advertises BASE_EXTERNAL:BASE_PORT as the container
-#      is actually configured; and the Mercury baseAppLogin handshake
-#      succeeds against that advertised endpoint.
+#      holds; Phase 2 advertises the endpoint a client on this host must
+#      dial, worked out WITHOUT reading the server's own BASE_* variables
+#      (host: SMOKE_EXPECT_BASE_HOST, default 127.0.0.1, the documented
+#      image default; port: Docker's published mapping, `docker port`); and
+#      the Mercury baseAppLogin handshake succeeds against that endpoint.
 #
 # Container state, `docker logs` and the server's log files (copied to
 # [log dir], default ./container-smoke-logs) are kept on every run so a
@@ -30,6 +33,8 @@
 # Env:
 #   SMOKE_CONTAINER       container name (default cimmeria-smoke)
 #   SMOKE_DOCKER_RUN_ARGS extra `docker run` arguments, e.g. "-e BASE_EXTERNAL=..."
+#   SMOKE_EXPECT_BASE_HOST the host Phase 2 must advertise (default 127.0.0.1).
+#                         A job that overrides BASE_EXTERNAL sets this to match.
 #   SMOKE_USER / SMOKE_PASSWORD  seeded account to log in as (default test/test)
 
 set -uo pipefail
@@ -51,9 +56,8 @@ chmod +x "$PROBE"
 mkdir -p "$LOG_DIR"
 
 # The image's own configuration, so the ports we publish are the ports the
-# server binds. A -e override in SMOKE_DOCKER_RUN_ARGS wins inside the
-# container; the advertised endpoint is read back from the running
-# container below, not from here.
+# server binds. The expected advertised endpoint is worked out below from
+# Docker's port mapping, not from the server's BASE_* variables.
 image_env() {
   docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" \
     | sed -n "s/^$1=//p" | head -1
@@ -94,35 +98,41 @@ trap cleanup EXIT
 
 in_container() { docker exec "$NAME" "$@"; }
 
-# Variables as the running container sees them (image defaults plus -e).
-BASE_EXTERNAL="$(in_container printenv BASE_EXTERNAL || true)"
-BASE_PORT="$(in_container printenv BASE_PORT || true)"
-if [ -z "$BASE_EXTERNAL" ] || [ -z "$BASE_PORT" ]; then
-  err "could not read BASE_EXTERNAL / BASE_PORT from the running container"
-  exit 1
-fi
-BASE_PORT_HEX="$(printf '%04X' "$BASE_PORT")"
+BASE_PORT_HEX="$(printf '%04X' "$BASE_PORT_IMG")"
 
 # 1. Readiness. Auth starts before the BaseApp, so the login port alone is not
 # enough: wait for the BaseApp's UDP socket too (/proc/net/udp{,6} list bound
-# ports in hex).
+# ports in hex). The container-state check comes first so a container that
+# died is reported as dead, not as "not ready".
 ok=0
 for i in $(seq 1 60); do
+  state="$(docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null || echo missing)"
+  if [ "$state" = "exited" ] || [ "$state" = "dead" ] || [ "$state" = "missing" ]; then
+    err "container exited before becoming ready (state: $state); see the container logs below"
+    exit 1
+  fi
   if in_container pg_isready -h 127.0.0.1 -U w-testing -d sgw >/dev/null 2>&1 \
      && in_container timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" 2>/dev/null \
      && in_container bash -c "cat /proc/net/udp /proc/net/udp6 2>/dev/null | awk '{print \$2}' | grep -qi ':${BASE_PORT_HEX}\$'"; then
-    echo "container ready at iteration $i (postgres, login port ${LOGON_PORT}/tcp, BaseApp ${BASE_PORT}/udp)"
+    echo "container ready at iteration $i (postgres, login port ${LOGON_PORT}/tcp, BaseApp ${BASE_PORT_IMG}/udp)"
     ok=1
-    break
-  fi
-  if [ "$(docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null)" = "exited" ]; then
-    err "container exited before becoming ready"
     break
   fi
   sleep 2
 done
 if [ "$ok" -ne 1 ]; then
-  err "never saw postgres + login listener + BaseApp socket within 120s"
+  err "never saw postgres + login listener + BaseApp socket on ${BASE_PORT_IMG}/udp within 120s"
+  exit 1
+fi
+
+# The endpoint a client on this host must be told to dial, independent of the
+# BASE_EXTERNAL / BASE_PORT values the server itself reads: the host the image
+# documents (or the job's explicit override), and the host port Docker
+# actually published for the BaseApp's UDP port.
+EXPECT_HOST="${SMOKE_EXPECT_BASE_HOST:-127.0.0.1}"
+EXPECT_PORT="$(docker port "$NAME" "${BASE_PORT_IMG}/udp" 2>/dev/null | head -1 | sed 's/.*://')"
+if [ -z "$EXPECT_PORT" ]; then
+  err "docker reports no published host port for ${BASE_PORT_IMG}/udp"
   exit 1
 fi
 
@@ -141,13 +151,13 @@ fi
 
 # 2. The login probe, as a client on the host. It dials the BaseApp at the
 # address Phase 2 advertises; the published UDP port carries it in.
-echo "login-probe: user=${USER_NAME} shard=${SHARD} expect account_id=${ACCOUNT_ID} base=${BASE_EXTERNAL}:${BASE_PORT}"
+echo "login-probe: user=${USER_NAME} shard=${SHARD} expect account_id=${ACCOUNT_ID} base=${EXPECT_HOST}:${EXPECT_PORT}"
 if ! LOGIN_PROBE_PASSWORD="$PASSWORD" "$PROBE" \
       --auth-url "http://127.0.0.1:${LOGON_PORT}" \
       --user "$USER_NAME" \
       --shard "$SHARD" \
       --expect-account-id "$ACCOUNT_ID" \
-      --expect-base "${BASE_EXTERNAL}:${BASE_PORT}"; then
+      --expect-base "${EXPECT_HOST}:${EXPECT_PORT}"; then
   err "login probe failed against $IMAGE (container and server logs follow)"
   exit 1
 fi

@@ -439,7 +439,8 @@ login-probe --user test --password test --shard Test \
 ```
 
 Every option also reads `LOGIN_PROBE_<OPTION>` (`LOGIN_PROBE_PASSWORD`
-keeps the password off the command line). The image's builder stage
+keeps the password off the command line); for the `--no-handshake` switch,
+`LOGIN_PROBE_NO_HANDSHAKE` takes `1` or `true`. The image's builder stage
 compiles it in a second `cargo build` (one invocation with the server
 would unify features into the server binary), and the Dockerfile's
 `login-probe` target exports it; it is never in the runtime image.

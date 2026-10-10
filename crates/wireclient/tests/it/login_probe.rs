@@ -2,9 +2,11 @@
 //! against in-process servers: proof that each check passes on a healthy
 //! server and fails on the breakage it exists to catch.
 //!
-//! - `login_probe_fails_when_auth_accepts_any_password` needs no database:
-//!   developer-mode auth without one accepts every password, which is the
-//!   exact misconfiguration the wrong-password check must reject.
+//! - Two tests need no database and run in CI. Developer-mode auth without
+//!   one accepts every password, the misconfiguration the wrong-password
+//!   check must reject. Non-developer auth without one rejects every login
+//!   as a database failure, which the probe must not mistake for a
+//!   wrong-password rejection.
 //! - The `live_db` tests start a full `Orchestrator` against the seeded
 //!   database and run every check, including the Mercury handshake. Like
 //!   the other live-DB modules here they skip without `DATABASE_URL` and
@@ -14,18 +16,21 @@
 //! DATABASE_URL=... cargo test -p cimmeria-wireclient --test it login_probe -- --test-threads=1
 //! ```
 
-use std::net::{SocketAddr, TcpListener as StdTcpListener};
+use std::net::SocketAddr;
 
-use cimmeria_common::ServerConfig;
-use cimmeria_services::auth::{AuthService, ShardInfo};
+use cimmeria_services::auth::ShardInfo;
 use cimmeria_wireclient::login_probe::{self, ProbeConfig, ProbeFailure};
 
-use crate::support::{live_db_pool_or_skip, start_server, SHARD};
+use crate::support::{live_db_pool_or_skip, start_auth, start_server, SHARD};
 
 /// Seeded account the container smoke logs in as
 /// (`db/sgw/Accounts/Seed/account.sql`; password "test").
 const SEEDED_USER: &str = "test";
 const SEEDED_PASSWORD: &str = "test";
+
+/// What `cimmeria_auth`'s `handle_user_auth` answers when it has no
+/// database and is not in developer mode.
+const DB_FAILURE_REASON: &str = "A request to the database server failed.";
 
 fn probe_config(auth_url: String) -> ProbeConfig {
     ProbeConfig {
@@ -39,25 +44,18 @@ fn probe_config(auth_url: String) -> ProbeConfig {
     }
 }
 
-#[tokio::test]
-async fn login_probe_fails_when_auth_accepts_any_password() {
-    let port = {
-        let l = StdTcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    let config = ServerConfig {
-        developer_mode: true,
-        logon_port: port,
-        ..ServerConfig::loopback()
-    };
-    let mut auth = AuthService::new(&config);
-    auth.register_shard(ShardInfo {
+fn shard() -> ShardInfo {
+    ShardInfo {
         name: SHARD.into(),
         host: "127.0.0.1".into(),
         port: 32832,
         protected: false,
-    });
-    auth.start().await.expect("start developer-mode auth");
+    }
+}
+
+#[tokio::test]
+async fn login_probe_fails_when_auth_accepts_any_password() {
+    let (mut auth, port) = start_auth(true, shard()).await;
 
     let err = login_probe::run(&probe_config(format!("http://127.0.0.1:{port}")))
         .await
@@ -67,6 +65,26 @@ async fn login_probe_fails_when_auth_accepts_any_password() {
         matches!(err, ProbeFailure::WrongPasswordAccepted { account_id: 1 }),
         "a server that accepts any password must fail the probe at the wrong-password step, got: {err}"
     );
+
+    auth.stop().await;
+}
+
+/// A database failure also rejects the wrong password, but for the wrong
+/// reason. The probe must fail on it rather than count it as "wrong
+/// password rejected"; this fails if the reason check is removed.
+#[tokio::test]
+async fn login_probe_fails_when_auth_rejects_for_a_database_failure() {
+    let (mut auth, port) = start_auth(false, shard()).await;
+
+    let err = login_probe::run(&probe_config(format!("http://127.0.0.1:{port}")))
+        .await
+        .unwrap_err();
+    match err {
+        ProbeFailure::WrongPasswordOtherReason(reason) => {
+            assert_eq!(reason, DB_FAILURE_REASON);
+        }
+        other => panic!("expected ProbeFailure::WrongPasswordOtherReason, got: {other}"),
+    }
 
     auth.stop().await;
 }
