@@ -981,6 +981,7 @@ first line of each.
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
+| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake |
 
 An unknown command exits 2. Examples:
 
@@ -995,6 +996,30 @@ lab instances status
 lab clients stop p2
 lab doctor
 ```
+
+**`lab uat`.** It runs spec rows (`docs/guides/uat-specs/`) on the lab with no agent: one `lab_uat_run` call per run, over the daemon's MCP endpoint.
+
+- **Lanes.** `-Leases N` starts N lanes at once, one per hosted instance in the daemon's order (`default`, `p2`, ...), skipping instances another session holds. Each lane runs the rows `-RunsPerLease` times, back to back.
+- **Leases.** Every run takes and releases its own lease.
+- **Pacing.** Lanes start `-StaggerSeconds` apart (default 20). Run ids are time based, and two clients booting at once is where logins go wrong.
+- **Pre-flight.** Before anything is driven: the daemon answers, the instances are free, no `SGW.exe` runs outside the lab, and a plan-only pass of the rows is ready.
+- **Brake.** A lane stops after `-MaxConsecutiveFailures` failed runs in a row (default 3); the other lanes carry on. Each run times out after `-RunTimeoutMinutes` (default 15).
+- **Ctrl+C** starts no new run. A run already under way finishes on the daemon and releases its lease.
+
+Output:
+
+- **Progress:** one line per run.
+- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known"), so a new failure stands out.
+- **`-Json`** prints only one compact JSON object, a clean batch in about 150 characters, for agents and scripts. `-Quiet` prints one line.
+- **Files.** Every batch writes `batch.json` and `summary.md` under `uat-runs\batch-<time>\` in the lab home, listing each run's own evidence folder.
+
+```powershell
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
+lab uat first-session -Instance p2 -Rows FS-01,FS-02,FS-P1 -Json
+```
+
+The `first-session` SGU rows are not calibrated yet, so name the Praxis rows as above.
 
 **`lab env`.** With no verb it prints every line of `labd.env`. Values print
 masked: a key containing `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `AUTH` or

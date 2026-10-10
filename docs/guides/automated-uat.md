@@ -56,9 +56,17 @@ Start with `plan_only: true` to see what can run. Each row then runs as:
 
 Long rows can outlast an MCP client's call timeout: run a section a few rows at a time and pass the same `run_dir`.
 
+### Run without an agent: `lab uat`
+
+When every step, wait, coordinate and camera move is in the spec, no model is needed. [`lab uat`](live-research-lab.md#commands) calls `lab_uat_run` straight from PowerShell. It can run up to 5 lanes in parallel, each up to 20 times, and aggregates the results into one summary. `-Json` gives an agent or a script one compact object:
+
+```powershell
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
+```
+
 ### Hand a run to a cheap agent
 
-Put every step, wait, coordinate and camera move in the spec, and the driver needs no judgement: the [`lab-driver`](../../.claude/agents/lab-driver.md) agent (Haiku) makes one `lab_uat_run` call and reports each row's result. Its whole brief is the arguments:
+When an agent should drive it instead, the [`lab-driver`](../../.claude/agents/lab-driver.md) agent (Haiku) makes one `lab_uat_run` call and reports each row's result. Its whole brief is the arguments:
 
 ```text
 Run spec rows with no lease_id (the run takes and releases its own lease): sections ["first-session"],
