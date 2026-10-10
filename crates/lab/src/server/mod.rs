@@ -669,7 +669,9 @@ impl ServerHandler for LabServer {
             .is_some_and(|v| v >= ProtocolVersion::V_2026_07_28);
         Ok(ListToolsResult {
             result_type: Some(ResultType::COMPLETE),
-            tools: compact::advertise(lease::advertise_lease(self.tool_router.list_all())),
+            tools: compact::slim(compact::advertise(lease::advertise_lease(
+                self.tool_router.list_all(),
+            ))),
             meta: None,
             next_cursor: None,
             ttl_ms: cache_hints.then_some(0),

@@ -165,6 +165,88 @@ const ADVERTISED: [&str; 12] = [
     "lab_crash_report",
 ];
 
+/// Strip what the schema generator adds but no caller needs, from every
+/// tool's input schema: `$schema`, `"default": null`, integer `format` and
+/// `minimum: 0`, `["T", "null"]` types (an optional argument is already
+/// optional by not being `required`), `anyOf [X, {type: null}]` wrappers,
+/// and line breaks inside descriptions. Every tool schema is re-sent on
+/// every agent turn, so this is paid per turn, per tool.
+pub fn slim_schema(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            o.remove("$schema");
+            if o.get("default").is_some_and(Value::is_null) {
+                o.remove("default");
+            }
+            if o.get("format").and_then(Value::as_str).is_some_and(|f| {
+                matches!(
+                    f,
+                    "uint"
+                        | "uint8"
+                        | "uint16"
+                        | "uint32"
+                        | "uint64"
+                        | "int32"
+                        | "int64"
+                        | "double"
+                        | "float"
+                )
+            }) {
+                o.remove("format");
+            }
+            if o.get("minimum").and_then(Value::as_f64) == Some(0.0) {
+                o.remove("minimum");
+            }
+            if let Some(Value::Array(t)) = o.get("type") {
+                let non_null: Vec<Value> = t.iter().filter(|x| *x != "null").cloned().collect();
+                if non_null.len() == 1 {
+                    o.insert("type".into(), non_null[0].clone());
+                }
+            }
+            if let Some(Value::Array(any)) = o.get("anyOf") {
+                let non_null: Vec<Value> = any
+                    .iter()
+                    .filter(|x| x.get("type").is_none_or(|t| t != "null"))
+                    .cloned()
+                    .collect();
+                if non_null.len() == 1 {
+                    o.remove("anyOf");
+                    if let Value::Object(inner) = &non_null[0] {
+                        for (k, x) in inner {
+                            o.entry(k.clone()).or_insert_with(|| x.clone());
+                        }
+                    }
+                }
+            }
+            if let Some(Value::String(d)) = o.get_mut("description") {
+                if d.contains('\n') {
+                    *d = d.split_whitespace().collect::<Vec<_>>().join(" ");
+                }
+            }
+            for x in o.values_mut() {
+                slim_schema(x);
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(slim_schema),
+        _ => {}
+    }
+}
+
+/// [`slim_schema`] over every tool.
+pub fn slim(tools: Vec<rmcp::model::Tool>) -> Vec<rmcp::model::Tool> {
+    tools
+        .into_iter()
+        .map(|mut t| {
+            let mut schema = Value::Object((*t.input_schema).clone());
+            slim_schema(&mut schema);
+            if let Value::Object(m) = schema {
+                t.input_schema = std::sync::Arc::new(m);
+            }
+            t
+        })
+        .collect()
+}
+
 /// Add `verbose` and `fields` to the heavy tools' schemas.
 pub fn advertise(tools: Vec<rmcp::model::Tool>) -> Vec<rmcp::model::Tool> {
     tools
@@ -387,6 +469,39 @@ mod tests {
             out["fields_available"],
             json!(["buttons", "texts", "title"])
         );
+    }
+
+    #[test]
+    fn schemas_lose_generator_noise_but_keep_meaning() {
+        let mut s = json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["from"],
+            "properties": {
+                "steps": { "default": null, "format": "uint32", "minimum": 0,
+                           "type": ["integer", "null"], "description": "Cursor steps\nbetween." },
+                "point": { "anyOf": [{ "$ref": "#/$defs/PointArg" }, { "type": "null" }],
+                           "description": "A point." },
+                "min": { "type": "integer", "minimum": 3 },
+                "kind": { "type": ["string", "integer"] }
+            }
+        });
+        slim_schema(&mut s);
+        assert!(s.get("$schema").is_none());
+        assert_eq!(
+            s["properties"]["steps"],
+            json!({ "type": "integer", "description": "Cursor steps between." })
+        );
+        assert_eq!(
+            s["properties"]["point"],
+            json!({ "$ref": "#/$defs/PointArg", "description": "A point." })
+        );
+        assert_eq!(s["properties"]["min"]["minimum"], 3, "a real bound stays");
+        assert_eq!(
+            s["properties"]["kind"]["type"],
+            json!(["string", "integer"])
+        );
+        assert_eq!(s["required"], json!(["from"]));
     }
 
     #[test]
