@@ -90,7 +90,7 @@ new Praxis character on 2026-10-10.
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
 | GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | BlockedDependency |
-| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Writing |
+| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | packet-coder | M | 2 | GD-01, GD-02 | BlockedDependency |
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | packet-coder | M | 3 | GD-03 | BlockedDependency |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | BlockedDependency |
@@ -166,5 +166,17 @@ Waves (packets in one wave touch disjoint files and run in parallel):
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
-the code is then the reference, not the spec.
+Where merged code differs from the packet specs, record it here; the code is
+then the reference, not the spec.
+
+- **GD-02.** The dead-code allow is `#![allow(dead_code)]` on `golden/mod.rs`
+  plus `#[allow(unused_imports)]` on its `pub use` (the contract's
+  `cfg_attr(not(test), …)` fails clippy on the test build of a bin crate).
+  GD-07 removes both. The entity snapshot gains `spawn_id` (contract and
+  GD-06 updated; `labels.rs` reads it). `render_json` collapses and cuts to 80
+  characters itself, so **GD-03 substitutes run variables inside the `Value`
+  before calling it**, or a run id straddling character 80 stays in the text.
+  `decode_inbound`'s short-argument test pins each method's minimum length
+  (interact is 8 bytes without the 0xBD sub-slot) rather than "None for 0
+  to 8 bytes". The ledger's F5 dialog 2982 is from another capture; the
+  FS-P3 fixture's first `dialogButtonChoice` is 3995.

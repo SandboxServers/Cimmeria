@@ -1,0 +1,604 @@
+{
+  "entity_id": 8,
+  "read_ok": true,
+  "stopped": true,
+  "coverage": "full",
+  "replaced_existing": false,
+  "tap": {
+    "entity_id": 8,
+    "capacity": 5000,
+    "count": 31,
+    "dropped": 0,
+    "messages": [
+      {
+        "args_hex": "00000000660080a2c333339342cdcc54c3",
+        "args_len": 17,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 163,
+        "msg_id": 189,
+        "msg_name": "gmGotoXYZ",
+        "target_entity_id": null,
+        "ts_ms": 1791669890619
+      },
+      {
+        "args_hex": "06000000530059005300540045004d0000092d00000067006d0047006f0074006f00580059005a003a002000740065006c00650070006f007200740065006400200074006f00200028002d003300320035002c002000370033002e0036002c0020002d003200310032002e0038002900",
+        "args_len": 112,
+        "decoded": {
+          "Channel": 9,
+          "Speaker": "SYSTEM",
+          "SpeakerFlags": 0,
+          "Text": "gmGotoXYZ: teleported to (-325, 73.6, -212.8)"
+        },
+        "dir": "out",
+        "method_index": 28,
+        "msg_id": null,
+        "msg_name": "onPlayerCommunication",
+        "target_entity_id": 8,
+        "ts_ms": 1791669890621
+      },
+      {
+        "args_hex": "03",
+        "args_len": 1,
+        "decoded": null,
+        "dir": "out",
+        "method_index": 27,
+        "msg_id": null,
+        "msg_name": "unknown",
+        "target_entity_id": 100745,
+        "ts_ms": 1791669890672
+      },
+      {
+        "args_hex": "1b000100000000000080a2c333339342cdcc54c3901da7c3aaf19242a70664c300000001bb492bcc",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.5999984741211,
+            -212.8000030517578
+          ],
+          "space_id": 65563,
+          "update_id": 204,
+          "vehicle_id": 0,
+          "vel": [
+            -334.23095703125,
+            73.47200012207031,
+            -228.02598571777344
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669890693
+      },
+      {
+        "args_hex": "00000000180e000000000080a2c333339342cccc54c3",
+        "args_len": 22,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 85,
+        "msg_id": 189,
+        "msg_name": "triggerClientHintedGenericRegion",
+        "target_entity_id": null,
+        "ts_ms": 1791669890693
+      },
+      {
+        "args_hex": "89890100",
+        "args_len": 4,
+        "decoded": null,
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 7,
+        "msg_name": "requestEntityUpdate",
+        "target_entity_id": null,
+        "ts_ms": 1791669890753
+      },
+      {
+        "args_hex": "92890100",
+        "args_len": 4,
+        "decoded": null,
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 7,
+        "msg_name": "requestEntityUpdate",
+        "target_entity_id": null,
+        "ts_ms": 1791669890753
+      },
+      {
+        "args_hex": "8e890100",
+        "args_len": 4,
+        "decoded": null,
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 7,
+        "msg_name": "requestEntityUpdate",
+        "target_entity_id": null,
+        "ts_ms": 1791669890753
+      },
+      {
+        "args_hex": "8a890100",
+        "args_len": 4,
+        "decoded": null,
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 7,
+        "msg_name": "requestEntityUpdate",
+        "target_entity_id": null,
+        "ts_ms": 1791669890753
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c300000000000000000000000000000001bb492bcd",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 205,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669892747
+      },
+      {
+        "args_hex": "e4ac754202c9cf414dde8e42dee5a146abaa424333b38043222222402daaa84211109d428a4eb2420000000000004443",
+        "args_len": 48,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 29,
+        "msg_id": 221,
+        "msg_name": "perfStats",
+        "target_entity_id": null,
+        "ts_ms": 1791669892809
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c300000000000000000000000000000001bb492bce",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 206,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669895769
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c300000000000000000000000000000001bb492bcf",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 207,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669898737
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c300000000000000000000000000000001bb492bd0",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 208,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669901757
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c300000000000000000000000000000001bb492bd1",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            0,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 209,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669904743
+      },
+      {
+        "args_hex": "000000000d8f890100",
+        "args_len": 9,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 74,
+        "msg_id": 189,
+        "msg_name": "interact",
+        "target_entity_id": null,
+        "ts_ms": 1791669906213
+      },
+      {
+        "args_hex": "8f8901009b0f0000000000000100000000",
+        "args_len": 17,
+        "decoded": {
+          "dialog_id": 3995,
+          "entity_id": 100751,
+          "is_immediate": 1,
+          "mission_flags": 0,
+          "mission_id": 0
+        },
+        "dir": "out",
+        "method_index": 105,
+        "msg_id": null,
+        "msg_name": "onDialogDisplay",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906214
+      },
+      {
+        "args_hex": "0000000000000000",
+        "args_len": 8,
+        "decoded": {
+          "TypeId": 0
+        },
+        "dir": "out",
+        "method_index": 3,
+        "msg_id": null,
+        "msg_name": "InteractionType",
+        "target_entity_id": 100751,
+        "ts_ms": 1791669906214
+      },
+      {
+        "args_hex": "0000004000000000",
+        "args_len": 8,
+        "decoded": {
+          "TypeId": 1073741824
+        },
+        "dir": "out",
+        "method_index": 3,
+        "msg_id": null,
+        "msg_name": "InteractionType",
+        "target_entity_id": 100748,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "a60c0000010101",
+        "args_len": 7,
+        "decoded": {
+          "Hidden": 1,
+          "ObjectiveID": 3238,
+          "Optional": 1,
+          "Status": 1
+        },
+        "dir": "out",
+        "method_index": 82,
+        "msg_id": null,
+        "msg_name": "onObjectiveUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "94090000010000",
+        "args_len": 7,
+        "decoded": {
+          "Hidden": 0,
+          "ObjectiveID": 2452,
+          "Optional": 0,
+          "Status": 1
+        },
+        "dir": "out",
+        "method_index": 82,
+        "msg_id": null,
+        "msg_name": "onObjectiveUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "4108000001",
+        "args_len": 5,
+        "decoded": {
+          "Status": 1,
+          "StepID": 2113
+        },
+        "dir": "out",
+        "method_index": 81,
+        "msg_id": null,
+        "msg_name": "onStepUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "ef3a010000",
+        "args_len": 5,
+        "decoded": {
+          "Status": 0,
+          "StepID": 80623
+        },
+        "dir": "out",
+        "method_index": 81,
+        "msg_id": null,
+        "msg_name": "onStepUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "ff610100000000",
+        "args_len": 7,
+        "decoded": {
+          "Hidden": 0,
+          "ObjectiveID": 90623,
+          "Optional": 0,
+          "Status": 0
+        },
+        "dir": "out",
+        "method_index": 82,
+        "msg_id": null,
+        "msg_name": "onObjectiveUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906220
+      },
+      {
+        "args_hex": "500500000000000000",
+        "args_len": 9,
+        "decoded": {
+          "MissionGiverName": 0,
+          "MissionID": 1360,
+          "Status": 0
+        },
+        "dir": "out",
+        "method_index": 80,
+        "msg_id": null,
+        "msg_name": "onMissionUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906221
+      },
+      {
+        "args_hex": "c50f000000",
+        "args_len": 5,
+        "decoded": {
+          "Status": 0,
+          "StepID": 4037
+        },
+        "dir": "out",
+        "method_index": 81,
+        "msg_id": null,
+        "msg_name": "onStepUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906222
+      },
+      {
+        "args_hex": "2a120000000000",
+        "args_len": 7,
+        "decoded": {
+          "Hidden": 0,
+          "ObjectiveID": 4650,
+          "Optional": 0,
+          "Status": 0
+        },
+        "dir": "out",
+        "method_index": 82,
+        "msg_id": null,
+        "msg_name": "onObjectiveUpdate",
+        "target_entity_id": 8,
+        "ts_ms": 1791669906222
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c3000000000000000000000000da000001bb492bd2",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            -38,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 210,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669907753
+      },
+      {
+        "args_hex": "32677642469eaa415fa58c426686ab460000b04255559143efee6e3f1c37a642c87794428a4eb2420000000000000041",
+        "args_len": 48,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 29,
+        "msg_id": 221,
+        "msg_name": "perfStats",
+        "target_entity_id": null,
+        "ts_ms": 1791669907825
+      },
+      {
+        "args_hex": "000000000e9b0f0000ffffffff",
+        "args_len": 13,
+        "decoded": null,
+        "dir": "in",
+        "method_index": 75,
+        "msg_id": 189,
+        "msg_name": "dialogButtonChoice",
+        "target_entity_id": null,
+        "ts_ms": 1791669908346
+      },
+      {
+        "args_hex": "1b000100000000000080a2c366e69242cccc54c3000000000000000000000000da000001bb492bd3",
+        "args_len": 40,
+        "decoded": {
+          "cells": [
+            187,
+            73,
+            43
+          ],
+          "dir": [
+            -38,
+            0,
+            0
+          ],
+          "flags": 1,
+          "pos": [
+            -325.0,
+            73.44999694824219,
+            -212.79998779296875
+          ],
+          "space_id": 65563,
+          "update_id": 211,
+          "vehicle_id": 0,
+          "vel": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "dir": "in",
+        "method_index": -1,
+        "msg_id": 3,
+        "msg_name": "avatarUpdateExplicit",
+        "target_entity_id": null,
+        "ts_ms": 1791669910787
+      }
+    ]
+  }
+}
