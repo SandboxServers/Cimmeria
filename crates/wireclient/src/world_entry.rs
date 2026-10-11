@@ -17,20 +17,65 @@ use crate::session::GameSession;
 const MSG_TICK_SYNC: u8 = 0x0D;
 /// `createBasePlayer` (0x05): carries the player's own entity id.
 const MSG_CREATE_BASE_PLAYER: u8 = 0x05;
+/// `onCharacterList` (0x82): the account's reply once a character exists.
+const MSG_ON_CHARACTER_LIST: u8 = 0x82;
+/// `onCharacterCreateFailed` (0x83): the account's reply to a refusal.
+const MSG_ON_CHARACTER_CREATE_FAILED: u8 = 0x83;
 
 impl GameSession {
-    /// Drive character select and world entry: `AUTHENTICATE` +
-    /// `ENABLE_ENTITIES` (character list), `playCharacter`,
-    /// `ENABLE_ENTITIES` (create player), `mapLoaded`, `onClientReady`.
-    /// Sets [`GameSession::player_entity_id`] from the `createBasePlayer`
-    /// reply. `recv_timeout` bounds each step's wait.
-    pub async fn enter_world(&mut self, player_id: i32, recv_timeout: Duration) -> Result<()> {
+    /// `AUTHENTICATE` + `ENABLE_ENTITIES`, then the character-list bundle.
+    /// `recv_timeout` bounds the wait for that bundle.
+    pub async fn open_character_list(&mut self, recv_timeout: Duration) -> Result<()> {
         let mut post_handshake = GameSession::authenticate();
         post_handshake.extend_from_slice(&GameSession::enable_entities());
         self.send_bundle(&post_handshake, true).await?;
         self.expect_bundles(1, recv_timeout, "the character list")
             .await?;
+        Ok(())
+    }
 
+    /// `createCharacter` (0xC3), reliable. Returns `Ok` on `onCharacterList`
+    /// (0x82) and [`Error::CharacterCreateFailed`] on `onCharacterCreateFailed`
+    /// (0x83), so a refusal cannot read as success. The wait is one bundle at
+    /// a time, bounded by `recv_timeout` overall.
+    pub async fn create_character_on_wire(
+        &mut self,
+        name: &str,
+        char_def_id: i32,
+        visual_choices: &[(i32, i32)],
+        recv_timeout: Duration,
+    ) -> Result<()> {
+        // The builder is `GameSession::create_character` (calls.rs); this
+        // method has a different name because Rust allows one inherent fn per
+        // name.
+        let body = GameSession::create_character(name, "", char_def_id, visual_choices, 0);
+        self.send_bundle(&body, true).await?;
+
+        let start = tokio::time::Instant::now();
+        loop {
+            let remaining = recv_timeout.saturating_sub(start.elapsed());
+            if remaining.is_zero() {
+                break;
+            }
+            // The create reply is not world entry, so it stays out of
+            // `entry_bundles`.
+            for bundle in self.recv_meaningful_bundles(1, remaining).await {
+                match create_outcome(&bundle) {
+                    Some(Ok(())) => return Ok(()),
+                    Some(Err(code)) => return Err(Error::CharacterCreateFailed(code)),
+                    None => {}
+                }
+            }
+        }
+        Err(Error::WorldEntry(format!(
+            "no onCharacterList after createCharacter within {recv_timeout:?}"
+        )))
+    }
+
+    /// `playCharacter` (0xC4) through `onClientReady` (0xD8). Sets
+    /// [`GameSession::player_entity_id`] from the `createBasePlayer` reply.
+    /// `recv_timeout` bounds each step's wait.
+    pub async fn play(&mut self, player_id: i32, recv_timeout: Duration) -> Result<()> {
         self.send_bundle(&GameSession::play_character(player_id), true)
             .await?;
         self.expect_bundles(1, recv_timeout, "RESET_ENTITIES")
@@ -62,6 +107,13 @@ impl GameSession {
         self.send_bundle(&GameSession::on_client_ready(), true)
             .await?;
         Ok(())
+    }
+
+    /// Drive character select and world entry: [`GameSession::open_character_list`]
+    /// then [`GameSession::play`]. `recv_timeout` bounds each step's wait.
+    pub async fn enter_world(&mut self, player_id: i32, recv_timeout: Duration) -> Result<()> {
+        self.open_character_list(recv_timeout).await?;
+        self.play(player_id, recv_timeout).await
     }
 
     /// Wait for `count` bundles that are not just `tickSync`, or fail
@@ -96,7 +148,7 @@ impl GameSession {
     }
 
     async fn expect_bundles(
-        &self,
+        &mut self,
         count: usize,
         timeout: Duration,
         what: &str,
@@ -108,6 +160,28 @@ impl GameSession {
                 got.len()
             )));
         }
+        self.entry_bundles.extend(got.iter().cloned());
         Ok(got)
     }
+}
+
+/// The createCharacter verdict a bundle carries, if any: `Some(Ok(()))` for
+/// `onCharacterList`, `Some(Err(code))` for `onCharacterCreateFailed`. The
+/// code is the first `i32` of that message's args (the server writes
+/// `[entityID][errorCode]`, `wire/mercury/protocol/character.rs`). A refusal
+/// too short to carry one reads as code 0 rather than as success.
+fn create_outcome(bundle: &Bytes) -> Option<std::result::Result<(), i32>> {
+    decode_bundle(bundle)
+        .into_iter()
+        .find_map(|m| match m.msg_id {
+            MSG_ON_CHARACTER_LIST => Some(Ok(())),
+            MSG_ON_CHARACTER_CREATE_FAILED => {
+                let code = m
+                    .args()
+                    .and_then(|a| a.get(..4))
+                    .map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+                Some(Err(code))
+            }
+            _ => None,
+        })
 }

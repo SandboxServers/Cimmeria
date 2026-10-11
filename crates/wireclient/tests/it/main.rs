@@ -13,6 +13,7 @@
 //! profile). The no-DB modules run under a plain `cargo nextest run`.
 
 mod auth_smoke;
+mod character_create_live_db;
 mod client_calls;
 mod duel_two_duelists_and_a_spectator;
 mod isolation;

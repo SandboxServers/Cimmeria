@@ -119,16 +119,68 @@ pub async fn insert_castle_character(
 /// GM -- this is the harness's negative control for the GM-only blind
 /// spot.
 pub async fn insert_sentinel_account(pool: &PgPool, account_id: i32, account_name: &str) {
+    insert_sentinel_account_with_level(pool, account_id, account_name, 0).await;
+}
+
+/// As [`insert_sentinel_account`], with the account's `accesslevel` given:
+/// level 2 is GM, 0 is a player.
+pub async fn insert_sentinel_account_with_level(
+    pool: &PgPool,
+    account_id: i32,
+    account_name: &str,
+    access_level: i32,
+) {
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password, password_algo, accesslevel, enabled) \
-         VALUES ($1, $2, $3, 1, 0, true)",
+         VALUES ($1, $2, $3, 1, $4, true)",
     )
     .bind(account_id)
     .bind(account_name)
     .bind(TEST_PASSWORD_SHA1)
+    .bind(access_level)
     .execute(pool)
     .await
     .unwrap_or_else(|e| panic!("insert sentinel account {account_id}: {e}"));
+}
+
+/// The first choice of every `VIS_Optional` group of `char_def_id`: the
+/// visual payload a player who clicks straight through the creator sends
+/// (the same query as `base/character_create`'s seed-parity helper).
+pub async fn default_visual_choices(pool: &PgPool, char_def_id: i32) -> Vec<(i32, i32)> {
+    sqlx::query_as::<_, (i32, i32)>(
+        "SELECT vg.vis_group_id, MIN(c.choice_id) \
+         FROM resources.char_creation_visgroups vg \
+         JOIN resources.char_creation_choices c ON c.vis_group_id = vg.vis_group_id \
+         WHERE vg.char_def_id = $1 AND vg.vis_type = 'VIS_Optional' \
+         GROUP BY vg.vis_group_id ORDER BY vg.vis_group_id",
+    )
+    .bind(char_def_id)
+    .fetch_all(pool)
+    .await
+    .expect("read default visual choices")
+}
+
+/// Delete `account_id` and every row a test created under it: the
+/// characters' missions, inventory and player rows, then the account. Each
+/// statement matches the exact sentinel account id, so no other account's
+/// rows are touched. The other foreign keys to `sgw_player` cascade (two set
+/// NULL, on mail senders and auction bidders, which a test never creates).
+pub async fn cleanup_account(pool: &PgPool, account_id: i32) {
+    let statements = [
+        "DELETE FROM sgw_mission WHERE player_id IN \
+         (SELECT player_id FROM sgw_player WHERE account_id = $1)",
+        "DELETE FROM sgw_inventory WHERE character_id IN \
+         (SELECT player_id FROM sgw_player WHERE account_id = $1)",
+        "DELETE FROM sgw_player WHERE account_id = $1",
+        "DELETE FROM account WHERE account_id = $1",
+    ];
+    for sql in statements {
+        sqlx::query(sql)
+            .bind(account_id)
+            .execute(pool)
+            .await
+            .unwrap_or_else(|e| panic!("cleanup account {account_id}: {e}"));
+    }
 }
 
 pub fn credentials_for(username: &str) -> Credentials {

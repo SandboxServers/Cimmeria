@@ -386,7 +386,8 @@ impl GameSession {
     /// AUTHENTICATE + ENABLE_ENTITIES, then the character-list bundle.
     pub async fn open_character_list(&mut self, recv_timeout: Duration) -> Result<()>;
     /// createCharacter (0xC3); Ok on onCharacterList (0x82), Err(CharacterCreateFailed) on 0x83.
-    pub async fn create_character(&mut self, name: &str, char_def_id: i32,
+    /// Named `_on_wire` because WC-02's builder holds `create_character` (WC-10).
+    pub async fn create_character_on_wire(&mut self, name: &str, char_def_id: i32,
         visual_choices: &[(i32, i32)], recv_timeout: Duration) -> Result<()>;
     /// playCharacter .. onClientReady; sets player_entity_id.
     pub async fn play(&mut self, player_id: i32, recv_timeout: Duration) -> Result<()>;
@@ -412,7 +413,7 @@ pub async fn template_query(pool: &PgPool, template_id: i32) -> EntityQuery;    
 ```
 
 Sentinel ids for this campaign: block `0x7000_9C00` to `0x7000_9CFF` (unused
-on `main` @ `c05c0638a`). WC-10 uses `0x7000_9C01`, WC-14 `0x7000_9C02`,
+on `main` @ `c05c0638a`). WC-10 uses `0x7000_9C01` and `0x7000_9C04` (the refusal test), WC-14 `0x7000_9C02`,
 WC-15 `0x7000_9C03`.
 
 ---
@@ -1181,7 +1182,7 @@ Files:
 
    | Step | Send | Wait for (in order, `expect_in_order`, 10 s each unless stated) |
    |---|---|---|
-   | 0 | account `0x7000_9C02` (`wc14_praxis`, access level 2: GM, D-WC2); `connect`; `open_character_list`; `create_character("Wirescript", 3, default choices)`; player id from the DB; `play` | `ScriptSession::new` |
+   | 0 | account `0x7000_9C02` (`wc14_praxis`, access level 2: GM, D-WC2); `connect`; `open_character_list`; `create_character_on_wire("Wirescript", 3, default choices, 5 s)`; player id from the DB; `play` | `ScriptSession::new` |
    | 0a | | `PlayMovie` (movie `Cine-SGWLogo.SGWLogo`), then send `cancel_movie(CLIENT_CALL_ENTITY_ID, <that name>)` (D-WC3) |
    | 0b | | `wait_entity(template_query(14))` (Frost, 20 s) and the arrival `DialogDisplay { dialog_id: 2982 }` |
    | 1 | `dialog_button_choice(0, 2982, -1)` | nothing required |

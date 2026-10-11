@@ -121,6 +121,12 @@ pub enum Error {
     #[error("world entry: {0}")]
     WorldEntry(String),
 
+    /// The server refused `createCharacter` with `onCharacterCreateFailed`
+    /// (0x83); the code is the client-visible error id
+    /// (`base/character_create/fail_code.rs`).
+    #[error("createCharacter refused, code {0}")]
+    CharacterCreateFailed(i32),
+
     // ── Replay / trace ──────────────────────────────────────────────────────
     /// Session-trace JSON could not be parsed.
     #[error("session trace JSON: {0}")]
