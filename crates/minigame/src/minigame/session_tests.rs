@@ -593,3 +593,72 @@ async fn a_rejected_login_claims_nothing() {
         "a rejected login must leave the session unclaimed",
     );
 }
+
+/// TG-MG-04: a second register while the first launch is still pending and
+/// young is a double interact, so it logs INFO with `reason=duplicate_session`.
+#[tokio::test]
+async fn duplicate_register_while_pending_logs_info() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let reg = SessionRegistry::new();
+    assert!(register_livewire(&reg, 42).await.is_some());
+    assert!(register_livewire(&reg, 42).await.is_none());
+
+    let event = capture
+        .find_message(Level::INFO, "already has an active minigame session")
+        .expect("a double interact must log an INFO row");
+    assert!(
+        event.has_field("reason", "duplicate_session"),
+        "the refusal carries its reason: {event:#?}"
+    );
+    assert!(
+        event.has_field("existing_connected", "false"),
+        "the first launch never connected: {event:#?}"
+    );
+    assert!(
+        event.has_field("requested_game", "Livewire"),
+        "the requested game is named: {event:#?}"
+    );
+    assert!(
+        capture
+            .find_message(Level::WARN, "already has an active minigame session")
+            .is_none(),
+        "a young pending launch must not WARN"
+    );
+}
+
+/// TG-MG-04: a second register after the first client claimed its session is
+/// the #1303 shape, so it logs WARN with `existing_connected=true`.
+#[tokio::test]
+async fn duplicate_register_after_connect_logs_warn() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let reg = SessionRegistry::new();
+    let ticket = register_livewire(&reg, 42)
+        .await
+        .expect("the first register must succeed");
+    reg.authenticate_and_claim(42, &ticket, "Livewire")
+        .await
+        .expect("the first client must claim its session");
+    assert!(register_livewire(&reg, 42).await.is_none());
+
+    let event = capture
+        .find_message(Level::WARN, "already has an active minigame session")
+        .expect("a duplicate against a live game must log a WARN row");
+    assert!(
+        event.has_field("reason", "duplicate_session"),
+        "the refusal carries its reason: {event:#?}"
+    );
+    assert!(
+        event.has_field("existing_connected", "true"),
+        "the existing session is connected: {event:#?}"
+    );
+    assert!(
+        event.has_field("existing_game", "Livewire"),
+        "the existing game is named: {event:#?}"
+    );
+}

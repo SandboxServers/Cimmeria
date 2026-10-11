@@ -74,6 +74,7 @@ fn init_msg(abilities: Vec<i32>) -> BaseToCellMsg {
         looted_containers: Vec::new(),
         shown_tutorials: Vec::new(),
         entry_cause: crate::cell::messages::WorldEntryCause::Login,
+        session_kind: None,
     }
 }
 

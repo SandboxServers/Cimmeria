@@ -242,8 +242,8 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
 
     // Immutable lookups first: the throttle below takes `&mut`, and
     // `world_name_for_space` hands back a borrow of `self`.
-    let world = space_mgr
-        .get_entity_space_id(npc_id)
+    let space_id = space_mgr.get_entity_space_id(npc_id);
+    let world = space_id
         .and_then(|sid| space_mgr.world_name_for_space(sid))
         .unwrap_or("unknown")
         .to_string();
@@ -327,6 +327,7 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         ),
     };
 
+    let names = space_mgr.entity_names(npc_id);
     tracing::warn!(
         target: "npc_ai.path_fail",
         event = "path_fail",
@@ -336,9 +337,12 @@ pub(super) fn report_path_failure(space_mgr: &mut SpaceManager, f: PathFailure, 
         fallback = fallback.label(),
         npc_id,
         npc_name = space_mgr.entity_label(npc_id),
+        template_id = names.template_id,
+        template_name = names.template_name,
         target_id,
         target_name = target_id.and_then(|t| space_mgr.entity_label(t)),
         world = %world,
+        space_id,
         npc_x = from.x,
         npc_y = from.y,
         npc_z = from.z,

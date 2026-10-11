@@ -159,6 +159,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
             entry_cause: crate::cell::messages::WorldEntryCause::Login,
+            session_kind: None,
         },
         &tx,
         &mut mgr,

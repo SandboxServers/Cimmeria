@@ -8,9 +8,11 @@
 
 use super::*;
 use tokio::sync::oneshot;
+use tracing::Level;
 
 use crate::cell::messages::LabConsoleResult;
 use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
+use crate::test_support::LogCapture;
 
 /// Build a one-space manager with a single entity, at the given access level.
 fn make_manager_with_entity(entity_id: u32, access_level: u32) -> SpaceManager {
@@ -102,7 +104,11 @@ async fn lab_console_exec_captures_gm_command_output() {
 /// escalation. The guard fails (reply becomes `Ok`) if the gate is removed.
 #[tokio::test]
 async fn lab_console_exec_rejects_non_gm_entity() {
+    let capture = LogCapture::install();
     let mut mgr = make_manager_with_entity(2, 0); // access_level 0 = Player
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.player_id = Some(12);
+    }
     let (tx, mut rx) = mpsc::channel(32);
 
     let result = exec(&mut mgr, 2, ".help", &tx).await;
@@ -111,6 +117,19 @@ async fn lab_console_exec_rejects_non_gm_entity() {
     assert!(
         err.contains("not authorized"),
         "rejection reason must name the authorization failure, got: {err}"
+    );
+
+    // The WARN row must name the reason and the acting entity's identity.
+    let event = capture
+        .find_event(Level::WARN, "LabConsoleExec rejected", "not_gm")
+        .expect("a non-GM rejection must log a not_gm WARN");
+    assert!(
+        event.has_field("player_id", "12"),
+        "the rejection must name the player; got {event:#?}"
+    );
+    assert!(
+        event.has_field("entity_id", "2"),
+        "the rejection must name the entity; got {event:#?}"
     );
 
     // A rejected command must not run — nothing at all may reach base.
@@ -125,6 +144,7 @@ async fn lab_console_exec_rejects_non_gm_entity() {
 /// non-existent entity.
 #[tokio::test]
 async fn lab_console_exec_rejects_unknown_entity() {
+    let capture = LogCapture::install();
     let mut mgr = make_manager_with_entity(1, 2);
     let (tx, _rx) = mpsc::channel(32);
 
@@ -132,5 +152,13 @@ async fn lab_console_exec_rejects_unknown_entity() {
     assert!(
         result.is_err(),
         "an unknown acting entity must be rejected, not executed"
+    );
+
+    // A missing entity is a distinct reason from a present non-GM entity.
+    assert!(
+        capture
+            .find_event(Level::WARN, "LabConsoleExec rejected", "entity_missing")
+            .is_some(),
+        "an unknown acting entity must log an entity_missing WARN"
     );
 }

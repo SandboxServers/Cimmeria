@@ -97,9 +97,16 @@ pub(super) async fn apply_death_transition(
             // Contact-list Death fanout — cell→base hop. The base handler calls
             // `fanout_contact_event` with the player's name and EVENT_DEATH.
             // data_value=0 per spec (client ignores it; shows "{Name} has died").
+            // The deceased's `player_id` pairs with `player_name` (Rule 6).
+            // Death fires only for player entities, which always carry one.
+            let subject_player_id = space_mgr
+                .player_identity(target_eid)
+                .player_id
+                .unwrap_or_default();
             if tx
                 .send(CellToBaseMsg::ContactListPresenceEvent {
                     player_name: character_name,
+                    player_id: subject_player_id,
                     event_id: EVENT_DEATH,
                     data_value: 0,
                 })
@@ -464,17 +471,28 @@ pub(super) async fn resolve_death(
     let attacker_name = space_mgr.entity_label(attacker_id);
     let target_name = space_mgr.entity_label(target_eid);
     let ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id);
+    // The row names the player side of the kill: the attacker when it is a
+    // player, otherwise the target (a player killed by an NPC or environment).
+    let who = if attacker_is_player {
+        space_mgr.player_identity(attacker_id)
+    } else {
+        space_mgr.player_identity(target_eid)
+    };
     // One row body for both levels: `tracing` takes a constant level.
     macro_rules! killed_row {
         ($lvl:ident) => {
             tracing::$lvl!(
                 target: "abilities",
                 event = "target_killed",
-                attacker = attacker_id,
+                attacker_id,
                 attacker_name,
-                target = target_eid,
+                target_id = target_eid,
                 target_name,
-                ability_id = ability_id.unwrap_or(-1),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                ability_id,
                 ability_name,
                 is_npc = !target_is_player,
                 "Target killed!"
@@ -636,6 +654,8 @@ mod pet_credit_log_tests;
 mod pet_credit_tests;
 #[cfg(test)]
 mod pet_tests;
+#[cfg(test)]
+mod row_keys_tests;
 #[cfg(test)]
 mod snapshot_tests;
 #[cfg(test)]
