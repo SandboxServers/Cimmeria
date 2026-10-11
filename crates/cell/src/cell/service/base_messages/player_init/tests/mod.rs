@@ -7,6 +7,8 @@ mod auto_cycle_starts_off;
 #[cfg(test)]
 mod debug_area_hub_grant;
 #[cfg(test)]
+mod mission_state_lock_order;
+#[cfg(test)]
 mod reload_on_activate;
 #[cfg(test)]
 mod relog_mission_resurrection;

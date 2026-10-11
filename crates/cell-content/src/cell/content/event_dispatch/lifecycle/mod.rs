@@ -35,6 +35,72 @@ pub async fn fire_player_loaded(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    fire_player_loaded_filtered(
+        entity_id, player_id, world_name, None, engine, tx, space_mgr,
+    )
+    .await;
+}
+
+/// Re-fire, after a late saved-missions read (TG-DB-12), only the
+/// `player_loaded` chains the mission lock dropped at world entry. Chains
+/// that ran unlocked then are not run twice. Conditions are judged afresh
+/// against the restored tracker, so a chain gated on `not_active` for a
+/// mission the player already finished stays quiet.
+pub async fn replay_deferred_player_loaded(
+    entity_id: u32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let deferred = space_mgr
+        .get_entity_mut(entity_id)
+        .map(|e| e.missions.take_deferred_player_loaded())
+        .unwrap_or_default();
+    let id = space_mgr.player_identity(entity_id);
+    let (Some(player_id), false) = (id.player_id, deferred.is_empty()) else {
+        tracing::debug!(
+            event = "player_loaded_replay_skipped",
+            reason = "nothing_deferred",
+            entity_id,
+            entity_name = id.player_name,
+            "No player_loaded chain was dropped while the missions were locked"
+        );
+        return;
+    };
+    let world_name = space_mgr
+        .get_entity_world_name(entity_id)
+        .unwrap_or_else(|| "Unknown".to_string());
+    tracing::info!(
+        event = "player_loaded_replayed",
+        entity_id,
+        entity_name = id.player_name,
+        player_id,
+        player_name = id.player_name,
+        world = %world_name,
+        chains = ?deferred,
+        "Re-firing the player_loaded chains dropped while the saved missions were unreadable"
+    );
+    fire_player_loaded_filtered(
+        entity_id,
+        player_id,
+        &world_name,
+        Some(&deferred),
+        engine,
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+async fn fire_player_loaded_filtered(
+    entity_id: u32,
+    player_id: i32,
+    world_name: &str,
+    only: Option<&[i64]>,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
 
     // Order matters. `populate_world_context` sets `world_id` *and* a
@@ -72,7 +138,28 @@ pub async fn fire_player_loaded(
         params: ctx.params.clone(),
     };
 
-    let resolved = engine.resolve_event(&event, &ctx);
+    let mut resolved = engine.resolve_event(&event, &ctx);
+    if let Some(only) = only {
+        let delays = std::mem::take(&mut resolved.action_delays);
+        let mut kept_delays = Vec::with_capacity(delays.len());
+        let actions = std::mem::take(&mut resolved.actions);
+        for (i, (chain_id, action)) in actions.into_iter().enumerate() {
+            if only.contains(&chain_id) {
+                if let Some(&d) = delays.get(i) {
+                    kept_delays.push(d);
+                }
+                resolved.actions.push((chain_id, action));
+            }
+        }
+        resolved.action_delays = kept_delays;
+    }
+    // TG-DB-12: remember the mission chains the lock is about to drop, so
+    // recovery can replay exactly those.
+    crate::cell::missions::state_lock::defer_dropped_chains(
+        entity_id,
+        &resolved.actions,
+        space_mgr,
+    );
     if !resolved.actions.is_empty() {
         let id = space_mgr.player_identity(entity_id);
         tracing::info!(

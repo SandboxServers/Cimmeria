@@ -81,6 +81,7 @@ pub(super) async fn handle_base_message(
             player_name,
             reply_tx,
         } => {
+            let is_player = player_id.is_some();
             lifecycle::handle_create_entity(
                 entity_id,
                 world_name,
@@ -99,6 +100,11 @@ pub(super) async fn handle_base_message(
                 spawn_records,
             )
             .await;
+            // TG-DB-12: mission changes wait until `InitPlayerState` says
+            // whether the saved missions loaded.
+            if is_player {
+                crate::cell::missions::state_lock::mark_load_pending(entity_id, space_mgr);
+            }
         }
 
         BaseToCellMsg::DestroyEntity { entity_id } => {
@@ -304,6 +310,30 @@ pub(super) async fn handle_base_message(
                     space_mgr,
                 )
                 .await;
+        }
+
+        // TG-DB-12: the saved missions were unreadable at world entry. The
+        // lock arrives before `InitPlayerState`, so no `player_loaded` chain
+        // runs against the empty tracker unlocked.
+        BaseToCellMsg::MissionStateUnknown { entity_id } => {
+            crate::cell::missions::state_lock::mark_state_unknown(entity_id, space_mgr);
+        }
+
+        BaseToCellMsg::SavedMissionsRecovered {
+            entity_id,
+            saved_missions,
+        } => {
+            let restored =
+                player_init::mission_restore::build_restored_missions(&saved_missions, space_mgr);
+            if crate::cell::missions::state_lock::recover_state(entity_id, restored, tx, space_mgr)
+                .await
+            {
+                // Replay the `player_loaded` chains the lock dropped.
+                crate::cell::content::replay_deferred_player_loaded(
+                    entity_id, engine, tx, space_mgr,
+                )
+                .await;
+            }
         }
 
         BaseToCellMsg::AdvanceRingDestination {

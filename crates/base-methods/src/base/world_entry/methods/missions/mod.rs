@@ -6,13 +6,43 @@ use sqlx::PgPool;
 
 use crate::cell::messages::SavedMission;
 
+pub mod state_lock;
+
+/// Read the saved missions, falling back to none when the read fails.
+///
+/// World entry does not use this: it goes through
+/// [`state_lock::load_saved_missions_with_retry`], which locks the missions
+/// instead of falling back (TG-DB-12). The fallback stays for the callers
+/// that only read, and it still says what it costs.
 pub async fn query_saved_missions(
     db_pool: &Option<Arc<PgPool>>,
     player_id: i32,
 ) -> Vec<SavedMission> {
+    match try_query_saved_missions(db_pool, player_id).await {
+        Ok(missions) => missions,
+        Err(e) => {
+            tracing::error!(
+                event = "player_load_degraded",
+                reason = "missions_query_failed",
+                player_id,
+                player_name = known_names::player_name(player_id),
+                error = %e,
+                "Saved missions query failed when loading player data; the player loads with no missions, a re-accept will overwrite saved progress"
+            );
+            vec![]
+        }
+    }
+}
+
+/// Read the saved missions. No pool reads as none (dev only); a failed
+/// query is the caller's to handle.
+pub async fn try_query_saved_missions(
+    db_pool: &Option<Arc<PgPool>>,
+    player_id: i32,
+) -> Result<Vec<SavedMission>, sqlx::Error> {
     let pool = match db_pool {
         Some(p) => p,
-        None => return vec![],
+        None => return Ok(vec![]),
     };
 
     #[derive(sqlx::FromRow)]
@@ -27,7 +57,7 @@ pub async fn query_saved_missions(
         repeats: i32,
     }
 
-    match sqlx::query_as::<_, MissionRow>(
+    let rows = sqlx::query_as::<_, MissionRow>(
         "SELECT mission_id, status, current_step_id, \
          completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, \
          repeats \
@@ -35,56 +65,41 @@ pub async fn query_saved_missions(
     )
     .bind(player_id)
     .fetch_all(pool.as_ref())
-    .await
-    {
-        Ok(rows) => {
-            let missions: Vec<_> = rows
-                .into_iter()
-                .map(|r| {
-                    let status = i8::try_from(r.status).unwrap_or_else(|_| {
-                        tracing::warn!(
-                            player_id,
-                            player_name = known_names::player_name(player_id),
-                            mission_id = r.mission_id,
-                            mission_name = cimmeria_names::book().mission(r.mission_id),
-                            db_status = r.status,
-                            "Mission status out of i8 range, clamping"
-                        );
-                        // Clamp at i32, then cast — casting first wraps modulo 256.
-                        r.status.clamp(i8::MIN as i32, i8::MAX as i32) as i8
-                    });
-                    SavedMission {
-                        mission_id: r.mission_id,
-                        status,
-                        current_step_id: r.current_step_id,
-                        completed_step_ids: r.completed_step_ids,
-                        completed_objective_ids: r.completed_objective_ids,
-                        active_objective_ids: r.active_objective_ids,
-                        failed_objective_ids: r.failed_objective_ids,
-                        repeats: r.repeats,
-                    }
-                })
-                .collect();
-            tracing::info!(
-                player_id,
-                player_name = known_names::player_name(player_id),
-                count = missions.len(),
-                "Loaded saved missions from DB"
-            );
-            missions
-        }
-        Err(e) => {
-            tracing::error!(
-                event = "player_load_degraded",
-                reason = "missions_query_failed",
-                player_id,
-                player_name = known_names::player_name(player_id),
-                error = %e,
-                "Saved missions query failed when loading player data; the player loads with no missions, a re-accept will overwrite saved progress"
-            );
-            vec![]
-        }
-    }
+    .await?;
+    let missions: Vec<_> = rows
+        .into_iter()
+        .map(|r| {
+            let status = i8::try_from(r.status).unwrap_or_else(|_| {
+                tracing::warn!(
+                    player_id,
+                    player_name = known_names::player_name(player_id),
+                    mission_id = r.mission_id,
+                    mission_name = cimmeria_names::book().mission(r.mission_id),
+                    db_status = r.status,
+                    "Mission status out of i8 range, clamping"
+                );
+                // Clamp at i32, then cast — casting first wraps modulo 256.
+                r.status.clamp(i8::MIN as i32, i8::MAX as i32) as i8
+            });
+            SavedMission {
+                mission_id: r.mission_id,
+                status,
+                current_step_id: r.current_step_id,
+                completed_step_ids: r.completed_step_ids,
+                completed_objective_ids: r.completed_objective_ids,
+                active_objective_ids: r.active_objective_ids,
+                failed_objective_ids: r.failed_objective_ids,
+                repeats: r.repeats,
+            }
+        })
+        .collect();
+    tracing::info!(
+        player_id,
+        player_name = known_names::player_name(player_id),
+        count = missions.len(),
+        "Loaded saved missions from DB"
+    );
+    Ok(missions)
 }
 
 #[tracing::instrument(
@@ -125,6 +140,12 @@ pub async fn handle_mission_update(
             "current_step_name",
             current_step_id.and_then(|s| book.mission_step(s)),
         );
+    }
+    // TG-DB-12 backstop: the cell refuses mission changes while the saved
+    // missions are unreadable, so nothing should reach here; if something
+    // does, it was built from an empty tracker and would overwrite the row.
+    if state_lock::refuse_persist_if_locked(player_id, mission_id, status) {
+        return;
     }
     let pool = match db_pool {
         Some(p) => p,

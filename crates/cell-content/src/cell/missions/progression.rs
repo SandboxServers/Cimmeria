@@ -30,6 +30,17 @@ pub async fn advance_step(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    if super::state_lock::refuse_if_state_unknown(
+        entity_id,
+        mission_id,
+        "advance_step",
+        tx,
+        space_mgr,
+    )
+    .await
+    {
+        return false;
+    }
     // Ordering seam. Region / cover triggers are EDGE events: if the player is
     // already inside when this step activates, the edge has already been spent
     // and the step's chain never sees it (2026-09-18: take-cover fired 1 s
@@ -275,6 +286,17 @@ pub async fn complete_objective(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    if super::state_lock::refuse_if_state_unknown(
+        entity_id,
+        mission_id,
+        "complete_objective",
+        tx,
+        space_mgr,
+    )
+    .await
+    {
+        return false;
+    }
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => {
@@ -479,6 +501,11 @@ pub async fn complete_mission_direct(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    if super::state_lock::refuse_if_state_unknown(entity_id, mission_id, "complete", tx, space_mgr)
+        .await
+    {
+        return;
+    }
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => return,

@@ -45,6 +45,13 @@ pub async fn accept_mission(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // TG-DB-12: an unreadable saved state reads as "never taken" here, so
+    // the offer guard below would wave a completed mission through.
+    if super::state_lock::refuse_if_state_unknown(entity_id, mission_id, "accept", tx, space_mgr)
+        .await
+    {
+        return false;
+    }
     // Prior-instance snapshot + def lookup happen against the immutable
     // borrow so the guard can run before any mutation.
     let prior = match space_mgr.get_entity(entity_id) {
@@ -220,6 +227,11 @@ pub async fn abandon_mission(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    if super::state_lock::refuse_if_state_unknown(entity_id, mission_id, "abandon", tx, space_mgr)
+        .await
+    {
+        return false;
+    }
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => return false,

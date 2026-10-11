@@ -739,9 +739,9 @@ Every fallback in the player-load loaders logs `event = "player_load_degraded"` 
 | `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
 | `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
 | `bandolier_query_failed` | `player_load/meta.rs`, `query_bandolier_items` | `player_id`, `player_name`, `error` |
-| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
+| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` (read-only callers); at world entry `missions/state_lock.rs`, after the retries, with `attempts` (TG-DB-12) | `player_id`, `player_name`, `error` |
 
-Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
+Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss; at world entry it now locks the missions instead (see TG-DB-12 below). Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
 ### Shutdown unsaved-state report (TG-DB-01)
 
@@ -788,6 +788,29 @@ The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guar
 ## Deferred content actions dropped on teardown (TG-MIS-07)
 
 A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
+
+## Unreadable saved missions lock (TG-DB-12, D-TG18)
+
+World entry no longer falls back to "no saved missions" (that let a re-accept overwrite completed progress, #411). `missions/state_lock.rs` in `cimmeria-base-methods` retries the read after 200, 400 and 800 ms, each attempt cut off after 2 s (about 9.4 s at worst). If every attempt fails, the base locks the player, sends `MissionStateUnknown` to the cell before `InitPlayerState`, and re-reads every 30 s until it succeeds. The cell (`cell/missions/state_lock.rs` in `cimmeria-cell-content`) refuses every accept, abandon, step advance, objective completion and completion, drops any content chain that changes a mission whole, and saves nothing. Each player-facing refusal also sends the feedback line "Mission data unavailable, try again shortly." The base refuses any `sgw_mission` write for a locked player as a backstop. The cell also holds mission changes from `CreateEntity` until `InitPlayerState` (`reason = "saved_missions_pending"`). Refusal rows and feedback lines are throttled to one per entity per 5 s; each admitted row carries `suppressed`, the refusals swallowed since the last one (Pattern D).
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "saved_missions_read_retry"`, `reason = "query_failed"` or `"timeout"`, `player_id`, `player_name`, `attempt`/`attempts`, `wait_ms` (world entry), `error` | One world-entry read attempt failed or ran past 2 s and will be retried, or a 30 s background read failed |
+| ERROR | `event = "player_load_degraded"`, `reason = "missions_query_failed"`, `last_failure` (`query_failed` or `timeout`), `player_id`, `player_name`, `attempts`, `error` | Every world-entry attempt failed; the missions are locked |
+| DEBUG | `event = "mission_state_lock_skipped"`, `reason = "no_cell_channel"` | Every attempt failed but there is no cell channel (dev); nothing is locked |
+| INFO | `event = "mission_state_locked"`, `reason = "saved_missions_unreadable"`, Rule 5 identity, `entity_id`, `entity_name` | The cell locked the tracker |
+| WARN | `event = "mission_state_unknown"`, `reason = "saved_missions_unreadable"` or `"saved_missions_pending"`, `site`, Rule 5 identity, `entity_id`, `entity_name`, `mission_id`, `mission_name`, `suppressed`, and `chain_id`, `chain_name` when `site = "chain"` | A mission change was refused (at most one row per entity per 5 s). `site` is `chain`, `accept`, `abandon`, `advance_step`, `complete_objective`, `complete`, `gm_missionfail` or a persist site (`accept`, `complete`, `advance_step`, `complete_objective`) |
+| WARN | the same `event` and `reason`, `site = "persist"`, `player_id`, `player_name`, `mission_id`, `mission_name`, `status` | The base backstop refused an `sgw_mission` write for a locked player |
+| WARN | `event = "mission_state_unknown"`, `reason = "cell_channel_closed"` | `MissionStateUnknown` could not reach the cell; the base backstop still holds |
+| INFO | `event = "saved_missions_read_retried"` | A world-entry read succeeded on a retry |
+| INFO | `event = "saved_missions_read_recovered"`, `attempts`, `count`, `delivered` | The background read succeeded; the base unlocked and sent `SavedMissionsRecovered` |
+| INFO | `event = "mission_state_recovered"`, Rule 5 identity, `count` | The cell restored the missions, resent the journal and unlocked ("Mission data restored." to the player) |
+| INFO | `event = "player_loaded_replayed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `world`, `chains` | After recovery, the `player_loaded` mission chains the lock dropped are re-fired |
+| DEBUG | `event = "player_loaded_replay_skipped"`, `reason = "nothing_deferred"` | Recovery found no dropped `player_loaded` chain to replay |
+| DEBUG | `event = "mission_state_retry_stopped"`, `reason = "session_gone"` | The session ended while locked; the background read stopped |
+| DEBUG | `event = "mission_state_recovery_ignored"`, `reason = "not_locked"` | A duplicate recovery; nothing changed |
+
+Guards: the live-DB test `live_db_unreadable_missions_block_reaccept` (`crates/services/src/mission_state_lock_tests.rs`) makes the read fail, re-accepts a completed mission and asserts the refusal, the feedback line, both WARNs and the unchanged row. `missions::state_lock::tests` (base) pins the retry count, the final ERROR, the persist WARN and the recovery unlock; `cell::missions::state_lock_tests` pins the cell refusal, the whole-chain drop and the recovery unlock.
 
 ## Related
 
