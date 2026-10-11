@@ -43,6 +43,11 @@ pub(super) struct Wire {
 
 pub(super) struct LivewireGame {
     // Session params
+    /// Entity and player identity, carried so every rejection row names
+    /// the player (TG-MG-05).
+    pub(super) entity_id: u32,
+    pub(super) player_id: i32,
+    pub(super) player_name: Option<String>,
     pub(super) difficulty: u32,
     pub(super) tech_competency: u32,
     pub(super) abilities_mask: u32,
@@ -97,6 +102,9 @@ impl LivewireGame {
             );
         }
         Self {
+            entity_id: session.entity_id,
+            player_id: session.player_id,
+            player_name: session.player_name.clone(),
             difficulty: session.difficulty.clamp(1, 4),
             tech_competency: session.tech_competency,
             abilities_mask: session.abilities_mask,
@@ -196,7 +204,15 @@ impl MinigameInstance for LivewireGame {
                     .to_string();
 
                 if !self.game_started {
-                    tracing::warn!(wire = %wirename, "Wire cut when game not started");
+                    tracing::warn!(
+                        entity_id = self.entity_id,
+                        entity_name = self.player_name.as_deref(),
+                        player_id = self.player_id,
+                        player_name = self.player_name.as_deref(),
+                        wire = %wirename,
+                        reason = "not_started",
+                        "Wire cut when game not started"
+                    );
                     return vec![];
                 }
 
@@ -205,13 +221,29 @@ impl MinigameInstance for LivewireGame {
                 let wire = match wire {
                     Some(w) => w,
                     None => {
-                        tracing::warn!(wire = %wirename, "Unknown wire");
+                        tracing::warn!(
+                            entity_id = self.entity_id,
+                            entity_name = self.player_name.as_deref(),
+                            player_id = self.player_id,
+                            player_name = self.player_name.as_deref(),
+                            wire = %wirename,
+                            reason = "unknown_wire",
+                            "Unknown wire"
+                        );
                         return vec![];
                     }
                 };
 
                 if wire.cut {
-                    tracing::warn!(wire = %wirename, "Wire already cut");
+                    tracing::warn!(
+                        entity_id = self.entity_id,
+                        entity_name = self.player_name.as_deref(),
+                        player_id = self.player_id,
+                        player_name = self.player_name.as_deref(),
+                        wire = %wirename,
+                        reason = "already_cut",
+                        "Wire already cut"
+                    );
                     return vec![];
                 }
                 wire.cut = true;
@@ -225,7 +257,15 @@ impl MinigameInstance for LivewireGame {
                     }
                     'p' => {
                         if !self.playfield_active {
-                            tracing::warn!(wire = %wirename, "Playfield wire cut when inactive");
+                            tracing::warn!(
+                                entity_id = self.entity_id,
+                                entity_name = self.player_name.as_deref(),
+                                player_id = self.player_id,
+                                player_name = self.player_name.as_deref(),
+                                wire = %wirename,
+                                reason = "playfield_inactive",
+                                "Playfield wire cut when inactive"
+                            );
                             return vec![];
                         }
                     }
@@ -244,7 +284,15 @@ impl MinigameInstance for LivewireGame {
                         }));
                     }
                     _ => {
-                        tracing::warn!(wire = %wirename, "Illegal wire prefix");
+                        tracing::warn!(
+                            entity_id = self.entity_id,
+                            entity_name = self.player_name.as_deref(),
+                            player_id = self.player_id,
+                            player_name = self.player_name.as_deref(),
+                            wire = %wirename,
+                            reason = "illegal_prefix",
+                            "Illegal wire prefix"
+                        );
                         return vec![];
                     }
                 }
@@ -270,7 +318,15 @@ impl MinigameInstance for LivewireGame {
             }
 
             _ => {
-                tracing::warn!(cmd, "Livewire: unknown command");
+                tracing::warn!(
+                    entity_id = self.entity_id,
+                    entity_name = self.player_name.as_deref(),
+                    player_id = self.player_id,
+                    player_name = self.player_name.as_deref(),
+                    cmd,
+                    reason = "unknown_command",
+                    "Livewire: unknown command"
+                );
                 vec![]
             }
         }

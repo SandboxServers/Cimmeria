@@ -293,7 +293,7 @@ round 2 fourteen of them emitted DEBUG rows that reached neither a file
 nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`,
 `content.resolve`, `dialog.display`, `mission.step_context`,
 `movement.movement_type`, `movement.position_sample`, `movement.validation`,
-`player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
+`player.journal`, `player.respawn`, `trade.atomic_swap`, `console.feedback`, `client.native`,
 `launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
 DEBUG, except `client.native`, which moved to the `cimmeria-client` index
 (every level) in 2026-09. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
@@ -308,7 +308,9 @@ crate linked into the server, finds each literal-target event call and
 requires it to reach one index at the level it is emitted; the only
 exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
-cannot skip the scan.
+cannot skip the scan. Test code is cut only at an inline `#[cfg(test)] mod name {`;
+a `#[cfg(test)] mod tests;` declaration does not end the file's scan, so the
+production code below it is still checked.
 
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
@@ -460,6 +462,9 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
+| `aoi_introductions_total` | `world` (~24) | One per `EnteredAoI` that `push_introduction` queues, per witness: the AoI diff's entry and the NPC respawn rebuild |
+| `aoi_leaves_total` | `world` (~24) | One per `LeftAoI` the AoI diff queues, per witness |
+| `aoi_witness_set_size` (up/down gauge) | `world` (~24) | Net change of each player's witness set on each AoI tick, so the sum per world is that world's witness count. A removed player's share is subtracted on disconnect or destroy, so no final AoI diff is needed |
 | `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs. `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counts every GM off-mesh packet; its `movement.navmesh_gm_bypass` row is INFO and throttled per GM (TG-MOV-10) |
 
 Never entity ids, positions or mesh hashes as labels — those are
