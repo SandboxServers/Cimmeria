@@ -274,7 +274,7 @@ pub fn decode_event(
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_event, TargetKind};
+    use super::{decode_event, S2CEvent, TargetKind};
     use crate::tap_fixture::TapCapture;
 
     #[test]
@@ -284,6 +284,26 @@ mod tests {
         let cap = TapCapture::praxis_start();
         let args = cap.expect(6, "unknown").args();
         assert_eq!(decode_event(TargetKind::Npc, 27, &args), Ok(None));
+    }
+
+    /// `onDialogDisplay` (105) is a player method; `InteractionType` (3) is
+    /// shared, so it decodes on either kind.
+    #[test]
+    fn dialog_arms_route_by_target_kind() {
+        let cap = TapCapture::praxis_start();
+        let dialog = cap.expect(20, "onDialogDisplay").args();
+        assert!(matches!(
+            decode_event(TargetKind::Player, 105, &dialog),
+            Ok(Some(S2CEvent::DialogDisplay(_)))
+        ));
+        assert_eq!(decode_event(TargetKind::Npc, 105, &dialog), Ok(None));
+        let interaction = cap.expect(21, "InteractionType").args();
+        for kind in [TargetKind::Player, TargetKind::Npc] {
+            assert!(matches!(
+                decode_event(kind, 3, &interaction),
+                Ok(Some(S2CEvent::InteractionType { .. }))
+            ));
+        }
     }
 
     #[test]

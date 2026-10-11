@@ -124,12 +124,32 @@ mod tests {
         let cap = TapCapture::praxis_start();
         let mut args = cap.expect(20, "onDialogDisplay").args();
         args.pop();
-        assert!(matches!(
+        assert_eq!(
             dialog_display(&args),
             Err(SemanticError::Short {
                 method: "onDialogDisplay",
-                ..
+                at: 13,
+                need: 4,
+                len: 16,
             })
-        ));
+        );
+    }
+
+    /// The capture's dialogs all carry zero flags and mission id, so a swap
+    /// of those two fields would pass the fixture test; distinct hand values
+    /// pin the order.
+    #[test]
+    fn dialog_display_reads_fields_in_wire_order() {
+        let args = [7, 0, 0, 0, 9, 0, 0, 0, 11, 0, 0, 0, 2, 13, 0, 0, 0];
+        assert_eq!(
+            dialog_display(&args),
+            Ok(S2CEvent::DialogDisplay(DialogDisplay {
+                entity_id: 7,
+                dialog_id: 9,
+                mission_flags: 11,
+                is_immediate: 2,
+                mission_id: 13,
+            }))
+        );
     }
 }
