@@ -39,10 +39,14 @@
     (lab_uat_run `chaos`): cpu (the lab machine), net and flush (the row's
     server session; a lab-chaos server build). burst is not wired yet and is
     refused. A bad spec fails the plan call (exit 3) before anything is driven.
+    cpu loads the whole machine and every lane's run would start its own load,
+    so cpu needs -Leases 1 (exit 2 otherwise).
     Give several as -Chaos cpu,flush:pack or -Chaos @('cpu','flush:pack').
     A multi-knob spec contains commas, so quote it: -Chaos 'net:latency=120,loss=1'.
     The run's header (the runner's chaos=<spec> seed=<n>, joined with "; ")
     leads the summary and -Json gets a chaos key, only when -Chaos was given.
+    -PlanOnly prints seed=<per run> for a seed the spec did not name: each
+    run's seed is its own run id's hash.
 
     -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
@@ -136,7 +140,9 @@ function Invoke-LabUat {
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
     if ($shape) { return Stop-Uat 2 $shape }
-    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
+    $chaosShape = Test-UatChaosLeases $Chaos $Leases
+    if ($chaosShape) { return Stop-Uat 2 $chaosShape }
+    $specs =if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     # A diff needs a golden: without one, stop before anything is driven.
     if ($DiffGolden) {
         if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }

@@ -134,6 +134,17 @@ function Set-UatChaos([hashtable]$BaseArgs, [string[]]$Chaos) {
     return Format-UatChaosHeader $specs
 }
 
+# cpu chaos loads the whole machine, and each lane's lab_uat_run starts its
+# own load, so -Leases 2 would double it: cpu runs on one lease. The message,
+# or $null when the combination is fine.
+function Test-UatChaosLeases([string[]]$Chaos, [int]$Leases) {
+    $cpu = @($Chaos | Where-Object { $_ -and ($_.Trim() -split ':')[0] -eq 'cpu' })
+    if ($cpu.Count -and $Leases -gt 1) {
+        return "-Chaos cpu loads the whole machine and each lease's run would start its own load; run it with -Leases 1"
+    }
+    return $null
+}
+
 # The runner's own chaos header from a lab_uat_run result (lab-chaos CH-08):
 # its `chaos` list (one header per spec, seed resolved) joined with "; ".
 # $null when the result carries none.

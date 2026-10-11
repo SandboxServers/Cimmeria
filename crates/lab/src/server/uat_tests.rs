@@ -34,6 +34,40 @@ fn uat_run_args_parse_chaos_and_refuse_a_bad_profile() {
     assert!(refused("net:loss=0.05").contains("one decimal"));
 }
 
+/// Regression guard: the chaos check runs before the lease is taken. With
+/// the lab leased by someone else, a bad spec is refused for its chaos, not
+/// for the lease; a good one then meets the lease. Fails if the check moves
+/// after the lease acquisition.
+#[tokio::test]
+async fn a_bad_chaos_spec_is_refused_before_the_lease_is_taken() {
+    let server = LabServer::new(supervisor(None));
+    server
+        .supervisor
+        .leases()
+        .acquire(crate::lease::AcquireRequest {
+            owner: "other".into(),
+            purpose: "busy".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let args = |v| serde_json::from_value::<UatRunArgs>(v).unwrap();
+    let Err(bad) = server.run_start(&args(json!({ "chaos": ["disk"] }))) else {
+        panic!("a bad spec is refused");
+    };
+    assert!(
+        bad.message.contains("unknown chaos profile"),
+        "{}",
+        bad.message
+    );
+    let Err(good) = server.run_start(&args(json!({ "chaos": ["cpu"] }))) else {
+        panic!("the lab is leased");
+    };
+    assert!(!good.message.contains("chaos"), "{}", good.message);
+    // A plan takes no lease, so it passes with the lab leased.
+    let plan = server.run_start(&args(json!({ "chaos": ["cpu"], "plan_only": true })));
+    assert!(matches!(plan, Ok((_, None))));
+}
+
 #[test]
 fn the_self_instance_check_ignores_case() {
     assert!(is_same_instance(Some("p2"), "p2"));

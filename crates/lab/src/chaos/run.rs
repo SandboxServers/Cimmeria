@@ -21,10 +21,34 @@ pub const BURST_DEFERRED: &str =
 /// The longest label `server_chaos_set` takes (lab-mcp `LABEL_MAX`).
 const LABEL_MAX: usize = 120;
 
+// The server registry's knob bounds (base-session `lab_chaos/bounds.rs`),
+// mirrored so a plan refuses what the set would refuse mid-run. This crate
+// does not link the server, so a bound changed there must change here too.
+const LATENCY_MAX_MS: u32 = 5000;
+const JITTER_MAX_MS: u32 = 5000;
+/// Loss and dup are percent with one decimal; the registry takes tenths up
+/// to 1000 per thousand.
+const PERCENT_MAX: f64 = 100.0;
+const REORDER_MAX: u32 = 1000;
+const DELAY_MAX_MS: u32 = 60_000;
+/// `PACK_RECORDS_MAX`: one phase-1 bundle in a single packet.
+const PACK_RECORDS_MAX: u32 = 34;
+/// `SHIFT_LEN_MAX`; a shift of 1 byte has no filler shape, so it is 0 or 2..=38.
+const SHIFT_LEN_MAX: u32 = 38;
+
+/// What the plan header prints for a seed the run will pick (its run id's
+/// hash): the plan's own run id is not the run's.
+pub const PER_RUN_SEED: &str = "<per run>";
+
 /// The run's chaos specs, in the order given. Empty means no chaos.
 #[derive(Debug, Clone, Default)]
 pub struct RunChaos {
+    /// One resolved spec per chaos text, in the order given; at most one per
+    /// profile, never `burst`.
     pub specs: Vec<ChaosSpec>,
+    /// Per spec: whether its text named its seed (`seed=7`). A spec that did
+    /// not takes the run's seed, which a plan does not know yet.
+    named_seed: Vec<bool>,
 }
 
 /// The default seed for a run: a stable hash of its run id (FNV-1a), so a
@@ -37,29 +61,41 @@ pub fn seed_of(run_id: &str) -> u64 {
 
 impl RunChaos {
     /// Parses every text with `default_seed`. Refuses an unknown profile or
-    /// knob, `burst`, a profile named twice, a knob value the consumer cannot
-    /// use, and `net` with `flush` under two different seeds (the server
-    /// keeps one seed per session).
+    /// knob, `burst`, a profile named twice, a control character, a knob
+    /// value the consumer cannot use or the server's bounds refuse, and `net`
+    /// with a seeded `flush` mode under two different seeds (the server keeps
+    /// one seed per session).
     pub fn parse(texts: &[String], default_seed: u64) -> Result<Self, String> {
         let levels = Levels::embedded().map_err(|e| format!("chaos levels file: {e}"))?;
-        let mut specs: Vec<ChaosSpec> = Vec::new();
+        let mut chaos = Self::default();
         for text in texts.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+            // The text becomes the header and the server's `label`, which
+            // the set refuses with a control character in it.
+            if text.chars().any(char::is_control) {
+                return Err(format!(
+                    "chaos {text:?}: a control character is not allowed"
+                ));
+            }
             let spec =
                 parse(text, &levels, default_seed).map_err(|e| format!("chaos {text:?}: {e}"))?;
             if spec.profile == Profile::Burst {
                 return Err(format!("chaos {text:?}: {BURST_DEFERRED}"));
             }
-            if specs.iter().any(|s| s.profile == spec.profile) {
+            if chaos.specs.iter().any(|s| s.profile == spec.profile) {
                 return Err(format!(
                     "chaos {text:?}: profile {} is named twice",
                     spec.profile.name()
                 ));
             }
-            specs.push(spec);
+            // A named seed survives a different default; the run's does not.
+            let other = parse(text, &levels, default_seed ^ 1).map(|s| s.seed);
+            chaos.named_seed.push(other == Ok(spec.seed));
+            chaos.specs.push(spec);
         }
-        let chaos = Self { specs };
         if let (Some(net), Some(flush)) = (chaos.get(Profile::Net), chaos.get(Profile::Flush)) {
-            if net.seed != flush.seed {
+            // Only a flush mode that reads the seed shares the net's.
+            let (_, flush_reads_seed) = flush_args(flush)?;
+            if flush_reads_seed && net.seed != flush.seed {
                 return Err(format!(
                     "chaos: net (seed={}) and flush (seed={}) share one server seed; give both the same seed",
                     net.seed, flush.seed
@@ -71,6 +107,7 @@ impl RunChaos {
         Ok(chaos)
     }
 
+    /// True when the run has no chaos at all (no text, or only blank ones).
     pub fn is_empty(&self) -> bool {
         self.specs.is_empty()
     }
@@ -88,6 +125,27 @@ impl RunChaos {
     /// without chaos, so `run.json` gets no key.
     pub fn header_line(&self) -> Option<String> {
         (!self.is_empty()).then(|| self.headers().join("; "))
+    }
+
+    /// The headers a plan reports: a seed the text did not name reads
+    /// `seed=<per run>`, since each real run takes its own run id's hash.
+    pub fn plan_headers(&self) -> Vec<String> {
+        self.specs
+            .iter()
+            .zip(&self.named_seed)
+            .map(|(spec, &named)| {
+                let line = header(spec);
+                match line.rsplit_once(" seed=") {
+                    Some((head, _)) if !named => format!("{head} seed={PER_RUN_SEED}"),
+                    _ => line,
+                }
+            })
+            .collect()
+    }
+
+    /// [`Self::plan_headers`] joined as [`Self::header_line`] joins them.
+    pub fn plan_header_line(&self) -> Option<String> {
+        (!self.is_empty()).then(|| self.plan_headers().join("; "))
     }
 
     /// Whether a row needs a `server_chaos_set` (`net` or `flush`).
@@ -147,14 +205,13 @@ impl RunChaos {
 /// at most one decimal, a reorder buffer size. A profile whose knobs are
 /// all zero is refused, as the tool would.
 fn net_args(spec: &ChaosSpec) -> Result<Value, String> {
-    let ms = |k: &str| whole(spec, k, "ms");
     let pct = |k: &str| percent(spec, k);
     let v = json!({
-        "latency": ms("latency")?,
-        "jitter": ms("jitter")?,
+        "latency": at_most(spec, "latency", whole(spec, "latency", "ms")?, LATENCY_MAX_MS)?,
+        "jitter": at_most(spec, "jitter", whole(spec, "jitter", "ms")?, JITTER_MAX_MS)?,
         "loss": pct("loss")?,
         "dup": pct("dup")?,
-        "reorder": whole(spec, "reorder", "")?,
+        "reorder": at_most(spec, "reorder", whole(spec, "reorder", "")?, REORDER_MAX)?,
     });
     let all_zero = ["latency", "jitter", "loss", "dup", "reorder"]
         .iter()
@@ -174,26 +231,50 @@ fn flush_args(spec: &ChaosSpec) -> Result<(Value, bool), String> {
         .map(String::as_str)
         .unwrap_or_default();
     match mode {
-        "delay" => Ok((
-            json!({ "mode": mode, "delay_ms": whole(spec, "delay_ms", "ms")? }),
-            false,
-        )),
+        "delay" => {
+            let ms = at_most(
+                spec,
+                "delay_ms",
+                whole(spec, "delay_ms", "ms")?,
+                DELAY_MAX_MS,
+            )?;
+            Ok((json!({ "mode": mode, "delay_ms": ms }), false))
+        }
         "reorder" => Ok((json!({ "mode": mode }), true)),
         "pack" => {
-            let records = u16::try_from(whole(spec, "records", "")?)
-                .map_err(|_| "chaos flush: records is over 65535".to_string())?;
+            let records = whole(spec, "records", "")?;
+            if !(1..=PACK_RECORDS_MAX).contains(&records) {
+                return Err(format!(
+                    "chaos flush: records {records} is not 1 to {PACK_RECORDS_MAX} (one packet)"
+                ));
+            }
             Ok((json!({ "mode": mode, "records": records }), false))
         }
         "shift" => match spec.knobs.get("shift").map(|s| s.trim()) {
             Some("sweep") => Ok((json!({ "mode": mode, "shift": "sweep" }), true)),
             _ => {
-                let len = u16::try_from(whole(spec, "shift", "")?)
-                    .map_err(|_| "chaos flush: shift is over 65535".to_string())?;
+                let len = whole(spec, "shift", "")?;
+                if len != 0 && !(2..=SHIFT_LEN_MAX).contains(&len) {
+                    return Err(format!(
+                        "chaos flush: shift {len} is not 0 or 2 to {SHIFT_LEN_MAX}"
+                    ));
+                }
                 Ok((json!({ "mode": mode, "shift": len }), false))
             }
         },
         other => Err(format!("chaos flush: unknown mode {other:?}")),
     }
+}
+
+/// `value`, refused over the server's `max` for `knob`.
+fn at_most(spec: &ChaosSpec, knob: &str, value: u32, max: u32) -> Result<u32, String> {
+    if value > max {
+        return Err(format!(
+            "chaos {}: {knob} {value} is over the server's {max}",
+            spec.profile.name()
+        ));
+    }
+    Ok(value)
 }
 
 /// A whole number knob, with `unit` allowed as a suffix (`120ms`).
@@ -212,17 +293,23 @@ fn whole(spec: &ChaosSpec, knob: &str, unit: &str) -> Result<u32, String> {
     })
 }
 
-/// A percent knob (`0.5`, `1%`): not negative, at most one decimal.
+/// A percent knob (`0.5`, `1%`): 0 to 100, at most one decimal.
 fn percent(spec: &ChaosSpec, knob: &str) -> Result<f64, String> {
     let raw = spec.knobs.get(knob).map(|s| s.trim()).unwrap_or("0");
-    let bad = || format!("chaos net: {knob} {raw:?} is not a percent with at most one decimal");
+    let bad = || {
+        format!("chaos net: {knob} {raw:?} is not a percent from 0 to 100 with at most one decimal")
+    };
     let value: f64 = raw
         .strip_suffix('%')
         .unwrap_or(raw)
         .parse()
         .map_err(|_| bad())?;
     let tenths = value * 10.0;
-    if !value.is_finite() || value < 0.0 || (tenths - tenths.round()).abs() > 1e-9 {
+    if !value.is_finite()
+        || value < 0.0
+        || value > PERCENT_MAX
+        || (tenths - tenths.round()).abs() > 1e-9
+    {
         return Err(bad());
     }
     Ok(value)
@@ -234,100 +321,5 @@ fn clip(text: &str, max: usize) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn run(texts: &[&str]) -> Result<RunChaos, String> {
-        let texts: Vec<String> = texts.iter().map(|s| s.to_string()).collect();
-        RunChaos::parse(&texts, 7)
-    }
-
-    #[test]
-    fn burst_is_refused_with_the_deferral() {
-        let err = run(&["burst"]).unwrap_err();
-        assert!(err.contains(BURST_DEFERRED), "{err}");
-        assert!(run(&["cpu", "burst:count=5"]).is_err());
-    }
-
-    #[test]
-    fn a_profile_named_twice_and_split_seeds_are_refused() {
-        assert!(run(&["net", "net:break"])
-            .unwrap_err()
-            .contains("named twice"));
-        assert!(run(&["net:seed=1", "flush:reorder:seed=2"])
-            .unwrap_err()
-            .contains("one server seed"));
-        assert!(run(&["net:seed=3", "flush:reorder:seed=3"]).is_ok());
-    }
-
-    #[test]
-    fn knobs_the_server_would_refuse_fail_at_parse() {
-        for bad in [
-            "net:latency=fast",
-            "net:loss=0.05",
-            "net:loss=-1",
-            "net:latency=0,jitter=0,loss=0,dup=0,reorder=0",
-            "flush:pack:records=70000",
-            "flush:shift:shift=wide",
-            "cpu:cores=0",
-        ] {
-            assert!(run(&[bad]).is_err(), "{bad} should be refused");
-        }
-    }
-
-    #[test]
-    fn net_and_flush_go_in_one_set_call() {
-        let chaos = run(&["net:latency=120ms,loss=1%", "flush:pack"]).unwrap();
-        let args = chaos.server_set_args(42, 360).unwrap().unwrap();
-        assert_eq!(args["entity_id"], 42);
-        assert_eq!(args["ttl_s"], 360);
-        assert_eq!(args["net"]["latency"], 120);
-        assert_eq!(args["net"]["loss"], 1.0);
-        assert_eq!(args["flush"], json!({ "mode": "pack", "records": 24 }));
-        assert_eq!(args["seed"], 7, "net reads the seed");
-        assert_eq!(
-            args["label"],
-            "net:latency=120ms,loss=1% seed=7 flush:pack seed=7"
-        );
-    }
-
-    /// The tool refuses a seed nothing reads, so a pack-only set has none,
-    /// and a reorder carries it.
-    #[test]
-    fn the_seed_goes_only_where_it_is_read() {
-        let pack = run(&["flush:pack"]).unwrap();
-        let args = pack.server_set_args(1, 60).unwrap().unwrap();
-        assert!(args.get("seed").is_none());
-        let reorder = run(&["flush:reorder"]).unwrap();
-        assert_eq!(reorder.server_set_args(1, 60).unwrap().unwrap()["seed"], 7);
-        let sweep = run(&["flush:shift"]).unwrap();
-        let args = sweep.server_set_args(1, 60).unwrap().unwrap();
-        assert_eq!(args["flush"]["shift"], "sweep");
-        assert_eq!(args["seed"], 7);
-    }
-
-    #[test]
-    fn cpu_alone_sends_nothing_to_the_server() {
-        let chaos = run(&["cpu"]).unwrap();
-        assert!(!chaos.has_server_profile());
-        assert_eq!(chaos.server_set_args(1, 60).unwrap(), None);
-        assert!(chaos.cpu_stress().unwrap().is_some());
-        assert_eq!(
-            chaos.header_line().as_deref(),
-            Some(header(&chaos.specs[0]).as_str())
-        );
-    }
-
-    #[test]
-    fn no_chaos_has_no_header_and_empty_texts_are_skipped() {
-        let chaos = run(&["", "  "]).unwrap();
-        assert!(chaos.is_empty());
-        assert_eq!(chaos.header_line(), None);
-    }
-
-    #[test]
-    fn the_run_seed_is_stable_and_differs_by_run() {
-        assert_eq!(seed_of("abc"), seed_of("abc"));
-        assert_ne!(seed_of("abc"), seed_of("abd"));
-    }
-}
+#[path = "run_tests.rs"]
+mod tests;

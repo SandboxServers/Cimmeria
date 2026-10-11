@@ -2,7 +2,7 @@
 //! every slice, so frame timing in the client drifts under load.
 
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -10,6 +10,32 @@ use std::time::{Duration, Instant};
 /// The scheduling unit for duty cycling. Short enough that a stop request
 /// is noticed within a frame, long enough that `sleep` overhead stays small.
 const SLICE: Duration = Duration::from_millis(10);
+
+/// Stressor threads alive in this process, every guard's together. The
+/// runner's tests read it to see a run's load is held while rows run.
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+
+/// Stressor threads alive in this process now.
+#[cfg(test)]
+pub(crate) fn live_threads() -> usize {
+    LIVE.load(Ordering::SeqCst)
+}
+
+/// Counts one stressor thread for as long as it lives, panic included.
+struct Alive;
+
+impl Alive {
+    fn new() -> Self {
+        LIVE.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for Alive {
+    fn drop(&mut self) {
+        LIVE.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 /// A CPU load: `cores` busy threads, each spinning for `duty_percent` of
 /// every slice.
@@ -98,6 +124,7 @@ impl Drop for CpuGuard {
 /// flag is read once per slice, so stopping takes at most one slice. At 100%
 /// there is no sleep at all.
 fn burn(stop: &AtomicBool, duty_percent: u8) {
+    let _alive = Alive::new();
     let busy = SLICE * u32::from(duty_percent) / 100;
     let idle = SLICE - busy;
     while !stop.load(Ordering::Relaxed) {

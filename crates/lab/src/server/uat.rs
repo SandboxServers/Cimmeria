@@ -308,6 +308,24 @@ fn is_same_instance(own: Option<&str>, p2: &str) -> bool {
 static P2_LAB: OnceLock<LabServer> = OnceLock::new();
 
 impl LabServer {
+    /// The call's chaos texts, then the run's lease (none for a plan, which
+    /// drives nothing). In that order: a bad chaos spec takes no lease.
+    fn run_start(&self, a: &UatRunArgs) -> Result<(Vec<String>, Option<RunLease>), McpError> {
+        let chaos = run_chaos(a)?;
+        if a.plan_only {
+            return Ok((chaos, None));
+        }
+        let book = self.supervisor.leases().clone();
+        let lease = match a.lease_id.clone() {
+            // The `call_tool` gate already checked it is current.
+            Some(id) => RunLease::caller(book, id),
+            None => RunLease::acquire_own(book, run_purpose(a)).map_err(|e| {
+                McpError::invalid_request(e, Some(self.supervisor.leases().status()))
+            })?,
+        };
+        Ok((chaos, Some(lease)))
+    }
+
     /// The server that drives the second player `name`. A daemon hosting
     /// that instance drives it through its own supervisor (its lease book
     /// and watchdog); otherwise the in-process [`P2_LAB`] stands in.
@@ -389,22 +407,9 @@ impl LabServer {
         Parameters(a): Parameters<UatRunArgs>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        // Before the lease: a bad chaos spec takes nothing.
-        let chaos = run_chaos(&a)?;
         // The run's lease, held until this function returns (an own lease is
-        // released on drop, whatever the outcome). A plan drives nothing.
-        let run_lease = if a.plan_only {
-            None
-        } else {
-            let book = self.supervisor.leases().clone();
-            Some(match a.lease_id.clone() {
-                // The `call_tool` gate already checked it is current.
-                Some(id) => RunLease::caller(book, id),
-                None => RunLease::acquire_own(book, run_purpose(&a)).map_err(|e| {
-                    McpError::invalid_request(e, Some(self.supervisor.leases().status()))
-                })?,
-            })
-        };
+        // released on drop, whatever the outcome).
+        let (chaos, run_lease) = self.run_start(&a)?;
         // The hosted p2's lease carries the same purpose, marked as p2's.
         let p2_purpose = format!("{} (p2)", run_purpose(&a));
         let dir = a

@@ -259,6 +259,8 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) pending_drain: Option<String>,
     /// The run's chaos, resolved with its seed (lab-chaos CH-08).
     pub(crate) chaos: crate::chaos::run::RunChaos,
+    /// The server probe's answer and a failed clear, across rows.
+    pub(crate) chaos_run: chaos::RunChaosState,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -304,7 +306,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 (run, m)
             }
         };
-        let chaos = chaos::resolve(&req.chaos, &mut manifest)?;
+        let chaos = chaos::resolve(&req.chaos, req.plan_only, &mut manifest)?;
         let mut runner = Self {
             inv,
             server,
@@ -321,6 +323,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             last_row: None,
             pending_drain: None,
             chaos,
+            chaos_run: Default::default(),
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -343,6 +346,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         // Cleared when run_all returns, on every path (D-LW1).
         let _progress = self.begin_progress();
         let _cpu = self.chaos_cpu_start(); // Stops on every return, as above.
+        self.chaos_probe().await;
         for loaded in &sections {
             for row in &loaded.spec.rows {
                 if let Some(only) = &self.req.rows {
@@ -395,7 +399,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 .map(|r| ledger::block(r, &build))
                 .collect::<Vec<_>>()
                 .join("\n"),
-            chaos: self.chaos.headers(),
+            chaos: if self.req.plan_only {
+                self.chaos.plan_headers()
+            } else {
+                self.chaos.headers()
+            },
         })
     }
 
@@ -558,6 +566,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
 #[cfg(test)]
 mod ability_tests;
+#[cfg(test)]
+mod chaos_run_tests;
 #[cfg(test)]
 mod chaos_tests;
 #[cfg(test)]

@@ -1,7 +1,10 @@
 //! Chaos around rows (lab-chaos CH-08) over the fake client and the fake
 //! lab MCP: `net`/`flush` are set on the row's player entity before its
-//! setup and cleared after its teardown on every path, a run without chaos
-//! sends no chaos call, and `burst` is refused before anything runs.
+//! setup and cleared after its teardown on every path (a cancel mid-set
+//! and a set that failed in transport too), a run without chaos sends no
+//! chaos call, and `burst` is refused before anything runs. Run-level
+//! behaviour (the probe, a stuck clear, row states, cpu) is in
+//! `chaos_run_tests`.
 
 use std::time::Duration;
 
@@ -14,7 +17,7 @@ use super::{RunOutcome, Runner};
 use crate::uat::evidence::{RowEvidence, RowResult, RunDir, RunManifest};
 use crate::uat::invoke::ServerInvoker;
 
-const ROWS: &str = r#"
+pub(super) const ROWS: &str = r#"
 [[row]]
 id = "C1"
 title = "first"
@@ -40,7 +43,7 @@ source = "chat"
 contains = "Available commands"
 "#;
 
-fn fake() -> Fake {
+pub(super) fn fake() -> Fake {
     Fake::new(&[
         (".help", &["Available commands: .help"]),
         (".who", &["Players online: 1"]),
@@ -48,15 +51,27 @@ fn fake() -> Fake {
     .with("lab_fail")
 }
 
-async fn run_chaos(
+pub(super) async fn run_chaos(
     fake: &Fake,
     server: &FakeServer,
     rows: &str,
     chaos: &[&str],
 ) -> (RunOutcome, Vec<RowEvidence>, RunManifest) {
+    run_with(fake, server, rows, chaos, |_| {}).await
+}
+
+/// [`run_chaos`] with the request adjusted first (plan_only, vars).
+pub(super) async fn run_with(
+    fake: &Fake,
+    server: &FakeServer,
+    rows: &str,
+    chaos: &[&str],
+    adjust: impl FnOnce(&mut super::RunRequest),
+) -> (RunOutcome, Vec<RowEvidence>, RunManifest) {
     let tmp = tempfile::tempdir().unwrap().keep();
     let mut req = request(&tmp, rows);
     req.chaos = chaos.iter().map(|s| s.to_string()).collect();
+    adjust(&mut req);
     let out = Runner::new(fake, Some(server as &dyn ServerInvoker), req)
         .unwrap()
         .run_all()
@@ -68,7 +83,7 @@ async fn run_chaos(
 }
 
 /// Where the first action named `what` sits in the row, if anywhere.
-fn at(row: &RowEvidence, what: &str) -> Option<usize> {
+pub(super) fn at(row: &RowEvidence, what: &str) -> Option<usize> {
     row.actions.iter().position(|a| a.requested == what)
 }
 
@@ -114,6 +129,7 @@ async fn flush_chaos_is_set_before_and_cleared_after_each_row() {
     assert_eq!(
         chaos_calls,
         [
+            "server_chaos_status",
             "server_chaos_set",
             "server_chaos_clear",
             "server_chaos_set",
@@ -228,6 +244,100 @@ lua_condition = "true"
         Some("server_chaos_clear"),
         "{names:?}"
     );
+}
+
+/// Regression guard: a takeover while `server_chaos_set` is still in
+/// flight (it may have landed) still clears. Fails if the guard is armed
+/// only after the set answers.
+#[tokio::test]
+async fn a_cancel_mid_set_still_clears() {
+    let fake = fake();
+    let server = FakeServer::new(json!({})).slow("server_chaos_set", Duration::from_secs(5));
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let mut req = request(&tmp, ROWS);
+    req.chaos = vec!["flush:pack".into()];
+    let (tx, rx) = watch::channel(None::<String>);
+    let runner = Runner::new(&fake, Some(&server as &dyn ServerInvoker), req)
+        .unwrap()
+        .with_revocation(rx);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let _ = tx.send(Some("lease taken over by session-b".into()));
+    });
+    tokio::time::timeout(Duration::from_secs(10), runner.run_all())
+        .await
+        .expect("the run stopped at the takeover")
+        .unwrap();
+    let names = server.names();
+    let set = names.iter().position(|n| n == "server_chaos_set");
+    let clear = names.iter().position(|n| n == "server_chaos_clear");
+    assert!(
+        matches!((set, clear), (Some(s), Some(c)) if s < c),
+        "{names:?}"
+    );
+}
+
+/// A set that failed in transport on a server that has the tool may have
+/// landed: the row is BLOCKED and its chaos is still cleared.
+#[tokio::test]
+async fn a_set_that_failed_in_transport_is_cleared_and_blocks_the_row() {
+    let fake = fake();
+    let server = FakeServer::new(json!({})).answer(
+        "server_chaos_set",
+        vec![json!({ "__error": "lab-mcp: operation timed out" })],
+    );
+    let (_, rows, _) = run_chaos(&fake, &server, ROWS, &["flush:pack"]).await;
+    for row in &rows {
+        assert_eq!(row.result, RowResult::Blocked, "{:?}", row.reasons);
+        assert!(
+            row.reasons
+                .iter()
+                .any(|r| r.contains("chaos not set") && r.contains("timed out")),
+            "{:?}",
+            row.reasons
+        );
+        assert!(at(row, "server_chaos_clear").is_some(), "{}", row.row_id);
+        assert!(at(row, ".help").is_none(), "drove a step without its chaos");
+    }
+}
+
+/// Regression guard: a clear that finds nothing (`{cleared: 0}`) means the
+/// chaos ended before the row did, so it flags the row; the result stands.
+#[tokio::test]
+async fn a_clear_that_finds_nothing_flags_the_row() {
+    let fake = fake();
+    let server =
+        FakeServer::new(json!({})).answer("server_chaos_clear", vec![json!({ "cleared": 0 })]);
+    let (_, rows, _) = run_chaos(&fake, &server, ROWS, &["flush:pack"]).await;
+    for row in &rows {
+        assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
+        assert!(
+            row.flags.iter().any(|f| f == super::chaos::ENDED_EARLY),
+            "{:?}",
+            row.flags
+        );
+    }
+}
+
+/// Entity 0 names no player (the roster's id for a session without one):
+/// the row is BLOCKED before a set is sent.
+#[tokio::test]
+async fn entity_zero_is_refused_before_the_server() {
+    let fake = fake();
+    let server = FakeServer::new(json!({}));
+    let (_, rows, _) = run_with(&fake, &server, ROWS, &["net"], |req| {
+        req.vars.insert("player_entity_id".into(), json!(0));
+    })
+    .await;
+    for row in &rows {
+        assert_eq!(row.result, RowResult::Blocked, "{:?}", row.reasons);
+        assert!(
+            row.reasons.iter().any(|r| r.contains("entity id 0")),
+            "{:?}",
+            row.reasons
+        );
+    }
+    assert!(!server.names().iter().any(|n| n == "server_chaos_set"));
 }
 
 /// A `{refused}` set (a server without DEVELOPER_MODE) blocks the row: it
