@@ -95,3 +95,6 @@ cimmeria-cell-org = { workspace = true }
 cimmeria-occluder = { workspace = true }
 # Chain parameters in the relog-hydration tests.
 serde_json = { workspace = true }
+# Paused time for the shutdown-flush deadline tests
+# (`#[tokio::test(start_paused = true)]` + `tokio::time::advance`).
+tokio = { workspace = true, features = ["test-util"] }

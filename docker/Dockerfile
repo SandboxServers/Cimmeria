@@ -313,6 +313,17 @@ ENV AUTH_HOST=0.0.0.0 \
     # to DB_URL. Opt in per deployment (docker/compose.yml passes it through).
     DEVELOPER_MODE=false \
     RUST_LOG=info \
+    # s6-overlay stop budget (TG-DB-02). On `docker stop`, s6-rc first stops
+    # cimmeria-server with SIGTERM and waits for it with no timeout of its
+    # own (there is no `timeout-down`), so the shutdown flush (up to 10 s)
+    # runs to the end and postgres, which it depends on, stays up for it.
+    # These two only bound what comes after: S6_KILL_GRACETIME is the wait
+    # between the final SIGTERM to every leftover process and SIGKILL, and
+    # S6_SERVICES_GRACETIME the wait for legacy /etc/services.d services.
+    # Both default to 3000 ms (s6-overlay v3 README). Raised so a slow stop
+    # is never cut at 3 s, and kept under compose's 45 s stop_grace_period.
+    S6_SERVICES_GRACETIME=20000 \
+    S6_KILL_GRACETIME=25000 \
     S6_KEEP_ENV=1
 
 # Ports actually bound by the Rust server. The legacy Python console

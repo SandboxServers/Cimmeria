@@ -698,8 +698,11 @@ Before that report, the cell saves every in-world player through the base (`crat
 | WARN | `event = "shutdown_flush_task_failed"`, `reason = "task_panicked"`, `error` | A player's save task panicked; that player counts as missed |
 | DEBUG | `event = "shutdown_flush_deadline_reached"`, `abandoned` | The base hit the deadline and aborted the saves still running |
 | DEBUG | `event = "shutdown_flush_reply_dropped"`, `reason = "cell_stopped_waiting"` | The cell stopped waiting before the base answered |
+| WARN | `event = "bandolier_slot_dropped"`, `reason = "no_item"`, identity, `slot_id` | A dirty ammo slot holds no bandolier item when the flush builds its request: there is nothing to save, so the slot is left out and its dirty marker cleared. Same row as TG-ITM-11's logout flush |
 
 Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, so a failed write also logs that writer's own WARN (below) with its reason. A player missed for any reason gets exactly one `player_state_not_persisted`.
+
+`player_state_not_persisted` is conservative: it can over-report. A save the base aborts at the deadline may already have committed its write, and a write that lands after the cell stopped waiting still counts as missed, so a player it names may in fact be saved. It never under-reports. While the cell waits for the base's answer it does not drain base-to-cell messages; anything the base sends the cell in that window is handled (or dropped) by the shutdown that follows.
 
 ## Logout position persistence (TG-DB-04)
 

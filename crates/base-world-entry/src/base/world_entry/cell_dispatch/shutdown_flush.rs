@@ -119,6 +119,7 @@ async fn save_player(save: ShutdownPlayerSave, pool: Option<Arc<PgPool>>) -> boo
 mod tests {
     use super::*;
     use std::time::Duration;
+    use tokio::time::Instant;
 
     fn save(player_id: i32) -> ShutdownPlayerSave {
         ShutdownPlayerSave {
@@ -133,12 +134,14 @@ mod tests {
     /// and left out of the answer, while the saves that finished are in it.
     /// Without the deadline the call never returns (the test times out);
     /// without the abort, the stuck save would hold the shutdown open.
-    #[tokio::test]
+    /// Paused time: the runtime jumps the clock to the next timer when idle,
+    /// so the elapsed time is exact, not a wall-clock bound.
+    #[tokio::test(start_paused = true)]
     async fn stuck_save_is_cut_at_the_deadline_and_missed() {
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(200);
-        let started = std::time::Instant::now();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let started = Instant::now();
         let saved = tokio::time::timeout(
-            Duration::from_secs(5),
+            Duration::from_secs(60),
             run_flush(vec![save(1), save(2), save(3)], deadline, |s| async move {
                 match s.player_id {
                     // Stuck: a write that never comes back.
@@ -152,18 +155,20 @@ mod tests {
         .await
         .expect("run_flush must return at its deadline");
         assert_eq!(saved, vec![1], "only the finished, successful save counts");
-        assert!(
-            started.elapsed() < Duration::from_secs(2),
-            "the flush must stop at the deadline, took {:?}",
-            started.elapsed()
+        assert_eq!(
+            started.elapsed(),
+            Duration::from_secs(10),
+            "the flush stops exactly at the deadline"
         );
     }
 
-    /// Saves run in parallel: ten saves of 150 ms each finish well inside a
-    /// 1 s deadline. Run one after another they would need 1.5 s and miss.
-    #[tokio::test]
+    /// Saves run in parallel: ten saves of 150 ms each all finish 150 ms in,
+    /// inside a 1 s deadline. Run one after another they would need 1.5 s
+    /// and miss. Paused time makes the elapsed time exact.
+    #[tokio::test(start_paused = true)]
     async fn saves_run_in_parallel() {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(1);
         let saves = (1..=10).map(save).collect();
         let mut saved = run_flush(saves, deadline, |_| async {
             tokio::time::sleep(Duration::from_millis(150)).await;
@@ -172,5 +177,6 @@ mod tests {
         .await;
         saved.sort_unstable();
         assert_eq!(saved, (1..=10).collect::<Vec<_>>());
+        assert_eq!(started.elapsed(), Duration::from_millis(150));
     }
 }
