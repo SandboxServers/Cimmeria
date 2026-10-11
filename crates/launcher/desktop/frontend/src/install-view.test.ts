@@ -286,3 +286,53 @@ test('a finished operation is reported once, so Settings can re-read; one finish
    await app.refresh();await flush();assert.equal(finished,1,'a re-read of the same result is not a new finish');
  }finally{await app.dispose();}
 });
+
+const MiB=1024*1024;
+const SEED=Math.round(4.13*1024*MiB);
+const runningWith=(progress:InstallStatus['progress']):InstallStatus=>({...initial(),progress,native:{...initial().native,operation:{schema_version:1,revision:2,
+ operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'running'}}}});
+const dl=(current:number,total:number)=>runningWith({phase:'download',current,total});
+
+test('active download and extraction show percent and bytes, not a bare label',async()=>{
+ const ui=dom();let t=0;
+ let status=dl(42*MiB,100*MiB);
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ try{await app.ready;await flush();
+  assert.equal(ui.get('install-status').textContent,'Downloading verified game content… 42% · 42 MB of 100 MB');
+  status=runningWith({phase:'extraction',current:18,total:50});await app.refresh();await flush();
+  assert.equal(ui.get('install-status').textContent,'Extracting game content… 36%');
+ }finally{await app.dispose();}
+});
+
+test('large download shows speed and time left; small patch blob and phase change do not',async()=>{
+ const ui=dom();let t=0;let status=dl(0,SEED);
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ const step=async(ms:number,next:InstallStatus)=>{t=ms;status=next;await app.refresh();await flush();return ui.get('install-status').textContent!;};
+ try{await app.ready;await flush();
+  assert.equal(ui.get('install-status').textContent,'Downloading verified game content… 0% · 0 B of 4.13 GB');
+  const seed=await step(1000,dl(12*MiB,SEED));
+  assert.match(seed,/12 MB\/s/);assert.match(seed,/about .* left/);
+  // A 40 MB patch blob is a new total: percent and size only, never speed or ETA.
+  await step(2000,dl(0,40*MiB));
+  const patch=await step(3000,dl(20*MiB,40*MiB));
+  assert.equal(patch,'Downloading verified game content… 50% · 20 MB of 40 MB');
+  assert.doesNotMatch(patch,/\/s|left/);
+  assert.equal(await step(4000,runningWith({phase:'extraction',current:10,total:50})),'Extracting game content… 20%');
+ }finally{await app.dispose();}
+});
+
+test('a phase change or an idle gap restarts the rate window',async()=>{
+ const ui=dom();let t=0;let status=dl(0,SEED);
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ const step=async(ms:number,next:InstallStatus)=>{t=ms;status=next;await app.refresh();await flush();return ui.get('install-status').textContent!;};
+ try{await app.ready;await flush();
+  assert.match(await step(1000,dl(12*MiB,SEED)),/MB\/s/);
+  await step(1500,runningWith({phase:'extraction',current:13*MiB,total:SEED}));
+  // Same total and a higher count: only the phase change can have dropped the old baseline.
+  assert.doesNotMatch(await step(2500,dl(25*MiB,SEED)),/\/s/);
+  assert.match(await step(3500,dl(37*MiB,SEED)),/MB\/s/);
+  // Operation no longer active (cancelled, progress still reported): the next run must not reuse the old baseline.
+  await step(4000,{...dl(40*MiB,SEED),native:{...initial().native,operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'cancelled'}}}});
+  assert.doesNotMatch(await step(5000,dl(49*MiB,SEED)),/\/s/);
+ }finally{await app.dispose();}
+});

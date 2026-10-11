@@ -19,3 +19,12 @@ footer button:not(.primary){font-size:12px;padding:7px 12px}
 footer .primary + .primary{margin-top:8px}
 .hero{min-height:330px}
 @media(max-height:650px){.hero{min-height:220px}}
+
+/* Progress bars span the panel and read at a glance; no value means an indeterminate sweep. */
+progress{-webkit-appearance:none;appearance:none;display:block;width:100%;height:10px;margin:10px 0 6px;border:0;border-radius:999px;overflow:hidden;background:var(--panel);color:var(--accent)}
+progress::-webkit-progress-bar{background:var(--panel);border-radius:999px}
+progress::-webkit-progress-value{background:var(--accent);border-radius:999px;transition:width .25s ease}
+progress::-moz-progress-bar{background:var(--accent);border-radius:999px}
+progress:not([value])::-webkit-progress-bar{background-color:var(--panel);background-image:linear-gradient(90deg,transparent,var(--accent) 50%,transparent);background-repeat:no-repeat;background-size:35% 100%;animation:progress-sweep 1.2s linear infinite}
+@keyframes progress-sweep{from{background-position:-35% 0}to{background-position:135% 0}}
+@media(prefers-reduced-motion:reduce){progress::-webkit-progress-value{transition:none}progress:not([value])::-webkit-progress-bar{animation:none;background-position:50% 0}}
