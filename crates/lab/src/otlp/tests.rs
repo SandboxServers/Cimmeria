@@ -1,12 +1,23 @@
-//! TG-PIPE-17: what labd exports must carry no local path or user name.
+//! TG-PIPE-17: what labd exports must carry no local path, user or machine
+//! name, token, lease free text, or anything the `OTEL_*` environment named.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use opentelemetry::logs::{AnyValue, LogRecord as _, Logger as _, LoggerProvider as _};
+use opentelemetry::Key;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_http::{Bytes, HttpClient, HttpError, Request, Response};
 use opentelemetry_sdk::logs::{InMemoryLogExporter, SdkLogRecord, SdkLoggerProvider};
 use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::Layer as _;
 
-use super::redact::{PATH_PLACEHOLDER, USER_PLACEHOLDER};
-use super::{RedactingProvider, Redactor};
+use super::logger::is_dropped_field;
+use super::redact::{HOST_PLACEHOLDER, PATH_PLACEHOLDER, SECRET_PLACEHOLDER, USER_PLACEHOLDER};
+use super::{
+    filter, headers, init, init_with, resource, RedactingProvider, Redactor, ENDPOINT_ENV,
+    PROTOCOL_ENV, SERVICE_NAME,
+};
 
 fn redactor() -> Redactor {
     Redactor::new(["inst-3".to_string(), "p2".to_string()], Some("xavier"))
@@ -174,4 +185,247 @@ fn redact_reduces_each_path_shape() {
 fn redact_leaves_short_user_names_alone() {
     let r = Redactor::new(Vec::new(), Some("ab"));
     assert_eq!(r.redact("a cab ride"), "a cab ride");
+}
+
+#[test]
+fn redact_keeps_a_spaced_profile_folder_whole() {
+    // USERNAME is `Steve`, but the profile folder is `Steve Cady`: cutting the
+    // path at the first space would ship the surname.
+    let r = Redactor::new(Vec::new(), Some("Steve"));
+    let cases: &[(&str, &str)] = &[
+        (r"root C:\Users\Steve Cady", "root <path>"),
+        (r#"dir="C:\\Users\\Steve Cady", ok"#, r#"dir="<path>", ok"#),
+        (
+            r"C:\Users\Steve Cady\AppData\x.log missing",
+            "<path> missing",
+        ),
+        (r"C:\Users\Steve Cady is not writable", "<path>"),
+    ];
+    for (input, want) in cases {
+        let got = r.redact(input);
+        assert_eq!(got, *want, "input: {input}");
+    }
+    for (input, _) in &cases[..2] {
+        assert!(!r.redact(input).contains("Cady"), "surname leaked: {input}");
+    }
+}
+
+#[test]
+fn redact_scrubs_the_machine_name_and_lab_tokens() {
+    let token = "0123456789abcdef0123456789abcdef";
+    let vars = vars(&[
+        ("USERNAME", "xavier"),
+        ("COMPUTERNAME", "WS-XAVIER-01"),
+        ("CIMMERIA_LAB_DAEMON_TOKEN", token),
+        ("CIMMERIA_LAB_MCP_TOKEN", "short"),
+    ]);
+    let r = Redactor::from_vars(&vars);
+    assert_eq!(
+        r.redact("connected to ws-xavier-01 as xavier"),
+        format!("connected to {HOST_PLACEHOLDER} as {USER_PLACEHOLDER}")
+    );
+    assert_eq!(
+        r.redact(&format!("Authorization: Bearer {token}")),
+        format!("Authorization: Bearer {SECRET_PLACEHOLDER}")
+    );
+    // A value too short to be a real token is not scrubbed.
+    assert_eq!(r.redact("a short note"), "a short note");
+}
+
+#[test]
+fn labd_drops_lease_free_text_and_credentials() {
+    let rows = export_rows(|| {
+        tracing::warn!(target: "lab.lease", event = "force", owner = "jane-agent",
+            purpose = "probe jane's quest", prev_owner = "bob", prev_purpose = "bob's run",
+            reason = "jane needs it", "lab lease taken over");
+        tracing::warn!(target: "lab.uat", event = "wait_server_expired",
+            reason = "timed out", bearer_token = "abc", "wait_server timed out");
+    });
+    assert_eq!(rows.len(), 2);
+    for key in ["owner", "purpose", "prev_owner", "prev_purpose", "reason"] {
+        assert_eq!(attr(&rows[0], key), None, "lab.lease {key} exported");
+    }
+    assert_eq!(attr(&rows[0], "event").as_deref(), Some("force"));
+    // `reason` is only free text on lease rows.
+    assert_eq!(attr(&rows[1], "reason").as_deref(), Some("timed out"));
+    assert_eq!(attr(&rows[1], "bearer_token"), None);
+    assert!(is_dropped_field("CIMMERIA_LAB_DAEMON_TOKEN", false));
+    assert!(!is_dropped_field("reason", false));
+}
+
+// --- init(): the real pipeline -------------------------------------------
+
+/// The process environment is shared by every test in this binary under
+/// `cargo test`; the ones that set `OTEL_*` or read the endpoint hold this.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// Sets process variables for one test and removes them after it.
+struct EnvVars(Vec<&'static str>);
+
+impl EnvVars {
+    fn set(pairs: &[(&'static str, &str)]) -> Self {
+        for (k, v) in pairs {
+            std::env::set_var(k, v);
+        }
+        Self(pairs.iter().map(|(k, _)| *k).collect())
+    }
+}
+
+impl Drop for EnvVars {
+    fn drop(&mut self) {
+        for k in &self.0 {
+            std::env::remove_var(k);
+        }
+    }
+}
+
+/// The `OTEL_*` values another tool might set user-wide.
+const LEAKY_OTEL: [(&str, &str); 5] = [
+    ("OTEL_RESOURCE_ATTRIBUTES", "leak.user=SECRETRES"),
+    ("OTEL_SERVICE_NAME", "leaked-service"),
+    ("OTEL_EXPORTER_OTLP_HEADERS", "x-leak=SECRETHDR"),
+    ("OTEL_EXPORTER_OTLP_LOGS_HEADERS", "x-leak-logs=SECRETLOGS"),
+    // Would make a protocol-less HTTP builder refuse to build.
+    ("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc"),
+];
+
+fn vars(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+    let map: HashMap<String, String> = pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    move |k| map.get(k).cloned()
+}
+
+/// An OTLP/HTTP collector that keeps each request.
+#[derive(Debug, Default)]
+struct Capture(Mutex<Vec<Request<Bytes>>>);
+
+#[async_trait::async_trait]
+impl HttpClient for Capture {
+    async fn send_bytes(&self, request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
+        self.0.lock().unwrap().push(request);
+        Ok(Response::new(Bytes::new()))
+    }
+}
+
+fn contains(hay: &[u8], needle: &str) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle.as_bytes())
+}
+
+#[test]
+fn init_is_off_without_an_endpoint() {
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::remove_var(ENDPOINT_ENV);
+    assert!(init().is_none(), "no endpoint, no exporter");
+    let _v = EnvVars::set(&[(ENDPOINT_ENV, "  ")]);
+    assert!(init().is_none(), "a blank endpoint is unset");
+    assert!(init_with(&vars(&[]), None).is_none());
+}
+
+#[test]
+fn resource_ignores_otel_resource_attributes() {
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _v = EnvVars::set(&LEAKY_OTEL);
+    let res = resource("dev", "inst-3");
+    let mut keys: Vec<String> = res.iter().map(|(k, _)| k.as_str().to_string()).collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "cimmeria.deploy_env",
+            "cimmeria.lab.instance",
+            "cimmeria.source",
+            "deployment.environment",
+            "service.name",
+            "service.version",
+        ]
+    );
+    let get = |k: &'static str| res.get(&Key::from_static_str(k)).map(|v| v.to_string());
+    assert_eq!(get("service.name").as_deref(), Some(SERVICE_NAME));
+    assert_eq!(get("cimmeria.lab.instance").as_deref(), Some("inst-3"));
+}
+
+#[test]
+fn grpc_interceptor_clears_merged_metadata() {
+    // The SDK merges OTEL_EXPORTER_OTLP_HEADERS into the request's metadata
+    // before it calls the interceptor (tonic/mod.rs `build_channel`).
+    let mut req = tonic::Request::new(());
+    req.metadata_mut()
+        .insert("x-leak", "SECRETHDR".parse().unwrap());
+    req.metadata_mut()
+        .insert("authorization", "Bearer SECRET".parse().unwrap());
+    let req = headers::clear_metadata(req).expect("never refuses");
+    assert!(req.metadata().is_empty(), "{:?}", req.metadata());
+}
+
+#[test]
+fn init_pipeline_redacts_and_sends_nothing_from_otel_env() {
+    let _l = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _v = EnvVars::set(&LEAKY_OTEL);
+    let token = "0123456789abcdef0123456789abcdef";
+    let lab = vars(&[
+        (ENDPOINT_ENV, "http://127.0.0.1:9/v1/logs"),
+        (PROTOCOL_ENV, "http/protobuf"),
+        ("CIMMERIA_LAB_INSTANCE", "inst-3"),
+        ("USERNAME", "xavier"),
+        ("COMPUTERNAME", "WS-XAVIER-01"),
+        ("CIMMERIA_LAB_DAEMON_TOKEN", token),
+    ]);
+    let capture = Arc::new(Capture::default());
+    let (layer, guard) =
+        init_with(&lab, Some(capture.clone() as Arc<dyn HttpClient>)).expect("endpoint set");
+    let subscriber = tracing_subscriber::registry().with(layer.with_filter(filter()));
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::info!(target: "lab.client", event = "launched",
+            exe = r"C:\Users\xavier\AppData\Local\cimmeria-lab\instances\inst-3\SGW.exe",
+            "lab client on WS-XAVIER-01 launched from C:\\Users\\Steve Cady\\Games\\SGW.exe");
+        tracing::info!(target: "lab.lease", event = "acquire", owner = "jane-agent",
+            purpose = "probe jane's quest", "lab lease acquired");
+        tracing::warn!(target: "lab.auth", "rejected bearer {token}");
+    });
+    drop(guard); // shutdown flushes the batch
+
+    let sent = capture.0.lock().unwrap();
+    assert!(
+        !sent.is_empty(),
+        "the batch was exported through init()'s client"
+    );
+    for req in sent.iter() {
+        let names: Vec<&str> = req.headers().keys().map(|k| k.as_str()).collect();
+        assert!(
+            names
+                .iter()
+                .all(|n| ["content-type", "content-encoding"].contains(n)),
+            "an extra header was sent: {names:?}"
+        );
+    }
+    let body: Vec<u8> = sent.iter().flat_map(|r| r.body().to_vec()).collect();
+    for wanted in [
+        SERVICE_NAME,
+        "inst-3",
+        "lab lease acquired",
+        HOST_PLACEHOLDER,
+    ] {
+        assert!(
+            contains(&body, wanted),
+            "{wanted:?} missing from the export"
+        );
+    }
+    for leak in [
+        "SECRETRES",
+        "leak.user",
+        "leaked-service",
+        "SECRETHDR",
+        "SECRETLOGS",
+        "xavier",
+        "XAVIER",
+        "Cady",
+        "jane",
+        token,
+        r"C:\",
+        "Users",
+    ] {
+        assert!(!contains(&body, leak), "{leak:?} was exported");
+    }
 }

@@ -346,17 +346,28 @@ server's `otel.rs`, logs only.
   bounded queue; an unreachable collector drops rows, and shutdown waits at
   most 2 s.
 - **Filter:** `OTLP_FILTER`: `lab.*` targets and `cimmeria_lab::*` module
-  rows at INFO, dependencies at WARN, the exporter's own stack off.
-- **Paths are redacted.** Every string field and the message pass through
+  rows at INFO, dependencies at WARN, the exporter's own stack off
+  (`tower_http` stays at WARN, since `tower=off` would cover it by prefix).
+- **Rows are redacted.** Every string field and the message pass through
   `otlp::Redactor` before the SDK stores them: a local path becomes the
-  instance it belongs to (`...\instances\p2\profile` is `p2`) or `<path>`,
-  and the Windows user name becomes `<user>`. An event name holding a
-  dependency's absolute source path is left off. Pinned by
-  `otlp::tests::labd_redacts_local_paths`.
-- **Resource:** `deployment.environment` and `cimmeria.deploy_env` (from
-  `CIMMERIA_DEPLOY_ENV`, default `dev`), `cimmeria.source = lab`,
-  `service.version` = the crate version. No `host.name`: on a dev box it is
-  often the owner's name.
+  instance it belongs to (`...\instances\p2\profile` is `p2`) or `<path>`
+  (a profile folder with a space, `C:\Users\Jane Doe`, is taken whole), the
+  Windows user name becomes `<user>`, `COMPUTERNAME` becomes `<host>`, and
+  the lab's bearer tokens become `<secret>`. The lease's free text
+  (`owner`, `purpose`, `prev_*`, a `lab.lease` `reason`) and
+  credential-named fields are not exported. An event name holding a
+  dependency's absolute source path is left off. Pinned by `otlp::tests`.
+- **Nothing from `OTEL_*`.** The resource is built empty, so
+  `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME` are ignored; headers
+  from `OTEL_EXPORTER_OTLP_HEADERS` / `..._LOGS_HEADERS`, which the SDK
+  merges in unconditionally, are stripped before sending (a gRPC
+  interceptor, a wrapping HTTP client). Pinned by
+  `otlp::tests::init_pipeline_redacts_and_sends_nothing_from_otel_env`.
+- **Resource:** `service.name = cimmeria-lab`, `service.version` = the
+  crate version, `cimmeria.lab.instance` (the hosted instance labels, or
+  `default`), `deployment.environment` and `cimmeria.deploy_env` (from
+  `CIMMERIA_DEPLOY_ENV`, default `dev`), `cimmeria.source = lab`. No
+  `host.name`: on a dev box it is often the owner's name.
 
 ### Stable target catalog
 

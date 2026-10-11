@@ -58,6 +58,7 @@ impl Logger for RedactingLogger {
         RedactingRecord {
             inner: self.inner.create_log_record(),
             redactor: self.redactor.clone(),
+            lease_row: false,
         }
     }
 
@@ -70,11 +71,34 @@ impl Logger for RedactingLogger {
     }
 }
 
+/// Fields never exported, whatever their value: the lease's free text (who
+/// is driving, and what for, as an agent or person typed it) and anything
+/// named like a credential. `labd.log` keeps them.
+const DROPPED_FIELDS: [&str; 4] = ["owner", "purpose", "prev_owner", "prev_purpose"];
+
+/// Field-name fragments that mark a credential.
+const SECRET_FIELD_PARTS: [&str; 5] = ["token", "secret", "password", "authorization", "bearer"];
+
+/// The lease target: its `reason` is free text too (a forced take-over's
+/// typed reason, or a refusal quoting the holder's owner and purpose).
+const LEASE_TARGET: &str = "lab.lease";
+
+/// Whether field `key` is left off the exported row.
+pub(crate) fn is_dropped_field(key: &str, lease_row: bool) -> bool {
+    let lower = key.to_ascii_lowercase();
+    DROPPED_FIELDS.contains(&lower.as_str())
+        || SECRET_FIELD_PARTS.iter().any(|p| lower.contains(p))
+        || (lease_row && lower == "reason")
+}
+
 /// An [`SdkLogRecord`] that only ever stores redacted strings.
 #[derive(Debug)]
 pub(crate) struct RedactingRecord {
     inner: SdkLogRecord,
     redactor: Arc<Redactor>,
+    /// Target is [`LEASE_TARGET`]. The tracing bridge sets the target before
+    /// it records any field.
+    lease_row: bool,
 }
 
 impl RedactingRecord {
@@ -110,6 +134,8 @@ impl LogRecord for RedactingRecord {
     where
         T: Into<Cow<'static, str>>,
     {
+        let target = target.into();
+        self.lease_row = target == LEASE_TARGET;
         self.inner.set_target(target);
     }
 
@@ -150,6 +176,10 @@ impl LogRecord for RedactingRecord {
         K: Into<Key>,
         V: Into<AnyValue>,
     {
+        let key = key.into();
+        if is_dropped_field(key.as_str(), self.lease_row) {
+            return;
+        }
         let value = self.clean(value.into());
         self.inner.add_attribute(key, value);
     }
