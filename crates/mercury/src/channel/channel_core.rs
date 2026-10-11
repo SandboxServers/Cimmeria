@@ -562,6 +562,19 @@ impl Channel {
         // Capped entries that expired again at their cap: dropped below
         // instead of resent (`super::retransmit_cap`).
         let mut at_cap: Vec<u32> = Vec::new();
+        // Channel-wide cause fields for the retransmit row, read once per
+        // scan: the RTT the RTO was derived from, and how long the peer has
+        // been silent. A long `peer_last_rx_ms` says the client went away; a
+        // short one with retransmits says it is talking but not acking.
+        let srtt_ms = self
+            .rto
+            .srtt()
+            .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        let peer_last_rx_ms = u64::try_from(
+            now.saturating_duration_since(self.last_received)
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
 
         for entry in self.tx_window.iter_mut() {
             if budget == 0 {
@@ -587,13 +600,34 @@ impl Channel {
             // "is the network actually lossy?" by counting events with
             // `target = "mercury.retransmit"` per peer / per minute.
             // info level — these are rare in a healthy channel; a
-            // sustained rate indicates real loss or a stalled peer.
+            // sustained rate indicates real loss or a stalled peer. The
+            // per-scan budget bounds it to `RETRANSMIT_BUDGET_PER_TICK` rows
+            // per channel per tick. This is the only per-retransmit row:
+            // the tick loop that sends the bytes logs only a send failure.
+            //
+            // Cause fields (TG-MER-02): `age_ms` is how long the packet has
+            // been unacked (`first_sent`, which a retransmit does not move);
+            // `send_kind` / `fragment_index` say which send path produced
+            // it; `wire_fingerprint` joins it to the client's socket log.
+            // `msg_id` is present only where the sender recorded the head
+            // (a bundle fragment past the first): the retained bytes are
+            // encrypted and the transport holds no session key.
+            let age_ms = u64::try_from(now.saturating_duration_since(entry.first_sent).as_millis())
+                .unwrap_or(u64::MAX);
             tracing::info!(
                 target: "mercury.retransmit",
+                event = "retransmit",
                 peer = %self.remote_addr,
                 seq = entry.packet.sequence,
                 retransmit_count = entry.retransmit_count,
                 rto_ms = timeout.as_millis() as u64,
+                age_ms,
+                srtt_ms,
+                peer_last_rx_ms,
+                send_kind = entry.send_kind,
+                msg_id = entry.first_message.map(|m| m.msg_id),
+                fragment_index = entry.fragment_index,
+                wire_fingerprint = %crate::instrumentation::wire_fingerprint(&entry.raw_bytes),
                 "Mercury: reliable packet retransmit"
             );
             if !entry.raw_bytes.is_empty() {

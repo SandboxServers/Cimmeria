@@ -193,15 +193,11 @@ pub async fn run_tick_loop(
             tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
             return;
         }
+        // Each resend already has its row, `mercury.retransmit` (written by
+        // the channel's scan, with the cause fields); only a failed send is
+        // logged here.
         let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
-        for (batch_index, raw) in retransmits.iter().enumerate() {
-            tracing::debug!(
-                %addr,
-                len = raw.len(),
-                batch_index,
-                batch_total = retransmits.len(),
-                "Channel retransmit: RTO fired before ACK"
-            );
+        for raw in &retransmits {
             if let Err(e) = transport.send_to(raw, addr).await {
                 tracing::debug!(%addr, "Retransmit send_to failed: {e}");
                 break;

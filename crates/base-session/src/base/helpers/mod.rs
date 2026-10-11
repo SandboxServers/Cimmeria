@@ -635,6 +635,9 @@ mod departed_witnesses_tests;
 mod reliable_fit_tests;
 
 #[cfg(test)]
+mod retransmit_row_tests;
+
+#[cfg(test)]
 mod sent_message_head_tests;
 
 #[cfg(test)]
