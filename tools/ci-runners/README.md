@@ -1,17 +1,18 @@
 # Self-hosted CI runners
 
-Fifteen GitHub Actions runners for Cimmeria's Linux CI: five each on node5, node2 and node1. Each
-runs in its own container, paired with its own docker-in-docker daemon. Every
-`test.yml` job routes to them through the `cimmeria-linux` label, except that fork PRs
-always get GitHub-hosted runners. Windows and macOS jobs, and the other workflows' light
-Linux jobs, stay on GitHub-hosted runners.
+Fifteen GitHub Actions runners for Cimmeria's Linux CI: five each on node5, node2 and
+node1. Each runs in its own container, paired with its own docker-in-docker daemon. The
+`test.yml`, `wireclient.yml` and `pr-container.yml` jobs route to them through the
+`cimmeria-linux` label. Fork PRs and Dependabot PRs always get GitHub-hosted runners.
+Windows and macOS jobs, and the other workflows' light Linux jobs, stay on GitHub-hosted
+runners.
 
 | File | What it is |
 | --- | --- |
 | `Dockerfile` | The runner image: Ubuntu 24.04 (as `ubuntu-latest`), the Actions runner, the pinned Rust toolchain, sccache, clang + mold, psql 17, lua5.1, gh, docker CLI |
-| `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps; the node's `cache` (sccache Redis), `buildkitd` and `egress` proxy |
+| `compose.yml` | A node's stack: five runner/dind pairs with their volumes, CPU weight and memory caps, plus the node's `cache` (sccache Redis), `buildkitd` and `egress` proxy |
 | `entrypoint.sh` | Registers on first start, restores the registration afterwards, writes the job environment, waits for dind |
-| `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report and cleanup |
+| `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report, cache stats and cleanup |
 | `egress_proxy.py`, `egress.Dockerfile` | The HTTPS proxy for the colo egress detour, node and exit roles |
 | `start-exit.ps1` | Starts the exit proxy in Docker on the exit machine |
 | `status.ps1` | Cache and disk report from every runner's job log |
@@ -28,9 +29,9 @@ hangs on the log upload.
 The workaround is a detour for that one block:
 
 - Each node runs an `egress` container (`egress_proxy.py`, node role). Runners and
-  their job steps get `HTTPS_PROXY=http://egress:3128` (with `NO_PROXY` for
-  localhost). It connects most destinations directly, and sends CONNECTs to
-  `57.0.0.0/8` to the exit proxy in the node's `.env` as `EGRESS_EXIT`
+  their job steps get `HTTPS_PROXY=http://egress:3128`, with `NO_PROXY` for localhost
+  and the stack's own services. It connects most destinations directly, and sends
+  CONNECTs to `57.0.0.0/8` to the exit proxy named in the node's `.env` as `EGRESS_EXIT`
   (`deploy.ps1 -EgressExit host:port`).
 - The exit proxy (`egress_proxy.py`, exit role, `start-exit.ps1`) runs in Docker on
   the operator's workstation, published only on its colo-VPN address. It only
@@ -49,7 +50,7 @@ The workaround is a detour for that one block:
 
 If the workstation is off, uploads fail and jobs hang again. Set the repository variable
 `CI_LINUX_RUNNER=hosted` to fall back to GitHub-hosted runners. When the upstream is
-fixed, redeploy with `-EgressExit ''` cleared in each node's `.env` and the egress proxy
+fixed, clear `EGRESS_EXIT` in each node's `.env` and redeploy; the egress proxy then
 connects everything directly. Check the colo path with:
 
 ```bash
@@ -57,27 +58,35 @@ ssh cimmeria-node2 'timeout 5 bash -c "</dev/tcp/57.150.86.161/443" && echo ok |
 ```
 
 Each node's `docker compose logs egress` shows every CONNECT and the route it took.
+
 ## Cache and disk report
 
 ```powershell
-pwsh tools/ci-runners/status.ps1   # per job: sccache hit rate, target/ size, sccache size, free space; volume totals per node
+pwsh tools/ci-runners/status.ps1   # per job: sccache hit rate, target/ size, free space; volume totals per node
 ```
 
 ## Deploy or update
 
 ```powershell
-pwsh tools/ci-runners/deploy.ps1                 # both nodes
-pwsh tools/ci-runners/deploy.ps1 -Nodes node2    # one node
-pwsh tools/ci-runners/deploy.ps1 -Nodes node5 -Down
+pwsh tools/ci-runners/deploy.ps1                                   # every node, cache host first
+pwsh tools/ci-runners/deploy.ps1 -Nodes node2                      # one node
+pwsh -c "& tools/ci-runners/deploy.ps1 -Nodes node5,node1"         # several
+pwsh tools/ci-runners/deploy.ps1 -Nodes node5 -Down                # stop a node's stack
 ```
 
 `deploy.ps1` needs repo admin through `gh` (for the registration token) and the
-`cimmeria-colo` and `cimmeria-node2` ssh aliases. The token lives an hour and is passed
-only in the ssh command's environment. Each runner keeps its registration in its `state`
-volume, so restarts and rebuilds don't re-register. The compose project lives in
-`/mnt/nvme/gha-runners` on node5 and `/var/lib/gha-runners` on node2; volumes go under
-each node's docker root (both on NVMe). Watchtower is disabled on every container here,
-because restarting dind mid-job would kill the job.
+`cimmeria-colo`, `cimmeria-node2` and `cimmeria-node1` ssh aliases. A new runner reads
+its one-hour registration token from the file `runner-token` in the compose directory,
+mounted read-only; the script empties it a minute after the stack starts. It is not an
+environment variable: a changed variable makes compose recreate every runner, which
+kills running jobs. Each runner keeps its registration in its `state` volume, so
+restarts and rebuilds don't re-register, and a deploy that changes nothing a runner
+uses leaves it running. Changing the image, `.env` or a runner's compose entry does
+recreate it, so deploy when the runners are idle.
+
+The compose project lives in `/mnt/nvme/gha-runners` on node5 and `/var/lib/gha-runners`
+on node2 and node1; volumes go under each node's docker root, on NVMe. Watchtower is
+disabled on every container here, because restarting dind mid-job would kill the job.
 
 To bump the runner, Rust or sccache version, edit the `ARG`s in the `Dockerfile` and
 redeploy. The runner also updates itself between jobs. When `rust-toolchain.toml` moves,
@@ -87,32 +96,43 @@ is baked in again.
 ## Why it's built this way
 
 - **One dind per runner.** A job's `services:` Postgres publishes `5432:5432` into its own
-  daemon's network namespace, which the runner shares. Five live-DB jobs on one node
-  don't clash on a port, and no job can reach the host's docker socket, which on node5
-  controls production. The runner reaches its daemon through a unix socket on a shared
-  volume (dockerd is retiring non-TLS TCP).
+  daemon's network namespace, which the runner shares, so five live-DB jobs on one node
+  don't clash on a port. The runner reaches its daemon through a unix socket on a shared
+  volume (dockerd is retiring non-TLS TCP). This does *not* isolate jobs from the host;
+  see Security.
 - **Production comes first on node5.** Runners and their daemons get a CPU weight of 256
   against the default 1024, so they use idle cores but yield to the game server and
-  SigNoz. Memory caps are 16 GB per runner on node5 and 20 GB on node2.
-- **One compile cache per node.** Each node's five runners share a Redis-backed sccache (compose.yml `cache`), so a crate any job compiled is a hit for every runner on that node. It lives on the runners' compose network: the colo networks are isolated from each other (the gateway's zone firewall blocks node-to-node traffic), and Docker drops traffic between its own bridge networks, so neither a cross-node cache nor a host-published port works. LRU at 12 GB on node5 and 24 GB on node2, no persistence.
-- **One BuildKit daemon per node.** `pr-container.yml` builds through the node's `buildkitd` (setup-buildx `driver: remote`, `tcp://buildkitd:1234`), so image layers and the Dockerfile's cargo cache mounts (registry, `/build/target`) persist across jobs. GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps 10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2).
+  SigNoz. Memory caps are 16 GB per runner on node5 and node1, 20 GB on node2.
+- **One compile cache for every node.** The cache host's Redis (`deploy.ps1 -CacheHost`,
+  node2 by default) is every runner's sccache backend, so a crate any job compiled is a
+  hit everywhere. The colo networks are isolated from each other by the gateway's zone
+  firewall; a UniFi policy admits TCP 6379 from the other nodes' networks to the cache
+  host only. The cache host's own runners use it on the compose network (`cache:6379`),
+  because Docker drops traffic between its bridge networks. LRU at `CACHE_MAXMEMORY`
+  (24 GB on node2), no persistence. If it is down, sccache counts every lookup as a miss
+  and compiles; builds slow down but don't fail. `-CacheHost ''` gives each node its own.
+- **One BuildKit daemon per node.** `pr-container.yml` builds through the node's
+  `buildkitd` (setup-buildx `driver: remote`, `tcp://buildkitd:1234`), so image layers
+  and the Dockerfile's cargo cache mounts (registry, `/build/target`) persist across jobs.
+  GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the
+  colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps
+  10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2, node1).
 - **sccache instead of rust-cache.** Self-hosted jobs skip `Swatinem/rust-cache`
   (`if: runner.environment == 'github-hosted'`); downloading a multi-GB cache from GitHub
-  is slower than a local sccache hit. Every runner builds in the same path, so its cache
-  keys are stable.
+  is slower than a shared sccache hit. Every runner builds in the same path, so cache
+  keys match across runners.
 
 ## Disk use per runner
 
 | Item | Bound |
 | --- | --- |
 | The job's `target/` | Deleted by `job-completed.sh` after every job |
-| sccache | `SCCACHE_CACHE_SIZE`, 20 GB (LRU) |
+| Compile cache | In the cache host's Redis, not on the runner |
 | Cargo registry and git checkouts | A few GB; a volume per runner |
-| dind images | Unused images older than a week are pruned after each job; stopped containers, networks and volumes after every job |
-| `RUNNER_TEMP`, `/tmp` | Emptied after every job |
+| dind images | Stopped containers, networks, volumes and dangling images are pruned after every job. Tagged images (postgres:17.9) stay, unless the daemon's store passes 20 GB |
+| `RUNNER_TEMP`, `/tmp` | `RUNNER_TEMP` is emptied after every job; `/tmp` entries older than an hour go, except the listener's .NET files |
 
-Peak use is about 45 GB per runner during a build and about 25 GB at rest, so about
-250 GB per node. That fits the free NVMe on both nodes with room to spare. To see the
+Peak use is about 30 GB per runner during a build and a few GB at rest. To see the
 real figures:
 
 ```bash
@@ -121,10 +141,10 @@ docker system df -v | grep gha-runners
 
 ## Routing and the kill switch
 
-`test.yml` jobs use:
+The routed jobs use:
 
 ```yaml
-runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
 ```
 
 Set the repository variable `CI_LINUX_RUNNER` to `hosted` (Settings, Secrets and
@@ -134,8 +154,30 @@ label and waits for a runner that has it.
 
 ## Security
 
-The repository is public. A fork PR's workflow file comes from the PR, so the routing
-expression alone can't keep fork code off these machines. What does is the repository
-setting that requires approval before workflows run for outside contributors (set to
-all outside contributors). A maintainer approving a fork PR's run checks that it doesn't
-change `runs-on`.
+**A job on these runners can get root on the node.** Each runner's dind daemon runs
+privileged, and the job controls that daemon, so a job can start its own privileged
+container, which sees the host's devices and can mount its disks. On node5 that means
+the production game server, SigNoz and their data. Treat every job as trusted code
+running as root on the node.
+
+Who can run code here:
+
+- **Same-repo PRs and pushes:** people with write access, who can already push to the
+  repo. Their code includes every dependency's `build.rs` and proc macros, so a
+  compromised crate in a `Cargo.lock` change runs here too.
+- **Fork PRs:** not routed here. A fork PR's workflow file comes from the PR, so the
+  routing expression alone can't keep it off these machines. The repository setting that
+  requires approval before workflows run for outside contributors (set to all outside
+  contributors) is what does; a maintainer approving a fork PR's run checks that it
+  doesn't change `runs-on`.
+- **Dependabot PRs:** routed to GitHub-hosted runners (`github.actor ==
+  'dependabot[bot]'`), because they exist to bring in new third-party code.
+
+Runner state persists between jobs (work tree, cargo registry, dind images, the
+container's writable layer), so a bad job can leave something behind for later ones.
+The compile cache's Redis password is in every job's environment (sccache needs it), so
+a job that dumps its environment into a public log leaks it. It only protects the cache.
+
+Making jobs unable to reach the host needs a runtime that isolates nested containers
+without `--privileged` (Sysbox, or rootless dind with user namespaces), or runners kept
+off the production node. Neither is done yet.

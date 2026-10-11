@@ -12,7 +12,7 @@ Exit role, on a machine whose internet path works: only accepts clients from
 --allow-src and only connects to destinations in --allow-dst, so it is not an
 open proxy.
 
-    egress_proxy.py --listen VPN_ADDR:3128 --allow-src 10.0.30.0/24 --allow-dst 57.0.0.0/8
+    egress_proxy.py --listen VPN_ADDR:3128 --allow-src RUNNER_SUBNET --allow-dst 57.0.0.0/8
 
 Plain-HTTP proxying is not supported; the runners set only https_proxy.
 """
@@ -77,6 +77,7 @@ class Proxy:
     async def handle(self, reader, writer):
         peer = writer.get_extra_info("peername")[0]
         target = "?"
+        up_w = None
         try:
             if self.allow_src and not inside(peer, self.allow_src):
                 log.warning("refused client %s (not in --allow-src)", peer)
@@ -119,6 +120,9 @@ class Proxy:
             await asyncio.gather(pipe(reader, up_w), pipe(up_r, writer))
         except (OSError, asyncio.TimeoutError, ValueError, UnicodeError) as e:
             log.warning("%s -> %s failed: %s", peer, target, e)
+            # An upstream opened before the failure would otherwise leak.
+            if up_w is not None:
+                up_w.close()
             try:
                 await reply(writer, "502 Bad Gateway")
             except OSError:

@@ -14,11 +14,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Runner routing: every job here runs on the self-hosted `cimmeria-linux` pool
-# (five runners each on node5 and node2, tools/ci-runners/README.md), except
-# that fork PRs always get GitHub-hosted `ubuntu-latest`. Set the repository
-# variable CI_LINUX_RUNNER=hosted to send everything back to GitHub-hosted
-# runners, e.g. while the nodes are down. A queued job waits for its pool; there
-# is no automatic overflow between the two.
+# (five runners each on node5, node2 and node1, tools/ci-runners/README.md),
+# except that fork PRs and Dependabot PRs always get GitHub-hosted
+# `ubuntu-latest`. Set the repository variable CI_LINUX_RUNNER=hosted to send
+# everything back to GitHub-hosted runners, e.g. while the nodes are down. A
+# queued job waits for its pool; there is no automatic overflow between the two.
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -49,7 +49,7 @@ jobs:
   # the API's 3000-file cap) runs everything.
   changes:
     name: detect code changes
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     permissions:
       pull-requests: read
     outputs:
@@ -86,7 +86,7 @@ jobs:
     name: cargo fmt --check
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
@@ -105,14 +105,14 @@ jobs:
     name: cargo clippy -D warnings
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
         with:
           components: clippy
       - name: install clang + mold
-        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold || exit 1; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -155,7 +155,7 @@ jobs:
     name: cargo build + nextest (workspace, no DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -194,7 +194,7 @@ jobs:
           cargo hakari manage-deps --dry-run
           cargo hakari verify
       - name: install clang + mold
-        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold || exit 1; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -234,11 +234,11 @@ jobs:
   # stubbed client-patch DLL. Seconds to run; no Rust involved.
   overlay-lua:
     name: client UI overlay logic UAT (Lua 5.1)
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - name: install lua5.1
-        run: for c in lua5.1; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y lua5.1; break; }; done
+        run: for c in lua5.1; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y lua5.1 || exit 1; break; }; done
       - name: run the overlay logic UAT
         run: lua5.1 crates/client-patches/overlay/test/run.lua
       # 009-starter-hotbar's hook against a clean-room model of the
@@ -292,7 +292,7 @@ jobs:
     name: cargo nextest -p cimmeria-services (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:
@@ -324,7 +324,7 @@ jobs:
           python3 tools/ability_mechanics/weapon_requirement_audit.py --check
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
-        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
       - name: start schema + seeds load (background)
         # Loads db/database.sql into `sgw`, the template of the per-slot
         # clones, while the steps below compile. It outlives this step; the
@@ -378,7 +378,7 @@ jobs:
     name: cargo llvm-cov (workspace, no DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     steps:
@@ -387,7 +387,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - name: install clang + mold
-        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold || exit 1; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -445,7 +445,7 @@ jobs:
     name: cargo llvm-cov (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     services:
@@ -470,7 +470,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - name: install clang + mold + psql
-        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
       - name: start schema + seeds load (background)
         # As in test-live-db: `sgw` loads while the instrumented build runs.
         run: bash tools/live-db-schema-load.sh start

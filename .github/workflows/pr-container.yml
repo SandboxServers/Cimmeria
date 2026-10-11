@@ -51,7 +51,7 @@ jobs:
     name: build + smoke-test (no push)
     # Self-hosted cimmeria-linux (tools/ci-runners/README.md), except fork PRs and
     # CI_LINUX_RUNNER=hosted, which use GitHub-hosted runners.
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     permissions:
       contents: read   # actions/checkout
     # Hard ceiling on runner minutes. Cold cache + full Rust build is

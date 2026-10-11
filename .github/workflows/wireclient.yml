@@ -74,7 +74,7 @@ jobs:
   e2e:
     name: wireclient e2e (live DB)
     # Fork PRs and CI_LINUX_RUNNER=hosted use GitHub-hosted runners (tools/ci-runners/README.md).
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:
@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
-        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
       - name: start schema + seeds load (background)
         # Loads db/database.sql into `sgw`, the template of the per-slot clones,
         # while the steps below compile. The wait step fails the job if it failed.

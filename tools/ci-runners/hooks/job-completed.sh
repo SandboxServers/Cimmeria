@@ -5,7 +5,7 @@
 #     for this job, and the size of target/, sccache and the cargo registry
 #     (tools/ci-runners/status.ps1 summarizes it);
 #   - the job's target/ (the bulk: tens of GB) goes now, not at the next checkout;
-#   - RUNNER_TEMP and the runner's own /tmp files go;
+#   - RUNNER_TEMP goes, and /tmp entries older than an hour (the listener's .NET files stay);
 #   - the dind daemon drops stopped containers, unused networks and volumes and dangling
 #     images; tagged images stay (postgres:17.9 stays warm). Unused tagged images go
 #     only when the daemon's store passes 20 GB. (`image prune --filter until=` goes by
@@ -13,38 +13,47 @@
 # sccache trims itself to SCCACHE_CACHE_SIZE; the cargo registry is small.
 set -u
 ws="${GITHUB_WORKSPACE:-}"
-kb() { du -sk "$1" 2> /dev/null | cut -f1 || echo 0; }
+# du's size in KB, or 0 when the path is missing (cut exits 0 on empty input, so a
+# `|| echo 0` after the pipe would never fire).
+kb() { local v; v=$(du -sk "$1" 2> /dev/null | cut -f1); echo "${v:-0}"; }
+target_kb=0
+[ -n "$ws" ] && target_kb=$(kb "$ws/target")
 
-# Stats are per sccache server; stopping it resets them for the next job.
+# Stats are per sccache server; stopping it resets them for the next job. Every value
+# goes to Python as an argument, never spliced into its source (a branch name may
+# contain quotes).
 stats="$(sccache --show-stats --stats-format json 2> /dev/null || true)"
 sccache --stop-server > /dev/null 2>&1 || true
-python3 - "$stats" <<EOF >> /home/runner/state/jobs.jsonl 2> /dev/null || true
+python3 -c '
 import json, sys, datetime
+stats, runner, job, run, ref, target_kb, sccache_kb, registry_kb, free_kb = sys.argv[1:10]
 try:
-    s = json.loads(sys.argv[1])["stats"]
+    s = json.loads(stats)["stats"]
 except Exception:
     s = {}
 def total(v):
     if isinstance(v, dict):
         return sum(total(x) for x in v.values())
     return v if isinstance(v, int) else 0
+def num(v):
+    try:
+        return int(v)
+    except ValueError:
+        return 0
 print(json.dumps({
     "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-    "runner": "${RUNNER_NAME:-}",
-    "job": "${GITHUB_JOB:-}",
-    "run": "${GITHUB_RUN_ID:-}",
-    "ref": "${GITHUB_REF:-}",
+    "runner": runner, "job": job, "run": run, "ref": ref,
     "requests": s.get("compile_requests", 0),
     "hits": total(s.get("cache_hits", {}).get("counts", {})),
     "misses": total(s.get("cache_misses", {}).get("counts", {})),
     "non_cacheable": s.get("non_cacheable_compilations", 0),
-    "target_kb": $( [ -n "$ws" ] && kb "$ws/target" || echo 0 ),
-    "sccache_kb": $(kb /home/runner/sccache),
-    "registry_kb": $(kb "$CARGO_HOME/registry"),
-    "work_free_kb": $(df -k --output=avail /home/runner/_work | tail -1 | tr -d ' '),
+    "target_kb": num(target_kb), "sccache_kb": num(sccache_kb),
+    "registry_kb": num(registry_kb), "work_free_kb": num(free_kb),
 }))
-EOF
-# Keep the log itself small.
+' "$stats" "${RUNNER_NAME:-}" "${GITHUB_JOB:-}" "${GITHUB_RUN_ID:-}" "${GITHUB_REF:-}" \
+    "$target_kb" "$(kb /home/runner/sccache)" "$(kb "$CARGO_HOME/registry")" \
+    "$(df -k --output=avail /home/runner/_work | tail -1 | tr -d ' ')" \
+    >> /home/runner/state/jobs.jsonl 2> /dev/null || true# Keep the log itself small.
 tail -n 500 /home/runner/state/jobs.jsonl > /home/runner/state/jobs.jsonl.tmp 2> /dev/null \
     && mv /home/runner/state/jobs.jsonl.tmp /home/runner/state/jobs.jsonl
 
@@ -54,7 +63,7 @@ fi
 if [ -n "${RUNNER_TEMP:-}" ] && [ -d "$RUNNER_TEMP" ]; then
     find "$RUNNER_TEMP" -mindepth 1 -delete 2> /dev/null || sudo find "$RUNNER_TEMP" -mindepth 1 -delete
 fi
-sudo find /tmp -mindepth 1 -maxdepth 1 -mmin +1 -exec rm -rf {} + 2> /dev/null
+sudo find /tmp -mindepth 1 -maxdepth 1 -mmin +60 ! -name '.dotnet' ! -name 'clr-debug-pipe-*' ! -name 'dotnet-diagnostic-*' ! -name 'CoreFxPipe_*' -exec rm -rf {} + 2> /dev/null
 docker container prune -f > /dev/null 2>&1
 docker network prune -f > /dev/null 2>&1
 docker volume prune -af > /dev/null 2>&1
