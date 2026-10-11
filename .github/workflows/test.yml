@@ -13,12 +13,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Runner routing: every job here runs on the self-hosted `cimmeria-linux` pool
-# (five runners each on node5, node2 and node1, tools/ci-runners/README.md),
-# except that fork PRs and Dependabot PRs always get GitHub-hosted
-# `ubuntu-latest`. Set the repository variable CI_LINUX_RUNNER=hosted to send
-# everything back to GitHub-hosted runners, e.g. while the nodes are down. A
-# queued job waits for its pool; there is no automatic overflow between the two.
+# Runner routing (tools/ci-runners/README.md): build jobs run on the self-hosted
+# `cimmeria-linux` pool (five runners each on node5, node2 and node1) and the
+# seconds-long jobs on `cimmeria-linux-quick` (two per node). Fork PRs and
+# Dependabot PRs always get GitHub-hosted `ubuntu-latest`. Repository variables:
+# CI_LINUX_RUNNER=hosted sends every job to GitHub-hosted runners; CI_HOSTED_JOBS
+# (comma-separated job ids) sends just those; CI_OVERFLOW_MIN_IDLE (default 2) is
+# how many idle build runners the `changes` job wants before it keeps a run's
+# build jobs self-hosted rather than overflowing them to GitHub-hosted runners.
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -55,14 +57,42 @@ jobs:
   # build-and-test job's `--check` is what catches a hand edit to it.
   # Pushes to main always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
+  #
+  # It also picks the runner for this run's build jobs (output `linux`): the
+  # self-hosted `cimmeria-linux` pool, or GitHub-hosted `ubuntu-latest` when
+  # fewer than CI_OVERFLOW_MIN_IDLE (repo variable, default 2) of our build
+  # runners are idle. Listing runners needs the RUNNER_STATUS_TOKEN secret (a
+  # fine-grained token with Administration: read on this repo); without it, or if
+  # the API call fails, the build jobs stay self-hosted. Per-job overrides:
+  # CI_HOSTED_JOBS (repo variable, comma-separated job ids) sends those jobs to
+  # GitHub-hosted runners; CI_LINUX_RUNNER=hosted sends every job.
   changes:
     name: detect code changes
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',changes,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     permissions:
       pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      linux: ${{ steps.route.outputs.linux }}
     steps:
+      - id: route
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          MIN_IDLE: ${{ vars.CI_OVERFLOW_MIN_IDLE || '2' }}
+          REPO: ${{ github.repository }}
+        run: |
+          runner=cimmeria-linux
+          if [ -n "$GH_TOKEN" ] && idle="$(gh api "repos/$REPO/actions/runners?per_page=100" \
+              --jq '[.runners[] | select(.status == "online" and (.busy | not) and ([.labels[].name] | index("cimmeria-linux")))] | length')"; then
+            echo "idle cimmeria-linux runners: $idle (overflow below $MIN_IDLE)"
+            if [ "$idle" -lt "$MIN_IDLE" ]; then
+              runner=ubuntu-latest
+              echo "::notice::Only $idle of our build runners are idle; this run's build jobs use GitHub-hosted runners."
+            fi
+          else
+            echo "runner status unavailable; build jobs stay on cimmeria-linux"
+          fi
+          echo "linux=$runner" >> "$GITHUB_OUTPUT"
       - id: filter
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +124,7 @@ jobs:
     name: cargo fmt --check
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',fmt,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
@@ -113,7 +143,7 @@ jobs:
     name: cargo clippy -D warnings
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',clippy,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
@@ -182,7 +212,7 @@ jobs:
     name: cargo build + nextest (workspace + live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',build-and-test,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     services:
       postgres:
@@ -316,7 +346,7 @@ jobs:
   # stubbed client-patch DLL. Seconds to run; no Rust involved.
   overlay-lua:
     name: client UI overlay logic UAT (Lua 5.1)
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',overlay-lua,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     steps:
       - uses: actions/checkout@v7
       - name: install lua5.1
@@ -364,7 +394,7 @@ jobs:
     name: cargo llvm-cov (workspace, no DB)
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage-workspace,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     steps:
@@ -431,7 +461,7 @@ jobs:
     name: cargo llvm-cov (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage-live-db,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     services:

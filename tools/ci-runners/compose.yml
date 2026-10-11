@@ -95,6 +95,65 @@ services:
     volumes:
       - buildkit:/var/lib/buildkit
     cpu_shares: 256
+  # Quick runners: the seconds-long jobs (change detection, fmt, the Lua UAT) on their
+  # own label, `cimmeria-linux-quick`, so they never queue behind 5-minute builds.
+  # No dind, 2 CPUs and 4 GB each, and a higher CPU weight than the build runners.
+  quick1:
+    image: cimmeria-gha-runner:latest
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    cpus: 2
+    cpu_shares: 512
+    mem_limit: 4g
+    pids_limit: 4096
+    stop_grace_period: 1m
+    depends_on: [egress]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-q1
+      RUNNER_LABELS: cimmeria-linux-quick,${NODE}
+      DOCKER_HOST: ""
+      CARGO_BUILD_JOBS: "2"
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - qwork1:/home/runner/_work
+      - qstate1:/home/runner/state
+      - qsccache1:/home/runner/sccache
+      - ./hooks:/home/runner/hooks:ro
+      - ./runner-token:/run/runner-token:ro
+
+  quick2:
+    image: cimmeria-gha-runner:latest
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    cpus: 2
+    cpu_shares: 512
+    mem_limit: 4g
+    pids_limit: 4096
+    stop_grace_period: 1m
+    depends_on: [egress]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-q2
+      RUNNER_LABELS: cimmeria-linux-quick,${NODE}
+      DOCKER_HOST: ""
+      CARGO_BUILD_JOBS: "2"
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - qwork2:/home/runner/_work
+      - qstate2:/home/runner/state
+      - qsccache2:/home/runner/sccache
+      - ./hooks:/home/runner/hooks:ro
+      - ./runner-token:/run/runner-token:ro
+
   egress:
     build:
       context: .
@@ -288,6 +347,12 @@ services:
       - ./runner-token:/run/runner-token:ro
 volumes:
   buildkit:
+  qwork1:
+  qstate1:
+  qsccache1:
+  qwork2:
+  qstate2:
+  qsccache2:
   dind1:
   work1:
   state1:
