@@ -179,6 +179,17 @@ pub(in crate::cell::content::executor) async fn move_waypoint(
         "Content: move waypoint"
     );
     let Some(t) = space_mgr.get_entity(target_id) else {
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            target_id,
+            target_name = tn.entity_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            reason = "entity_missing",
+            "Content: move waypoint skipped, target entity missing"
+        );
         return;
     };
     let space_id = t.space_id.0 as u32;

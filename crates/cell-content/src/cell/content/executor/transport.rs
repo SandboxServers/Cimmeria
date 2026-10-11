@@ -43,9 +43,14 @@ pub(super) async fn teleport(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         space_id,
         world = u32::try_from(space_id)
             .ok()
@@ -111,9 +116,14 @@ pub(super) async fn teleport(
     {
         // The client never gets the snap, so its pets stay where the client
         // still sees the owner.
+        let who = space_mgr.player_identity(entity_id);
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             reason = "cell_to_base_closed",
@@ -157,9 +167,14 @@ pub(super) async fn cross_world_teleport(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         world = %world_name,
         ?position,
         chain_id,
@@ -199,9 +214,14 @@ pub(super) async fn cross_world_teleport(
         })
         .await
     {
+        let who = space_mgr.player_identity(entity_id);
         tracing::error!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             world = %world_name,
             ?position,
             chain_id,
