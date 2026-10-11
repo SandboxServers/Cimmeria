@@ -32,6 +32,27 @@ pub(super) async fn fail(
         return;
     };
 
+    // TG-DB-12: the target's tracker is not their saved state while the
+    // missions are unreadable or still loading; a fail now would be saved
+    // over the real row by the next mission write.
+    if crate::cell::missions::state_lock::refuse_if_state_unknown(
+        target,
+        mission_id,
+        "gm_missionfail",
+        tx,
+        space_mgr,
+    )
+    .await
+    {
+        send_gm_feedback(
+            caller_id,
+            &format!("missionfail: target's mission data is unavailable; {mission_id} not failed"),
+            tx,
+        )
+        .await;
+        return;
+    }
+
     // Only fail a mission that is currently ACTIVE. `get_mission_mut` returns
     // the record regardless of status, and `fail()` unconditionally sets
     // FAILED + bumps `repeats`, so without this filter `.missionfail` would

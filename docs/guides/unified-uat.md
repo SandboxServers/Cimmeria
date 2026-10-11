@@ -1162,8 +1162,8 @@ When the server cannot read a character's saved missions at login, it locks thei
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | ML-01 | Revoke the read, then log the character in | Login takes about 1.5 s longer and finishes; the journal is empty. SigNoz: `player_load_degraded` with `reason = missions_query_failed` and `attempts = 4`, then `mission_state_locked` | |
-| ML-02 | Talk to the NPC or walk into the volume that offers the completed mission; try to accept it | "Mission data unavailable, try again shortly." on the first press; nothing is accepted. SigNoz: WARN `mission_state_unknown`, `reason = saved_missions_unreadable` | The completed row in `sgw_mission` is unchanged |
-| ML-03 | Grant the read back and wait up to 30 s | "Mission data restored."; the journal fills with your active missions. SigNoz: `mission_state_recovered` | A chain refused during the lock does not re-fire by itself: trigger it again |
+| ML-02 | Talk to the NPC or walk into the volume that offers the completed mission; try to accept it | "Mission data unavailable, try again shortly." on the first press; nothing is accepted. Pressing again within 5 s shows no second line. SigNoz: WARN `mission_state_unknown`, `reason = saved_missions_unreadable`, with `suppressed` on the next row | The completed row in `sgw_mission` is unchanged |
+| ML-03 | Grant the read back and wait up to 30 s | "Mission data restored."; the journal fills with your active missions. SigNoz: `mission_state_recovered`, then `player_loaded_replayed` if a login chain was dropped | A login (`player_loaded`) chain dropped during the lock re-fires now; any other refused chain does not: trigger it again |
 | ML-04 | Retry ML-02's offer | The offer guard judges it as normal: a completed, non-repeatable mission is not offered again | |
 ## Recording results
 

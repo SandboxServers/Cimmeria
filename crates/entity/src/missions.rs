@@ -157,6 +157,11 @@ pub struct MissionManager {
     /// the cell refuses every accept and advance and persists nothing;
     /// otherwise a re-accept would overwrite completed progress (#411).
     state_unknown: bool,
+    /// A base-created player whose `InitPlayerState` has not arrived yet:
+    /// the load outcome is unknown, so mission changes wait (TG-DB-12).
+    load_pending: bool,
+    /// `player_loaded` chains dropped while locked, replayed on recovery.
+    deferred_player_loaded: Vec<i64>,
 }
 
 impl MissionManager {
@@ -164,12 +169,41 @@ impl MissionManager {
         Self {
             missions: HashMap::new(),
             state_unknown: false,
+            load_pending: false,
+            deferred_player_loaded: Vec::new(),
         }
     }
 
     /// Whether the saved missions are unreadable (TG-DB-12): see the field.
     pub fn is_state_unknown(&self) -> bool {
         self.state_unknown
+    }
+
+    /// Whether the saved missions have not been delivered yet.
+    pub fn is_load_pending(&self) -> bool {
+        self.load_pending
+    }
+
+    /// The player was created and its saved missions are on the way.
+    pub fn mark_load_pending(&mut self) {
+        self.load_pending = true;
+    }
+
+    /// `InitPlayerState` delivered the load outcome.
+    pub fn mark_loaded(&mut self) {
+        self.load_pending = false;
+    }
+
+    /// Remember a `player_loaded` chain dropped while locked.
+    pub fn defer_player_loaded_chain(&mut self, chain_id: i64) {
+        if !self.deferred_player_loaded.contains(&chain_id) {
+            self.deferred_player_loaded.push(chain_id);
+        }
+    }
+
+    /// Take the `player_loaded` chains dropped while locked.
+    pub fn take_deferred_player_loaded(&mut self) -> Vec<i64> {
+        std::mem::take(&mut self.deferred_player_loaded)
     }
 
     /// Lock the tracker: the saved missions could not be read.

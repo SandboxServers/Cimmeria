@@ -37,6 +37,8 @@ mod gm_audit_identity;
 #[cfg(test)]
 mod hidden_missionfail;
 #[cfg(test)]
+mod locked_missionfail;
+#[cfg(test)]
 mod na13_aggro;
 #[cfg(test)]
 mod org04_squad;

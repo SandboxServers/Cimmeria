@@ -154,10 +154,11 @@ a mission without a def entry fails closed (treated as non-repeatable).
 
 If the `sgw_mission` read fails at world entry, the player still enters the world, but their missions are locked instead of loading as none (owner decision D-TG18). An empty tracker would read every completed mission as `not_active`, and the offer guard above would let a re-accept overwrite the completed row.
 
-- The base retries the read after 200, 400 and 800 ms, then locks the player and sends `MissionStateUnknown` to the cell ahead of `InitPlayerState`.
-- While locked, the cell refuses every accept, abandon, step advance, objective completion and completion, and drops whole any content chain that changes a mission, so a chain never half-runs. The player sees "Mission data unavailable, try again shortly." The cell saves nothing, and the base refuses any mission row write for the player as a backstop.
-- The base re-reads every 30 s. On success it unlocks and sends `SavedMissionsRecovered`; the cell restores the missions, resends the journal and tells the player "Mission data restored."
-- A chain refused while locked does not re-fire on recovery. A fire-once chain stays armed, so its trigger can fire it again.
+- The base retries the read after 200, 400 and 800 ms, each attempt cut off after 2 s, so world entry waits about 9.4 s at worst. Then it locks the player and sends `MissionStateUnknown` to the cell ahead of `InitPlayerState`. With no cell channel (a dev setup) it does not lock.
+- The cell holds mission changes from `CreateEntity` until `InitPlayerState` arrives, because until then nobody knows whether the read succeeded.
+- While locked, the cell refuses every accept, abandon, step advance, objective completion and completion (and the GM `.missionfail`), and drops whole any content chain that changes a mission, so a chain never half-runs. The player sees "Mission data unavailable, try again shortly." at most once per 5 s. The cell saves nothing, and the base refuses any mission row write for the player as a backstop.
+- The base re-reads every 30 s, each read cut off after 2 s. On success it unlocks and sends `SavedMissionsRecovered`; the cell restores the missions, resends the journal and tells the player "Mission data restored."
+- On recovery the cell re-fires only the `player_loaded` chains the lock dropped, judged against the restored missions. A `player_loaded` chain that ran while locked (it changed no mission) does not run twice. A chain of any other trigger refused while locked does not re-fire; a fire-once chain stays armed, so its trigger can fire it again.
 
 Code: `missions/state_lock.rs` in `cimmeria-base-methods` (retry, lock, background read), `client_ready/mission_lock.rs` in `cimmeria-base-world-entry` (world entry), [`cell/missions/state_lock.rs`](../../crates/cell-content/src/cell/missions/state_lock.rs) (cell gate and recovery). The log rows are listed in [negative-logging-convention.md](../architecture/negative-logging-convention.md).
 ## Hidden missions

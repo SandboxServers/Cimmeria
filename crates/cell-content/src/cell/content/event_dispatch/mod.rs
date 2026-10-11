@@ -68,7 +68,7 @@ pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};
 pub use lifecycle::{
     fire_entity_death, fire_entity_health_below, fire_health_below_for_hit,
-    fire_pending_health_below, fire_player_loaded,
+    fire_pending_health_below, fire_player_loaded, replay_deferred_player_loaded,
 };
 pub use region::{fire_enter_region, fire_exit_region, fire_teleport_in};
 pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};

@@ -6,7 +6,8 @@
 //! shape). Instead:
 //!
 //! 1. [`load_saved_missions_with_retry`] retries the read with a short
-//!    backoff ([`READ_BACKOFF_MS`]).
+//!    backoff ([`READ_BACKOFF_MS`]), each attempt bounded by
+//!    [`READ_ATTEMPT_TIMEOUT`] (about 9.4 s at worst in all).
 //! 2. If it still fails, world entry [`lock`]s the player here and tells the
 //!    cell, which refuses every accept and advance until the state arrives.
 //! 3. [`retry_until_readable`] keeps reading in the background every
@@ -29,8 +30,55 @@ use super::try_query_saved_missions;
 use crate::cell::messages::SavedMission;
 
 /// Waits before each retry of the world-entry read: four attempts in all,
-/// about 1.4 s at worst, so a connection blip doesn't lock anyone.
+/// so a connection blip doesn't lock anyone.
 pub const READ_BACKOFF_MS: [u64; 3] = [200, 400, 800];
+
+/// The bound on each read attempt. Without it an attempt waits out the
+/// pool's acquire timeout (30 s by default), so four could hold world
+/// entry about two minutes. Worst case now: 4 × 2 s + 1.4 s of backoff,
+/// about 9.4 s.
+pub const READ_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Why one bounded read attempt failed.
+#[derive(Debug)]
+pub enum ReadFailure {
+    /// The attempt ran past [`READ_ATTEMPT_TIMEOUT`].
+    Timeout,
+    /// The query itself failed.
+    Query(sqlx::Error),
+}
+
+impl ReadFailure {
+    /// The `reason` field for the log row.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            ReadFailure::Timeout => "timeout",
+            ReadFailure::Query(_) => "query_failed",
+        }
+    }
+}
+
+impl std::fmt::Display for ReadFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadFailure::Timeout => write!(f, "read timed out after {READ_ATTEMPT_TIMEOUT:?}"),
+            ReadFailure::Query(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// One read attempt, bounded by `limit`.
+async fn read_once(
+    db_pool: &Option<Arc<PgPool>>,
+    player_id: i32,
+    limit: Duration,
+) -> Result<Vec<SavedMission>, ReadFailure> {
+    match tokio::time::timeout(limit, try_query_saved_missions(db_pool, player_id)).await {
+        Ok(Ok(missions)) => Ok(missions),
+        Ok(Err(e)) => Err(ReadFailure::Query(e)),
+        Err(_) => Err(ReadFailure::Timeout),
+    }
+}
 
 /// How often the background read runs while a player's missions are locked.
 pub const RECOVERY_INTERVAL: Duration = Duration::from_secs(30);
@@ -52,15 +100,24 @@ pub enum SavedMissionsLoad {
 }
 
 /// Read the saved missions for world entry, retrying with
-/// [`READ_BACKOFF_MS`]. Never falls back to "none".
+/// [`READ_BACKOFF_MS`], each attempt bounded by [`READ_ATTEMPT_TIMEOUT`].
+/// Never falls back to "none".
 pub async fn load_saved_missions_with_retry(
     db_pool: &Option<Arc<PgPool>>,
     player_id: i32,
 ) -> SavedMissionsLoad {
+    load_with_limit(db_pool, player_id, READ_ATTEMPT_TIMEOUT).await
+}
+
+async fn load_with_limit(
+    db_pool: &Option<Arc<PgPool>>,
+    player_id: i32,
+    limit: Duration,
+) -> SavedMissionsLoad {
     let player_name = known_names::player_name(player_id);
     let mut attempt: u32 = 1;
     loop {
-        match try_query_saved_missions(db_pool, player_id).await {
+        match read_once(db_pool, player_id, limit).await {
             Ok(missions) => {
                 if attempt > 1 {
                     tracing::info!(
@@ -79,6 +136,7 @@ pub async fn load_saved_missions_with_retry(
                     tracing::error!(
                         event = "player_load_degraded",
                         reason = "missions_query_failed",
+                        last_failure = e.reason(),
                         player_id,
                         player_name,
                         attempts = attempt,
@@ -90,7 +148,7 @@ pub async fn load_saved_missions_with_retry(
                 };
                 tracing::warn!(
                     event = "saved_missions_read_retry",
-                    reason = "query_failed",
+                    reason = e.reason(),
                     player_id,
                     player_name,
                     attempt,
@@ -195,7 +253,9 @@ pub async fn retry_until_readable<D, Fut>(
             return;
         }
         attempts += 1;
-        match try_query_saved_missions(&db_pool, player_id).await {
+        // Bounded like the world-entry read, so one stuck acquire can't
+        // stretch the recovery cadence to the pool's 30 s timeout.
+        match read_once(&db_pool, player_id, READ_ATTEMPT_TIMEOUT).await {
             Ok(missions) => {
                 unlock(player_id, entity_id);
                 let count = missions.len();
@@ -216,7 +276,7 @@ pub async fn retry_until_readable<D, Fut>(
             Err(e) => {
                 tracing::warn!(
                     event = "saved_missions_read_retry",
-                    reason = "query_failed",
+                    reason = e.reason(),
                     player_id,
                     player_name,
                     entity_id,
@@ -244,6 +304,7 @@ mod tests {
     const P_STALE: i32 = 0x7000_D902;
     const P_PERSIST: i32 = 0x7000_D903;
     const P_RETRY: i32 = 0x7000_D904;
+    const P_TIMEOUT: i32 = 0x7000_D905;
 
     fn unreachable_pool() -> Arc<PgPool> {
         Arc::new(
@@ -351,5 +412,51 @@ mod tests {
             .find_event(Level::ERROR, "", "missions_query_failed")
             .expect("the final ERROR");
         assert!(row.has_field("event", "player_load_degraded"));
+    }
+
+    /// A read that hangs (a server that accepts and never answers, so the
+    /// pool would wait out its 30 s acquire timeout) is cut off per attempt
+    /// and counted as a failed attempt with `reason = timeout`. Without the
+    /// bound this test waits 4 × 30 s.
+    #[tokio::test]
+    async fn a_hanging_read_times_out_per_attempt() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let held = tokio::spawn(async move {
+            let mut sockets = Vec::new();
+            while let Ok((s, _)) = listener.accept().await {
+                sockets.push(s);
+            }
+        });
+        let pool = Arc::new(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(30))
+                .connect_lazy(&format!("postgres://nobody:nobody@127.0.0.1:{port}/none"))
+                .expect("connect_lazy must succeed for any well-formed URL"),
+        );
+        let capture = LogCapture::install();
+        let started = std::time::Instant::now();
+        let load = load_with_limit(&Some(pool), P_TIMEOUT, Duration::from_millis(100)).await;
+        held.abort();
+        assert!(matches!(load, SavedMissionsLoad::Unreadable));
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "each attempt must be bounded, took {:?}",
+            started.elapsed()
+        );
+        let timeouts = capture
+            .all()
+            .iter()
+            .filter(|c| {
+                c.has_field("event", "saved_missions_read_retry")
+                    && c.has_field("reason", "timeout")
+            })
+            .count();
+        assert_eq!(timeouts, READ_BACKOFF_MS.len());
+        let row = capture
+            .find_event(Level::ERROR, "", "missions_query_failed")
+            .expect("the final ERROR");
+        assert!(row.has_field("last_failure", "timeout"));
     }
 }

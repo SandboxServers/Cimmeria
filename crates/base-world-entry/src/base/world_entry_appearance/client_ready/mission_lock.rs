@@ -36,33 +36,46 @@ pub(super) async fn load_or_lock(
             missions
         }
         SavedMissionsLoad::Unreadable => {
-            state_lock::lock(player_id, entity_id);
-            if let Some(tx) = cell_tx {
-                if let Err(e) = tx
-                    .send(BaseToCellMsg::MissionStateUnknown { entity_id })
-                    .await
-                {
-                    // The base lock still refuses every mission row write.
-                    tracing::warn!(
-                        event = "mission_state_unknown",
-                        reason = "cell_channel_closed",
-                        player_id,
-                        player_name = cimmeria_entity::known_names::player_name(player_id),
-                        entity_id,
-                        entity_name = cimmeria_entity::known_names::player_name(player_id),
-                        error = %e,
-                        "MissionStateUnknown not delivered to the cell; the base still refuses \
-                         mission row writes"
-                    );
-                }
-                spawn_recovery(
-                    db_pool.clone(),
-                    tx.clone(),
-                    entity_to_addr.clone(),
+            // No cell channel (a dev setup): there is no cell tracker to
+            // lock and no background read to ever unlock, so a base lock
+            // here would refuse this player's mission writes until restart.
+            let Some(tx) = cell_tx else {
+                tracing::debug!(
+                    event = "mission_state_lock_skipped",
+                    reason = "no_cell_channel",
                     player_id,
+                    player_name = cimmeria_entity::known_names::player_name(player_id),
                     entity_id,
+                    entity_name = cimmeria_entity::known_names::player_name(player_id),
+                    "Saved missions unreadable but no cell channel; not locking"
+                );
+                return Vec::new();
+            };
+            state_lock::lock(player_id, entity_id);
+            if let Err(e) = tx
+                .send(BaseToCellMsg::MissionStateUnknown { entity_id })
+                .await
+            {
+                // The base lock still refuses every mission row write.
+                tracing::warn!(
+                    event = "mission_state_unknown",
+                    reason = "cell_channel_closed",
+                    player_id,
+                    player_name = cimmeria_entity::known_names::player_name(player_id),
+                    entity_id,
+                    entity_name = cimmeria_entity::known_names::player_name(player_id),
+                    error = %e,
+                    "MissionStateUnknown not delivered to the cell; the base still refuses \
+                     mission row writes"
                 );
             }
+            spawn_recovery(
+                db_pool.clone(),
+                tx.clone(),
+                entity_to_addr.clone(),
+                player_id,
+                entity_id,
+            );
             Vec::new()
         }
     }
@@ -100,4 +113,34 @@ fn spawn_recovery(
         )
         .await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// With no cell channel nothing could ever unlock the player, so the
+    /// base must not lock (the lock would refuse their writes until restart).
+    #[tokio::test]
+    async fn no_cell_channel_does_not_lock() {
+        const PLAYER: i32 = 0x7000_D9B0;
+        let pool = Arc::new(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_millis(50))
+                .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
+                .expect("connect_lazy must succeed for any well-formed URL"),
+        );
+        let missions = load_or_lock(
+            &Some(pool),
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+            PLAYER,
+            9,
+        )
+        .await;
+        assert!(missions.is_empty());
+        assert!(!state_lock::is_locked(PLAYER));
+    }
 }
