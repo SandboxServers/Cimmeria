@@ -240,6 +240,8 @@ Every lifted key is absent when the event lacks it, and every name is absent whe
 
 The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on `session.end` and `Client entities cleaned up` (base), and carries it to the cell on `InitPlayerState` (stored as `CellEntity.session_kind`) for `session.start` and every `playtest.friction` row, so one filter spans client, launcher and server rows. It is absent when Phase 3 did not resolve the account.
 
+`session.end` also carries the session's Mercury channel health (TG-MER-07), snapshotted from `Channel::health()` before the session is removed: `tx_outstanding` (reliable packets sent and not acked, TX window plus deferred queue), `oldest_unacked_age_ms` (from the oldest one's first send; absent when none), `retransmits_total`, `tx_holes`, `tx_hole_stalls`, `rx_stalls` (lifetime counters), `srtt_ms` (absent before a clean RTT sample) and `last_rx_age_ms`. A large `last_rx_age_ms` with `tx_outstanding = 0` is a client that vanished; a deep `tx_outstanding` with an old `oldest_unacked_age_ms` and climbing `retransmits_total` is a peer that still talks but stopped acking.
+
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
 Black Market overlay's `[Cimmeria BM]` lines), `client.sequence.dropped` (a

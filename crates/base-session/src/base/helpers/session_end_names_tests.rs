@@ -231,6 +231,64 @@ async fn session_end_without_logoff_marker_reads_false() {
     );
 }
 
+/// TG-MER-07: `session.end` carries the session's Mercury channel health,
+/// snapshotted before `clients.remove` drops the channel. Two reliable
+/// packets the client never acked read `tx_outstanding=2` with an oldest
+/// age; the lifetime counters ride along as numbers; with no clean RTT
+/// sample yet, `srtt_ms` is left off. Reverting the snapshot drops the
+/// fields from the row and fails here.
+#[test]
+fn session_end_carries_channel_health() {
+    let capture = LogCapture::install();
+    let addr: SocketAddr = "127.0.0.1:52406".parse().unwrap();
+    let (connected, entity_manager, entity_to_addr) = maps(addr);
+    {
+        let clients = connected.lock().unwrap();
+        let mut ch = clients[&addr].channel.lock().unwrap();
+        for seq in [1u32, 2] {
+            let packet =
+                cimmeria_mercury::packet::Packet::new(Default::default(), seq, Default::default());
+            ch.register_sent_packet(packet, Default::default()).unwrap();
+        }
+    }
+
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &None,
+        &entity_to_addr,
+        &transport(),
+        &None,
+        "client_disconnect",
+    );
+
+    let ended = capture
+        .find_message(Level::INFO, "player session ended")
+        .unwrap_or_else(|| panic!("no session.end line: {:#?}", capture.all()));
+    assert!(ended.has_field("tx_outstanding", "2"), "{ended:#?}");
+    for numeric in [
+        "oldest_unacked_age_ms",
+        "last_rx_age_ms",
+        "retransmits_total",
+        "tx_holes",
+        "tx_hole_stalls",
+        "rx_stalls",
+    ] {
+        let raw = ended
+            .fields
+            .get(numeric)
+            .unwrap_or_else(|| panic!("no {numeric}: {ended:#?}"));
+        raw.parse::<u64>()
+            .unwrap_or_else(|_| panic!("{numeric} is a number, got {raw:?}"));
+    }
+    assert!(ended.has_field("retransmits_total", "0"), "{ended:#?}");
+    assert!(
+        !ended.fields.contains_key("srtt_ms"),
+        "no RTT sample yet leaves srtt_ms off: {ended:#?}"
+    );
+}
+
 /// The inactivity timeout names who went silent. The session is still in
 /// the map when the line is written; the teardown runs after it.
 #[tokio::test]

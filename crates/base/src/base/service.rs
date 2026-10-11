@@ -14,7 +14,7 @@ use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
 use cimmeria_base_session::base::helpers::{
-    log_session_end, session_idle_ms, LogoffRequested, SessionEndRow,
+    log_session_end, session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 use cimmeria_base_session::base::plugin::BasePlugins;
 
@@ -423,6 +423,7 @@ impl BaseService {
                 in_world: c.listed_online,
                 world: c.world_name.as_deref(),
                 session_kind: c.session_kind,
+                channel: session_channel_health(c),
             });
             ended += 1;
         }
