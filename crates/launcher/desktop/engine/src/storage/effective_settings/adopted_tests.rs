@@ -154,6 +154,41 @@ fn an_adopted_copy_keeps_its_reviewed_patch_choice_whatever_the_preference() {
     }
 }
 
+/// The client.patches.boot verdict follows the policy Play used, not the
+/// preference: patches reviewed off are an opt-out, never "unavailable".
+#[test]
+fn an_adopted_copys_patch_verdict_follows_its_reviewed_choice() {
+    use crate::game_telemetry::patch_events::PatchInjection;
+    for reviewed in [false, true] {
+        let a = adopted(reviewed, true);
+        let mut state = DesktopState::open(&a.legacy.state_root()).unwrap();
+        let revision = state.preferences().revision;
+        state
+            .save_client_options(vec![], !reviewed, revision)
+            .unwrap();
+        let listed = state
+            .resolve_play_resources(bundle(&a.legacy.root.path().canonicalize().unwrap(), true))
+            .unwrap()
+            .unwrap()
+            .client_patches
+            .is_some();
+        let expected = if reviewed {
+            PatchInjection::Injected
+        } else {
+            PatchInjection::OptedOut
+        };
+        assert_eq!(
+            state.patch_injection(listed),
+            expected,
+            "reviewed {reviewed}"
+        );
+        if reviewed {
+            // Wanted by the reviewed choice but not on the list.
+            assert_eq!(state.patch_injection(false), PatchInjection::Unavailable);
+        }
+    }
+}
+
 #[test]
 fn reopened_adoption_keeps_reviewed_settings_identity_consent_and_source() {
     let a = adopted(false, true);

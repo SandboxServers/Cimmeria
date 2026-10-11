@@ -467,3 +467,38 @@ async fn backup_cleanup_keeps_current_release_and_foreign_auxiliary_is_not_unins
         .join("game/version-two.txt")
         .is_file());
 }
+#[tokio::test]
+async fn a_committed_or_cancelled_update_queues_exactly_one_install_result() {
+    for cancel in [false, true] {
+        let (_root, state, prepared, _server) = fixture().await;
+        let id = prepared.plan.id;
+        let queue = {
+            let mut owner = state.lock().unwrap();
+            // Opting in empties the queue: the install's own result is gone.
+            owner.set_game_telemetry(true).unwrap();
+            if cancel {
+                owner.operations_mut().unwrap().request_cancel(id).unwrap();
+            }
+            cimmeria_launcher_core::telemetry::queue::DiskQueue::new(owner.state_root())
+        };
+        let result = commit::start(state.clone(), prepared)
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(result.is_ok(), !cancel);
+        // The dropped handoff's observer reaches finish_failure after every
+        // commit; it must not report the run again.
+        close(state).await;
+        let queued: Vec<serde_json::Value> = queue
+            .drain::<crate::game_telemetry::transport::TelemetryEvent>()
+            .unwrap()
+            .into_iter()
+            .map(|event| serde_json::to_value(event).unwrap())
+            .collect();
+        assert_eq!(queued.len(), 1, "cancel={cancel}: {queued:?}");
+        assert_eq!(queued[0]["target"], "client.launcher.install_result");
+        let fields = &queued[0]["fields"];
+        assert_eq!(fields["result"], if cancel { "cancelled" } else { "ok" });
+        assert_eq!(fields["seed_applied"], true);
+    }
+}

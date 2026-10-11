@@ -845,6 +845,19 @@ An attack tick whose `handle_use_ability` call returns false (cooldown race, no 
 
 Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
 
+## Minigame result and start seam (TG-MG-01)
+
+`cell_dispatch/minigame.rs` in `cimmeria-base-world-entry`. A minigame result is forwarded to the cell for its victory chains; when that hand-off cannot happen the chains never run, so it is logged. The identity is the entity pair (`entity_id`, `entity_name`) and the result is named by `result_code` and `result`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| ERROR | `cell_channel_closed` | `MinigameResult` reached the base, but the cell's receiver was dropped; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count`, `error` |
+| WARN | `no_cell_channel` | No cell channel is configured; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count` |
+| WARN | `minigame_server_disabled` | `StartMinigame` with no minigame registry; the player is never sent `onStartMinigame` | entity pair, `game_name` |
+| WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
+
+Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
