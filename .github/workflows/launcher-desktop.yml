@@ -16,6 +16,9 @@ on:
       - '.github/workflows/launcher-desktop-macos.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
+      - 'tools/launcher-release/publish.sh'
+      - 'tools/launcher-release/stamp.sh'
+      - 'tools/launcher-release/test-release-scripts.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
@@ -37,6 +40,9 @@ on:
       - '.github/workflows/launcher-desktop-macos.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
+      - 'tools/launcher-release/publish.sh'
+      - 'tools/launcher-release/stamp.sh'
+      - 'tools/launcher-release/test-release-scripts.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
@@ -128,9 +134,9 @@ jobs:
   # DLLs, staging them as bundled resources, the 64-bit launcher pinned to
   # them, the artifact checks, the zip, and the zip's signature and feed with a
   # throwaway key. No manifest key, no tag and no updater key: it is a
-  # development build, as every PR build is. It also builds the five Windows
-  # pieces the macOS app carries, and the macOS dry run's stamps, for
-  # release-dry-run-macos.
+  # development build, as every PR build is. Like the release's
+  # desktop-windows, it hands its three staged Play pieces on, with their
+  # list's digest, to release-dry-run-mac-pieces.
   release-dry-run:
     name: desktop release build dry run (Windows)
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
@@ -139,23 +145,8 @@ jobs:
       run:
         shell: bash
     outputs:
-      mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
-      dry_run_tag: ${{ steps.drystamp.outputs.tag }}
-      dry_run_version: ${{ steps.drystamp.outputs.version }}
-      dry_run_epoch: ${{ steps.drystamp.outputs.epoch }}
+      play_pieces_sha256: ${{ steps.playpieces.outputs.sha256 }}
     steps:
-      # Stamps for the macOS dry run only: a same-day release of this commit.
-      # This job's own build stays unstamped, as LX-15 proved it.
-      - name: stamp the macOS dry run as a same-day release
-        id: drystamp
-        run: |
-          set -euo pipefail
-          EPOCH="$(date -u +%s)"
-          {
-            echo "tag=launcher-$(date -u -d "@${EPOCH}" +%Y%m%d)-${GITHUB_SHA:0:7}"
-            echo "version=$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(date -u -d "@${EPOCH}" +%-d)-2"
-            echo "epoch=${EPOCH}"
-          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -184,24 +175,6 @@ jobs:
         run: tools/launcher-release/build-desktop.sh verify
       - name: package
         run: tools/launcher-release/build-desktop.sh package
-      # The five Windows pieces the macOS app carries, for the macOS dry run
-      # below, as the release's desktop-windows job hands them to desktop-macos.
-      - name: build the Windows pieces only the macOS app carries
-        run: tools/launcher-release/build-desktop.sh mac-helpers
-      - name: collect the macOS app's Windows pieces
-        id: macpieces
-        run: |
-          set -euo pipefail
-          tools/launcher-release/build-desktop.sh mac-pieces
-          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - name: upload the macOS app's Windows pieces
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: desktop-mac-pieces-dry-run
-          path: artifacts/mac-pieces/
-          if-no-files-found: error
-          retention-days: 1
-          overwrite: true
       # The release's sign and feed steps with a throwaway Minisign key made in
       # the job: sign the zip with the `version:` trusted comment, write
       # latest.json, then run the launcher engine's own feed, signature and
@@ -220,28 +193,124 @@ jobs:
             artifacts/StargateWorlds-Launcher-windows-x64.zip*
             artifacts/latest.json
           retention-days: 7
+      - name: collect the staged Play pieces for the macOS build
+        id: playpieces
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh play-pieces
+          echo "sha256=$(sha256sum artifacts/play-pieces/play-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-play-pieces-dry-run
+          path: artifacts/play-pieces/
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  # launcher-release.yml's mac-pieces job: the Play pieces checked against the
+  # Windows dry run's digest, the archive and prerequisite workers built, and
+  # all five handed to the macOS dry run with their list's digest. It also
+  # stamps the macOS dry run as a same-day release of this commit.
+  release-dry-run-mac-pieces:
+    name: desktop release build dry run (Windows pieces for macOS)
+    needs: release-dry-run
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
+      dry_run_tag: ${{ steps.drystamp.outputs.tag }}
+      dry_run_version: ${{ steps.drystamp.outputs.version }}
+      dry_run_epoch: ${{ steps.drystamp.outputs.epoch }}
+    env:
+      PLAY_SHA256: ${{ needs.release-dry-run.outputs.play_pieces_sha256 }}
+    steps:
+      - name: stamp the macOS dry run as a same-day release
+        id: drystamp
+        run: |
+          set -euo pipefail
+          EPOCH="$(date -u +%s)"
+          {
+            echo "tag=launcher-$(date -u -d "@${EPOCH}" +%Y%m%d)-${GITHUB_SHA:0:7}"
+            echo "version=$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(date -u -d "@${EPOCH}" +%-d)-2"
+            echo "epoch=${EPOCH}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: launcher-release-desktop-dry-run
+          save-if: false
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-play-pieces-dry-run
+          path: play-pieces
+      - name: take in the Play pieces, checked against the Windows dry run's digest
+        run: tools/launcher-release/build-desktop.sh play-pieces-in play-pieces "${PLAY_SHA256}"
+      - name: build the Windows pieces only the macOS app carries
+        run: tools/launcher-release/build-desktop.sh mac-helpers
+      - name: collect the macOS app's Windows pieces
+        id: macpieces
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh mac-pieces
+          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-mac-pieces-dry-run
+          path: artifacts/mac-pieces/
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
 
   # launcher-release.yml's desktop-macos job itself (the same reusable
-  # workflow), minus publishing: the Windows dry run's five pieces checked and
-  # staged, the pinned D9VK, the release-profile .app, the ad-hoc signature,
-  # every check and the zip. Stamped as a same-day release (a fake tag and a
-  # `YYYY.M.D-2` version) with the development manifest key, so the tag check
-  # and the same-day Info.plist rule run here and not first at a release. No
-  # release secret and no upload to a release.
+  # workflow), minus publishing: the five pieces checked and staged, the pinned
+  # D9VK, the release-profile .app, the ad-hoc signature, every check and the
+  # zip. Stamped as a same-day release (a tag and a `YYYY.M.D-2` version) with
+  # the development manifest key, so the tag check and the same-day Info.plist
+  # rule run here and not first at a release. No release secret, no upload to
+  # a release.
   release-dry-run-macos:
     name: desktop release build dry run (macOS)
-    needs: release-dry-run
+    needs: release-dry-run-mac-pieces
     permissions:
       contents: read
     uses: ./.github/workflows/launcher-desktop-macos.yml
     with:
       pieces_artifact: desktop-mac-pieces-dry-run
-      pieces_sha256: ${{ needs.release-dry-run.outputs.mac_pieces_sha256 }}
+      pieces_sha256: ${{ needs.release-dry-run-mac-pieces.outputs.mac_pieces_sha256 }}
       artifact_name: desktop-launcher-macos-dry-run
       retention_days: 7
-      tag: ${{ needs.release-dry-run.outputs.dry_run_tag }}
-      version: ${{ needs.release-dry-run.outputs.dry_run_version }}
-      epoch: ${{ needs.release-dry-run.outputs.dry_run_epoch }}
+      tag: ${{ needs.release-dry-run-mac-pieces.outputs.dry_run_tag }}
+      version: ${{ needs.release-dry-run-mac-pieces.outputs.dry_run_version }}
+      epoch: ${{ needs.release-dry-run-mac-pieces.outputs.dry_run_epoch }}
       dev_manifest_key: true
       cache_key: launcher-release-desktop-macos-dry-run
       save_cache: ${{ github.ref == 'refs/heads/main' }}
+
+  # The release's shell scripts, which the jobs above do not all run:
+  # shellcheck on every one, then stamp.sh and publish.sh against a stub `gh`
+  # (tools/launcher-release/test-release-scripts.sh): the day's version rules,
+  # the digest checks, release notes that converge in any re-run order, and
+  # launcher-current notes that link the macOS zip only while it is there.
+  release-scripts:
+    name: release scripts (shellcheck and stubbed tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: shellcheck tools/launcher-release/*.sh
+      - name: stamp.sh and publish.sh against a stub gh
+        run: bash tools/launcher-release/test-release-scripts.sh

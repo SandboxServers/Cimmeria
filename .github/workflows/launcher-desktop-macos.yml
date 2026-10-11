@@ -97,7 +97,7 @@ jobs:
       - name: check the Windows job built the pieces
         run: |
           if [ -z "${PIECES_SHA256}" ]; then
-            echo "::error::the Windows job did not build the macOS app's Windows pieces; see its mac-helpers and mac-pieces steps. In a release run, use 'Re-run all jobs' (crates/launcher/desktop/docs/release.md)."
+            echo "::error::no digest for the macOS app's Windows pieces; see the job that builds them (crates/launcher/desktop/docs/release.md)."
             exit 1
           fi
 

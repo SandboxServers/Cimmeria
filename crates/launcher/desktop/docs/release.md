@@ -25,22 +25,25 @@ the Minisign signature document. `latest.json` is the updater feed every
 release launcher reads ([updater](updater.md)). The macOS zip has no `.zip.sig`
 and is not in `latest.json`: macOS updates are manual (below).
 
-If the macOS build fails, the release still publishes everything else, and
+If a macOS build fails, the release still publishes everything else, and
 `launcher-current` keeps whatever macOS zip it had beside the new Windows one.
 Its notes name the macOS zip only while one is there, so their link never
-fails. How to recover depends on where the macOS build failed:
+fails. `publish-macos` runs whenever `publish` succeeded, attaches what was
+built, and then fails if `mac-pieces`, `desktop-macos` or `egui-macos-wine`
+did not succeed. So the run shows both the failed build and `publish-macos`
+red, and **"Re-run failed jobs"** reruns the two (and anything they skipped),
+which attaches the missing asset. Do it within a day: the Windows pieces the
+macOS build needs are kept one day.
 
-- **`desktop-macos` failed** (the run shows it red): "Re-run failed jobs"
-  within a day reruns it and `publish-macos`, which attaches the zip. After a
-  day the Windows pieces it needs (kept one day) are gone.
-- **The macOS pieces failed in `desktop-windows`** (its last three steps;
-  `desktop-windows` still shows green, and `desktop-macos` fails at once with
-  "did not build the macOS app's Windows pieces"): "Re-run failed jobs" would
-  only rerun `desktop-macos`, which fails again. Use **"Re-run all jobs"**. The
-  stamp step recognises the run and keeps its tag and version; every job then
-  builds again, `sign` signs the rebuilt zip, and the publish jobs replace this
-  release's own assets and notes on the dated release and, when signed, on
-  `launcher-current`.
+**"Re-run all jobs"** is the other way, and the one to use when a job that
+succeeded must run again. The stamp step recognises the run and keeps its tag
+and version; every job builds again, `sign` signs the rebuilt zip, and the
+publish jobs replace this release's own assets on the dated release and, when
+signed, on `launcher-current`.
+
+The dated release's notes converge whatever the order of runs and re-runs:
+`publish.sh` always writes them as the release's base text plus one paragraph
+for each macOS asset the release holds at that moment.
 
 ### Jobs
 
@@ -49,16 +52,19 @@ The updater signing key never shares a job with the build's third-party code
 see it. No job that runs that code has a token that can write: the two jobs
 that write, `publish` and `publish-macos`, run no build and no third-party
 action, only [`tools/launcher-release/publish.sh`](../../../../tools/launcher-release/publish.sh)
-from a checkout of the released commit.
+from a checkout of the released commit. The macOS pieces have their own job, so
+`sign` and `publish`, which wait for all of `desktop-windows`, never wait for
+them.
 
 | Job | What it does | What it can see |
 |---|---|---|
-| `desktop-windows` | Refuses any ref but `main`, stamps the tag and version ([`stamp.sh`](../../../../tools/launcher-release/stamp.sh)), builds and checks the launcher, zips it, and uploads the zip and `.sha256` as one artifact and the overlay patch as another. Last, it builds the five Windows pieces the macOS app carries and uploads them as a third artifact, kept one day; those steps have their own timeouts and `continue-on-error`, so a failure or hang there fails only the macOS build. Its outputs carry the zip's SHA-256 and the SHA-256 of the pieces' list | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` and `LAUNCHER_LOG_SAS_URL` on the launcher build step only; the `LAUNCHER_UPDATER_PUBKEY` variable. Never the Minisign secrets |
-| `desktop-macos` | The reusable [`launcher-desktop-macos.yml`](../../../../.github/workflows/launcher-desktop-macos.yml), which the PR dry run also calls. On `macos-15` (arm64), from the same commit: checks the pieces against `desktop-windows`' output, stages them, fetches the pinned D9VK, builds the app, signs it ad hoc, checks it, zips it and uploads the zip and `.sha256` as an artifact. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` and `LAUNCHER_LOG_SAS_URL` on the app build step only. No updater key of either kind |
+| `desktop-windows` | Refuses any ref but `main`, stamps the tag and version ([`stamp.sh`](../../../../tools/launcher-release/stamp.sh)), builds and checks the launcher, zips it, and uploads the zip and `.sha256` as one artifact and the overlay patch as another. Last, it uploads the three staged Play pieces for `mac-pieces` (`continue-on-error`, a few seconds). Its outputs carry the zip's SHA-256 and the SHA-256 of the Play pieces' list | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` and `LAUNCHER_LOG_SAS_URL` on the launcher build step only; the `LAUNCHER_UPDATER_PUBKEY` variable. Never the Minisign secrets |
+| `mac-pieces` | On Windows: checks the Play pieces against `desktop-windows`' digest output before using them, builds the archive and prerequisite workers, and uploads all five with a `mac-pieces.sha256` list, kept one day. Its output carries the list's SHA-256 | `contents: read`. No secret |
+| `desktop-macos` | The reusable [`launcher-desktop-macos.yml`](../../../../.github/workflows/launcher-desktop-macos.yml), which the PR dry run also calls. On `macos-15` (arm64), from the same commit: checks the pieces against `mac-pieces`' output, stages them, fetches the pinned D9VK, builds the app, signs it ad hoc, checks it, zips it and uploads the zip and `.sha256` as an artifact. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` and `LAUNCHER_LOG_SAS_URL` on the app build step only. No updater key of either kind |
 | `sign` | Not for a same-day build. In the `launcher-release` environment: downloads the zip artifact only and checks it against the build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs, writes `latest.json`, checks the feed as a launcher would, and uploads the `.zip.sig` and `latest.json` as an artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
-| `publish` | When `sign` succeeded or was skipped: checks the zip's digest again, creates or updates the dated release, then, when signed, refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
-| `egui-macos-wine` | Builds the original egui launcher and uploads it as an artifact named for the release, `sgw-launcher-macos-wine-<tag>.exe` with its `.sha256` (D-LX14, below). A failure here leaves the release as it is | `contents: read`; the manifest key and the log SAS for its build |
-| `publish-macos` | After `publish`, `desktop-macos` and `egui-macos-wine`, when `publish` succeeded and either build did: checks each artifact against its build job's digest, attaches the egui exe and then the macOS zip to the dated release, each with its notes paragraph (one job, because both rewrite the notes), and, when `publish` refreshed `launcher-current`, replaces the macOS zip there | `contents: write`; the artifacts. No secret, no third-party action, no build |
+| `publish` | Unless the run was cancelled, when `sign` succeeded or was skipped: checks the zip's digest again, creates or updates the dated release, then, when signed, refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
+| `egui-macos-wine` | Builds the original egui launcher and uploads it as an artifact named for the release, `sgw-launcher-macos-wine-<tag>.exe` with its `.sha256` (D-LX14, below) | `contents: read`; the manifest key and the log SAS for its build |
+| `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks each built artifact against its build job's digest, attaches the egui exe and the macOS zip to the dated release (one job, because both rewrite the notes), replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if either build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
 
 Every third-party action in the workflow is pinned to a full commit SHA.
 
@@ -66,6 +72,9 @@ A run is safe to re-run. `publish` replaces the dated release's notes and
 assets when the tag exists (`gh release upload --clobber`) instead of failing,
 and the `launcher-current` refresh uploads each asset with `--clobber`, with
 any error failing the job, so a re-run repairs a refresh that stopped part-way.
+`launcher-desktop.yml`'s `release scripts` job runs `stamp.sh` and `publish.sh`
+against a stub `gh` on every PR that touches them
+([`test-release-scripts.sh`](../../../../tools/launcher-release/test-release-scripts.sh)).
 
 ### The egui launcher (D-LX2, D-LX14)
 
@@ -150,11 +159,13 @@ piece is shipped, fetched or left out, and the job's design, are in the
 
 The app carries five Windows pieces, two more than the Windows zip: the 64-bit
 archive worker and the 32-bit prerequisite worker run under Wine for Install.
-`build-desktop.sh mac-helpers` builds those two on the Windows runner, and
-`mac-pieces` copies all five into one artifact with a `mac-pieces.sha256` list.
-The list's own SHA-256 reaches the macOS job as a job output, separately from
-the artifact. The three Play pieces are the files the Windows launcher was
-pinned to, so both platforms ship the same bytes.
+The `mac-pieces` job takes in the three Play pieces `desktop-windows` staged
+(`build-desktop.sh play-pieces-in`, checked against that job's digest output),
+builds those two with `mac-helpers`, and `mac-pieces` copies all five into one
+artifact with a `mac-pieces.sha256` list. Each list's own SHA-256 reaches the
+next job as a job output, separately from the artifact. The three Play pieces
+are the files the Windows launcher was pinned to, so both platforms ship the
+same bytes.
 
 | Stage | What it does |
 |---|---|

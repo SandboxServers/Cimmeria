@@ -26,12 +26,19 @@
 #                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
 #                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
+#   play-pieces      after stage: copy the three staged Play pieces into
+#                    artifacts/play-pieces/ with a play-pieces.sha256 list,
+#                    for the release's separate mac-pieces job
+#   play-pieces-in <dir> <sha256>
+#                    check <dir>/play-pieces.sha256 against <sha256> and each
+#                    piece against it, then put them back as the staged files
 #   mac-helpers      build the two Windows pieces only the macOS app carries,
 #                    for Install under Wine: the 64-bit
 #                    cimmeria-archive-worker.exe and the 32-bit
 #                    cimmeria-prerequisite-worker.exe
-#   mac-pieces       after stage and mac-helpers: copy the five Windows pieces
-#                    the macOS app carries into artifacts/mac-pieces/ with a
+#   mac-pieces       after stage (or play-pieces-in) and mac-helpers: copy the
+#                    five Windows pieces the macOS app carries into
+#                    artifacts/mac-pieces/ with a
 #                    mac-pieces.sha256 listing them, for
 #                    build-desktop-macos.sh pieces on the macOS runner
 #   feed-tool        build the release_feed example (always the release
@@ -90,6 +97,7 @@ FEED="artifacts/latest.json"
 ARCHIVE_WORKER="$OUT/cimmeria-archive-worker.exe"
 PREREQUISITE_WORKER="$DESKTOP_DIR/$I686/$PROFILE_DIR/cimmeria-prerequisite-worker.exe"
 MAC_PIECES="artifacts/mac-pieces"
+PLAY_PIECES="artifacts/play-pieces"
 
 # The staged file name of each piece and the build variable that pins it.
 PIECES=(
@@ -303,6 +311,46 @@ stage_mac_pieces() {
   cat "$MAC_PIECES/mac-pieces.sha256"
 }
 
+# The release builds the macOS pieces in their own job, off the Windows
+# release's critical path. play-pieces hands that job the three staged Play
+# pieces the Windows launcher was pinned to; play-pieces-in takes them back in,
+# checked against the list's digest from the Windows job's output, a channel
+# separate from the artifact store.
+stage_play_pieces() {
+  local name var
+  rm -rf "$PLAY_PIECES"
+  mkdir -p "$PLAY_PIECES"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    need "$STAGED/$name"
+    cp "$STAGED/$name" "$PLAY_PIECES/"
+    printf '%s  %s\n' "$(sha "$PLAY_PIECES/$name")" "$name"
+  done > "$PLAY_PIECES/play-pieces.sha256"
+  cat "$PLAY_PIECES/play-pieces.sha256"
+}
+
+stage_play_pieces_in() {
+  local dir="${1:?play-pieces-in needs the artifact directory}" expected="${2:-}"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] \
+    || die "play-pieces-in needs the SHA-256 of play-pieces.sha256 from the Windows job, got '$expected'"
+  local list="$dir/play-pieces.sha256"
+  need "$list"
+  [ "$(sha "$list")" = "$expected" ] || die "$list is not the one the Windows job wrote"
+  [ "$(wc -l < "$list" | tr -d ' ')" -eq "${#PIECES[@]}" ] \
+    || die "$list must list exactly ${#PIECES[@]} pieces"
+  local name var digest
+  mkdir -p "$STAGED"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    digest="$(awk -v n="$name" '$2 == n { print $1 }' "$list")"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || die "$list has no single digest for $name"
+    need "$dir/$name"
+    [ "$(sha "$dir/$name")" = "$digest" ] || die "$dir/$name is not the file the Windows job staged"
+    cp "$dir/$name" "$STAGED/$name"
+  done
+  echo "took in the three Play pieces the Windows launcher was pinned to"
+}
+
 # The release-profile example that signs and checks the feed with the
 # launcher engine's own code (engine/examples/release_feed.rs). It is always a
 # release build, whatever PROFILE says.
@@ -364,10 +412,12 @@ case "${1:-}" in
   package) stage_package ;;
   mac-helpers) stage_mac_helpers ;;
   mac-pieces) stage_mac_pieces ;;
+  play-pieces) stage_play_pieces ;;
+  play-pieces-in) shift; stage_play_pieces_in "$@" ;;
   feed-tool) stage_feed_tool ;;
   sign) shift; stage_sign "$@" ;;
   verify-feed) shift; stage_verify_feed "$@" ;;
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
-  *) sed -n '2,51p' "$0" >&2; exit 2 ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
+  *) sed -n '2,58p' "$0" >&2; exit 2 ;;
 esac

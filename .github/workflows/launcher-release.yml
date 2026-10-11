@@ -14,46 +14,37 @@ name: launcher-release
 # moment; the triggering PR is just the cut-point marker, mirroring the policy
 # of `release-container.yml`.
 #
-# Six jobs, so the updater signing key never shares a job with the build's
-# third-party code, and no job that runs that code can write to the repository
-# (crates/launcher/desktop/docs/release.md, "Jobs"):
-#   - `desktop-windows` stamps the tag and version, builds, checks and zips the
-#     launcher. It also builds the five Windows pieces the macOS app carries.
-#     It never sees the Minisign secrets.
-#   - `sign` runs in the `launcher-release` environment, whose secrets are the
-#     Minisign key and password. It downloads only the zip, checks its digest
-#     against the build job's output, builds the release_feed tool with cargo
-#     alone (no node, no cache action) before the key is in any step, signs,
-#     writes latest.json and checks it as a launcher would.
+# Seven jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
+# signing key never shares a job with the build's third-party code, and no job
+# that runs build code can write to the repository: the only write-token jobs,
+# `publish` and `publish-macos`, run tools/launcher-release/publish.sh from a
+# checkout of the released commit and nothing else.
+#   - `desktop-windows` stamps the tag and version (stamp.sh), builds, checks
+#     and zips the launcher, and hands its three Play pieces to `mac-pieces`.
+#   - `sign`, in the `launcher-release` environment (the Minisign key and
+#     password), checks the zip against the build job's digest, builds the
+#     release_feed tool before the key is in any step, signs and writes
+#     latest.json, and checks it as a launcher would.
 #   - `publish` creates or updates the dated release `launcher-YYYYMMDD-<sha7>`
-#     and, when signed, refreshes the rolling `launcher-current` (D-LX7):
-#     the zip, `.sha256`, `.zip.sig`, then `latest.json` last.
-#   - `desktop-macos` (LX-28, D-LX14) builds the macOS app on an arm64 runner
-#     from those pieces, signs it ad hoc and zips it as
-#     `StargateWorlds-Launcher-macos-arm64.zip`, through the reusable
-#     `launcher-desktop-macos.yml` the PR dry run also calls. Read-only.
-#   - `egui-macos-wine` builds the original egui launcher as
-#     `sgw-launcher-macos-wine-<tag>.exe` for Mac players who still run it
-#     under Wine, until LX-18 retires it. Read-only. It is no longer published
-#     as `sgw-launcher-<tag>.exe`, the exact name the egui launcher updates
-#     itself from, so Windows players of the egui launcher stop being offered
-#     updates and move to the zip (D-LX2).
-#   - `publish-macos` attaches both macOS assets to the dated release, and the
-#     macOS zip to `launcher-current` when `publish` refreshed it. A failed
-#     macOS build leaves the Windows release as it is.
-# The two jobs with a write token, `publish` and `publish-macos`, run no build
-# and no third-party action: tools/launcher-release/publish.sh from a checkout
-# of the released commit.
+#     and, when signed, refreshes the rolling `launcher-current` (D-LX7).
+#   - `mac-pieces` builds the two other Windows pieces the macOS app carries,
+#     off the Windows release's critical path.
+#   - `desktop-macos` (LX-28, D-LX14) builds the arm64 app, signs it ad hoc and
+#     zips it, through the reusable `launcher-desktop-macos.yml` the PR dry run
+#     also calls.
+#   - `egui-macos-wine` builds the egui launcher as
+#     `sgw-launcher-macos-wine-<tag>.exe` for Mac players under Wine until
+#     LX-18. Never as `sgw-launcher-<tag>.exe`, the name the egui launcher
+#     updates itself from, so its Windows players move to the zip (D-LX2).
+#   - `publish-macos` attaches both macOS assets. A failed macOS build leaves
+#     the Windows release as it is.
 #
-# Releases ship unsigned on Windows: code signing is deferred by the owner
-# (D-LX10). The launch worker injects DLLs into the game, which is what
-# Defender and SmartScreen react to. The macOS app is signed ad hoc only.
-# Out of scope by D-LX14: a Developer ID signature, notarization and the
-# hardened runtime. A player opens the app once with System Settings > Privacy
-# & Security > Open Anyway. macOS updates are manual: the updater feed offers
-# `windows-x86_64` only, and the shell keeps the updater Disabled on macOS
-# (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md,
-# "Self-update on macOS").
+# Windows releases ship unsigned (D-LX10): the launch worker injects DLLs,
+# which Defender and SmartScreen react to. The macOS app is signed ad hoc only;
+# a Developer ID signature, notarization and the hardened runtime are out of
+# scope by D-LX14, so a player opens it once with Privacy & Security > Open
+# Anyway. macOS updates are manual: the feed offers `windows-x86_64` only
+# (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md).
 #
 # Every third-party action is pinned to a full commit SHA, with its version in
 # a comment, per GitHub's secure-use guide.
@@ -88,8 +79,10 @@ jobs:
     permissions:
       # Reads the release list for the version; publishing is a later job.
       contents: read
-    # 60 for the Windows release plus the macOS pieces' 35 of step timeouts.
-    timeout-minutes: 95
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     outputs:
       tag: ${{ steps.stamp.outputs.tag }}
       epoch: ${{ steps.stamp.outputs.epoch }}
@@ -97,9 +90,9 @@ jobs:
       same_day: ${{ steps.stamp.outputs.same_day }}
       zip_sha256: ${{ steps.digest.outputs.sha256 }}
       has_overlay: ${{ steps.overlay.outputs.has_overlay }}
-      # SHA-256 of mac-pieces.sha256, which lists the five Windows pieces the
-      # macOS app carries. Empty when they failed to build.
-      mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
+      # SHA-256 of play-pieces.sha256, which lists the three staged Play
+      # pieces. Empty when they could not be collected.
+      play_pieces_sha256: ${{ steps.playpieces.outputs.sha256 }}
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
@@ -113,15 +106,13 @@ jobs:
       # but main would otherwise build that branch, and the signing job would
       # offer it to every player.
       - name: refuse any ref but main
-        shell: bash
         run: |
           if [ "${GITHUB_REF}" != refs/heads/main ]; then
             echo "::error::launcher releases are built from main only; this run was dispatched on ${GITHUB_REF}"
             exit 1
           fi
 
-      # `persist-credentials: false` so the GITHUB_TOKEN isn't left in the
-      # local git config for later steps.
+      # No GITHUB_TOKEN left in the git config for later steps.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
         with:
           # The dispatched commit; every later job builds or tags the same one.
@@ -132,7 +123,6 @@ jobs:
       # and the same-day and re-run rules.
       - name: stamp tag and version
         id: stamp
-        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -154,25 +144,19 @@ jobs:
           node-version: '24'
 
       - name: build the i686 launch worker and game DLLs
-        shell: bash
         run: tools/launcher-release/build-desktop.sh helpers
 
       - name: stage them as the launcher's bundled resources
-        shell: bash
         run: tools/launcher-release/build-desktop.sh stage
 
       # The release stamps are on this step only. The test suites use the
       # development manifest key and fail with the production one set, and the
       # SAS is compiled in with `option_env!`, so no other step has them.
       - name: build the 64-bit desktop launcher, pinned to them
-        shell: bash
         env:
-          # 64 hex chars = 32 raw bytes. Ed25519 public key whose private
-          # counterpart signs every manifest the launcher will accept
-          # (docs/client/launcher-distribution-setup.md).
+          # Ed25519, 64 hex chars (docs/client/launcher-distribution-setup.md).
           LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-          # Where Settings' "Upload debug logs" PUTs the zip (D-LX11). Unset,
-          # the button is hidden.
+          # Settings' "Upload debug logs" target (D-LX11); unset hides it.
           LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
           CIMMERIA_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
           CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
@@ -184,16 +168,13 @@ jobs:
         run: tools/launcher-release/build-desktop.sh launcher
 
       - name: verify the artifacts
-        shell: bash
         env:
           CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
           CIMMERIA_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
         run: tools/launcher-release/build-desktop.sh verify
 
-      # StargateWorlds-Launcher-windows-x64.zip and its .sha256 (sha256sum
-      # format, `<hex>  <file name>`).
+      # The zip and its .sha256 (`<hex>  <file name>`).
       - name: package
-        shell: bash
         run: tools/launcher-release/build-desktop.sh package
 
       # The digest travels to the signing and publishing jobs as a job output,
@@ -201,7 +182,6 @@ jobs:
       # downloads against it.
       - name: record the zip digest
         id: digest
-        shell: bash
         run: |
           set -euo pipefail
           SHA="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
@@ -213,7 +193,6 @@ jobs:
       # prints "nothing to pack" and the release carries the launcher alone.
       - name: pack client-patches overlay
         id: overlay
-        shell: bash
         env:
           TAG: ${{ steps.stamp.outputs.tag }}
         run: |
@@ -249,7 +228,6 @@ jobs:
 
       - name: job summary
         if: always()
-        shell: bash
         env:
           TAG: ${{ steps.stamp.outputs.tag }}
           VERSION: ${{ steps.stamp.outputs.version }}
@@ -269,37 +247,27 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, after everything the Windows release needs is uploaded: the five
-      # Windows pieces the macOS app carries (the three above plus, for Install
-      # under Wine, the archive and prerequisite workers), handed to
-      # desktop-macos. continue-on-error and a step timeout, so a failure or a
-      # hang here fails only the macOS build; the job's timeout leaves room for
-      # it. mac-pieces.sha256's own digest travels as a job output, separate
-      # from the artifact store.
-      - name: build the Windows pieces only the macOS app carries
-        id: machelpers
-        continue-on-error: true
-        timeout-minutes: 25
-        shell: bash
-        run: tools/launcher-release/build-desktop.sh mac-helpers
-      - name: collect the macOS app's Windows pieces
-        id: macpieces
-        if: steps.machelpers.outcome == 'success'
+      # Last, and quick: the three staged Play pieces, for the mac-pieces job,
+      # which builds the macOS app's other two pieces off this job's critical
+      # path. continue-on-error, so a failure here fails only the macOS build.
+      # play-pieces.sha256's own digest travels as a job output, separate from
+      # the artifact store.
+      - name: collect the staged Play pieces for the macOS build
+        id: playpieces
         continue-on-error: true
         timeout-minutes: 5
-        shell: bash
         run: |
           set -euo pipefail
-          tools/launcher-release/build-desktop.sh mac-pieces
-          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - name: upload the macOS app's Windows pieces
-        if: steps.macpieces.outcome == 'success'
+          tools/launcher-release/build-desktop.sh play-pieces
+          echo "sha256=$(sha256sum artifacts/play-pieces/play-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: upload them
+        if: steps.playpieces.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: launcher-mac-pieces-${{ steps.stamp.outputs.tag }}
-          path: artifacts/mac-pieces/
+          name: launcher-play-pieces-${{ steps.stamp.outputs.tag }}
+          path: artifacts/play-pieces/
           if-no-files-found: error
           retention-days: 1
           overwrite: true
@@ -321,6 +289,9 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     outputs:
       signed: ${{ steps.keys.outputs.sign }}
     env:
@@ -338,7 +309,6 @@ jobs:
       # verify what it is offered.
       - name: decide whether to sign
         id: keys
-        shell: bash
         env:
           HAS_UPDATER_KEY: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_KEY != '' }}
         run: |
@@ -373,7 +343,6 @@ jobs:
 
       - name: build the release_feed tool (no secrets in this step)
         if: steps.keys.outputs.sign == 'true'
-        shell: bash
         run: tools/launcher-release/build-desktop.sh feed-tool
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
@@ -384,7 +353,6 @@ jobs:
 
       - name: check the zip is the one the build job made
         if: steps.keys.outputs.sign == 'true'
-        shell: bash
         run: |
           set -euo pipefail
           GOT="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
@@ -399,7 +367,6 @@ jobs:
       # zip that matches it.
       - name: sign the zip and write the updater feed
         if: steps.keys.outputs.sign == 'true'
-        shell: bash
         env:
           LAUNCHER_UPDATER_MINISIGN_KEY: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_KEY }}
           LAUNCHER_UPDATER_MINISIGN_PASSWORD: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_PASSWORD }}
@@ -414,7 +381,6 @@ jobs:
       # feed the launcher would refuse, stops the release here.
       - name: check the feed as a launcher would
         if: steps.keys.outputs.sign == 'true'
-        shell: bash
         run: tools/launcher-release/build-desktop.sh verify-feed "${VERSION}"
 
       - name: upload the signature and feed
@@ -438,7 +404,7 @@ jobs:
     name: dated release + launcher-current
     needs: [desktop-windows, sign]
     if: >-
-      always() && github.ref == 'refs/heads/main'
+      !cancelled() && github.ref == 'refs/heads/main'
       && needs.desktop-windows.result == 'success'
       && (needs.sign.result == 'success' || needs.sign.result == 'skipped')
     runs-on: ubuntu-latest
@@ -502,18 +468,76 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The five Windows pieces the macOS app carries, in their own job so they
+  # never hold up sign and publish: the three Play pieces desktop-windows
+  # staged, checked against its digest output before use, and the archive and
+  # prerequisite workers for Install under Wine, built here. Read-only.
+  mac-pieces:
+    name: Windows pieces for the macOS app
+    needs: desktop-windows
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      sha256: ${{ steps.pieces.outputs.sha256 }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      PLAY_SHA256: ${{ needs.desktop-windows.outputs.play_pieces_sha256 }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: launcher-release-desktop
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: launcher-play-pieces-${{ needs.desktop-windows.outputs.tag }}
+          path: play-pieces
+      - name: take in the Play pieces, checked against desktop-windows' digest
+        run: tools/launcher-release/build-desktop.sh play-pieces-in play-pieces "${PLAY_SHA256}"
+      - name: build the Windows pieces only the macOS app carries
+        run: tools/launcher-release/build-desktop.sh mac-helpers
+      # mac-pieces.sha256's own digest travels as a job output, separate from
+      # the artifact store.
+      - name: collect the macOS app's Windows pieces
+        id: pieces
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh mac-pieces
+          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-mac-pieces-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts/mac-pieces/
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   # LX-28 (D-LX14): the macOS app, built by the reusable workflow the PR dry
   # run also calls. Read-only; publish-macos attaches the zip.
   desktop-macos:
     name: desktop launcher (macOS)
-    needs: desktop-windows
+    needs: [desktop-windows, mac-pieces]
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
     uses: ./.github/workflows/launcher-desktop-macos.yml
     with:
       pieces_artifact: launcher-mac-pieces-${{ needs.desktop-windows.outputs.tag }}
-      pieces_sha256: ${{ needs.desktop-windows.outputs.mac_pieces_sha256 }}
+      pieces_sha256: ${{ needs.mac-pieces.outputs.sha256 }}
       artifact_name: launcher-macos-zip-${{ needs.desktop-windows.outputs.tag }}
       tag: ${{ needs.desktop-windows.outputs.tag }}
       version: ${{ needs.desktop-windows.outputs.version }}
@@ -538,6 +562,9 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     outputs:
       exe_sha256: ${{ steps.exe.outputs.sha256 }}
     env:
@@ -558,13 +585,11 @@ jobs:
         with:
           shared-key: launcher-release
       - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
-        shell: bash
         run: tools/launcher-release/build.sh i686
       # Both secrets are baked in at compile time via `option_env!` in
       # src/config.rs and src/manifest.rs. The tag and epoch are the release's,
       # read by src/self_update/build_info.rs.
       - name: build the 64-bit launcher, embedding them
-        shell: bash
         env:
           LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
           LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
@@ -574,13 +599,11 @@ jobs:
           CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
         run: tools/launcher-release/build.sh launcher
       - name: verify the artifacts
-        shell: bash
         env:
           CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
         run: tools/launcher-release/build.sh verify
       - name: name the exe for the release
         id: exe
-        shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
@@ -600,19 +623,19 @@ jobs:
           overwrite: true
 
   # Attaches both macOS assets after publish made the dated release: the egui
-  # exe under Wine, then the macOS zip, each when its build succeeded, in one
-  # job because both rewrite the dated release's notes. The macOS zip also
+  # exe under Wine and the macOS zip, each when its build succeeded, in one job
+  # because both rewrite the dated release's notes. The macOS zip also
   # replaces the one on launcher-current when publish refreshed it (a signed,
-  # first-of-the-day release), so both stable links name the same release. No
-  # build and no third-party action: tools/launcher-release/publish.sh from
-  # the released commit's checkout.
+  # first-of-the-day release). It runs whenever publish succeeded and fails
+  # when either build did not, so "Re-run failed jobs" reruns it with the
+  # failed build. No build and no third-party action: publish.sh from the
+  # released commit's checkout.
   publish-macos:
     name: macOS assets -> same release + launcher-current
     needs: [desktop-windows, sign, publish, desktop-macos, egui-macos-wine]
     if: >-
-      always() && github.ref == 'refs/heads/main'
+      !cancelled() && github.ref == 'refs/heads/main'
       && needs.publish.result == 'success'
-      && (needs.desktop-macos.result == 'success' || needs.egui-macos-wine.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -641,41 +664,35 @@ jobs:
         with:
           name: launcher-macos-zip-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
-
       - name: attach the egui exe to the dated release
         if: env.EGUI_OK == 'true'
         env:
           EGUI_SHA256: ${{ needs.egui-macos-wine.outputs.exe_sha256 }}
         run: |
-          set -euo pipefail
           tools/launcher-release/publish.sh check "${EGUI_EXE}" "${EGUI_SHA256}"
           tools/launcher-release/publish.sh egui
-
       - name: attach the macOS zip to the dated release
         if: env.MAC_OK == 'true'
         env:
           MAC_ZIP_SHA256: ${{ needs.desktop-macos.outputs.zip_sha256 }}
         run: |
-          set -euo pipefail
           tools/launcher-release/publish.sh check "${MAC_ZIP}" "${MAC_ZIP_SHA256}"
           tools/launcher-release/publish.sh macos
-
       - name: refresh the macOS zip on launcher-current
         if: env.MAC_OK == 'true' && env.SIGNED == 'true'
         run: tools/launcher-release/publish.sh macos-current
-
-      - name: job summary
+      - name: summary, and fail when a macOS build failed
         if: always()
         run: |
           {
             echo "## macOS assets for ${TAG}"
-            echo
-            [ "${EGUI_OK}" = true ] || echo "The egui launcher under Wine was not built; the release has no \`sgw-launcher-macos-wine\` exe."
+            [ "${EGUI_OK}" = true ] || echo "- The egui launcher under Wine was not built; the release has no \`sgw-launcher-macos-wine\` exe."
             if [ "${MAC_OK}" != true ]; then
-              echo "The macOS build failed; \`${MAC_ZIP_NAME}\` is not on this release, and \`launcher-current\` keeps the macOS zip it had (crates/launcher/desktop/docs/release.md)."
+              echo "- The macOS build failed: \`${MAC_ZIP_NAME}\` is not on this release, and \`launcher-current\` keeps the macOS zip it had. \"Re-run failed jobs\" (crates/launcher/desktop/docs/release.md)."
             elif [ "${SIGNED}" = true ]; then
-              echo "\`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`. It is not in \`latest.json\`: macOS updates are manual."
+              echo "- \`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`; not in \`latest.json\` (macOS updates are manual)."
             else
-              echo "\`${MAC_ZIP_NAME}\` is on the dated release only; \`launcher-current\` was not changed."
+              echo "- \`${MAC_ZIP_NAME}\` is on the dated release only; \`launcher-current\` was not changed."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+          [ "${MAC_OK}" = true ] && [ "${EGUI_OK}" = true ]

@@ -3,8 +3,10 @@
 # publish jobs run this, from a checkout of the released commit: jobs that
 # hold a write token and run no build code, no npm and no third-party action
 # (crates/launcher/desktop/docs/release.md, "Jobs"). Every command is safe to
-# re-run: uploads replace this release's own assets (--clobber) and each notes
-# paragraph is added once.
+# re-run, in any order: uploads replace this release's own assets (--clobber),
+# and the dated release's notes are always rewritten as its base text plus one
+# paragraph for each macOS asset the release holds at that moment, so any
+# sequence of runs and re-runs ends with the same notes.
 #
 # Usage: tools/launcher-release/publish.sh <command> [args]
 #
@@ -17,10 +19,10 @@
 #   current          refresh launcher-current (D-LX7) with the Windows zip,
 #                    .sha256, .zip.sig and latest.json, the feed last
 #   egui             attach sgw-launcher-macos-wine-$TAG.exe and its .sha256
-#                    to $TAG, with its notes paragraph
-#   macos            attach the macOS zip and its .sha256 to $TAG, with its
-#                    notes paragraph
+#                    to $TAG
+#   macos            attach the macOS zip and its .sha256 to $TAG
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
+#   current-notes    rewrite launcher-current's notes from its assets
 #
 # Environment: TAG; VERSION for dated; TRIGGERING_PR (optional) for dated;
 # GH_TOKEN, GH_REPO and the GITHUB_* variables Actions sets.
@@ -32,7 +34,12 @@ ZIP="artifacts/$ZIP_NAME"
 MAC_ZIP="artifacts/$MAC_ZIP_NAME"
 CURRENT=launcher-current
 TAG="${TAG:?TAG is not set}"
+EGUI_EXE="sgw-launcher-macos-wine-${TAG}.exe"
 STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/$CURRENT"
+# Each macOS paragraph of the dated release's notes is one line starting with
+# its marker; nothing else in the notes contains either marker.
+EGUI_MARKER='**macOS (under Wine):**'
+MAC_MARKER='**macOS (Apple silicon):**'
 
 die() { echo "::error::$*" >&2; exit 1; }
 
@@ -48,15 +55,35 @@ check() {
   fi
 }
 
-# Add a paragraph to a release's notes unless one starting with the marker is
-# there already (a re-run).
-append_once() {
-  local tag="$1" marker="$2" text="$3" body
-  body="$(gh release view "$tag" --json body --jq .body)"
-  if grep -qF -- "$marker" <<<"$body"; then return 0; fi
-  gh release edit "$tag" --notes "$body
+# One asset name per line.
+assets_of() { gh release view "$1" --json assets --jq '.assets[].name'; }
 
-$text"
+# A release's notes without the macOS paragraphs and the blank lines that
+# trailed them.
+base_of() {
+  local body
+  body="$(gh release view "$1" --json body --jq .body)"
+  body="$(grep -vF -e "$EGUI_MARKER" -e "$MAC_MARKER" <<<"$body" || true)"
+  printf '%s' "${body%"${body##*[![:space:]]}"}"
+}
+
+# Write the dated release's notes: the base, then the egui paragraph and the
+# macOS paragraph, each only while its asset is on the release.
+dated_notes() {
+  local base="$1" assets notes
+  assets="$(assets_of "$TAG")"
+  notes="$base"
+  if grep -qxF "$EGUI_EXE" <<<"$assets"; then
+    notes="$notes
+
+$EGUI_MARKER \`${EGUI_EXE}\` is the original launcher, for Mac players who still run it under Wine (docs/guides/macos.md). The macOS desktop launcher, \`${MAC_ZIP_NAME}\`, replaces it. It does not update itself to later releases; download the newest from the releases page."
+  fi
+  if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
+    notes="$notes
+
+$MAC_MARKER download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Stargate Worlds Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}/${MAC_ZIP_NAME}."
+  fi
+  gh release edit "$TAG" --notes "$notes"
 }
 
 # launcher-current's notes name the macOS zip only while it is there, so the
@@ -64,7 +91,7 @@ $text"
 # when this release's macOS build failed.
 current_notes() {
   local assets notes
-  assets="$(gh release view "$CURRENT" --json assets --jq '.assets[].name')"
+  assets="$(assets_of "$CURRENT")"
   notes="The newest Stargate Worlds launcher, currently ${TAG}. Windows: download ${ZIP_NAME}."
   if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
     notes="$notes macOS (Apple silicon): download ${MAC_ZIP_NAME}."
@@ -102,9 +129,12 @@ This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/c
 Includes the client-patches UI overlay patch. To publish it, add its \`.entry.json\` to the content manifest and re-sign (docs/client/launcher-distribution-setup.md)."
   fi
   if gh release view "$TAG" >/dev/null 2>&1; then
+    # A re-run: the macOS paragraphs come back for the macOS assets already
+    # attached, whichever publish job ran last.
     echo "$TAG exists (a re-run): replacing its notes and assets"
-    gh release edit "$TAG" --title "Launcher $TAG" --notes "$body"
+    gh release edit "$TAG" --title "Launcher $TAG"
     gh release upload "$TAG" --clobber "${assets[@]}" ${overlay[@]+"${overlay[@]}"}
+    dated_notes "$body"
   else
     # --target: the tag is made at the dispatched commit, not at whatever
     # main has become since.
@@ -131,16 +161,13 @@ current() {
 }
 
 egui() {
-  local exe="sgw-launcher-macos-wine-${TAG}.exe"
-  gh release upload "$TAG" --clobber "artifacts/$exe" "artifacts/$exe.sha256"
-  append_once "$TAG" '**macOS (under Wine):**' \
-    "**macOS (under Wine):** \`${exe}\` is the original launcher, for Mac players who still run it under Wine (docs/guides/macos.md). The macOS desktop launcher, \`${MAC_ZIP_NAME}\`, replaces it. It does not update itself to later releases; download the newest from the releases page."
+  gh release upload "$TAG" --clobber "artifacts/$EGUI_EXE" "artifacts/$EGUI_EXE.sha256"
+  dated_notes "$(base_of "$TAG")"
 }
 
 macos() {
   gh release upload "$TAG" --clobber "$MAC_ZIP" "$MAC_ZIP.sha256"
-  append_once "$TAG" '**macOS (Apple silicon):**' \
-    "**macOS (Apple silicon):** download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Stargate Worlds Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}/${MAC_ZIP_NAME}."
+  dated_notes "$(base_of "$TAG")"
 }
 
 macos_current() {
@@ -158,5 +185,6 @@ case "${1:-}" in
   egui) egui ;;
   macos) macos ;;
   macos-current) macos_current ;;
-  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
+  current-notes) current_notes ;;
+  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
 esac
