@@ -1021,6 +1021,25 @@ Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_wa
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Chat malformed and relay refusals (TG-SOC-08)
+
+`crates/base/src/base/dispatch/chat_malformed.rs`, called from `dispatch/chat.rs`. Two WARN rows on `target: "chat"`. Both carry `player_id` + `player_name`, `account_id` + `account_name` and `reason`.
+
+- `event = "chat.malformed"`: a `sendPlayerCommunication` or `chatJoin` payload that does not decode, so no text reaches a handler. Adds `payload_len`.
+- `event = "chat.relay_failed"`: a line that passed every gate but was not delivered. Adds `channel`, and `entity_id` + `entity_name` when the speaker has an entity.
+
+| `reason` | Event | Meaning |
+|---|---|---|
+| `empty_payload` | `chat.malformed` | The `sendPlayerCommunication` payload is empty |
+| `bad_target` | `chat.malformed` | The target WSTRING does not decode |
+| `bad_text` | `chat.malformed` | The text WSTRING does not decode |
+| `bad_channel_name` | `chat.malformed` | The `chatJoin` channel name or password does not decode |
+| `cell_channel_closed` | `chat.relay_failed` | The base-to-cell send failed (receiver dropped) |
+| `no_cell_channel` | `chat.relay_failed` | The base holds no sender to the cell |
+| `entity_missing` | `chat.relay_failed` | The speaker has no entity to speak as |
+
+The player's feedback is unchanged. Guards: one `LogCapture` test per reason in `chat_malformed.rs`, from `empty_payload_is_logged_as_malformed` to `speaker_without_entity_is_logged_as_relay_failed`.
+
 ## Character-create refusals (TG-DB-08)
 
 `character_create/refusal_log.rs` in `cimmeria-base`. Every refused `createCharacter` writes exactly one row, `event = "character_create_failed"`, message "character creation refused", before `onCharacterCreateFailed` goes to the client. Each row carries the account (`addr`, `account_id`, `account_name`), the code sent (`error_code` paired with its `ErrorStrings` moniker as `error_name`), and what was refused once it has been parsed: `player_name` (the requested name) and `char_def_id`. `reason` is the `Reason` enum, not a string, and `Reason::level` gives each reason its level, so a misspelt reason can't compile or fall through to a default level. The levels are the ones each site logged at before.
