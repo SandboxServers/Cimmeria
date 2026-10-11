@@ -291,6 +291,10 @@ fn friction_rows_carry_session_kind() {
     player_tick(&mgr, ENTITY, [0.0; 3]);
     dialog_shown(ENTITY, 2517);
     dialog_shown(ENTITY, 2518);
+    // An episode counter (`playtest_friction.rs`), which reads the entity.
+    for _ in 0..2 {
+        crate::cell::playtest_friction::item_use_no_chain(&mgr, ENTITY, 917_017);
+    }
     forget(ENTITY);
 
     let rows: Vec<_> = capture
@@ -302,7 +306,11 @@ fn friction_rows_carry_session_kind() {
                 && c.fields.get("entity_id").map(String::as_str) == Some("917017")
         })
         .collect();
-    for signal in ["step_stalled", "dialog_displaced"] {
+    for signal in [
+        "step_stalled",
+        "dialog_displaced",
+        "repeat_item_use_no_chain",
+    ] {
         let row = rows
             .iter()
             .find(|c| c.fields.get("signal").map(String::as_str) == Some(signal))

@@ -98,6 +98,13 @@ fn with<R>(f: impl FnOnce(&mut Detectors) -> R) -> R {
     f(&mut guard)
 }
 
+/// `"lab"` or `"player"` for a player entity (TG-NET-17); `None` for an NPC
+/// or an entity gone, so the field is left out. Every friction row carries
+/// it: lab runs stop on purpose and would otherwise read as player pain.
+fn session_kind_of(space_mgr: &SpaceManager, entity_id: u32) -> Option<&'static str> {
+    space_mgr.get_entity(entity_id).and_then(|e| e.session_kind)
+}
+
 /// An interact reached the end of the dispatcher with nothing to do.
 ///
 /// The names (Rule 6) and the target's `tag` are looked up only when the
@@ -130,6 +137,7 @@ pub fn interact_no_effect(
             account_name = id.account_name,
             player_id = id.player_id,
             player_name = id.player_name,
+            cimmeria.session_kind = session_kind_of(space_mgr, entity_id),
             target_entity_id,
             target_entity_name = target.entity_name,
             template_id = target.template_id,
@@ -163,6 +171,7 @@ pub fn item_use_no_chain(space_mgr: &SpaceManager, entity_id: u32, item_id: i32)
             reason = "no_chain_matched",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            cimmeria.session_kind = session_kind_of(space_mgr, entity_id),
             item_id,
             item_name = cimmeria_names::book().item(item_id),
             count,
@@ -196,6 +205,7 @@ pub fn console_rejected(space_mgr: &SpaceManager, entity_id: u32, command: &str,
             reason = reject,
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            cimmeria.session_kind = session_kind_of(space_mgr, entity_id),
             command,
             count,
             window_secs = CONSOLE_REJECT_WINDOW.as_secs(),
@@ -231,6 +241,8 @@ pub fn escort_tick(
             npc_name = space_mgr.entity_label(npc_id),
             target_id,
             target_name = space_mgr.entity_label(target_id),
+            // The followed player's session kind (TG-NET-17).
+            cimmeria.session_kind = session_kind_of(space_mgr, target_id),
             dist,
             max_d,
             count,
