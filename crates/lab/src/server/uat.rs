@@ -69,12 +69,21 @@ pub struct UatRunArgs {
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
+    /// After the last row, `lab_logout` then `lab_disconnect`, checked on the
+    /// server log, as row `_session_end` (TG-PIPE-08). Default true; never
+    /// with plan_only.
+    #[serde(default = "end_session_default")]
+    pub end_session: bool,
     /// Your lab lease (lab_lease_acquire), to run under it; each step renews
     /// it. Omit it and the run takes a lease of its own (owner
     /// `lab_uat_run`), refused while someone else holds the lab, and
     /// releases it when the run ends.
     #[serde(default)]
     pub lease_id: Option<String>,
+}
+
+fn end_session_default() -> bool {
+    true
 }
 
 /// Args for `lab_uat_report`.
@@ -424,6 +433,7 @@ impl LabServer {
             instance: Some(self.supervisor.label().to_string()),
             fixtures: a.fixtures,
             fingerprint: a.fingerprint,
+            end_session: a.end_session && !a.plan_only,
         };
         let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
@@ -603,6 +613,14 @@ impl LabServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// TG-PIPE-08: a run ends its session unless the caller says not to.
+    #[test]
+    fn uat_run_ends_the_session_by_default() {
+        let args = |v| serde_json::from_value::<UatRunArgs>(v).unwrap().end_session;
+        assert!(args(json!({})));
+        assert!(!args(json!({ "end_session": false })));
+    }
 
     #[test]
     fn the_self_instance_check_ignores_case() {

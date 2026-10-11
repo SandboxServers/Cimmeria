@@ -490,6 +490,7 @@ async fn a_finished_play_queues_its_patch_events_and_an_unstarted_one_does_not()
             &plan,
             binaries.path(),
             &CancellationToken::new(),
+            None,
             std::future::ready(outcome),
         )
         .await

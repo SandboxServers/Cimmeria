@@ -125,6 +125,7 @@ mod x86 {
 
     use super::*;
     use crate::hooks::name_throttle::Decision;
+    use crate::hooks::seams::phase::{self, Phase};
     use crate::hooks::sinks::emit::emit;
     use crate::hooks::sinks::mem::process_reader;
     use crate::hooks::sinks::throttle::SinkThrottle;
@@ -144,6 +145,7 @@ mod x86 {
         if streaming.is_null() {
             return None;
         }
+        phase::set(Phase::LevelStreaming);
         Some(Step {
             visible_before: is_visible(&process_reader, streaming as usize)?,
             started: Instant::now(),

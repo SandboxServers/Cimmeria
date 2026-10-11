@@ -391,6 +391,38 @@ disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
 `cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
 for those.
 
+**The launcher's half of the session** (`game_telemetry/session_loop/`). With a
+session minted, the launcher also uploads, as the Windows launcher's runner
+does, through its own queue (`telemetry-queue.jsonl` in the state directory):
+
+- Before the helper spawns the game, every tailed file already on disk is taken
+  in at its end, so an earlier session's lines never go again. A file created
+  later is read from its first line. An older file that only now matches (a log
+  rotated by rename) starts at its end, and a renamed tracked file keeps its
+  offset. A tick reads at most 1 MiB of each file and carries on next tick.
+- On the server's flush cadence it sends each new complete line of
+  `Binaries/SGWDebugLog*` (as `debug_log`) and every `.log` and `.txt` under
+  `Binaries/sessions` at any depth (as `client_log`; the files the bundle takes,
+  case ignored), with the Windows launcher's fields, then flushes.
+- One session at a time: the queue is shared, so a new Play waits for the
+  previous session's bundle and last flush before it queues anything (at most
+  35 seconds, after which the previous session is stopped and its unsent
+  events go with the new one). Without the wait, the old session's last flush
+  would send the new session's first events under the old session id.
+- The supervisor's exit observation ends it: a `session_meta` event of kind
+  `game_exited` with `exit_code`, `pid` (the game's), `host_pid` (the helper's)
+  and `early`, then the end-of-session bundle, then a last flush bounded to 30
+  seconds. It runs after the launch result is recorded and never delays it. An
+  ending the supervisor did not observe sends no `game_exited`.
+- Closing the launcher while the game runs ends the session there. What was
+  queued stays on disk and goes with the next session's first flush. Offsets
+  are not saved: a restarted launcher does not resume the session, and the next
+  Play's baseline means nothing is sent twice.
+- Opting out while the game runs stops it at once: the transport checks the
+  choice before and after each queue write and send, nothing more is sent, no
+  bundle goes, and no queue is left behind. A chunk already being posted at
+  that moment completes.
+
 A plan that does not carry the DLL serializes without a `client_telemetry` key,
 so plans written before this field existed keep their digests.
 
@@ -410,8 +442,13 @@ Windows launcher's own events, built by the same core code:
 and the client-patches DLL's `client.patches.boot` and `client.patches.counts`
 for each Play. The boot event's `injection` follows the policy Play used, so
 an adopted copy whose reviewed choice is patches off reports `opted_out`.
-None of these have a session of their own: they go to the disk queue and ship
-with the next session's first flush.
+When Play's own telemetry session runs, the client-patches events go through
+it: the boot verdict on the first tick after the DLL logs it, the counts at
+most once a minute while they move, and whatever is still owed (the verdict
+if none was logged, the final counts) after the last tail tick and before
+`game_exited`. Otherwise, and always for the install result, they go to the
+disk queue and ship with the next session's first flush. Either way they are
+reported only for a game that ran.
 
 **Not covered:**
 
@@ -426,8 +463,8 @@ with the next session's first flush.
   is reported as unavailable, as before.
 - The session token is minted once per Play and is not refreshed. A session
   that outlives the token stops uploading.
-- The launcher does not tail `SGWDebugLog.log` or upload bundles, as the
-  Windows launcher's own telemetry runner does.
+- Lines the game writes after the launcher closed are not streamed, and that
+  session's bundle is not sent (see below).
 
 ## Headless integration checks
 

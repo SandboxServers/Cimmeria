@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->853<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,301<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,550<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,756<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->855<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,276<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,312<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,570<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,758<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -540,6 +540,7 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
 | [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
 | [ability-client-hook-anchors.md](reverse-engineering/findings/ability-client-hook-anchors.md) | — | Ability client hook anchors (AB-C0): outgoing-RPC seam with named arguments, Mercury sequence assignment, the press path and every silent drop branch (the `AbilitySet` not-found branch at `0x00d2afcf`), inbound payload seams, effect/cooldown/stat/state apply points, hook-gate bytes | HIGH (VERIFIED/INFERRED/UNRESOLVED marked per seam) |
+| [method-116-on-teleport.md](reverse-engineering/findings/method-116-on-teleport.md) | — | `onPlayerTeleport` (116) has no client handler for any class (TG-MOV-09): why `SGWGmPlayer` drops it, what the forced-position path does instead, options for D-TG17 | HIGH (static; streaming-wait mechanism UNRESOLVED) |
 | [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md) | — | Native combat debug (AB-N0): `onSendCombatDebug`/`onSendEventDebug` are server-internal, not client methods; the four `gmDebug*` NetOut events, slash keywords, non-GM drop, the chat-line path for debug text | HIGH |
 | [right-click-routing-on-corpse.md](reverse-engineering/findings/right-click-routing-on-corpse.md) | — | Right-click routing on corpses: why some corpses fail to open the loot window | HIGH |
 | [cooked-data-pipeline.md](reverse-engineering/findings/cooked-data-pipeline.md) | — | Cooked-data pipeline binary findings: PAK read path, resource delivery | HIGH |

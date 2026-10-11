@@ -118,7 +118,9 @@ function Invoke-LabCalibrateCommand {
     # -Prepare: walk the client to where the row starts.
     if ($prepareRows.Count) {
         & $say "prepare: $($prepareRows -join ', ') on $lane"
-        $pa = @{ sections = @($Section); rows = $prepareRows; instance = $lane }
+        # end_session = false: the calibration starts where these rows leave the
+        # client, so the run must not log out and disconnect (TG-PIPE-08).
+        $pa = @{ sections = @($Section); rows = $prepareRows; instance = $lane; end_session = $false }
         if ($specs) { $pa.specs_dir = $specs }
         try {
             $s = New-McpSession $url $token

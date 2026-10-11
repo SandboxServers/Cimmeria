@@ -19,6 +19,7 @@
 //! - [`calibrate`] — calibration candidates, hover scoring and pose-line spec
 //!   edits (lab-spec-vocab SV-09), and the sweep that drives them on a live
 //!   client for `lab_uat_calibrate` (SV-10).
+//! - [`record`] — lab record: raw recordings and the draft-spec transform.
 //!
 //! How to run it: `docs/guides/automated-uat.md`.
 
@@ -33,6 +34,7 @@ pub mod invoke;
 pub mod lab_commands;
 pub mod ledger;
 pub mod progress;
+pub mod record;
 pub mod runner;
 pub mod seed_tags;
 pub mod snapshot;

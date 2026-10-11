@@ -5,6 +5,7 @@
 use super::*;
 use crate::cell::space_manager::SpaceManager;
 use crate::test_support::LogCapture;
+use tracing::Level;
 
 /// A Castle space with a player at id 1 (`player_id` 100) and an NPC at id 2.
 fn castle_with_player_and_npc() -> SpaceManager {
@@ -72,5 +73,49 @@ async fn player_kill_target_killed_row_names_the_attacker_player_id() {
     assert!(
         killed.has_field("target_id", "2"),
         "target_killed must name the target as target_id: {killed:#?}"
+    );
+}
+
+/// TG-SOC-15: an unnamed player (no `character_name`) that dies sends no
+/// `ContactListPresenceEvent`, so no `entity:{eid}` placeholder reaches the
+/// contact lists. The skip logs one DEBUG `contacts.presence_skipped` row
+/// naming the player by identity. Restoring the placeholder send makes the
+/// event appear here and fails the test.
+#[tokio::test]
+async fn unnamed_player_death_skips_presence_and_logs_the_row() {
+    let capture = LogCapture::install();
+    let mut mgr = castle_with_player_and_npc();
+    let (tx, mut rx) = mpsc::channel(64);
+
+    resolve_death(1, 0, None, false, false, &tx, &mut mgr).await;
+
+    let mut msgs = Vec::new();
+    while let Ok(m) = rx.try_recv() {
+        msgs.push(m);
+    }
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::ContactListPresenceEvent { .. })),
+        "an unnamed player's death must send no ContactListPresenceEvent: {msgs:?}"
+    );
+
+    let all = capture.all();
+    let skipped = all
+        .iter()
+        .find(|c| c.has_field("event", "contacts.presence_skipped"))
+        .expect("the skipped presence must log a contacts.presence_skipped row");
+    assert_eq!(skipped.level, Level::DEBUG, "{skipped:#?}");
+    assert!(
+        skipped.has_field("reason", "no_character_name"),
+        "the skip must carry reason = no_character_name: {skipped:#?}"
+    );
+    assert!(
+        skipped.has_field("entity_id", "1"),
+        "the skip must name the player's entity_id: {skipped:#?}"
+    );
+    assert!(
+        skipped.has_field("player_id", "100"),
+        "the skip must carry the player's player_id: {skipped:#?}"
     );
 }

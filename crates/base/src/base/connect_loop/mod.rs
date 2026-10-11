@@ -28,6 +28,7 @@ use super::resources::ResourceCache;
 use super::ConnectedClientState;
 
 mod account_arms;
+mod bundle_drop;
 mod cell_arms;
 mod cell_send;
 mod encrypted;
