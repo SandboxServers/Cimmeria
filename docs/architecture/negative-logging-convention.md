@@ -553,7 +553,7 @@ made, in `cell-interactions` `bank/tests.rs`
 
 ## Grant and loot hand-back seams
 
-Target `inventory`. A loot pickup takes the item off the corpse before the
+Target `cimmeria_base_methods::base::world_entry::methods::inventory::ammo` (module path). A loot pickup takes the item off the corpse before the
 base writes it to the looter's inventory, so every way the grant can fail
 is a seam: the item goes back on the corpse, or its loss is logged.
 
@@ -579,6 +579,27 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 `LogCapture` guard: each needs a connection or channel to fail at one
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
+
+## Silent loot drops (TG-ITM-09)
+
+Target `interactions`. The cell takes a loot item off a corpse before it hands
+it to the base, so three losses on the cell side were silent: the corpse gone
+after its item left the list, a cash grant that never reached the base, and an
+`onLootDisplay` send that failed. Each is a WARN now. `loot_item_lost` is
+defensive: the corpse was found a moment earlier with no await between, so it
+is not expected to fire. A container that vanished before its roll is a
+`loot.container_refused` INFO row with `reason = container_gone` (the content
+executor, `open_loot`). That row is also defensive and logs only; it is
+unreachable on a press because the range check before it already refuses a
+missing container with the out-of-range feedback line.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_item_lost` | WARN | `entity_missing` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `item_id` + `item_name`, `quantity` |
+| `loot_cash_lost` | WARN | `base_channel_closed` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `amount` |
+| `loot_display_lost` | WARN | `base_channel_closed` | `entity_id`, `entity_name`, `npc_entity_id`, `npc_entity_name` |
+
+The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
 
 ## Native consumable seams (decision 28)
 
@@ -674,6 +695,41 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 - The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. They now log `item_type_id` (a number; `item_id` is for instances) with `item_name`, and keep `design_id`, as a number, for the cell/base loot join.
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
+
+## Character delete cascade (TG-SOC-02)
+
+Target `org`, `character.delete_cascade`, emitted by `delete_character` after its commit: WARN when held cash, mail attachments, listings or mail cash were lost (the player can feel it), else DEBUG. Fields: `player_id`, `player_name`, `account_id`, `account_name`, and the counts `auctions_destroyed` (listings the character sold), `held_cash_destroyed` and `bids_held_lost` (open bids the character stood on), `mail_destroyed`, `mail_attachments_destroyed` (escrowed items), `cod_mails` (unpaid COD mail), `mail_cash_destroyed` (cash on non-COD mail) and `bid_history_rows` (`sgw_auction_bid` rows the character placed). Restorable detail, so an operator can restore by hand: `auction_sequence_ids`, `auction_item_ids`, `held_bid_auction_ids` with `held_bid_amounts` (same order), `mail_ids` and `mail_attachment_item_ids`, each comma-joined and capped at 50 entries, with `truncated = true` when any list was capped. The other cascades (inventory, missions, abilities, cooldowns, contacts, expertise) are not itemised. The counts are read inside the delete transaction, at READ COMMITTED before the DELETE, before the cascade and the Black Market trigger run; they can differ slightly from what the cascade removes when mail expires concurrently. A failed count is logged at WARN as `character.delete_cascade_count_failed` and the delete goes on without the counts. This row is the only record of what a delete destroys (D-TG9). Guard: `base-session` `organization/persistence/tests/delete_cascade.rs`, `live_db_character_delete_logs_cascade_counts`, `live_db_character_delete_with_nothing_logs_debug`, `live_db_character_delete_seller_with_bidder_refunds_bidder`.
+
+## Outbox replays (TG-ITM-03)
+
+`crates/base-session/src/base/outbox/mod.rs` holds base→cell events that must not be lost (for example `ItemUsed`) until the cell takes them. Every WARN on the outbox (dispatch failed, poison row, mark-delivered failed, send failed) carries `outbox_id`, `entity_id` and `event_type`, so a stuck row names whose event it is. A successful replay from `drain_undelivered` writes INFO `event = "outbox_replayed"` with `outbox_id`, `entity_id`, `event_type` and `attempts`. A replayed `ItemUsed` re-runs its chain, so this row is how a possible double consume shows up. The entity id is a runtime id with no stored name (`nt:id-only`). Guard: `outbox::tests::live_db::live_db_outbox_replay_logs_event_type`.
+
+## Bandolier ammo writeback seam (TG-ITM-06)
+
+Target `cimmeria_base_methods::base::world_entry::methods::inventory::ammo` (module path). The bandolier ammo writeback (`update_bandolier_ammo`, `base-methods` `inventory/ammo.rs`) is a write guard keyed on the slot's instance id. A zero-row result means the slot is empty or its item was swapped, so the ammo the cell computed for that slot is dropped. That is a loss the player can feel, so it is a WARN, not a DEBUG.
+
+| `event` | Level | `reason` | Fields |
+|---|---|---|---|
+| `ammo_writeback_stale` | WARN | `slot_empty_or_instance_swapped` | `player_id`, `player_name`, `rows_affected` (0), `expected` (1), `slot_id`, `expected_instance_id`, `current_ammo`, `cur_ammo_type` |
+
+Guard: `live_db_update_no_op_when_slot_holds_different_type` in `inventory/ammo.rs` pins the level, the event, both counts and the reason.
+
+## Player-load degraded fallbacks (TG-DB-07)
+
+Every fallback in the player-load loaders logs `event = "player_load_degraded"` with a stable `reason` and `error` (`error = %e`) at `error!`, except `no_db_pool` (offline mode, expected), which logs at `debug!`. The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
+
+| `reason` | Site | Fields |
+|---|---|---|
+| `player_row_missing` | `player_load/core/player_data.rs`, no `sgw_player` row for the account and player | `player_id`, `player_name`, `account_id`, `account_name` |
+| `no_db_pool` | `player_data.rs`, no database pool configured (`debug!`) | the above |
+| `player_query_failed` | `player_data.rs`, the base row read | the above, plus `error` |
+| `equipment_visuals_query_failed` | `player_data.rs`, the equipment-slot visuals | the above, plus `error` |
+| `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
+| `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
+| `bandolier_query_failed` | `player_load/meta.rs`, `query_bandolier_items` | `player_id`, `player_name`, `error` |
+| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
+
+Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
 ### Shutdown unsaved-state report (TG-DB-01)
 

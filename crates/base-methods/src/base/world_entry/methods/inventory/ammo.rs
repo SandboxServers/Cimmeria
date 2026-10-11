@@ -44,9 +44,15 @@ pub async fn update_bandolier_ammo(
     .await?;
 
     if res.rows_affected() == 0 {
-        tracing::debug!(
+        // WARN: a dropped writeback loses the ammo the cell computed for this
+        // slot, which the player can feel (the PR #520 data-loss shape).
+        tracing::warn!(
+            event = "ammo_writeback_stale",
             player_id = character_id,
             player_name = known_names::player_name(character_id),
+            rows_affected = 0,
+            expected = 1,
+            reason = "slot_empty_or_instance_swapped",
             slot_id,              // nt:id-only slot index, unnamed
             expected_instance_id, // nt:id-only weapon instance in slot_id
             current_ammo,
@@ -68,7 +74,7 @@ mod tests {
     //! empty-slot no-op path.
 
     use super::*;
-    use crate::test_support::require_db_or_skip;
+    use crate::test_support::{require_db_or_skip, LogCapture};
 
     /// Sentinel base for bandolier-ammo tests, stepped past prior
     /// live-DB sentinels reserved elsewhere in the crate.
@@ -232,6 +238,7 @@ mod tests {
             .execute(&pool)
             .await;
         insert_bandolier_item(&pool, player_id, swapped_type, 2, 5, 1).await;
+        let capture = LogCapture::install();
 
         update_bandolier_ammo(&pool, player_id, 2, stale_instance, 999, 99)
             .await
@@ -241,6 +248,23 @@ mod tests {
             ammo_state_of(&pool, player_id, 2).await,
             Some((swapped_type, 5, 1)),
             "TOCTOU mismatch must leave ammo and cur_ammo_type untouched",
+        );
+
+        // The dropped writeback is a WARN with both counts, so a lost-ammo
+        // report can be traced. Reverting to DEBUG fails the level check.
+        let line = capture
+            .find_message(tracing::Level::WARN, "no rows updated")
+            .expect("stale writeback must log at WARN");
+        assert!(line.has_field("event", "ammo_writeback_stale"), "{line:#?}");
+        assert!(line.has_field("rows_affected", "0"), "{line:#?}");
+        assert!(line.has_field("expected", "1"), "{line:#?}");
+        assert!(
+            line.has_field("reason", "slot_empty_or_instance_swapped"),
+            "{line:#?}"
+        );
+        assert!(
+            line.has_field("player_id", &player_id.to_string()),
+            "{line:#?}"
         );
 
         cleanup(&pool, account_id, player_id).await;

@@ -60,6 +60,9 @@
 //!   lab packet tap, so a call's bytes match what the real client sent.
 //! - [`tap_fixture`] — the Praxis start packet-tap capture the builders are
 //!   tested against.
+//! - [`semantic`] — typed, strict decoders for server-to-client entity
+//!   methods, written from the dispatch table rather than the server's own
+//!   serializers, so the fixture checks are independent.
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
@@ -74,6 +77,7 @@ pub mod calls;
 pub mod error;
 pub mod handshake;
 pub mod login_probe;
+pub mod semantic;
 pub mod session;
 pub mod session_trace;
 pub mod sparbot;

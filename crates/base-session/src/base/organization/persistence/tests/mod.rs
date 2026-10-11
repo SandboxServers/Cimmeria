@@ -22,6 +22,7 @@ macro_rules! as_sys {
 mod audit;
 mod authority;
 mod constraints;
+mod delete_cascade;
 mod mutations;
 mod telemetry;
 mod trigger;

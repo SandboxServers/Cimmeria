@@ -10,7 +10,7 @@
 use tokio::sync::mpsc;
 
 use super::super::*;
-use crate::test_support::require_db_or_skip;
+use crate::test_support::{require_db_or_skip, LogCapture};
 
 /// Sentinel base for entity_ids used by live-DB outbox tests. Each test
 /// picks a unique offset so concurrent runs don't collide on the same
@@ -467,6 +467,47 @@ async fn poison_row_does_not_block_following_rows_in_same_batch() {
         vec![(7, 3)],
         "exactly one ItemUsed for the good payload — poison row must not produce a message"
     );
+
+    cleanup(&pool, entity_id).await;
+}
+
+#[tokio::test]
+async fn live_db_outbox_replay_logs_event_type() {
+    // A replayed row leaves an INFO row naming its event type and entity:
+    // a replayed `ItemUsed` re-runs its chain, so a possible double consume
+    // must be visible in the log. Without the row the replay leaves no trace.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 9;
+    cleanup(&pool, entity_id).await;
+    purge_undelivered_backlog(&pool).await;
+
+    let payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
+        type_id: 19,
+        target_id: 0,
+    };
+    enqueue(&pool, entity_id, &payload).await.unwrap();
+
+    let (tx, _rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(64);
+    let capture = LogCapture::install();
+    drain_undelivered(&pool, &tx).await.unwrap();
+
+    let replayed = capture
+        .find_message(tracing::Level::INFO, "replayed undelivered row")
+        .unwrap_or_else(|| panic!("no outbox_replayed row: {:#?}", capture.all()));
+    assert!(
+        replayed.has_field("event", "outbox_replayed"),
+        "{replayed:#?}"
+    );
+    assert!(
+        replayed.has_field("event_type", "item_used"),
+        "{replayed:#?}"
+    );
+    assert!(
+        replayed.has_field("entity_id", &entity_id.to_string()),
+        "{replayed:#?}"
+    );
+    assert!(replayed.has_field("attempts", "0"), "{replayed:#?}");
 
     cleanup(&pool, entity_id).await;
 }
