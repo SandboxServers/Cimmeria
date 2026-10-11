@@ -662,6 +662,10 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Character delete cascade (TG-SOC-02)
+
+Target `org`, `character.delete_cascade`, emitted by `delete_character` after its commit: WARN when held cash or mail attachments were lost (the player can feel it), else DEBUG. Fields: `player_id`, `player_name`, `account_id`, `account_name`, and the counts `auctions_destroyed` (listings the character sold), `held_cash_destroyed` and `bids_held_lost` (open bids the character stood on), `mail_destroyed`, `mail_attachments_destroyed` (escrowed items), `cod_mails` (unpaid COD mail). The counts are read inside the delete transaction, before the cascade and the Black Market trigger run. This row is the only record of what a delete destroys (D-TG9). Guard: `base-session` `organization/persistence/tests/delete_cascade.rs`, `live_db_character_delete_logs_cascade_counts`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
