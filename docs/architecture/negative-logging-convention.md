@@ -584,9 +584,13 @@ unit-tested (`persist::tests`).
 Target `interactions`. The cell takes a loot item off a corpse before it hands
 it to the base, so three losses on the cell side were silent: the corpse gone
 after its item left the list, a cash grant that never reached the base, and an
-`onLootDisplay` send that failed. Each is a WARN now. A container that vanished
-before its roll is a `loot.container_refused` INFO row with `reason =
-`container_gone` (the content executor, `open_loot`).
+`onLootDisplay` send that failed. Each is a WARN now. `loot_item_lost` is
+defensive: the corpse was found a moment earlier with no await between, so it
+is not expected to fire. A container that vanished before its roll is a
+`loot.container_refused` INFO row with `reason = container_gone` (the content
+executor, `open_loot`). That row is also defensive and logs only; it is
+unreachable on a press because the range check before it already refuses a
+missing container with the out-of-range feedback line.
 
 | `event` (also the message prefix) | Level | `reason` | Fields |
 |---|---|---|---|
