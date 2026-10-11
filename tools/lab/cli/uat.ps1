@@ -22,7 +22,9 @@
     Output: one progress line per run, then a summary (pass rate per row and
     per lane, failures grouped by their first failing row, known issues
     tagged). -Json prints only one compact JSON object (on failure too:
-    {"ok":false,"exit":N,"error":...}), for agents. Every batch writes
+    {"ok":false,"exit":N,"error":...}), for agents. -ProgressToStderr writes
+    the progress lines to stderr, under -Json too (lab golden uses it to show
+    a long batch live). Every batch writes
     plan.json first, then batch.jsonl (one line per run, as each finishes),
     then batch.json and summary.md, under uat-runs\batch-<time>\ next to the
     runs' own evidence folders. Ctrl+C starts no new run and still writes the summary of the
@@ -59,6 +61,10 @@ param(
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
+    # Used by lab golden: runs capture what a golden fingerprint needs.
+    [switch]$Fingerprint,
+    # Used by lab golden: progress lines go to stderr, even under -Json.
+    [switch]$ProgressToStderr,
     [switch]$Json,
     [switch]$Quiet
 )
@@ -88,8 +94,8 @@ function Invoke-LabUat {
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
     if ($shape) { return Stop-Uat 2 $shape }
     $requested = @(ConvertTo-UatRowIds $Rows)
-    $quiet = $Quiet -or $Json
-    $say = { param($m) if (-not $quiet) { Write-Host $m } }
+    $progress = Get-UatProgressMode $Json $Quiet $ProgressToStderr
+    $say = { param($m) Write-UatProgress $progress $m }
 
     # Pre-flight: daemon, instances, leases, foreign clients.
     $token = Get-LabToken
@@ -119,6 +125,7 @@ function Invoke-LabUat {
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
     if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
+    if ($Fingerprint) { $baseArgs.fingerprint = $true }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.
@@ -170,7 +177,7 @@ function Invoke-LabUat {
             . $using:common
             . $using:lib
             $lane = $_
-            $quietL = $using:quiet
+            $progressL = $using:progress
             $n = $using:RunsPerLease
             $outcomes = @()
             try {
@@ -204,11 +211,9 @@ function Invoke-LabUat {
                     $rec.Braked = $brake -or $stuck
                     $rec.Ended = (Get-Date).ToUniversalTime().ToString('o')
                     Add-UatRecord $using:jsonl $rec
-                    if (-not $quietL) {
-                        Write-Host (Format-UatProgressLine $rec $n)
-                        if ($stuck) { Write-Host "[$($lane.Instance)] its lease did not clear after the timeout; lane stopped" }
-                        elseif ($brake) { Write-Host "[$($lane.Instance)] stopped after $($using:MaxConsecutiveFailures) failed runs in a row" }
-                    }
+                    Write-UatProgress $progressL (Format-UatProgressLine $rec $n)
+                    if ($stuck) { Write-UatProgress $progressL "[$($lane.Instance)] its lease did not clear after the timeout; lane stopped" }
+                    elseif ($brake) { Write-UatProgress $progressL "[$($lane.Instance)] stopped after $($using:MaxConsecutiveFailures) failed runs in a row" }
                     if ($rec.Braked) { break }
                 }
             } catch {

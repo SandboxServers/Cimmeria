@@ -395,3 +395,20 @@ function Format-UatProgressLine($Record, [int]$Total) {
     }
     return ("[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds'))
 }
+
+# Where lab uat's progress lines go: 'stderr' with -ProgressToStderr (even
+# under -Json, so lab golden can show a long batch live and still read one
+# JSON line from stdout), 'none' under -Quiet or -Json, else 'host'.
+function Get-UatProgressMode([bool]$Json, [bool]$Quiet, [bool]$ProgressToStderr) {
+    if ($ProgressToStderr) { return 'stderr' }
+    if ($Json -or $Quiet) { return 'none' }
+    return 'host'
+}
+
+# One progress line to where Get-UatProgressMode says.
+function Write-UatProgress([string]$Mode, [string]$Message) {
+    switch ($Mode) {
+        'stderr' { [Console]::Error.WriteLine($Message) }
+        'host' { Write-Host $Message }
+    }
+}
