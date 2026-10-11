@@ -26,7 +26,19 @@ pub async fn query_player_load_data(
 ) -> PlayerLoadData {
     let pool = match db_pool {
         Some(p) => p,
-        None => return default_player_load_data(),
+        None => {
+            // Offline mode: expected, so debug rather than error.
+            tracing::debug!(
+                event = "player_load_degraded",
+                reason = "no_db_pool",
+                player_id,
+                player_name = known_names::player_name(player_id),
+                account_id,
+                account_name = known_names::account_name(account_id),
+                "Player load skipped: no database pool; loading default data"
+            );
+            return default_player_load_data();
+        }
     };
 
     #[derive(sqlx::FromRow)]
@@ -121,8 +133,8 @@ pub async fn query_player_load_data(
                         account_id,
                         account_name = known_names::account_name(account_id),
                         error = %e,
-                        "Equipment visuals query failed; equipment-slot visuals (helmet/armor/etc.) \
-                         are skipped at mapLoaded, base body components still apply"
+                        "Equipment visuals query failed when loading player data; equipment-slot \
+                         visuals (helmet/armor/etc.) are skipped, base body components still apply"
                     );
                     Vec::new()
                 }
@@ -235,7 +247,7 @@ pub async fn query_player_load_data(
                 player_name = known_names::player_name(player_id),
                 account_id,
                 account_name = known_names::account_name(account_id),
-                "Player row not found at mapLoaded; loading default data, a re-accept will overwrite saved progress"
+                "Player row not found when loading player data; loading default data"
             );
             default_player_load_data()
         }
@@ -248,7 +260,7 @@ pub async fn query_player_load_data(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 error = %e,
-                "Player load query failed at mapLoaded; loading default data, a re-accept will overwrite saved progress"
+                "Player load query failed when loading player data; loading default data"
             );
             default_player_load_data()
         }
@@ -259,8 +271,11 @@ pub async fn query_player_load_data(
 mod degraded_tests {
     //! Negative-log guard (TESTING.md type 12) for the player-load fallbacks
     //! that run without a live row: with the database unreachable, each one
-    //! logs `event = player_load_degraded` at ERROR with its `reason`. The
-    //! visual and row-missing reasons need a live row and are not covered here.
+    //! logs `event = player_load_degraded` at ERROR with its `reason`.
+    //! `player_row_missing` needs a live DB and is covered there by
+    //! `live_db_query_player_load_data_account_mismatch_returns_default`
+    //! (core/mod.rs). The equipment and weapon visual reasons need fault
+    //! injection and are untested.
 
     use super::*;
     use crate::base::world_entry::methods::missions::query_saved_missions;

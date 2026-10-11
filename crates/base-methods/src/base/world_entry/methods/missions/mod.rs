@@ -80,7 +80,7 @@ pub async fn query_saved_missions(
                 player_id,
                 player_name = known_names::player_name(player_id),
                 error = %e,
-                "Saved missions query failed at mapLoaded; the player loads with no missions, a re-accept will overwrite saved progress"
+                "Saved missions query failed when loading player data; the player loads with no missions, a re-accept will overwrite saved progress"
             );
             vec![]
         }

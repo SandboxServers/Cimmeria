@@ -57,7 +57,7 @@ pub(super) async fn query_inventory_items(
                 player_id,
                 player_name = cimmeria_entity::known_names::player_name(player_id),
                 error = %e,
-                "Inventory query failed at mapLoaded; the player loads with no items, a re-accept will overwrite saved items"
+                "Inventory query failed when loading player data; the player sees an empty bag"
             );
             vec![]
         }

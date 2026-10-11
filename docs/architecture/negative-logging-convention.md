@@ -664,18 +664,20 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 
 ## Player-load degraded fallbacks (TG-DB-07)
 
-Every fallback in the mapLoaded loaders logs `event = "player_load_degraded"` at `error!`, with a stable `reason` and `error` (`error = %e`). The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
+Every fallback in the player-load loaders logs `event = "player_load_degraded"` with a stable `reason` and `error` (`error = %e`) at `error!`, except `no_db_pool` (offline mode, expected), which logs at `debug!`. The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
 
 | `reason` | Site | Fields |
 |---|---|---|
 | `player_row_missing` | `player_load/core/player_data.rs`, no `sgw_player` row for the account and player | `player_id`, `player_name`, `account_id`, `account_name` |
+| `no_db_pool` | `player_data.rs`, no database pool configured (`debug!`) | the above |
 | `player_query_failed` | `player_data.rs`, the base row read | the above, plus `error` |
 | `equipment_visuals_query_failed` | `player_data.rs`, the equipment-slot visuals | the above, plus `error` |
 | `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
 | `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
+| `bandolier_query_failed` | `player_load/meta.rs`, `query_bandolier_items` | `player_id`, `player_name`, `error` |
 | `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
 
-The `missions_query_failed` and `player_query_failed` rows say a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. The visual and row-missing reasons need a live row and have no guard here.
+Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
 ## Related
 
