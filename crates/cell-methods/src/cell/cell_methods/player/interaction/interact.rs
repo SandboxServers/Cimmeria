@@ -16,6 +16,19 @@ pub(super) async fn handle_interact(
     engine: &ChainEngine,
 ) {
     if args.len() < 4 {
+        let id = space_mgr.player_identity(entity_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            args_len = args.len(),
+            need = 4,
+            reason = "malformed_args",
+            "interact: truncated args, dropping"
+        );
         return;
     }
     if !space_mgr
@@ -163,14 +176,17 @@ pub(super) async fn handle_interact(
         crate::cell::interactions::try_open_trainer(entity_id, target_entity_u32, tx, space_mgr)
             .await;
 
+    // Resolved at most once per click: the tag/template dispatch and the
+    // dialog fall-through below both fire chains, and a player with no
+    // `player_id` must log `player_id_missing` once, not once per site.
+    let mut resolved_player_id: Option<i32> = None;
+
     if !handled {
         if let Some(target) = space_mgr.get_entity(target_entity_u32) {
             let tag = target.tag.clone();
             let template_name = target.npc_name.clone();
-            let player_id = space_mgr
-                .get_entity(entity_id)
-                .and_then(|e| e.player_id)
-                .unwrap_or(0);
+            let player_id = *resolved_player_id
+                .get_or_insert_with(|| chain_player_id(entity_id, space_mgr, "interact"));
 
             if let Some(ref tag) = tag {
                 handled = crate::cell::content::fire_interact_tag(
@@ -208,10 +224,8 @@ pub(super) async fn handle_interact(
                 .await;
 
         if let Some(did) = dialog_id {
-            let player_id = space_mgr
-                .get_entity(entity_id)
-                .and_then(|e| e.player_id)
-                .unwrap_or(0);
+            let player_id = *resolved_player_id
+                .get_or_insert_with(|| chain_player_id(entity_id, space_mgr, "interact"));
             crate::cell::content::fire_dialog_open(
                 entity_id, player_id, did, engine, tx, space_mgr,
             )
@@ -223,6 +237,30 @@ pub(super) async fn handle_interact(
         // a player or a non-hostile faction — neither of which should trigger
         // combat from an interact request.
     }
+}
+
+/// The `player_id` a chain context carries for the player at `entity_id`.
+/// A player with no `player_id` yet still runs the chain with `0`, as
+/// before, but the gap is logged first (`reason = "player_id_missing"`).
+/// Shared with `dialogButtonChoice`, which fires chains the same way; `call`
+/// names the handler so the row says which caller hit the gap.
+pub(super) fn chain_player_id(entity_id: u32, space_mgr: &SpaceManager, call: &'static str) -> i32 {
+    if let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        return player_id;
+    }
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        call,
+        reason = "player_id_missing",
+        "player has no player_id, chain fires with player_id 0"
+    );
+    0
 }
 
 #[cfg(test)]

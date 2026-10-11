@@ -961,6 +961,18 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Post-commit move drops (TG-ITM-05)
+
+Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A move is committed before these side effects run, so a failure here cannot undo it. The cell notification used to be `let _ = cell_tx.send(...)`, and the equipment appearance lookup used `.ok().flatten()`, so both losses were silent. The notification drop is now a WARN. A failed appearance lookup is an ERROR, and the refresh is skipped. The DEBUG move row also carries the containers, the swapped occupant and `source_deleted`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_id`, `item_name`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
+| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_type_id`, `item_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
+| DEBUG | `Inventory move persisted`, plus `source_container_id`, `source_container_name`, `target_container_id`, `target_container_name`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
+
+Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
+
 ## Deferred-AoI cap drops (TG-AOI-01)
 
 A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
@@ -1078,6 +1090,12 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 | WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
+## Malformed interact and dialog calls (TG-MIS-10)
+
+`interact` (`interaction/interact.rs`) and `dialogButtonChoice` (`interaction/dialog.rs`) used to drop a short payload or fall back to `player_id` 0 with no trace. Both now log. A payload shorter than its layout (`interact` needs 4 bytes, `dialogButtonChoice` needs 8) is dropped with no chain fired and writes one WARN: `reason = "malformed_args"`, `args_len`, `need`, Rule 5 identity, `entity_id` with `entity_name`. Message: `interact: truncated args, dropping` or `dialogButtonChoice: truncated args, dropping`. When a chain is about to fire for a player with no `player_id` yet, `chain_player_id` in `interact.rs` (shared by both handlers) logs a WARN first: `reason = "player_id_missing"`, `call` (the handler name: `interact` or `dialogButtonChoice`), Rule 5 identity, `entity_id` with `entity_name`. One click logs at most one such row, even when both the tag/template dispatch and the dialog fall-through would fire a chain. The chain still fires with `player_id` 0; the row only records the gap. Message: `player has no player_id, chain fires with player_id 0`.
+
+Guard: `short_dialog_choice_payload_logs_malformed_args` in `interaction/dialog_choice_gate_tests.rs` sends a 4-byte `dialogButtonChoice` and asserts the WARN with `reason = "malformed_args"` and that the method is still consumed. `short_interact_payload_logs_malformed_args` (same file) sends a 3-byte `interact` and asserts `args_len=3` and `need=4`. `interact_without_player_id_logs_one_missing_row_per_click` (same file) asserts exactly one `player_id_missing` row with `call=interact`.
 
 ## Unsent onEndAidWait on respawn (TG-CMB-10)
 

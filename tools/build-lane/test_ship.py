@@ -41,7 +41,9 @@ def opt(name, default=None):
     return args[args.index(name) + 1] if name in args else default
 prs = st["prs"]
 out, code = "", 0
-if args[:2] == ["pr", "list"]:
+if args[:2] == ["pr", "list"] and opt("--head") is None:
+    out = json.dumps(st.get("open_prs", []))   # every open PR, for the stacked-PR scan
+elif args[:2] == ["pr", "list"]:
     head, state = opt("--head"), opt("--state", "open").upper()
     found = [p for p in prs.values() if p["headRefName"] == head and (state == "ALL" or p["state"] == state)]
     if "-q" in args:
@@ -51,9 +53,21 @@ if args[:2] == ["pr", "list"]:
 elif args[:2] == ["pr", "create"]:
     n = str(100 + len(prs))
     prs[n] = {"number": int(n), "url": f"https://example.invalid/pull/{n}", "state": "OPEN",
-              "headRefName": opt("--head"), "title": opt("--title"), "body": open(opt("--body-file")).read(),
-              "isDraft": "--draft" in args, "files": [], "mergeStateStatus": "CLEAN"}
+              "headRefName": opt("--head"), "baseRefName": opt("--base"), "title": opt("--title"),
+              "body": open(opt("--body-file")).read(), "isDraft": "--draft" in args, "files": [],
+              "mergeStateStatus": "CLEAN"}
     out = prs[n]["url"]
+elif args[:2] == ["pr", "edit"]:
+    prs.setdefault(args[2], {})["baseRefName"] = opt("--base")
+elif args[:2] == ["issue", "list"]:
+    out = json.dumps(st.get("red", []))
+elif args[:2] == ["api", "graphql"]:
+    seq = st["queue"]   # frames of {state, isInMergeQueue, autoMergeRequest, mergedAt}
+    frame = seq.pop(0) if len(seq) > 1 else seq[0]
+    if frame == "ERR":
+        out, code = "HTTP 502", 1
+    else:
+        out = json.dumps({"data": {"repository": {"pullRequest": frame}}})
 elif args[:2] == ["pr", "view"]:
     p = prs[args[2]]
     seq = p.get("mergeStateSeq")
@@ -67,6 +81,8 @@ elif args[:2] == ["pr", "checks"]:
         out, code = "no checks reported", 1
     else:
         out = json.dumps([{"name": k, "bucket": v} for k, v in frame.items()])
+elif args[:2] == ["pr", "merge"] and "--squash" not in args:
+    pass   # merge queue: the graphql frames say when it lands
 elif args[:2] == ["pr", "merge"]:
     prs[args[2]].update(state="MERGED", mergedAt="2026-10-03T12:00:00Z")
 else:
@@ -133,7 +149,7 @@ class ShipCase(unittest.TestCase):
             "SHIP_TRAILERS": TRAILERS, "SHIP_PR_FOOTER": FOOTER, "SHIP_POLL_SECONDS": "0",
             "PATH": str(bindir) + os.pathsep + os.environ["PATH"], "PSQL": psql.as_posix(),
             "CIMMERIA_TARGET_ROOT": self.troot.as_posix(), "LANE_ROOT": (self.tmp / "lane").as_posix(),
-            "RM_WORKTREE_MIN_IDLE": "0"})
+            "RM_WORKTREE_MIN_IDLE": "0", "SHIP_MERGE_QUEUE": "0"})
         self.env.start()
         self.patches = [mock.patch.object(ship, "GH", [sys.executable, str(bindir / "fake_gh.py")])]
         for p in self.patches:
@@ -420,6 +436,176 @@ class MergeTests(MergeCase):
         self.assertEqual(self.merge()[0], 2)
         self.add_pr(["src.rs"], isDraft=True)
         self.assertEqual(self.merge()[0], 2)
+
+
+QUEUED = {"state": "OPEN", "isInMergeQueue": True, "autoMergeRequest": None}
+LANDED = {"state": "MERGED", "isInMergeQueue": False, "autoMergeRequest": None, "mergedAt": "2026-10-11T20:00:00Z"}
+DROPPED = {"state": "OPEN", "isInMergeQueue": False, "autoMergeRequest": None}
+
+
+class MergeQueueTests(MergeCase):
+    def setUp(self):
+        super().setUp()
+        q = mock.patch.dict(os.environ, {"SHIP_MERGE_QUEUE": "1"})
+        q.start()
+        self.addCleanup(q.stop)
+
+    def queue(self, *frames):
+        st = self.gh_state()
+        st["queue"] = list(frames)
+        self.save_state(st)
+
+    def test_code_pr_is_queued_and_waited_for(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        self.queue(QUEUED, QUEUED, LANDED)
+        code, f, line = self.merge()
+        self.assertEqual((code, f["status"], f["merged_at"]), (0, "merged", "2026-10-11T20:00:00Z"), line)
+        self.assertEqual(self.calls(["pr", "merge"]), [["pr", "merge", "7"]], "the queue picks the method")
+
+    def test_docs_pr_goes_through_the_queue_too(self):
+        # --admin would merge around the queue and make it rebuild every group in flight.
+        self.add_pr(["docs/a.md"])
+        self.queue(LANDED)
+        code, f, line = self.merge()
+        self.assertEqual((code, f["kind"]), (0, "docs"), line)
+        self.assertEqual(self.calls(["pr", "merge"]), [["pr", "merge", "7"]])
+
+    def test_a_dropped_pr_that_does_not_conflict_is_queue_failed(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        self.queue(QUEUED, DROPPED)
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"]), (1, "queue-failed"))
+        self.assertEqual(len(self.calls(["pr", "merge"])), 1)
+
+    def test_a_dropped_pr_that_now_conflicts_is_rebased_and_queued_again(self):
+        # merge states: before queueing, after the checks, DIRTY once dropped (the drop
+        # check, then the second round's rebase check), CLEAN after the rebase.
+        self.add_pr(["src.rs"], checks=[GREEN], mergeStateSeq=["CLEAN", "CLEAN", "DIRTY", "DIRTY", "CLEAN"])
+        self.queue(QUEUED, DROPPED, DROPPED, DROPPED, LANDED)
+        record = self.tmp / "rebase.args"
+        fake = self.tmp / "fake_rebase.py"
+        fake.write_text(f"import sys\nopen({str(record)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
+        with mock.patch.object(ship, "REBASE", [sys.executable, str(fake)]):
+            code, f, line = self.merge()
+        self.assertEqual((code, f["status"]), (0, "merged"), line)
+        self.assertEqual(len(self.calls(["pr", "merge"])), 2)
+        self.assertIn("--push 7", record.read_text())
+
+    def test_queue_timeout_is_status_queued(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        self.queue(QUEUED)
+        code, f, _ = self.merge("--queue-timeout", "0s")
+        self.assertEqual((code, f["status"]), (3, "queued"))
+
+    def test_no_wait_queues_and_returns(self):
+        self.add_pr(["src.rs"], checks=[None])
+        code, f, line = self.merge("--no-wait")
+        self.assertEqual((code, f["status"]), (0, "queued"), line)
+        self.assertEqual(self.calls(["api", "graphql"]), [])
+
+    def test_no_wait_with_retire_is_refused_before_queueing(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        code, f, _ = self.merge("--no-wait", "--retire", "feat")
+        self.assertEqual((code, f["status"]), (2, "refused"))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+    def test_a_failed_status_lookup_is_not_a_verdict(self):
+        # Three failed lookups would otherwise read as "left the queue".
+        self.add_pr(["src.rs"], checks=[GREEN])
+        self.queue(QUEUED, "ERR", "ERR", "ERR", LANDED)
+        code, f, line = self.merge()
+        self.assertEqual((code, f["status"]), (0, "merged"), line)
+
+    def test_unreadable_branch_rules_stop_instead_of_guessing(self):
+        # Guessing "no queue" would merge a docs PR with --admin, around the queue.
+        self.add_pr(["docs/a.md"])
+        with mock.patch.dict(os.environ, {"SHIP_MERGE_QUEUE": ""}):
+            code, f, _ = self.merge()
+        self.assertEqual((code, f["status"]), (4, "error"))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+
+class MainRedTests(MergeCase):
+    RED = [{"number": 9, "title": "main is red: container build + smoke", "url": "https://example.invalid/issues/9"}]
+
+    def setUp(self):
+        super().setUp()
+        st = self.gh_state()
+        st["red"] = self.RED
+        self.save_state(st)
+
+    def test_code_pr_is_refused_while_main_is_red(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"], f["issues"]), (1, "main-red", "9"))
+        self.assertIn("container build + smoke", f["reason"])
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+    def test_the_fixing_pr_passes_with_allow_red_main(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        code, _, line = self.merge("--allow-red-main")
+        self.assertEqual(code, 0, line)
+
+    def test_docs_pr_is_not_held_by_a_red_main(self):
+        self.add_pr(["docs/a.md"])
+        self.assertEqual(self.merge()[0], 0)
+
+
+class StackedTests(MergeCase):
+    def test_a_stacked_pr_is_refused_until_its_base_merges(self):
+        self.add_pr(["src.rs"], checks=[GREEN], baseRefName="parent")
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"]), (2, "refused"))
+        self.assertIn("stacked", f["reason"])
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+    def test_children_of_the_merged_branch_are_restacked(self):
+        self.assert_restacks(state="OPEN")
+
+    def test_a_rerun_after_the_queue_merged_it_restacks_too(self):
+        # After a queue timeout or --no-wait, the PR merges outside ship's wait.
+        self.assert_restacks(state="MERGED", mergedAt="2026-10-11T20:00:00Z")
+
+    def assert_restacks(self, **pr_state):
+        self.edit()
+        sh("git", "add", "-A", cwd=self.wt)
+        sh("git", "commit", "-q", "-m", "parent work", cwd=self.wt)
+        sh("git", "push", "-q", "origin", "feat", cwd=self.wt)
+        parent = sh("git", "rev-parse", "HEAD", cwd=self.wt)
+        sh("git", "checkout", "-q", "-b", "kid", cwd=self.wt)
+        (self.wt / "kid.rs").write_text("fn k() {}\n")
+        sh("git", "add", "-A", cwd=self.wt)
+        sh("git", "commit", "-q", "-m", "kid work", cwd=self.wt)
+        sh("git", "push", "-q", "origin", "kid", cwd=self.wt)
+        kid = sh("git", "rev-parse", "HEAD", cwd=self.wt)
+        sh("git", "checkout", "-q", "feat", cwd=self.wt)
+        self.add_pr(["src.rs"], checks=[GREEN], headRefOid=parent, **pr_state)
+        st = self.gh_state()
+        st["open_prs"] = [
+            {"number": 8, "headRefName": "kid", "headRefOid": kid, "baseRefName": "feat"},
+            # Open on main but not built on feat: left alone.
+            {"number": 11, "headRefName": "main", "headRefOid": sh("git", "rev-parse", "origin/main", cwd=self.wt), "baseRefName": "main"},
+        ]
+        self.save_state(st)
+        record = self.tmp / "rebase.args"
+        fake = self.tmp / "fake_rebase.py"
+        fake.write_text(f"import sys\nopen({str(record)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n")
+        with mock.patch.object(ship, "REBASE", [sys.executable, str(fake)]):
+            code, f, line = self.merge()
+        self.assertEqual((code, f.get("restacked")), (0, "8"), line)
+        self.assertTrue(record.read_text().strip().endswith(f"--upstream {parent} --push 8"))
+        self.assertEqual(self.calls(["pr", "edit"]), [["pr", "edit", "8", "--base", "main"]])
+
+    def test_pr_base_opens_a_stacked_pr(self):
+        self.edit()
+        self.assertEqual(self.ship("pr", "-C", str(self.wt), "-m", "parent")[0], 0)
+        sh("git", "checkout", "-q", "-b", "kid", cwd=self.wt)
+        self.edit("kid.rs")
+        code, f, line = self.ship("pr", "-C", str(self.wt), "-m", "kid", "--base", "feat")
+        self.assertEqual((code, f["base"]), (0, "feat"), line)
+        create = self.calls(["pr", "create"])[-1]
+        self.assertEqual(create[create.index("--base") + 1], "feat")
+        self.assertEqual(sh("git", "rev-list", "--count", "origin/feat..HEAD", cwd=self.wt), "1")
 
 
 @unittest.skipUnless(retire_shell(), "no shell for rm-worktree")

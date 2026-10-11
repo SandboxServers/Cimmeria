@@ -3,7 +3,7 @@
 
 A PR that bumps a hand-maintained count in a shared doc conflicts with every other
 open PR that bumps the same count. So those numbers are generated: this script
-owns them, a workflow reruns it on `main` after every merge, and PRs leave them
+owns them, a workflow reruns it on `main` every six hours, and PRs leave them
 alone.
 
 It only rewrites text between explicit markers:

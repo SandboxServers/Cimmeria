@@ -254,6 +254,10 @@ fn drain_into(consumer: &Consumer, batch: &mut Vec<ClientNativeEvent>, max_batch
     }
 }
 
+/// Header carrying this process's id on every chunk. One lab session
+/// spans several launches, so the server needs the pid to tell them apart.
+const CLIENT_PID_HEADER: &str = "X-Cimmeria-Client-Pid";
+
 /// Serialize as NDJSON, gzip, POST with the Bearer token.
 ///
 /// Returns `Err` on any network or non-2xx HTTP response. The
@@ -276,6 +280,7 @@ fn post_batch(
         .set("Authorization", &format!("Bearer {}", cfg.token))
         .set("Content-Type", "application/x-ndjson")
         .set("Content-Encoding", "gzip")
+        .set(CLIENT_PID_HEADER, &std::process::id().to_string())
         .send_bytes(&body)
         .map_err(|e| PostError::Network(e.to_string()))?;
     let status = resp.status();
@@ -373,6 +378,15 @@ mod tests {
         assert!(lines[1].contains(r#""target":"client.b""#));
     }
 
+    /// Value of the first request header named `name`, or `""` if absent.
+    fn header_value(headers: &[tiny_http::Header], name: &'static str) -> String {
+        headers
+            .iter()
+            .find(|h| h.field.equiv(name))
+            .map(|h| h.value.as_str().to_string())
+            .unwrap_or_default()
+    }
+
     /// **Uploader end-to-end with a real local HTTP server.**
     /// Spawns `tiny_http` on a 127.0.0.1 port, runs the uploader
     /// against it, pushes 3 events, asserts the server saw all 3
@@ -388,24 +402,21 @@ mod tests {
             addr.port()
         );
 
-        let received: Arc<std::sync::Mutex<Vec<(String, String)>>> = Arc::new(Default::default());
+        let received: Arc<std::sync::Mutex<Vec<(String, String, String)>>> =
+            Arc::new(Default::default());
         let received_clone = received.clone();
         let server_handle = thread::spawn(move || {
             // Handle one request then drop the server.
             if let Ok(mut req) = server.recv() {
-                let auth = req
-                    .headers()
-                    .iter()
-                    .find(|h| h.field.equiv("Authorization"))
-                    .map(|h| h.value.as_str().to_string())
-                    .unwrap_or_default();
+                let auth = header_value(req.headers(), "Authorization");
+                let pid = header_value(req.headers(), "X-Cimmeria-Client-Pid");
                 let mut body = Vec::new();
                 req.as_reader().read_to_end(&mut body).unwrap();
                 // Decode gzip → NDJSON
                 let mut dec = flate2::read::GzDecoder::new(&body[..]);
                 let mut decoded = String::new();
                 dec.read_to_string(&mut decoded).unwrap();
-                received_clone.lock().unwrap().push((auth, decoded));
+                received_clone.lock().unwrap().push((auth, pid, decoded));
                 req.respond(tiny_http::Response::from_string("ok")).ok();
             }
         });
@@ -432,8 +443,11 @@ mod tests {
         assert_eq!(exit, UploaderExit::Disconnected);
         let got = received.lock().unwrap();
         assert_eq!(got.len(), 1, "exactly one POST with all 3 events batched");
-        let (auth, body) = &got[0];
+        let (auth, pid, body) = &got[0];
         assert_eq!(auth, "Bearer test-token-XYZ");
+        // The header is this test process's id, so a revert of the
+        // header (or a wrong value) fails here.
+        assert_eq!(pid, &std::process::id().to_string());
         let lines: Vec<&str> = body.lines().collect();
         assert_eq!(lines.len(), 3);
         for (i, line) in lines.iter().enumerate() {

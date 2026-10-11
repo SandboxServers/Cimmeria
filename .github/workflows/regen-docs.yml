@@ -1,11 +1,15 @@
 name: regen-docs
 
 # Regenerates the generated doc blocks (test counts, RE findings count, gap-analysis
-# totals, crate graph; see tools/docs-gen/README.md) after every merge to main and
+# totals, crate graph; see tools/docs-gen/README.md) on main four times a day and
 # commits the result. PRs never bump those numbers, so they never conflict on them.
+#
+# Not after every merge: it pushed straight to main ~380 times in the two weeks to
+# 2026-10-11, and with main behind a merge queue each such push makes GitHub rebuild
+# every merge group in flight. A dispatch (`gh workflow run regen-docs.yml`) runs it now.
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '41 */6 * * *'
   workflow_dispatch:
 
 # One run at a time, and never cancel a run that may be mid-push. A queued run checks
@@ -14,20 +18,22 @@ concurrency:
   group: regen-docs
   cancel-in-progress: false
 
+# The push goes over SSH with the REGEN_DOCS_DEPLOY_KEY write deploy key, not the
+# job token: deploy keys are the one bypass actor of main's merge-queue ruleset (a
+# repository ruleset cannot name the GitHub Actions app), and this is the only deploy
+# key. See docs/agents/pre-pr-checks.md § Merge queue.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   regen:
     name: regenerate generated doc blocks
     runs-on: ubuntu-latest
-    # Pushes made with GITHUB_TOKEN don't trigger workflows, so the bot's commit can't
-    # start another run. This guard also covers a push made with any other bot token.
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.author.name != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v7
         with:
           ref: main
+          ssh-key: ${{ secrets.REGEN_DOCS_DEPLOY_KEY }}
       # crate_graph.py reads `cargo metadata --no-deps`.
       - uses: ./.github/actions/rust-toolchain
       - name: regen.py unit tests
