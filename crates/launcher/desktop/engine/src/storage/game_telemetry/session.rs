@@ -10,8 +10,10 @@ use std::time::Duration;
 /// A mint reply is a few hundred bytes; anything near this is not one.
 const MAX_REPLY: usize = 16 * 1024;
 /// Play waits this long for a session at most, then starts without telemetry.
-const CONNECT: Duration = Duration::from_secs(4);
-const TOTAL: Duration = Duration::from_secs(8);
+/// The transport's refresh uses the same bound.
+pub(super) const CONNECT: Duration = Duration::from_secs(4);
+pub(super) const TOTAL: Duration = Duration::from_secs(8);
+pub(super) const LAUNCHER_VERSION: &str = concat!("desktop-", env!("CARGO_PKG_VERSION"));
 
 /// Capture switches a developer may set in the launcher's own environment.
 /// The game's environment is built from scratch, so they are copied on purpose,
@@ -52,12 +54,14 @@ impl Session {
     }
 }
 
-/// The session route sits under `/api` on the login server's own host and port.
+/// The session routes sit under `/api` on the login server's own host and
+/// port; core's refresh appends `/auth/dev-session/refresh` to this.
+pub(super) fn auth_base_url(login_server: &str) -> String {
+    format!("{}/api", login_server.trim_end_matches('/'))
+}
+
 fn mint_url(login_server: &str) -> String {
-    format!(
-        "{}/api/auth/dev-session",
-        login_server.trim_end_matches('/')
-    )
+    format!("{}/auth/dev-session", auth_base_url(login_server))
 }
 
 /// Ask the installation's first login server for a session. Every failure is an
@@ -76,7 +80,7 @@ pub async fn start(
     policy.check(&url).map_err(|_| Outcome::EndpointRefused)?;
     let branch = option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("desktop");
     let git_sha = option_env!("CIMMERIA_BUILD_GIT_SHA").unwrap_or("unknown");
-    let launcher_version = concat!("desktop-", env!("CARGO_PKG_VERSION"));
+    let launcher_version = LAUNCHER_VERSION;
     let body = serde_json::to_vec(&MintRequest {
         install_id: identity.install_id.to_string(),
         machine_id: &identity.machine_id,
