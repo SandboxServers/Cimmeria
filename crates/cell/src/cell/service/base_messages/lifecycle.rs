@@ -486,6 +486,7 @@ async fn persist_last_position(
 mod tests {
     use super::*;
     use crate::test_support::LogCapture;
+    use cimmeria_entity::cell_entity::BandolierItem;
 
     /// A manager with one instanced world, `Castle_CellBlock`.
     fn make_mgr() -> SpaceManager {
@@ -562,6 +563,55 @@ mod tests {
                 .find_event(tracing::Level::WARN, "entity not found", "entity_missing")
                 .is_some(),
             "a missing entity must WARN"
+        );
+    }
+
+    /// Revert-verifier: switching `flush_bandolier_ammo_for_entity` back to the
+    /// plain `flush_dirty_bandolier_ammo` drops the `ammo_lost_at_logout`
+    /// reason and fails this test. The player's one dirty slot holds an item
+    /// and the receiver is gone, so the logout flush must fail the send.
+    #[tokio::test]
+    async fn logout_flush_with_closed_tx_warns_ammo_lost() {
+        let capture = LogCapture::install();
+        let mut mgr = make_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(200);
+            e.account_id = Some(700);
+            e.bandolier_items.insert(
+                1,
+                BandolierItem {
+                    instance_id: 1011,
+                    item_id: 11,
+                    clip_size: 12,
+                    default_ammo_type: 7,
+                    current_ammo: 12,
+                    cur_ammo_type: 7,
+                },
+            );
+            e.bandolier_ammo_dirty.insert(1);
+        }
+
+        flush_bandolier_ammo_for_entity(1, &tx, &mut mgr).await;
+
+        assert!(
+            capture
+                .find_event(
+                    tracing::Level::WARN,
+                    "leaving slot dirty",
+                    "ammo_lost_at_logout"
+                )
+                .is_some(),
+            "a logout flush whose send fails must WARN ammo_lost_at_logout: {:#?}",
+            capture.all()
+        );
+        assert!(
+            mgr.get_entity(1).unwrap().bandolier_ammo_dirty.contains(&1),
+            "the failed slot stays dirty"
         );
     }
 }

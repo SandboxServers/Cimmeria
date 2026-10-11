@@ -703,8 +703,8 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 | Level | Row | When |
 |---|---|---|
 | WARN | `event = "bandolier_slot_dropped"`, `reason = "no_item"`, identity, `slot_id` | A dirty slot has no item any more (swapped out first): its ammo marker is dropped, nothing is persisted |
-| WARN | `BandolierAmmoUpdate send failed; leaving slot dirty for retry`, `error`, item pair, `current_ammo`; on the logout path also `reason = "ammo_lost_at_logout"` | The base channel refused the update. Elsewhere the next flush retries; at logout the entity is destroyed next, so that ammo is lost |
-| DEBUG | target `bandolier`, `event = "bandolier_flush"`, identity, `sent`, `dropped`, `unsent`, `at_logout` | Once per flush with a non-empty dirty set |
+| WARN | `BandolierAmmoUpdate send failed; leaving slot dirty for retry`, `error`, item pair, `current_ammo`, `account_id`, `account_name`, `unsent`; on the logout path also `reason = "ammo_lost_at_logout"` | The base channel refused the update. Elsewhere the next flush retries; at logout the entity is destroyed next, so that ammo is lost |
+| DEBUG | module-path target, `event = "bandolier_flush"`, identity, `sent`, `dropped`, `unsent`, `at_logout` | Once per flush with a non-empty dirty set |
 
 Guards: `active_slot_flush_tests::bandolier_flush_reports_dropped_and_unsent` and `bandolier_flush_at_logout_warns_ammo_lost`.
 

@@ -108,6 +108,9 @@ async fn flush_dirty_bandolier_ammo_inner(
                     item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
                     current_ammo,
                     cur_ammo_type,
+                    account_id = entity.account_id,
+                    account_name = entity.log_names.account_name,
+                    unsent = total - sent - dropped,
                     reason,
                     error = %e,
                     "BandolierAmmoUpdate send failed; leaving slot dirty for retry"
@@ -121,7 +124,6 @@ async fn flush_dirty_bandolier_ammo_inner(
     // Every dirty slot is either sent, dropped (no item) or left unsent after
     // the break; the three counts add up to the snapshot size.
     tracing::debug!(
-        target: "bandolier",
         event = "bandolier_flush",
         player_id,
         player_name = entity.log_names.player_name,

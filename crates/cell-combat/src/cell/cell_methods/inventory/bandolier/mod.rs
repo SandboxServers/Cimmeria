@@ -16,8 +16,8 @@ mod weapon_abilities;
 
 // Re-export discipline: keep the import paths the inventory `mod.rs`
 // re-exports and `dispatch.rs` reaches for identical after the split.
-pub use active_slot::{flush_dirty_bandolier_ammo, flush_dirty_bandolier_ammo_at_logout};
 pub use active_slot::handle_request_active_slot_change;
+pub use active_slot::{flush_dirty_bandolier_ammo, flush_dirty_bandolier_ammo_at_logout};
 pub use ammo_change::handle_request_ammo_change;
 pub use switch_return::{begin_switch_return, handle_switch_returned, SwitchReturn};
 pub use weapon_abilities::{on_active_weapon_changed, weapon_ability_set};

@@ -83,8 +83,7 @@ async fn bandolier_flush_at_logout_warns_ammo_lost() {
         let capture = LogCapture::install();
         let mut mgr = dirty_mgr(&[1]);
         let tx = closed_tx();
-        flush_dirty_bandolier_ammo_at_logout(mgr.get_entity_mut(1).unwrap(), PLAYER_ID, &tx)
-            .await;
+        flush_dirty_bandolier_ammo_at_logout(mgr.get_entity_mut(1).unwrap(), PLAYER_ID, &tx).await;
         assert!(capture
             .find_event(Level::WARN, "leaving slot dirty", "ammo_lost_at_logout")
             .is_some());
