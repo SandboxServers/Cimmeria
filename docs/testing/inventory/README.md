@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,632 |
-| Files with tests | 2,220 |
-| Gated in CI (every crate but CI's exclude list) | 10,306 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,737 |
-| Inventory threshold (5% of the tests) | 632 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,691 |
+| Files with tests | 2,227 |
+| Gated in CI (every crate but CI's exclude list) | 10,324 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,746 |
+| Inventory threshold (5% of the tests) | 635 |
 
 <!-- /gen:tests-totals -->
 
@@ -86,8 +86,8 @@ with no file in this directory yet.
 |---|---|---:|---:|---:|---|---|
 | `crates/cell-combat` | `cimmeria-cell-combat` | 908 | 163 | 48 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 902 | 143 | 507 | yes | none |
+| `crates/lab` | `cimmeria-lab` | 808 | 133 | 0 | no | none |
 | `crates/launcher` | `sgw-launcher` | 773 | 146 | 0 | no | [launcher.md](launcher.md) |
-| `crates/lab` | `cimmeria-lab` | 767 | 128 | 0 | no | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 668 | 128 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 647 | 141 | 455 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 646 | 150 | 27 | yes | none |
@@ -125,12 +125,12 @@ with no file in this directory yet.
 | `crates/test-support` | `cimmeria-test-support` | 52 | 7 | 8 | yes | none |
 | `crates/game` | `cimmeria-game` | 48 | 12 | 0 | yes | [game.md](game.md) |
 | `crates/patch-wire` | `cimmeria-patch-wire` | 47 | 6 | 0 | yes | none |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 46 | 9 | 9 | yes | none |
 | `crates/common` | `cimmeria-common` | 44 | 5 | 0 | yes | [common.md](common.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 41 | 4 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 37 | 5 | 0 | yes | none |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
-| `crates/lab-mcp` | `cimmeria-lab-mcp` | 28 | 7 | 0 | yes | none |
 | `crates/wire-log` | `cimmeria-wire-log` | 28 | 6 | 0 | yes | none |
 | `crates/names` | `cimmeria-names` | 24 | 6 | 4 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
