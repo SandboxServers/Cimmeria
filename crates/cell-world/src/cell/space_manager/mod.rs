@@ -440,6 +440,10 @@ pub struct SpaceManager {
     /// The refusal metric counts every press. Released in `destroy_entity`
     /// and `destroy_space`.
     pub ability_refusal_log: LogThrottle,
+    /// Gates the `combat_state_stale` WARN (TG-CMB-02), keyed by the player's
+    /// entity and the reason. Released in `destroy_entity`. See
+    /// `cimmeria_cell_combat::cell::combat::vitals`.
+    pub combat_state_stale_log: LogThrottle,
     /// NPC AI detector state (NA02): stuck / stale / floating / leash-loop
     /// trackers and their WARN throttles. Reporting only; released in
     /// `destroy_entity` and `destroy_space`. See
@@ -632,6 +636,7 @@ impl SpaceManager {
             zero_health_npc_log: LogThrottle::default(),
             ability_sequence_log: LogThrottle::default(),
             ability_refusal_log: LogThrottle::default(),
+            combat_state_stale_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
             occluder_files: HashMap::new(),
