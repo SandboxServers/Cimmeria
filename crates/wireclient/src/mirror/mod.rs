@@ -136,6 +136,15 @@ impl EntityMirror {
                         self.set_own_id(id);
                     }
                     self.introduce(id, class_id);
+                } else {
+                    // Every later method for this entity will be an orphan,
+                    // so say why at the source.
+                    tracing::warn!(
+                        msg_id = msg.msg_id,
+                        offset = msg.offset,
+                        len = msg.payload.len(),
+                        "mirror: introduction too short for an id and class; not mirrored"
+                    );
                 }
                 Ok(None)
             }
@@ -152,10 +161,17 @@ impl EntityMirror {
                 Ok(None)
             }
             0x10 => {
-                if let (Some(id), Some(position)) = (msg.entity_id, position_of(&msg.payload)) {
-                    if let Some(entity) = self.entities.get_mut(&id) {
-                        entity.position = Some(position);
+                match (msg.entity_id, position_of(&msg.payload)) {
+                    (Some(id), Some(position)) => {
+                        if let Some(entity) = self.entities.get_mut(&id) {
+                            entity.position = Some(position);
+                        }
                     }
+                    _ => tracing::warn!(
+                        offset = msg.offset,
+                        len = msg.payload.len(),
+                        "mirror: avatar update too short for a position; ignored"
+                    ),
                 }
                 Ok(None)
             }
@@ -213,11 +229,17 @@ impl EntityMirror {
     /// Decode an entity method against the table its target uses, then apply
     /// the event. A target the mirror does not hold is kept as an orphan.
     fn apply_method(&mut self, msg: &S2CMessage) -> Result<Option<S2CEvent>, MirrorError> {
-        let class_id = msg
-            .entity_id
-            .and_then(|id| self.entities.get(&id))
-            .map(|entity| entity.class_id);
-        let (Some(target), Some(class_id)) = (msg.entity_id, class_id) else {
+        let Some(target) = msg.entity_id else {
+            // Not an orphan: there is no target to be missing.
+            tracing::warn!(
+                msg_id = msg.msg_id,
+                offset = msg.offset,
+                len = msg.payload.len(),
+                "mirror: entity method too short for an entity id; ignored"
+            );
+            return Ok(None);
+        };
+        let Some(class_id) = self.entities.get(&target).map(|entity| entity.class_id) else {
             self.orphans.push(msg.clone());
             return Ok(None);
         };

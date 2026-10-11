@@ -143,15 +143,15 @@ fn an_npc_extended_method_uses_idbase_62() {
     );
 
     // 0xBD, sub-slot 0, to the NPC: index 62 under its idbase, not 61.
+    // No NPC decoder sits at 61 or above yet, so `apply` returns Ok(None)
+    // under either idbase and the index is checked through the helper `apply`
+    // uses. The Player half is guarded through `apply` by
+    // `inventory_tracks_update_and_remove_on_the_own_entity` (0xBD sub 11).
+    // TODO(WC-11): assert through `apply` once an NPC decoder at 61+ exists.
     let npc_payload = [200u32.to_le_bytes().as_slice(), &[0u8, 0, 0, 0]].concat();
     let npc_msg = &messages(word_msg(0xBD, &npc_payload))[0];
     assert_eq!(method_index(npc_msg, TargetKind::Npc), Some(62));
     assert_eq!(npc_msg.method_index_for(IDBASE_NPC_DEFAULT), Some(62));
-    assert_ne!(
-        npc_msg.method_index,
-        Some(62),
-        "parser keeps the player idbase"
-    );
     assert_eq!(mirror.apply(npc_msg), Ok(None));
 
     // The same bytes to the own player resolve to 61.
@@ -271,7 +271,16 @@ fn a_bad_known_method_is_an_error() {
     let mut mirror = EntityMirror::new();
     feed(&mut mirror, create_base_player(7, 2));
 
-    // onDialogDisplay (105) is 17 bytes; send 16.
+    let err = mirror
+        .apply(&short_dialog_to(7))
+        .expect_err("short dialog body");
+    assert!(is_short_dialog_error(&err, 7));
+    assert!(mirror.orphans().is_empty());
+}
+
+/// `onDialogDisplay` (105) is 17 bytes of arguments; this sends 16, encoded
+/// against the player table (0xBD sub-slot 44).
+fn short_dialog_to(target: u32) -> S2CMessage {
     let mut args = Vec::new();
     for v in [7i32, 9, 0] {
         args.extend_from_slice(&v.to_le_bytes());
@@ -280,18 +289,133 @@ fn a_bad_known_method_is_an_error() {
     args.extend_from_slice(&3i32.to_le_bytes()); // mission_id
     args.pop();
     assert_eq!(args.len(), 16);
-
     let mut body = Vec::new();
-    append_entity_method(&mut body, 105, IDBASE_SGW_PLAYER, 7, &args);
-    let msg = messages(body).remove(0);
-    let err = mirror.apply(&msg).expect_err("short dialog body");
-    assert!(matches!(
+    append_entity_method(&mut body, 105, IDBASE_SGW_PLAYER, target, &args);
+    messages(body).remove(0)
+}
+
+fn is_short_dialog_error(err: &MirrorError, target: u32) -> bool {
+    matches!(
         err,
         MirrorError::Semantic {
-            entity_id: 7,
+            entity_id,
             method_index: 105,
             source: SemanticError::Short { .. },
-        }
-    ));
-    assert!(mirror.orphans().is_empty());
+        } if *entity_id == target
+    )
+}
+
+/// `onUpdateItem` (72) with one item, encoded against the player table.
+fn update_item_to(target: u32, item_id: i32) -> S2CMessage {
+    let mut args = 1u32.to_le_bytes().to_vec();
+    args.extend(inv_item_bytes(item_id, 0));
+    let mut body = Vec::new();
+    append_entity_method(&mut body, 72, IDBASE_SGW_PLAYER, target, &args);
+    messages(body).remove(0)
+}
+
+/// `CREATE_ENTITY` alone, with no avatar update after it: an entity the
+/// client holds but has no position for.
+fn create_entity_only(id: u32, class: u8) -> Vec<u8> {
+    let mut payload = id.to_le_bytes().to_vec();
+    payload.extend_from_slice(&[0xFF, class, 0, 0]);
+    word_msg(0x09, &payload)
+}
+
+#[test]
+fn a_player_class_entity_that_is_not_us_decodes_with_the_player_table() {
+    let mut mirror = EntityMirror::new();
+    feed(&mut mirror, create_base_player(7, 2));
+    // Another player in GM class (3) and a mob (4), both seen through AoI.
+    feed(
+        &mut mirror,
+        compose_create_entity_base_body(30, 3, [0.0; 3], [0.0; 3]),
+    );
+    feed(
+        &mut mirror,
+        compose_create_entity_base_body(40, 4, [0.0; 3], [0.0; 3]),
+    );
+
+    // The class-3 entity reads 0xBD sub 11 as onUpdateItem (72) and still
+    // leaves our inventory alone; the mob reads the same bytes as 73.
+    let event = mirror.apply(&update_item_to(30, 900)).expect("decodes");
+    assert!(matches!(event, Some(S2CEvent::UpdateItem { .. })));
+    assert_eq!(mirror.apply(&update_item_to(40, 901)), Ok(None));
+    assert!(mirror.inventory().is_empty(), "only the own entity's items");
+
+    let err = mirror
+        .apply(&short_dialog_to(30))
+        .expect_err("player-table decoder runs for class 3");
+    assert!(is_short_dialog_error(&err, 30));
+    assert_eq!(mirror.apply(&short_dialog_to(40)), Ok(None));
+}
+
+#[test]
+fn the_own_entity_uses_the_player_table_whatever_its_class() {
+    let mut mirror = EntityMirror::new();
+    // Own id with a non-player class: the own-id clause alone must pick Player.
+    feed(&mut mirror, create_base_player(8, 1));
+    let err = mirror
+        .apply(&short_dialog_to(8))
+        .expect_err("own entity decodes as Player");
+    assert!(is_short_dialog_error(&err, 8));
+}
+
+#[test]
+fn near_and_class_match_only_entities_that_fit() {
+    let mut mirror = EntityMirror::new();
+    feed(
+        &mut mirror,
+        compose_create_entity_base_body(1, 1, [10.0, 0.0, 0.0], [0.0; 3]),
+    );
+    feed(&mut mirror, create_entity_only(2, 4));
+    assert_eq!(mirror.get(2).map(|e| e.position), Some(None));
+
+    let ids =
+        |q: EntityQuery| -> Vec<u32> { mirror.find(&q).iter().map(|e| e.entity_id).collect() };
+    assert_eq!(
+        ids(EntityQuery::default().near([10.0, 0.0, 1.0], 1.0)),
+        vec![1]
+    );
+    assert!(ids(EntityQuery::default().near([10.0, 0.0, 1.5], 1.0)).is_empty());
+    // No position never matches `near`, however wide.
+    assert_eq!(ids(EntityQuery::default().near([0.0; 3], 1.0e9)), vec![1]);
+    assert_eq!(ids(EntityQuery::default().class_id(4)), vec![2]);
+    assert_eq!(ids(EntityQuery::default()), vec![1, 2]);
+}
+
+#[test]
+fn invisible_hides_and_reintroduction_clears_it() {
+    let mut mirror = EntityMirror::new();
+    feed(
+        &mut mirror,
+        compose_create_entity_base_body(5, 1, [0.0; 3], [0.0; 3]),
+    );
+    // entityInvisible is constant-length: entity id, then the alias byte
+    // (`build_entity_invisible`).
+    feed(
+        &mut mirror,
+        [&[0x0B], 5u32.to_le_bytes().as_slice(), &[0xFF]].concat(),
+    );
+    assert_eq!(mirror.get(5).map(|e| e.hidden), Some(true));
+
+    feed(
+        &mut mirror,
+        compose_create_entity_base_body(5, 1, [0.0; 3], [0.0; 3]),
+    );
+    assert_eq!(mirror.get(5).map(|e| e.hidden), Some(false));
+}
+
+#[test]
+fn query_display_names_every_set_field() {
+    let q = EntityQuery::static_mesh("CA-Props.X")
+        .name_id(7031)
+        .class_id(1)
+        .near([1.0, 2.5, -3.0], 4.0)
+        .interactable();
+    assert_eq!(
+        q.to_string(),
+        "mesh=CA-Props.X name_id=7031 class=1 near=(1,2.5,-3)±4 interactable"
+    );
+    assert_eq!(EntityQuery::default().to_string(), "any");
 }

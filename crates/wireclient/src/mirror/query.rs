@@ -65,7 +65,8 @@ impl EntityQuery {
     }
 
     /// True when `e` satisfies every field this query sets. An entity with no
-    /// position never satisfies `near`.
+    /// position never satisfies `near`. `hidden` is not consulted: the client
+    /// still holds a hidden entity, and a caller that cares reads the field.
     pub fn matches(&self, e: &MirroredEntity) -> bool {
         if let Some(mesh) = &self.static_mesh {
             if e.static_mesh.as_deref() != Some(mesh.as_str()) {
