@@ -2,7 +2,7 @@
 title: Live Research Lab — the research rulebook
 type: how-to
 audience: engineers and AI agents doing RE / live verification against a running SGW.exe + cimmeria-server
-last_updated: 2026-10-10
+last_updated: 2026-10-11
 companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
@@ -305,8 +305,10 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 `server_entity_*`, `server_witnesses`, `server_ability_state`, `server_packet_tap_*`,
-`server_log_tail`, `server_content_reload`, `server_db_query`. See ADR
-§3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+`server_log_tail`, `server_content_reload`, `server_db_query`, and
+`server_stage_fixture`, which stages a UAT row fixture for an offline lab
+fixture character ([below](#staging-a-row-fixture-server_stage_fixture)).
+See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.
@@ -336,6 +338,40 @@ Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
   "world_name": "Castle_CellBlock", "name": null, "template_id": 7001,
   "template_name": "Jaffa_Guard_T1", "current_target_id": 100, "current_target_name": "Tealc" }
 ```
+
+### Staging a row fixture (`server_stage_fixture`)
+
+`server_stage_fixture` is the endpoint's one tool that changes server state, and it writes no row itself: it puts a fixture in the server's in-memory store, and the BaseApp writes it when that character next presses Play, before world entry reads anything. `lab_uat_run` calls it for [row fixtures](automated-uat.md#row-fixtures) at character select; you rarely call it by hand. The design is in the [lab-fixtures ledger](../analysis/lab-fixtures/README.md) (D-FX1, D-FX2).
+
+The arguments are a row spec's `[row.fixture]` fields with `character` set to the character's name, its full name or the name's last word, compared ignoring case. An unknown field is refused.
+
+```json
+{ "character": "Fxpraxisdefa", "world": "Castle_CellBlock",
+  "missions": [{ "id": 622, "step": 80623 }, { "id": 1360, "state": "not_active" }],
+  "items": [{ "id": 55, "count": 0 }], "tutorials_unseen": [5882] }
+```
+
+It is lab-only by construction. The gates, in the order the tool checks them:
+
+1. The endpoint's bearer token, like every lab tool. No chat or console command reaches the store.
+2. Exactly one character matches the name.
+3. It is a **lab fixture character**: the last word of its name is `Fx` followed by letters (`Uat Fxpraxisdefa`). Any other character, a GM's main included, is refused before its account is looked at.
+4. Its account is a **GM** (`accesslevel` 2 or more).
+5. It is **offline or mid-login**: no session plays it. A session at character select of the same account does not block, so stage while logged in at character select.
+6. The fixture matches the seed: a finite position, a world in `resources.worlds`, each mission once and in the seed, an active step that belongs to its mission, a completed mission that has steps, each item design once and in the seed with a count of 0 to 10 in `main` or `mission`, tutorial ids above 0.
+
+On success it replies `{ "staged": true, "player_id", "player_name", "replaced" }`, where `player_name` is the full name and `replaced` is true when an earlier fixture for the character was still staged (the new one replaces it).
+
+A refusal is a JSON-RPC `invalid_params` error (-32602) whose message starts `stage refused:`, unlike the other `server_*` tools, which return an error result. A malformed call is refused the same way, naming the field (`stage refused: arguments: missions[0].state: unknown variant ...`). A database failure is an `internal_error` (-32603) whose message still starts `stage refused:` and says `lookup failed`. Each refusal logs one `lab fixture stage refused` event with a stable `reason`: WARN for `arguments`, `no_database`, `no_character`, `ambiguous`, `not_fixture_character`, `not_gm`, `online`, `position`, `world`, `mission`, `step`, `item` and `tutorial`, ERROR for `lookup_failed`. A stage logs INFO `lab fixture staged`, and every call is audited on `lab.tool_call` as usual.
+
+What happens to a staged fixture:
+
+- **Applied at the next Play, taken once.** Only the owning account's Play takes it: another account's `playCharacter` for the same id leaves it staged (WARN `account_mismatch`). It is applied once, so gate travel and respawn, which rerun the client-ready path, do not apply it again.
+- **Expires after 10 minutes.** A run that died before Play leaves nothing behind for long (WARN `expired` when a later Play finds it).
+- **Checked again at Play.** The session must still be a GM's, or the fixture is discarded (WARN `not_gm`). The apply logs INFO `lab fixture applied`, or ERROR `lab fixture not applied` with `reason` `precheck_refused` (nothing written) or `write_failed`. The character enters the world either way, so the runner verifies the state before the row runs.
+- **Lost on a server restart:** the store is in memory.
+
+On the colo this keeps rule 6: the tool reaches only `Fx...` characters on GM accounts, and only while they are offline.
 
 ## Driving the client with its own input
 
@@ -983,7 +1019,7 @@ first line of each.
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
-| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake |
+| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake |
 
 An unknown command exits 2. Examples:
 
@@ -1021,6 +1057,8 @@ Output:
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
 lab uat first-session -Instance p2 -Rows FS-01,FS-02,FS-P1 -Json
+lab uat first-session -Rows FS-P4 -RunsPerLease 20
+lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
 ```
 
 The `first-session` SGU rows are not calibrated yet, so name the Praxis rows as above.
