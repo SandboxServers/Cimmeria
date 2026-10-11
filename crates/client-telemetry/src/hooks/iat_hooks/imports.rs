@@ -57,6 +57,24 @@ pub(super) const IAT_RECVFROM: Import = Import {
     symbol: c"recvfrom",
 };
 
+/// `ExitProcess`: called by `UGameEngine__unknown_004910b0` (`0x004910b9`)
+/// and by the second-quit path at `0x004cc125`. TG-PIPE-03.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(super) const IAT_EXIT_PROCESS: Import = Import {
+    slot: 0x017E_F238,
+    module: "kernel32.dll",
+    symbol: c"ExitProcess",
+};
+/// The CRT's `exit` (MSVCR80): `___tmainCRTStartup` @ `0x012376e3` calls it
+/// at `0x01237832` once WinMain returns, the ordinary quit path, which never
+/// goes through the `ExitProcess` slot above. TG-PIPE-03.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(super) const IAT_CRT_EXIT: Import = Import {
+    slot: 0x017E_F9A8,
+    module: "msvcr80.dll",
+    symbol: c"exit",
+};
+
 /// One imported function: its IAT slot in `SGW.exe` and what it imports.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[derive(Debug, Clone, Copy)]

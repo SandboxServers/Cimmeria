@@ -19,7 +19,12 @@ fn iat_slots_match_manifest() {
         assert_eq!(IAT_LOAD_LIBRARY_A.slot, 0x017EF268);
         assert_eq!(IAT_GET_FOREGROUND_WINDOW.slot, 0x017EFDF8);
         assert_eq!(IAT_RECVFROM.slot, 0x017EFF60);
+        // TG-PIPE-03: the exit slots (ExitProcess, MSVCR80 exit).
+        assert_eq!(IAT_EXIT_PROCESS.slot, 0x017EF238);
+        assert_eq!(IAT_CRT_EXIT.slot, 0x017EF9A8);
         for import in [
+            IAT_EXIT_PROCESS,
+            IAT_CRT_EXIT,
             IAT_LUA_PCALL,
             IAT_LUA_CALL,
             IAT_LUA_NEWSTATE,

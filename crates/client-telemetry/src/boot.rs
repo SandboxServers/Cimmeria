@@ -333,18 +333,27 @@ fn bootstrap_phase2() {
     );
     let _ = producer.try_emit(builder);
 
-    // Step 6: spawn the uploader thread. It owns the consumer
-    // end and runs for the lifetime of the process. We
-    // intentionally don't keep the JoinHandle — Phase 7's
-    // shutdown hook will use a stop-flag and a sibling JoinHandle
-    // static when it lands.
+    // Step 6: spawn the uploader thread. It owns the consumer end and runs
+    // until the exit hooks raise the stop flag (TG-PIPE-03,
+    // `crate::shutdown`), then posts its last batch and signals done. The
+    // JoinHandle is not kept: the hooks wait on the shutdown signal, which
+    // is bounded, where a join would not be.
     let cfg = crate::uploader::UploaderConfig::from_session(&session.telemetry);
-    std::thread::Builder::new()
+    let shutdown = crate::shutdown::global();
+    shutdown.arm();
+    let spawned = std::thread::Builder::new()
         .name("cimmeria-uploader".into())
         .spawn(move || {
-            crate::uploader::run_uploader(consumer, cfg, || false);
-        })
-        .ok();
+            // Released on a normal return and on a panic alike.
+            let _done = crate::shutdown::FlushedOnDrop;
+            crate::uploader::run_uploader(consumer, cfg, || {
+                crate::shutdown::global().stop_requested()
+            });
+        });
+    if spawned.is_err() {
+        // Nothing will ever post: exit hooks must not wait for it.
+        shutdown.disarm();
+    }
 
     // Step 6.5: the fingerprint gate, then the hooks. Each hook clones
     // the producer handle (Arc-backed inside crossbeam-channel) so the

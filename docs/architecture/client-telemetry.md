@@ -118,6 +118,34 @@ This is the load-bearing engineering constraint for the entire DLL:
 
 For instrumentation purposes (read-only telemetry) the "DLL never unloads" stance is correct. The host process exits, the kernel reclaims everything, the constraint never materialises as a leak.
 
+## Process exit and the final flush
+
+TG-PIPE-03. Recovered from the QA `SGW.exe` with headless Ghidra on 2026-10-11; the evidence is addresses, not a live exit trace.
+
+| Path | Where | Reaches `ExitProcess` how |
+|---|---|---|
+| Forced quit | `UGameEngine__unknown_004910b0(force != 0)` @ `0x004910b0`, `ExitProcess(1)` at `0x004910b9` | SGW.exe's own `ExitProcess` IAT slot `0x017ef238` |
+| Second quit request | the function containing `0x004cc107`: if the quit flag `DAT_01ead7ec` is already set, `ExitProcess(0)` at `0x004cc125` | same slot `0x017ef238` |
+| Ordinary quit | `force == 0` posts `WM_QUIT` (`PostQuitMessage(0)`) and sets `DAT_01ead7ec`; the message loop ends, WinMain `FUN_004161d0` returns, and `___tmainCRTStartup` @ `0x012376e3` calls `exit(code)` at `0x01237832` | the MSVCR80 `exit` IAT slot `0x017ef9a8`; `exit` calls `ExitProcess` inside MSVCR80, **not** through SGW.exe's slot |
+| "Failed to load Login_Map. Exiting." | `FUN_00417fe0` @ `0x00417fe0` | `exit(0)`, the same MSVCR80 slot |
+| Crash | `___report_gsfailure` @ `0x01238218` is the only SGW.exe caller of `TerminateProcess` (slot `0x017ef0d4`) | not a clean exit; left to the exception sink |
+
+Hooking `ExitProcess` alone would miss the ordinary quit, which is the path nearly every player session takes. The DLL therefore swaps both IAT slots (`hooks/iat_hooks/exit.rs`, the IAT set grows from 8 hooks to 10). Each detour calls `shutdown::flush_at_exit`, which raises the stop flag the uploader polls and waits for the uploader to report its last POST done, then chains to the real function.
+
+**Why not `DLL_PROCESS_DETACH`.** Detach runs under the loader lock, after the process's other threads are gone: the uploader cannot run, and any wait would only stall the exit. The detach is still a deliberate no-op (see [Subscriber lifetime](#subscriber-lifetime--the-hard-constraint)). The hooks run on the game's own thread before `ExitProcess` takes the loader lock, so a bounded wait there cannot deadlock the loader.
+
+**The bounds.**
+
+| Limit | Value | Where |
+|---|---|---|
+| Hook wait for the uploader | 1.5 s | `shutdown::FINAL_FLUSH_BUDGET` |
+| Final POST, whole request | 1.2 s | `uploader::FINAL_POST_TIMEOUT` (ordinary POSTs keep the 10 s connect and 30 s read limits) |
+| Uploader idle wake | 100 ms | `STOP_POLL` in `uploader.rs`, so a stop is noticed inside a tick instead of after a 2 s flush interval |
+
+A server that never answers costs the exit at most 1.5 s; the batch is then lost, and the local log (`exit via <reason>: final flush TimedOut`) records it. If an exit hook runs twice (`exit` first, then a direct `ExitProcess`), the first reason is kept and the second call returns at once.
+
+**Not done by this packet.** `client.session.end {reason}` (TG-CLI-04) is emitted from `Shutdown::flush`, which already records the reason (`exit_process` or `crt_exit`); upload-failure accounting is TG-PIPE-13. A crash, `TerminateProcess` and a lab kill still lose the tail window.
+
 ## Hook taxonomy
 
 Seven techniques, applied per-tier per the [hookpoints anchor doc](../reverse-engineering/findings/client-instrumentation-hookpoints.md):
@@ -199,7 +227,7 @@ Per-entity and budgeted events also **collapse**. An event identical to the prev
 
 **Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
 
-**Shutdown flush: not wired yet.** The shutdown rollups and health event run only when the uploader's stop callback returns `true`. The DLL passes `|| false` today (`boot.rs`, pending the Phase 7 stop flag), so when `SGW.exe` exits, the last window's rollups and held repeats are lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, not for the tail of a session.
+**Shutdown flush (TG-PIPE-03).** The shutdown rollups and held repeats run when the uploader's stop callback returns `true`, and the closing health row carries `final: true` (periodic rows carry `final: false`), so a reader can tell a closed session from one whose reports just stopped. The DLL's stop callback is `shutdown::global().stop_requested()`; the exit hooks raise it. See [Process exit and the final flush](#process-exit-and-the-final-flush). When the client dies by a path with no hook (crash, `TerminateProcess`, a lab kill), the tail window is still lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, and for the tail only on a hooked exit.
 
 **Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
 

@@ -121,6 +121,17 @@ pub fn chunk_url(endpoint: &str) -> String {
     }
 }
 
+/// How often the idle loop wakes to look at `should_stop`. Well under
+/// [`crate::shutdown::FINAL_FLUSH_BUDGET`], so a stop request starts the
+/// final flush within a tick instead of after a whole flush interval.
+const STOP_POLL: Duration = Duration::from_millis(100);
+
+/// Whole-request limit (connect, send and read) for the final POST. Shorter
+/// than [`crate::shutdown::FINAL_FLUSH_BUDGET`] so the flush normally
+/// finishes inside the wait; the agent's 10 s connect and 30 s read limits
+/// are for the ordinary cadence.
+pub const FINAL_POST_TIMEOUT: Duration = Duration::from_millis(1200);
+
 /// Outcome reported back when the uploader thread finally exits.
 /// Lets tests assert what made it stop (vs hanging on a panic).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,9 +146,9 @@ pub enum UploaderExit {
 }
 
 /// Run the uploader loop until the queue is disconnected or
-/// `should_stop()` returns true. In production the DLL passes a
-/// `|| false` callback and the loop runs for the lifetime of
-/// SGW.exe.
+/// `should_stop()` returns true. In production the DLL passes
+/// `shutdown::global().stop_requested()`, which the exit hooks raise
+/// (TG-PIPE-03); until then the loop runs for the lifetime of SGW.exe.
 ///
 /// The blocking shape is: `recv_timeout(flush_interval)` to wait
 /// for the next event or wake on cadence; then drain up to
@@ -157,12 +168,15 @@ pub fn run_uploader(
 
     loop {
         if should_stop() {
-            // Drain anything still in the queue + ship one last
-            // batch on the way out.
+            // Drain anything still in the queue + ship one last batch on
+            // the way out. `governor_finish` appends the closing rollups and
+            // the health row marked `final: true`. The POST is capped at
+            // `FINAL_POST_TIMEOUT` so an exiting process is never held by a
+            // slow server (see `crate::shutdown`).
             drain_into(&consumer, &mut batch, cfg.max_batch);
             consumer.governor_finish(upload_dropped, &mut batch);
             if !batch.is_empty() {
-                let _ = post_batch(&client, &cfg, &batch);
+                let _ = post_batch_within(&client, &cfg, &batch, Some(FINAL_POST_TIMEOUT));
             }
             return UploaderExit::Stopped;
         }
@@ -182,7 +196,9 @@ pub fn run_uploader(
             cfg.flush_interval
                 .saturating_sub(last_flush.elapsed())
                 .max(Duration::from_millis(1))
-        };
+        }
+        // Wake often enough to notice `should_stop` inside the exit budget.
+        .min(STOP_POLL);
         match recv_timeout_raw(&consumer, recv_timeout) {
             Ok(ev) => batch.push(ev),
             Err(RecvTimeoutError::Timeout) => { /* fall through to flush */ }
@@ -274,13 +290,28 @@ fn post_batch(
     cfg: &UploaderConfig,
     batch: &[ClientNativeEvent],
 ) -> Result<(), PostError> {
+    post_batch_within(client, cfg, batch, None)
+}
+
+/// [`post_batch`] with an optional whole-request time limit (the final
+/// flush at exit passes one; the ordinary cadence does not).
+fn post_batch_within(
+    client: &ureq::Agent,
+    cfg: &UploaderConfig,
+    batch: &[ClientNativeEvent],
+    limit: Option<Duration>,
+) -> Result<(), PostError> {
     let body = encode_batch(batch)?;
-    let resp = client
+    let mut req = client
         .post(&cfg.upload_endpoint)
         .set("Authorization", &format!("Bearer {}", cfg.token))
         .set("Content-Type", "application/x-ndjson")
         .set("Content-Encoding", "gzip")
-        .set(CLIENT_PID_HEADER, &std::process::id().to_string())
+        .set(CLIENT_PID_HEADER, &std::process::id().to_string());
+    if let Some(limit) = limit {
+        req = req.timeout(limit);
+    }
+    let resp = req
         .send_bytes(&body)
         .map_err(|e| PostError::Network(e.to_string()))?;
     let status = resp.status();
@@ -333,6 +364,10 @@ fn recv_timeout_raw(
 #[cfg(test)]
 #[path = "uploader_endpoint_tests.rs"]
 mod endpoint_tests;
+
+#[cfg(test)]
+#[path = "uploader_final_flush_tests.rs"]
+mod final_flush_tests;
 
 #[cfg(test)]
 mod tests {

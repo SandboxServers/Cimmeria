@@ -47,6 +47,7 @@ pub mod log;
 pub mod msvc_string;
 pub mod queue;
 pub mod session;
+pub mod shutdown;
 pub mod uploader;
 
 // Live Research Lab client bridge — an inbound command channel behind
