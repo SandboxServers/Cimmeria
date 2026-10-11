@@ -124,5 +124,43 @@ class NodeRouting(unittest.IsolatedAsyncioTestCase):
         self.assertIn("(127.0.0.1) failed: ConnectionRefusedError", logs.output[0])
 
 
+class ExitRouting(unittest.IsolatedAsyncioTestCase):
+    async def test_the_exit_connects_only_to_an_allowed_address_of_the_stamp(self):
+        args = types.SimpleNamespace(
+            allow_src=None, via=None, via_dst=[],
+            allow_dst=configured_ranges()["start-exit.ps1 AllowDst"])
+        server = await asyncio.start_server(egress_proxy.Proxy(args).handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        real_open = asyncio.open_connection
+        dialled = []
+
+        async def fake_open(host, p, *a, **kw):
+            if host == "127.0.0.1":
+                return await real_open(host, p, *a, **kw)
+            dialled.append(host)  # never leave the machine
+            raise ConnectionRefusedError("test")
+
+        async def fake_getaddrinfo(h, p, **kw):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (a, p)) for a in order]
+
+        loop = asyncio.get_running_loop()
+        try:
+            for i in range(len(STAMP)):
+                order = STAMP[i:] + STAMP[:i]
+                with mock.patch.object(loop, "getaddrinfo", fake_getaddrinfo), \
+                        mock.patch.object(egress_proxy.asyncio, "open_connection", fake_open):
+                    r, w = await real_open("127.0.0.1", port)
+                    w.write(b"CONNECT productionresultssa17.blob.core.windows.net:443 HTTP/1.1\r\n\r\n")
+                    await w.drain()
+                    status = (await asyncio.wait_for(r.readline(), 5)).decode()
+                    w.close()
+                self.assertIn(" 502 ", status, order)  # fake_open refused it
+        finally:
+            server.close()
+            await server.wait_closed()
+        # Whatever the DNS order, the exit dials only the address it is allowed.
+        self.assertEqual(dialled, ["52.239.172.36"] * len(STAMP))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -14,7 +14,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Listen,
-    [string[]]$AllowDst = @('57.0.0.0/8', '52.239.0.0/16'),
+    # An empty list would give `--allow-dst` no values, which egress_proxy.py reads
+    # as "any destination": an open proxy. Require at least one range.
+    [ValidateCount(1, 64)][ValidateNotNullOrEmpty()][string[]]$AllowDst = @('57.0.0.0/8', '52.239.0.0/16'),
     [string]$Name = 'cimmeria-egress-exit'
 )
 Set-StrictMode -Version Latest
