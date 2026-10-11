@@ -9,8 +9,8 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-const MAX_EXPANDED: u64 = 1024 * 1024 * 1024;
-const MAX_ENTRIES: usize = 100_000;
+pub(super) const MAX_EXPANDED: u64 = 1024 * 1024 * 1024;
+pub(super) const MAX_ENTRIES: usize = 100_000;
 
 pub(super) fn plain(path: &Path) -> Result<(), Error> {
     if !path.is_absolute() {

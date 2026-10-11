@@ -7,7 +7,16 @@ use std::{
 };
 use uuid::Uuid;
 pub(super) mod process;
-use process::{exchange, msiexec, rename_new, spawn, sync_parent};
+mod zip_names;
+pub(super) mod zip_swap;
+use process::{exchange, rename_new, spawn, sync_parent};
+
+/// Fixed restart argument; the old process id follows it so the new one can
+/// wait for this process to exit before taking the single-instance guard.
+pub const RESTART_ARG: &str = "--launcher-update-restart";
+fn restart_args() -> Vec<String> {
+    vec![RESTART_ARG.into(), std::process::id().to_string()]
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -72,9 +81,12 @@ pub(super) struct Attempt {
     staged_bundle: Option<String>,
     // Durable before any handoff; false means startup may safely restore old bytes.
     handoff: bool,
+    /// Windows zip swap, saved before the first rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    swap: Option<zip_swap::Plan>,
 }
 impl Attempt {
-    fn paths(&self, owner: Uuid, state: &Path) -> Result<(PathBuf, PathBuf), Error> {
+    fn paths(&self, owner: Uuid, _state: &Path) -> Result<(PathBuf, PathBuf), Error> {
         match &self.target {
             Target::Mac { bundle, .. } => {
                 let parent = bundle.parent().ok_or(Error::Target)?;
@@ -84,10 +96,17 @@ impl Attempt {
                     parent.join(format!(".cimmeria-backup-{owner}.app")),
                 ))
             }
-            Target::Windows { .. } => Ok((
-                state.join(format!("launcher-update-{owner}.exe")),
-                state.join(format!("launcher-update-{owner}.msi")),
-            )),
+            Target::Windows { executable } => {
+                // The stage sits beside the executable so every swap rename stays
+                // on one volume. Windows has no separate backup path: replaced
+                // files wait beside their originals as `<name>.old`.
+                let stage = executable.parent().ok_or(Error::Target)?.join(
+                    self.staged_bundle
+                        .clone()
+                        .unwrap_or_else(|| format!(".update-{owner}")),
+                );
+                Ok((stage.clone(), stage))
+            }
         }
     }
 }
@@ -170,24 +189,45 @@ impl DesktopState {
                     return Err(Error::Platform);
                 }
                 bundle::plain(executable)?;
+                // D-LX3: the Windows package is the release zip, never an installer.
+                let url = reqwest::Url::parse(&offer.url).map_err(|_| Error::Package)?;
+                if !url.path().to_ascii_lowercase().ends_with(".zip") {
+                    tracing::warn!(target: "launcher.update", event = "apply_refused", reason = "not_a_zip", "Windows launcher update package is not a zip");
+                    return Err(Error::Package);
+                }
             }
         }
         let original_path = match &target.0 {
             Target::Mac { bundle, .. } => bundle,
             Target::Windows { executable } => executable,
         };
+        let owner = Uuid::new_v4();
         let attempt = Attempt {
             target: target.0.clone(),
             original: bundle::fingerprint(original_path)?,
             replacement: None,
-            staged_bundle: None,
+            // Known before any write, so recovery finds a partial Windows stage.
+            // The owner in the name keeps a retry clear of an earlier stage.
+            staged_bundle: match &target.0 {
+                Target::Mac { .. } => None,
+                Target::Windows { .. } => Some(zip_swap::stage_name(
+                    offer.version.trim_start_matches('v'),
+                    owner,
+                )),
+            },
             handoff: false,
+            swap: None,
         };
-        let owner = Uuid::new_v4();
+        if let Target::Windows { executable } = &target.0 {
+            // Phase is Ready, so no attempt is in flight: every marked stage
+            // here is an earlier attempt's leftover.
+            zip_swap::sweep_stale_stages(executable.parent().ok_or(Error::Target)?, Some(owner));
+        }
         let (stage, backup) = attempt.paths(owner, self.state_root())?;
         if stage.try_exists().map_err(|_| Error::Target)?
             || backup.try_exists().map_err(|_| Error::Target)?
         {
+            tracing::warn!(target: "launcher.update", event = "apply_refused", reason = "stage_collision", stage = %stage.display(), "update stage path already exists; it is never adopted");
             return Err(Error::Target);
         }
         record.owner = Some(owner);
@@ -204,10 +244,12 @@ impl DesktopState {
             if (!record.apply.as_ref().is_some_and(|a| a.handoff) || error == Error::Spawn)
                 && self.restore_update(&record).is_ok()
             {
+                tracing::warn!(target: "launcher.update", event = "apply_failed", ?error, rolled_back = true, "launcher update failed; the installed launcher was restored");
                 record.phase = Phase::Failed;
                 record.owner = None;
                 record.failure = Some(error);
             } else {
+                tracing::error!(target: "launcher.update", event = "apply_failed", ?error, rolled_back = false, "launcher update failed and was not rolled back; reconciliation required");
                 record.phase = Phase::ReconciliationRequired;
                 record.failure = Some(Error::Reconciliation);
             }
@@ -269,57 +311,30 @@ impl DesktopState {
                 // Intent is durable before spawn. Recovery never repeats an ambiguous spawn.
                 record.apply.as_mut().unwrap().handoff = true;
                 *record = self.save_update(record.clone())?;
-                start(
-                    &bundle.join(executable),
-                    &["--launcher-update-restart".into()],
-                )?;
+                start(&bundle.join(executable), &restart_args())?;
             }
             Target::Windows { executable } => {
-                let offer = record.offer.as_ref().ok_or(Error::StaleOffer)?;
-                let url = reqwest::Url::parse(&offer.url).map_err(|_| Error::Package)?;
-                let msi = url.path().ends_with(".msi");
-                if !msi && !url.path().ends_with(".exe") {
-                    return Err(Error::Package);
+                let _ = backup;
+                let install = executable.parent().ok_or(Error::Target)?;
+                let owner = record.owner.ok_or(Error::Reconciliation)?;
+                let staged = zip_swap::extract(bytes, stage, owner)?;
+                let plan = zip_swap::plan(install, executable, owner, staged)?;
+                let new_exe = zip_swap::executable_source(&plan).ok_or(Error::Package)?;
+                let a = record.apply.as_mut().unwrap();
+                a.replacement = Some(bundle::fingerprint(&stage.join(new_exe))?);
+                a.swap = Some(plan.clone());
+                // The plan is durable before the first rename, so a crash at any
+                // point is rolled back from the record, never guessed.
+                *record = self.save_update(record.clone())?;
+                if bundle::fingerprint(executable)? != attempt.original {
+                    return Err(Error::Target);
                 }
-                let installer = if msi { backup } else { stage };
-                let mut file = fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(installer)
-                    .map_err(|_| Error::Replace)?;
-                use std::io::Write;
-                file.write_all(bytes)
-                    .and_then(|_| file.sync_all())
-                    .map_err(|_| Error::Replace)?;
-                drop(file);
-                record.apply.as_mut().unwrap().replacement = Some(bundle::fingerprint(installer)?);
-                record.apply.as_mut().unwrap().staged_bundle =
-                    Some(if msi { "msi" } else { "exe" }.into());
+                zip_swap::swap_in(install, stage, &plan)?;
                 record.apply.as_mut().unwrap().handoff = true;
                 *record = self.save_update(record.clone())?;
-                if msi {
-                    start(
-                        &msiexec()?,
-                        &[
-                            "/i".into(),
-                            installer.to_string_lossy().into_owned(),
-                            "/passive".into(),
-                            "/norestart".into(),
-                            "AUTOLAUNCHAPP=True".into(),
-                            "LAUNCHAPPARGS=--launcher-update-restart".into(),
-                        ],
-                    )?;
-                } else {
-                    start(
-                        installer,
-                        &[
-                            "/P".into(),
-                            "/R".into(),
-                            "/UPDATE".into(),
-                            format!("/D={}", executable.parent().ok_or(Error::Target)?.display()),
-                        ],
-                    )?;
-                }
+                // CreateProcess, not ShellExecute: the launcher relaunches itself,
+                // needs no elevation and must not block on a shell error dialog.
+                start(executable, &restart_args())?;
             }
         }
         record.phase = Phase::RestartRequired;
@@ -335,6 +350,25 @@ impl DesktopState {
         compiled_version: &str,
     ) -> Result<(), Error> {
         let mut record = self.update_record()?;
+        if let Target::Windows { executable } = &target.0 {
+            // An in-flight attempt keeps its owner, and so its stage; any other
+            // marked stage is a leftover a failed delete could not remove.
+            if let Some(install) = executable.parent() {
+                zip_swap::sweep_stale_stages(install, record.owner);
+            }
+        }
+        if record.phase == Phase::Installed {
+            // Retry a Windows cleanup the acknowledging start could not finish
+            // (an antivirus scan holding `<exe>.old`, for example).
+            if record
+                .apply
+                .as_ref()
+                .is_some_and(|a| a.target == target.0 && a.swap.is_some())
+            {
+                let _ = self.cleanup_update(&record);
+            }
+            return Ok(());
+        }
         if !matches!(
             record.phase,
             Phase::ReconciliationRequired | Phase::RestartRequired | Phase::Installing
@@ -343,6 +377,7 @@ impl DesktopState {
         }
         let attempt = record.apply.as_ref().ok_or(Error::Reconciliation)?;
         if attempt.target != target.0 {
+            tracing::warn!(target: "launcher.update", event = "reconcile_refused", reason = "other_target", "update record names a different launcher install");
             return Err(Error::Target);
         }
         let expected = record
@@ -352,10 +387,13 @@ impl DesktopState {
             .version
             .trim_start_matches('v');
         if compiled_version == expected {
-            if let Target::Mac { bundle, .. } = &attempt.target {
-                if attempt.replacement.as_deref() != Some(bundle::fingerprint(bundle)?.as_str()) {
-                    return Err(Error::Reconciliation);
-                }
+            let installed = match &attempt.target {
+                Target::Mac { bundle, .. } => bundle,
+                Target::Windows { executable } => executable,
+            };
+            if attempt.replacement.as_deref() != Some(bundle::fingerprint(installed)?.as_str()) {
+                tracing::warn!(target: "launcher.update", event = "reconcile_refused", reason = "replacement_mismatch", "installed launcher does not match the applied update");
+                return Err(Error::Reconciliation);
             }
             let cleanup = record.clone();
             record.phase = Phase::Installed;
@@ -372,8 +410,9 @@ impl DesktopState {
             record.failure = Some(Error::Interrupted);
             self.save_update(record)?;
         }
-        // A handed-off Windows installer may still be running; an older process
-        // reopening cannot infer cancellation and must retain reconciliation ownership.
+        // After a handoff only the new compiled version acknowledges. An older
+        // process reopening cannot tell a slow restart from a failed one, so it
+        // retains reconciliation ownership.
         Ok(())
     }
     fn restore_update(&self, record: &Record) -> Result<(), Error> {
@@ -430,31 +469,31 @@ impl DesktopState {
                 bundle::owned_stage(&stage, record.owner.ok_or(Error::Reconciliation)?)?;
                 fs::remove_dir_all(stage).map_err(|_| Error::Replace)?;
             }
-        } else {
-            // Called for a synchronous spawn failure, never for uncertain successful handoff.
-            for path in [stage, backup] {
-                if path.exists() {
-                    if attempt.replacement.as_deref() != Some(bundle::fingerprint(&path)?.as_str())
-                    {
-                        return Err(Error::Reconciliation);
-                    }
-                    bundle::plain(&path)?;
-                    fs::remove_file(path).map_err(|_| Error::Replace)?;
-                }
+        } else if let Target::Windows { executable } = &attempt.target {
+            // Called before handoff or for a synchronous spawn failure, never for
+            // an uncertain successful handoff. The saved plan says exactly which
+            // files moved; without one nothing was renamed yet.
+            let install = executable.parent().ok_or(Error::Target)?;
+            if let Some(plan) = &attempt.swap {
+                zip_swap::roll_back(install, plan)?;
             }
+            let _ = backup;
+            zip_swap::remove_stage(&stage, record.owner.ok_or(Error::Reconciliation)?)?;
         }
         Ok(())
     }
     fn cleanup_update(&self, record: &Record) -> Result<(), Error> {
         let attempt = record.apply.as_ref().ok_or(Error::Reconciliation)?;
-        let (stage, backup) = attempt.paths(
-            record.owner.ok_or(Error::Reconciliation)?,
-            self.state_root(),
-        )?;
+        // An acknowledged record has no owner; a Windows retry uses the plan's.
+        let owner = record
+            .owner
+            .or(attempt.swap.as_ref().map(zip_swap::plan_owner))
+            .ok_or(Error::Reconciliation)?;
+        let (stage, backup) = attempt.paths(owner, self.state_root())?;
         match &attempt.target {
             Target::Mac { .. } => {
                 if stage.exists() {
-                    bundle::owned_stage(&stage, record.owner.ok_or(Error::Reconciliation)?)?;
+                    bundle::owned_stage(&stage, owner)?;
                 }
                 if let Some(name) = &attempt.staged_bundle {
                     let held = stage.join(name);
@@ -475,21 +514,17 @@ impl DesktopState {
                     fs::remove_dir_all(&backup).map_err(|_| Error::Replace)?;
                 }
                 if stage.exists() {
-                    bundle::owned_stage(&stage, record.owner.ok_or(Error::Reconciliation)?)?;
+                    bundle::owned_stage(&stage, owner)?;
                     fs::remove_dir_all(stage).map_err(|_| Error::Replace)?;
                 }
             }
-            Target::Windows { .. } => {
-                for path in [stage, backup] {
-                    if path.exists() {
-                        if attempt.replacement.as_deref()
-                            != Some(bundle::fingerprint(&path)?.as_str())
-                        {
-                            return Err(Error::Reconciliation);
-                        }
-                        bundle::plain(&path)?;
-                        fs::remove_file(path).map_err(|_| Error::Replace)?;
-                    }
+            Target::Windows { executable } => {
+                // The old process has exited (the restart waited for it), so its
+                // `<exe>.old` is no longer a running image and can be deleted.
+                let install = executable.parent().ok_or(Error::Target)?;
+                match &attempt.swap {
+                    Some(plan) => zip_swap::clean_up(install, &stage, plan)?,
+                    None => zip_swap::remove_stage(&stage, owner)?,
                 }
             }
         }
@@ -511,7 +546,8 @@ fn notify_handoff(
 
 #[cfg(feature = "test-support")]
 impl DesktopState {
-    /// Inert Windows installer seam for engine-to-host lifecycle fault tests.
+    /// Windows zip-swap seam for engine-to-host lifecycle fault tests. `start`
+    /// stands in for the relaunch, so no real launcher process is spawned.
     pub fn apply_launcher_update_fixture(
         &mut self,
         config: &Config,

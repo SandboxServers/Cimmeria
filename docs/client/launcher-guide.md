@@ -863,6 +863,11 @@ If the launcher's own name is missing from its folder, rename
 working launcher is safe to delete; the launcher also deletes it at its
 next start.
 
+The desktop launcher (`StargateWorlds-Launcher.exe`) updates the same way.
+If its exe is missing after an update, or the updated launcher closes as
+soon as it starts, delete the broken exe if there is one and rename
+`StargateWorlds-Launcher.exe.old` back to `StargateWorlds-Launcher.exe`.
+
 ### Windows Defender or SmartScreen blocks the launcher
 
 Launcher releases are not code-signed, so Windows may warn about the launcher or
