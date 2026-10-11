@@ -99,6 +99,12 @@ pub(super) async fn handle_lab_console_exec(
     drop(cap_tx);
 
     let mut lines = Vec::new();
+    // Once the base channel refuses a message it stays closed. The rest of
+    // the capture is still drained for its feedback lines; a batched spawn
+    // request that could not be forwarded is counted per batch, so the
+    // batch reports it as failed instead of waiting out its timeout.
+    let mut base_closed = false;
+    let mut unforwarded: Vec<(u32, u32)> = Vec::new();
     while let Ok(msg) = cap_rx.try_recv() {
         match msg {
             // Single-recipient GM feedback addressed to the acting entity is
@@ -117,17 +123,34 @@ pub(super) async fn handle_lab_console_exec(
             // teleport, witness fan-out): forward to base so the command's
             // effects happen exactly as the in-world path would produce them.
             other => {
-                if tx.send(other).await.is_err() {
-                    tracing::warn!(
-                        entity_id,
-                        entity_name = space_mgr.entity_label(entity_id),
-                        account_id = id.account_id,
-                        account_name = id.account_name,
-                        player_id = id.player_id,
-                        player_name = id.player_name,
-                        "LabConsoleExec: base channel closed while forwarding a side-effect message"
-                    );
-                    break;
+                let lost = if base_closed {
+                    other
+                } else {
+                    match tx.send(other).await {
+                        Ok(()) => continue,
+                        Err(mpsc::error::SendError(lost)) => {
+                            base_closed = true;
+                            tracing::warn!(
+                                entity_id,
+                                entity_name = space_mgr.entity_label(entity_id),
+                                account_id = id.account_id,
+                                account_name = id.account_name,
+                                player_id = id.player_id,
+                                player_name = id.player_name,
+                                "LabConsoleExec: base channel closed while forwarding a side-effect message"
+                            );
+                            lost
+                        }
+                    }
+                };
+                if let CellToBaseMsg::GmSpawnNpc {
+                    batch: Some(batch), ..
+                } = lost
+                {
+                    match unforwarded.iter_mut().find(|(b, _)| *b == batch) {
+                        Some((_, n)) => *n += 1,
+                        None => unforwarded.push((batch, 1)),
+                    }
                 }
             }
         }
@@ -141,6 +164,19 @@ pub(super) async fn handle_lab_console_exec(
     let waiter = spawn_batch::LabWaiter { lines, reply_tx };
     if let Err(waiter) = spawn_batch::batches(space_mgr).attach_lab(entity_id, batch_mark, waiter) {
         let _ = waiter.reply_tx.send(Ok(waiter.lines));
+    }
+    // Copies the base never got fail now; when none reached it, the batch
+    // closes here and the reply goes out at once.
+    for (batch, n) in unforwarded {
+        let done = spawn_batch::batches(space_mgr).undelivered(
+            batch,
+            n,
+            spawn_batch::CHANNEL_ERROR,
+            tokio::time::Instant::now(),
+        );
+        if let Some(done) = done {
+            spawn_batch::deliver(done, tx, space_mgr).await;
+        }
     }
 }
 

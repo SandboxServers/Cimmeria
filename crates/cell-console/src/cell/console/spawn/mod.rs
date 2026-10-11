@@ -345,8 +345,9 @@ async fn spawn_random(
         return;
     };
 
+    let requester = batch::Requester::of(caller_id, space_mgr);
     let batch_id = batch::batches(space_mgr).open(
-        caller_id,
+        requester,
         template_id,
         count.unsigned_abs(),
         tokio::time::Instant::now(),
@@ -398,10 +399,13 @@ async fn spawn_random(
         // Nothing reached the base, so nothing will ever report back.
         batch::batches(space_mgr).discard(batch_id);
     } else if delivered < count {
-        batch::batches(space_mgr).undelivered(
+        // Cannot close the batch: at least one delivered copy is still
+        // outstanding.
+        let _ = batch::batches(space_mgr).undelivered(
             batch_id,
             (count - delivered).unsigned_abs(),
-            "cell→base channel error",
+            batch::CHANNEL_ERROR,
+            tokio::time::Instant::now(),
         );
     }
     if delivered == count {

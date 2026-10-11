@@ -180,6 +180,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [table-driven-live-db-refusal-cases](table-driven-live-db-refusal-cases.md) — one character per refusal case + collected failures, so each dropped check shows; rolled-back dry run as precheck.
 - [player-cast-fixtures-need-a-mechanic](player-cast-fixtures-need-a-mechanic.md) — since AB-12 a player cast with no mechanic is refused; effectless fixtures need `seed_mechanic_effect`.
 - [lab-runner-paused-time-poll-tests](lab-runner-paused-time-poll-tests.md) — lab runner poll/timeout tests use `start_paused = true`; deadlines must be `tokio::time::Instant`.
+- [channel-failure-test-seams](channel-failure-test-seams.md) — mpsc send fails only when closed: one-slot channel + hang-up reader; query failure via lazy pool on `[::1]:9`; tick-in-loop test.
 
 ## Campaign judgment
 

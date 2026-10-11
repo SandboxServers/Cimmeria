@@ -16,10 +16,17 @@ const SGWBEING_CLASS_ID: u8 = 0x01;
 /// or the GM-facing reason it may not.
 ///
 /// An NPC here is a non-player mob or being in the caller's space that is not
-/// a pet. Refused: a non-number, an id no entity has, an entity in another
-/// space, a player, any pet (all pets belong to players; `.pet dismiss`
-/// removes one properly), and every other entity class (spawnable props,
-/// duel markers).
+/// a pet. Refused: a non-number; an id no entity in the caller's space has
+/// (an unknown id and an entity on another map get the same answer); and,
+/// in the caller's space, a player, any pet (all pets belong to players;
+/// `.pet dismiss` removes one properly) and every other entity class
+/// (spawnable props, duel markers). The pet refusal is this id form's only:
+/// `.despawn` with no argument still acts on a selected pet, as it did before
+/// CH-13.
+///
+/// The space check comes straight after the existence check, so the reply
+/// about an entity on another map says nothing about what it is: a GM can
+/// not use the id form to learn whether some id elsewhere is a player.
 ///
 /// Unlike a selection this does not require the NPC to be in the caller's
 /// view: the runner may have moved since it spawned the NPCs. The same-space
@@ -34,9 +41,14 @@ pub(in crate::cell::console) fn resolve_npc_id(
             "entityId must be a non-negative whole number (got {arg:?})"
         ));
     };
+    let not_here = || format!("no NPC with id {id} in your space");
     let Some(e) = space_mgr.get_entity(id) else {
-        return Err(format!("no entity has id {id}"));
+        return Err(not_here());
     };
+    let caller_space = space_mgr.get_entity_space_id(caller_id);
+    if caller_space.is_none() || space_mgr.get_entity_space_id(id) != caller_space {
+        return Err(not_here());
+    }
     if e.is_player {
         return Err(format!(
             "entity {id} is a player; .despawn only removes NPCs"
@@ -52,9 +64,6 @@ pub(in crate::cell::console) fn resolve_npc_id(
             "entity {id} is not an NPC (entity class {}); .despawn only removes NPCs",
             e.class_id
         ));
-    }
-    if space_mgr.get_entity_space_id(id) != space_mgr.get_entity_space_id(caller_id) {
-        return Err(format!("entity {id} is in another space"));
     }
     Ok(id)
 }

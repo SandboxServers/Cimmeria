@@ -65,14 +65,25 @@ pub async fn handle_gm_spawn_npc(
     let fail = |reason: String| async move {
         match (batch, cell_tx) {
             (Some(batch), Some(tx)) => {
-                let _ = tx
+                if let Err(e) = tx
                     .send(BaseToCellMsg::GmSpawnNpcFailed {
                         requester_entity_id: entity_id,
                         batch,
                         template_id,
                         reason,
                     })
-                    .await;
+                    .await
+                {
+                    // The batch will report this copy as timed out.
+                    tracing::warn!(
+                        entity_id,
+                        entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                        template_id,
+                        template_name = cimmeria_names::book().template(template_id),
+                        batch,
+                        "GmSpawnNpc: GmSpawnNpcFailed send to cell failed: {e}"
+                    );
+                }
             }
             _ => {
                 send_gm_feedback_to_client(

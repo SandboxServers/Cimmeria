@@ -17,10 +17,13 @@ use super::*;
 use crate::cell::console::spawn_batch::spawn_batch_tick;
 use crate::cell::messages::LabConsoleResult;
 
-const GM: u32 = 1;
-const TEMPLATE: i32 = 4242;
+pub(super) const GM: u32 = 1;
+pub(super) const TEMPLATE: i32 = 4242;
+/// The GM's character. Entity ids are reused after a logout; this is what
+/// tells the GM apart from the next player to get id [`GM`].
+pub(super) const GM_PLAYER: i32 = 9001;
 
-fn make_manager() -> (SpaceManager, u32) {
+pub(super) fn make_manager() -> (SpaceManager, u32) {
     let mut mgr = SpaceManager::new(1);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
@@ -34,6 +37,8 @@ fn make_manager() -> (SpaceManager, u32) {
     if let Some(e) = mgr.get_entity_mut(GM) {
         e.is_player = true;
         e.access_level = 2;
+        e.account_id = Some(77);
+        e.player_id = Some(GM_PLAYER);
     }
     mgr.connect_entity(GM);
     let space_id = mgr.get_entity(GM).unwrap().space_id.0 as u32;
@@ -42,7 +47,7 @@ fn make_manager() -> (SpaceManager, u32) {
 
 /// Run `line` through the lab console tee; returns the (possibly still
 /// pending) reply.
-async fn lab_exec(
+pub(super) async fn lab_exec(
     mgr: &mut SpaceManager,
     line: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -64,7 +69,7 @@ async fn lab_exec(
 }
 
 /// The `GmSpawnNpc` requests the command sent to the base: (batch, position).
-fn requests(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(Option<u32>, [f32; 3])> {
+pub(super) fn requests(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(Option<u32>, [f32; 3])> {
     std::iter::from_fn(|| rx.try_recv().ok())
         .filter_map(|m| match m {
             CellToBaseMsg::GmSpawnNpc {
@@ -76,7 +81,7 @@ fn requests(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(Option<u32>, [f32; 3
 }
 
 /// Play the base: this copy resolved.
-async fn ready(
+pub(super) async fn ready(
     mgr: &mut SpaceManager,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_id: u32,
@@ -114,7 +119,7 @@ async fn not_found(mgr: &mut SpaceManager, tx: &mpsc::Sender<CellToBaseMsg>, bat
     .await;
 }
 
-fn spawned_ids(mgr: &SpaceManager) -> String {
+pub(super) fn spawned_ids(mgr: &SpaceManager) -> String {
     let mut ids = mgr.all_npc_entity_ids();
     ids.sort_unstable();
     ids.iter().map(u32::to_string).collect::<Vec<_>>().join(",")
@@ -161,7 +166,9 @@ async fn lab_spawnrandom_reply_lists_every_spawned_id() {
 
 /// A copy that failed and one that never answered are reported as such once
 /// the batch times out; the reply still arrives, with the ids that did spawn.
-/// A copy that answers after the report gets its own chat line.
+/// A copy that answers after the report is despawned at once: the lab
+/// caller already has its reply and would never learn the id. Revert proof:
+/// drop the `late.lab` despawn in `gm_spawn.rs` and the late NPC stays.
 #[tokio::test(start_paused = true)]
 async fn lab_spawnrandom_reports_partial_delivery_after_the_timeout() {
     let (mut mgr, space_id) = make_manager();
@@ -195,11 +202,17 @@ async fn lab_spawnrandom_reports_partial_delivery_after_the_timeout() {
         )
     );
 
+    let reported = spawned_ids(&mgr);
     ready(&mut mgr, &tx, space_id, reqs[2]).await;
-    let late = spawned_feedback_text(&mut rx, GM).expect("a late copy is reported");
-    assert!(
-        late.ends_with("after its .spawnrandom report"),
-        "got {late}"
+    assert_eq!(
+        spawned_ids(&mgr),
+        reported,
+        "the late copy is despawned; only the reported ids remain"
+    );
+    assert_eq!(
+        spawned_feedback_text(&mut rx, GM),
+        None,
+        "a lab batch's late copy sends no chat line"
     );
 }
 

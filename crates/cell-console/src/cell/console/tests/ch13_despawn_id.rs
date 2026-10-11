@@ -119,7 +119,8 @@ async fn despawn_by_id_refuses_an_unknown_id() {
         "the selection is not a fallback"
     );
     assert!(
-        fb.iter().any(|f| f.contains("no entity has id 987654")),
+        fb.iter()
+            .any(|f| f.contains("no NPC with id 987654 in your space")),
         "got {fb:?}"
     );
 }
@@ -166,9 +167,8 @@ async fn despawn_by_id_refuses_a_non_npc_entity() {
     assert!(fb.iter().any(|f| f.contains("is not an NPC")), "got {fb:?}");
 }
 
-#[tokio::test]
-async fn despawn_by_id_refuses_an_npc_in_another_space() {
-    let (mut mgr, gm, _npc) = setup();
+/// Add a second map, "Castle", to the GM's `setup()` manager.
+fn add_castle(mgr: &mut SpaceManager) {
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#,
     )
@@ -177,6 +177,13 @@ async fn despawn_by_id_refuses_an_npc_in_another_space() {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
     )
     .unwrap();
+}
+
+/// Another map's NPC gets the same answer as an id nobody has.
+#[tokio::test]
+async fn despawn_by_id_refuses_an_npc_in_another_space() {
+    let (mut mgr, gm, _npc) = setup();
+    add_castle(&mut mgr);
     let far = mgr.allocate_npc_id();
     mgr.spawn_npc(far, "Castle", [5.0, 0.0, 5.0], [0.0; 3])
         .unwrap();
@@ -187,8 +194,34 @@ async fn despawn_by_id_refuses_an_npc_in_another_space() {
         mgr.get_entity(far).is_some(),
         "another map's NPC is untouched"
     );
+    assert_eq!(
+        fb,
+        vec![format!(".despawn: no NPC with id {far} in your space")]
+    );
+}
+
+/// The id form must not tell a GM what an entity on another map is. Revert
+/// proof: check the space after the player check (the packet's order) and
+/// the reply says "is a player".
+#[tokio::test]
+async fn despawn_by_id_does_not_reveal_a_player_in_another_space() {
+    let (mut mgr, gm, _npc) = setup();
+    add_castle(&mut mgr);
+    let elsewhere = 2u32;
+    mgr.create_entity(elsewhere, "Castle", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(elsewhere).unwrap().is_player = true;
+
+    let fb = run(&mut mgr, gm, &format!(".despawn {elsewhere}")).await;
+
+    assert!(mgr.get_entity(elsewhere).is_some());
     assert!(
-        fb.iter().any(|f| f.contains("is in another space")),
+        fb.iter().all(|f| !f.contains("player")),
+        "the reply must not say what the entity is; got {fb:?}"
+    );
+    assert!(
+        fb.iter()
+            .any(|f| f.contains(&format!("no NPC with id {elsewhere} in your space"))),
         "got {fb:?}"
     );
 }

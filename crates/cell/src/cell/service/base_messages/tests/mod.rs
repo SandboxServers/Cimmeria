@@ -49,6 +49,7 @@ mod receipt_seq;
 mod request_entity_update;
 mod respec_burst;
 mod spawnrandom_batch;
+mod spawnrandom_late;
 mod stat_passives;
 mod telemetry_fields;
 mod trade_disconnect;

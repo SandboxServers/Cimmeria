@@ -354,3 +354,51 @@ async fn gm_spawn_without_a_pool_reports_only_a_batched_copy() {
         _ => panic!("expected GmSpawnNpcFailed"),
     }
 }
+
+/// CH-13: a batched copy whose template query fails (a database outage, not
+/// a missing row) reports to the cell too. No live database needed: the pool
+/// points at a closed port, so the query errors. Revert proof: send the GM
+/// line for a batch too (or drop the `fail` call in the `Err` arm) and no
+/// `GmSpawnNpcFailed` arrives.
+#[tokio::test]
+async fn gm_spawn_query_failure_in_a_batch_reports_to_the_cell() {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_secs(2))
+        .connect_lazy("postgres://nobody:nothing@[::1]:9/none")
+        .expect("a lazy pool only parses the URL");
+    let db_pool = Some(Arc::new(pool));
+    let (transport, connected, entity_to_addr) = empty_io();
+    let (cell_tx, mut cell_rx) = mpsc::channel(8);
+
+    handle_gm_spawn_npc(
+        42,
+        77,
+        5,
+        "Castle".to_string(),
+        [0.0; 3],
+        0.0,
+        Some(4),
+        &db_pool,
+        &Some(cell_tx),
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    match cell_rx
+        .try_recv()
+        .expect("a batched failure must reach the cell")
+    {
+        BaseToCellMsg::GmSpawnNpcFailed {
+            requester_entity_id,
+            batch,
+            template_id,
+            reason,
+        } => {
+            assert_eq!((requester_entity_id, batch, template_id), (42, 4, 77));
+            assert_eq!(reason, "could not load template 77");
+        }
+        _ => panic!("expected GmSpawnNpcFailed"),
+    }
+}
