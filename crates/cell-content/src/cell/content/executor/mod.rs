@@ -125,6 +125,17 @@ pub async fn execute_actions(
         action_delays,
         params,
     } = resolved;
+    // TG-DB-12: while the saved missions are unreadable, a chain that
+    // changes a mission is dropped whole (refused, with feedback). Before
+    // the fire-once gate, so a dropped once-chain stays armed.
+    let (actions, action_delays) = crate::cell::missions::state_lock::gate_mission_chains(
+        actions,
+        action_delays,
+        entity_id,
+        tx,
+        space_mgr,
+    )
+    .await;
     // Fire-once chains (#802): drop a spent one, record a first fire.
     let (actions, action_delays) =
         once_gate::gate_for_entity(actions, action_delays, entity_id, space_mgr, engine);

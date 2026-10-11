@@ -150,6 +150,16 @@ the `MissionDefEntry` cache loaded at startup
 ([crates/cell-catalog/src/cell/spawner/missions.rs](../../crates/cell-catalog/src/cell/spawner/missions.rs));
 a mission without a def entry fails closed (treated as non-repeatable).
 
+## Unreadable saved missions (TG-DB-12)
+
+If the `sgw_mission` read fails at world entry, the player still enters the world, but their missions are locked instead of loading as none (owner decision D-TG18). An empty tracker would read every completed mission as `not_active`, and the offer guard above would let a re-accept overwrite the completed row.
+
+- The base retries the read after 200, 400 and 800 ms, then locks the player and sends `MissionStateUnknown` to the cell ahead of `InitPlayerState`.
+- While locked, the cell refuses every accept, abandon, step advance, objective completion and completion, and drops whole any content chain that changes a mission, so a chain never half-runs. The player sees "Mission data unavailable, try again shortly." The cell saves nothing, and the base refuses any mission row write for the player as a backstop.
+- The base re-reads every 30 s. On success it unlocks and sends `SavedMissionsRecovered`; the cell restores the missions, resends the journal and tells the player "Mission data restored."
+- A chain refused while locked does not re-fire on recovery. A fire-once chain stays armed, so its trigger can fire it again.
+
+Code: `missions/state_lock.rs` in `cimmeria-base-methods` (retry, lock, background read), `client_ready/mission_lock.rs` in `cimmeria-base-world-entry` (world entry), [`cell/missions/state_lock.rs`](../../crates/cell-content/src/cell/missions/state_lock.rs) (cell gate and recovery). The log rows are listed in [negative-logging-convention.md](../architecture/negative-logging-convention.md).
 ## Hidden missions
 
 A mission whose def row has `is_hidden = true` is server-side bookkeeping. In the seed these are the Hallway0N controllers (682-686) and the Prison Boot gate (689). The client is never told about them, matching the reference `MissionManager.py`, which wraps every client call in `if not mission.mission.isHidden:` (#715):

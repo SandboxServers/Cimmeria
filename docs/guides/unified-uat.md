@@ -1151,6 +1151,20 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 
+## Mission data lock
+
+When the server cannot read a character's saved missions at login, it locks their missions instead of treating them as never taken (TG-DB-12, D-TG18). Background: [mission-system.md](../gameplay/mission-system.md#unreadable-saved-missions-tg-db-12).
+
+**Status:** Ready to test on a local server only; not yet run by a person. The automated guard is `live_db_unreadable_missions_block_reaccept`.
+
+**Prerequisites:** an operator with `psql` on a local server, and a character with at least one completed mission that a chain or NPC would offer again (for example a finished Cellblock mission). The lock needs the read to fail, so the operator breaks it on purpose: `REVOKE SELECT ON sgw_mission FROM "<server role>";` before the login and `GRANT SELECT ON sgw_mission TO "<server role>";` to end it. Never do this on the colo.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| ML-01 | Revoke the read, then log the character in | Login takes about 1.5 s longer and finishes; the journal is empty. SigNoz: `player_load_degraded` with `reason = missions_query_failed` and `attempts = 4`, then `mission_state_locked` | |
+| ML-02 | Talk to the NPC or walk into the volume that offers the completed mission; try to accept it | "Mission data unavailable, try again shortly." on the first press; nothing is accepted. SigNoz: WARN `mission_state_unknown`, `reason = saved_missions_unreadable` | The completed row in `sgw_mission` is unchanged |
+| ML-03 | Grant the read back and wait up to 30 s | "Mission data restored."; the journal fills with your active missions. SigNoz: `mission_state_recovered` | A chain refused during the lock does not re-fire by itself: trigger it again |
+| ML-04 | Retry ML-02's offer | The offer guard judges it as normal: a completed, non-repeatable mission is not offered again | |
 ## Recording results
 
 Copy this block once per step you run, fill it in, and send it to the owner (or paste it on the campaign's tracking issue). Keep failures and passes both: a pass is evidence too.

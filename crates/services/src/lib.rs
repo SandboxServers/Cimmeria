@@ -95,6 +95,11 @@ mod mission_round_trip_tests;
 #[cfg(test)]
 mod mission_abandon_round_trip_tests;
 
+/// TG-DB-12: unreadable saved missions lock instead of letting a re-accept
+/// overwrite a completed row. Test-only.
+#[cfg(test)]
+mod mission_state_lock_tests;
+
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency) and
 // are re-exported from this module next to the crate's own fixtures.
 #[cfg(test)]

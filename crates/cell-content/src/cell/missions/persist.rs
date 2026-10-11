@@ -97,6 +97,10 @@ pub async fn send_mission_update(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
+    // TG-DB-12: a locked tracker is not the player's state; never save it.
+    if super::state_lock::refuse_persist_if_unknown(entity_id, mission_id, site, space_mgr) {
+        return;
+    }
     let msg = match space_mgr
         .get_entity(entity_id)
         .and_then(|e| e.missions.get_mission(mission_id))

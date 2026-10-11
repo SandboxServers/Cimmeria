@@ -26,6 +26,8 @@ mod abandon_persist_tests;
 mod hidden_frames_tests;
 #[cfg(test)]
 mod progression_tests;
+#[cfg(test)]
+mod state_lock_tests;
 
 pub use lifecycle::{abandon_mission, accept_mission};
 pub use persist::{mission_update_msg, send_mission_update};
