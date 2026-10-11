@@ -1,6 +1,7 @@
 //! Retained fresh reconstruction. The result retains root/stage ownership for a
 //! commit coordinator; no existing game is renamed by this layer.
 use super::*;
+use crate::game_telemetry::install_event::{Ending, Run};
 use crate::{catalog, install, install_progress::ProgressSink, OperationState};
 use futures_util::FutureExt;
 use std::{io::Write, panic::AssertUnwindSafe, sync::Mutex, time::Duration};
@@ -29,6 +30,15 @@ pub enum Failure {
     Cancelled,
     Failed,
     ReconciliationRequired,
+}
+impl Failure {
+    pub(crate) fn ending(self, code: &'static str) -> Ending {
+        match self {
+            Self::Cancelled => Ending::Cancelled,
+            Self::Failed => Ending::Failed(code),
+            Self::ReconciliationRequired => Ending::Uncertain,
+        }
+    }
 }
 impl Preparation {
     pub fn request_cancel(&self) -> Result<(), IntentError> {
@@ -194,7 +204,7 @@ async fn reconstruct(
         progress,
         http: &source.http,
     };
-    let (result, _) = match source.backend {
+    let (result, report) = match source.backend {
         Backend::Native => install::install_all(context).await,
         #[cfg(target_os = "macos")]
         Backend::Wine(helper) => {
@@ -226,6 +236,9 @@ async fn reconstruct(
             result
         }
     };
+    if let Ok(mut owner) = state.lock() {
+        owner.stash_install_report(plan.id, report);
+    }
     match result {
         Err(install::InstallError::Cancelled) => return Err(Failure::Cancelled),
         Err(install::InstallError::SeedExtractionUncertain) => {
@@ -319,17 +332,26 @@ pub(super) fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Fai
     let Ok(operations) = owner.operations_mut() else {
         return Failure::ReconciliationRequired;
     };
+    let open = operations.snapshot().operation.as_ref().is_some_and(|op| {
+        op.id == id && !op.state.terminal() && op.state != OperationState::ReconciliationRequired
+    });
     let result = match failure {
         Failure::Cancelled => operations.observe(id, OperationState::Cancelled),
         Failure::Failed => operations.observe(id, OperationState::Failed),
         Failure::ReconciliationRequired => operations.mark_uncertain(id),
     };
-    if result.is_err() {
-        let _ = operations.mark_uncertain(id);
-        Failure::ReconciliationRequired
+    let (finished, ended) = if result.is_err() {
+        let ended = operations.mark_uncertain(id).is_ok();
+        (Failure::ReconciliationRequired, ended)
     } else {
-        failure
+        (failure, true)
+    };
+    // Only the call that ended the run reports it: the dropped commit
+    // handoff lands here after every commit, finding the run already over.
+    if open && ended {
+        owner.queue_install_result(id, Run::Repair, finished.ending("repair_failed"));
     }
+    finished
 }
 #[cfg(test)]
 mod tests;
