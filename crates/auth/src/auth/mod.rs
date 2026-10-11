@@ -29,6 +29,9 @@ mod credential_log_guard;
 mod login_smoke;
 
 #[cfg(test)]
+mod handlers_tests;
+
+#[cfg(test)]
 mod tls_smoke;
 
 pub use service::AuthService;

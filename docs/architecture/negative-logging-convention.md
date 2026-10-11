@@ -280,9 +280,9 @@ logging the credential.
 
 ## Login refusal reasons (TG-NET-04)
 
-Every Phase 1 and Phase 2 refusal in `auth/handlers.rs` logs one row
+The Phase 1 and Phase 2 refusals listed in the table below each log one row
 with a `reason`. None of the rows carries the password, the SID or a
-ticket. Each `reason` is pinned by a `LogCapture` test in that file.
+ticket. Each `reason` is pinned by a `LogCapture` test in `auth/handlers_tests.rs`.
 
 | Seam | Level | `reason` | Fields |
 |---|---|---|---|
