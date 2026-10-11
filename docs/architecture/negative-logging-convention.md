@@ -662,6 +662,18 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Bandolier ammo flush (TG-ITM-11)
+
+`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs` sends one `BandolierAmmoUpdate` per dirty bandolier slot. It is called from world transitions, respawn, ring transport and logout (`flush_dirty_bandolier_ammo_at_logout`, from `lifecycle.rs`).
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "bandolier_slot_dropped"`, `reason = "no_item"`, identity, `slot_id` | A dirty slot has no item any more (swapped out first): its ammo marker is dropped, nothing is persisted |
+| WARN | `BandolierAmmoUpdate send failed; leaving slot dirty for retry`, `error`, item pair, `current_ammo`; on the logout path also `reason = "ammo_lost_at_logout"` | The base channel refused the update. Elsewhere the next flush retries; at logout the entity is destroyed next, so that ammo is lost |
+| DEBUG | target `bandolier`, `event = "bandolier_flush"`, identity, `sent`, `dropped`, `unsent`, `at_logout` | Once per flush with a non-empty dirty set |
+
+Guards: `active_slot_flush_tests::bandolier_flush_reports_dropped_and_unsent` and `bandolier_flush_at_logout_warns_ammo_lost`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

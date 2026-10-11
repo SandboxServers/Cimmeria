@@ -381,8 +381,10 @@ async fn flush_bandolier_ammo_for_entity(
 ) {
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if let Some(player_id) = entity.player_id {
-            crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx)
-                .await;
+            crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo_at_logout(
+                entity, player_id, tx,
+            )
+            .await;
         }
     }
 }
