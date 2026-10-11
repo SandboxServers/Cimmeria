@@ -29,6 +29,10 @@ pub(super) async fn accept_or_advance(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
+        player_id = space_mgr.player_identity(entity_id).player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         "Content: accepting mission"
     );
     if let Some(def) = space_mgr.mission_defs.get(&mission_id) {
@@ -61,6 +65,10 @@ pub(super) async fn accept_or_advance(
                 mission_name = cimmeria_names::book().mission(mission_id),
                 chain_id,
                 chain_name = cimmeria_names::book().chain(chain_id),
+                account_id = space_mgr.player_identity(entity_id).account_id,
+                account_name = space_mgr.player_identity(entity_id).account_name,
+                player_id = space_mgr.player_identity(entity_id).player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
                 "Content: accept_mission refused by offer guard — skipping persist + follow-up event"
             );
             return;
@@ -102,7 +110,16 @@ pub(super) async fn accept_or_advance(
             discord_labels::mission(mission_id),
         );
     } else {
+        // Rule 5 identity and the world, read before the warn row.
+        let world = space_mgr.get_entity_world_name(entity_id);
         tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            world = world.as_deref(),
+            account_id = space_mgr.player_identity(entity_id).account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
+            player_id = space_mgr.player_identity(entity_id).player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             mission_id,
             mission_name = cimmeria_names::book().mission(mission_id),
             chain_id,
@@ -133,6 +150,10 @@ pub(super) async fn complete(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
+        player_id = space_mgr.player_identity(entity_id).player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         "Content: completing mission"
     );
     // Snapshot the prior status BEFORE `complete_mission_direct` flips
@@ -187,6 +208,10 @@ pub(super) async fn complete(
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             mission_id,
             mission_name = cimmeria_names::book().mission(mission_id),
+            account_id = space_mgr.player_identity(entity_id).account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
+            player_id = space_mgr.player_identity(entity_id).player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             ?prior_status,
             "Content: complete called on non-active mission — skipping mission_completed event"
         );
@@ -250,6 +275,10 @@ pub(super) async fn advance_step(
         step_name = cimmeria_names::book().mission_step(step_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
+        player_id = space_mgr.player_identity(entity_id).player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         "Content: advancing step"
     );
     let activated =
@@ -301,6 +330,10 @@ pub(super) async fn abandon(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
+        player_id = space_mgr.player_identity(entity_id).player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         "Content: abandoning mission"
     );
     // H54: fire the follow-up event only on a real removal, mirroring how
@@ -342,6 +375,10 @@ pub(super) async fn complete_objective(
         objective_name = cimmeria_names::book().mission_objective(objective_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
+        player_id = space_mgr.player_identity(entity_id).player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         "Content: complete objective"
     );
     // Snapshot before the call so the auto-complete branch inside
@@ -399,6 +436,10 @@ pub(super) async fn complete_objective(
             objective_name = cimmeria_names::book().mission_objective(objective_id),
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
+            account_id = space_mgr.player_identity(entity_id).account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
+            player_id = space_mgr.player_identity(entity_id).player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             "Content: final required objective completed the mission — firing mission_completed"
         );
         crate::cell::content::event_dispatch::fire_mission_completed(
@@ -531,6 +572,29 @@ mod offer_guard_tests {
             mission_updates(&msgs).is_empty(),
             "entity-less accept must not persist anything; got {msgs:?}"
         );
+    }
+
+    /// TG-MIS-06: the executor's accept row names the player it is for, so
+    /// SigNoz can filter a mission offer by `player_id` without the entity slot.
+    #[tokio::test]
+    async fn accepting_row_carries_player_identity() {
+        use crate::test_support::LogCapture;
+
+        let capture = LogCapture::install();
+        let mut mgr = make_mgr_with_def();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().player_id = Some(7101);
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+
+        accept_or_advance(622, 1, 7101, 9999, &tx, &mut mgr, &engine).await;
+
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.message_contains("Content: accepting mission"))
+            .unwrap_or_else(|| panic!("no accepting row; captured: {:#?}", capture.all()));
+        assert!(row.has_field("player_id", "7101"), "{row:#?}");
     }
 
     /// Happy-path companion pinning the success contract: a fresh accept
