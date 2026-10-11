@@ -9,16 +9,19 @@
 //!     flips, world_name + active_player_id get cached.
 //!   * unknown addr (ConnectedClientState gone) → no panic, no latch
 //!     change.
+//!   * a session torn down or replaced mid-entry: nothing of the entry
+//!     reaches the replacing session, and the entry's entity is removed.
+//!   * the NO_ENTITY_ID bail on a replaced session leaves the replacing
+//!     session's latch alone (a database that drops the connection).
 //!
-//! Not covered here: the NO_ENTITY_ID failure path (latch reset on
-//! a failed query_world_entry) — that path requires a real DB pool
-//! that returns no rows, which is out of scope for unit tests.
 //! The DB-success branch needs live-DB scaffolding that doesn't
 //! exist yet for this module; filing as a follow-up rather than
 //! claiming coverage that isn't there.
 
+use super::test_fakes::{cell_rows, recording_cell, CellLog, FailingTransport};
 use super::*;
 use crate::test_support::TestTransport;
+use cimmeria_common::EntityId;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::time::Instant;
@@ -237,10 +240,50 @@ fn assert_untouched(connected: &super::test_fakes::Connected, addr: SocketAddr) 
     assert!(c.pending_player_load_data.is_none());
 }
 
+/// The seq the late handler's RESET_ENTITIES goes out under:
+/// `make_connected_state` starts the old session's counter at 3.
+const OLD_SESSION_RESET_SEQ: u32 = 3;
+
+/// A manager holding one live entity, standing for another session's
+/// player, and that entity's id.
+fn manager_with_another_player() -> (Arc<Mutex<EntityManager>>, EntityId) {
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let other = entity_manager.lock().unwrap().create_entity("SGWPlayer");
+    (entity_manager, other)
+}
+
+/// The entry's entity is gone from the manager and the cell got a
+/// `DestroyEntity` for it, under the id it was created with, and nothing
+/// else (no logout `DisconnectEntity`). `other` stays.
+async fn assert_entry_entity_removed(
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell: &CellLog,
+    other: EntityId,
+) {
+    let rows = cell_rows(cell, 2).await;
+    let &[("create", created), ("destroy", destroyed)] = rows.as_slice() else {
+        panic!("expected the entry's create, then its destroy: {rows:?}");
+    };
+    assert_eq!(destroyed, created, "the entry's own entity");
+    assert_ne!(EntityId(created as i32), other);
+    let manager = entity_manager.lock().unwrap();
+    assert!(
+        manager.get_entity(EntityId(created as i32)).is_none(),
+        "the entry's entity is freed"
+    );
+    assert!(
+        manager.get_entity(other).is_some(),
+        "another player's stays"
+    );
+    assert_eq!(manager.entity_count(), 1);
+}
+
 /// A relaunch takeover while `query_world_entry` waits on the cell: the late
 /// handler sends no RESET_ENTITIES (under the old session's key) and writes
-/// none of the old character's state into the session that replaced it.
-/// Fails if the owner check before the send is removed (the reset goes out).
+/// none of the old character's state into the session that replaced it, and
+/// the entity it created goes, from the cell and the manager. Fails if the
+/// owner check before the send is removed (the reset goes out), or if the
+/// abandoned entry keeps its entity.
 #[tokio::test]
 async fn play_character_leaves_a_session_replaced_during_the_cell_wait() {
     let typed = Arc::new(TestTransport::new());
@@ -251,10 +294,8 @@ async fn play_character_leaves_a_session_replaced_during_the_cell_wait() {
         .lock()
         .unwrap()
         .insert(addr, make_connected_state(0xABCD));
-    let cell_tx = Some(super::test_fakes::cell_replacing_the_session(
-        &connected, addr, 0xABCD,
-    ));
-    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let (cell_tx, cell) = super::test_fakes::cell_replacing_the_session(&connected, addr, 0xABCD);
+    let (entity_manager, other) = manager_with_another_player();
 
     handle_play_character(
         &transport,
@@ -265,18 +306,22 @@ async fn play_character_leaves_a_session_replaced_during_the_cell_wait() {
         &connected,
         &None,
         &entity_manager,
-        &cell_tx,
+        &Some(cell_tx),
     )
     .await
     .expect("an abandoned entry is not an error");
 
     assert_eq!(typed.len(), 0, "no RESET_ENTITIES to the replacing session");
     assert_untouched(&connected, addr);
+    assert_entry_entity_removed(&entity_manager, &cell, other).await;
 }
 
 /// A takeover during the RESET_ENTITIES send: the store that follows is
-/// skipped. Fails if the owner check before the store is removed (the old
-/// character's entity, world and ids land on the new session).
+/// skipped, the reset is not registered in the replacing session's reliable
+/// channel, and the entry's entity goes. Fails if the owner check before the
+/// store is removed (the old character's entity, world and ids land on the
+/// new session), if the reliable registration moves back before that check,
+/// or if the abandoned entry keeps its entity.
 #[tokio::test]
 async fn play_character_leaves_a_session_replaced_during_the_send() {
     let addr: SocketAddr = "127.0.0.1:55604".parse().unwrap();
@@ -290,7 +335,8 @@ async fn play_character_leaves_a_session_replaced_during_the_send() {
         addr,
         account_id: 0xABCE,
     });
-    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let (cell_tx, cell) = recording_cell();
+    let (entity_manager, other) = manager_with_another_player();
 
     handle_play_character(
         &transport,
@@ -301,10 +347,131 @@ async fn play_character_leaves_a_session_replaced_during_the_send() {
         &connected,
         &None,
         &entity_manager,
-        &None,
+        &Some(cell_tx),
     )
     .await
     .expect("an abandoned entry is not an error");
 
     assert_untouched(&connected, addr);
+    {
+        let map = connected.lock().unwrap();
+        let channel = map[&addr].channel.lock().unwrap();
+        let registered: Vec<u32> = channel
+            .tx_window
+            .iter()
+            .chain(channel.unsent_packets.iter())
+            .map(|entry| entry.packet.sequence)
+            .collect();
+        assert!(
+            !registered.contains(&OLD_SESSION_RESET_SEQ),
+            "the old entry's RESET_ENTITIES is in the replacing session's channel: {registered:?}"
+        );
+        assert!(registered.is_empty(), "{registered:?}");
+    }
+    assert_entry_entity_removed(&entity_manager, &cell, other).await;
+}
+
+/// The RESET_ENTITIES send fails: the handler errors before the store, so
+/// no session holds the entity, and it goes like an abandoned entry's. Fails
+/// if only the abandon paths remove it.
+#[tokio::test]
+async fn play_character_that_fails_to_send_removes_its_entity() {
+    let addr: SocketAddr = "127.0.0.1:55605".parse().unwrap();
+    let connected: super::test_fakes::Connected = Arc::new(Mutex::new(HashMap::new()));
+    connected
+        .lock()
+        .unwrap()
+        .insert(addr, make_connected_state(0xABCF));
+    let transport: Arc<dyn Transport> = Arc::new(FailingTransport);
+    let (cell_tx, cell) = recording_cell();
+    let (entity_manager, other) = manager_with_another_player();
+
+    let result = handle_play_character(
+        &transport,
+        addr,
+        [0xCDu8; 32],
+        0xABCF,
+        9,
+        &connected,
+        &None,
+        &entity_manager,
+        &Some(cell_tx),
+    )
+    .await;
+
+    assert!(result.is_err(), "the send failure reaches the caller");
+    assert_eq!(
+        connected.lock().unwrap()[&addr].player_entity_id,
+        None,
+        "the session never took the entity"
+    );
+    assert_entry_entity_removed(&entity_manager, &cell, other).await;
+}
+
+/// The `NO_ENTITY_ID` bail on a session replaced during the database wait:
+/// the replacing session latched its own entry, and the late bail must not
+/// reopen it. The fake database replaces the session when the entry
+/// connects, then drops the connection, so the replacement comes before the
+/// query fails. Fails if the bail resets the latch by address alone.
+#[tokio::test]
+async fn a_failed_entry_leaves_the_latch_of_the_session_that_replaced_it() {
+    let addr: SocketAddr = "127.0.0.1:55606".parse().unwrap();
+    let connected: super::test_fakes::Connected = Arc::new(Mutex::new(HashMap::new()));
+    connected
+        .lock()
+        .unwrap()
+        .insert(addr, make_connected_state(0xABD0));
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let replaced = Arc::new(AtomicBool::new(false));
+    {
+        let connected = Arc::clone(&connected);
+        let replaced = Arc::clone(&replaced);
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                if !replaced.swap(true, Ordering::SeqCst) {
+                    let mut fresh = crate::test_support::test_default_connected_client_state();
+                    fresh.account_id = 0xABD0;
+                    fresh.world_entry_sent = true;
+                    connected.lock().unwrap().insert(addr, fresh);
+                }
+                drop(socket);
+            }
+        });
+    }
+    let options = sqlx::postgres::PgConnectOptions::new()
+        .host("127.0.0.1")
+        .port(port)
+        .username("nobody")
+        .database("none")
+        .ssl_mode(sqlx::postgres::PgSslMode::Disable);
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(500))
+        .connect_lazy_with(options);
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+
+    handle_play_character(
+        &make_transport(),
+        addr,
+        [0xCDu8; 32],
+        0xABD0,
+        9,
+        &connected,
+        &Some(Arc::new(pool)),
+        &entity_manager,
+        &None,
+    )
+    .await
+    .expect("the bail is not an error");
+
+    assert!(
+        replaced.load(Ordering::SeqCst),
+        "the session was replaced inside the entry's database wait"
+    );
+    assert!(
+        connected.lock().unwrap()[&addr].world_entry_sent,
+        "the replacing session's latch stays set"
+    );
+    assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
 }

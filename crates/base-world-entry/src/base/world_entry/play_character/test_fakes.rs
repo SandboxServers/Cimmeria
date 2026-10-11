@@ -24,25 +24,72 @@ fn replace_session(connected: &Connected, addr: SocketAddr, account_id: u32) {
     connected.lock().unwrap().insert(addr, fresh);
 }
 
-/// A cell stand-in for `query_world_entry`'s no-DB path: on the entry's
-/// `CreateEntity` it replaces the session at `addr`, then drops the reply,
-/// which ends the entry's wait. So the session changes inside the
-/// handler's first await on the cell.
+/// What a fake cell received, in order: `("create", id)`, `("destroy", id)`
+/// and `("disconnect", id)`.
+pub(super) type CellLog = Arc<Mutex<Vec<(&'static str, u32)>>>;
+
+/// A cell stand-in for `query_world_entry`'s no-DB path that records the
+/// entity messages it gets. On a `CreateEntity` it first replaces the
+/// session at `replace` when one is given, then drops the reply, which ends
+/// the entry's wait.
+fn fake_cell(
+    replace: Option<(Connected, SocketAddr, u32)>,
+) -> (mpsc::Sender<BaseToCellMsg>, CellLog) {
+    let (tx, mut rx) = mpsc::channel(4);
+    let log = CellLog::default();
+    let seen = Arc::clone(&log);
+    tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            let row = match msg {
+                BaseToCellMsg::CreateEntity { entity_id, .. } => {
+                    if let Some((connected, addr, account_id)) = &replace {
+                        replace_session(connected, *addr, *account_id);
+                    }
+                    ("create", entity_id)
+                }
+                BaseToCellMsg::DestroyEntity { entity_id } => ("destroy", entity_id),
+                BaseToCellMsg::DisconnectEntity { entity_id, .. } => ("disconnect", entity_id),
+                _ => continue,
+            };
+            seen.lock().unwrap().push(row);
+        }
+    });
+    (tx, log)
+}
+
+/// [`fake_cell`] that replaces the session at `addr` on the entry's
+/// `CreateEntity`, so the session changes inside the handler's first await
+/// on the cell.
 pub(super) fn cell_replacing_the_session(
     connected: &Connected,
     addr: SocketAddr,
     account_id: u32,
-) -> mpsc::Sender<BaseToCellMsg> {
-    let (tx, mut rx) = mpsc::channel(4);
-    let connected = Arc::clone(connected);
-    tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            if matches!(msg, BaseToCellMsg::CreateEntity { .. }) {
-                replace_session(&connected, addr, account_id);
+) -> (mpsc::Sender<BaseToCellMsg>, CellLog) {
+    fake_cell(Some((Arc::clone(connected), addr, account_id)))
+}
+
+/// [`fake_cell`] that only records.
+pub(super) fn recording_cell() -> (mpsc::Sender<BaseToCellMsg>, CellLog) {
+    fake_cell(None)
+}
+
+/// The fake cell's rows once it has handled `count` of them (it runs on
+/// its own task).
+pub(super) async fn cell_rows(log: &CellLog, count: usize) -> Vec<(&'static str, u32)> {
+    let wait = async {
+        loop {
+            if log.lock().unwrap().len() >= count {
+                return;
             }
+            tokio::task::yield_now().await;
         }
-    });
-    tx
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), wait)
+        .await
+        .expect("the fake cell got the expected messages");
+    // A moment longer, so a row too many shows.
+    tokio::task::yield_now().await;
+    log.lock().unwrap().clone()
 }
 
 /// Sends nothing; replaces the session at `addr` during the send, so the
@@ -66,10 +113,8 @@ impl Transport for ReplacingTransport {
 }
 
 /// Every send fails, as a closed socket does.
-#[cfg(feature = "lab-chaos")]
 pub(super) struct FailingTransport;
 
-#[cfg(feature = "lab-chaos")]
 #[async_trait]
 impl Transport for FailingTransport {
     async fn send_to(&self, _bytes: &[u8], _addr: SocketAddr) -> io::Result<usize> {

@@ -157,6 +157,7 @@ pub async fn handle_play_character(
         entry_info.player_entity_id,
     );
 
+    let entity_id = entry_info.player_entity_id;
     let entered: Result<bool, BoxError> = async {
         // Also query the full player data needed for mapLoaded
         let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
@@ -183,13 +184,12 @@ pub async fn handle_play_character(
         let entry_character_name = player_load_data.player_name.clone();
         let entry_world_name = entry_info.world_name.clone();
         let entry_position = entry_info.pos;
-        let entity_id = entry_info.player_entity_id;
 
         let player_name = Some(entry_character_name.as_str()).filter(|n| !n.is_empty());
         // The session at `addr` was torn down or replaced in one of the
         // awaits above: nothing of this entry goes to it, neither the
         // RESET_ENTITIES under the old key nor the old character's state.
-        let session_replaced = |stage: &'static str| {
+        let session_gone = |stage: &'static str| {
             tracing::warn!(
                 %addr,
                 account_id,
@@ -199,8 +199,9 @@ pub async fn handle_play_character(
                 entity_id,
                 entity_name = player_name,
                 stage,
-                reason = "session_replaced",
-                "World entry abandoned: the session at this address was replaced during playCharacter"
+                reason = "session_gone_or_replaced",
+                "World entry abandoned: the session at this address was torn down or replaced \
+                 during playCharacter"
             );
         };
         if !still_owner(
@@ -208,7 +209,7 @@ pub async fn handle_play_character(
             addr,
             &owner,
         ) {
-            session_replaced("before_reset_entities");
+            session_gone("before_reset_entities");
             return Ok(false);
         }
 
@@ -251,7 +252,7 @@ pub async fn handle_play_character(
             let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
             if !still_owner(&clients, addr, &owner) {
                 drop(clients);
-                session_replaced("store_world_entry");
+                session_gone("store_world_entry");
                 return Ok(false);
             }
             if let Some(c) = clients.get_mut(&addr) {
@@ -318,7 +319,71 @@ pub async fn handle_play_character(
             chaos::rearm(promotion);
         }
     }
+    // Every way out short of `Ok(true)` comes before the store, so no
+    // session holds the entity `query_world_entry` created, and no teardown
+    // would ever remove it.
+    if !matches!(entered, Ok(true)) {
+        remove_unentered_entity(
+            entity_id,
+            entity_manager,
+            cell_tx,
+            account_id,
+            account_name.as_deref(),
+            player_id,
+        )
+        .await;
+    }
     entered.map(|_| ())
+}
+
+/// Removes the player entity of a world entry that did not complete, from
+/// the cell and from the `EntityManager`.
+///
+/// `DestroyEntity` (the gate-travel teardown), not the logout
+/// `DisconnectEntity`: the character never entered, so there is nothing to
+/// persist, and the logout path's `player_id`-keyed work (the last-position
+/// write, the squad leave) would hit the same character's entry on the
+/// session that replaced this one. The id goes back to the free list only
+/// after the destroy is queued: the cell handles its channel in order, so a
+/// `CreateEntity` that recycles the id lands after it (#999). A failed send
+/// withholds the id instead, as the session teardown does.
+async fn remove_unentered_entity(
+    entity_id: u32,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    account_id: u32,
+    account_name: Option<&str>,
+    player_id: i32,
+) {
+    let player_name = cimmeria_entity::known_names::player_name(player_id);
+    if let Some(tx) = cell_tx {
+        if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
+            tracing::warn!(
+                entity_id,
+                entity_name = player_name,
+                account_id,
+                account_name,
+                player_id,
+                player_name,
+                error = %e,
+                "World entry: DestroyEntity send failed for an entry that did not complete; \
+                 the entity id is withheld from reuse"
+            );
+            return;
+        }
+    }
+    if let Ok(mut manager) = entity_manager.lock() {
+        manager.destroy_entity(cimmeria_common::EntityId(entity_id as i32));
+    }
+    tracing::info!(
+        entity_id,
+        entity_name = player_name,
+        account_id,
+        account_name,
+        player_id,
+        player_name,
+        "World entry: removed the entity of an entry that did not complete"
+    );
 }
 
 /// Whether the session at `addr` is still the one whose owner token is

@@ -270,7 +270,7 @@ async fn a_session_replaced_during_the_entry_gets_no_chaos() {
     let connected = session(addr);
     let flush = FlushChaos::Pack { records: 5 };
     let (registry, expires_at) = lend_armed(flush.clone());
-    let cell_tx = Some(cell_replacing_the_session(&connected, addr, ACCOUNT));
+    let cell_tx = Some(cell_replacing_the_session(&connected, addr, ACCOUNT).0);
 
     play_with(
         &connected,

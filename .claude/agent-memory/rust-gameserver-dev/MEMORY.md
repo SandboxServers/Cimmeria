@@ -99,6 +99,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Base sessions
 
+- [unentered-entity-destroy-and-db-await-seam](unentered-entity-destroy-and-db-await-seam.md) — never-entered entity: DestroyEntity, not DisconnectEntity (player_id-keyed squad/position); fake TCP listener for DB-await races.
 - [session-scoped-side-tables-and-teardown](session-scoped-side-tables-and-teardown.md) — clear per-address state in teardown after the owner check (covers relaunch takeover); logOff keeps the address.
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
