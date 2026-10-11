@@ -7,7 +7,7 @@ import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
 const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
-  requires_reopen:false,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
+  requires_reopen:false,adopted_login_servers:null,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function dom(){const {document,window}=parseHTML(html);return {document:document as unknown as Document,

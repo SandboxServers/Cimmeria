@@ -137,16 +137,9 @@ async fn execute(
     {
         return Ok(Observation::NotStarted);
     }
-    // Resolved before a telemetry session is minted: a refused list starts nothing.
-    let Ok(servers) = state
-        .lock()
-        .map_err(|_| StorageError::Io)?
-        .launch_login_servers(&plan.installation)
-    else {
+    let Some((servers, session)) = servers_and_session(&state, plan).await? else {
         return Ok(Observation::NotStarted);
     };
-    // A session that cannot be had costs a bounded wait, never the launch.
-    let session = telemetry::session(&state, plan).await;
     let minted = session.is_some();
     let prepared = plan.clone();
     let setup =
@@ -187,6 +180,27 @@ async fn execute(
     })
     .await;
     Ok(outcome)
+}
+/// The login servers this Play writes, resolved before a telemetry session is
+/// minted so both use the same list. `None` is a refused list: nothing starts.
+async fn servers_and_session(
+    state: &Arc<Mutex<DesktopState>>,
+    plan: &Plan,
+) -> Result<Option<(Vec<LoginServer>, Option<crate::game_telemetry::Session>)>, IntentError> {
+    let resolved = state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .launch_login_servers(&plan.installation);
+    let servers = match resolved {
+        Ok(servers) => servers,
+        Err(error) => {
+            tracing::warn!(operation = %plan.id, ?error, "launch login servers refused; Play not started");
+            return Ok(None);
+        }
+    };
+    // A session that cannot be had costs a bounded wait, never the launch.
+    let session = telemetry::session(state, plan, &servers).await;
+    Ok(Some((servers, session)))
 }
 // Guards live through the helper's full guest lifetime, preventing Repair/uninstall.
 enum Ownership {
@@ -435,12 +449,57 @@ mod tests {
             .unwrap();
         let servers = state.launch_login_servers(&plan.installation).unwrap();
         assert_eq!(servers, saved);
+        // Not adopted, so the settings view is not told of a kept list.
+        assert_eq!(state.inspect().adopted_login_servers, None);
         let (_, _, _ownership) = prepare_native(&plan, None, &servers).unwrap();
         let written =
             std::fs::read_to_string(crate::client_setup::login_servers::path(&game)).unwrap();
         assert!(written.contains(r#"LoginMod.servers["Home"] = "http://home.example:8081""#));
         assert!(written.contains(r#"LoginMod.servers["Lab"] = "https://lab.example:8081""#));
         assert!(!written.contains("play.cimmeria.app"), "{written}");
+    }
+
+    #[tokio::test]
+    async fn the_telemetry_session_is_minted_from_the_saved_servers_not_the_install_list() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/auth/dev-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "session_id": "saved", "token": "payload.sig", "expires_at_ms": 1_700_028_800_000i64,
+                "upload_endpoint": format!("{}/api/telemetry", server.uri()),
+                "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (root, mut state, mut plan) = super::super::tests::fixture();
+        let directory = root.path().canonicalize().unwrap();
+        plan.resources.client_telemetry =
+            Some(super::super::tests::artifact(&directory, "telemetry.dll"));
+        state.set_game_telemetry(true).unwrap();
+        // Installed with the default list; the player saved the mock server.
+        assert_ne!(plan.installation.login_servers[0].url, server.uri());
+        let saved = vec![LoginServer {
+            name: "Home".into(),
+            url: server.uri(),
+        }];
+        let revision = state.preferences().revision;
+        state
+            .save_client_options(saved.clone(), true, revision)
+            .unwrap();
+        let state = Arc::new(Mutex::new(state));
+
+        let (servers, session) = servers_and_session(&state, &plan).await.unwrap().unwrap();
+        assert_eq!(servers, saved);
+        assert_eq!(
+            session
+                .expect("minted by the saved server")
+                .marker()
+                .session_id,
+            "saved"
+        );
     }
 
     #[test]

@@ -31,6 +31,9 @@ pub struct NativeSnapshot {
     pub operation: Snapshot,
     pub preferences: Preferences,
     pub requires_reopen: bool,
+    /// The reviewed list an adopted copy keeps at Play (`null` otherwise):
+    /// saving `login_servers` does not change what that copy logs in to.
+    pub adopted_login_servers: Option<Vec<LoginServer>>,
 }
 
 impl DesktopState {
@@ -40,6 +43,7 @@ impl DesktopState {
             operation: self.operations().snapshot().clone(),
             preferences: self.preferences().clone(),
             requires_reopen: self.requires_reopen(),
+            adopted_login_servers: self.adopted_login_servers(),
         }
     }
 

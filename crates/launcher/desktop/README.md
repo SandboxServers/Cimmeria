@@ -83,7 +83,9 @@ install path and consent alone. A non-empty login-server list must pass the core
 parser's rules or the save fails with `invalid_server_list` and writes nothing;
 an empty list means the default server. Play writes the saved list (or the
 default) into `LoginInternal.lua` and checks it again first; an adopted copy
-keeps the list its adoption reviewed. No command lets frontend callers set native operation outcomes or
+keeps the list its adoption reviewed, and every snapshot carries that list as
+`adopted_login_servers` (`null` otherwise) so Settings can say so. The opt-in
+telemetry session is minted from the same list Play writes. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.

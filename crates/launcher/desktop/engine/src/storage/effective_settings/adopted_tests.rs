@@ -121,6 +121,11 @@ fn an_adopted_copy_plays_with_its_reviewed_login_servers_not_the_saved_list() {
         .map(|s| (s.name.as_str(), s.url.as_str()))
         .collect();
     assert_eq!(servers, fixtures::SERVERS);
+    // The settings view is told the same list, so it can say the save is not used.
+    assert_eq!(
+        state.inspect().adopted_login_servers,
+        Some(installed.intent.login_servers.clone())
+    );
 }
 
 #[test]

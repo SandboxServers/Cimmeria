@@ -21,6 +21,8 @@ export const NativeSnapshot = Schema.Struct({
     login_servers: Schema.Array(LoginServer), client_patches_enabled: Schema.Boolean,
   }),
   requires_reopen: Schema.Boolean,
+  // An adopted copy plays with the list its adoption reviewed, whatever is saved above.
+  adopted_login_servers: Schema.NullOr(Schema.Array(LoginServer)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];

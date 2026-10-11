@@ -54,11 +54,22 @@ export function mountServerList(document:Document,invoke:Invoke,context:PanelCon
  const error=make('p','server-list-error');error.setAttribute('role','alert');error.hidden=true;
  const save=make('button','save-server-list');save.textContent='Save servers';
  const status=make('p','server-list-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
- panel.textContent='';panel.append(heading,label,box,error,save,status);
+ // An adopted copy plays with the list its adoption reviewed (LX-03), so the box would not change what it logs in to.
+ const kept=make('p','server-list-adopted');kept.hidden=true;
+ panel.textContent='';panel.append(heading,kept,label,box,error,save,status);
  let dirty=false;let saving=false;let disposed=false;let mutation:Promise<void>=Promise.resolve();
  const show=(problem:string|null)=>{error.textContent=problem??'';error.hidden=problem===null;box.setAttribute('aria-invalid',String(problem!==null));};
- // A saved list fills the box until the player edits it; their text is never overwritten.
- const sync=()=>{const snapshot=context.snapshot();if(disposed||dirty||saving||!snapshot)return;box.value=serverListText(snapshot.preferences.login_servers);};
+ const adopted=()=>context.snapshot()?.adopted_login_servers??null;
+ // A saved list fills the box until the player edits it; their text is never overwritten. Text that already
+ // means the saved list is left alone too, so a save keeps the player's comments and spacing.
+ const sync=()=>{
+  const snapshot=context.snapshot();if(disposed||!snapshot)return;
+  const list=snapshot.adopted_login_servers;kept.hidden=list===null;
+  kept.textContent=list===null?'':`This copy was adopted, so Play keeps the servers it was adopted with: ${list.length?list.map(s=>`${s.name} = ${s.url}`).join('; '):'the default server'}. Saving the list below does not change this copy.`;
+  if(dirty||saving)return;
+  const text=serverListText(snapshot.preferences.login_servers);const current=parseServerList(box.value);
+  if(!('servers' in current)||serverListText(current.servers)!==text)box.value=text;
+ };
  const unsubscribe=context.onSnapshot(()=>sync());
  const onInput=()=>{dirty=true;show(null);};
  const onSave=()=>{
@@ -72,9 +83,13 @@ export function mountServerList(document:Document,invoke:Invoke,context:PanelCon
   const request={command:'save_client_options',schema_version:1,expected_revision:snapshot.preferences.revision,
    login_servers:parsed.servers,client_patches_enabled:snapshot.preferences.client_patches_enabled};
   mutation=invoke('launcher_command',{request}).then(async()=>{
+   // Until the reload lands the box keeps the player's text: the old snapshot must not overwrite what was saved.
+   const reloaded=await context.refresh().then(()=>true,()=>false);
+   if(disposed)return;
+   if(!reloaded){dirty=true;status.textContent='Saved, but the launcher could not reload settings. Restart the launcher to see the saved list.';return;}
    dirty=false;
-   await context.refresh().catch(()=>{});
-   if(!disposed)status.textContent=parsed.servers.length?'Saved. The next Play uses this list.':'Saved. The next Play uses the default server.';
+   status.textContent=adopted()!==null?'Saved, but this copy keeps the servers it was adopted with.'
+    :parsed.servers.length?'Saved. The next Play uses this list.':'Saved. The next Play uses the default server.';
   },async failure=>{
    const code=scaffoldFailure(failure);
    if(code==='stale_revision')await context.refresh().catch(()=>{});

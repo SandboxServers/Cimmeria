@@ -17,7 +17,7 @@ function nativeFake() {
  const load=async()=>existsSync(file)?JSON.parse(await readFile(file,'utf8')):
   {schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true};
  const valid=s=>typeof s==='string'&&s.length>0&&s.length<=200&&/^[\x20-\x7e]*$/.test(s)&&!/["\\]/.test(s);
- const snapshot=preferences=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},preferences,requires_reopen:false});
+ const snapshot=preferences=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},preferences,requires_reopen:false,adopted_login_servers:null});
  const calls=[];
  const invoke=async(command,args)=>{
   assert.equal(command,'launcher_command');const request=args.request;calls.push(request.command);
@@ -62,7 +62,7 @@ try {
  assert.equal(await p.save(),'Saving login servers…');
  assert.equal(p.text('server-list-status'),'Saved. The next Play uses this list.');
  assert.deepEqual(p.fake.calls,['inspect','save_client_options','inspect']);
- assert.equal(p.box.value,'Home = http://home.example:8081\nLab = https://lab.example','the box shows the saved list');
+ assert.equal(p.box.value,'# my servers\nHome = http://home.example:8081\nLab = https://lab.example','the player text that means the saved list is kept, comment included');
  await p.app.dispose();
 
  p=await open();
