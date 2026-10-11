@@ -7,11 +7,12 @@
 > flush tail drop). Packet specs: [work-packets.md](work-packets.md). ADR:
 > [wireclient.md](../../architecture/wireclient.md).
 >
-> **Campaign status (2026-10-10): waves 1 and 2 merged** (WC-01 #1358, WC-02
-> #1359, WC-03 #1360, WC-04 #1373, WC-05 #1369). D-WC2, D-WC3, D-WC6 and D-WC7
-> are decided (option (a) each). D-WC8 still waits on #1341. Wave 3 (WC-06 to
-> WC-10, WC-13) is Ready. WC-16 cannot go green until #1371 (the three chaos
-> tests fail on `main`) is fixed.
+> **Campaign status (2026-10-10): waves 1 to 3 merged** (WC-01 to WC-10 and
+> WC-13; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are decided (option
+> (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is Ready. The
+> `wireclient e2e` job runs on every server PR but stays red, reporting only,
+> until #1371 (the three chaos tests, failing on `main` since late September)
+> is fixed; WC-16 cannot pass until then.
 
 ## Purpose
 
@@ -85,14 +86,14 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-03 | Runner: `wireclient-e2e` nextest profile and `--wireclient` mode in `test-live-db` | packet-coder | S | 1 | D-WC6 | Done (#1360) |
 | WC-04 | `tests/it` live-DB isolation: slot URL, test logging, no direct `DATABASE_URL` | packet-coder | M | 2 | WC-03 | Done (#1373) |
 | WC-05 | Semantic decoder skeleton, primitives, dialog family | packet-coder | M | 2 | WC-02 | Done (#1369) |
-| WC-06 | Mission family decoders | packet-coder | S | 3 | WC-05 | Ready |
-| WC-07 | Ability, sequence and movie decoders | packet-coder | S | 3 | WC-05 | Ready |
-| WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | Ready |
-| WC-09 | Entity-introduction and chat decoders | packet-coder | S | 3 | WC-05 | Ready |
-| WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | Ready |
-| WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | BlockedDependency |
+| WC-06 | Mission family decoders | packet-coder | S | 3 | WC-05 | Done (#1399) |
+| WC-07 | Ability, sequence and movie decoders | packet-coder | S | 3 | WC-05 | Done (#1400) |
+| WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | Done (#1401) |
+| WC-09 | Entity-introduction and chat decoders | packet-coder | S | 3 | WC-05 | Done (#1402) |
+| WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | Done (#1403) |
+| WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | Ready |
 | WC-12 | `ScriptSession`: lossless event log, ordered waits, keep-alive | rust-gameserver-dev | M | 5 | WC-10, WC-11 | BlockedDependency |
-| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | Ready |
+| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | Done (#1404) |
 | WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | BlockedDependency |
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
@@ -168,3 +169,15 @@ then the reference, not the spec.
   family packets call the `Reader` methods WC-05 does not). Review added
   `dialog_display_reads_fields_in_wire_order` (the capture's mission flags
   and id are both 0) and `dialog_arms_route_by_target_kind`.
+
+- **WC-06 to WC-09 (#1399 to #1402).** As specified; one review, no findings. Each
+  added hand-bytes tests where the capture's values repeat or are zero.
+- **WC-10 (#1403).** Finished by the coordinator after the worker ran out of
+  context. The async method is `create_character_on_wire`: WC-02's builder
+  already holds `create_character` on `GameSession`. The contract and WC-14
+  now use that name. The create reply stays out of `entry_bundles`, the
+  refusal test pins `INVALID_CHARACTER_TYPE` (10001), and it uses sentinel
+  `0x7000_9C04`, now recorded in the contract.
+- **WC-13 (#1404).** As specified, plus `data/cache/**` in both path filters
+  (the server loads those paks at startup). First run: 25 tests, 22 passed,
+  3 failed, all three #1371.
