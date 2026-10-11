@@ -2,6 +2,11 @@ import { mountPatchNotes } from "./patch-notes";
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
 import { BridgeFailure, safeFailure } from "./contract";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
+import { mountServerList } from "./server-list-view";
+import { mountClientPatches } from "./client-patches-view";
+import { mountLogUpload } from "./log-upload-view";
+import { mountClientMaintenance } from "./client-maintenance-view";
+import { mountClientChanges } from "./client-changes-view";
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 class Launcher extends Context.Service<Launcher, Effect.Success<typeof makeLauncher>>()('launcher/Application') {}
@@ -32,6 +37,15 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     return value as T;
   };
   const patchNotes = mountPatchNotes(document, () => invoke('fetch_patch_notes'));
+  // Settings panels, one file each (LX-02 scaffold; LX-03 to LX-07 fill them).
+  // One line per panel so parallel packets change separate lines.
+  const panels: {settled: () => Promise<unknown>; dispose: () => Promise<void>}[] = [
+    mountServerList(document, invoke),
+    mountClientPatches(document, invoke),
+    mountLogUpload(document, invoke),
+    mountClientMaintenance(document, invoke),
+    mountClientChanges(document, invoke),
+  ];
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');
   const abort = new AbortController();
@@ -136,13 +150,14 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   return {
     ready,
     refresh: () => { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; },
-    settled: () => Promise.all([settled, patchNotes.settled()]),
+    settled: () => Promise.all([settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
     dispose: async () => {
       if (disposed) return;
       disposed = true; abort.abort(); listeners.forEach(remove => remove());
       await Effect.runPromise(Fiber.interrupt(watcher));
       await settled;
       await patchNotes.dispose();
+      await Promise.all(panels.map(panel => panel.dispose()));
       await runtime.dispose();
     },
   };

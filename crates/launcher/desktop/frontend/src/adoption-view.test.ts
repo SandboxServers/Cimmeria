@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {mountAdoption} from './adoption-view';
 import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
-const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,preferences:{schema_version:1 as const,revision:preferences,install_directory:null,launcher_summary_consent:false},operation:{schema_version:1 as const,revision,operation}});
+const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
 const adopt=(state:'running'|'reconciliation_required'|'succeeded'|'cancelled')=>({id:'op',kind:'adopt' as const,intent_digest:Array(32).fill(0),state});
 const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null});
 const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',

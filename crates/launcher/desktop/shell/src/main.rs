@@ -2,6 +2,13 @@
 mod host;
 mod webview2;
 
+use cimmeria_launcher_engine::client_changes::{
+    ClientChangesCommand, ClientChangesError, ClientChangesStatus,
+};
+use cimmeria_launcher_engine::client_maintenance::{
+    ClientMaintenanceCommand, ClientMaintenanceError, ClientMaintenanceStatus,
+};
+use cimmeria_launcher_engine::log_upload::{LogUploadCommand, LogUploadError, LogUploadStatus};
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
@@ -235,6 +242,39 @@ async fn game_telemetry_command(
 }
 
 #[tauri::command]
+async fn log_upload_command(
+    request: LogUploadCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<LogUploadStatus, LogUploadError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.log_upload_command(request))
+        .await
+        .map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
+async fn client_maintenance_command(
+    request: ClientMaintenanceCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.client_maintenance_command(request))
+        .await
+        .map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
+async fn client_changes_command(
+    request: ClientChangesCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<ClientChangesStatus, ClientChangesError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.client_changes_command(request))
+        .await
+        .map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
 async fn migration_command(
     request: MigrationCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
@@ -347,6 +387,9 @@ fn main() {
             install_command,
             launch_command,
             game_telemetry_command,
+            log_upload_command,
+            client_maintenance_command,
+            client_changes_command,
             migration_command,
             updater_command,
             game_update_command,

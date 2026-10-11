@@ -33,6 +33,55 @@ fn preferences_survive_reopen_and_default_consent_is_off() {
 }
 
 #[test]
+fn v1_preferences_read_as_v2_with_client_defaults_and_save_back_as_v2() {
+    let dir = tempfile::tempdir().unwrap();
+    let install = dir.path().join("Game");
+    let v1 = serde_json::json!({
+        "schema_version": 1,
+        "revision": 3,
+        "install_directory": install,
+        "launcher_summary_consent": true,
+    });
+    std::fs::write(
+        dir.path().join("preferences.json"),
+        serde_json::to_vec(&v1).unwrap(),
+    )
+    .unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    assert_eq!(
+        state.preferences(),
+        &Preferences {
+            schema_version: 2,
+            revision: 3,
+            install_directory: Some(install.clone()),
+            launcher_summary_consent: true,
+            login_servers: Vec::new(),
+            client_patches_enabled: true,
+        }
+    );
+    // Opening alone rewrites nothing; the next save writes v2.
+    assert_eq!(
+        std::fs::read(dir.path().join("preferences.json")).unwrap(),
+        serde_json::to_vec(&v1).unwrap()
+    );
+    state.save_preferences(Some(install), false, 3).unwrap();
+    let raw: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join("preferences.json")).unwrap())
+            .unwrap();
+    assert_eq!(raw["schema_version"], 2);
+    assert_eq!(raw["login_servers"], serde_json::json!([]));
+    assert_eq!(raw["client_patches_enabled"], true);
+    drop(state);
+    assert_eq!(
+        DesktopState::open(dir.path())
+            .unwrap()
+            .preferences()
+            .revision,
+        4
+    );
+}
+
+#[test]
 fn interrupted_journal_reopens_for_reconciliation_without_dispatch() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(dir.path()).unwrap();
@@ -111,6 +160,9 @@ fn invalid_and_future_files_are_not_reset_or_overwritten() {
         ("operation.json", b"{truncated".as_slice(), StorageError::Corrupt),
         ("operation.json", br#"{"schema_version":99,"revision":0,"operation":null}"#.as_slice(), StorageError::UnsupportedSchema),
         ("preferences.json", br#"{"schema_version":99,"revision":0,"install_directory":null,"launcher_summary_consent":false}"#.as_slice(), StorageError::UnsupportedSchema),
+        // Client options belong to v2 only, and v2 must carry both.
+        ("preferences.json", br#"{"schema_version":1,"revision":0,"install_directory":null,"launcher_summary_consent":false,"client_patches_enabled":false}"#.as_slice(), StorageError::Corrupt),
+        ("preferences.json", br#"{"schema_version":2,"revision":0,"install_directory":null,"launcher_summary_consent":false,"login_servers":[]}"#.as_slice(), StorageError::Corrupt),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(name);

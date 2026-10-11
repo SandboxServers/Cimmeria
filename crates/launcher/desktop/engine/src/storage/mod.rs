@@ -1,6 +1,8 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 pub mod adoption;
 mod atomic;
+pub mod client_changes;
+pub mod client_maintenance;
 pub mod effective_settings;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
@@ -8,6 +10,7 @@ pub mod game_telemetry;
 mod helper_journal;
 pub mod launch;
 pub mod launcher_summary;
+pub mod log_upload;
 pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
@@ -30,6 +33,7 @@ pub use install_intent::{
 mod tests;
 
 use crate::{ContractError, Journal, Operations, Snapshot};
+use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, OpenOptions},
@@ -57,24 +61,80 @@ pub enum StorageError {
     PersistenceUncertain,
 }
 
+/// The preferences schema this build writes. Version 1 files still read.
+const PREFERENCES_SCHEMA: u32 = 2;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "StoredPreferences")]
 pub struct Preferences {
     pub schema_version: u32,
     pub revision: u64,
     pub install_directory: Option<PathBuf>,
     /// Launcher journey summaries only, never game/DLL telemetry.
     pub launcher_summary_consent: bool,
+    /// Empty means `client_setup::login_servers::default_servers()`.
+    pub login_servers: Vec<LoginServer>,
+    pub client_patches_enabled: bool,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: PREFERENCES_SCHEMA,
             revision: 0,
             install_directory: None,
             launcher_summary_consent: false,
+            login_servers: Vec::new(),
+            client_patches_enabled: true,
         }
+    }
+}
+
+/// Every `preferences.json` shape this build reads. Migration happens on
+/// deserialization, so records that embed preferences (legacy import,
+/// adoption) upgrade the same way as the file itself.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPreferences {
+    schema_version: u32,
+    revision: u64,
+    install_directory: Option<PathBuf>,
+    launcher_summary_consent: bool,
+    login_servers: Option<Vec<LoginServer>>,
+    client_patches_enabled: Option<bool>,
+}
+
+impl TryFrom<StoredPreferences> for Preferences {
+    type Error = &'static str;
+    fn try_from(stored: StoredPreferences) -> Result<Self, Self::Error> {
+        let (login_servers, client_patches_enabled) = match (
+            stored.schema_version,
+            stored.login_servers,
+            stored.client_patches_enabled,
+        ) {
+            // v1 predates the client options: it reads as v2 with their
+            // defaults and is written back as v2 by the next save.
+            (1, None, None) => (Vec::new(), true),
+            (PREFERENCES_SCHEMA, Some(servers), Some(enabled)) => (servers, enabled),
+            (1 | PREFERENCES_SCHEMA, _, _) => {
+                return Err("preferences fields do not match their schema version")
+            }
+            // A newer schema keeps its number so validation reports
+            // UnsupportedSchema, not Corrupt, and the file is left alone.
+            (_, servers, enabled) => (servers.unwrap_or_default(), enabled.unwrap_or(true)),
+        };
+        Ok(Self {
+            schema_version: if stored.schema_version == 1 {
+                PREFERENCES_SCHEMA
+            } else {
+                stored.schema_version
+            },
+            revision: stored.revision,
+            install_directory: stored.install_directory,
+            launcher_summary_consent: stored.launcher_summary_consent,
+            login_servers,
+            client_patches_enabled,
+        })
     }
 }
 
@@ -257,15 +317,12 @@ impl DesktopState {
             return Err(StorageError::Busy);
         }
         let next = Preferences {
-            schema_version: 1,
-            revision: self
-                .preferences
-                .revision
-                .checked_add(1)
-                .filter(|n| *n <= MAX_REVISION)
-                .ok_or(StorageError::Corrupt)?,
+            schema_version: PREFERENCES_SCHEMA,
+            revision: self.next_preferences_revision()?,
             install_directory,
             launcher_summary_consent,
+            login_servers: self.preferences.login_servers.clone(),
+            client_patches_enabled: self.preferences.client_patches_enabled,
         };
         validate_preferences(&next)?;
         // Withdrawal closes the summary gate before the write; granting consent
@@ -282,10 +339,87 @@ impl DesktopState {
         written?;
         Ok(self.preferences.clone())
     }
+
+    /// The login-server list and the client-patches switch. Both take effect
+    /// at the next Play; neither touches the install path or consent.
+    pub fn save_client_options(
+        &mut self,
+        login_servers: Vec<LoginServer>,
+        client_patches_enabled: bool,
+        expected_revision: u64,
+    ) -> Result<Preferences, StorageError> {
+        self.save_client_options_with(
+            login_servers,
+            client_patches_enabled,
+            expected_revision,
+            |root, value| atomic::write(root, "preferences.json", value),
+        )
+    }
+
+    fn save_client_options_with(
+        &mut self,
+        login_servers: Vec<LoginServer>,
+        client_patches_enabled: bool,
+        expected_revision: u64,
+        write: impl FnOnce(&Path, &Preferences) -> Result<(), StorageError>,
+    ) -> Result<Preferences, StorageError> {
+        self.finalize_summaries();
+        self.ensure_no_active_operation()?;
+        if self.requires_reopen() {
+            return Err(StorageError::PersistenceUncertain);
+        }
+        if expected_revision != self.preferences.revision {
+            return Err(StorageError::StaleRevision);
+        }
+        // TODO(LX-03): refuse a list `login_servers::validate` rejects before
+        // anything is written.
+        let next = Preferences {
+            schema_version: PREFERENCES_SCHEMA,
+            revision: self.next_preferences_revision()?,
+            login_servers,
+            client_patches_enabled,
+            ..self.preferences.clone()
+        };
+        validate_preferences(&next)?;
+        let written = write(&self.directory.root, &next);
+        match written {
+            Ok(()) => self.preferences = next,
+            Err(error) => {
+                self.preferences_uncertain = error == StorageError::PersistenceUncertain;
+            }
+        }
+        written?;
+        Ok(self.preferences.clone())
+    }
+
+    /// Admission for new operations that write to disk (`docs/updater.md`,
+    /// "New mutation paths must preserve this rule"): refuse while the
+    /// launcher updater or an install, Play, Repair or update is nonterminal.
+    pub(crate) fn ensure_no_active_operation(&self) -> Result<(), StorageError> {
+        self.ensure_updater_idle()?;
+        if self
+            .operations
+            .snapshot()
+            .operation
+            .as_ref()
+            .is_some_and(|op| !op.state.terminal())
+        {
+            return Err(StorageError::Busy);
+        }
+        Ok(())
+    }
+
+    fn next_preferences_revision(&self) -> Result<u64, StorageError> {
+        self.preferences
+            .revision
+            .checked_add(1)
+            .filter(|n| *n <= MAX_REVISION)
+            .ok_or(StorageError::Corrupt)
+    }
 }
 
 fn validate_preferences(value: &Preferences) -> Result<(), StorageError> {
-    if value.schema_version != 1 {
+    if value.schema_version != PREFERENCES_SCHEMA {
         return Err(StorageError::UnsupportedSchema);
     }
     if value.revision > MAX_REVISION {
