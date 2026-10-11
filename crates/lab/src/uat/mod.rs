@@ -150,8 +150,8 @@ mod tests {
         }
     }
 
-    /// A spec whose pose names a tag the seed lacks fails the load. Fails if
-    /// `load_sections` skips the seed check.
+    /// A spec whose pose names a seeded tag loads; one naming a tag the seed
+    /// lacks fails the load. Fails if `load_sections` skips the seed check.
     #[test]
     fn every_committed_spec_tag_is_seeded() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -178,17 +178,22 @@ mod tests {
                  [[row.expect]]\nid = \"help\"\ntext = \"t\"\nsource = \"chat\"\nsince = \"help\"\ncontains = \"help\"\n"
             );
             std::fs::write(specs.join("seed-check.toml"), text).unwrap();
-            load_sections(&specs, None).unwrap_err()
+            load_sections(&specs, None)
         };
 
-        let err = check("SGC_W1_GenHammond");
+        // The positive case: the real seeded tag loads.
+        let loaded = check("SGCW1_GenHammond").unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].spec.rows[0].pose[0].tag, "SGCW1_GenHammond");
+
+        let err = check("SGC_W1_GenHammond").unwrap_err();
         assert!(
             err.contains("tag SGC_W1_GenHammond is not in the seed"),
             "{err}"
         );
         assert!(!err.contains("did you mean"), "{err}");
 
-        let err = check("armyourself_frostbody");
+        let err = check("armyourself_frostbody").unwrap_err();
         assert!(err.contains("did you mean ArmYourself_FrostBody?"), "{err}");
     }
 }
