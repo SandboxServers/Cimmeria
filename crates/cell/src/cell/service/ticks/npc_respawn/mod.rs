@@ -274,13 +274,26 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             args.extend_from_slice(&(entity_id as i32).to_le_bytes());
             args.extend_from_slice(&0u32.to_le_bytes());
             args.push(0u8);
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::EntityMethodCall {
                     entity_id: player_id,
                     method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
                     args,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    target: "spawner.npc_respawn",
+                    player_id,
+                    player_name = space_mgr.entity_label(player_id),
+                    respawning_entity = entity_id,
+                    respawning_entity_name = space_mgr.entity_label(entity_id),
+                    reason = "base_channel_closed",
+                    error = %e,
+                    "NPC respawn: onLootDisplay close could not be enqueued; the \
+                     player's loot window may stay open on the corpse"
+                );
+            }
             tracing::info!(
                 player_id,
                 player_name = space_mgr.entity_label(player_id),
@@ -331,6 +344,19 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             if let Some(npc) = space_mgr.get_entity_mut(entity_id) {
                 npc.direction = spawn_dir;
             }
+        } else {
+            let names = space_mgr.entity_names(entity_id);
+            tracing::warn!(
+                target: "spawner.npc_respawn",
+                event = "respawn_no_spawn_position",
+                npc_id = entity_id,
+                npc_name = names.entity_name,
+                template_id,
+                template_name = names.template_name,
+                space_id,
+                world = space_mgr.world_name_for_space(space_id),
+                "NPC respawn: no spawn position recorded; the NPC is re-created where it died"
+            );
         }
         // An NPC authored in cover respawns holding its slot (NA22).
         crate::cell::cover::hold_spawn_cover(space_mgr, entity_id, "respawn");
@@ -384,8 +410,9 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                         npc_name = space_mgr.entity_label(entity_id),
                         witness_id,
                         witness_name = space_mgr.entity_label(witness_id),
-                        reason = "cell_to_base_closed",
-                        "NPC respawn: re-create could not be enqueued ({e}); the \
+                        reason = "base_channel_closed",
+                        error = %e,
+                        "NPC respawn: re-create could not be enqueued; the \
                          witness keeps the corpse pose until it leaves and re-enters view"
                     );
                     break 'witnesses;
