@@ -253,7 +253,8 @@ mod inventory_loader_tests {
     //! the sibling `tests` module.
 
     use super::*;
-    use crate::test_support::require_db_or_skip;
+    use crate::test_support::{require_db_or_skip, LogCapture};
+    use tracing::Level;
 
     /// Sentinel base, stepped past the IN-list test sentinel
     /// (0x7000_1100) and other sibling reservations elsewhere in the
@@ -413,6 +414,7 @@ mod inventory_loader_tests {
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id, 1, "real").await;
 
+        let capture = LogCapture::install();
         let db_pool = Some(Arc::new(pool.clone()));
         // Wrong account_id (1) for this player_id — must NOT load.
         let data = query_player_load_data(&db_pool, 1, player_id).await;
@@ -423,6 +425,22 @@ mod inventory_loader_tests {
              a leaked load of the real player",
         );
         assert_eq!(data.player_name, "Unknown");
+
+        // The row-missing fallback is a degraded load: pin its level, event,
+        // reason and the player it names.
+        let row = capture
+            .find_event(Level::ERROR, "", "player_row_missing")
+            .expect("no ERROR row with reason=player_row_missing");
+        assert!(
+            row.has_field("event", "player_load_degraded"),
+            "player_row_missing must carry event=player_load_degraded; got {:?}",
+            row.fields,
+        );
+        assert!(
+            row.has_field("player_id", &player_id.to_string()),
+            "player_row_missing must name the player_id; got {:?}",
+            row.fields,
+        );
 
         cleanup(&pool, account_id, player_id).await;
     }

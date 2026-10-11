@@ -675,6 +675,23 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Player-load degraded fallbacks (TG-DB-07)
+
+Every fallback in the player-load loaders logs `event = "player_load_degraded"` with a stable `reason` and `error` (`error = %e`) at `error!`, except `no_db_pool` (offline mode, expected), which logs at `debug!`. The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
+
+| `reason` | Site | Fields |
+|---|---|---|
+| `player_row_missing` | `player_load/core/player_data.rs`, no `sgw_player` row for the account and player | `player_id`, `player_name`, `account_id`, `account_name` |
+| `no_db_pool` | `player_data.rs`, no database pool configured (`debug!`) | the above |
+| `player_query_failed` | `player_data.rs`, the base row read | the above, plus `error` |
+| `equipment_visuals_query_failed` | `player_data.rs`, the equipment-slot visuals | the above, plus `error` |
+| `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
+| `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
+| `bandolier_query_failed` | `player_load/meta.rs`, `query_bandolier_items` | `player_id`, `player_name`, `error` |
+| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
+
+Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
+
 ### Shutdown unsaved-state report (TG-DB-01)
 
 When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.

@@ -26,7 +26,19 @@ pub async fn query_player_load_data(
 ) -> PlayerLoadData {
     let pool = match db_pool {
         Some(p) => p,
-        None => return default_player_load_data(),
+        None => {
+            // Offline mode: expected, so debug rather than error.
+            tracing::debug!(
+                event = "player_load_degraded",
+                reason = "no_db_pool",
+                player_id,
+                player_name = known_names::player_name(player_id),
+                account_id,
+                account_name = known_names::account_name(account_id),
+                "Player load skipped: no database pool; loading default data"
+            );
+            return default_player_load_data();
+        }
     };
 
     #[derive(sqlx::FromRow)]
@@ -114,10 +126,15 @@ pub async fn query_player_load_data(
                     // The active bandolier weapon visual is queried
                     // separately below and is not affected here.
                     tracing::error!(
+                        event = "player_load_degraded",
+                        reason = "equipment_visuals_query_failed",
                         player_id,
                         player_name = %row.player_name,
-                        "Failed to query equipment visuals \u{2014} skipping equipment-slot visuals \
-                         (helmet/armor/etc.); base body components from sgw_player still apply: {e}"
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        error = %e,
+                        "Equipment visuals query failed when loading player data; equipment-slot \
+                         visuals (helmet/armor/etc.) are skipped, base body components still apply"
                     );
                     Vec::new()
                 }
@@ -149,7 +166,16 @@ pub async fn query_player_load_data(
             {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::error!(player_id, player_name = %row.player_name, "Failed to query active bandolier weapon visual — treating as no weapon: {e}");
+                    tracing::error!(
+                        event = "player_load_degraded",
+                        reason = "weapon_visual_query_failed",
+                        player_id,
+                        player_name = %row.player_name,
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        error = %e,
+                        "Active bandolier weapon visual query failed; the player loads with no weapon visual"
+                    );
                     None
                 }
             };
@@ -214,22 +240,99 @@ pub async fn query_player_load_data(
             }
         }
         Ok(None) => {
-            tracing::warn!(
+            tracing::error!(
+                event = "player_load_degraded",
+                reason = "player_row_missing",
                 player_id,
                 player_name = known_names::player_name(player_id),
                 account_id,
                 account_name = known_names::account_name(account_id),
-                "Player not found for mapLoaded"
+                "Player row not found when loading player data; loading default data"
             );
             default_player_load_data()
         }
         Err(e) => {
             tracing::error!(
+                event = "player_load_degraded",
+                reason = "player_query_failed",
                 player_id,
                 player_name = known_names::player_name(player_id),
-                "Failed to query player load data: {e}"
+                account_id,
+                account_name = known_names::account_name(account_id),
+                error = %e,
+                "Player load query failed when loading player data; loading default data"
             );
             default_player_load_data()
+        }
+    }
+}
+
+#[cfg(test)]
+mod degraded_tests {
+    //! Negative-log guard (TESTING.md type 12) for the player-load fallbacks
+    //! that run without a live row: with the database unreachable, each one
+    //! logs `event = player_load_degraded` at ERROR with its `reason`.
+    //! `player_row_missing` needs a live DB and is covered there by
+    //! `live_db_query_player_load_data_account_mismatch_returns_default`
+    //! (core/mod.rs). The equipment and weapon visual reasons need fault
+    //! injection and are untested.
+
+    use super::*;
+    use crate::base::world_entry::methods::missions::query_saved_missions;
+    use crate::test_support::LogCapture;
+    use std::time::Duration;
+    use tracing::Level;
+
+    /// A pool whose every acquire fails fast: nothing listens on port 1.
+    fn unreachable_pool() -> Arc<PgPool> {
+        Arc::new(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_millis(50))
+                .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
+                .expect("connect_lazy must succeed for any well-formed URL"),
+        )
+    }
+
+    #[tokio::test]
+    async fn player_load_fallbacks_log_degraded_reason() {
+        const PLAYER_ID: i32 = 0x7000_B1C8;
+        let pool = unreachable_pool();
+        let capture = LogCapture::install();
+
+        let data = query_player_load_data(&Some(pool.clone()), 0x7000_B1C6, PLAYER_ID).await;
+        assert_eq!(
+            data.player_id, 0,
+            "a failed player query returns the default sentinel"
+        );
+        let items = query_inventory_items(pool.as_ref(), PLAYER_ID).await;
+        assert!(
+            items.is_empty(),
+            "a failed inventory query returns no items"
+        );
+        let missions = query_saved_missions(&Some(pool.clone()), PLAYER_ID).await;
+        assert!(
+            missions.is_empty(),
+            "a failed missions query returns no missions"
+        );
+
+        for reason in [
+            "player_query_failed",
+            "inventory_query_failed",
+            "missions_query_failed",
+        ] {
+            let row = capture
+                .find_event(Level::ERROR, "", reason)
+                .unwrap_or_else(|| panic!("no ERROR row with reason={reason}"));
+            assert!(
+                row.has_field("event", "player_load_degraded"),
+                "reason={reason} must carry event=player_load_degraded; got {:?}",
+                row.fields,
+            );
+            assert!(
+                row.fields.contains_key("error"),
+                "reason={reason} must carry error"
+            );
         }
     }
 }

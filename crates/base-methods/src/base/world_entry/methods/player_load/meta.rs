@@ -126,9 +126,12 @@ pub async fn query_bandolier_items(
         Ok(rows) => map_bandolier_rows(rows),
         Err(e) => {
             tracing::error!(
+                event = "player_load_degraded",
+                reason = "bandolier_query_failed",
                 player_id,
                 player_name = known_names::player_name(player_id),
-                "query_bandolier_items failed: {e}"
+                error = %e,
+                "Player load degraded: bandolier query failed; the player loads with no bandolier weapons"
             );
             vec![]
         }
