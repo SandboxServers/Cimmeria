@@ -34,6 +34,26 @@ pub struct Report {
     pub user_data_remains_in_source: bool,
     pub game_telemetry_available: bool,
 }
+impl Report {
+    /// Adopted in place (D-LX12): the reviewed folder becomes the owner root.
+    /// A verified copy always refuses a destination equal to its source.
+    pub fn in_place(&self) -> bool {
+        self.source == self.destination
+    }
+    /// Release files that keep an in-place adoption from verifying: changed or
+    /// absent bytes, or a file the release keeps at another path. Nothing is
+    /// ever rewritten from the reference inside the player's folder.
+    pub fn blocking(&self) -> impl Iterator<Item = &Difference> {
+        self.files.iter().filter(|d| {
+            self.in_place()
+                && match d.classification {
+                    Classification::Modified | Classification::Missing => true,
+                    Classification::KnownTransform => d.source_path.as_ref() != Some(&d.path),
+                    Classification::Matched | Classification::Extra => false,
+                }
+        })
+    }
+}
 /// Closed choices bound to the native-held report. No renderer paths/config.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +77,12 @@ pub enum Error {
     Network,
     Cancelled,
     LauncherTooOld,
+    /// An in-place folder holds release files that do not match the signed
+    /// release; the review names them.
+    VerificationFailed,
+    /// The old launcher's ledger records a different seed or lacks a patch of
+    /// the signed release, so the folder cannot match it yet.
+    OutdatedInstall,
 }
 impl From<StorageError> for Error {
     fn from(e: StorageError) -> Self {

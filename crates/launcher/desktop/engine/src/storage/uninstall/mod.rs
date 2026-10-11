@@ -13,6 +13,11 @@ struct Plan {
     installation: InstallIntent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     current_release: Option<ReleaseIdentity>,
+    /// An in-place adoption: the owner root is the player's folder, so only
+    /// managed entries go and everything else stays. Omitted when false, which
+    /// keeps the digest of every plan written before it existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    in_place: bool,
 }
 impl Plan {
     fn release_identity(&self) -> ReleaseIdentity {
@@ -135,20 +140,24 @@ impl DesktopState {
         if installed.intent.operation_id != installation_id {
             return Err(ContractError::IdentityConflict.into());
         }
+        let in_place = self.adopted_in_place(&installed.intent)?;
         let plan = Plan {
             schema_version: 1,
             id,
             current_release: (installed.current_release != installed.intent.release_identity())
                 .then_some(installed.current_release),
             installation: installed.intent,
+            in_place,
         };
-        // Refuse any foreign top-level content before admitting destructive work.
+        // Refuse any foreign top-level content before admitting destructive work;
+        // an in-place owner root keeps it instead.
         inspect_tree(
             &self.directory.root,
             &plan.installation.destination,
             &plan.installation,
             plan.release_identity(),
             false,
+            plan.in_place,
         )?;
         if std::fs::symlink_metadata(plan.detached()?).is_ok() {
             return Err(StorageError::UnsafeFile.into());
@@ -212,6 +221,9 @@ impl DesktopState {
         if !plan.installation.backend.is_native() {
             return Err(ContractError::InvalidTransition.into());
         }
+        if plan.in_place {
+            return self.remove_in_place(plan);
+        }
         let root = &plan.installation.destination;
         let detached = plan.detached()?;
         let parent = root.parent().ok_or(StorageError::InvalidDirectory)?;
@@ -242,6 +254,7 @@ impl DesktopState {
                     &plan.installation,
                     plan.release_identity(),
                     false,
+                    false,
                 )?;
                 // Windows will not rename a directory containing a locked file.
                 // Admission is still serialized by DesktopState; no worker is live.
@@ -265,6 +278,7 @@ impl DesktopState {
                         &plan.installation,
                         plan.release_identity(),
                         false,
+                        false,
                     )?);
                     self.write_uninstall_record(&detached_name(plan.id), plan)?;
                 }
@@ -280,6 +294,64 @@ impl DesktopState {
         sync(parent)?;
         // Preserve preferences/consent, release evidence, logs and runtime caches.
         // Refuse to forget an installation other than the one being removed.
+        self.forget_installed_content(&plan.installation)?;
+        Ok(())
+    }
+
+    /// An in-place owner root is the player's folder (D-LX12). Only managed
+    /// entries go, the owner marker last; the folder itself goes only if nothing
+    /// else is left in it. It is never detached, so nothing else moves.
+    fn remove_in_place(&mut self, plan: &Plan) -> Result<(), IntentError> {
+        let root = &plan.installation.destination;
+        let marker = root.join(".cimmeria-install.json");
+        match std::fs::symlink_metadata(&marker) {
+            Ok(_) => {
+                let owner = inspect_tree(
+                    &self.directory.root,
+                    root,
+                    &plan.installation,
+                    plan.release_identity(),
+                    true,
+                    true,
+                )?
+                .ok_or(StorageError::Corrupt)?;
+                for entry in std::fs::read_dir(root).map_err(|_| StorageError::Io)? {
+                    let entry = entry.map_err(|_| StorageError::Io)?;
+                    if entry.file_name() == ".cimmeria-install.json"
+                        || !managed(&self.directory.root, &entry, &plan.installation, true)?
+                    {
+                        continue;
+                    }
+                    let meta =
+                        std::fs::symlink_metadata(entry.path()).map_err(|_| StorageError::Io)?;
+                    let result = if meta.is_dir() {
+                        std::fs::remove_dir_all(entry.path())
+                    } else {
+                        std::fs::remove_file(entry.path())
+                    };
+                    result.map_err(|_| StorageError::Io)?;
+                }
+                // Windows cannot unlink the locked marker; admission stays serialized.
+                drop(owner);
+                std::fs::remove_file(&marker).map_err(|_| StorageError::Io)?;
+            }
+            // The marker goes last, so its absence means an earlier attempt got
+            // that far. Any managed entry still here says otherwise.
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                if let Ok(entries) = std::fs::read_dir(root) {
+                    for entry in entries {
+                        let entry = entry.map_err(|_| StorageError::Io)?;
+                        if managed(&self.directory.root, &entry, &plan.installation, true)? {
+                            return Err(StorageError::Corrupt.into());
+                        }
+                    }
+                }
+            }
+            Err(_) => return Err(StorageError::Io.into()),
+        }
+        if std::fs::remove_dir(root).is_err() && root.exists() {
+            tracing::info!(target: "uninstall", directory = %root.display(), "kept the adopted folder: it holds files the release does not list");
+        }
         self.forget_installed_content(&plan.installation)?;
         Ok(())
     }
@@ -303,6 +375,7 @@ fn inspect_tree(
     intent: &InstallIntent,
     release: ReleaseIdentity,
     partial: bool,
+    in_place: bool,
 ) -> Result<Option<File>, StorageError> {
     let meta = std::fs::symlink_metadata(root).map_err(|_| StorageError::Io)?;
     if !failed_cleanup::plain(&meta) || !meta.is_dir() {
@@ -315,22 +388,11 @@ fn inspect_tree(
     if partial && entries.is_empty() {
         return Ok(None);
     }
-    let stage = format!(".cimmeria-stage-{}", intent.operation_id);
-    let cache = format!(".cimmeria-cache-{}", intent.operation_id);
+    let mut owned = Vec::new();
     for entry in entries {
-        let name = entry.file_name();
-        let name = name.to_str().ok_or(StorageError::UnsafeFile)?;
-        let meta = std::fs::symlink_metadata(entry.path()).map_err(|_| StorageError::Io)?;
-        let auxiliary = meta.is_dir()
-            && failed_cleanup::plain(&meta)
-            && (repair::uninstall_artifact(state_root, &entry.path(), intent, partial)?
-                || update::uninstall_artifact(state_root, &entry.path(), intent, partial)?);
-        if !failed_cleanup::plain(&meta)
-            || !(auxiliary
-                || (name == "game" || name == stage || name == cache) && meta.is_dir()
-                || (name == ".cimmeria-install.json" || name == "content-ready.json")
-                    && meta.is_file())
-        {
+        if managed(state_root, &entry, intent, partial)? {
+            owned.push(entry.path());
+        } else if !in_place {
             return Err(StorageError::UnsafeFile);
         }
     }
@@ -348,8 +410,41 @@ fn inspect_tree(
     if receipt.is_some_and(|receipt| receipt != release) || (!partial && receipt.is_none()) {
         return Err(StorageError::Corrupt);
     }
-    failed_cleanup::validate_tree(root)?;
+    if in_place {
+        // The player's own entries are neither followed nor removed.
+        for path in owned.iter().filter(|path| path.is_dir()) {
+            failed_cleanup::validate_tree(path)?;
+        }
+    } else {
+        failed_cleanup::validate_tree(root)?;
+    }
     Ok(Some(marker))
+}
+
+/// An entry the launcher put in an owner root. Anything else is foreign.
+fn managed(
+    state_root: &Path,
+    entry: &std::fs::DirEntry,
+    intent: &InstallIntent,
+    partial: bool,
+) -> Result<bool, StorageError> {
+    let name = entry.file_name();
+    let Some(name) = name.to_str() else {
+        return Ok(false);
+    };
+    let meta = std::fs::symlink_metadata(entry.path()).map_err(|_| StorageError::Io)?;
+    if !failed_cleanup::plain(&meta) {
+        return Ok(false);
+    }
+    let stage = format!(".cimmeria-stage-{}", intent.operation_id);
+    let cache = format!(".cimmeria-cache-{}", intent.operation_id);
+    Ok(meta.is_dir()
+        && (repair::uninstall_artifact(state_root, &entry.path(), intent, partial)?
+            || update::uninstall_artifact(state_root, &entry.path(), intent, partial)?
+            || name == "game"
+            || name == stage
+            || name == cache)
+        || meta.is_file() && (name == ".cimmeria-install.json" || name == "content-ready.json"))
 }
 
 fn remove_detached(
@@ -358,7 +453,7 @@ fn remove_detached(
     intent: &InstallIntent,
     release: ReleaseIdentity,
 ) -> Result<(), StorageError> {
-    let owner = inspect_tree(state_root, root, intent, release, true)?;
+    let owner = inspect_tree(state_root, root, intent, release, true, false)?;
     for entry in std::fs::read_dir(root).map_err(|_| StorageError::Io)? {
         let entry = entry.map_err(|_| StorageError::Io)?;
         if entry.file_name() == ".cimmeria-install.json" {

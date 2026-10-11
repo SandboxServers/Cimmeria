@@ -96,6 +96,10 @@ pub enum AdoptionError {
     UnsupportedArchive,
     Network,
     ReleaseUnavailable,
+    /// In place: release files in the folder do not match the signed release.
+    VerificationFailed,
+    /// In place: the old launcher has not installed the signed release.
+    OutdatedInstall,
 }
 impl From<StorageError> for AdoptionError {
     fn from(error: StorageError) -> Self {
@@ -146,6 +150,8 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::Network => Self::Network,
             adoption::Error::Cancelled => Self::Cancelled,
             adoption::Error::LauncherTooOld => Self::LauncherTooOld,
+            adoption::Error::VerificationFailed => Self::VerificationFailed,
+            adoption::Error::OutdatedInstall => Self::OutdatedInstall,
         }
     }
 }
@@ -153,10 +159,12 @@ impl From<adoption::Error> for AdoptionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
+    /// A verified copy (macOS).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Available,
-    /// No verified-copy backend exists for this operating system yet.
+    /// The imported folder itself is verified and adopted (D-LX12).
     #[cfg_attr(target_os = "macos", allow(dead_code))]
-    UnsupportedPlatform,
+    InPlace,
     /// This build carries no archive helper matching its pinned identity.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     HelperUnavailable,

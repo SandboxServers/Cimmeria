@@ -12,7 +12,7 @@ const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({previ
  release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,missing:1,extra:3},
  differences:[{path:'Working/Binaries/SGW.exe',source_path:'Working/Binaries/SGW.exe',classification:'known_transform'},{path:'<img src=x onerror=alert(1)>.lua',source_path:'x',classification:'modified'},{path:'mod.dll',source_path:'mod.dll',classification:'extra'}],differences_omitted:4,
  login_servers:[{name:'Second',url:'https://example.invalid/second'},{name:'First',url:'https://example.invalid/first'}],client_patches_enabled:false,
- game_telemetry_opted_in:true,game_telemetry_available:false,requires_normalization:true,requires_telemetry_acceptance:true,user_data_remains_in_source:true});
+ game_telemetry_opted_in:true,game_telemetry_available:false,requires_normalization:true,requires_telemetry_acceptance:true,user_data_remains_in_source:true,in_place:false,blocked_files:[]});
 const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,adopt('running')),activity:'review',review:review(handle)});
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
@@ -148,6 +148,47 @@ test('interrupted work offers only its native recovery, behind an explicit confi
   assert.match(ui.text(),/Verified copy created in \/copy/);
  }finally{await ui.app.dispose();}
 });
+test('in place: the imported folder is offered, a file that does not verify is named and blocks confirm, then the folder is adopted',async()=>{
+ const placed=(status:AdoptionStatus):AdoptionStatus=>({...status,backend:'in_place'});
+ const folder=(blocked:string[])=>({...review(),destination:'/old-game',in_place:true,blocked_files:blocked,requires_normalization:false,requires_telemetry_acceptance:false,game_telemetry_opted_in:false});
+ let status=placed(idle()),reviews=0;
+ const ui=mount(request=>{
+  if(request==='choose')status=placed({...reviewing(`preview-${++reviews}`),review:folder(reviews===1?['later.txt']:[])});
+  else if(request.command==='dismiss')status=placed(idle(3));
+  else if(request.command==='confirm')status=placed({...idle(6),native:native(6,adopt('running')),activity:'copying',cancellable:false,progress:{phase:'copy',current:1,total:3}});
+  return status;});
+ try{await ui.app.ready;await ui.settle();
+  assert.match(ui.text(),/Adopt your existing game folder \/old-game in place.*without copying it/);
+  assert.equal(ui.get('adoption-title').textContent,'Adopt existing installation');
+  assert.equal(ui.get('choose-adoption-destination').textContent,'Verify and adopt this folder…');
+  await ui.click('choose-adoption-destination');
+  assert.match(ui.text(),/cannot be adopted in place: later\.txt\. Restore them/);
+  assert.equal(ui.get('adoption-source-label').textContent,'Game folder to adopt:');
+  assert.equal(ui.get('adoption-destination-label').textContent,'Launcher-owned installation:');
+  assert.equal(ui.get('confirm-adoption').textContent,'Adopt this folder');
+  assert.match(ui.get('adoption-consequences').textContent!,/moved, not copied.*stay exactly where they are; uninstalling removes only what the release lists/);
+  await ui.tick('adoption-closed');
+  assert.equal(ui.disabled('confirm-adoption'),true,'a folder that does not verify is never confirmed');
+  await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,0);
+  await ui.click('dismiss-adoption');
+  // The player restored the file; a new review verifies.
+  await ui.click('choose-adoption-destination');
+  assert.match(ui.text(),/Nothing is moved until you confirm/);
+  assert.equal((ui.get('adoption-closed') as HTMLInputElement).checked,false,'a new review starts unchecked');
+  await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),false);
+  await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,1);
+  assert.match(ui.text(),/Moving the verified release files into the launcher-owned game folder: 1 of 3\. Nothing is copied/);
+  assert.equal(ui.get('cancel-adoption').hidden,true,'admitted moves are never cancelled part-way');
+  status=placed({...idle(7),native:native(7,adopt('succeeded')),owned:true,completed:{directory:'/old-game'}});
+  await ui.click('inspect-adoption');
+  assert.match(ui.text(),/Adopted \/old-game in place.*uninstalling never removes them/);
+  status=placed({...idle(8),native:native(8,adopt('reconciliation_required')),reconciliation:{kind:'copy',operation_id:'adopt-1',directory:'/old-game',can_recover:true,can_abandon:true}});
+  await ui.click('inspect-adoption');
+  assert.match(ui.text(),/in-place adoption of \/old-game was interrupted\. Recover to finish moving.*Abandon to put every release file back/);
+  await ui.click('abandon-adoption');
+  assert.match(ui.get('adoption-maintenance-consequences').textContent!,/move every release file back where it was/);
+ }finally{await ui.app.dispose();}
+});
 test('other views are refreshed only when a saved revision changes',async()=>{
  let status:AdoptionStatus=idle(1),changes=0;
  const ui=mount(()=>status,()=>{changes++;});
@@ -164,6 +205,8 @@ test('unavailable backends and unsupported imported settings are stated plainly'
  for(const [status,expected] of [
   [{...idle(),backend:'unsupported_platform'},/not available on this operating system yet\. Keep using the old launcher/],
   [{...idle(),backend:'helper_unavailable'},/does not include the verified archive helper/],
+  [{...idle(),backend:'in_place'},/Adopt your existing game folder \/old-game in place/],
+  [{...idle(),backend:'in_place',last_error:'outdated_install'},/has not installed the current signed release.*Nothing was changed/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_catalog'}},/custom content catalog.*will not rewrite your settings/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_configuration'}},/custom patch DLL.*will not silently drop/],
   [{...idle(),imported:null},/Import legacy launcher settings above first/],
@@ -173,7 +216,7 @@ test('unavailable backends and unsupported imported settings are stated plainly'
  ] as [AdoptionStatus,RegExp][]){
   const ui=mount(()=>status);
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),expected);
-   assert.equal(ui.disabled('choose-adoption-destination'),status.backend!=='available'||!status.imported||!!status.imported.blocker||status.owned);
+   assert.equal(ui.disabled('choose-adoption-destination'),!['available','in_place'].includes(status.backend)||!status.imported||!!status.imported.blocker||status.owned);
   }finally{await ui.app.dispose();}
  }
 });
