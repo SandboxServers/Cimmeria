@@ -9,7 +9,10 @@
 > specs: [work-packets.md](work-packets.md).
 >
 > **Campaign status (2026-10-11): CH-01, CH-02 and CH-03 merged; D-CH1 to
-> D-CH3 decided (a); CH-04 in progress.** CH-05 to CH-07 follow CH-04. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
+> D-CH3 decided (a); CH-04 reviewed and integrated into the local feature
+> branch `lab-chaos/feature`.** A PR hold is in force: from CH-04 on, packets
+> merge into `lab-chaos/feature` locally and the campaign opens one PR when
+> the hold lifts (see Ship below). CH-05 to CH-07 follow CH-04. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
 > need the user's OK.
 
 ## Purpose
@@ -91,9 +94,9 @@ the report so a run can be replayed exactly.
 | CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Integrated |
 | CH-02 | `lab uat --chaos` in the PowerShell CLI | packet-coder | S | 2 | CH-01 | Integrated |
 | CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Integrated |
-| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | Writing |
-| CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder | S | 3 | CH-04 | BlockedDependency |
-| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDependency |
+| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | Integrated (feature branch) |
+| CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder | S | 3 | CH-04 | Ready |
+| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | Ready |
 | CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | BlockedDependency |
 | CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | BlockedDependency |
 | CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
@@ -116,7 +119,9 @@ Waves (packets in one wave touch disjoint files):
 ## Dispatch rules
 
 - **Workers.** One packet each, in its own worktree and test database:
-  `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 lab-chaos/<packet>-<slug> <worktree>`.
+  `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 lab-chaos/<packet>-<slug> <worktree>`,
+  then, in the new worktree, `git reset --hard lab-chaos/feature` so the
+  packet builds on every integrated packet.
   `packet-coder` (Haiku) for packets marked so; `rust-gameserver-dev` for
   CH-04, CH-06 and CH-07; `documentation-writer` for CH-12. The brief
   carries the worktree path, the packet section, the contract section and
@@ -133,8 +138,13 @@ Waves (packets in one wave touch disjoint files):
 - **Shell.** PowerShell only: no bash, no direct `cargo`, no
   `git worktree prune`, no `git stash`. Every compiling command goes through
   `pwsh -NoProfile -File tools/build-lane/lane.ps1`.
-- **Ship.** `python tools/build-lane/ship.py pr -C <worktree> -m <msg>`, then
-  `python tools/build-lane/ship.py merge <PR> --retire <worktree>`.
+- **Ship (PR hold, 2026-10-11).** No per-packet PRs. After review, the
+  coordinator merges the packet branch into `lab-chaos/feature` (worktree
+  `chaos`) with `git merge --no-ff`, reruns the touched crates' lane checks
+  there, and retires the packet worktree. When the hold lifts, one PR:
+  `python tools/build-lane/ship.py pr -C .claude/worktrees/chaos -m <msg>`,
+  then `ship.py merge <PR> --retire chaos`. Before then, merge `origin/main`
+  into the feature branch at wave boundaries to keep it current.
 - **Shared files.** Only CH-12 edits `docs/architecture/network-chaos-testing.md`,
   `TESTING.md`, `docs/gap-analysis*`, `docs/project-status.md` and
   `docs/guides/unified-uat.md`; packets put their doc deltas in their

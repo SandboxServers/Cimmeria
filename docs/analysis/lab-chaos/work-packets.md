@@ -372,11 +372,31 @@ module doc if it lists features.
 the contract, registered in `crates/lab-mcp/src/tools/mod.rs` the same way
 `witnesses.rs` is, all under `#[cfg(feature = "lab-chaos")]`. Resolve
 `entity_id` to the session address through the same path `sessions.rs`
-uses. Clamp `ttl_s` (default `DEFAULT_TTL_S`, refuse over `MAX_TTL_S`).
-When `lab_chaos::current()` is None, every tool answers
+uses. When `lab_chaos::current()` is None, every tool answers
 `{refused: "lab chaos is off (DEVELOPER_MODE)"}`. Add the names to
 `names.rs` if tool names are listed there. Put tests in `chaos_tests.rs`
 beside it, as the other tools do.
+
+From the CH-04 review (the registry is the authority; see
+[worknotes/CH-04.md](worknotes/CH-04.md)):
+
+- **TTL.** Apply `DEFAULT_TTL_S` only when the request names no `ttl_s`.
+  Pass any named value to `LabChaos::set` unchanged; it refuses 0 and values
+  over `MAX_TTL_S`. Return its refusal text (`ChaosRefused`'s `Display`) as
+  `{refused: ...}`. Clamp nothing.
+- **Call shape.** `set(addr, entity_id, label, net, flush, ttl_s, Instant::now())`.
+  `label` is the request's spec text if given, otherwise built from the
+  profile and seed (`net seed=7`, `flush:pack`). `expires_in_s` is
+  `expires_at - now`, rounded down.
+- **Race guard.** After `set` succeeds, resolve `entity_id` again. If it no
+  longer maps to the same address, call `clear_if_not(addr, <entity now at
+  addr, or 0>)` and answer `{refused: "no session for entity <id>"}`.
+- **Status** reports entity ids from `status()`, never an address.
+- **Do not** wire `set` or `clear` into admin-api or the console. The
+  `lab_chaos_callers` test in `crates/server/tests/` already allows
+  `crates/lab-mcp/src/tools/chaos.rs`; call `lab_chaos::current()` by its
+  full path (no `use lab_chaos::{..}`, `::*` or `as` imports, which the
+  test refuses).
 
 **Tests** (`crates/lab-mcp/src/tools/chaos_tests.rs`, type 1, with
 `--features lab-chaos`): refused when not installed; `ttl_s` over the cap is
@@ -417,6 +437,13 @@ D-CH1** (this packet is for option (a)) and CH-04.
 3. `BaseService::start`: under the feature and when `lab_chaos::current()`
    is `Some`, wrap the bound socket's transport in `ChaosTransport`; with the
    feature off, the code path is unchanged.
+4. **Cost on the send path.** `net_for` takes the registry's one mutex on
+   every send. Add a cheap "nothing set" check first (for example an
+   `AtomicUsize` entry count on `LabChaos`, kept in step inside the lock), so
+   a lab server with no chaos set pays one atomic load per send. This edits
+   `crates/base-session/src/base/lab_chaos/mod.rs`; keep its tests green.
+   The file must be `crates/base/src/base/lab_chaos_transport.rs`, the name
+   `lab_chaos_callers` allows.
 
 **Tests** (network chaos, TESTING.md type 10, under
 `crates/mercury/src/test_harness/tests/chaos/` if the filter extraction
@@ -467,7 +494,15 @@ that reads `lab_chaos::current()?.flush_for(addr, now)` and:
   single-packet bundle, as the server did before #1341's mitigation, even if
   the mitigation is on.
 - `Shift { len }` / `ShiftSweep { seed }`: prepend the filler of `len` bytes
-  (`ShiftSweep`: `len = rng % 37`, logged).
+  (`ShiftSweep`: a seeded draw from 0 and 2 to 36, never 1, logged). The
+  CH-04 review's candidates: `updateFrequencyNotification` (0x02, exactly 2
+  bytes) and `voiceData` (0x33, 3 to 36); the design step confirms or
+  replaces them, and says whether a missing length of 1 leaves any residue
+  unreachable.
+
+Before reading `flush_for`, call `clear_if_not(addr, player_entity_id)`: a
+`logOff` to character select keeps the session's address but the next
+character is a new entity, and must start clean.
 
 `dispatch_deferred` calls `apply` once per flush, under
 `#[cfg(feature = "lab-chaos")]`; nothing else in `deferred_flush.rs`
