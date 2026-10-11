@@ -358,11 +358,12 @@ async fn a_malformed_call_is_logged() {
 #[tokio::test]
 async fn a_database_failure_is_an_internal_error() {
     let capture = LogCapture::install();
-    // Nothing listens on the discard port; the short acquire timeout bounds
-    // the wait whatever the platform does with a refused connection.
+    // Nothing listens on port 1 (the address the live-DB URL guard allows
+    // for an unreachable pool); the short acquire timeout bounds the wait
+    // whatever the platform does with a refused connection.
     let pool = sqlx::postgres::PgPoolOptions::new()
         .acquire_timeout(Duration::from_millis(500))
-        .connect_lazy("postgres://fx04@[::1]:9/none")
+        .connect_lazy("postgres://fx04@127.0.0.1:1/none")
         .expect("lazy pool");
     let ctx = FakeContext {
         pool: Some(pool),

@@ -36,12 +36,12 @@ pub enum Gate {
     Lease,
     /// `lease_id` optional: a given one must be current; without one the
     /// tool takes a lease of its own for as long as it drives
-    /// (`lab_uat_run`, see [`super::RunLease`]).
+    /// (`lab_uat_run`, `lab_uat_calibrate`, see [`super::RunLease`]).
     OwnLease,
 }
 
 /// Tools that take a lease of their own when the caller passes none.
-pub const OWN_LEASE: &[&str] = &["lab_uat_run"];
+pub const OWN_LEASE: &[&str] = &["lab_uat_run", "lab_uat_calibrate"];
 
 /// Tools that do not drive the client. Most only look; `lab_golden_record`
 /// writes a golden file but touches no client. Everything else needs the
@@ -186,5 +186,7 @@ mod tests {
             assert!(!OPEN.contains(t), "{t} is in two lists");
         }
         assert_eq!(gate("lab_uat_run"), Gate::OwnLease);
+        // lab-spec-vocab (SV-10): the calibration sweep leases like a run.
+        assert_eq!(gate("lab_uat_calibrate"), Gate::OwnLease);
     }
 }

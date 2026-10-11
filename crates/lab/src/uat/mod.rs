@@ -16,7 +16,8 @@
 //! - [`golden`] — run fingerprints, golden agreement and diffs.
 //! - [`attest`] — SigNoz rows, human answers and the build, after the run.
 //! - [`calibrate`] — calibration candidates, hover scoring and pose-line spec
-//!   edits (lab-spec-vocab SV-09); the sweep that drives them is SV-10.
+//!   edits (lab-spec-vocab SV-09), and the sweep that drives them on a live
+//!   client for `lab_uat_calibrate` (SV-10).
 //!
 //! How to run it: `docs/guides/automated-uat.md`.
 

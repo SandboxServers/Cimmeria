@@ -556,9 +556,6 @@ impl PoseSpec {
     /// line it writes always loads (359.96 deg writes as 0.0, a pitch of
     /// -78.75 as -78.7); control characters in `calibrated` become spaces,
     /// so the pose stays one line (D-SV2).
-    // The calibrate and record packets (SV-09, lab-record) are the first
-    // non-test callers.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn to_inline_toml(&self) -> String {
         let bearing = match round_to(self.bearing_deg, 1) {
             b if b >= 360.0 => 0.0,
@@ -607,14 +604,12 @@ impl PoseSpec {
 }
 
 /// `v` rounded to `places` decimals, the value a `{:.N}` pose field holds.
-#[cfg_attr(not(test), allow(dead_code))]
 fn round_to(v: f64, places: i32) -> f64 {
     let k = 10f64.powi(places);
     (v * k).round() / k
 }
 
 /// A string as TOML writes it, escapes included.
-#[cfg_attr(not(test), allow(dead_code))]
 fn toml_string(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }
