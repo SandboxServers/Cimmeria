@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
+mod webview2;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
@@ -320,6 +321,8 @@ async fn choose_legacy_source(
 }
 
 fn main() {
+    #[cfg(windows)]
+    webview2::ensure_runtime_or_exit();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
