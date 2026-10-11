@@ -25,6 +25,7 @@ use tracing::Instrument;
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
+use crate::base::session_identity::identity_for_entity;
 use crate::cell::messages::BaseToCellMsg;
 use container_policy::{container_refusal, refuse_move, MoveEnd};
 
@@ -275,7 +276,13 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
     // ceiling), checked in the transaction so the refusal is visible.
     let over_ceiling = target_slot_id >= max_slots && target_container_id != INV_BANK;
     if target_container_id <= 0 || target_slot_id < min_slot || over_ceiling {
+        let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, req.entity_id);
         tracing::warn!(
+            target: "inventory",
+            event = "move_rejected",
+            reason = "invalid_slot",
+            account_id = who.account_id,
+            account_name = who.account_name,
             player_id,
             player_name = known_names::player_name(player_id),
             item_id, // nt:id-only instance id, type unread yet
@@ -372,7 +379,13 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
         Ok(Some(row)) => row,
         Ok(None) => {
             let _ = tx.rollback().await;
+            let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, req.entity_id);
             tracing::warn!(
+                target: "inventory",
+                event = "move_rejected",
+                reason = "source_not_found",
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = known_names::player_name(player_id),
                 item_id, // nt:id-only instance id, type unread yet
@@ -445,11 +458,19 @@ async fn locked_move(
 
     if quantity > source.stack_size {
         let _ = tx.rollback().await;
+        let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, req.entity_id);
         tracing::warn!(
+            target: "inventory",
+            event = "move_rejected",
+            reason = "over_stack",
+            account_id = who.account_id,
+            account_name = who.account_name,
             player_id,
             player_name = known_names::player_name(player_id),
             item_id,
             item_name = cimmeria_names::book().item(source.type_id),
+            source_container_id = source.container_id,
+            source_container_name = cimmeria_names::book().container(source.container_id),
             quantity,
             stack_size = source.stack_size,
             "MoveInventoryItem: requested quantity exceeds stack — rejecting"
