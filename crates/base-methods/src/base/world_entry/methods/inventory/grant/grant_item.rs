@@ -377,7 +377,7 @@ async fn grant(
     if target == INV_BUYBACK {
         let reason = GrantRefusal::NotGrantable;
         let player_label = known_names::player_name(player_id);
-        tracing::info!(
+        tracing::warn!(
             target: "inventory",
             event = "grant_refused",
             account_id,
@@ -409,23 +409,48 @@ async fn grant(
         PersistOutcome::Committed(c) => c,
         PersistOutcome::Refused(reason) => {
             let player_label = known_names::player_name(player_id);
-            tracing::info!(
-                target: "inventory",
-                event = "grant_refused",
-                account_id,
-                account_name = known_names::account_name(account_id),
-                player_id,
-                player_name = player_label,
-                entity_id,
-                entity_name = player_label,
-                item_type_id = item_id,
-                item_name = cimmeria_names::book().item(item_id),
-                quantity = count,
-                container_id = target,
-                container_name = cimmeria_names::book().container(target),
-                reason = reason.as_str(),
-                "grant_refused: nothing was written"
-            );
+            // A database failure or a non-grantable item is a fault to see at
+            // WARN; a full bag is the player's own state and stays at INFO.
+            if matches!(
+                reason,
+                GrantRefusal::DatabaseError | GrantRefusal::NotGrantable
+            ) {
+                tracing::warn!(
+                    target: "inventory",
+                    event = "grant_refused",
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
+                    item_type_id = item_id,
+                    item_name = cimmeria_names::book().item(item_id),
+                    quantity = count,
+                    container_id = target,
+                    container_name = cimmeria_names::book().container(target),
+                    reason = reason.as_str(),
+                    "grant_refused: nothing was written"
+                );
+            } else {
+                tracing::info!(
+                    target: "inventory",
+                    event = "grant_refused",
+                    account_id,
+                    account_name = known_names::account_name(account_id),
+                    player_id,
+                    player_name = player_label,
+                    entity_id,
+                    entity_name = player_label,
+                    item_type_id = item_id,
+                    item_name = cimmeria_names::book().item(item_id),
+                    quantity = count,
+                    container_id = target,
+                    container_name = cimmeria_names::book().container(target),
+                    reason = reason.as_str(),
+                    "grant_refused: nothing was written"
+                );
+            }
             let why = match reason {
                 GrantRefusal::ContainerFull => "that bag is full",
                 _ => "the inventory write failed",

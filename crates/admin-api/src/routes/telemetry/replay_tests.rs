@@ -83,6 +83,8 @@ pub(super) fn claims(kind: Option<&str>) -> TokenClaims {
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
         kind: kind.map(str::to_string),
+        acct: None,
+        mid: None,
     }
 }
 

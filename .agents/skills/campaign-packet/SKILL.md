@@ -71,7 +71,7 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 
 - One worktree and one test database (`sgw_<worktree>`) per worker. Never
   run two implementers in one checkout.
-- Implementer: the [`packet-coder`](../../agents/packet-coder.md) agent (a
+- Implementer: the [`packet-coder`](../../../.claude/agents/packet-coder.md) agent (a
   Haiku-tier coder that edits only the named files, compiles through the lane
   and commits locally). A packet that needs judgment goes to
   `rust-gameserver-dev` with the same brief instead.
@@ -86,14 +86,20 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 ## 4. Review, fix, ship
 
 1. Run an adversarial read-only reviewer on the packet's diff: the
-   [`packet-reviewer`](../../agents/packet-reviewer.md) agent (Sonnet tier),
+   [`packet-reviewer`](../../../.claude/agents/packet-reviewer.md) agent (Sonnet tier),
    plus the matching domain advisor or `server-authority-enforcer` when the
    packet touches their area. Give it the worktree, the commit range and
    the packet spec.
 2. The coordinator verifies each finding, fixes what's real in the worktree,
    and reruns the packet's lane checks.
 3. Ship and merge with the `ship-pr` skill (`ship.ps1 pr -C <worktree>`, then
-   `ship.ps1 merge <PR> --retire <worktree>`). Merge on the minimum CI.
+   `ship.ps1 merge <PR> --retire <worktree>`). Merge on the minimum CI:
+   `ship.ps1 merge` puts the PR in `main`'s merge queue, which runs the full
+   build + nextest there, so the packet's lane nextest must be green first.
+   A packet that builds on an unmerged one can stack on its branch
+   (`ship.ps1 pr -C <worktree> --base <branch>`); merge the base first and
+   `ship.ps1` restacks the child. Code merges stop while a `main-red` issue is
+   open ([pre-pr-checks.md § Main is red](../../../docs/agents/pre-pr-checks.md#main-is-red)).
 4. Update the packet's row in the ledger and write
    `worknotes/<packet>.md` if anything is left over.
 

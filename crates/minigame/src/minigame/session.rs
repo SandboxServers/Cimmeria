@@ -43,6 +43,11 @@ pub const PENDING_SESSION_TTL: Duration = Duration::from_secs(180);
 /// player sees past the TTL is one interval.
 pub const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
+/// How young a pending session must be for a second `register` on the same
+/// entity to count as a double interact (INFO) rather than a stuck launch
+/// (WARN). TG-MG-04.
+const DOUBLE_INTERACT_WINDOW: Duration = Duration::from_secs(2);
+
 /// A registered minigame session awaiting client connection.
 #[derive(Debug, Clone)]
 pub struct MinigameSession {
@@ -158,12 +163,35 @@ impl SessionRegistry {
         // means the *next* interaction is the one that recovers, rather
         // than the player having to wait out a sweep tick.
         expire_pending_locked(&mut inner, PENDING_SESSION_TTL);
-        if inner.sessions.contains_key(&entity_id) {
-            tracing::warn!(
-                entity_id,
-                entity_name = session.player_name.as_deref(),
-                "Entity already has an active minigame session"
-            );
+        if let Some(existing) = inner.sessions.get(&entity_id) {
+            // A second interact while the first launch is still loading is a
+            // double click: INFO. A live game, or a launch that has sat past
+            // the window, is the #1303 shape: WARN.
+            let existing_age = existing.created_at.elapsed();
+            let existing_age_ms = u64::try_from(existing_age.as_millis()).unwrap_or(u64::MAX);
+            if !existing.connected && existing_age < DOUBLE_INTERACT_WINDOW {
+                tracing::info!(
+                    entity_id,
+                    entity_name = session.player_name.as_deref(),
+                    reason = "duplicate_session",
+                    existing_connected = existing.connected,
+                    existing_age_ms,
+                    existing_game = %existing.game_name,
+                    requested_game = %session.game_name,
+                    "Entity already has an active minigame session"
+                );
+            } else {
+                tracing::warn!(
+                    entity_id,
+                    entity_name = session.player_name.as_deref(),
+                    reason = "duplicate_session",
+                    existing_connected = existing.connected,
+                    existing_age_ms,
+                    existing_game = %existing.game_name,
+                    requested_game = %session.game_name,
+                    "Entity already has an active minigame session"
+                );
+            }
             return None;
         }
         inner.sessions.insert(entity_id, session);
@@ -267,6 +295,20 @@ impl SessionRegistry {
     /// behind an address no session recorded.
     pub async fn session_count(&self) -> usize {
         self.inner.lock().await.sessions.len()
+    }
+
+    /// How many registered sessions are still pending, that is, never had
+    /// their SWF client connect. The listener reports it with a refused peer,
+    /// since a pending session is the one a real player's connection is
+    /// expected to claim.
+    pub async fn pending_count(&self) -> usize {
+        self.inner
+            .lock()
+            .await
+            .sessions
+            .values()
+            .filter(|s| !s.connected)
+            .count()
     }
 
     /// Validate a ticket without claiming the session.

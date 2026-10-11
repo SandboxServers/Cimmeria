@@ -478,7 +478,7 @@ with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `bad_rows` for an upload that was accepted in part, the last with a
 `bad_rows` count), `budget` and `limit` for a size
 refusal or truncation, `kept` (rows or lines replayed) and
-`dropped_estimate` for a truncation, `peer`, and `session_id` /
+`dropped_estimate` for a truncation, `pool` (`peer_share` or `route`) and `limit` for a `busy` refusal, `peer`, `cimmeria.session_kind`, and `session_id` /
 `install_id` once the token verified. The row never carries the payload.
 `dropped_estimate` is in the unit of the budget that was hit: rows for a
 chunk (past the expansion cap, estimated from the compression ratio),
@@ -543,7 +543,8 @@ Useful first queries:
 - `service.name = 'cimmeria-client' AND client_target = 'client.dll.attached'`:
   one row per DLL start, with `dll_version` (and `dll_flavor`, `player`
   or `lab-bridge`, inside `fields`). A `player` session must never show
-  `lab-bridge`.
+  `lab-bridge`. The row's `pid` field (in `fields`) is the process that
+  wrote its chunks: the `X-Cimmeria-Client-Pid` header, from TG-PIPE-02.
 - `service.name = 'cimmeria-client' AND client_target = 'client.telemetry_dll.launch'`:
   the launcher's record of whether an opted-in player's telemetry DLL
   went in (`outcome` = `injected`, `unavailable` or `inject_failed`, in

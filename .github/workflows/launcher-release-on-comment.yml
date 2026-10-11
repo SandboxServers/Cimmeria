@@ -2,7 +2,9 @@ name: launcher-release-on-comment
 
 # ChatOps trigger for launcher-release.yml. A maintainer comments
 # `/release-launcher` on a merged PR and this workflow validates the
-# comment and dispatches the launcher release workflow.
+# comment and dispatches the launcher release workflow, which publishes
+# the desktop launcher zip as a dated release and, once the updater key
+# exists, refreshes `launcher-current` (crates/launcher/desktop/docs/release.md).
 #
 # Mirrors the structure of release-on-comment.yml (which handles the
 # server container `/release` command). The two are intentionally
@@ -127,4 +129,4 @@ jobs:
             "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content=rocket >/dev/null
           gh pr comment "$PR" \
-            --body "🚀 Launcher release dispatched by @${ACTOR}. Watch [launcher-release runs](${SERVER_URL}/${REPO}/actions/workflows/launcher-release.yml)."
+            --body "🚀 Launcher release dispatched by @${ACTOR}. Watch [launcher-release runs](${SERVER_URL}/${REPO}/actions/workflows/launcher-release.yml); the run's summary says whether it was signed and refreshed [launcher-current](${SERVER_URL}/${REPO}/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip)."

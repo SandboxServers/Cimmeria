@@ -20,22 +20,98 @@ use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::super::player_load::core::query_player_load_data;
+use crate::base::session_identity::{identity_for_addr, identity_for_entity};
 use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
+/// How long a refresh waits before its one retry of a failed player load
+/// (D-TG11). Long enough to ride out a pool hiccup, short enough that the
+/// player still sees the gear change land promptly when the retry succeeds.
+const LOAD_RETRY_DELAY: Duration = Duration::from_millis(200);
+
+/// A first failed load slower than this is a hung database, not a hiccup,
+/// so the refresh aborts without retrying. The bandolier and equip callers
+/// await the refresh on the base's single `cell_rx` loop, so every second
+/// spent here is a second every player's cell-to-base traffic waits; a
+/// retry against a hung pool would add up to another acquire timeout (30 s).
+const FAST_FAILURE_LIMIT: Duration = Duration::from_secs(1);
+
+/// Upper bound on the one retry's load, for the same reason: the cell queue
+/// waits behind it.
+const RETRY_LOAD_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// What [`load_with_bounded_retry`] got.
+#[derive(Debug)]
+enum BoundedLoad<T> {
+    Loaded(T),
+    Aborted {
+        attempts: u32,
+        /// Total time spent, both attempts and the retry delay included.
+        elapsed_ms: u64,
+        /// Why the retry did not produce a load: `skipped_slow_failure`
+        /// (no retry), `failed` or `timed_out`.
+        retry: &'static str,
+    },
+}
+
+/// Run `load`, and retry it once (D-TG11) only when the first attempt failed
+/// fast; the retry itself is capped at [`RETRY_LOAD_TIMEOUT`]. `loaded` says
+/// whether a result is a real load. Generic over the loader so the retry
+/// bounds can be tested without a database.
+async fn load_with_bounded_retry<T, F, Fut>(
+    mut load: F,
+    loaded: impl Fn(&T) -> bool,
+) -> BoundedLoad<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    // tokio's clock, so paused-time tests drive it.
+    let started = tokio::time::Instant::now();
+    let first = load().await;
+    if loaded(&first) {
+        return BoundedLoad::Loaded(first);
+    }
+    let elapsed_ms =
+        |s: tokio::time::Instant| u64::try_from(s.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if started.elapsed() >= FAST_FAILURE_LIMIT {
+        return BoundedLoad::Aborted {
+            attempts: 1,
+            elapsed_ms: elapsed_ms(started),
+            retry: "skipped_slow_failure",
+        };
+    }
+    tokio::time::sleep(LOAD_RETRY_DELAY).await;
+    let retry = match tokio::time::timeout(RETRY_LOAD_TIMEOUT, load()).await {
+        Ok(second) if loaded(&second) => return BoundedLoad::Loaded(second),
+        Ok(_) => "failed",
+        Err(_) => "timed_out",
+    };
+    BoundedLoad::Aborted {
+        attempts: 2,
+        elapsed_ms: elapsed_ms(started),
+        retry,
+    }
+}
+
 /// Re-run the player's appearance assembly and broadcast `BEING_APPEARANCE`.
 ///
-/// Returns silently when the entity has no connected client (e.g. logging
-/// out, not yet connected) — the assembly will run again on the next
+/// Returns without sending when the entity has no connected client (e.g.
+/// logging out, not yet connected) — the assembly will run again on the next
 /// `world_entry` and the witness packet would have nowhere to land in the
-/// meantime.
+/// meantime. Also returns without sending or caching when the player load
+/// fails (TG-ITM-14), so a database error never replaces the player's model
+/// with the default body. The retry is bounded (see [`FAST_FAILURE_LIMIT`]
+/// and [`RETRY_LOAD_TIMEOUT`]) because callers await this on the base's
+/// shared cell-to-base loop.
 pub async fn refresh_player_appearance(
     entity_id: u32,
     player_id: i32,
@@ -45,48 +121,120 @@ pub async fn refresh_player_appearance(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    let (account_id, holstered) = {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-            Some(a) => a,
-            None => {
-                let player_label = known_names::player_name(player_id);
-                tracing::debug!(
+    // Each lock is taken in its own statement so the guard is released
+    // before `log_skip` (which takes the same locks) runs.
+    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+    let Some(addr) = addr else {
+        log_skip(
+            connected,
+            entity_to_addr,
+            entity_id,
+            player_id,
+            "entity_to_addr_miss",
+        );
+        return;
+    };
+    let client = connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .map(|c| (c.account_id, c.weapon_holstered));
+    let Some((account_id, holstered)) = client else {
+        log_skip(
+            connected,
+            entity_to_addr,
+            entity_id,
+            player_id,
+            "client_state_missing",
+        );
+        return;
+    };
+
+    // The loader never fails outright: on any error it returns the default
+    // payload (player_id 0, the "naked human male" body). With a live pool
+    // that payload is a failed load, not an appearance, and sending it would
+    // strip the player's model on every client in range. D-TG11: retry once
+    // after a short delay, then give up and leave the last good appearance in
+    // place — on the witnesses' screens and in `cached_appearance_args`.
+    //
+    // Known gaps (TG-ITM-14):
+    // - Only a failed *base row* load comes back as the default payload. When
+    //   the equipment-visuals or weapon-visual sub-query fails, the loader
+    //   returns the real `player_id` with those visuals stripped
+    //   (`player_data.rs`, `equipment_visuals_query_failed` /
+    //   `weapon_visual_query_failed`), which this check cannot tell from a
+    //   good load, so that partial appearance is still cached and sent.
+    // - The caller may already have changed state the aborted refresh was
+    //   meant to show: `RefreshAppearance` sets the `weapon_holstered` mirror
+    //   before calling here (`cell_dispatch/bandolier.rs`), so after an abort
+    //   the mirror can disagree with what the clients show until the next
+    //   successful refresh.
+    let player_data = if db_pool.is_some() {
+        let outcome = load_with_bounded_retry(
+            || query_player_load_data(db_pool, account_id, player_id),
+            |d| d.player_id == player_id,
+        )
+        .await;
+        match outcome {
+            BoundedLoad::Loaded(d) => d,
+            BoundedLoad::Aborted {
+                attempts,
+                elapsed_ms,
+                retry,
+            } => {
+                let identity = identity_for_addr(connected, addr);
+                // The load error itself is on the loader's own ERROR
+                // `player_load_degraded` row for each attempt; this row says
+                // what the refresh did about it.
+                tracing::warn!(
+                    event = "appearance_refresh_aborted",
+                    cause = "player_load_failed",
+                    attempts,
+                    elapsed_ms,
+                    retry,
                     entity_id,
-                    entity_name = player_label,
+                    // The player's own entity: its name is the player's.
+                    entity_name = known_names::player_name(player_id),
+                    account_id = identity.account_id,
+                    account_name = identity.account_name,
                     player_id,
-                    player_name = player_label,
-                    "refresh_player_appearance: entity has no transport addr (disconnected?), skipping"
-                );
-                return;
-            }
-        };
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
-            Some(c) => (c.account_id, c.weapon_holstered),
-            None => {
-                let player_label = known_names::player_name(player_id);
-                tracing::debug!(
-                    entity_id,
-                    entity_name = player_label,
-                    player_id,
-                    player_name = player_label,
-                    "refresh_player_appearance: client state missing for addr, skipping"
+                    player_name = known_names::player_name(player_id),
+                    "refresh_player_appearance: player load failed, keeping the last appearance"
                 );
                 return;
             }
         }
+    } else {
+        query_player_load_data(db_pool, account_id, player_id).await
     };
-
-    let player_data = query_player_load_data(db_pool, account_id, player_id).await;
+    let degraded = player_data.player_id != player_id;
+    if degraded {
+        let identity = identity_for_addr(connected, addr);
+        // Only offline mode (`db_pool = None`) gets here: the default payload
+        // is the only appearance there is, and world entry sent the same one,
+        // so it is still sent. The loader already logged its own DEBUG
+        // `no_db_pool` row.
+        tracing::debug!(
+            event = "appearance_refresh_degraded",
+            cause = "player_load_failed",
+            entity_id,
+            // The player's own entity: its name is the player's.
+            entity_name = known_names::player_name(player_id),
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name = known_names::player_name(player_id),
+            "refresh_player_appearance: offline, sending default appearance"
+        );
+    }
     // Honors the live `weapon_holstered` mirror from `ConnectedClientState`,
     // which is set in lockstep with `CellEntity::weapon_holstered` on the
     // cell side. Inventory moves don't change holster state — they re-emit
     // appearance with whatever holster the player currently has, so a
     // mid-combat equip doesn't accidentally re-holster the weapon.
-    let appearance_args = world_entry_appearance::build_appearance_args(
-        &player_data.bodyset,
-        &player_data.appearance_components(holstered),
-    );
+    let components = player_data.appearance_components(holstered);
+    let appearance_args =
+        world_entry_appearance::build_appearance_args(&player_data.bodyset, &components);
 
     // Cache the freshly-built args so any subsequent witness-join (entering
     // AoI, world_entry replay) ships the same appearance the existing
@@ -94,9 +242,16 @@ pub async fn refresh_player_appearance(
     // behind the broadcast and a player who fires a new witness ends up
     // seeing the pre-refresh weapon visible on the model.
     {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-            Some(a) => a,
-            None => return,
+        let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+        let Some(addr) = addr else {
+            log_skip(
+                connected,
+                entity_to_addr,
+                entity_id,
+                player_id,
+                "entity_missing",
+            );
+            return;
         };
         let mut clients = connected.lock().unwrap();
         if let Some(c) = clients.get_mut(&addr) {
@@ -134,211 +289,63 @@ pub async fn refresh_player_appearance(
         appearance_args,
     )
     .await;
+
+    tracing::debug!(
+        event = "appearance_refreshed",
+        entity_id,
+        entity_name = known_names::player_name(player_id),
+        account_id,
+        account_name = known_names::account_name(account_id),
+        player_id,
+        player_name = known_names::player_name(player_id),
+        holstered,
+        component_count = components.len(),
+        bodyset = player_data.bodyset.as_str(),
+        degraded,
+        "refresh_player_appearance: appearance refreshed"
+    );
+}
+
+/// Log an appearance refresh that stopped before the broadcast. An entity
+/// whose witness session ended moments ago is a normal race (DEBUG); any
+/// other miss is an expectation failure (WARN). Takes the `connected` and
+/// `entity_to_addr` locks, so the caller must hold neither.
+fn log_skip(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    entity_id: u32,
+    player_id: i32,
+    reason: &'static str,
+) {
+    let identity = identity_for_entity(connected, entity_to_addr, entity_id);
+    let player_name = known_names::player_name(player_id);
+    if helpers::witness_recently_departed(entity_id) {
+        tracing::debug!(
+            event = "appearance_refresh_skipped",
+            reason = "witness_session_ended",
+            entity_id,
+            entity_name = identity.player_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name,
+            "refresh_player_appearance: skipped"
+        );
+    } else {
+        tracing::warn!(
+            event = "appearance_refresh_skipped",
+            reason,
+            entity_id,
+            entity_name = identity.player_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name,
+            "refresh_player_appearance: skipped"
+        );
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::TestTransport;
-    use cimmeria_mercury::encryption::MercuryEncryption;
-    use std::sync::atomic::{AtomicBool, AtomicU32};
-    use std::time::Instant;
-
-    fn make_connected_state(account_id: u32) -> ConnectedClientState {
-        ConnectedClientState {
-            enc: MercuryEncryption::from_session_key([0u8; 32]),
-            key: [0u8; 32],
-            enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
-            account_id,
-            account_name: None,
-            access_level: 0,
-            session_kind: None,
-            dnd_message: None,
-            afk_message: None,
-            ignore: Default::default(),
-            char_list_sent: false,
-            world_entry_sent: false,
-            pending_player_entity_id: None,
-            player_entity_id: None,
-            next_seq: Arc::new(AtomicU32::new(1)),
-            next_seq_unreliable: Arc::new(AtomicU32::new(0)),
-            pending_acks: Arc::new(Mutex::new(Vec::new())),
-            last_recv: Arc::new(Mutex::new(Instant::now())),
-            connected_at: Instant::now(),
-            account_entity_id: 1,
-            next_data_id: 0,
-            pending_world_entry: None,
-            pending_player_load_data: None,
-            pending_map_loaded: None,
-            pending_client_ready: None,
-            deferred_aoi_msgs: Vec::new(),
-            cached_appearance_args: None,
-            cached_tint_args: None,
-            weapon_holstered: true,
-            cancelled: Arc::new(AtomicBool::new(false)),
-            cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
-            cinematic_aoi_hold: None,
-            listed_online: false,
-            rate_limits: Default::default(),
-            org_invites: Default::default(),
-            player_name: None,
-            player_level: None,
-            player_archetype: None,
-            player_class_id: None,
-            player_alignment: None,
-            world_name: None,
-            player_xp: None,
-            player_training_points: None,
-            active_player_id: None,
-            pending_destination_ring_id: None,
-            channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
-                "127.0.0.1:9999".parse().unwrap(),
-            )),
-            extensions: Default::default(),
-            plugins: Default::default(),
-        }
-    }
-
-    fn make_transport() -> Arc<dyn Transport> {
-        Arc::new(TestTransport::new())
-    }
-
-    /// Regression for the "F1-F4 changes the active slot but the player
-    /// keeps holding the old weapon" bug: the appearance refresh path
-    /// MUST populate `cached_appearance_args` on the connected client
-    /// state so that the next AoI re-broadcast (and any subsequent
-    /// world_entry replay) ships the new appearance.
-    ///
-    /// Runs against `db_pool = None` so it doesn't need DATABASE_URL —
-    /// `query_player_load_data` returns the default-sentinel payload in
-    /// that mode, which is enough to exercise the cache-set path.
-    #[tokio::test]
-    async fn refresh_player_appearance_populates_cached_args() {
-        let transport = make_transport();
-        let addr: SocketAddr = "127.0.0.1:55700".parse().unwrap();
-
-        let entity_to_addr = Arc::new(Mutex::new({
-            let mut m = HashMap::new();
-            m.insert(42u32, addr);
-            m
-        }));
-        let connected = Arc::new(Mutex::new({
-            let mut m = HashMap::new();
-            m.insert(addr, make_connected_state(0x1234));
-            m
-        }));
-
-        // Pre-condition: cached args are empty so the assertion below is
-        // genuinely checking the helper wrote them.
-        {
-            let clients = connected.lock().unwrap();
-            assert!(
-                clients.get(&addr).unwrap().cached_appearance_args.is_none(),
-                "test setup invariant: cache must start empty",
-            );
-        }
-
-        refresh_player_appearance(
-            42,
-            100,
-            &None,
-            &transport,
-            &connected,
-            &entity_to_addr,
-            &None,
-        )
-        .await;
-
-        let clients = connected.lock().unwrap();
-        let state = clients.get(&addr).expect("connected state must exist");
-        assert!(
-            state.cached_appearance_args.is_some(),
-            "refresh_player_appearance must populate cached_appearance_args; \
-             without this, a later world_entry/AoI replay would still ship \
-             the pre-refresh weapon visual",
-        );
-    }
-
-    /// Regression guard for "other players never see a weapon draw / gear
-    /// change": the refresh used to reach only the player's own client. It
-    /// must now also hand the freshly built `BeingAppearance` args to the
-    /// cell for witness fan-out — the same bytes it cached for late
-    /// arrivals, so every viewer converges on one appearance.
-    #[tokio::test]
-    async fn refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses() {
-        let transport = make_transport();
-        let addr: SocketAddr = "127.0.0.1:55701".parse().unwrap();
-        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(42u32, addr)])));
-        let connected = Arc::new(Mutex::new(HashMap::from([(
-            addr,
-            make_connected_state(0x1234),
-        )])));
-        let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
-
-        refresh_player_appearance(
-            42,
-            100,
-            &None,
-            &transport,
-            &connected,
-            &entity_to_addr,
-            &Some(cell_tx),
-        )
-        .await;
-
-        let cached = connected
-            .lock()
-            .unwrap()
-            .get(&addr)
-            .unwrap()
-            .cached_appearance_args
-            .clone()
-            .expect("refresh caches the args");
-        match cell_rx
-            .try_recv()
-            .expect("refresh must ask the cell to fan out")
-        {
-            BaseToCellMsg::BroadcastToWitnesses {
-                entity_id,
-                method_index,
-                args,
-            } => {
-                assert_eq!(entity_id, 42);
-                assert_eq!(method_index, method_idx::BEING_APPEARANCE);
-                assert_eq!(args, cached, "witnesses get the bytes that were cached");
-            }
-            _ => panic!("expected BroadcastToWitnesses"),
-        }
-    }
-
-    /// When the entity has no addr mapping (already disconnected, never
-    /// connected), the helper must return cleanly without panicking and
-    /// without modifying any shared state. This is the realistic shape
-    /// of a logout race: the cell sends `ActiveSlotUpdate`, the addr
-    /// is already torn down by the time the base processes it.
-    #[tokio::test]
-    async fn refresh_player_appearance_no_addr_is_noop() {
-        let transport = make_transport();
-        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
-        // Should not panic; should not insert anything into `connected`.
-        refresh_player_appearance(
-            42,
-            100,
-            &None,
-            &transport,
-            &connected,
-            &entity_to_addr,
-            &None,
-        )
-        .await;
-
-        assert!(
-            connected.lock().unwrap().is_empty(),
-            "no-addr path must not synthesize a client state entry",
-        );
-    }
-}
+#[path = "appearance_tests.rs"]
+mod tests;

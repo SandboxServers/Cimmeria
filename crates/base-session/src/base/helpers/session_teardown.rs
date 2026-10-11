@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_common::EntityId;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::channel::ChannelHealth;
 use cimmeria_mercury::transport::Transport;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -21,12 +22,20 @@ use crate::cell::messages::BaseToCellMsg;
 use super::super::ConnectedClientState;
 use super::unmap_departed_witness;
 
+/// Session-extension marker: the client asked for a full exit
+/// (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`). A full exit keeps the
+/// session until the client disconnects or the inactivity reap fires, so the
+/// later `session.end` reads this marker and carries `logoff_requested=true`
+/// while its `disconnect_reason` stays the real mechanism (TG-NET-02).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LogoffRequested;
+
 /// One `session.end` row: how a session ended, with its identity named
 /// (Rule 5 and Rule 6). Every session-end site builds one of these and
 /// passes it to [`log_session_end`]; later packets add fields here rather
 /// than a second `session.end` call.
 #[derive(Debug, Clone, Copy)]
-pub struct SessionEndRow {
+pub struct SessionEndRow<'a> {
     /// The session's address.
     pub addr: SocketAddr,
     /// The session's identity, snapshotted before the session goes.
@@ -39,11 +48,54 @@ pub struct SessionEndRow {
     pub disconnect_reason: &'static str,
     /// Whole seconds since the session connected.
     pub session_secs: u64,
+    /// The client asked for a full exit earlier ([`LogoffRequested`]); the
+    /// session then ended by `disconnect_reason`.
+    pub logoff_requested: bool,
+    /// Milliseconds since the last fresh datagram from the client
+    /// (`last_recv`), taken when the session ended.
+    pub idle_ms: u64,
+    /// The character was in the world (listed online, past `onClientReady`)
+    /// when the session ended. `false` while still loading, and after a
+    /// `logOff` already took it out of the world.
+    pub in_world: bool,
+    /// The world the character was in, by name; absent when none.
+    pub world: Option<&'a str>,
+    /// `"lab"` or `"player"` from the account's `test_account` flag
+    /// (TG-NET-16), as `cimmeria.session_kind`; absent before Phase 3
+    /// resolved the account (TG-NET-17).
+    pub session_kind: Option<&'static str>,
+    /// The session's Mercury channel health, snapshotted before the session
+    /// is removed ([`session_channel_health`]): tells "the client vanished"
+    /// (old `last_rx_age_ms`, empty window) from "the server stopped getting
+    /// acks" (deep `tx_outstanding`, climbing `retransmits_total`)
+    /// (TG-MER-07).
+    pub channel: ChannelHealth,
+}
+
+/// `state`'s Mercury channel health, for [`SessionEndRow::channel`]. Takes
+/// the channel lock, so call it under the `connected` lock (the usual
+/// `connected` → `channel` order) and never while holding the channel. A
+/// poisoned channel still reads.
+pub fn session_channel_health(state: &ConnectedClientState) -> ChannelHealth {
+    match state.channel.lock() {
+        Ok(ch) => ch.health(),
+        Err(poisoned) => poisoned.into_inner().health(),
+    }
+}
+
+/// Milliseconds since `state`'s last fresh datagram, for
+/// [`SessionEndRow::idle_ms`]. A poisoned clock still reads.
+pub fn session_idle_ms(state: &ConnectedClientState) -> u64 {
+    let at = match state.last_recv.lock() {
+        Ok(at) => *at,
+        Err(poisoned) => *poisoned.into_inner(),
+    };
+    u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// The one emitter of `session.end`: target `session.end`, message
 /// `"player session ended"`.
-pub fn log_session_end(row: &SessionEndRow) {
+pub fn log_session_end(row: &SessionEndRow<'_>) {
     tracing::info!(
         target: "session.end",
         addr = %row.addr,
@@ -55,8 +107,51 @@ pub fn log_session_end(row: &SessionEndRow) {
         player_name = row.identity.player_name,
         disconnect_reason = row.disconnect_reason,
         session_secs = row.session_secs,
+        logoff_requested = row.logoff_requested,
+        idle_ms = row.idle_ms,
+        in_world = row.in_world,
+        world = row.world,
+        cimmeria.session_kind = row.session_kind,
+        tx_outstanding = row.channel.tx_outstanding,
+        oldest_unacked_age_ms = row.channel.oldest_unacked_age_ms,
+        retransmits_total = row.channel.retransmits_total,
+        tx_holes = row.channel.tx_holes,
+        tx_hole_stalls = row.channel.tx_hole_stalls,
+        rx_stalls = row.channel.rx_stalls,
+        srtt_ms = row.channel.srtt_ms,
+        last_rx_age_ms = row.channel.last_rx_age_ms,
         "player session ended"
     );
+}
+
+/// One DEBUG `chat.channel_left` row per user channel a session's character
+/// left at session end (TG-SOC-14): `reason = "session_end"`, the channel's
+/// `wire_id` and `display_name`, whether the leave `deleted` it, and the
+/// session's identity (Rule 5). `leaves` is what
+/// [`UserChannelRegistry::leave_all`](crate::base::user_channels::UserChannelRegistry::leave_all)
+/// returned.
+pub fn log_channel_leaves(
+    addr: SocketAddr,
+    identity: PlayerIdentity,
+    leaves: &[(u8, String, bool)],
+) {
+    for (wire_id, display_name, deleted) in leaves {
+        tracing::debug!(
+            target: "chat",
+            event = "chat.channel_left",
+            reason = "session_end",
+            %addr,
+            wire_id = *wire_id,
+            wire_name = display_name.as_str(),
+            display_name = display_name.as_str(),
+            deleted = *deleted,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
+            "user channel left at session end"
+        );
+    }
 }
 
 /// Destroy all entities associated with a disconnecting client and remove it from the map.
@@ -165,6 +260,17 @@ pub fn destroy_owned_client_entities(
     )
 }
 
+/// The end-cause hints [`teardown_session`] snapshots before it removes the
+/// session, for its `session.end` row.
+struct EndHints {
+    logoff_requested: bool,
+    idle_ms: u64,
+    in_world: bool,
+    world: Option<String>,
+    session_kind: Option<&'static str>,
+    channel: ChannelHealth,
+}
+
 /// The body of both teardown entry points. `false` when nothing was torn
 /// down: the session was already gone, or `owner` is set and the session
 /// at `addr` is not the one it names.
@@ -190,6 +296,7 @@ fn teardown_session(
         ended,
         plugins,
         identity,
+        hints,
     ) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
@@ -235,6 +342,16 @@ fn teardown_session(
         // session is removed.
         let identity = crate::base::session_identity::session_identity(c);
         let session_secs = c.connected_at.elapsed().as_secs();
+        // The end-cause hints for `session.end` (TG-NET-02).
+        let hints = EndHints {
+            logoff_requested: c.extensions.contains::<LogoffRequested>(),
+            idle_ms: session_idle_ms(c),
+            in_world: c.listed_online,
+            world: c.world_name.clone(),
+            session_kind: c.session_kind,
+            // TG-MER-07: the channel goes with `clients.remove` below.
+            channel: session_channel_health(c),
+        };
         // Snapshot before `remove`: a character still in the world is
         // announced offline once (a `logOff` already unlisted and announced).
         let ended = match (c.listed_online, c.active_player_id, player_eid) {
@@ -264,6 +381,7 @@ fn teardown_session(
             ended,
             plugins,
             identity,
+            hints,
         )
     };
 
@@ -295,6 +413,12 @@ fn teardown_session(
             entity_name: identity.player_name,
             disconnect_reason: reason,
             session_secs,
+            logoff_requested: hints.logoff_requested,
+            idle_ms: hints.idle_ms,
+            in_world: hints.in_world,
+            world: hints.world.as_deref(),
+            session_kind: hints.session_kind,
+            channel: hints.channel,
         });
 
         // Remove from entity->addr reverse index, and record the witness as
@@ -318,7 +442,8 @@ fn teardown_session(
         // client-initiated logOff covers. Neither call site fires for gate
         // travel (`base-world-entry/gate_travel`), which reuses the same
         // entity id, so membership survives a world change untouched.
-        crate::base::user_channels::user_channel_registry().leave_all(player_eid);
+        let leaves = crate::base::user_channels::user_channel_registry().leave_all(player_eid);
+        log_channel_leaves(addr, identity, &leaves);
 
         // Notify CellService to disconnect and destroy the cell entity, and
         // hold `player_eid` out of `EntityManager`'s free list until the
@@ -394,8 +519,11 @@ fn teardown_session(
         account_name = identity.account_name,
         account_entity_id = account_eid,
         account_entity_name = identity.account_name,
-        player_entity_id = ?player_eid,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
+        player_entity_id = player_eid,
         player_entity_name = identity.player_name,
+        cimmeria.session_kind = hints.session_kind,
         "Client entities cleaned up"
     );
 

@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use super::handle_use_inventory_item;
 use crate::base::ConnectedClientState;
-use crate::test_support::{require_db_or_skip, TestTransport};
+use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};
 
 /// Sentinel base. Was `0x7000_0400`, which `missions/tests.rs` owns (#800);
 /// the largest offset is `+201`. The workspace sentinel lint
@@ -347,6 +347,56 @@ async fn live_db_pistol_in_bandolier_use_routes_to_auto_unequip() {
         0,
         "auto-unequip must NOT enqueue `item_used` — same OnItemUse \
          bypass as the equip direction",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// A `useItem` for an instance this character does not own is refused at
+/// INFO with `event = "use_refused"` and `reason = "entity_missing"`, not
+/// WARN. Reverting the level, the event or the reason fails the asserts.
+#[tokio::test]
+async fn live_db_use_of_unowned_instance_logs_refusal_at_info() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 2;
+    let player_id = TEST_BASE + 3;
+    let entity_id = (TEST_BASE + 3) as u32;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    // No inventory row carries instance id -1, so the lookup finds nothing.
+    let (transport, e2a, conn) = make_state(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+    let cell_tx: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
+
+    let capture = LogCapture::install();
+    handle_use_inventory_item(
+        entity_id,
+        player_id,
+        -1,
+        0,
+        VaultAccess::NO_SESSION,
+        &db_pool,
+        &cell_tx,
+        &transport,
+        &conn,
+        &e2a,
+    )
+    .await;
+
+    let row = capture
+        .find_event(tracing::Level::INFO, "instance not found", "entity_missing")
+        .unwrap_or_else(|| panic!("refusal must log at INFO: {:#?}", capture.all()));
+    assert!(
+        row.has_field("event", "use_refused"),
+        "refusal row must carry event=use_refused: {row:#?}"
+    );
+    assert!(
+        capture
+            .find_event(tracing::Level::WARN, "instance not found", "entity_missing")
+            .is_none(),
+        "the unowned-instance refusal must not log at WARN: {:#?}",
+        capture.all()
     );
 
     cleanup(&pool, account_id, player_id).await;

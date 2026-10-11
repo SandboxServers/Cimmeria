@@ -10,6 +10,7 @@
 //! See `docs/protocol/login-handshake.md` for the full protocol spec.
 
 mod cert_watcher;
+pub mod client_telemetry;
 mod credentials;
 mod handlers;
 mod password_hash;
@@ -27,6 +28,9 @@ mod credential_log_guard;
 
 #[cfg(test)]
 mod login_smoke;
+
+#[cfg(test)]
+mod handlers_tests;
 
 #[cfg(test)]
 mod tls_smoke;

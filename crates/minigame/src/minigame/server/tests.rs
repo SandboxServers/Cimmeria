@@ -11,9 +11,11 @@
 //! test here depends on the 250 ms tick timer.
 
 use tokio::net::TcpListener;
+use tracing::Level;
 
 use super::*;
 use crate::minigame::game::create_game;
+use crate::test_support::LogCapture;
 
 /// A slot from a throwaway tracker, for driving [`handle_connection`]
 /// without the accept loop. The permit keeps the tracker's counts alive.
@@ -34,7 +36,7 @@ pub(super) async fn spawn_placeholder_session(
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<SessionEnd>,
 ) {
     spawn_placeholder_session_with_idle(entity_id, ListenerLimits::default().idle_timeout).await
 }
@@ -46,7 +48,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<SessionEnd>,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -92,7 +94,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
             ReadState::empty(),
             idle_timeout,
         )
-        .await;
+        .await
     });
     (client, rx, handle)
 }
@@ -100,7 +102,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
 /// Wait until the server is in its game loop, then drop the socket. Reading
 /// first both keeps the server's writes from blocking and guarantees the
 /// close lands mid-game rather than mid-handshake.
-async fn drain_and_close(mut client: TcpStream) {
+pub(super) async fn drain_and_close(mut client: TcpStream) {
     read_until_game_begin(&mut client).await;
     drop(client);
 }
@@ -288,6 +290,30 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
         "a won game must report victory exactly once, carrying its victory \
          chains, with no trailing cancel",
     );
+}
+
+/// TG-MG-07: the victory row names its validator. `Hack` is a placeholder, so
+/// the SWF's own `victory` command is the result and the row must say
+/// `client_declared`. Dropping the field from the row fails the assertion.
+#[tokio::test]
+async fn a_placeholder_victory_row_says_client_declared() {
+    let capture = LogCapture::install();
+    let (mut client, mut rx, handle) = spawn_placeholder_session(4303).await;
+    read_until_game_begin(&mut client).await;
+    let victory = "<msg t='xt'><body action='xtReq'>\
+         <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
+         </body></msg>";
+    send_null_terminated(&mut client, victory)
+        .await
+        .expect("victory send must succeed");
+    drop(client);
+    handle.await.expect("session task must not panic");
+
+    assert_eq!(drain_results(&mut rx), vec![(RESULT_VICTORY, vec![4242])]);
+    let row = capture
+        .find_message(Level::INFO, "Minigame victory")
+        .unwrap_or_else(|| panic!("no victory row: {:#?}", capture.all()));
+    assert!(row.has_field("validation", "client_declared"), "{row:#?}");
 }
 
 /// **Defect B4 regression guard (unregister half), end to end.** Drives

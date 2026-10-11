@@ -52,10 +52,35 @@
 
 .PARAMETER EnvFrom
     A .mcp.json whose stdio `cimmeria-lab` entry's `env` block seeds
-    labd.env on install. Default: the repo's .mcp.json.
+    labd.env on install. Default: the repo's .mcp.json. Optional: the
+    daemon setup needs no stdio entry (see -InstallDir).
+
+.PARAMETER InstallDir
+    install: the SGW install (the folder holding Binaries\SGW.exe), written
+    to labd.env as CIMMERIA_LAB_INSTALL_DIR. labd.env takes each variable
+    from, first to last: these parameters, the stdio entry of -EnvFrom, the
+    current (process, then user) environment, the existing labd.env (with
+    -Force), and a default. Placeholders
+    such as <SGW_INSTALL_DIR> or ${VAR} are skipped.
+
+.PARAMETER LabServerUrl
+    install: CIMMERIA_LAB_MCP_URL, the server's lab endpoint the timeline
+    reads. Default http://127.0.0.1:8451/mcp (the local server as
+    tools/lab/cli/local-setup.ps1 configures it). Its token is never
+    written to labd.env: `run` reads CIMMERIA_LAB_MCP_TOKEN from the user
+    environment.
+
+.PARAMETER Telemetry
+    install: CIMMERIA_LAB_TELEMETRY. `required` (the supervisor's default)
+    refuses to launch a client when the telemetry mint fails; `optional`
+    launches it without uploads.
 
 .PARAMETER Force
-    install: overwrite an existing labd.env from -EnvFrom.
+    install: rewrite an existing labd.env (from the parameters, -EnvFrom
+    and the environment). Keys the file already holds that none of those
+    set (CIMMERIA_LAB_UAT_SPECS from `lab env set`, ...) are kept; TOKEN and
+    SECRET keys are dropped with a warning (they belong in the user
+    environment).
     install, uninstall, stop, restart: also close lab clients a session
     holds a lease on. Each of these stops the daemon, and a new daemon does
     not adopt the clients the old one launched, so the stop closes every
@@ -67,9 +92,9 @@
     clients open.
 
 .EXAMPLE
-    pwsh tools/lab/daemon.ps1 install
+    pwsh tools/lab/daemon.ps1 install -InstallDir 'D:\Games\Stargate Worlds'
     pwsh tools/lab/daemon.ps1 status
-    pwsh tools/lab/daemon.ps1 restart -Exe $env:CIMMERIA_TARGET_ROOT\Cimmeria\debug\cimmeria-lab.exe
+    pwsh tools/lab/daemon.ps1 restart -Exe "$env:LOCALAPPDATA\cimmeria-lab\bin\cimmeria-lab.exe"
 #>
 [CmdletBinding()]
 param(
@@ -79,6 +104,10 @@ param(
     [string]$Bind = '127.0.0.1:8779',
     [string]$Exe,
     [string]$EnvFrom,
+    [string]$InstallDir,
+    [string]$LabServerUrl,
+    [ValidateSet('', 'required', 'optional')]
+    [string]$Telemetry = '',
     [switch]$Force
 )
 
@@ -144,21 +173,42 @@ function Import-EnvFile {
 function Write-EnvFile([string]$from) {
     $lines = @(
         '# Environment for the shared lab daemon (tools/lab/daemon.ps1). UTF-8.',
-        '# KEY=VALUE per line; the same variables the stdio cimmeria-lab took',
-        '# from its .mcp.json env block. Restart the daemon after editing.'
+        '# KEY=VALUE per line; the variables a stdio cimmeria-lab takes from its',
+        '# .mcp.json env block. Restart the daemon after editing. Tokens stay in',
+        '# the user environment (CIMMERIA_LAB_MCP_TOKEN), not here.'
     )
+    $imported = $null
     if ($from -and (Test-Path $from)) {
-        $imported = Get-McpEnvLines ([System.IO.File]::ReadAllText($from, $script:Utf8NoBom))
-        if ($imported) {
-            $lines += $imported
-            Write-Host "labd.env: imported $($imported.Count) variables from $from"
-        } else {
-            Write-Warning "$from has no stdio cimmeria-lab env block; labd.env is a stub, fill it in"
-        }
-    } else {
-        Write-Warning 'no .mcp.json to import from; labd.env is a stub, fill it in'
+        $imported = Get-McpEnvMap ([System.IO.File]::ReadAllText($from, $script:Utf8NoBom))
+        if (-not $imported) { Write-Host "labd.env: $from has no stdio cimmeria-lab env block; using parameters, environment and defaults" }
+    }
+    $overrides = @{}
+    if ($InstallDir) { $overrides['CIMMERIA_LAB_INSTALL_DIR'] = $InstallDir }
+    if ($LabServerUrl) { $overrides['CIMMERIA_LAB_MCP_URL'] = $LabServerUrl }
+    if ($Telemetry) { $overrides['CIMMERIA_LAB_TELEMETRY'] = $Telemetry }
+    $ambient = @{}
+    foreach ($key in $script:LabdSeedKeys) {
+        $v = [Environment]::GetEnvironmentVariable($key, 'Process')
+        if (-not $v) { $v = [Environment]::GetEnvironmentVariable($key, 'User') }
+        if ($v) { $ambient[$key] = $v }
+    }
+    $defaults = @{ CIMMERIA_LAB_MCP_URL = 'http://127.0.0.1:8451/mcp' }
+    # What tools/lab/install.ps1 installs; unset means a bridge-only client.
+    $patches = Join-Path $State 'bin\cimmeria_client_patches.dll'
+    if (Test-Path $patches) { $defaults['CIMMERIA_LAB_PATCHES_DLL'] = $patches }
+
+    # -Force rewrites the file but keeps what it held (lab env set) unless
+    # something above sets the same key.
+    $existing = Read-LabdEnvFile $EnvFile
+    $seed = Get-LabdEnvSeed $imported $overrides $ambient $defaults $existing
+    $lines += $seed.lines
+    foreach ($k in $seed.sources.Keys) { Write-Host "labd.env: $k from $($seed.sources[$k])" }
+    foreach ($k in $seed.secrets) {
+        Write-Warning "labd.env: left out $k (a secret); keep it in the user environment ([Environment]::SetEnvironmentVariable('$k', <value>, 'User')), not in labd.env or .mcp.json"
+    }
+    if ($seed.missing -contains 'CIMMERIA_LAB_INSTALL_DIR') {
+        Write-Warning 'labd.env has no CIMMERIA_LAB_INSTALL_DIR: rerun install with -InstallDir <folder holding Binaries\SGW.exe> -Force, or edit labd.env'
         $lines += '# CIMMERIA_LAB_INSTALL_DIR=C:\path\to\Stargate Worlds'
-        $lines += '# CIMMERIA_LAB_START32=C:\path\to\sgw-start32.exe'
     }
     Write-LabdEnvFile $EnvFile $lines
 }
@@ -168,8 +218,18 @@ function Get-DefaultExe {
     if (Test-Path $installed) { return $installed }
     $root = Get-RepoRoot
     if ($root) {
-        $built = Join-Path $root 'target\debug\cimmeria-lab.exe'
-        if (Test-Path $built) { return $built }
+        # The lane builds into $CIMMERIA_TARGET_ROOT\<checkout> on a Dev Drive,
+        # else target\ (the same choice tools/lab/install.ps1 makes).
+        $targetRoot = $env:CIMMERIA_TARGET_ROOT
+        if (-not $targetRoot) { $targetRoot = [Environment]::GetEnvironmentVariable('CIMMERIA_TARGET_ROOT', 'User') }
+        $dirs = @(Join-Path $root 'target')
+        if ($targetRoot) { $dirs = @(Join-Path $targetRoot (Split-Path $root -Leaf)) + $dirs }
+        foreach ($dir in $dirs) {
+            foreach ($buildProfile in 'release', 'debug') {
+                $built = Join-Path $dir "$buildProfile\cimmeria-lab.exe"
+                if (Test-Path $built) { return $built }
+            }
+        }
     }
     return $null
 }
@@ -177,7 +237,7 @@ function Get-DefaultExe {
 function Copy-DaemonExe([string]$src) {
     if (-not $src) { $src = Get-DefaultExe }
     if (-not $src -or -not (Test-Path $src)) {
-        throw "cimmeria-lab.exe not found ($src). Build it (bash tools/build-lane/lane.sh cargo build -p cimmeria-lab) and pass -Exe <path>."
+        throw "cimmeria-lab.exe not found ($src). Build and install it (pwsh tools/lab/install.ps1), or pass -Exe <path>."
     }
     New-Item -ItemType Directory -Force $Bin | Out-Null
     Copy-Item -Force $src $DaemonExe
@@ -413,6 +473,14 @@ switch ($Command) {
         New-Item -ItemType Directory -Force $State | Out-Null
         $token = Get-Token
         if ($token) { [Environment]::SetEnvironmentVariable($TokenVar, $token, 'Process') }
+        # The server endpoint's token and URL live in the user environment
+        # (tools/lab/cli/local-setup.ps1); labd.env, imported next, still wins.
+        foreach ($name in 'CIMMERIA_LAB_MCP_TOKEN', 'CIMMERIA_LAB_MCP_URL') {
+            $v = [Environment]::GetEnvironmentVariable($name, 'User')
+            if ($v -and -not [Environment]::GetEnvironmentVariable($name, 'Process')) {
+                [Environment]::SetEnvironmentVariable($name, $v, 'Process')
+            }
+        }
         $recent = New-Object System.Collections.Generic.List[datetime]
         while ($true) {
             Import-EnvFile

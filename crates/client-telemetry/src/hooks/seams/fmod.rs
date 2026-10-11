@@ -92,9 +92,11 @@ pub fn event_fields(
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod x86 {
+    use std::collections::VecDeque;
     use std::ffi::{c_char, c_void};
     use std::panic::AssertUnwindSafe;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, PoisonError};
 
     use super::*;
     use crate::hooks::name_throttle::Decision;
@@ -110,6 +112,14 @@ mod x86 {
     pub(in crate::hooks) static GET_INFO: AtomicUsize = AtomicUsize::new(0);
 
     static THROTTLE: SinkThrottle = SinkThrottle::new();
+
+    /// Most event handles remembered for stop rows. A stop that never comes
+    /// (a sound cut off by a level change) must not grow the map forever.
+    const MAX_REMEMBERED: usize = 256;
+
+    /// Event handle and the name read at its start, oldest first. FMOD reuses
+    /// handles, so an entry is replaced by the next start of the same handle.
+    static NAMES: Mutex<VecDeque<(usize, String)>> = Mutex::new(VecDeque::new());
 
     pub(in crate::hooks) const IMPORT_START: SlotImport = SlotImport {
         slot: IAT_EVENT_START,
@@ -135,11 +145,11 @@ mod x86 {
         *mut c_void,
     ) -> i32;
 
-    /// The event's name, or `<unknown>`.
-    fn event_name(event: *mut c_void) -> String {
+    /// The event's name as FMOD reports it now, or `None` when it can't be read.
+    fn read_name(event: *mut c_void) -> Option<String> {
         let f = GET_INFO.load(Ordering::Acquire);
         if f == 0 || event.is_null() {
-            return "<unknown>".to_string();
+            return None;
         }
         let get_info: GetInfoFn = unsafe { std::mem::transmute(f) };
         let mut index = 0i32;
@@ -148,22 +158,58 @@ mod x86 {
         // stop; getInfo only reads FMOD's own tables.
         let r = unsafe { get_info(event, &mut index, &mut name, std::ptr::null_mut()) };
         if r != 0 || name.is_null() {
-            return "<unknown>".to_string();
+            return None;
         }
-        mem::ansi_at(name as usize, MAX_NAME_CHARS)
-            .map_or_else(|| "<unknown>".to_string(), |s| text::decode_ansi(&s.units))
+        mem::ansi_at(name as usize, MAX_NAME_CHARS).map(|s| text::decode_ansi(&s.units))
     }
 
-    fn report(action: &str, event: *mut c_void, result: i32, immediate: Option<bool>) {
-        let name = event_name(event);
-        let Decision::Emit { suppressed } = THROTTLE.check(&throttle_key(action, &name)) else {
+    /// Replaces the name remembered for `event` (`None` forgets it), evicting
+    /// the oldest handle at the cap. A start that can't read its name still
+    /// forgets the old one, so a reused handle never reports a stale name.
+    fn remember_name(event: usize, name: Option<String>) {
+        let mut names = NAMES.lock().unwrap_or_else(PoisonError::into_inner);
+        names.retain(|(handle, _)| *handle != event);
+        if let Some(name) = name {
+            if names.len() == MAX_REMEMBERED {
+                names.pop_front();
+            }
+            names.push_back((event, name));
+        }
+    }
+
+    /// The name remembered for `event` at its last start.
+    fn remembered_name(event: usize) -> Option<String> {
+        let names = NAMES.lock().unwrap_or_else(PoisonError::into_inner);
+        names
+            .iter()
+            .rev()
+            .find(|(handle, _)| *handle == event)
+            .map(|(_, name)| name.clone())
+    }
+
+    /// Start: reads the name and remembers it for the stop, or `<unknown>`.
+    fn start_name(event: *mut c_void) -> String {
+        let name = read_name(event);
+        remember_name(event as usize, name.clone());
+        name.unwrap_or_else(|| "<unknown>".to_string())
+    }
+
+    /// Stop: a name that can't be read now reuses the name the start read.
+    fn stop_name(event: *mut c_void) -> String {
+        read_name(event)
+            .or_else(|| remembered_name(event as usize))
+            .unwrap_or_else(|| "<unknown>".to_string())
+    }
+
+    fn report(action: &str, name: &str, result: i32, immediate: Option<bool>) {
+        let Decision::Emit { suppressed } = THROTTLE.check(&throttle_key(action, name)) else {
             return;
         };
         emit(
             TARGET,
             level(result),
             "audio.event",
-            event_fields(action, &name, result, immediate, suppressed),
+            event_fields(action, name, result, immediate, suppressed),
         );
     }
 
@@ -177,7 +223,10 @@ mod x86 {
         let original: unsafe extern "stdcall-unwind" fn(*mut c_void) -> i32 =
             unsafe { std::mem::transmute(orig) };
         let result = original(event);
-        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| report("start", event, result, None)));
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let name = start_name(event);
+            report("start", &name, result, None);
+        }));
         result
     }
 
@@ -195,7 +244,8 @@ mod x86 {
             unsafe { std::mem::transmute(orig) };
         let result = original(event, immediate);
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            report("stop", event, result, Some(immediate != 0));
+            let name = stop_name(event);
+            report("stop", &name, result, Some(immediate != 0));
         }));
         result
     }
@@ -218,12 +268,17 @@ mod x86 {
             0
         }
         static NAME: &std::ffi::CStr = c"footstep_grass";
+        /// Whether the fake getInfo can read a name.
+        static NAME_READABLE: AtomicUsize = AtomicUsize::new(1);
         unsafe extern "stdcall-unwind" fn fake_get_info(
             _event: *mut c_void,
             index: *mut i32,
             name: *mut *const c_char,
             _info: *mut c_void,
         ) -> i32 {
+            if NAME_READABLE.load(Ordering::SeqCst) == 0 {
+                return 46;
+            }
             unsafe {
                 *index = 7;
                 *name = NAME.as_ptr();
@@ -262,8 +317,35 @@ mod x86 {
             assert_eq!(events[0].get("action"), Some(&json!("stop")));
             assert_eq!(events[0].get("immediate"), Some(&json!(true)));
 
+            // An unreadable name at stop reuses the name the start read, and it
+            // stays a debug row because FMOD accepted the stop.
+            NAME_READABLE.store(0, Ordering::SeqCst);
+            let r = unsafe { stop_detour(0x1000 as *mut c_void, 0) };
+            assert_eq!(r, 0);
+            let events = take_captured();
+            assert_eq!(events[0].get("name"), Some(&json!("footstep_grass")));
+            assert_eq!(events[0].level, "debug");
+
+            // A start whose name can't be read forgets the handle's old name, so
+            // a reused handle never reports the stale one.
+            let _ = unsafe { start_detour(0x1000 as *mut c_void) };
+            assert_eq!(stop_name(0x1000 as *mut c_void), "<unknown>");
+
+            // Past the cap the oldest handle is evicted and has no name left,
+            // while the newest still does.
+            NAME_READABLE.store(1, Ordering::SeqCst);
+            for i in 0..=MAX_REMEMBERED {
+                let _ = unsafe { start_detour((0x10_000 + i * 0x10) as *mut c_void) };
+            }
+            NAME_READABLE.store(0, Ordering::SeqCst);
+            let newest = 0x10_000 + MAX_REMEMBERED * 0x10;
+            assert_eq!(stop_name(0x10_000 as *mut c_void), "<unknown>");
+            assert_eq!(stop_name(newest as *mut c_void), "footstep_grass");
+            assert_eq!(NAMES.lock().unwrap().len(), MAX_REMEMBERED);
+
             // Without getInfo the event still reports, as unknown.
             GET_INFO.store(0, Ordering::SeqCst);
+            let _ = take_captured();
             let _ = unsafe { start_detour(0x3000 as *mut c_void) };
             let events = take_captured();
             assert_eq!(events[0].get("name"), Some(&json!("<unknown>")));

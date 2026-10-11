@@ -115,14 +115,21 @@ pub(super) async fn swap_weapon_granted_abilities_for_slot(
     )
     .await;
 
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         target: "bandolier",
         event = "weapon_ability_swap",
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         slot_id, // nt:id-only inventory slot index, not a named object
-        item_id = ?item_id,
+        item_id,
         item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
+        removed_count = removed.len(),
+        added_count = added.len(),
         removed = ?removed,
         added = ?added,
         new_known_count = ability_ids.len(),

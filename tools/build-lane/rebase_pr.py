@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Rebase a PR branch onto origin/main with git alone, resolving only mechanical conflicts.
 
-Usage: tools/build-lane/rebase-pr.sh [--push] [--json] [-v] [--no-fetch] [--onto REF] <target>
+Usage: tools/build-lane/rebase-pr.sh [--push] [--json] [-v] [--no-fetch] [--onto REF] [--upstream REF] <target>
+
+--upstream restacks a stacked branch: only the commits after REF are replayed onto --onto
+(`git rebase --onto ONTO REF`). After its base PR squash-merges, a stacked branch still
+holds the base's original commits; REF is the base's head as it merged, so they are dropped
+instead of replayed against their own squash.
 
 <target> is a PR number, a branch name, or a worktree path. The rebase runs in a throwaway
 sparse worktree, so the branch's own worktree (and its build cache) is not touched unless
@@ -9,7 +14,7 @@ the rebase succeeds. Two kinds of conflict are resolved, because a regeneration 
 
   * generated blocks: text between `<!-- gen:NAME -->` markers, or the crate graph between
     `<!-- crate-graph:begin/end -->`. A workflow reruns tools/docs-gen/regen.py on main
-    after every merge, so main's side is taken. The file is resolved only when it merges
+    every six hours, so main's side is taken. The file is resolved only when it merges
     cleanly once every generated block is blanked out on all three sides.
   * Cargo.lock: main's copy, then `cargo update --workspace` (override with
     $REBASE_PR_LOCKFILE_CMD) to add what the branch's manifests need.
@@ -264,11 +269,12 @@ def try_mechanical(wt: Scratch, path: str, stages: dict) -> str | None:
     return None
 
 
-def rebase_in(wt: Scratch, onto: str, res: Result) -> bool:
+def rebase_in(wt: Scratch, onto: str, res: Result, upstream: str | None = None) -> bool:
     """Run the rebase in the scratch worktree. True when it completes; False when it stopped
     on a semantic conflict (res filled in). Raises Failure('need-full') for a lockfile."""
     rebase_dir = out("rev-parse", "--path-format=absolute", "--git-path", "rebase-merge", cwd=wt.path)
-    p = wt.git("rebase", "--no-autostash", onto, check=False)
+    span = ("--onto", onto, upstream) if upstream else (onto,)
+    p = wt.git("rebase", "--no-autostash", *span, check=False)
     while p.returncode != 0:
         if not os.path.isdir(rebase_dir):
             raise Failure(3, "error", "rebase failed: " + (p.stderr or p.stdout).decode(errors="replace").strip()[:300])
@@ -342,6 +348,11 @@ def run(args: argparse.Namespace) -> Result:
     onto = rev(args.onto, repo)
     if not onto:
         raise Failure(2, "error", f"{args.onto} not found")
+    upstream = None
+    if args.upstream:
+        upstream = rev(args.upstream, repo)
+        if not upstream:
+            raise Failure(2, "error", f"{args.upstream} not found")
     local = rev(f"refs/heads/{branch}", repo)
     remote_old = rev(f"refs/remotes/{remote}/{branch}", repo)
     source = local or remote_old
@@ -369,7 +380,7 @@ def run(args: argparse.Namespace) -> Result:
     while True:
         wt = scratch_worktree(repo, source, sparse, attr_tree, union_gen)
         try:
-            done = rebase_in(wt, onto, res)
+            done = rebase_in(wt, onto, res, upstream)
             new = out("rev-parse", "HEAD", cwd=wt.path) if done else None
         except Failure as f:
             if f.status != "need-full":
@@ -420,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("target", help="PR number, branch name, or worktree path")
     ap.add_argument("--push", action="store_true", help="push the result with --force-with-lease")
     ap.add_argument("--onto", default="origin/main", help="upstream to rebase onto (default origin/main)")
+    ap.add_argument("--upstream", help="replay only the commits after this ref (restack a stacked branch)")
     ap.add_argument("--remote", default="origin")
     ap.add_argument("--no-fetch", action="store_true")
     ap.add_argument("--json", action="store_true", help="print one JSON object instead of key=value lines")

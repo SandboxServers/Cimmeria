@@ -210,19 +210,17 @@ unsafe fn install_one(
         let show = |v: Option<usize>| {
             serde_json::Value::String(v.map_or("none".into(), |v| format!("0x{v:08x}")))
         };
-        super::emit_warn(
-            producer,
-            "client.hooks.iat.slot_mismatch",
-            [
-                ("hook", serde_json::Value::String(hook_name.into())),
-                (
-                    "address",
-                    serde_json::Value::String(format!("0x{iat_slot_addr:08x}")),
-                ),
-                ("expected", show(expected)),
-                ("actual", show(current)),
-            ],
-        );
+        let mut fields = vec![
+            ("hook", serde_json::Value::String(hook_name.into())),
+            (
+                "address",
+                serde_json::Value::String(format!("0x{iat_slot_addr:08x}")),
+            ),
+            ("expected", show(expected)),
+            ("actual", show(current)),
+        ];
+        fields.extend(owner_fields(current, module_of));
+        super::emit_warn(producer, "client.hooks.iat.slot_mismatch", fields);
         return;
     };
     // Publish the original before the swap: a call through the slot can
@@ -269,6 +267,66 @@ unsafe fn install_one(
             ),
         ],
     );
+}
+
+/// The fields that name the module owning a mismatched slot: the module
+/// `current` points into (`owner_module`) and the offset there (`owner_rva`,
+/// a number). `resolve` is [`module_of`] in the DLL and a fake in tests.
+/// Empty when the slot could not be read or no loaded module holds it.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(in crate::hooks) fn owner_fields(
+    current: Option<usize>,
+    resolve: impl Fn(usize) -> Option<(String, usize)>,
+) -> Vec<(&'static str, serde_json::Value)> {
+    let Some((module, rva)) = current.and_then(resolve) else {
+        return Vec::new();
+    };
+    vec![
+        ("owner_module", serde_json::Value::String(module)),
+        ("owner_rva", serde_json::json!(rva)),
+    ]
+}
+
+/// The module holding `address` and the offset of `address` in it.
+/// Same lookup as the exception sink's `module_of`; repeated, not shared,
+/// so the two installers stay independent.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(in crate::hooks) fn module_of(address: usize) -> Option<(String, usize)> {
+    use windows_sys::Win32::Foundation::MAX_PATH;
+    use windows_sys::Win32::System::LibraryLoader::{
+        GetModuleFileNameW, GetModuleHandleExW, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+    };
+
+    let mut hmod = std::ptr::null_mut();
+    // SAFETY: FROM_ADDRESS treats the argument as an address, not a name;
+    // UNCHANGED_REFCOUNT takes no reference on the module.
+    let ok = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            address as *const u16,
+            &mut hmod,
+        )
+    };
+    if ok == 0 || hmod.is_null() {
+        return None;
+    }
+    let mut buf = [0u16; MAX_PATH as usize];
+    // SAFETY: `buf` is MAX_PATH wide units.
+    let len = unsafe { GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32) } as usize;
+    if len == 0 || len >= buf.len() {
+        return None;
+    }
+    let path = String::from_utf16_lossy(&buf[..len]);
+    let name = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string();
+    Some((name, address.wrapping_sub(hmod as usize)))
+}
+
+/// Off the i686 target there is no SGW.exe to resolve against.
+#[cfg(not(all(target_os = "windows", target_arch = "x86")))]
+#[allow(dead_code)]
+pub(in crate::hooks) fn module_of(_address: usize) -> Option<(String, usize)> {
+    None
 }
 
 // ─── Sampling ──────────────────────────────────────────────────
@@ -579,9 +637,17 @@ unsafe extern "stdcall-unwind" fn recvfrom_detour(
             } else {
                 None
             };
-        if let Some((level, fields)) =
-            super::mercury_recv::wire::recv_event(socket, len, wire, error, peer.as_deref())
-        {
+        // Stashed for the packet filter, which this thread runs next on the
+        // same datagram (TG-MER-12 join key; see `mercury_recv::wire`).
+        let wire_fp = super::mercury_recv::wire::stash_received(len, wire);
+        if let Some((level, fields)) = super::mercury_recv::wire::recv_event(
+            socket,
+            len,
+            wire,
+            wire_fp,
+            error,
+            peer.as_deref(),
+        ) {
             super::emit::emit("client.mercury.socket_recv", level, fields);
         }
     });

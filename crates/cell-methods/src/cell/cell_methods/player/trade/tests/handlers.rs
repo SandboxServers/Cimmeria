@@ -18,7 +18,7 @@ use crate::cell::cell_methods::player::constants::{
 };
 use crate::cell::client_methods::player::{ON_TRADE_RESULTS, ON_TRADE_STATE};
 use crate::cell::messages::CellToBaseMsg;
-use crate::test_support::make_space_manager;
+use crate::test_support::{make_space_manager, LogCapture};
 
 // Reach back to the sibling modules of `tests/` inside `trade/`.
 use super::super::dispatch;
@@ -331,5 +331,45 @@ async fn disconnect_cancellation_clears_partner_state() {
         got_partner_cancel,
         "partner must receive onTradeResults(Cancelled) on disconnect — \
          NOT Completed: the surviving player did not initiate this cancel"
+    );
+}
+
+/// A disconnect teardown logs one `trade.session_cancelled` row with
+/// `reason=disconnect`. Revert-verifier: passing any other reason string
+/// from `cancel_trade_on_disconnect` fails the `reason` assertion.
+#[tokio::test]
+async fn disconnect_cancel_logs_reason_disconnect() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    let (tx, _rx) = mpsc::channel(16);
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    let capture = LogCapture::install();
+    cancel_trade_on_disconnect(1, &tx, &mut mgr).await;
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "trade.session_cancelled"))
+        .collect();
+    assert_eq!(rows.len(), 1, "exactly one cancel row: {rows:#?}");
+    assert!(
+        rows[0].has_field("reason", "disconnect"),
+        "disconnect cancel must carry reason=disconnect: {:#?}",
+        rows[0]
     );
 }

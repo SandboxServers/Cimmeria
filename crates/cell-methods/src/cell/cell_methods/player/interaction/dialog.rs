@@ -17,6 +17,19 @@ pub(super) async fn handle_dialog_button_choice(
     engine: &ChainEngine,
 ) {
     if args.len() < 8 {
+        let id = space_mgr.player_identity(entity_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            args_len = args.len(),
+            need = 8,
+            reason = "malformed_args",
+            "dialogButtonChoice: truncated args, dropping"
+        );
         return;
     }
     let dialog_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -103,10 +116,7 @@ pub(super) async fn handle_dialog_button_choice(
         return;
     }
 
-    let player_id = space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.player_id)
-        .unwrap_or(0);
+    let player_id = super::interact::chain_player_id(entity_id, space_mgr, "dialogButtonChoice");
     crate::cell::content::fire_dialog_choice(
         entity_id, player_id, dialog_id, button_id, engine, tx, space_mgr,
     )

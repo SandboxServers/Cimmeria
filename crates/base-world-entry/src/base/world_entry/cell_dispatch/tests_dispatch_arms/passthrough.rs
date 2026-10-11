@@ -272,6 +272,7 @@ async fn contact_list_presence_event_routes_to_fanout_and_warns_when_no_pool() {
     handle_cell_message(
         CellToBaseMsg::ContactListPresenceEvent {
             player_name: "O'Neill".to_string(),
+            player_id: 42,
             event_id: EVENT_DEATH,
             data_value: 0,
         },

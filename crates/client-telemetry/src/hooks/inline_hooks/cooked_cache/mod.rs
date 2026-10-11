@@ -51,6 +51,9 @@
 //!   `versionInfoRequest` leaves (see `net_out`): the version every known
 //!   storage holds at that moment.
 //!
+//! - `client.cooked_cache.write`: one per cache write and its tier. See
+//!   [`write`].
+//!
 //! The PAK name is the first `std::wstring` of the vector at `this + 0`
 //! (element size `0x1c`, begin at `+0x04`, end at `+0x08`).
 
@@ -66,6 +69,9 @@ mod import_detours;
 mod imports;
 #[cfg(test)]
 mod tests;
+mod write;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod write_detours;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) use detours::{install_all, note_version_request};

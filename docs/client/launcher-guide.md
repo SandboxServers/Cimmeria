@@ -228,7 +228,7 @@ two tiers, set in `Working\Engine\Config\GameplayEngine.ini`:
 | Tier | INI key | Where it is | Who writes it |
 |---|---|---|---|
 | Writable | `CachePath=..\SGWGame\Cache` | `Documents\My Games\Firesky\SGWGame\Cache.en-US` | The server's version push, on every connect |
-| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime |
+| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime. The client copies a PAK from it over the writable one when its version is newer (`client.cooked_cache.write` with `tier = source_cache`) |
 
 The 2009 cabinets put the bundled PAKs in
 `Working\SGWGame\Cache.en-US`, which is neither path. A stock install
@@ -371,10 +371,13 @@ requests an hour per address. When you are offline or over that limit,
 the status log says `Could not check for launcher updates: …` and the
 launcher carries on; the next start checks again.
 
-> **Launcher `launcher-20260929-f518b57` and older have no updater.**
-> Download the newest `sgw-launcher-launcher-….exe` from the
-> [releases page](https://github.com/SandboxServers/Cimmeria/releases)
-> by hand once. It updates itself from then on.
+> **This launcher no longer gets updates on Windows.** Releases now ship
+> the desktop launcher instead, and `launcher-20260929-f518b57` and older
+> never had an updater. Download
+> [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip)
+> by hand once, unzip it anywhere and run `cimmeria-launcher-desktop.exe`,
+> keeping the `windows` and `graphics` folders beside it. It updates
+> itself from then on.
 
 **Required updates.** The server's operator can require a minimum
 launcher version (the manifest's
@@ -863,10 +866,13 @@ If the launcher's own name is missing from its folder, rename
 working launcher is safe to delete; the launcher also deletes it at its
 next start.
 
-The desktop launcher (`StargateWorlds-Launcher.exe`) updates the same way.
-If its exe is missing after an update, or the updated launcher closes as
-soon as it starts, delete the broken exe if there is one and rename
-`StargateWorlds-Launcher.exe.old` back to `StargateWorlds-Launcher.exe`.
+The desktop launcher (`cimmeria-launcher-desktop.exe`) updates from a zip
+and keeps every file it replaces as `<file>.old` until the updated launcher
+starts. If its exe is missing after an update, or the updated launcher
+closes as soon as it starts, delete the broken exe if there is one and
+rename `cimmeria-launcher-desktop.exe.old` back to
+`cimmeria-launcher-desktop.exe`, and any `.old` file in its `windows` and
+`graphics` folders the same way.
 
 ### Windows Defender or SmartScreen blocks the launcher
 

@@ -19,6 +19,7 @@ use super::ConnectedClientState;
 
 mod chat;
 mod chat_gates;
+mod chat_malformed;
 mod communicator_unsupported;
 mod diagnostics;
 mod duel;

@@ -8,10 +8,16 @@
 //! Token shape:
 //!
 //! ```text
-//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
+//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct], [mid]})
 //! sig     = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
+//!
+//! A mint signs the request's hashed `machine_id` in as `mid` (and an
+//! `account_name`, when sent, as `acct`), and the mint and every refresh
+//! record the stream with the request's address in
+//! `cimmeria_auth::auth::client_telemetry`, where world entry looks it up
+//! (TG-NET-18).
 //!
 //! # Trust model
 //!
@@ -49,6 +55,8 @@ pub mod token;
 
 mod handlers;
 
+#[cfg(test)]
+mod account_name_tests;
 #[cfg(test)]
 mod session_kind_tests;
 #[cfg(test)]

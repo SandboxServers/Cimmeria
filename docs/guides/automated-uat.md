@@ -6,6 +6,7 @@ last_updated: 2026-10-11
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
+  - lab-contributor-setup.md
   - ../architecture/live-research-lab.md
 ---
 
@@ -21,6 +22,8 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 To check that a run still behaves the way known-good runs did, without a model reading it, compare it with the section's golden: see [Golden runs](#golden-runs).
 
 ## Before you start
+
+First time on your own machine? [lab-contributor-setup.md](lab-contributor-setup.md) gets you from a fresh clone to a passing row against a local server, with the secrets, `labd.env` and the MCP registration for Claude Code or Codex.
 
 1. **Hold the lab lease.** Only one agent drives a client at a time, and the supervisor enforces it. Either pass `lab_uat_run` the `lease_id` from your own `lab_lease_acquire {owner, purpose}`, or pass none and the run takes a lease of its own (owner `lab_uat_run`) for its duration; both are refused while another session holds the lab, naming who. `plan_only` needs no lease. The `%LOCALAPPDATA%\cimmeria-lab\live.lock` folder lock is obsolete: do not create it. Run the [shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http) so every session sees the same lease; a stdio supervisor's watchdog relaunches a client another session killed, so ask its owner for `lab_client_stop` instead ([live research lab, before you drive the client](live-research-lab.md#before-you-drive-the-client-the-lab-lease)). Install the lab binaries from the commit you test ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
 2. **One `SGW.exe` per lab instance, the `lab` account for the default one.** `lab_client_start` refuses while an `SGW.exe` runs outside the lab, when another instance holds its bridge port, and past the client cap ([Parallel clients](live-research-lab.md#parallel-clients-up-to-five)). The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)). A two-player row adds a second client, `p2`, on its own account ([Two-player rows](#two-player-rows)).
@@ -48,6 +51,7 @@ Call `lab_uat_run` from any MCP client of `cimmeria-lab`:
 | `character` | Override `lab-account.json`'s character |
 | `fixtures` | When a row's fixture applies: `auto` (default), `always` or `never` ([Row fixtures](#row-fixtures)) |
 | `plan_only` | Check the specs and which tools exist; drive nothing. Ready rows come back SKIPPED, the rest BLOCKED with the missing tool named |
+| `end_session` | End the run with a logout and a disconnect, recorded as row `_session_end` (default `true`; never with `plan_only`). See [End of the run](#end-of-the-run) |
 
 Start with `plan_only: true` to see what can run. Each row then runs as:
 
@@ -58,6 +62,15 @@ Start with `plan_only: true` to see what can run. Each row then runs as:
 5. The remaining clauses, the evidence, a final screenshot, then teardown.
 
 Long rows can outlast an MCP client's call timeout: run a section a few rows at a time and pass the same `run_dir`.
+
+### End of the run
+
+After the last row, whatever the `rows` filter was, the runner ends the session the way a player does (telemetry-gaps TG-PIPE-08), so every run closes a session cleanly from the client to the server log:
+
+1. `lab_logout` when the client is in world, then a `wait_server` for `session.end` `player session ended` with `disconnect_reason = logoff_character_select`.
+2. `lab_disconnect` (Back at character select, which sends Account `logOff`), then a `wait_server` for `Client entities cleaned up` with `disconnect_reason = logoff`.
+
+Both waits also match `account_name` against the lab account, so another session's line does not count. The result is the row `_session_end` in the last row's section: PASS, or FAIL naming the line that never came. A missing line does not stop the disconnect. Without the server lab MCP the waits are left out and the row only drives the client. Nothing runs, and no row is written, when the lease was lost, the client is not running, or it is already at the login screen (a fixture row's own session end stops the client, for example). `plan_only` never ends a session. Pass `end_session: false` to leave the client where the last row put it; `lab calibrate -Prepare` does.
 
 ### Run without an agent: `lab uat`
 
@@ -585,7 +598,7 @@ A pose written by hand, or one a map change broke, is found again by `lab calibr
 lab calibrate first-session FS-P3 -Pose frost -Prepare FS-01,FS-02,FS-P1,FS-P2
 ```
 
-1. **Put the client where the row starts.** The section must be `account = "gm"` (the sweep stands with `/gmgotoxyz`), the server lab MCP must be configured, and the client must be in the world in the row's state. `-Prepare <row ids>` runs those rows first (one `lab_uat_run` on the same instance); a prepare row that does not PASS stops with exit 3, naming it.
+1. **Put the client where the row starts.** The section must be `account = "gm"` (the sweep stands with `/gmgotoxyz`), the server lab MCP must be configured, and the client must be in the world in the row's state. `-Prepare <row ids>` runs those rows first (one `lab_uat_run` on the same instance, with `end_session: false` so the client stays where they leave it); a prepare row that does not PASS stops with exit 3, naming it.
 2. **The sweep.** For each pose a `client_world_click` step of the row names, in step order (or only `-Pose`), it tries the current pose first, then every combination of radius (3.75, 3.0, 4.5 m), bearing (every 30 degrees, starting from the current bearing), yaw offset after the face (+25, -25, 0) and pitch (the pitch the face lands on, -35, -22): 325 candidates over 37 stand points. Each candidate is `@stand` (a teleport only when the point changed), `@camera` with the candidate's pitch, yaw and the pose's zoom (250 when it has none), then `client_hover_probe`.
 3. **The score (D-SV6).** A candidate counts only when the aim pixel gives the wanted verdict: the target under the cursor for an entity aim; for a point aim, nothing under it that is not the target (not the avatar, another entity or a HUD window). Its score is `jitter_hits * 1000 + min(avatar_px, 400) + min(edge_px, 200) / 2`: how many of eight points 12 px around the aim pixel agree, then how far the pixel is from the avatar's body and the screen edge. Ties go to the earlier candidate.
 4. **Confirmation.** The best candidate is re-stood three times, each from the opposite bearing first, and each probe must be `ok` with at least 6 jitter hits. A failed confirmation moves on to the next best, at most three winners.
@@ -636,8 +649,9 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 25 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U20 and AB-U22 (`.dummy caster`), AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
 | `first-session` (makes and deletes its own Praxis and SGU Soldiers, 2026-10-10) | All 14: FS-01 boot, FS-02 login and server select, FS-P1 to FS-P5 (Praxis: create, enter Castle_CellBlock, complete 622), FS-S1 to FS-S6 (SGU: create, enter SGC_W1, complete 1559), FS-99 cleanup. Run this section first on a new build. FS-01 to FS-P2 stay a chain (FS-P2 is the fresh-login proof); FS-P3, FS-P4 and FS-P5 gain [fixtures](#row-fixtures) with lab-fixtures FX-08, so each also runs alone on the instance's `Uat Fxpraxis...` character. The SGU rows stay a chain until they are calibrated | |
 | `debug-area` (fresh Soldier, 2026-10-04) | 43 rows: DA-U1, DA-U3 to DA-U6, DA-U8 to DA-U43, DA-U45, DA-U46 (every Debug Area station, the outbound stargate, a ring trip, the starter kit, the patch-009 hotbar and a read of the seeded characters) | DA-U2 (non-GM account), DA-U7 (the store's buttons, L9), DA-U44 (a seeded account) |
+| `client-limits` (GM lab character, 2026-10-11) | 7 measurement rows: CL-W1 to CL-W7, one per world (Castle_CellBlock, Castle, Harset, Agnos, Ihpet_Crater_Light, Dakara_E1, Tollana), each 90 s and at least three `client.engine.memory` samples. Five clients at once is `-Rows CL-W2 -Leases 5` (CL-M5). Numbers go to [docs/client/limits/](../client/limits/README.md) | |
 
-103 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). Only `first-session`'s Praxis rows have run against a live client so far (item 0 below). The first live run should take them in this order, each proving one more part of the runner:
+110 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, `client-limits` 7, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). Only `first-session`'s Praxis rows have run against a live client so far (item 0 below). The first live run should take them in this order, each proving one more part of the runner:
 
 0. `first-session`, the whole section: boot, login, character creation for both factions, world entry and each faction's first quest, graded on the server's own `sgw_mission` rows. The Praxis rows FS-01 to FS-P5 have run live (2026-10-10): calibrated on the colo, then five clean runs in a row and concurrent runs on two lab instances. The SGU rows' stand-off points are still computed, not calibrated.
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
