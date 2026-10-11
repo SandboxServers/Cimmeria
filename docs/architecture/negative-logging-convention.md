@@ -858,9 +858,9 @@ Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A mo
 
 | Level | Row | When |
 |---|---|---|
-| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `player_id`, `player_name`, `item_id`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
-| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `player_id`, `player_name`, `type_id`, `type_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
-| DEBUG | `Inventory move persisted`, plus `source_container_id`, `target_container_id`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
+| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_id`, `item_name`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
+| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_type_id`, `item_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
+| DEBUG | `Inventory move persisted`, plus `source_container_id`, `source_container_name`, `target_container_id`, `target_container_name`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
 
 Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
 

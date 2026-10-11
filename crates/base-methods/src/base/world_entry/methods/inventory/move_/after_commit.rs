@@ -85,8 +85,10 @@ pub(super) async fn after_commit(
         item_id,
         item_name = cimmeria_names::book().item(type_id),
         source_container_id,
+        source_container_name = cimmeria_names::book().container(source_container_id),
         target_container_id,
-        swapped_item_id,
+        target_container_name = cimmeria_names::book().container(target_container_id),
+        swapped_item_id, // nt:id-only occupant's type not read
         source_deleted,
         total_items,
         "Inventory move persisted"
@@ -108,9 +110,11 @@ pub(super) async fn after_commit(
                 event = "move_cell_notify_failed",
                 reason = "cell_channel_closed",
                 entity_id,
+                entity_name = player_label,
                 player_id,
                 player_name = player_label,
                 item_id = applied_item_id,
+                item_name = cimmeria_names::book().item(type_id),
                 error = %e,
                 "Inventory move notification to the cell was dropped"
             );
@@ -173,10 +177,11 @@ pub(super) async fn after_commit(
                 tracing::error!(
                     event = "move_appearance_lookup_failed",
                     entity_id,
+                    entity_name = player_label,
                     player_id,
-                    player_name = known_names::player_name(player_id),
-                    type_id,
-                    type_name = cimmeria_names::book().item(type_id),
+                    player_name = player_label,
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     error = %e,
                     "Inventory move appearance lookup failed; appearance not refreshed"
                 );
@@ -225,6 +230,7 @@ mod tests {
         drop(rx);
         let cell_tx = Some(tx);
         let db_pool = Some(Arc::new(pool.clone()));
+        known_names::remember_player(PLAYER_ID, "TgItm05Player");
         let capture = LogCapture::install();
 
         after_commit(
@@ -260,6 +266,7 @@ mod tests {
             &[
                 ("event", "move_cell_notify_failed".into()),
                 ("entity_id", ENTITY_ID.to_string()),
+                ("entity_name", "TgItm05Player".into()),
                 ("player_id", PLAYER_ID.to_string()),
                 ("item_id", "5001".into()),
             ],
