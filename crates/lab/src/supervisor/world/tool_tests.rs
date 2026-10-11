@@ -558,6 +558,67 @@ async fn zoom_and_zoom_to_together_is_refused() {
 }
 
 #[tokio::test]
+async fn yaw_offset_is_world_yaw_on_an_inverted_camera() {
+    // Flag 0x4: +counts turn the camera the other way, so +25.3 deg of world
+    // yaw needs negative counts.
+    let mut sim = room();
+    sim.gain = -400.0;
+    let before = sim.cam_yaw;
+    let out = camera::run(
+        &mut sim,
+        CameraRequest {
+            yaw_offset_deg: Some(25.3),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    let turned = wrap_pi(sim.cam_yaw - before).to_degrees();
+    assert!((turned - 25.3).abs() <= 0.5, "{turned}: {out}");
+    assert!(
+        sim.looks.iter().all(|&(dx, _, _)| dx <= 0),
+        "{:?}",
+        sim.looks
+    );
+}
+
+#[tokio::test]
+async fn a_yaw_offset_past_half_a_turn_is_refused() {
+    for want in [270.0, -200.0] {
+        let mut sim = room();
+        let e = camera::run(
+            &mut sim,
+            CameraRequest {
+                yaw_offset_deg: Some(want),
+                ..CameraRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(e.step, "arguments", "{want}");
+        assert!(sim.looks.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_zero_readout_gain_fails_instead_of_spinning() {
+    // A camera read before the game loads its settings reports gain 0.
+    let mut sim = room();
+    sim.gain = f64::INFINITY;
+    let e = camera::run(
+        &mut sim,
+        CameraRequest {
+            pitch_deg: Some(-28.8),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "abs_pitch");
+    assert!(sim.looks.is_empty(), "{:?}", sim.looks);
+}
+
+#[tokio::test]
 async fn zoom_moves_the_camera_like_zoom_to() {
     let mut sim = Sim::new();
     camera::run(

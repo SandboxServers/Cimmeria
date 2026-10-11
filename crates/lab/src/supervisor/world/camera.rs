@@ -62,7 +62,8 @@ pub struct CameraRequest {
     /// Absolute pitch after any face, readout degrees (D-SV4).
     #[serde(default)]
     pub pitch_deg: Option<f64>,
-    /// Yaw after any face, degrees in the +yaw_counts direction.
+    /// Yaw after any face, degrees of camera world yaw in -180..=180; the
+    /// +yaw_counts direction on a camera without yaw inversion (flag 0x4).
     #[serde(default)]
     pub yaw_offset_deg: Option<f64>,
     /// Camera distance; the same as `zoom_to` (an error to give both).
@@ -227,6 +228,12 @@ pub async fn resolve_aim<W: WorldIo>(
     ))
 }
 
+/// A readout gain worth dividing by: a camera read before the game loads its
+/// settings reports 0 (the same guard as `click::restore_pitch_counts`).
+fn usable_gain(g: f64) -> bool {
+    g.is_finite() && g.abs() >= 1e-3
+}
+
 /// Closed loop on the readout's pitch_offset_deg (D-SV4).
 async fn abs_pitch<W: WorldIo>(
     io: &mut W,
@@ -240,12 +247,14 @@ async fn abs_pitch<W: WorldIo>(
             .camera_readout()
             .await
             .map_err(|e| steps.fail(io.now_ms(), "abs_pitch", e))?;
-        let (Some(got), Some(gain)) = (r["pitch_offset_deg"].as_f64(), r["pitch_gain"].as_f64())
-        else {
+        let (Some(got), Some(gain)) = (
+            r["pitch_offset_deg"].as_f64(),
+            r["pitch_gain"].as_f64().filter(|g| usable_gain(*g)),
+        ) else {
             return Err(steps.fail_with(
                 io.now_ms(),
                 "abs_pitch",
-                "camera readout has no pitch_offset_deg or pitch_gain",
+                "camera readout has no pitch_offset_deg or a usable pitch_gain",
                 r,
             ));
         };
@@ -289,13 +298,21 @@ async fn abs_yaw<W: WorldIo>(
         .camera_readout()
         .await
         .map_err(|e| steps.fail(io.now_ms(), "abs_yaw", e))?;
-    let Some(gain) = r["yaw_gain"].as_f64() else {
-        return Err(steps.fail_with(io.now_ms(), "abs_yaw", "camera readout has no yaw_gain", r));
+    let Some(gain) = r["yaw_gain"].as_f64().filter(|g| usable_gain(*g)) else {
+        return Err(steps.fail_with(
+            io.now_ms(),
+            "abs_yaw",
+            "camera readout has no usable yaw_gain",
+            r,
+        ));
     };
     let y0 = io.camera_pose().await.ok().map(|p| p.yaw);
     // Signed gain: an inverted camera (0x4) turns the other way.
     let mut counts = (want * 65536.0 / 360.0 / gain).round() as i32;
-    let mut sent = 0;
+    // A correction never exceeds four times the first move, so a look the
+    // client swallowed (a tiny measured turn) cannot ask for a huge spin.
+    let max_step = counts.saturating_abs().max(64).saturating_mul(4);
+    let mut sent: i32 = 0;
     let mut looks = 0;
     let mut got = None;
     let open_loop = loop {
@@ -305,7 +322,7 @@ async fn abs_yaw<W: WorldIo>(
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
         steps.used(level);
         looks += 1;
-        sent += counts;
+        sent = sent.saturating_add(counts);
         io.sleep(LOOK_SETTLE_MS).await;
         let turned = match y0 {
             Some(y0) => io
@@ -333,11 +350,12 @@ async fn abs_yaw<W: WorldIo>(
         }
         // Scale the counts sent so far by the measured turn; the readout's
         // gain while the camera has not moved.
-        counts = if d != 0.0 {
-            (err * f64::from(sent) / d).round() as i32
+        let step = if d != 0.0 {
+            err * f64::from(sent) / d
         } else {
-            (err * 65536.0 / 360.0 / gain).round() as i32
+            err * 65536.0 / 360.0 / gain
         };
+        counts = (step.round() as i32).clamp(-max_step, max_step);
     };
     let mut out = json!({
         "want": want,
@@ -356,6 +374,16 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     let mut steps = Steps::new("client_camera", io.now_ms());
     if req.zoom.is_some() && req.zoom_to.is_some() {
         return Err(steps.fail(io.now_ms(), "arguments", "give zoom or zoom_to, not both"));
+    }
+    if req
+        .yaw_offset_deg
+        .is_some_and(|y| !(-180.0..=180.0).contains(&y))
+    {
+        return Err(steps.fail(
+            io.now_ms(),
+            "arguments",
+            "yaw_offset_deg must be within -180..=180",
+        ));
     }
     let zoom_to = req.zoom_to.or(req.zoom);
     let target = TargetArg {
