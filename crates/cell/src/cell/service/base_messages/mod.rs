@@ -386,6 +386,10 @@ pub(super) async fn handle_base_message(
                 player_id = who.player_id,
                 player_name = who.player_name,
                 method_index,
+                method_name = cimmeria_wire::names::entity_client_method(
+                    who.player_id != 0,
+                    method_index
+                ),
                 witness_count,
                 "BroadcastToWitnesses: entity method rebroadcast to witnesses"
             );
