@@ -132,6 +132,7 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | The `spawn_entity` executor rows and the DHD rows | `world_name` | `world` | NT-21 |
 | The spawn rows in `space_manager/npc_population.rs` | `name` (held the template name) | `template_name` | NT-25 |
 | `npc_respawn_recreate` (`npc_respawn` tick) and the stargate loader (`spawner/stargates.rs`); also the `npc_respawns_total` metric label | `world_name` | `world` | NT-25 |
+| The respawn tick's witness re-create WARN (`spawner.npc_respawn`) | `reason = "cell_to_base_closed"` | `reason = "base_channel_closed"` (the shared cell→base send reason) | TG-NPC-12 |
 | The ability loader (`spawner/abilities.rs`) | `type_id` (an `abilities.type_id` enum label) | `ability_type` | NT-25 |
 | `Loaded player data for mapLoaded` (`player_load/core/player_data.rs`) | `name` (held the character name) | `player_name` | NT-28c |
 | `Added Cimmeria item definition` (`resources/apply_overrides.rs`, boot) | `name` (held the item name) | `item_name` | NT-50a |
@@ -357,6 +358,19 @@ These rows carry `reason`, never `disconnect_reason`. That field is kept
 for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
+
+`session.end` also carries end-cause hints (TG-NET-02), so one row says
+how the session ended without joining other rows:
+
+| Field | Meaning |
+|---|---|
+| `logoff_requested` | `true` when the client asked for a full exit (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`) before the session ended. A full exit keeps the session until the client disconnects or the 60 s reap fires, so `disconnect_reason` stays the real mechanism (`client_disconnect`, `inactivity_timeout`) and this flag says the player meant to leave. `inactivity_timeout` with `logoff_requested=true` is a clean quit whose disconnect never arrived, not a crash. |
+| `idle_ms` | Milliseconds since the last fresh datagram from the client (`last_recv`) when the session ended. |
+| `in_world` | The character was listed online (past `onClientReady`) when the session ended: `false` for a drop during world entry, and after a `logOff` already took the character out of the world. |
+| `world` | The world name; absent when the session had none. |
+
+`Client entities cleaned up` carries `player_id` and `player_name` beside
+the numeric `player_entity_id` (it used to ship as `"Some(n)"`).
 
 Only a login whose ticket is already consumed reaches
 `login_retry_on_channel`. A plaintext `baseAppLogin` with a fresh ticket
@@ -815,6 +829,17 @@ Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, 
 
 `player_state_not_persisted` is conservative: it can over-report. A save the base aborts at the deadline may already have committed its write, and a write that lands after the cell stopped waiting still counts as missed, so a player it names may in fact be saved. It never under-reports. While the cell waits for the base's answer it does not drain base-to-cell messages; anything the base sends the cell in that window is handled (or dropped) by the shutdown that follows.
 
+### Sessions open at stop (TG-NET-10)
+
+After the cell's flush, `BaseService::stop` (`crates/base/src/base/service.rs`) ends the session row of every session still holding a player entity. It only logs; nothing is torn down, and it adds no await to the stop.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | target `session.end`, `disconnect_reason = "server_shutdown"`, identity, `entity_id`, `entity_name`, `addr`, `session_secs` | Once per session with a player entity. Without it, a stop left those sessions with a `session.start` and no end |
+| INFO | `sessions_open_at_stop` (every session in the map, account-only ones included), `sessions_ended` | Once per stop |
+
+Guard: `service.rs` `tests::stop_ends_each_live_session`.
+
 ## Logout position persistence (TG-DB-04)
 
 `PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
@@ -866,6 +891,18 @@ The cell's boot check of effect `script_name`s (`cell/service/startup.rs`) names
 
 Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `cimmeria-cell-world`) pins the skip; `every_seeded_script_name_is_registered` (`cell/effects/registry.rs` in `cimmeria-cell-effect-scripts`) pins an empty missing list on the seed.
 
+## Instance population summary and unknown-world skips (TG-NPC-06)
+
+`spawn_npcs_from_records` (`space_manager/npc_population.rs` in `cimmeria-cell-world`) used to skip a record whose `world_name` has no startup space without a word. It now WARNs once per world whose name is absent from spaces.xml (`space_mgr.worlds`), with the count of records it skipped. A record for a known instanced world (such as Castle_CellBlock) is skipped by design and does not WARN; those skips are counted in one DEBUG row per call. `spawn_instance_npcs_from_records` writes one INFO summary per instanced space, with `record_count` counting only that instance's world.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `spawner`, `event = "spawn_world_unknown"`, `world`, `records` | A DB spawn record names a world absent from spaces.xml; the records are skipped (once per world per boot) |
+| DEBUG | target `spawner`, `event = "spawn_instanced_skipped"`, `records` | DB spawn records name a known instanced world, which spawns per instance; the records are skipped (once per call, only when nonzero) |
+| INFO | target `spawner`, `event = "instance_populated"`, `world`, `space_id`, `record_count`, `spawned`, `failed` | Once per instanced space after its NPCs spawn |
+
+Guards: `spawn_unknown_world_warns_once_per_world`, `spawn_instanced_world_skips_without_warn`, `spawn_instance_summary_row_counts_spawned_and_failed` and `spawn_instance_summary_row_counts_failed_spawn` (`spawner_tests/spawn_records.rs` in `cimmeria-cell-world`) pin the WARN, the instanced skip and the summary fields.
+
 ## UDP connection-reset throttle (TG-MER-10)
 
 On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WSAECONNRESET (10054). That error is per destination, not a socket failure, and the receive loop carries on. `log_connreset()` in `base/connect_loop/mod.rs` throttles it (Pattern D). The first reset writes at once. The resets inside the next 10 s are counted, and the next row carries them in `suppressed`. The throttle is process-wide, not keyed by entity or peer. Every reset, written or counted, bumps `udp_connreset_total`.
@@ -875,6 +912,24 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 | DEBUG | message `UDP recv: WSAECONNRESET (10054) -- remote closed, continuing`, `reason = "icmp_port_unreachable"`, `suppressed` | A UDP recv returned WSAECONNRESET; at most one row per 10 s |
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
+
+## Trade cancel and refusal rows (TG-SOC-06)
+
+Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.
+
+## Inline move refusals (TG-ITM-04)
+
+The player-bag move path (`inventory/move_/`) refuses a move in five places that used to write a bare WARN. Each now writes one row under `target: "inventory"` with `event = "move_rejected"` and a `reason`, the identity pair (`account_id`, `account_name`, `player_id`, `player_name`) and the item and container ids with their names. The vault refusals keep their own `bank` rows (BV-01).
+
+| Level | `reason` | When |
+|---|---|---|
+| WARN | `invalid_slot` | Target container or slot outside the container's range (`move_/mod.rs`) |
+| WARN | `source_not_found` | The instance id has no row for the player (`move_/mod.rs`) |
+| WARN | `over_stack` | Quantity above the source stack; adds `quantity`, `stack_size`, source container (`move_/mod.rs`) |
+| WARN | `not_allowed_in_container` | The type's `container_sets` excludes the target; adds both containers (`move_/finish.rs`) |
+| WARN | `split_onto_occupied` | A partial stack dropped on an occupied slot; adds both containers (`choose_shape` in `move_/finish.rs`, also reached from the org path) |
+
+Guards: the `live_db_move_refusal_*` tests in `move_/named_log_tests.rs`, one per reason, each asserting the WARN level, target, `event`, `reason`, account and player identity and the item id.
 
 ## Minigame session end (TG-MG-03)
 
@@ -925,6 +980,26 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
 
+## Unsent onEndAidWait on respawn (TG-CMB-10)
+
+`handle_respawn` (`cell/respawn/mod.rs` in `cimmeria-cell-interactions`) closes the Defeat Window with `onEndAidWait` before it reanchors or travels. A closed base channel leaves the window open on the client, so the failed send is logged rather than dropped. The cross-world INFO row carries the identity too.
+
+| Level | Row | When | Fields |
+|---|---|---|---|
+| WARN | `event = "wire_send_failed"`, `method = "onEndAidWait"`, `reason = "base_channel_closed"`, `error` | The cell-to-base send of `onEndAidWait` failed | identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id`, `entity_name` |
+
+Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tests/respawn_send_failures.rs` (a dropped receiver gives the WARN with `reason`).
+
+## Minigame victory for an unknown entity (TG-MG-09)
+
+`cell/service/base_messages/minigame.rs`, `handle_minigame_result`. A victory whose `entity_id` is not in the cell's space manager still fires its `on_victory_chains` with player 0, as it always has; the WARN row says the player those chains name is not there. The entity has no name to give, so `entity_id` is `// nt:id-only`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| WARN | `entity_missing` | `MinigameResult` with `result_code` 1 and `get_entity` misses; the chains fire for player 0 | `entity_id`, `chain_count`, `result` |
+
+Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
+
 ## Leave and invisible send failures (TG-AOI-08)
 
 `cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
@@ -942,6 +1017,12 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 `effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
 
 Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
+
+## Spatial chat send failures (TG-SOC-07)
+
+`cell/console/chat/spatial.rs` in `cimmeria-cell-console`. A `say`, `emote` or `yell` line sent into a closed base channel was dropped by `let _`. Each failed send now logs WARN `target: CHAT_LOG_TARGET`, `event = "chat.spatial_send_failed"`, `reason = "base_channel_closed"`: one row per witness (`target_entity_id` + `target_entity_name`, and the `target_player_*` / `target_account_*` identity), and one for the speaker's echo (`entity_id` + `entity_name`, the speaker's identity). Both carry `channel`. The broadcast row is DEBUG `event = "chat.spatial_broadcast"` with the speaker's identity and `ignored`, the count of witnesses withheld by an Ignore list. A sent line logs nothing new.
+
+Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
 
 ## Related
 
