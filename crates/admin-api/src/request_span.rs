@@ -78,21 +78,29 @@ pub(crate) async fn admin_request_row(request: Request<Body>, next: Next) -> Res
     let response = next.run(request).await;
     let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     let status = response.status().as_u16();
-    let message = if status >= 500 {
-        "admin request failed"
+    // `tracing` needs a constant level per callsite, so the level choice
+    // (`row_level`) picks between two callsites.
+    if row_level(status) == Level::WARN {
+        tracing::warn!(
+            target: "admin.request",
+            method = %method,
+            path = %path,
+            status,
+            latency_ms,
+            peer = peer.as_deref(),
+            "admin request failed"
+        );
     } else {
-        "admin request"
-    };
-    tracing::event!(
-        target: "admin.request",
-        row_level(status),
-        method = %method,
-        path = %path,
-        status,
-        latency_ms,
-        peer = peer.as_deref(),
-        "{message}"
-    );
+        tracing::info!(
+            target: "admin.request",
+            method = %method,
+            path = %path,
+            status,
+            latency_ms,
+            peer = peer.as_deref(),
+            "admin request"
+        );
+    }
     response
 }
 
@@ -276,9 +284,15 @@ mod tests {
             .position(|line| line == "event target=admin.request")
             .unwrap_or_else(|| panic!("no admin.request row in {lines:#?}"));
         let fields = &lines[row..];
-        assert!(fields.iter().any(|line| line == "path=unmatched"), "{lines:#?}");
+        assert!(
+            fields.iter().any(|line| line == "path=unmatched"),
+            "{lines:#?}"
+        );
         assert!(fields.iter().any(|line| line == "status=404"), "{lines:#?}");
-        let probes: Vec<&String> = lines.iter().filter(|line| line.contains("zz-probe")).collect();
+        let probes: Vec<&String> = lines
+            .iter()
+            .filter(|line| line.contains("zz-probe"))
+            .collect();
         assert_eq!(probes, [&"uri=/zz-probe".to_owned()], "{lines:#?}");
         assert!(lines.iter().all(|line| !line.contains("x=1")), "{lines:#?}");
     }
