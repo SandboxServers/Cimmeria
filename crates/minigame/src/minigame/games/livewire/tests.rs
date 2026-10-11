@@ -151,3 +151,44 @@ fn started_returns_exactly_one_send_with_full_game_state() {
         "started() must emit the fullgamestate cmd carrying the initial state"
     );
 }
+
+/// TG-MG-05: a Livewire rejection row names the player. An unknown wire
+/// on a started game must WARN with the entity, the player and
+/// `reason=unknown_wire`, so an ops reader can tell whose game it was.
+#[test]
+fn processmove_unknown_wire_warns_with_player_identity() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut session = make_session(2, 30, 5);
+    session.entity_id = 77;
+    session.player_name = Some("Hacker".to_string());
+    let mut g = LivewireGame::new(&session);
+    g.init_game();
+    g.game_started = true;
+
+    let mut params = HashMap::new();
+    params.insert(
+        "wirename".to_string(),
+        SfsValue::String("zz_nope".to_string()),
+    );
+    let outputs = g.message("processmove", &params);
+    assert!(outputs.is_empty(), "an unknown wire must not be cut");
+
+    let event = capture
+        .find_message(Level::WARN, "Unknown wire")
+        .expect("unknown wire must emit a WARN row");
+    assert!(
+        event.has_field("entity_id", "77"),
+        "the entity slot must be named: {event:#?}"
+    );
+    assert!(
+        event.has_field("player_name", "Hacker"),
+        "the player must be named, not just the entity: {event:#?}"
+    );
+    assert!(
+        event.has_field("reason", "unknown_wire"),
+        "the rejection carries its reason: {event:#?}"
+    );
+}

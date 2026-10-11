@@ -124,7 +124,10 @@ async fn request_entity_update_out_of_aoi_logs_a_negative_event() {
         w.account_id = Some(10);
         w.player_id = Some(100);
     }
-    mgr.create_entity(42, "Castle_CellBlock", [500.0, 0.0, 0.0], [0.0; 3])
+    // Same space as the witness: an instanced world's `create_entity` would
+    // allocate a fresh instance and the refusal would read `other_space`.
+    let witness_space = mgr.get_entity_space_id(1).unwrap();
+    mgr.create_entity_in_space(42, witness_space, [500.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
 
     let (tx, _rx) = mpsc::channel(8);
@@ -154,6 +157,97 @@ async fn request_entity_update_out_of_aoi_logs_a_negative_event() {
     assert!(row.has_field("entity_id", "42"));
     assert!(row.has_field("account_id", "10"));
     assert!(row.has_field("player_id", "100"));
+    // The witness has no AoI state at all here, so the cause is the
+    // "not introduced yet" one rather than a plain AoI miss.
+    assert!(row.has_field("cause", "not_introduced_yet"));
+}
+
+/// `cause = "entity_gone"`: the requested id names no entity at all, so the
+/// refusal says the entity is gone rather than merely outside the AoI.
+#[tokio::test]
+async fn request_entity_update_refusal_names_a_missing_entity() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(w) = mgr.get_entity_mut(1) {
+        w.is_player = true;
+        w.player_id = Some(100);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let guard = LogCapture::install();
+
+    handle_base_message(
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id: 1,
+            entity_ids: vec![99],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let row = guard
+        .find_event(
+            Level::WARN,
+            "id outside witness's AoI",
+            "not_in_witness_aoi",
+        )
+        .unwrap_or_else(|| panic!("no not_in_witness_aoi row; saw {:#?}", guard.all()));
+    assert!(row.has_field("entity_id", "99"));
+    assert!(row.has_field("cause", "entity_gone"));
+}
+
+/// `cause = "other_space"`: an NPC that exists but lives in a different world
+/// than the witness is refused as `other_space`, not as an AoI miss.
+#[tokio::test]
+async fn request_entity_update_refusal_names_another_space() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /><Space WorldName="Other_World" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(w) = mgr.get_entity_mut(1) {
+        w.is_player = true;
+        w.player_id = Some(100);
+    }
+    mgr.create_entity(42, "Other_World", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let guard = LogCapture::install();
+
+    handle_base_message(
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id: 1,
+            entity_ids: vec![42],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let row = guard
+        .find_event(
+            Level::WARN,
+            "id outside witness's AoI",
+            "not_in_witness_aoi",
+        )
+        .unwrap_or_else(|| panic!("no not_in_witness_aoi row; saw {:#?}", guard.all()));
+    assert!(row.has_field("entity_id", "42"));
+    assert!(row.has_field("cause", "other_space"));
 }
 
 /// Mixed request: one entity in AoI, one out of AoI, one unknown id. None of

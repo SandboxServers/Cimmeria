@@ -83,17 +83,31 @@ impl SpaceManager {
     /// path is written only when this is true; an NPC-only event with no
     /// player anywhere near writes nothing.
     pub fn player_present(&self, entity_id: u32, counterpart: Option<u32>) -> bool {
-        if self.is_player_side(entity_id)
-            || self.player_in_aoi_of(entity_id)
-            || counterpart.is_some_and(|id| self.is_player_side(id))
-        {
-            return true;
+        self.player_present_via(entity_id, counterpart).is_some()
+    }
+
+    /// Why [`Self::player_present`] is true, for the no-witness rows: the
+    /// reason a player counted, or `None` when none did. Checked in order:
+    /// `player_side` (the entity or the counterpart is player side), `aoi`
+    /// (a player has `entity_id` within AoI range), `threat_list` (a player
+    /// side entity is on `entity_id`'s threat list).
+    pub fn player_present_via(
+        &self,
+        entity_id: u32,
+        counterpart: Option<u32>,
+    ) -> Option<&'static str> {
+        if self.is_player_side(entity_id) || counterpart.is_some_and(|id| self.is_player_side(id)) {
+            return Some("player_side");
         }
-        self.get_entity(entity_id).is_some_and(|e| {
+        if self.player_in_aoi_of(entity_id) {
+            return Some("aoi");
+        }
+        let on_threat_list = self.get_entity(entity_id).is_some_and(|e| {
             e.threat_list
                 .keys()
                 .any(|&threat| self.is_player_side(threat))
-        })
+        });
+        on_threat_list.then_some("threat_list")
     }
 }
 
