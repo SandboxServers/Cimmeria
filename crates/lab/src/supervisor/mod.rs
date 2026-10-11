@@ -476,23 +476,19 @@ impl Supervisor {
         };
         {
             let mut st = self.state.lock().await;
-            lifecycle::warn_if_pid_overwritten(st.pid, pid);
-            st.pid = Some(pid);
+            lifecycle::record_pid(&mut st, pid, process::is_alive);
             st.started_at = Some(Instant::now());
             st.token = Some(token);
             st.telemetry = Some(telemetry.status());
             st.login = LoginState::NotStarted;
             st.watchdog = HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER);
         }
-        tracing::info!(
-            target: "lab.client",
-            event = "launched",
-            instance = inst.unwrap_or("default"),
+        lifecycle::log_launched(
+            inst.unwrap_or("default"),
             pid,
             cause,
-            telemetry_session_id = %telemetry.session_id,
+            &telemetry.session_id,
             grant,
-            "client launched"
         );
         Ok(pid)
     }
