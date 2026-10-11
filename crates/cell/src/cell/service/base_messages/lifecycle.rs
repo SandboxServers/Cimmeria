@@ -398,7 +398,7 @@ async fn persist_last_position(
 ) {
     let Some(entity) = space_mgr.get_entity(entity_id) else {
         tracing::warn!(
-            entity_id,
+            entity_id, // nt:id-only the entity is gone, so there is no name to pair
             reason = "entity_missing",
             "DisconnectEntity: entity not found — last position not persisted"
         );
