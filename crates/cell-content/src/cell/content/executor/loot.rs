@@ -225,6 +225,7 @@ pub(super) async fn open_loot(
 
     let items: Vec<LootItem> = {
         let Some(c) = space_mgr.get_entity_mut(container) else {
+            refuse(space_mgr, "container_gone", Some(container), key_ref);
             return;
         };
         let items: Vec<LootItem> = rolled
