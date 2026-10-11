@@ -796,18 +796,21 @@ Every fallback in the player-load loaders logs `event = "player_load_degraded"` 
 
 Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss; at world entry it now locks the missions instead (see TG-DB-12 below). Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
-## Appearance refresh outcomes (TG-ITM-01)
+## Appearance refresh outcomes (TG-ITM-01, TG-ITM-14)
 
-`refresh_player_appearance` (`base-methods/.../inventory/appearance.rs`) says why it gave up. A load that returned a different player is an ERROR when a DB pool exists. With `db_pool = None` (offline mode) it is a DEBUG instead, because the loader already logged `no_db_pool` at DEBUG. Either way the refresh still sends what it built (the abort is TG-ITM-14). A skip is WARN, except when the witness's session ended within the departed-witness window: that is a normal race, so DEBUG.
+`refresh_player_appearance` (`base-methods/.../inventory/appearance.rs`) says why it gave up. When a DB pool exists and the load returns a different player (the loader's default "naked human male" payload), the refresh retries the load once after 200 ms (D-TG11). If the retry fails too, it aborts: nothing is cached in `cached_appearance_args` and nothing is sent to the player or the witnesses, so everyone keeps the last good appearance, and it logs `appearance_refresh_aborted` at WARN. The load error itself is on the loader's ERROR `player_load_degraded` row, one per attempt. With `db_pool = None` (offline mode) the default payload is the only appearance there is, so the refresh still sends it and logs `appearance_refresh_degraded` at DEBUG, because the loader already logged `no_db_pool` at DEBUG. A skip is WARN, except when the witness's session ended within the departed-witness window: that is a normal race, so DEBUG.
+
+TG-ITM-14 retired the live-pool ERROR `appearance_refresh_degraded` row: a failed load with a pool now logs `appearance_refresh_aborted` (WARN) and no `appearance_refreshed` row.
 
 | Event | Level | `reason` | Fields |
 |---|---|---|---|
-| `appearance_refresh_degraded` | ERROR (DEBUG when `db_pool` is `None`) | `cause = "player_load_failed"` (a field) | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_aborted` | WARN | `cause = "player_load_failed"` (a field) | `attempts`, `entity_id`, `entity_name`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_degraded` | DEBUG (offline mode only) | `cause = "player_load_failed"` (a field) | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name` |
 | `appearance_refresh_skipped` | WARN | `entity_to_addr_miss`, `client_state_missing`, `entity_missing` | `entity_id`, `entity_name`, `account_id`, `account_name`, `player_id`, `player_name` |
 | `appearance_refresh_skipped` | DEBUG | `witness_session_ended` | as above |
-| `appearance_refreshed` | DEBUG | none; a degraded refresh (default payload, including offline) is still logged with `degraded = true` | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name`, `holstered`, `component_count`, `bodyset`, `degraded` |
+| `appearance_refreshed` | DEBUG | none; an offline refresh (default payload) is still logged with `degraded = true` | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name`, `holstered`, `component_count`, `bodyset`, `degraded` |
 
-Guard: `appearance_refresh_logs_degraded_and_skips` in `inventory/appearance.rs` pins the offline DEBUG (no ERROR with `db_pool = None`), the live-pool ERROR, the `degraded = true` success row, the `client_state_missing` WARN and the DEBUG-after-departure (with no new WARN). The `entity_missing` skip is not pinned: it needs the mapping removed during the awaited load, which the test setup cannot do deterministically.
+Guards in `inventory/appearance_tests.rs`: `failed_load_does_not_cache_or_send_default_appearance` pins the abort against an unreachable pool (the previous cached args are kept, nothing goes to the client or the cell, the loader fails exactly twice, one WARN `appearance_refresh_aborted`, no success row). `appearance_refresh_logs_degraded_and_skips` pins the offline DEBUG (no ERROR with `db_pool = None`), the `degraded = true` success row, the `client_state_missing` WARN and the DEBUG-after-departure (with no new WARN). The `entity_missing` skip is not pinned: it needs the mapping removed during the awaited load, which the test setup cannot do deterministically.
 
 ### Shutdown unsaved-state report (TG-DB-01)
 
