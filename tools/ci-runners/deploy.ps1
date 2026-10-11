@@ -111,7 +111,8 @@ foreach ($node in $Nodes) {
     $token = gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token
     if ($LASTEXITCODE -ne 0 -or -not $token) { throw 'could not mint a registration token (repo admin needed)' }
     # The file always exists (an absent bind-mount source becomes a directory).
-    $token | ssh $ssh "umask 077 && cat > $dir/runner-token"
+    # tr: PowerShell pipes a CRLF line ending, and a CR left in the token makes GitHub reject it.
+    $token.Trim() | ssh $ssh "umask 077 && tr -d '\r\n' > $dir/runner-token"
     if ($LASTEXITCODE -ne 0) { throw "${node}: writing the registration token failed" }
 
     Write-Host "== ${node}: building the images and starting the stack"

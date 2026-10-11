@@ -19,7 +19,7 @@ FILES=(.runner .credentials .credentials_rsaparams)
 if [ -f "$STATE/.runner" ]; then
     for f in "${FILES[@]}"; do cp "$STATE/$f" .; done
 elif [ ! -f .runner ]; then
-    RUNNER_TOKEN="$(cat /run/runner-token 2> /dev/null || true)"
+    RUNNER_TOKEN="$(tr -d '\r\n' < /run/runner-token 2> /dev/null || true)"
     if [ -z "$RUNNER_TOKEN" ]; then
         echo "entrypoint: $RUNNER_NAME is not registered and RUNNER_TOKEN is empty;" >&2
         echo "entrypoint: run tools/ci-runners/deploy.ps1 to mint a registration token." >&2

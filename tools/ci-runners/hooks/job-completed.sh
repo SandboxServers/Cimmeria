@@ -11,7 +11,10 @@
 #     only when the daemon's store passes 20 GB. (`image prune --filter until=` goes by
 #     when an image was built, not last used, so it would delete postgres every job.)
 # sccache trims itself to SCCACHE_CACHE_SIZE; the cargo registry is small.
-set -u
+#
+# The runner runs this with `bash -e -o pipefail`. A hook must never fail the job, and
+# on a quick runner (no dind) every docker command fails, so turn both off here.
+set +e +o pipefail -u
 ws="${GITHUB_WORKSPACE:-}"
 # du's size in KB, or 0 when the path is missing (cut exits 0 on empty input, so a
 # `|| echo 0` after the pipe would never fire).
