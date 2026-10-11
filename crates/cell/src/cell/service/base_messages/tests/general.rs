@@ -158,6 +158,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             body_set: Some("BS_JaffaMale.BS_JaffaMale".into()),
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
+            entry_cause: crate::cell::messages::WorldEntryCause::Login,
         },
         &tx,
         &mut mgr,

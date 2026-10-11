@@ -42,6 +42,7 @@ async fn login_leaves_auto_cycle_off_and_the_button_unlit() {
         vec![],
         SystemOptions::default(),
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &ChainEngine::new(),

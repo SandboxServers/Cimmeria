@@ -1,7 +1,16 @@
-//! Verified, separately owned copies. A legacy ledger is never verification.
+//! Verified, separately owned copies on macOS; verified in-place ownership of
+//! the imported folder elsewhere (D-LX12). A legacy ledger is never verification.
 //! Native composition only: dispatch these blocking functions on retained workers.
 mod artifacts;
 mod comparison;
+mod in_place;
+#[cfg(not(target_os = "macos"))]
+mod in_place_preview;
+// Where the in-place backend is the one previews use.
+#[cfg(all(test, not(target_os = "macos")))]
+mod in_place_recovery_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod in_place_tests;
 mod inventory;
 mod model;
 pub(crate) mod preparation;
@@ -83,6 +92,9 @@ impl Preview {
     }
     /// The one consent rule, shared by review presentation and confirmation.
     pub fn consent(&self, choices: &Choices) -> Result<(), Error> {
+        if self.report.blocking().next().is_some() {
+            return Err(Error::VerificationFailed);
+        }
         if !choices.old_game_closed
             || (self.requires_normalization() && !choices.normalize_managed_files)
             || (self.requires_telemetry_acceptance() && !choices.accept_unavailable_game_telemetry)
@@ -135,11 +147,25 @@ pub(super) fn preview_using(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    // Mac-native filesystem identity and no-clobber promotion are implemented in
-    // this bounded phase. Other hosts fail closed pending their native tests.
-    if !cfg!(target_os = "macos") {
-        return Err(Error::UnsupportedConfiguration);
+    // macOS makes a verified copy. Every other host adopts the imported folder
+    // in place (D-LX12); there is no copy destination to choose.
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Backend::Native = backend;
+        in_place_preview::preview(state, request, cancel, progress, transport)
     }
+    #[cfg(target_os = "macos")]
+    copy_preview(state, request, cancel, progress, backend, transport)
+}
+#[cfg(target_os = "macos")]
+fn copy_preview(
+    state: Arc<Mutex<DesktopState>>,
+    request: PreviewRequest,
+    cancel: CancellationToken,
+    progress: crate::install_progress::ProgressSink,
+    backend: Backend,
+    transport: Option<artifacts::Transport>,
+) -> Result<Preview, Error> {
     let (imported, before, destination) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(

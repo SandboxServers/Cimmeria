@@ -26,12 +26,19 @@ const failures:Record<string,string>={
  recovery_required:'An interrupted adoption must be resolved first, using the actions offered here.',
  import_required:'Import legacy launcher settings first.',
  platform_unavailable:'Verified copy adoption is not available in this build.',
+ verification_failed:'Release files in your game folder do not match the signed release, so it cannot be adopted in place. Restore the files listed in the review, then prepare a new review. Nothing was changed.',
+ outdated_install:'The old launcher has not installed the current signed release in this folder. Update the game with the old launcher first, then adopt it. Nothing was changed.',
+ unsupported_layout:'This game folder uses an older layout, with SGW.exe outside “Working\\Binaries”, that the launcher cannot adopt in place. Install the game fresh with this launcher, or keep using the old launcher for this folder. Nothing was changed.',
+ game_running:'The game is running from this folder. Close the game first, then verify and adopt the folder again. Nothing was changed.',
+ duplicate_release_file:'A release file is both in the launcher’s “game” folder and at its old place, and neither copy matches the reviewed file, so recovery stopped. The launcher log names the file. Nothing was deleted.',
+ leftover_launcher_files:'This folder already holds launcher files (“game”, “.cimmeria-install.json” or “content-ready.json”) from an earlier installation or adoption, so it cannot be adopted. The launcher log says which. Nothing was changed.',
  unsupported_schema:'This launcher build does not understand that adoption request.',
 };
 const failureText=(code:string)=>unknownOutcome(code)?'The result could not be confirmed, and nothing was retried. Recheck adoption status before continuing.':failures[code]??failures.platform_unavailable;
 const megabytes=(bytes:number)=>`${(bytes/1048576).toFixed(1)} MB`;
 const activityText=(status:AdoptionStatus)=>{
  const p=status.progress;
+ if(status.activity==='copying'&&status.backend==='in_place')return !p||p.current<p.total?`Moving the verified release files into the launcher-owned game folder${p?`: ${p.current} of ${p.total}`:'…'}. Nothing is copied.`:'Verifying and publishing the adopted folder. This step cannot be cancelled.';
  if(status.activity==='copying')return !p?`Starting the verified copy… ${unchanged}`:p.current<p.total?`Copying verified files: ${p.current} of ${p.total}. ${unchanged}`:'Verifying and publishing the copy. This step cannot be cancelled.';
  if(p?.phase==='download')return `Downloading the signed reference: ${megabytes(p.current)} of ${megabytes(p.total)}.`;
  if(p?.phase==='extraction')return `Extracting the signed reference: ${p.current} of ${p.total}.`;
@@ -48,13 +55,17 @@ export function adoptionText(s:AdoptionState):string {
  if(status.activity==='copying'||status.activity==='preparing')return activityText(status);
  const r=status.reconciliation;
  if(r?.kind==='preparation')return `Preparation was interrupted and is never repeated automatically. Remove its private files to continue. ${unchanged}`;
+ if(r?.kind==='copy'&&status.backend==='in_place')return [`The in-place adoption of ${r.directory} was interrupted.`,r.can_recover?'Recover to finish moving its verified release files into the launcher-owned game folder.':'',r.can_abandon?'Abandon to put every release file back where it was.':'',!r.can_recover&&!r.can_abandon?'Recheck after restarting the launcher.':''].filter(Boolean).join(' ');
  if(r?.kind==='copy')return `The copy into ${r.directory} was interrupted. ${r.can_recover?'Its verified files are staged: recover to finish publishing them.':r.can_abandon?'Nothing was published: abandon it, then choose a different location.':'Recheck after restarting the launcher.'} ${unchanged}`;
+ if(status.review?.in_place)return s.stale?failures.stale_revision:status.review.blocked_files.length?`These release files in your game folder do not match the signed release, so it cannot be adopted in place: ${status.review.blocked_files.join(', ')}. Restore them, then dismiss this review and prepare a new one. Nothing was changed.`:'Review the comparison and confirmations below. Nothing is moved until you confirm.';
  if(status.review)return s.stale?failures.stale_revision:`Review the comparison and confirmations below. Nothing is copied until you confirm. ${unchanged}`;
  if(status.last_error)return failureText(status.last_error);
+ if(status.completed&&status.backend==='in_place')return `Adopted ${status.completed.directory} in place. Its release files now sit in the launcher-owned “game” folder inside it; files that are not part of the release were left where they were, and uninstalling never removes them.`;
  if(status.completed)return `Verified copy created in ${status.completed.directory}. The original game folder and old launcher are unchanged and no longer needed by this copy. Game setup and Play for adopted copies continue in the Play area when this build offers them.`;
  if(status.owned)return 'A desktop-owned installation already exists, so there is nothing further to adopt.';
  if(status.imported?.blocker)return failureText(status.imported.blocker);
  if(status.preparations.length)return 'Leftover preparation files from an earlier attempt can be removed.';
+ if(status.imported&&status.backend==='in_place')return `Legacy settings are saved. Adopt your existing game folder ${status.imported.game_directory} in place: the launcher checks every release file against the signed release, then takes the folder over without copying it.`;
  if(status.imported)return 'Legacy settings are saved. Choose where to create a separate verified copy; the launcher makes a new “Stargate Worlds” folder there and never changes the old one.';
  return 'Import legacy launcher settings above first, then start verified adoption here.';
 }
@@ -64,12 +75,16 @@ const maintenanceText:Record<Maintenance['action'],[string,string]>={
  abandon:['Abandon adoption','End this interrupted adoption. Files already copied stay in the destination folder and are not used; choose a different location afterwards. The original game folder is unchanged.'],
  abandon_preparation:['Remove preparation files','Permanently remove the private reference files of the interrupted preparation. The original game folder and your settings are unchanged.'],
 };
+const inPlaceMaintenance:Partial<typeof maintenanceText>={
+ recover:['Recover adoption','Finish moving the already verified release files into the launcher-owned game folder. Nothing is downloaded or copied; recovery is refused if the files no longer verify.'],
+ abandon:['Abandon adoption','End this interrupted adoption and move every release file back where it was. Files that are not part of the release were never moved. Abandon is offered only before the launcher applies its setup; after that, recover instead.'],
+};
 function reviewLines(r:Review,summaryConsent:boolean) {
  const c=r.counts,plural=(n:number,one:string,many:string)=>`${n} ${n===1?one:many}`;
  return {
   release:`Signed release ${r.release.manifest_sha256} (seed ${r.release.seed_sha256.slice(0,16)}…, ${r.release.patches.length?`patches in signed order: ${r.release.patches.join(', ')}`:'no patches'}).`,
-  counts:`${plural(c.matched,'file is','files are')} identical and copied from your game. ${plural(c.known_transform,'file differs','files differ')} only by the old launcher’s own setup change. ${plural(c.modified,'file was','files were')} modified. ${plural(c.missing,'file is','files are')} missing. ${plural(c.extra,'file is','files are')} not part of the signed release.`,
-  consequences:`The copy will hold exactly the signed release. Modified, missing and setup-changed files are taken from the signed reference instead of your game${r.requires_normalization?'':' (none in this comparison)'}. Files that are not part of the release, saved game settings and other user files are not copied or migrated${r.user_data_remains_in_source?': they stay in the original folder':''}. ${unchanged}`,
+  counts:`${plural(c.matched,'file is','files are')} identical${r.in_place?'':' and copied from your game'}. ${plural(c.known_transform,'file differs','files differ')} only by the old launcher’s own setup change. ${plural(c.modified,'file was','files were')} modified. ${plural(c.missing,'file is','files are')} missing. ${plural(c.extra,'file is','files are')} not part of the signed release.`,
+  consequences:r.in_place?'Your folder becomes the launcher’s installation. SGW.exe and every release file are moved, not copied, into a “game” folder inside it, so desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Files you added inside the game folders, such as PAKs placed by hand in SourceCache.en-us, stay where they are and the game will no longer use them. Your settings and the client cache live in Documents and are not affected. Files changed only by the old launcher’s setup get the launcher’s own setup again, and uninstalling removes only what the release lists.':`The copy will hold exactly the signed release. Modified, missing and setup-changed files are taken from the signed reference instead of your game${r.requires_normalization?'':' (none in this comparison)'}. Files that are not part of the release, saved game settings and other user files are not copied or migrated${r.user_data_remains_in_source?': they stay in the original folder':''}. ${unchanged}`,
   settings:`Login servers, in your order: ${r.login_servers.length?r.login_servers.map(s=>`${s.name} (${s.url})`).join('; '):'none'}. Client patches: ${r.client_patches_enabled?'on':'off'}, as imported.`,
   telemetry:`Game telemetry: ${r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}. ${r.game_telemetry_available?'':'This desktop build cannot send game telemetry; your saved choice is kept and nothing is sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
  };
@@ -91,7 +106,11 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const working=s?.activity==='preparing'||s?.activity==='copying';
   // The press itself is acknowledged before the workflow publishes anything.
   get('adoption-status').textContent=adoptionText({...current,pending:busy});
-  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&s.backend==='available'&&!!s.imported&&!s.imported.blocker&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
+  const inPlace=s?.backend==='in_place';
+  get('adoption-title').textContent=inPlace?'Adopt existing installation':'Verified copy adoption';
+  button('choose-adoption-destination').textContent=inPlace?'Verify and adopt this folder…':'Choose location for the copy…';
+  button('confirm-adoption').textContent=inPlace?'Adopt this folder':'Create verified copy';
+  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&!!s.imported&&!s.imported.blocker&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
   button('choose-adoption-destination').disabled=!enabled||!idle;
   button('inspect-adoption').disabled=busy;
   button('cancel-adoption').hidden=!s?.cancellable;
@@ -107,7 +126,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   for(const [id,offer] of Object.entries(offers)){button(id).hidden=!offer;button(id).disabled=!enabled||!!current.maintenance;}
   const m=current.maintenance;
   get('adoption-maintenance').hidden=!m;
-  if(m){get('adoption-maintenance-title').textContent=maintenanceText[m.action][0];get('adoption-maintenance-consequences').textContent=maintenanceText[m.action][1];button('confirm-adoption-maintenance').textContent=maintenanceText[m.action][0];}
+  if(m){const [title,consequences]=(inPlace?inPlaceMaintenance[m.action]:undefined)??maintenanceText[m.action];get('adoption-maintenance-title').textContent=title;get('adoption-maintenance-consequences').textContent=consequences;button('confirm-adoption-maintenance').textContent=title;}
   button('confirm-adoption-maintenance').disabled=!enabled||!m;
   button('dismiss-adoption-maintenance').disabled=busy;
   get('adoption-review').hidden=!review;
@@ -115,6 +134,9 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    // Paths and settings come from disk and old configuration: text only, never HTML.
    const lines=reviewLines(review,s!.native.preferences.launcher_summary_consent);
    get('adoption-source').textContent=review.source;get('adoption-destination').textContent=review.destination;
+   get('adoption-source-label').textContent=review.in_place?'Game folder to adopt:':'Original game, never changed:';
+   get('adoption-destination-label').textContent=review.in_place?'Launcher-owned installation:':'New verified copy:';
+   get('adoption-normalize-text').textContent=review.in_place?'Apply the launcher’s own setup to release files the old launcher’s setup changed.':'Use the signed reference for managed files that are modified, missing or changed by the old launcher’s setup.';
    for(const key of ['release','counts','consequences','settings','telemetry'] as const)get(`adoption-${key}`).textContent=lines[key];
    const list=get('adoption-differences');
    const items=review.differences.map(d=>`${labels[d.classification]}: ${d.path}`);

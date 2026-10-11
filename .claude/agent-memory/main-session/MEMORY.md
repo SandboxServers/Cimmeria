@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_lab_spec_vocab_2026_10_11.md](project_lab_spec_vocab_2026_10_11.md) — 2026-10-11 lab-spec-vocab closed out (SV-01..14 released); SV-15 live acceptance paused: a loaded workstation starved the lab client
 - [project_dakara_dk05_population.md](project_dakara_dk05_population.md) — 2026-10-07 DK-05: four static cast spawns; owner chose a speculative military-outpost Repository/Loth'ta point at (290, -17, 95); mission dialog restore binds still await DK-10 onward; M2 client UAT pending
 
 - [project_dakara_dk04_travel.md](project_dakara_dk04_travel.md) — 2026-10-07 DK-04: two exterior tent flaps share world 62 and one return point; world-gated interact tags, placement/test anchors, client UAT pending
@@ -39,7 +40,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_lab_golden_fingerprints_2026_10_11.md](reference_lab_golden_fingerprints_2026_10_11.md) — lab golden rules: offline from the bundle, tap names, entity labels, key-arg allowlist, 5 all-PASS runs agree, diff under the golden's variance, fresh-run rebless, grade-neutral capture
 - [reference_lab_cli_powershell_traps_2026_10_10.md](reference_lab_cli_powershell_traps_2026_10_10.md) — lab CLI traps: one-element unroll before splat, StrictMode $LASTEXITCODE, REG_SZ PATH, squash vs ancestor, -Value:-x, --retire cwd, Set-Location vs [IO.File] process dir
 
-- [reference_first_session_lab_calibration_2026_10_10.md](reference_first_session_lab_calibration_2026_10_10.md) — first-session Praxis rows calibrated live (16 s movie hold, pitch +200/yaw +230 floor clicks, tutorial X before dialog); Haiku runs them in one `lab_uat_run` call; never lend Haiku a lease
+- [reference_first_session_lab_calibration_2026_10_10.md](reference_first_session_lab_calibration_2026_10_10.md) — first-session Praxis rows hand-calibrated 2026-10-10 (17 s wait and camera order superseded 2026-10-11 by spec poses); tutorial X before dialog; never lend Haiku a lease
 - [reference_lab_parallel_clients_2026_10_10.md](reference_lab_parallel_clients_2026_10_10.md) — up to five lab clients in one daemon, a lease per instance; per-instance USERPROFILE fixes the cache-lock freeze; unrouted calls hit the first instance; LP-07 live check pending
 - [reference_cellblock_asset_audit.md](reference_cellblock_asset_audit.md) — 2026-10-06 static audit: map count correction, existing exit/cinematic wiring, parsed asset candidates, extraction coverage gaps; full restoration/UAT campaign indexed under docs/analysis/cellblock-asset-audit/
 - [reference_lab_mcp_token_cost_2026_10_10.md](reference_lab_mcp_token_cost_2026_10_10.md) — lab-driver tokens are mostly fixed context (33.9k of 37.3k before any result); images as paths; labd restart needs /mcp; windowed 1280x720 launch; native camera pitch clamp

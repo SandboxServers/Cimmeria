@@ -28,8 +28,10 @@ use super::tier::{Role, Tier};
 pub struct Grade {
     pub result: RowResult,
     pub reasons: Vec<String>,
-    /// Informational: setup that used a server shortcut, optional actions
-    /// that failed. Never affects the result.
+    /// Informational: setup or teardown that used a server shortcut, and
+    /// teardown actions that failed. Never affects the result. A failed
+    /// step action fails the row even when it is `optional` (`optional`
+    /// only lets the steps after it run); decided 2026-10-11, lab-spec-vocab.
     pub flags: Vec<String>,
     pub native_used: Option<Tier>,
 }
