@@ -9,7 +9,8 @@
 #   i686             build the 32-bit artifacts: cimmeria-client-patches.dll,
 #                    the player build of cimmeria-client-telemetry.dll (no
 #                    lab-bridge feature) and the sgw-start32.exe helper
-#   launcher         build the 64-bit launcher, embedding the i686 artifacts;
+#   launcher         build the 64-bit launcher, embedding the i686 artifacts,
+#                    and the pack-client-overlay tool the overlay stage uses;
 #                    a release exports CIMMERIA_LAUNCHER_TAG and
 #                    CIMMERIA_LAUNCHER_BUILD_EPOCH first (the self-update
 #                    identity); without them it is a development build

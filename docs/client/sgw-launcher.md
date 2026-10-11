@@ -606,7 +606,6 @@ crates/launcher/
     ├── patch_dest.rs           # where a patch extracts (install dir or SGWGame/)
     ├── bundled.rs              # writes the embedded i686 artifacts to disk
     ├── start32_helper.rs       # keeps sgw-start32.exe beside the launcher
-    ├── overlay_meta.rs         # UI overlay id prefix + list text (shared with the tool)
     ├── client_patches/
     │   ├── mod.rs
     │   ├── dll_source.rs       # override / embedded / beside-the-launcher DLL
