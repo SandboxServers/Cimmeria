@@ -2,7 +2,7 @@
 title: Automated in-game UAT with the lab
 type: how-to
 audience: agents and developers running unified-UAT rows through the live research lab
-last_updated: 2026-10-10
+last_updated: 2026-10-11
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
@@ -12,7 +12,7 @@ companion_docs:
 # Automated in-game UAT with the lab
 
 > Type: how-to, with the spec and bundle formats as reference. Audience: an agent or developer with the `cimmeria-lab` MCP server running.
-> Updated: 2026-10-04. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
+> Updated: 2026-10-11. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
 
 The [unified UAT guide](unified-uat.md) is written for a person at the keyboard. This page runs the same rows from the lab: each row is data in a TOML spec, the `lab_uat_run` tool drives the client through the lab tools, checks every expected clause, and writes an evidence bundle plus the guide's "Recording results" blocks, ready to paste into the campaign ledger.
 
@@ -44,6 +44,7 @@ Call `lab_uat_run` from any MCP client of `cimmeria-lab`:
 | `owner_approvals` | Colo rule-6 words the owner approved: `announce`, `bm_seed`, `mute`, `gmshout` (covers `/gmsendgmshout` and `/gmshout`), `content_reload` |
 | `vars` | Extra `${var}` values for the specs, such as `player_id` |
 | `character` | Override `lab-account.json`'s character |
+| `fixtures` | When a row's fixture applies: `auto` (default), `always` or `never` ([Row fixtures](#row-fixtures)) |
 | `plan_only` | Check the specs and which tools exist; drive nothing. Ready rows come back SKIPPED, the rest BLOCKED with the missing tool named |
 
 Start with `plan_only: true` to see what can run. Each row then runs as:
@@ -96,7 +97,7 @@ The runner has no SigNoz client. Each SigNoz clause is written PENDING with its 
 |---|---|---|
 | PASS | Every required clause held; every step ran at the required native level | Yes |
 | FAIL | A required clause's observation contradicts it, or a step action failed | No |
-| BLOCKED | The row could not reach its step: a missing tool (named), a second player, owner-only files, a rule-6 command, a setup action that failed | No |
+| BLOCKED | The row could not reach its step: a missing tool (named), a second player, owner-only files, a rule-6 command, a setup action that failed, a row fixture that was not established | No |
 | SKIPPED | `plan_only`: ready to run, nothing driven | No |
 | NEEDS_HUMAN | Every automatic clause held; a person must answer the human question (screenshots attached) | Not yet |
 | UNVERIFIED | A required clause is pending (SigNoz not attested) or its reader failed (a Lua read that errored, an unreachable endpoint) | Not yet |
@@ -201,7 +202,7 @@ matches = "searchitem 'pistol': [0-9]+ match"
 
 The composites ([live-research-lab.md](live-research-lab.md#fewer-calls-composites-and-compact-results)) are routed tools like any other: `tool = "client_ui_sequence"` runs a scripted UI step as one action and reports the least native level it used, and a `tool` clause on `client_batch` reads one step's value with `pointer = "/steps/<id>"`. The runner calls tools in-process, so it always sees full results, never the compacted ones an MCP client gets. Reaching a row's state still uses the single flows (step 2 above), so each one's timing and failure stay in the evidence.
 
-`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
+`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), `${fixture_character}` and `${fixture_mode}` (rows with a fixture, [below](#row-fixtures)), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 
 **Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua`, `wait` and `client_event` clauses: read `p2` instead of `p1`).
 
@@ -347,6 +348,106 @@ The runner does not put the two players in one place. Do that in the row's setup
 
 p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own account or character, ignoring case (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Where p2 comes from depends on the daemon. In a daemon that hosts several instances (`CIMMERIA_LAB_INSTANCES`), the run drives the hosted `p2` instance and holds p2's lease for the length of the run, so another agent can't drive p2 mid-row. A single-instance daemon keeps its own in-process p2. Set-up: [Parallel clients](live-research-lab.md#parallel-clients-up-to-five). Both players need to be in the same world for targeting, and the row's setup moves them there.
 
+### Row fixtures
+
+Without fixtures a spec is a chain: each row starts from whatever the row before it left, so one failure turns every later row into noise, and running one row twenty times means replaying character creation, the login and every earlier row twenty times. A `[row.fixture]` table puts the row's starting state in the row, so `lab uat first-session -Rows FS-P4 -RunsPerLease 20` means what it says.
+
+The runner does not set that state in game. At character select it stages the fixture on the server's lab endpoint ([`server_stage_fixture`](live-research-lab.md#staging-a-row-fixture-server_stage_fixture)), and the server writes it when the character next presses Play, before world entry reads anything. The character enters the world exactly as a returning player with that saved state would: the `player_loaded` restore chains bind the mission dialogs, the space instance is fresh and the camera is level. The decisions behind this are D-FX1 to D-FX10 in the [lab-fixtures ledger](../analysis/lab-fixtures/README.md).
+
+```toml
+[section.profiles.praxis]            # one reusable fixture character per lab instance
+alignment = "praxis"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"                        # the default
+
+[[row]]
+id = "FS-P4"
+# ...
+[row.fixture]
+character = "praxis"                 # a [section.profiles] key
+world = "Castle_CellBlock"
+missions = [{ id = 622, step = 80623 }, { id = 1360, step = 4037 }]
+items = [{ id = 55, count = 0 }]
+tutorials_unseen = [5882]
+```
+
+**Profiles** (`[section.profiles.<key>]`):
+
+| Field | Meaning |
+|---|---|
+| the key | 1 to 8 lowercase letters (`praxis`), so two keys never collapse to one character name |
+| `alignment`, `archetype`, `gender` | What `lab_create_character` creates: `praxis` or `sgu`, an archetype name such as `Soldier`, `male` or `female`. None may be empty |
+| `first` | The first name; default `Uat` |
+
+A profile's character is `<first> Fx<key><instance>`: `Fx`, the key, then up to four letters of the lab instance's label, digits spelled as letters (`0` is `a`, `9` is `j`). The default instance's `praxis` character is `Uat Fxpraxisdefa`, and p2's is `Uat Fxpraxispc`. The runner creates it on first use and keeps it; its slot clearing never deletes a fixture character of the section. The character must be on a GM account, because the server stages fixtures only for those.
+
+**Fixture fields** (`[row.fixture]`):
+
+| Field | Meaning |
+|---|---|
+| `character` | A `[section.profiles]` key. Required |
+| `world` | The character's saved world, a `resources.worlds` name with no whitespace. Without `position` the saved coordinates are kept, so give both when the character may have been saved in another world |
+| `position` | `[x, y, z]` in server metres, as `/gmgotoxyz` takes them. Leave it out when the row positions itself in setup (see the rules below) |
+| `missions` | `{ id, step }` makes the mission active on that step. `{ id, state = "not_active" }` removes it. `{ id, state = "completed" }` completes it once. `state = "active"` needs a `step`, and a `step` with any other state is an error |
+| `items` | `{ id, count, container }`: exactly `count` (0 to 10) of that item design carried afterwards, in `container` `main` (the backpack, the default) or `mission` (the mission bag) |
+| `tutorials_unseen` | Tutorial ids the character forgets, so the row sees them shown again |
+
+What the server writes ([`lab_fixture/`](../../crates/base-world-entry/src/base/world_entry/lab_fixture/)), silently: no content events, rewards, Discord posts or tutorials fire (D-FX4).
+
+- **Missions** get the row a relog at that state reads back. Active on a step: that step is current, and every step before it (by `resources.mission_steps.index`) is completed with its objectives. Completed: every step and objective completed, `repeats = 1`. Not active: the row is deleted.
+- **Items:** every carried instance of a listed design (containers 1 to 15: the backpack, mission bag, bandolier, equipment and the other carried bags; never buyback, bank, auction or the team and command banks) is deleted, then `count` are granted into the container in stacks of the design's stack size. The design must allow that container: a design with `container_sets` must name it, and one without any may only go to the backpack. Unlisted items are untouched. The item write is one transaction, so when the stacks do not fit nothing changes. When the deletes take the bandolier's readied weapon and another stays on the belt, the readied slot moves to the lowest occupied one.
+- **Tutorials:** their `sgw_player_tutorials` rows are deleted, so the next show is a first time again.
+- **World and position:** the character's saved location.
+
+Every check (the owner, the world, a finite position, each mission and step against the seed, each item, and a dry run of the item write) runs before the first write, so a refused fixture writes nothing. The server logs the result: INFO `lab fixture applied`, ERROR `lab fixture not applied` with `reason` `precheck_refused` (nothing written) or `write_failed` (a part failed after earlier parts wrote). Either way the character still enters the world, which is why the runner verifies before the row runs.
+
+**Rules for writing a fixture:**
+
+- **A fixture is "relogged at X".** It sets what you list and nothing else. When the route to X grants an item or a mission, list it: FS-P5's fixture lists the pistol (item 55) along with 622's step, because the route to that step hands it over. A step that waits for an item the character no longer has is stranded.
+- **Missions advance linearly by step index.** "Active on step S" means every step with a lower `index` is done. Every content-driven mission in the seed advances this way (all 22 were checked); a mission that branches could not be put on one branch.
+- **A fixture never equips.** A listed design is deleted from every carried container, the equipment slots and bandolier included, and granted back into `main` or `mission`. Listing an equipped weapon unequips it, and the count check still passes with it in the backpack. When the row needs the weapon in hand, equip it in setup.
+- **Position in setup when the row must also chain.** Under fixture mode `auto` (below) a row may continue the chain instead of starting from its fixture, and then the fixture's `position` never applies. A row that must work both ways leaves `position` out and keeps its own positioning in setup (`/gmgotoxyz` or a `@move_to`). That is right in both modes: a freshly entered character has nothing selected for the GM command to move instead.
+- **One player, `state = "in_world"` or `"any"`.** Validation rejects a fixture on a `players = 2` row, or on a row that starts at character select or with the client stopped. Each mission, item and tutorial is listed once, with ids above 0.
+- **Match `${fixture_character}` at the end of the name.** The runner sets `${fixture_character}` to the last name of the character the row plays: the fixture character, or the chain's character when the row chains. A fixture row also sets `${character}` to it. Write SQL clauses as `player_name ILIKE '% ${fixture_character}'`, not `'%${fixture_character}%'`: instance p1's `Fxpraxispb` is a prefix of p10's `Fxpraxispba`.
+
+**Fixture mode.** `lab_uat_run`'s `fixtures` argument decides when a row's fixture applies (D-FX10):
+
+| Mode | A row with a fixture |
+|---|---|
+| `auto` (default) | Continues the chain when the section's previous row ran just before it in this run, passed, and left the client in world. Otherwise starts from its fixture |
+| `always` | Always starts from its fixture, even after a passing row |
+| `never` | Never stages: runs from wherever the client is, like a row without a fixture |
+
+So a full run is the player route, and a row run alone, or after a row that failed, starts clean instead of inheriting the failure. The row's `fixture_mode` var records which path ran: `fixture` or `chain`. From the command line: `lab uat <section> -Fixtures auto|always|never` (no flag means `auto`).
+
+**Parity** (coming with FX-10). A chained row's fixture still says what the chain should have produced. FX-10 snapshots the character's missions, items and tutorials at the row boundary and fails a chained row whose state differs from its fixture, so a fixture cannot drift from what a player really reaches. Until it lands, chained rows record no parity.
+
+**What a fixture session does.** A fixture row runs in a session of its own (D-FX5):
+
+1. End any running session: `lab_logout` when in world, `lab_client_stop`, then poll `server_sessions` every second until the server stops listing the character, for up to 30 s. `lab_client_stop` kills `SGW.exe` and the server only learns of it from the dropped connection, so a login straight after could find the account still online. A name an earlier session failed to drain is drained first.
+2. Start the client and log in to character select.
+3. Only when the fixture character does not exist yet: free a slot (`lab_ensure_character_slot`, protecting the lab character and every profile's fixture character), create it from its profile, and give it one bootstrap session: Play, wait out the 17 s first-login hold, finish the dialog, end the session and log in again. That happens once per profile and lab instance, ever.
+4. `server_stage_fixture` with the fixture and the character's name.
+5. `lab_play_character`. The server applies the fixture as the character enters the world.
+6. Verify the staged state at once (FX-07): read back every mission, item count (carried total and the named container) and tutorial with `server_db_query`, and the world from `server_sessions`, retrying every 500 ms for up to 5 s. This runs first because game content can change those rows soon after entry (a tutorial shown, a step advanced).
+7. Find `${player_entity_id}` in `server_sessions`, then check the position with `server_entity_get` (within 2 m, the same retry). Fixture positions must be on the ground: the client moves the character, so a point in the air has fallen before the check reads it.
+8. The row as usual: anchor, setup, steps, clauses, teardown.
+9. End the session as in step 1, on every path, passed or BLOCKED.
+
+Every call is on the row's `actions[]` as a setup action with `kind = "fixture"`, the first-login hold labelled `first_login_hold`, so lab-golden leaves them out of fingerprints. An error ending the session becomes a `session end: ...` flag on the row; flags never change the result.
+
+**BLOCKED reasons.** A fixture that could not be established blocks the row before its setup, and its steps never run. It is never a FAIL: a row that ran from the wrong state proves nothing (D-FX6). Read it as a fixture or environment problem, not a product failure.
+
+| After `fixture not established:` | Cause |
+|---|---|
+| `fixture needs the server lab MCP (CIMMERIA_LAB_MCP_URL/_TOKEN)` | The runner has no lab endpoint configured |
+| `stage: stage refused: <why>` | `server_stage_fixture` refused it ([the refusals](live-research-lab.md#staging-a-row-fixture-server_stage_fixture)), such as `character Fxpraxisdefa is online` or `character Fxpraxisdefa is not on a GM account` |
+| `server still lists <name> after 30 s` | The previous session did not drain |
+| `player entity: <error>` | No session for the character after Play |
+| `<check>: got <v>, want <w>; ...` | Verify found a different state, such as `mission 622 on step 80623: got 2113, want 80623`. Every failing check is listed, capped at 300 characters. Look for `lab fixture not applied` in the server log |
+| A lab flow's error | A client tool failed on the way (start, login, create, Play) |
+
 ### Golden variance
 
 A section can say what may differ between runs that still agree. The `lab golden` commands compare run fingerprints with these tables; they arrive later in the [golden campaign](../analysis/lab-golden/README.md), so until then they only validate. `[section.golden]` applies to every row, and `[row.golden]` extends it: a row's lists add to the section's. Globs use `*` only and match message names unless a key says otherwise.
@@ -403,7 +504,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 | `cooked-data` | CD3, CD6 | CD1, CD5 (`@cache_files`), CD2 (owner-only files), CD4 (`@cache_files`, `@world_click`) |
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 25 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U20 and AB-U22 (`.dummy caster`), AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
-| `first-session` (makes and deletes its own Praxis and SGU Soldiers, 2026-10-10) | All 14: FS-01 boot, FS-02 login and server select, FS-P1 to FS-P5 (Praxis: create, enter Castle_CellBlock, complete 622), FS-S1 to FS-S6 (SGU: create, enter SGC_W1, complete 1559), FS-99 cleanup. Run this section first on a new build | |
+| `first-session` (makes and deletes its own Praxis and SGU Soldiers, 2026-10-10) | All 14: FS-01 boot, FS-02 login and server select, FS-P1 to FS-P5 (Praxis: create, enter Castle_CellBlock, complete 622), FS-S1 to FS-S6 (SGU: create, enter SGC_W1, complete 1559), FS-99 cleanup. Run this section first on a new build. FS-01 to FS-P2 stay a chain (FS-P2 is the fresh-login proof); FS-P3, FS-P4 and FS-P5 gain [fixtures](#row-fixtures) with lab-fixtures FX-08, so each also runs alone on the instance's `Uat Fxpraxis...` character. The SGU rows stay a chain until they are calibrated | |
 | `debug-area` (fresh Soldier, 2026-10-04) | 43 rows: DA-U1, DA-U3 to DA-U6, DA-U8 to DA-U43, DA-U45, DA-U46 (every Debug Area station, the outbound stargate, a ring trip, the starter kit, the patch-009 hotbar and a read of the seeded characters) | DA-U2 (non-GM account), DA-U7 (the store's buttons, L9), DA-U44 (a seeded account) |
 
 103 rows are ready (22 before `ability-mechanics`, which adds 23, `debug-area` 43, `first-session` 14, and I2 now that the item tools are routed) and 24 are blocked (11, plus its 10, plus `debug-area`'s 3). Only `first-session`'s Praxis rows have run against a live client so far (item 0 below). The first live run should take them in this order, each proving one more part of the runner:
@@ -430,4 +531,7 @@ The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists t
 | `.bug` anchor shows "no bookmark reply seen" | The reply took over 4 s or the account is not a GM; the row still runs, but the server clock offset is missing |
 | `lab_uat_run` fails with "The operation timed out." after about a minute | Claude Code's per-request timer for HTTP MCP servers: give the HTTP `cimmeria-lab` entry in `.mcp.json` a `"timeout"` (milliseconds; `1800000` in [`.mcp.json.example`](../../.mcp.json.example)), then reconnect it with `/mcp` (#1243) |
 | Every server or packet clause UNVERIFIED "lab-mcp HTTP 422 Unprocessable Entity" | A lab build older than #1243 called `cimmeria-lab-mcp` without the MCP handshake; install a current build and restart the daemon |
+| A fixture row BLOCKED "stage refused: character ... is online" | The fixture character's earlier session has not ended on the server, often after a crash or a run cut off mid-row. Wait for `server_sessions` to stop listing it, then rerun |
+| A fixture row BLOCKED "stage refused: character ... is not on a GM account" | The instance's lab account is not a GM. Raise its `accesslevel` to 2 or more; fixtures are lab-only (D-FX2) |
+| A fixture row BLOCKED "got ..., want ..." | The server did not apply the fixture. Its log says why: `lab fixture not applied` (`reason` `precheck_refused` or `write_failed`) or `lab fixture discarded` (`not_gm`, `no_database`) |
 | The run stops mid-section | An MCP call timeout (see the "operation timed out" row above): rerun the remaining rows with the same `run_dir` |
