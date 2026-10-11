@@ -50,6 +50,18 @@ impl ConfigWatcher {
         let (fs_tx, mut fs_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut watcher = notify::RecommendedWatcher::new(
             move |res: notify::Result<notify::Event>| {
+                // Only content changes queue a reload. Reading the file
+                // (our own reload included) raises `Access` events, and
+                // those re-triggered a reload that logged "no semantic
+                // change" on every pass. Errors still pass through.
+                if let Ok(event) = &res {
+                    match event.kind {
+                        notify::EventKind::Create(_)
+                        | notify::EventKind::Modify(_)
+                        | notify::EventKind::Remove(_) => {}
+                        _ => return,
+                    }
+                }
                 // Best-effort send — if the channel is closed (watcher
                 // dropped) we silently discard.
                 let _ = fs_tx.send(res);
@@ -184,5 +196,96 @@ fn reload_from_disk(path: &Path, target: &Arc<ArcSwap<Config>>) {
                 "Discord config reload failed — keeping previous config"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::Mutex;
+    use tracing_subscriber::fmt::MakeWriter;
+
+    /// Wait past the 150 ms debounce so a queued reload has run.
+    const SETTLE: Duration = Duration::from_millis(600);
+
+    /// In-memory log sink shared between the subscriber and the test.
+    #[derive(Clone, Default)]
+    struct Sink(Arc<Mutex<Vec<u8>>>);
+
+    impl Sink {
+        fn count(&self, needle: &str) -> usize {
+            let bytes = self.0.lock().unwrap();
+            String::from_utf8_lossy(&bytes).matches(needle).count()
+        }
+    }
+
+    impl Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> MakeWriter<'a> for Sink {
+        type Writer = Sink;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    fn config_toml(username: &str) -> String {
+        format!(
+            "[discord]\nenabled = true\nusername = \"{username}\"\n\n\
+             [discord.channels.lifecycle]\n\
+             url = \"https://discord.com/api/webhooks/1/abc\"\n\
+             rate_limit_per_min = 30\n"
+        )
+    }
+
+    /// Reads must not re-trigger a reload. Access events only exist on
+    /// Linux (inotify); Windows reports none, so there the read loop is a
+    /// no-op and the test only checks the single real change. Run it on
+    /// Linux CI for the guard to bite.
+    #[tokio::test(flavor = "current_thread")]
+    async fn config_reads_do_not_trigger_reload() {
+        let dir =
+            std::env::temp_dir().join(format!("cimmeria-discord-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("discord.toml");
+        std::fs::write(&path, config_toml("first")).unwrap();
+
+        let sink = Sink::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(sink.clone())
+            .with_ansi(false)
+            .with_max_level(tracing::Level::DEBUG)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let watcher = ConfigWatcher::new(&path).unwrap();
+
+        // One real change: exactly one "reloaded" row.
+        std::fs::write(&path, config_toml("second")).unwrap();
+        tokio::time::sleep(SETTLE).await;
+        assert_eq!(sink.count("Discord config reloaded"), 1);
+        assert_eq!(watcher.load().username.as_deref(), Some("second"));
+
+        // Ten reads, then wait past the debounce: no new reload rows of
+        // either kind ("reloaded" or "no semantic change").
+        let before = sink.count("Discord config reload");
+        for _ in 0..10 {
+            let _ = std::fs::read_to_string(&path).unwrap();
+        }
+        tokio::time::sleep(SETTLE).await;
+        assert_eq!(sink.count("Discord config reload"), before);
+
+        drop(watcher);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
