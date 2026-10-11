@@ -105,7 +105,18 @@ pub(super) async fn serve(
                 // taken: a scanner gets a closed socket and nothing else.
                 if !registry.expects_peer(peer.ip()).await {
                     drop(stream);
-                    if let Some(suppressed) = unexpected_peer_log.admit(Instant::now()) {
+                    // With sessions registered, a real player may be the one
+                    // refused (NAT, multi-WAN, a TTL sweep race), so that row
+                    // is unthrottled. With none, it is most likely a scanner.
+                    let registered_sessions = registry.session_count().await;
+                    if registered_sessions > 0 {
+                        tracing::info!(
+                            %peer,
+                            reason = "unexpected_peer_with_sessions",
+                            registered_sessions,
+                            "Minigame connection refused: sessions are registered but none expects this address",
+                        );
+                    } else if let Some(suppressed) = unexpected_peer_log.admit(Instant::now()) {
                         tracing::info!(
                             %peer,
                             reason = "unexpected_peer",
@@ -113,7 +124,9 @@ pub(super) async fn serve(
                             "Minigame connection refused: no minigame session expects this address",
                         );
                     }
-                    tracing::debug!(
+                    // Per scanner hit: `cimmeria_minigame=debug` is exported,
+                    // so this stays at TRACE.
+                    tracing::trace!(
                         %peer,
                         reason = "unexpected_peer",
                         "Minigame connection refused: no minigame session expects this address",

@@ -201,11 +201,16 @@ in within a second.
 Ahead of these, the listener admits only peers whose IP address matches a
 registered minigame session: the source address of the player's game
 connection, recorded when the session starts. Any other socket is closed
-before a byte is read and before a connection slot is taken. Those refusals
-log a throttled INFO row `reason=unexpected_peer` (at most once a minute,
-with a `suppressed` count) and a DEBUG row for each one. A session whose
-game connection had no known address admits nobody, and its player's SWF
-is refused.
+before a byte is read and before a connection slot is taken. Two INFO rows
+record these refusals. `reason=unexpected_peer` is written when no session
+is registered at all, throttled to at most once a minute with a `suppressed`
+count. `reason=unexpected_peer_with_sessions` is written when sessions are
+registered but none expects the address, and it is not throttled: a real
+player behind NAT or multiple WAN links may be the one refused. Each refusal
+also writes a TRACE row, since `cimmeria_minigame=debug` is exported. A
+session is not registered without the player's client address: the start
+is refused with a WARN row `reason=no_client_addr`, and no `onStartMinigame`
+is sent.
 
 The defaults are `ListenerLimits::default()` in
 [`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).

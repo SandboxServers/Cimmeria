@@ -145,6 +145,52 @@ async fn listener_closes_unexpected_peer() {
     );
 }
 
+/// A session registered for another address does not admit a loopback peer:
+/// the socket is closed, and because a session is registered the refusal is
+/// the unthrottled `unexpected_peer_with_sessions` row rather than the
+/// throttled `unexpected_peer` one.
+#[tokio::test]
+async fn listener_closes_peer_when_session_is_for_another_ip() {
+    let capture = LogCapture::install();
+    let registry = SessionRegistry::new();
+    registry
+        .register(
+            4315,
+            7,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+        )
+        .await
+        .expect("fresh registry must accept the session");
+    let addr = spawn_listener_on(registry, ListenerLimits::default()).await;
+
+    let mut client = TcpStream::connect(addr).await.expect("connect");
+
+    assert!(
+        closed_within(&mut client, Duration::from_secs(2)).await,
+        "a peer no session expects must be closed even when sessions exist",
+    );
+    assert!(
+        capture
+            .find_event(
+                Level::INFO,
+                "sessions are registered",
+                "unexpected_peer_with_sessions",
+            )
+            .is_some(),
+        "no unexpected_peer_with_sessions row: {:#?}",
+        capture.all(),
+    );
+}
+
 /// The per-IP cap closes the extra socket from one address, leaves the
 /// others open, and frees the slot when one of them goes away. Without the
 /// cap all three stay open and the refusal check times out.
