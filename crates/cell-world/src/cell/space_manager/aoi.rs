@@ -555,4 +555,103 @@ mod tests {
                 - leave_before;
         assert_eq!(leave_delta, left, "one counter tick per leave");
     }
+
+    /// Destroying a player with a witness set takes that set's size off the
+    /// `aoi_witness_set_size` gauge, since no final AoI diff reports it. The
+    /// world's gauge nets back to where it started.
+    #[test]
+    fn destroying_a_player_drops_its_witness_share_from_the_gauge() {
+        cimmeria_observability::testing::install();
+        let world = "AoiGaugeDestroyTest";
+        let mut mgr = SpaceManager::new(1);
+        let xml = format!(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#
+        );
+        let cxml =
+            format!(r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" /></Spaces>"#);
+        mgr.parse_spaces_xml(&xml).unwrap();
+        mgr.create_startup_spaces(&cxml).unwrap();
+
+        let player = 1u32;
+        mgr.create_entity(player, world, [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        for pos in [[5.0, 0.0, 5.0], [6.0, 0.0, 5.0], [5.0, 0.0, 6.0]] {
+            let body = mgr.allocate_npc_id();
+            mgr.spawn_npc(body, world, pos, [0.0; 3]).unwrap();
+        }
+        mgr.connect_entity(player);
+
+        let labels = [("world", world)];
+        let gauge_before =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels);
+        mgr.compute_aoi_changes_for_player(player);
+        let witnessed = mgr.get_entity(player).map_or(0, |e| e.witnesses.len()) as i64;
+        assert_eq!(witnessed, 3, "all three bodies must be in the witness set");
+        let gauge_tick =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels)
+                - gauge_before;
+        assert_eq!(gauge_tick, witnessed, "the tick adds the witness share");
+
+        mgr.destroy_entity(player);
+        let gauge_after =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels)
+                - gauge_before;
+        assert_eq!(
+            gauge_after, 0,
+            "destroy drops the share, netting the gauge to 0"
+        );
+    }
+
+    /// Disconnecting a player clears its own witness set and the copy of it
+    /// that each observer held, without an AoI diff. The gauge drops by both,
+    /// so it ends at the sum of the surviving witness sets.
+    #[tokio::test]
+    async fn disconnecting_a_player_drops_its_share_and_its_observers_copies() {
+        cimmeria_observability::testing::install();
+        let world = "AoiGaugeDisconnectTest";
+        let mut mgr = SpaceManager::new(1);
+        let xml = format!(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#
+        );
+        let cxml =
+            format!(r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" /></Spaces>"#);
+        mgr.parse_spaces_xml(&xml).unwrap();
+        mgr.create_startup_spaces(&cxml).unwrap();
+
+        let (observer, leaver) = (1u32, 2u32);
+        mgr.create_entity(observer, world, [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.create_entity(leaver, world, [1.0, 0.0, 1.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(observer);
+        mgr.connect_entity(leaver);
+
+        let labels = [("world", world)];
+        let gauge_before =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels);
+        mgr.compute_aoi_changes();
+        let sees_leaver = mgr
+            .get_entity(observer)
+            .is_some_and(|e| e.witnesses.contains(&EntityId(leaver as i32)));
+        assert!(sees_leaver, "the observer must hold the leaver in its set");
+        let gauge_tick =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels)
+                - gauge_before;
+        assert_eq!(gauge_tick, 2, "each player's set holds the other");
+
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        mgr.disconnect_entity(leaver, &tx).await;
+        let observer_set = mgr.get_entity(observer).map_or(0, |e| e.witnesses.len());
+        assert_eq!(
+            observer_set, 0,
+            "the leaver is gone from the observer's set"
+        );
+        let gauge_after =
+            cimmeria_observability::testing::gauge_total("aoi_witness_set_size", &labels)
+                - gauge_before;
+        assert_eq!(
+            gauge_after, observer_set as i64,
+            "the gauge ends at the surviving witness sets"
+        );
+    }
 }
