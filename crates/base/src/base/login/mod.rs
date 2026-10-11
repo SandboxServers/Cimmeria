@@ -232,6 +232,8 @@ pub(crate) async fn handle_login(
                 account_id: login.account_id,
                 account_name: Some(login.account_name.clone()),
                 access_level: login.access_level,
+                // D-TG13: the account's test flag alone decides it.
+                session_kind: Some(crate::auth::session_kind(login.test_account)),
                 dnd_message: None,
                 afk_message: None,
                 ignore: Default::default(),

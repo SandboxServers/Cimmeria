@@ -89,7 +89,7 @@ the report so a run can be replayed exactly.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Ready |
+| CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Integrated |
 | CH-02 | `lab uat --chaos` in the PowerShell CLI | packet-coder | S | 2 | CH-01 | BlockedDependency |
 | CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Ready |
 | CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | BlockedDecision |
@@ -143,5 +143,17 @@ Waves (packets in one wave touch disjoint files):
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
+Where merged code differs from the packet specs, record it here;
 the code is then the reference, not the spec.
+
+- **CH-01.** `cimmeria-lab` is a binary crate, so `mod chaos;` sits in
+  `main.rs` under `#[allow(dead_code)]` until CH-08. No `thiserror`
+  (`ChaosParseError`'s `Display` is hand-written with the contract's
+  messages). `ChaosSpec` gains `overrides` (the knobs the text set, a flush
+  mode word counting as `mode`), and `header` appends them, so the text
+  after `chaos=` is itself a spec that replays the run:
+  `chaos=net:break:latency=120 seed=7`. A flush mode carries only its own
+  knobs, defaulted when the level lacks them (`delay` → `delay_ms=2000`,
+  `pack` → `records=24`, `shift` → `shift=sweep`), and a knob for another
+  mode is refused. Anything named twice, empty segments and empty values
+  are `BadValue`. Review fixes by the coordinator.

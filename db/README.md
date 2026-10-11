@@ -60,6 +60,8 @@ Some seed is written by a checked-in generator rather than by hand. Change the g
 
 Core game tables: accounts, characters, character inventory, missions, effects, respawners, etc.
 
+`account.test_account` (default `false`) marks accounts that automation drives. The seed sets it on the Live Research Lab accounts (ids 10 to 14) and on no other account. Phase 1 reads it with the credentials and Phase 3 stores it on the session as `session_kind` (`lab` when set, `player` otherwise), so server telemetry can tell lab runs from players (TG-NET-16, owner decision D-TG13). The client never declares it. To flag another account, edit `sgw/Accounts/Seed/account.sql`.
+
 ## Loading the Database
 
 ```powershell

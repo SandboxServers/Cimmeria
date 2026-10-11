@@ -239,6 +239,7 @@ mod tests {
             account_id,
             account_name: None,
             access_level: 0,
+            session_kind: None,
             dnd_message: None,
             afk_message: None,
             ignore: Default::default(),
