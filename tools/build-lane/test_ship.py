@@ -324,6 +324,37 @@ class MergeTests(MergeCase):
         self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", "cargo clippy -D warnings"))
         self.assertEqual(self.calls(["pr", "merge"]), [])
 
+    def test_a_path_filtered_lab_check_that_ran_gates_the_merge(self):
+        lab = ship.CONDITIONAL[1]
+        self.add_pr(["crates/lab/src/x.rs"], checks=[dict(GREEN, **{lab: "fail"})])
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", lab))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
+    def test_a_pending_lab_check_is_waited_for(self):
+        lab = ship.CONDITIONAL[2]
+        self.add_pr(["tools/lab/x.ps1"], checks=[dict(GREEN, **{lab: "pending"}), dict(GREEN, **{lab: "pass"})])
+        code, f, line = self.merge()
+        self.assertEqual(code, 0, line)
+        self.assertEqual(len(self.calls(["pr", "checks"])), 2, "pending lab check, then green")
+
+    def test_lab_checks_that_did_not_run_do_not_block(self):
+        self.add_pr(["src.rs"], checks=[GREEN])
+        code, _, line = self.merge()
+        self.assertEqual(code, 0, line)
+
+    def test_every_conditional_check_names_a_real_workflow_job(self):
+        # A renamed job would never match, and its check would silently stop gating.
+        workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        names = set()
+        for wf in workflows.glob("*.yml"):
+            for line in wf.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("name:") and line.startswith("    name:"):
+                    names.add(stripped[len("name:"):].strip().strip("'\""))
+        missing = [c for c in ship.CONDITIONAL if c not in names]
+        self.assertEqual(missing, [], "CONDITIONAL names no job in .github/workflows")
+
     def test_timeout_exits_3(self):
         self.add_pr(["src.rs"], checks=[{g: "pending" for g in ship.GATING}])
         code, f, _ = self.merge("--timeout", "0s")

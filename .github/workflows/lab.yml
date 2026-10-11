@@ -1,0 +1,120 @@
+name: lab
+
+# Path-filtered: the Live Research Lab supervisor (crates/lab, which the main
+# `ci` workflow excludes), the UAT specs its tests validate, and the `lab`
+# CLI's PowerShell (tools/lab). Windows only: the supervisor drives a Windows
+# game client, and a few of its tests are cfg(windows). The client DLLs it
+# injects have their own workflows (client-telemetry, client-patches).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/lab/**'
+      - 'crates/client-launch/**'
+      - 'docs/guides/uat-specs/**'
+      - 'tools/lab/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
+      - '.github/workflows/lab.yml'
+  pull_request:
+    paths:
+      - 'crates/lab/**'
+      - 'crates/client-launch/**'
+      - 'docs/guides/uat-specs/**'
+      - 'tools/lab/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
+      - '.github/workflows/lab.yml'
+
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: cargo clippy -D warnings (cimmeria-lab)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: lab-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: cargo clippy
+        run: cargo clippy --locked -p cimmeria-lab --all-targets -- -D warnings
+
+  test:
+    # Includes committed_specs_parse_and_validate and
+    # committed_specs_plan_against_main_tools: every docs/guides/uat-specs
+    # file must parse and plan against the routed tools.
+    name: cargo nextest (cimmeria-lab, UAT specs)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: lab-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: cargo nextest run
+        run: cargo nextest run --locked --profile=ci -p cimmeria-lab
+
+  scripts:
+    # Every tools/lab test script (no Pester; each exits non-zero on a
+    # failed check). New test-*.ps1 files are picked up by the glob.
+    name: lab CLI PowerShell tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # test-ops.ps1 checks `lab doctor`'s version test against
+          # origin/main and the commit before main's last tools/lab change.
+          fetch-depth: 0
+      - name: pwsh tests
+        shell: pwsh
+        run: |
+          $failed = @()
+          $tests = Get-ChildItem tools/lab -Recurse -Filter 'test-*.ps1' | Sort-Object FullName
+          if (-not $tests) { Write-Error 'no tools/lab test scripts found'; exit 1 }
+          foreach ($t in $tests) {
+            Write-Host "::group::$($t.FullName)"
+            pwsh -NoProfile -File $t.FullName
+            $code = $LASTEXITCODE
+            Write-Host '::endgroup::'
+            if ($code -ne 0) { $failed += $t.Name; Write-Host "::error::$($t.Name) exited $code" }
+          }
+          if ($failed) { exit 1 }
+      - name: Windows PowerShell 5.1 (labd-lib, which daemon.ps1 runs under)
+        shell: pwsh
+        run: |
+          powershell -NoProfile -File tools/lab/test-labd-lib.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }

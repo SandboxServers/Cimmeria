@@ -17,7 +17,8 @@ body) plus $SHIP_PR_FOOTER.
 merge: kind=docs (every changed file is *.md or under .claude/agent-memory/) merges at once
 with --admin, the owner's rule for Markdown and memory-only PRs. kind=code rebases with
 rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for the gating checks
-(fmt, clippy, build + nextest; `skipping` passes) and merges with --squash. Coverage and
+(fmt, clippy, build + nextest; `skipping` passes), plus any path-filtered lab or build-lane
+check the PR's changes made run (CONDITIONAL), and merges with --squash. Coverage and
 live-DB jobs are not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
 pwsh on Windows, the .sh under bash elsewhere).
 
@@ -48,6 +49,14 @@ GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
 RM_WORKTREE = str(HERE / ("rm-worktree.ps1" if os.name == "nt" else "rm-worktree.sh"))
 GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace, no DB)")
+# Path-filtered jobs (lab.yml, build-lane-scripts.yml) that gate only when the
+# PR's changes made them run: present means required, absent means not run.
+CONDITIONAL = (
+    "cargo clippy -D warnings (cimmeria-lab)",
+    "cargo nextest (cimmeria-lab, UAT specs)",
+    "lab CLI PowerShell tests",
+    "build-lane PowerShell tests",
+)
 PROTECTED = ("main", "master")
 
 
@@ -283,7 +292,8 @@ def rebase(pr: str, repo: str) -> None:
 
 
 def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
-    gating = [g for g in os.environ.get("SHIP_GATING_CHECKS", "\n".join(GATING)).splitlines() if g.strip()]
+    always = [g for g in os.environ.get("SHIP_GATING_CHECKS", "\n".join(GATING)).splitlines() if g.strip()]
+    conditional = [g for g in os.environ.get("SHIP_CONDITIONAL_CHECKS", "\n".join(CONDITIONAL)).splitlines() if g.strip()]
     while True:
         p = gh("pr", "checks", pr, "--json", "name,bucket", cwd=repo, check=False)
         try:
@@ -293,6 +303,7 @@ def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
         buckets = {}
         for c in checks:
             buckets.setdefault(c["name"], []).append(c["bucket"])
+        gating = always + [g for g in conditional if g in buckets and g not in always]
         failed = [g for g in gating if any(b in ("fail", "cancel") for b in buckets.get(g, []))]
         if failed:
             raise Stop(1, "ci-failed", "", checks=",".join(failed))
