@@ -141,3 +141,71 @@ async fn a_witnessed_idle_npc_writes_every_tick_row() {
     let rows = tick_rows(&mut mgr, 6).await;
     assert_eq!(rows.len(), 6, "{rows:?}");
 }
+
+/// Put guard `npc_id` on a three-waypoint loop in the Patrol state. The path
+/// keeps the NPC walking, so its state holds for the ticks that follow (a
+/// Patrol NPC with no route falls back to Idle, which is a state change).
+fn force_patrol(mgr: &mut crate::cell::space_manager::SpaceManager, npc_id: u32) {
+    use cimmeria_entity::cell_entity::AiState;
+    let npc = mgr.get_entity_mut(npc_id).unwrap();
+    npc.patrol_path = vec![
+        Vector3::new(10.0, 0.0, 0.0),
+        Vector3::new(10.0, 0.0, 10.0),
+        Vector3::new(0.0, 0.0, 10.0),
+    ];
+    npc.patrol_point_delay_secs = 2.0;
+    crate::cell::service::npc_ai::force_ai_state(npc, AiState::Patrol);
+}
+
+/// TG-NPC-01: an unwitnessed Patrol NPC that keeps its state is sampled like
+/// an Idle guard -- five ticks write one row. A witnessed patroller still
+/// writes every tick.
+#[tokio::test]
+async fn unwitnessed_patrollers_sample_their_tick_row() {
+    let (mut mgr, ids) = idle_guards(1);
+    force_patrol(&mut mgr, ids[0]);
+
+    let logs = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    for _ in 0..5 {
+        crate::cell::service::npc_ai::npc_ai_tick(
+            &tx,
+            &mut mgr,
+            &crate::cell::content::EngineEvents(&engine),
+        )
+        .await;
+    }
+    let suppressed: Vec<String> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "npc_ai.tick" && c.message_contains("NPC AI tick"))
+        .map(|c| c.fields.get("suppressed").cloned().unwrap_or_default())
+        .collect();
+    // The window's first row goes out immediately with nothing swallowed
+    // before it, so `suppressed` is 0; the four skipped ticks show up on the
+    // next row, one window later.
+    assert_eq!(
+        suppressed,
+        vec!["0".to_string()],
+        "one row, first of its window"
+    );
+
+    let (mut wmgr, wids) = idle_guards(1);
+    force_patrol(&mut wmgr, wids[0]);
+    wmgr.create_entity(101, "Castle", [0.0, 0.0, 50.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = wmgr.get_entity_mut(101) {
+        p.is_player = true;
+        p.player_id = Some(101);
+    }
+    wmgr.connect_entity(101);
+    let _ = wmgr.compute_aoi_changes();
+    assert_eq!(wmgr.get_witnesses_of(wids[0]), vec![101], "fixture");
+    let rows = tick_rows(&mut wmgr, 5).await;
+    assert_eq!(
+        rows.len(),
+        5,
+        "a witnessed patroller writes every tick: {rows:?}"
+    );
+}

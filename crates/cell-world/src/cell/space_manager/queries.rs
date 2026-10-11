@@ -575,4 +575,24 @@ impl SpaceManager {
             .copied()
             .collect()
     }
+
+    /// Whether any player currently has `target_entity_id` in their AoI.
+    ///
+    /// The yes-or-no form of [`Self::get_witnesses_of`] for per-tick checks:
+    /// it allocates nothing and stops at the first witness found.
+    pub fn has_witness(&self, target_entity_id: u32) -> bool {
+        let Some(&space_id) = self.entity_space.get(&target_entity_id) else {
+            return false;
+        };
+        let Some(space) = self.spaces.get(&space_id) else {
+            return false;
+        };
+        let target_eid = EntityId(target_entity_id as i32);
+        space.players.iter().any(|pid| {
+            space
+                .entities
+                .get(pid)
+                .is_some_and(|p| p.witnesses.contains(&target_eid))
+        })
+    }
 }

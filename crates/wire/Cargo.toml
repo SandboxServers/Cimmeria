@@ -21,6 +21,9 @@ cimmeria-game = { workspace = true }
 # The Black Market argument codecs the injected client-patch DLL shares
 # (`black_market`): one encoder and decoder for both sides of the wire.
 cimmeria-patch-wire = { workspace = true }
+# `FirehoseSampler`, re-exported from `firehose`. It moved down there so
+# `cimmeria-mercury`, below this crate, can sample its per-datagram rows.
+cimmeria-observability = { workspace = true }
 # `BaseToCellMsg` carries `oneshot` reply channels; the lab query contract is
 # serde-serialisable.
 tokio = { workspace = true }

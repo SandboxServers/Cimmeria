@@ -28,7 +28,8 @@ permissions:
 jobs:
   check:
     name: skills mirror + hook tests
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux-quick (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',check,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
