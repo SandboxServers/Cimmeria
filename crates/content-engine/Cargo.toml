@@ -15,3 +15,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# `LogCapture` for the `content.resolve` log assertions in `chain/tests.rs`.
+cimmeria-test-support = { workspace = true }

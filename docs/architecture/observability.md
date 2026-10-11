@@ -448,8 +448,10 @@ space ids to world names by hand):
 | Metric | Labels | Notes |
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
+| `movement_navmesh_missing_total` | `world` (~24), `reason` (2: `missing`, `load_failed`) | TG-MOV-12: one per space created without a navmesh, beside its `movement.navmesh` WARN (`navmesh_missing` or `navmesh_load_failed`). Counted once per space creation, not per tick |
 | `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
 | `base_cell_channel_stalls_total` | none | Every base-to-cell send that waited 50 ms or more on a full cell queue (it holds the base receive loop, and with it every client's ACKs), including ones the 5 s log throttle suppresses (TG-MER-05) |
+| `discord_events_total` | `outcome` (7) | TG-SOC-12: one per Discord event, at the point it ends: `sent`, `filtered`, `dropped_full`, `dropped_closed`, `no_webhook`, `rate_limited`, `failed`. Every drop counts, including the ones the `discord.dropped` WARN throttle (one per 60 s per outcome, with `suppressed`) swallows |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (6) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC. Routes with **no** usable path only; a partial route counts in `npc_path_partial_total` |
 | `npc_path_partial_total` | `world` (~24), `state` (5) | NA02: a partial corridor that was still walked. Its `npc_ai.path_fail reason=partial` row has its own throttle window (`path_partial`), so it cannot hold back a real routing failure for the same NPC |
 | `npc_path_requests_total` | `world` (~24), `state` (5), `status` (7) | One per AI `find_path` (NA02), beside the `npc_ai.path` row — the path-status mix |
