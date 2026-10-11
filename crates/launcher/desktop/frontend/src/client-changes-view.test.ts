@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {makePanelContext} from './panel-context';
 import type {NativeSnapshot} from './contract';
-import {mountClientChanges,clientChangesUnavailable,clientChangesNothingInstalled} from './client-changes-view';
+import {mountClientChanges,clientChangesUnavailable,clientChangesNothingInstalled,clientChangesRecordUnreadable} from './client-changes-view';
+import {mountDesktop} from './composition';
 const html=readFileSync('ui/index.html','utf8');
 const snapshot={} as NativeSnapshot;
 
@@ -16,7 +17,7 @@ const installedStatus=(patchStatus='applied',patchLabel='applied')=>({schema_ver
  row('launch','Added when the game starts','Client patches DLL','on_launch','on'),
  row('launch','Added when the game starts','Telemetry','off','off'),
  row('server','Sent by the server while you play','Cooked game data','during_play','during play'),
-]});
+],install_record_unreadable:false});
 
 function mount(answers:unknown[]) {
  const {document}=parseHTML(html);const calls:unknown[]=[];const feed=makePanelContext();feed.publish(snapshot);
@@ -45,7 +46,7 @@ test('renders native rows grouped under their headings, with status and patch id
 });
 
 test('with nothing installed it explains why the list is empty',async()=>{
- const {document,app,text}=mount([{schema_version:1,installed:false,changes:[]}]);
+ const {document,app,text}=mount([{schema_version:1,installed:false,changes:[],install_record_unreadable:false}]);
  await app.ready;
  assert.equal(text('client-changes-status'),clientChangesNothingInstalled);
  assert.equal(document.querySelectorAll('#client-changes-list li').length,0);
@@ -106,4 +107,56 @@ test('a burst of snapshots during one read queues a single re-read',async()=>{
  release();await app.ready;await app.settled();
  assert.equal(calls,2);
  await app.dispose();
+});
+
+test('an unreadable install record shows a line saying Repair may fix it',async()=>{
+ const {document,app,text}=mount([{...installedStatus('pending','applied on the next Install / Update'),install_record_unreadable:true},installedStatus()]);
+ await app.ready;
+ const record=document.getElementById('client-changes-record')!;
+ assert.equal(record.hidden,false);assert.equal(text('client-changes-record'),clientChangesRecordUnreadable);
+ assert.equal(document.querySelectorAll('#client-changes-list li').length,5,'the list still renders');
+ await app.refresh();assert.equal(record.hidden,true);
+ await app.dispose();
+});
+
+test('opening Settings re-reads, even when no snapshot ever arrived',async()=>{
+ const {document,window}=parseHTML(html);const feed=makePanelContext();const calls:string[]=[];
+ const app=mountClientChanges(document as unknown as Document,async command=>{calls.push(command);return installedStatus();},feed.context);
+ const gear=document.getElementById('gear')!;
+ // The gear's own handler (view.ts) toggles it in the same click; stand in for it.
+ const open=()=>{gear.hidden=!gear.hidden;document.getElementById('settings')!.dispatchEvent(new window.Event('click'));};
+ open();await app.ready;
+ assert.deepEqual(calls,['client_changes_command']);assert.match(document.getElementById('client-changes-status')!.textContent!,/^5 changes/);
+ open();await app.settled();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1,'closing Settings reads nothing');
+ open();await app.settled();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,2);
+ await app.dispose();open();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,2,'dispose removes the listener');
+});
+
+// Composition: a game-telemetry save and a finished install publish a launcher
+// snapshot, so the list re-reads without Settings being reopened.
+const nativeSnapshot=(revision=0):NativeSnapshot=>({schema_version:1,operation:{schema_version:1,revision,operation:null},
+ preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false});
+const until=async(done:()=>boolean,what:()=>string)=>{for(let i=0;i<500&&!done();i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(done(),what());};
+
+test('a game-telemetry save re-reads the list through a launcher snapshot',async()=>{
+ const {document,window}=parseHTML(html);let reads=0;let telemetry={schema_version:1,available:true,opted_in:false,last_outcome:null};
+ const desktop=mountDesktop(document as unknown as Document,async(command,args:any)=>{
+  if(command==='launcher_command')return nativeSnapshot();
+  if(command==='client_changes_command'){reads++;return installedStatus();}
+  if(command==='game_telemetry_command'){if(args.request.command==='set')telemetry={...telemetry,opted_in:args.request.opted_in};return telemetry;}
+  throw 'unavailable';
+ });
+ try{
+  await until(()=>reads>0,()=>'never read');
+  const box=document.getElementById('game-telemetry') as unknown as HTMLInputElement;
+  await until(()=>!box.disabled,()=>'telemetry box never enabled');
+  // Startup itself re-inspects a few times; count from quiet.
+  for(let i=0;i<50;i++)await new Promise(resolve=>setImmediate(resolve));
+  await desktop.app.settled();const before=reads;
+  box.checked=true;box.dispatchEvent(new window.Event('change'));
+  await until(()=>reads>before,()=>`after save: ${reads} of ${before}, ${document.getElementById('game-telemetry-status')!.textContent}`);
+ }finally{await desktop.dispose();}
 });

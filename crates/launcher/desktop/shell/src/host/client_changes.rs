@@ -1,8 +1,8 @@
 //! The read-only "Changes to your client" panel. The engine half builds the
-//! rows from the installed copy's verified state.
+//! rows from the installed copy's verified state and this build's bundle.
 use super::NativeHost;
 use cimmeria_launcher_engine::client_changes::{
-    ClientChangesCommand, ClientChangesError, ClientChangesStatus,
+    BundledDlls, ClientChangesCommand, ClientChangesError, ClientChangesStatus,
 };
 use cimmeria_launcher_engine::StorageError;
 
@@ -12,9 +12,11 @@ impl NativeHost {
         &self,
         request: ClientChangesCommand,
     ) -> Result<ClientChangesStatus, ClientChangesError> {
+        // The same verified bundle Play resolves its DLLs from.
+        let bundled = BundledDlls::of(self.launch_resources.as_ref());
         let store = self.store()?;
         let state = store.lock().map_err(|_| StorageError::Io)?;
-        state.client_changes(request)
+        state.client_changes(request, bundled)
     }
 }
 
@@ -30,7 +32,8 @@ mod tests {
         let status = host.client_changes_command(request).unwrap();
         assert_eq!(
             serde_json::to_value(status).unwrap(),
-            serde_json::json!({"schema_version": 1, "installed": false, "changes": []})
+            serde_json::json!({"schema_version": 1, "installed": false, "changes": [],
+                "install_record_unreadable": false})
         );
         let request = serde_json::from_str(r#"{"command":"inspect","schema_version":2}"#).unwrap();
         assert_eq!(

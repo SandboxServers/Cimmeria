@@ -5,7 +5,7 @@
 use eframe::egui;
 
 use super::{path_is_empty, should_show_adopt_button, LauncherApp};
-use crate::client_changes::{list, ChangeInputs};
+use crate::client_changes::{list, ChangeInputs, LaunchFacts};
 
 impl LauncherApp {
     pub(super) fn show_client_changes(&mut self, ui: &mut egui::Ui) {
@@ -19,6 +19,7 @@ impl LauncherApp {
             installed: &self.installed,
             client_patches_enabled: self.config.client_patches.enabled,
             telemetry_opted_in: self.config.telemetry.opted_in,
+            launch: LaunchFacts::SETTINGS_ONLY,
         });
         // Open by default until the launcher manages a client, so a
         // player sees what will change before Install or Adopt.

@@ -59,12 +59,13 @@ export type ClientChangesCommand = {command: "inspect"; schema_version: 1};
 export const ClientChangeRow = Schema.Struct({
   group: Schema.Literals(["setup", "patch", "launch", "server"]), heading: Schema.String,
   title: Schema.String, description: Schema.String,
-  status: Schema.Literals(["every_launch", "at_install", "applied", "pending", "on_launch", "off", "during_play"]),
+  status: Schema.Literals(["every_launch", "at_install", "applied", "pending", "on_launch", "off", "during_play", "missing"]),
   status_label: Schema.String, patch_id: Schema.NullOr(Schema.String),
 });
 export type ClientChangeRow = typeof ClientChangeRow.Type;
 export const ClientChangesStatus = Schema.Struct({
   schema_version: Schema.Literal(1), installed: Schema.Boolean, changes: Schema.Array(ClientChangeRow),
+  install_record_unreadable: Schema.Boolean,
 });
 export type ClientChangesStatus = typeof ClientChangesStatus.Type;
 export type ClientChangesError = ScaffoldError;

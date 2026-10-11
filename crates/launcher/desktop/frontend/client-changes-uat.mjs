@@ -4,20 +4,20 @@
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
-import {mountClientChanges,clientChangesNothingInstalled} from './.test-build/client-changes-view.mjs';
-const {document}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
+import {mountClientChanges,clientChangesNothingInstalled,clientChangesRecordUnreadable} from './.test-build/client-changes-view.mjs';
+const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const row=(group,heading,title,status,status_label,patch_id=null)=>({group,heading,title,description:`What ${title} changes.`,status,status_label,patch_id});
-const installed=(telemetry)=>({schema_version:1,installed:true,changes:[
+const installed=(telemetry,patchesDll='on_launch',unreadable=false)=>({schema_version:1,installed:true,install_record_unreadable:unreadable,changes:[
  row('setup','Launcher setup','Login servers','every_launch','before every launch'),
  row('setup','Launcher setup','Bundled data folder renamed','at_install','at install'),
  row('patch','Patched files','Dialog portraits','applied','applied','008-dialog-portraits'),
  row('patch','Patched files','999-new-patch','pending','applied on the next Install / Update','999-new-patch'),
- row('launch','Added when the game starts','Client patches DLL','on_launch','on'),
+ row('launch','Added when the game starts','Client patches DLL',patchesDll,patchesDll==='missing'?'missing from this build':'on'),
  row('launch','Added when the game starts','Telemetry',telemetry?'on_launch':'off',telemetry?'on':'off'),
  row('server','Sent by the server while you play','Cooked game data','during_play','during play'),
 ]});
 // The native side: what the engine would answer at each step of the journey.
-let native={ok:{schema_version:1,installed:false,changes:[]}};
+let native={ok:{schema_version:1,installed:false,changes:[],install_record_unreadable:false}};
 const calls=[];
 const invoke=async(command,args)=>{calls.push([command,args]);if(native.error)throw native.error;return native.ok;};
 const listeners=new Set();
@@ -52,10 +52,21 @@ try {
  assert.match(status(),/busy with another operation/);assert.equal(items().length,0);
  native={ok:installed(true)};await app.refresh();
  assert.equal(items().length,7);
- // 5. Every read was the one read-only inspect request.
+ // 5. Opening Settings re-reads with no snapshot: this build lacks the patches
+ //    DLL, so the row says Play cannot start, and the patch record is damaged.
+ const gear=document.getElementById('gear');gear.hidden=true;
+ const openSettings=async()=>{gear.hidden=!gear.hidden;document.getElementById('settings').dispatchEvent(new window.Event('click'));
+  await new Promise(resolve=>setImmediate(resolve));await app.settled();};
+ native={ok:installed(true,'missing',true)};await openSettings();
+ assert.equal(rowStatus('Client patches DLL'),'missing');
+ assert.equal(document.getElementById('client-changes-record').hidden,false);
+ assert.equal(document.getElementById('client-changes-record').textContent,clientChangesRecordUnreadable);
+ // Closing Settings reads nothing.
+ await openSettings();
+ // 6. Every read was the one read-only inspect request.
  assert.ok(calls.every(([c,a])=>c==='client_changes_command'&&JSON.stringify(a)==='{"request":{"command":"inspect","schema_version":1}}'));
- assert.equal(calls.length,5);
- console.log('Changes to your client UAT passed: empty-install explanation, list appears after install, rows grouped with applied/pending patches and DLL status, telemetry row follows the opt-in, busy line during an Update then recovery, one read-only inspect per read.');
+ assert.equal(calls.length,6);
+ console.log('Changes to your client UAT passed: empty-install explanation, list appears after install, rows grouped with applied/pending patches and DLL status, telemetry row follows the opt-in, busy line during an Update then recovery, opening Settings re-reads (missing DLL row, unreadable patch record line), one read-only inspect per read.');
  console.log('Excluded: the native engine (covered by engine tests, including DLL rows matching Play), the packaged window and visual layout.');
 }finally{await app.dispose();}
 assert.equal(listeners.size,0,'dispose unsubscribes from snapshots');
