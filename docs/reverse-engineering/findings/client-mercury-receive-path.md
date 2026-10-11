@@ -248,6 +248,19 @@ Each popped bundle is processed completely: the message loop has no per-bundle m
 
 **The network thread has its own limits.** `Nub::Nub` is called by the `ServerConnection` constructor `FUN_00de00e0` with `(idleSleepMs = 10, readsPerPass = 0x40)`, stored at `Nub+0xbc` and `Nub+0xe0`. Each pass of `FUN_01583bf0` pops its own queue (`Nub+0x150`), runs the resend scan, then for each socket calls `Nub_11` (`0x01581ab0`), which reads up to **64 datagrams per pass** and stops early on `WSAEWOULDBLOCK` (`0x2733`). A pass that emptied the socket before 64 reads (a `WSAEWOULDBLOCK` read returns 0) then waits `+0xbc` = 10 ms: `0x00a78b90` is `CreateEventW` and `0x00a78bc0` is `WaitForSingleObject(evt, 10)` on an event nobody signals, so it is a `Sleep(10)` (static). The real wait is about 10 ms at 1 ms timer resolution and up to about 15.6 ms at the default (`timeBeginPeriod` is not checked). A pass that read a full 64 loops again at once.
 
+### Recvfrom to the packet filter: thread and order (TG-MER-12)
+
+**One datagram is read and filtered before the next read, on the network thread (static, decompile of `0x01581ab0` in `docs/reverse-engineering/decompiled/02_bigworld_network.c`).** Each iteration of `Nub::processPendingEvents` (`0x01581ab0`, up to `Nub+0xe0` = 64 reads) allocates a packet, calls the socket reader `FUN_0158a200` (`recvfrom` into `Packet+0x54`, capacity `0x5c0`), stores the length at `Packet+0x24`, then calls `0x01581830` with the same packet. `0x01581830` looks up the channel (`0x0157c7b0`); a channel with a packet filter calls the filter's `recv` (vtable slot 2, `PacketEncrypter::recv` `0x01603fa0` on an encrypted channel), and otherwise it calls `processFilteredPacket` (`0x01580840`) directly. Both happen before the loop's next `recvfrom`. A failed read (`recvfrom` < 1) never reaches the filter: `WSAEWOULDBLOCK` ends the pass, other errors queue a `NubException` and return.
+
+Consequences for the telemetry DLL:
+
+* A per-thread value stashed by the `recvfrom` IAT detour is the datagram the next `processFilteredPacket` on that thread is about, as long as the detour overwrites it on every Mercury read (a failed read clears it) and the filter takes it on entry. Taking it before the original also keeps it off a piggybacked packet (`flags & 0x02`), for which `processFilteredPacket` recurses on a nested copy.
+* `Bundle::iterator::unpack` runs on the game thread after the packet crosses the `Nub+0x138` `tbb` queue, so no thread-local reaches it. The packet object itself travels the queue (the chain built in `processPacket` links the same refcounted `Packet`s), so the filter records `(packet object, seq)` and `unpack` reads `Packet+0x44` and looks the pair up. Keying on the sequence number as well as the address stops a recycled packet object from inheriting an earlier datagram's key.
+* Whether `PacketEncrypter::recv` decrypts in place or into a new packet object was not checked; neither join depends on it, since the filter keys on the object `processFilteredPacket` receives, which is the one that reaches `unpack`.
+
+> [!WARNING]
+> The draft chapter `docs/drafts/spec/mercury-wire-format.md` ("`processPendingEvents` ... enqueue each packet onto the inbound `tbb::concurrent_queue`. A second thread drains the queue and runs `processFilteredPacket`", and Figure 33) has the queue in the wrong place. The queue sits between `processPacket` and `processOrderedPacket`; `recvfrom`, the cipher filter, `processFilteredPacket`, the reliable window and fragment reassembly all run on the network thread. The chapter and its figure need correcting before promotion.
+
 ### 5. Server consequences
 
 * The client sets no `SO_RCVBUF` (the OS default applies; Wine maps it to the Linux `rmem_default`) and reads its socket every 10 to 16 ms, so the burst limit is the client's socket buffer, not the server's TX window (inferred).
