@@ -329,6 +329,28 @@ fn record_refuses_runs_of_another_spec_version() {
     assert!(!lab.golden().exists());
 }
 
+/// lab-chaos D-CH7: five runs that agree and pass are still refused when one
+/// ran under chaos (CH-08 writes `chaos` into its `run.json`).
+#[test]
+fn record_refuses_a_chaos_run() {
+    let lab = Lab::new();
+    let runs = lab.five(|lab, k| {
+        (k == 4).then(|| {
+            lab.run("run4", RowResult::Pass, p1_tap(), fs_p3_tap(), |m| {
+                m["chaos"] = json!("chaos=flush:pack seed=7");
+            })
+        })
+    });
+    let reply = lab.record(runs, false);
+    assert_eq!(code(&reply), "cannot_record", "{reply}");
+    assert!(
+        error(&reply).contains("chaos runs never become golden (chaos=flush:pack seed=7)"),
+        "{reply}"
+    );
+    assert!(error(&reply).contains("run4"), "{reply}");
+    assert!(!lab.golden().exists());
+}
+
 /// GD-04's acceptance through the tool: one changed server answer is one
 /// line, and the whole reply stays short.
 #[test]

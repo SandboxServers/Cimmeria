@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-    Tests for `lab uat -Chaos` (lab-chaos CH-02 and CH-08), no Pester and no
-    daemon: the header helpers, -Chaos reaching the request body, the plan's
-    header, the cpu and -Leases check, and a real run against a loopback MCP
-    stub, so the lane's own record carries the run's header into the
-    summary. Exits non-zero when any check fails:
+    Tests for `lab uat -Chaos` (lab-chaos CH-02, CH-08 and CH-09), no Pester
+    and no daemon: the header helpers, -Chaos reaching the request body, the
+    plan's header, the cpu and -Leases check, the golden -Chaos needs, the
+    chaos_divergence report, and a real run against a loopback MCP stub, so
+    the lane's own record carries the run's header into the summary. Exits
+    non-zero when any check fails:
 
         pwsh -NoProfile -File tools/lab/cli/test-uat-chaos.ps1
 #>
@@ -23,6 +24,13 @@ function Rec([bool]$ok) {
 }
 $lane = @{ Lane = 1; Instance = 'default' }
 $uatScript = Join-Path $PSScriptRoot 'uat.ps1'
+# -Chaos needs the section's golden (CH-09): a temp spec folder holding one,
+# and an empty one without. Removed at the end.
+$script:goldenSpecs = Join-Path ([IO.Path]::GetTempPath()) ("uat-chaos-specs-" + [guid]::NewGuid())
+$script:noGoldenSpecs = Join-Path ([IO.Path]::GetTempPath()) ("uat-chaos-nogolden-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Force -Path (Join-Path $script:goldenSpecs 'golden'), $script:noGoldenSpecs | Out-Null
+Set-Content -LiteralPath (Join-Path $script:goldenSpecs 'golden\first-session.json') -Encoding utf8NoBOM `
+    -Value '{"schema":1,"section":"first-session","fingerprint":{"rows":[]}}'
 
 # --- the typed header (CH-02, D-CH7) ---
 Check ((Format-UatChaosHeader @('cpu', 'flush:pack')) -ceq 'chaos=cpu; chaos=flush:pack') 'the chaos header has one chaos=<spec> per value, joined with "; "'
@@ -82,7 +90,7 @@ function Invoke-UatPlanWithChaos([string[]]$Chaos) {
     function Get-LabStatus { [pscustomobject]@{ instances = @([pscustomobject]@{ instance = 'default'; lease = [pscustomobject]@{ held = $false } }) } }
     function Get-LabdEnv { @{} }
     function Get-LabMcpUrl { 'http://stub' }
-    function Get-DefaultSpecsDir { '' }
+    function Get-DefaultSpecsDir { $script:goldenSpecs }
     function New-McpSession($Url, $Token) { 'session' }
     function Close-McpSession($Session) { }
     function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) {
@@ -92,8 +100,31 @@ function Invoke-UatPlanWithChaos([string[]]$Chaos) {
     Invoke-LabUat
 }
 Check ((Invoke-UatPlanWithChaos 'cpu', 'flush:pack' 6>$null) -eq 0 -and @($script:sentArgs.chaos) -join '|' -ceq 'cpu|flush:pack') 'two -Chaos values both reach the request body'
+Check ((Get-UatField $script:sentArgs 'fingerprint') -eq $true) '-Chaos implies -Fingerprint: the request asks for fingerprint capture (CH-09)'
 Check ((Invoke-UatPlanWithChaos 'net:latency=120,loss=1' 6>$null) -eq 0 -and @($script:sentArgs.chaos).Count -eq 1 -and $script:sentArgs.chaos[0] -ceq 'net:latency=120,loss=1') 'a quoted multi-knob spec reaches the body as one element'
-Check ((Invoke-UatPlanWithChaos 6>$null) -eq 0 -and -not $script:sentArgs.ContainsKey('chaos')) 'without -Chaos the body has no chaos key'
+Check ((Invoke-UatPlanWithChaos 6>$null) -eq 0 -and -not $script:sentArgs.ContainsKey('chaos') -and -not $script:sentArgs.ContainsKey('fingerprint')) 'without -Chaos the body has no chaos or fingerprint key'
+
+# -Chaos without a golden stops before the daemon is asked (CH-09). Every
+# daemon call is stubbed to throw, so a regression fails here instead of
+# reaching the live lab.
+$script:daemonAsked = $false
+$sw = [IO.StringWriter]::new(); $old = [Console]::Out; [Console]::SetOut($sw)
+try {
+    $code = & {
+        . $uatScript -Section 'first-session' -Chaos 'flush:pack' -PlanOnly -Json
+        function Get-DefaultSpecsDir { $script:noGoldenSpecs }
+        function Get-LabToken { $script:daemonAsked = $true; throw 'daemon reached' }
+        function Get-LabStatus { $script:daemonAsked = $true; throw 'daemon reached' }
+        function Get-LabdEnv { $script:daemonAsked = $true; throw 'daemon reached' }
+        function Get-LabMcpUrl { $script:daemonAsked = $true; throw 'daemon reached' }
+        function New-McpSession($Url, $Token) { $script:daemonAsked = $true; throw 'daemon reached' }
+        function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) { $script:daemonAsked = $true; throw 'daemon reached' }
+        try { Invoke-LabUat } catch { -1 }
+    } 2>$null 6>$null
+} finally { [Console]::SetOut($old) }
+$refusalText = $sw.ToString().Trim()
+$refusal = [string](Get-UatField $(if ($refusalText) { $refusalText | ConvertFrom-Json }) 'error')
+Check ($code -eq 2 -and -not $script:daemonAsked -and $refusal -like 'no golden for first-session; -Chaos*lab golden record (lab-golden GD-10)') "-Chaos with no golden exits 2 before the daemon is asked ($code, $refusal)"
 
 # Dot-sourced with the daemon stubbed; -Json output captured from
 # [Console]::Out. $script:planReply is the plan call's chaos list, and
@@ -109,7 +140,7 @@ function Invoke-UatChaosCall([string[]]$Chaos, [switch]$Plan) {
             function Get-LabdEnv { @{} }
             function Get-Process { }
             function Get-LabMcpUrl { 'http://stub' }
-            function Get-DefaultSpecsDir { '' }
+            function Get-DefaultSpecsDir { $script:goldenSpecs }
             function New-McpSession($Url, $Token) { 'session' }
             function Close-McpSession($Session) { }
             function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) {
@@ -138,6 +169,37 @@ $r = Invoke-UatChaosCall 'cpu'
 Check ($r.Code -eq 3 -and (@($script:sentArgs.chaos) -join '|') -ceq 'cpu' -and $script:sentArgs.plan_only) "a real run with -Chaos sends it to the plan call ($($r.Code))"
 $script:planThrows = $null
 
+# --- the report against the golden (CH-09, D-CH7) ---
+$sixRows = @('FS-01', 'FS-02', 'FS-P1', 'FS-P2', 'FS-P3', 'FS-P4' | ForEach-Object { [pscustomobject]@{ row = $_; result = 'PASS'; reasons = @() } })
+$divLine = 'row FS-P3: expected `s2c onDialogDisplay@self dialog_id=3995` after `c2s interact target=tag:ArmYourself_FrostBody`, got `s2c onDialogDisplay@self dialog_id=3996`'
+function ChaosRec([string]$Golden, [string]$Chaos = 'chaos=flush:pack seed=7') {
+    $r = Rec $true; $r.Rows = $sixRows; $r.Golden = $Golden
+    if ($Chaos) { $r.Chaos = $Chaos }
+    $r
+}
+$batchDir = 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261011-120000'
+$diverged = Merge-UatResults @((ChaosRec $divLine)) @($lane) @()
+Add-UatChaosHeader $diverged (Select-UatChaosHeader @((ChaosRec $divLine)) $null)
+$dj = ConvertTo-UatCompactJson $diverged $batchDir
+$d = $dj | ConvertFrom-Json
+Check ($diverged.ok -and $d.ok -and $d.passed -eq 1 -and $d.rows.'FS-P3' -ceq '1/1') 'a chaos row that passed its expects but diverged keeps status pass'
+Check (-not $diverged.Contains('golden') -and $d.PSObject.Properties.Name -notcontains 'golden') 'a chaos batch reports no golden key'
+$dcd = Get-UatField $diverged 'chaos_divergence'
+Check ((Get-UatField (Get-UatField $d 'chaos_divergence') 'diverged') -eq 1 -and $dcd -and @($dcd.groups).Count -eq 1 -and $dcd.groups[0].line -ceq "chaos=flush:pack seed=7 $divLine") 'the divergence is one chaos_divergence line, led by the chaos header'
+$dfirst = [string](Get-UatField (Get-UatField $d 'chaos_divergence') 'first')
+Check ($dfirst.StartsWith('chaos=flush:pack seed=7 row FS-P3: expected') -and $dfirst.Length -le 160) "-Json's chaos_divergence.first is that line, cut to 160 ($($dfirst.Length))"
+Check ((Get-UatExitCode $diverged) -eq 0) 'a chaos-only divergence does not exit 5'
+Check ($dj.Length -lt 600) "-Json for a 6-row chaos run with a divergence stays under 600 characters ($($dj.Length))"
+Check ((Format-UatSummary $diverged 't' $batchDir) -match 'Chaos divergence from the golden: 0 match, 1 diverged') 'summary.md lists the chaos divergence'
+$matched = Merge-UatResults @((ChaosRec 'match')) @($lane) @()
+$mj = ConvertTo-UatCompactJson $matched $batchDir
+Check (-not $matched.Contains('chaos_divergence') -and -not $matched.Contains('golden') -and $mj -notmatch 'chaos_divergence|golden' -and (Get-UatExitCode $matched) -eq 0) 'a chaos row that matches the golden has no chaos_divergence key'
+$unread = Merge-UatResults @((ChaosRec 'error: cannot_diff: run x has no run.json'), (ChaosRec $divLine)) @($lane) @()
+$ucd = Get-UatField $unread 'chaos_divergence'
+Check ($ucd -and $ucd.errors -eq 1 -and @($ucd.groups | ForEach-Object { $_.line }) -contains 'error: cannot_diff: run x has no run.json' -and (Get-UatExitCode $unread) -eq 5) 'under chaos a diff that could not be made is not prefixed and still exits 5'
+$plain = Merge-UatResults @((ChaosRec $divLine -Chaos '')) @($lane) @()
+Check ((Get-UatField (Get-UatField $plain 'golden') 'diverged') -eq 1 -and -not $plain.Contains('chaos_divergence') -and (Get-UatExitCode $plain) -eq 5) 'without chaos the same divergence stays under golden and exits 5'
+
 # --- a real run through the lanes, against a loopback MCP stub ---
 # The lanes run in ForEach-Object -Parallel runspaces with the real
 # uat-lib.ps1, so a function stub cannot reach them; a TCP listener speaking
@@ -165,7 +227,9 @@ $server = [powershell]::Create()
                 $reply = @{ jsonrpc = '2.0'; id = $req.id; result = @{ protocolVersion = '2025-06-18'; capabilities = @{} } } | ConvertTo-Json -Compress -Depth 10
             } elseif ($method -eq 'POST' -and $req.method -eq 'tools/call') {
                 $plan = [bool]$req.params.arguments.plan_only
-                $result = if ($plan) {
+                $result = if ($req.params.name -eq 'lab_golden_diff') {
+                    @{ ok = $true; match = $false; first = 'row FS-01: expected `a`, got `b`' }
+                } elseif ($plan) {
                     @{ rows = @(@{ row = 'FS-01'; result = 'SKIPPED'; reasons = @() }); chaos = @('chaos=cpu:safe seed=<per run>') }
                 } else {
                     @{ run_dir = 'C:\stub\run'; rows = @(@{ row = 'FS-01'; result = 'PASS'; reasons = @() }); chaos = @('chaos=cpu:safe seed=4242') }
@@ -194,13 +258,14 @@ try {
             function Get-LabdEnv { @{} }
             function Get-Process { }
             function Get-LabMcpUrl { $script:stubUrl }
-            function Get-DefaultSpecsDir { '' }
+            function Get-DefaultSpecsDir { $script:goldenSpecs }
             Invoke-LabUat
         } 6>$null
     } finally { [Console]::SetOut($old) }
     $text = $sw.ToString().Trim()
     $real = if ($text) { $text | ConvertFrom-Json } else { $null }
     Check ($code -eq 0 -and $real -and $real.chaos -ceq 'chaos=cpu:safe seed=4242') "a real run's summary carries the run's header, not the plan's ($code, $($real | ConvertTo-Json -Compress))"
+    Check ($real -and (Get-UatField (Get-UatField $real 'chaos_divergence') 'first') -ceq 'chaos=cpu:safe seed=4242 row FS-01: expected `a`, got `b`' -and $real.PSObject.Properties.Name -notcontains 'golden') "a real chaos run is diffed and reports chaos_divergence under the run's header, exit 0 ($code)"
     $jsonl = @(Get-ChildItem -LiteralPath $uatDir -Recurse -Filter 'batch.jsonl')
     $recs = @(if ($jsonl.Count) { Read-UatRecords $jsonl[0].FullName })
     Check ($recs.Count -eq 1 -and (Get-UatField $recs[0] 'Chaos') -ceq 'chaos=cpu:safe seed=4242') 'the lane writes the run header into its batch.jsonl record'
@@ -210,6 +275,7 @@ try {
     try { $null = $server.EndInvoke($serverRun) } catch { }
     $server.Dispose()
     Remove-Item -LiteralPath $uatDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $script:goldenSpecs, $script:noGoldenSpecs -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }

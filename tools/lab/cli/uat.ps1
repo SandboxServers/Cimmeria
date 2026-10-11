@@ -47,6 +47,14 @@
     leads the summary and -Json gets a chaos key, only when -Chaos was given.
     -PlanOnly prints seed=<per run> for a seed the spec did not name: each
     run's seed is its own run id's hash.
+    -Chaos implies -Fingerprint and -DiffGolden (lab-chaos D-CH7), so it
+    needs the section's golden (exit 2 without one, before the daemon is
+    asked). A chaos run's comparison is reported as chaos_divergence, not
+    golden: each divergence line led by its run's chaos header, the key only
+    when a run diverged or could not be compared. A row that passed keeps its
+    pass, and a divergence alone does not exit 5 (a diff that could not be
+    made still does). A chaos run never becomes a golden (lab golden record
+    refuses it).
 
     -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
@@ -74,7 +82,7 @@
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
     5 every run passed but -DiffGolden did not match on one (a divergence, or
-    a run it could not compare); 8 a heal proposal was written (SV-12),
+    a run it could not compare; under -Chaos only the latter); 8 a heal proposal was written (SV-12),
     which wins over every other code, 5 included.
 
 .EXAMPLE
@@ -143,11 +151,19 @@ function Invoke-LabUat {
     $chaosShape = Test-UatChaosLeases $Chaos $Leases
     if ($chaosShape) { return Stop-Uat 2 $chaosShape }
     $specs =if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
+    # lab-chaos D-CH7: a chaos run is reported against the golden, so -Chaos
+    # implies -DiffGolden (and with it fingerprint capture on every row).
+    $chaosOn = [bool](Format-UatChaosHeader $Chaos)
+    if ($chaosOn) { $DiffGolden = $true }
     # A diff needs a golden: without one, stop before anything is driven.
     if ($DiffGolden) {
-        if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
+        $who = if ($chaosOn) { '-Chaos (it diffs every run against the golden)' } else { '-DiffGolden' }
+        if (-not $specs) { return Stop-Uat 2 "$who needs -SpecsDir (no spec folder found next to this checkout)" }
         $goldenPath = Get-GoldenPath $specs $Section
         if (-not (Test-Path -LiteralPath $goldenPath)) {
+            if ($chaosOn) {
+                return Stop-Uat 2 "no golden for $Section; -Chaos reports against it, so record one first with lab golden record (lab-golden GD-10)"
+            }
             return Stop-Uat 2 "no golden for $Section; record one with lab golden record"
         }
         $unreadable = Test-UatGoldenFile $goldenPath

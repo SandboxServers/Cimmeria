@@ -114,60 +114,9 @@ function ConvertTo-UatRowIds([string[]]$Rows) {
     return $ids
 }
 
-# -Chaos values as the run's header: one chaos=<spec> per value, joined with
-# "; ". Null when there was no chaos (no key in -Json, no line in the summary).
-# Values are not split on commas: a multi-knob spec is one value.
-function Format-UatChaosHeader([string[]]$Chaos) {
-    $specs = @($Chaos | Where-Object { $_ })
-    if (-not $specs.Count) { return $null }
-    return (@($specs | ForEach-Object { "chaos=$_" }) -join '; ')
-}
-
-# Puts the non-empty -Chaos values on the lab_uat_run arguments and returns
-# the header. One filter for both, so the body and the header always agree.
-# This header is the specs as typed (no resolved level or seed); the caller
-# replaces it with the runner's own (Get-UatRunChaos, Select-UatChaosHeader).
-function Set-UatChaos([hashtable]$BaseArgs, [string[]]$Chaos) {
-    $specs = @($Chaos | Where-Object { $_ })
-    if (-not $specs.Count) { return $null }
-    $BaseArgs.chaos = $specs
-    return Format-UatChaosHeader $specs
-}
-
-# cpu chaos loads the whole machine, and each lane's lab_uat_run starts its
-# own load, so -Leases 2 would double it: cpu runs on one lease. The message,
-# or $null when the combination is fine.
-function Test-UatChaosLeases([string[]]$Chaos, [int]$Leases) {
-    $cpu = @($Chaos | Where-Object { $_ -and ($_.Trim() -split ':')[0] -eq 'cpu' })
-    if ($cpu.Count -and $Leases -gt 1) {
-        return "-Chaos cpu loads the whole machine and each lease's run would start its own load; run it with -Leases 1"
-    }
-    return $null
-}
-
-# The runner's own chaos header from a lab_uat_run result (lab-chaos CH-08):
-# its `chaos` list (one header per spec, seed resolved) joined with "; ".
-# $null when the result carries none.
-function Get-UatRunChaos($Result) {
-    $headers = @(Get-UatField $Result 'chaos' | Where-Object { $_ })
-    if (-not $headers.Count) { return $null }
-    return ($headers -join '; ')
-}
-
-# The batch's header: the runs' own headers replace the typed one ($Fallback,
-# kept only when no run returned one). Runs differ in seed (each run's seed
-# is its run id's hash), so after the first the rest are counted, not listed.
-function Select-UatChaosHeader($Runs, [string]$Fallback) {
-    $seen = @(@($Runs) | ForEach-Object { [string](Get-UatField $_ 'Chaos') } | Where-Object { $_ } | Select-Object -Unique)
-    if (-not $seen.Count) { return $(if ($Fallback) { $Fallback } else { $null }) }
-    if ($seen.Count -eq 1) { return $seen[0] }
-    return "$($seen[0]) (+$($seen.Count - 1) other seed(s) in batch.jsonl)"
-}
-
-# Attaches the chaos header to a run summary, so -Json and summary.md carry it.
-function Add-UatChaosHeader($Summary, [string]$Header) {
-    if ($Header) { $Summary['chaos'] = $Header }
-}
+# The -Chaos helpers (lab-chaos) live in their own file; dot-sourcing them
+# here keeps every caller of this library, the lanes included, unchanged.
+. (Join-Path $PSScriptRoot 'uat-chaos-lib.ps1')
 
 # Lease ids (lease-<hex>) replaced in text that leaves the command.
 function Hide-LeaseIds([string]$Text) {
@@ -389,8 +338,15 @@ function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
         failed_known = $known; failed_new = $Runs.Count - $passed - $known
         rows = $rowStats; lanes = @($laneStats); failures = @($groups.Values)
     }
-    $golden = Merge-UatGolden $Runs
-    if ($golden) { $out.golden = $golden }
+    # lab-chaos D-CH7: under chaos the comparison is chaos_divergence, not
+    # golden, and the run's own verdict (ok, passed) is left as it is.
+    if (Test-UatChaosRuns $Runs) {
+        $cd = Merge-UatChaosDivergence $Runs
+        if ($cd) { $out.chaos_divergence = $cd }
+    } else {
+        $golden = Merge-UatGolden $Runs
+        if ($golden) { $out.golden = $golden }
+    }
     return $out
 }
 
@@ -469,12 +425,16 @@ function Merge-UatGolden($Runs) {
 # every run passed but the golden comparison did not match on one (a
 # divergence, or a diff that could not be made; README D-GD7), 8 a heal
 # proposal was written (lab-spec-vocab SV-12's summary `heal`). 8 wins over
-# every other code, because a heal proposal needs action first.
+# every other code, because a heal proposal needs action first. A chaos
+# divergence is what a chaos run reports, not a failure (lab-chaos D-CH7):
+# only its diffs that could not be made give 5.
 function Get-UatExitCode($Summary) {
     if (@(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ }).Count) { return 8 }
     if ($Summary.ok) {
         $g = Get-UatField $Summary 'golden'
         if ($g -and ($g.diverged + $g.errors) -gt 0) { return 5 }
+        $cd = Get-UatField $Summary 'chaos_divergence'
+        if ($cd -and $cd.errors -gt 0) { return 5 }
         return 0
     }
     if (@($Summary.lanes | Where-Object { $_.braked }).Count) { return 4 }
@@ -485,6 +445,22 @@ function Get-UatExitCode($Summary) {
 function Limit-UatText([string]$Text, [int]$Max) {
     if ($Text.Length -le $Max) { return $Text }
     return $Text.Substring(0, $Max - 3) + '...'
+}
+
+# A golden comparison (golden or chaos_divergence) for -Json: match and
+# diverged counts, errors when some, and first, the most common divergence
+# (never an error line), or error, the most common error, only when no run
+# diverged. Lines are cut to $MaxLine, so a batch with divergences stays a
+# few hundred characters.
+function ConvertTo-UatGoldenCompact($Golden, [int]$MaxLine) {
+    $go = [ordered]@{ match = $Golden.match; diverged = $Golden.diverged }
+    if ($Golden.errors) { $go.errors = $Golden.errors }
+    $lines = @(@($Golden.groups) | ForEach-Object { [string]$_.line })
+    $div = @($lines | Where-Object { -not $_.StartsWith('error: ') }) | Select-Object -First 1
+    $err = @($lines | Where-Object { $_.StartsWith('error: ') }) | Select-Object -First 1
+    if ($div) { $go.first = Limit-UatText $div $MaxLine }
+    elseif ($err) { $go.error = Limit-UatText $err $MaxLine }
+    return $go
 }
 
 # The summary as compact JSON for an agent: no nulls, failures capped at
@@ -514,19 +490,11 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     if ($shown) { $out.failures = @($shown) }
     if ($fails.Count -gt $MaxFailures) { $out.more_failure_groups = $fails.Count - $MaxFailures }
     $g = Get-UatField $Summary 'golden'
-    if ($g) {
-        $go = [ordered]@{ match = $g.match; diverged = $g.diverged }
-        if ($g.errors) { $go.errors = $g.errors }
-        # first: the most common divergence, never an error line; error: the
-        # most common error, only when no run diverged. Both short enough
-        # that a batch with divergences stays a few hundred characters.
-        $lines = @(@($g.groups) | ForEach-Object { [string]$_.line })
-        $div = @($lines | Where-Object { -not $_.StartsWith('error: ') }) | Select-Object -First 1
-        $err = @($lines | Where-Object { $_.StartsWith('error: ') }) | Select-Object -First 1
-        if ($div) { $go.first = Limit-UatText $div 120 }
-        elseif ($err) { $go.error = Limit-UatText $err 120 }
-        $out.golden = $go
-    }
+    if ($g) { $out.golden = ConvertTo-UatGoldenCompact $g 120 }
+    # lab-chaos D-CH7: the same shape, its first line led by the chaos
+    # header, so it gets 40 more characters than a plain golden line.
+    $cd = Get-UatField $Summary 'chaos_divergence'
+    if ($cd) { $out.chaos_divergence = ConvertTo-UatGoldenCompact $cd 160 }
     # D-SV12: only when -Heal proposed something; {row, pose, diff} with diff
     # the file name in the batch folder (batch, below, is the folder), at most
     # $MaxHeal entries and more_heal: <n> for the rest (summary.md has all).
@@ -572,11 +540,12 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
             [void]$sb.AppendLine("- $($f.count)x $($f.signature)$tag; runs: $(@($f.runs) -join ', ')")
         }
     }
-    $g = Get-UatField $Summary 'golden'
-    if ($g) {
+    foreach ($block in @(@('golden', 'Golden'), @('chaos_divergence', 'Chaos divergence from the golden'))) {
+        $g = Get-UatField $Summary $block[0]
+        if (-not $g) { continue }
         [void]$sb.AppendLine('')
         $err = if ($g.errors) { ", $($g.errors) could not be compared" } else { '' }
-        [void]$sb.AppendLine("Golden: $($g.match) match, $($g.diverged) diverged$err")
+        [void]$sb.AppendLine("$($block[1]): $($g.match) match, $($g.diverged) diverged$err")
         foreach ($l in @($g.groups)) {
             [void]$sb.AppendLine("- $($l.count)x $($l.line); runs: $(@($l.runs) -join ', ')")
         }

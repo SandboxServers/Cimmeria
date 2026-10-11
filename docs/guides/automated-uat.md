@@ -776,7 +776,7 @@ lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 
 
 1. **Install the lab from the commit you test** ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)) and make sure the lab is free: five runs of the Praxis rows hold one instance for about 25 minutes.
 2. **Leave the lab character's packet tap alone.** Don't call `lab_timeline` on it while recording: a read drains the tap, and a run whose tap dropped, was replaced or was unavailable is refused.
-3. **Run the command.** `lab golden record` launches the runs itself (default 5, up to 20), one after another on one instance unless `-Leases` splits them, in fingerprint mode. A golden is written only when every row passed in every run, every run has the same spec file hash (which must also be the spec file's hash today), server build and `SGW.exe` hash, and every fingerprint is exactly equal under the variance (D-GD6). A single run, or runs you made earlier, never become golden.
+3. **Run the command.** `lab golden record` launches the runs itself (default 5, up to 20), one after another on one instance unless `-Leases` splits them, in fingerprint mode. A golden is written only when every row passed in every run, every run has the same spec file hash (which must also be the spec file's hash today), server build and `SGW.exe` hash, and every fingerprint is exactly equal under the variance (D-GD6). A single run, runs you made earlier, or a chaos run never become golden.
 4. **On exit 6 (the runs disagree)**, read the line. If it is timing noise, such as an ambient NPC message or a periodic update, add that message to the row's `[row.golden]` `ignore` or `allow_unordered` with a comment quoting the line, and record again with five fresh runs. Never ignore a dialog, mission, step, objective, item or chat message: those are what the golden is for.
 5. **Commit** the spec's variance change and `docs/guides/uat-specs/golden/<section>.json`. The file is pretty-printed JSON, at most 128 KiB and 1 500 ordered events per row, and names its evidence runs by run id and folder (the bundles stay local). `cargo test -p cimmeria-lab` checks every committed golden parses, fits and names a section and rows that exist.
 
@@ -789,6 +789,8 @@ lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolde
 ```
 
 Every passing run is fingerprinted and compared with the committed golden under the variance the golden stored, not the spec's current tables (D-GD5). Each passing run gets `golden: match`, one divergence line, or `error: <why>` when the diff could not be made; a failed run is not compared. A divergence never changes a row's grade: when every run passed but one diverged or could not be compared, the command exits 5 (a failed row keeps 1). Nothing gates `ship.py` or CI on it (D-GD7).
+
+A chaos run (`lab uat -Chaos`) is always diffed this way: `-Chaos` implies `-DiffGolden` and stops with exit 2 when the section has no golden. Its result is reported as `chaos_divergence` instead of `golden`, each divergence line led by the run's chaos header (`chaos=flush:pack seed=7 row FS-P3: ...`), and only when a run diverged or could not be compared. The divergence is what a chaos run is for, so it does not exit 5; a diff that could not be made still does. A chaos run never becomes a golden: `lab_golden_record` refuses a run whose `run.json` carries `chaos` with `cannot_record` ([lab-chaos](../analysis/lab-chaos/README.md) D-CH7).
 
 ### Read a divergence line
 
