@@ -22,6 +22,7 @@ const failures:Record<ClientMaintenanceError|'transport'|'schema',string>={
  too_large:'The launcher could not finish the reset (too_large).',unsafe_file:'The launcher could not finish the reset (unsafe_file).',
  invalid_directory:'The launcher could not finish the reset (invalid_directory).',stale_revision:'The launcher could not finish the reset (stale_revision).',
  persistence_uncertain:'The launcher could not finish the reset (persistence_uncertain).',
+ invalid_server_list:'The launcher could not finish the reset (invalid_server_list).',
  transport:'The launcher could not reach its native side. Try again.',schema:'The launcher got an answer it does not understand.',
 };
 export const clientMaintenanceFailureText=(code:keyof typeof failures)=>failures[code];
