@@ -1018,6 +1018,17 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 
 Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
 
+## Catch-all handler warnings (TG-MER-11)
+
+Two catch-alls carry the owning player's identity now. Both are WARN.
+
+| Row | Fields | When |
+|---|---|---|
+| WARN `Datagram handler error` in `base/connect_loop/mod.rs` | `reason = "handler_error"`, `error` (a field, not in the message), `addr`, and the identity from `identity_for_addr` | A datagram handler returned an error; the identity is empty for an address with no session |
+| WARN `Unhandled cell method call` in `cell/dispatch/router.rs` | `entity_id` + `entity_name`, `account_id` + `account_name`, `player_id` + `player_name` (from `SpaceManager::player_identity`), `method_index`, `method_name`, `args_len` | A cell method index has no registered handler |
+
+Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dispatch/router.rs` sets an account id on the test entity and asserts `account_id = 77` on the WARN row.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

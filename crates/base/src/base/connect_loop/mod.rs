@@ -86,7 +86,17 @@ pub(crate) async fn run_connect_loop(
                 )
                 .await
                 {
-                    tracing::warn!(%addr, "Datagram handler error: {e}");
+                    let identity = super::session_identity::identity_for_addr(&connected, addr);
+                    tracing::warn!(
+                        %addr,
+                        account_id = identity.account_id,
+                        account_name = identity.account_name,
+                        player_id = identity.player_id,
+                        player_name = identity.player_name,
+                        reason = "handler_error",
+                        error = %e,
+                        "Datagram handler error"
+                    );
                 }
             }
             Err(e) => {
