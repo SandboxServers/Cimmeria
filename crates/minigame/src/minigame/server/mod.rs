@@ -107,7 +107,8 @@ async fn handle_connection(
     // For the closing row, which outlives the session `run_session` takes.
     let player = session.discord_player();
 
-    run_session(
+    let started = std::time::Instant::now();
+    let end = run_session(
         stream,
         &registry,
         &result_tx,
@@ -119,14 +120,73 @@ async fn handle_connection(
     .await;
 
     registry.remove_if_ticket(entity_id, &ticket).await;
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     tracing::info!(
+        event = "minigame.session_end",
         entity_id,
         entity_name = player.name(),
         player_id = player.id,
         player_name = player.name(),
         game = %game_name,
+        room_id = end.room_id, // nt:id-only a SmartFox room number allocated per session
+        end_reason = end.reason.as_str(),
+        outcome = end.reason.outcome(),
+        duration_ms,
         "Minigame session ended"
     );
+}
+
+/// Why a minigame session stopped. Each variant is one `end_reason` value on
+/// the `minigame.session_end` row; the list is closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EndReason {
+    /// The game reported a win, sent upstream as `RESULT_VICTORY`.
+    Victory,
+    /// The game reported a loss, sent upstream as `RESULT_DEFEAT`.
+    Defeat,
+    /// The client closed the socket (FIN) between frames.
+    ClientClosed,
+    /// The socket read failed with an I/O error.
+    ReadFailed,
+    /// A client frame went over the size limit.
+    FrameTooLong,
+    /// Nothing arrived from the client for the idle timeout.
+    IdleTimeout,
+    /// A send to the client failed or timed out, or the session was torn
+    /// down before the game loop started.
+    SendFailed,
+}
+
+impl EndReason {
+    /// The `end_reason` field value.
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Victory => "victory",
+            Self::Defeat => "defeat",
+            Self::ClientClosed => "client_closed",
+            Self::ReadFailed => "read_error",
+            Self::FrameTooLong => "frame_too_long",
+            Self::IdleTimeout => "idle_timeout",
+            Self::SendFailed => "send_failed",
+        }
+    }
+
+    /// The `outcome` field value: a win or a loss when one was reported,
+    /// otherwise a cancel.
+    pub(super) fn outcome(self) -> &'static str {
+        match self {
+            Self::Victory => "victory",
+            Self::Defeat => "defeat",
+            _ => "canceled",
+        }
+    }
+}
+
+/// What [`run_session`] hands back to [`handle_connection`] for the closing
+/// row: why it stopped, and the room it ran in.
+pub(super) struct SessionEnd {
+    pub(super) reason: EndReason,
+    pub(super) room_id: u32,
 }
 
 /// The read buffer and how much of it holds unconsumed bytes, carried from
@@ -187,7 +247,8 @@ impl Outbound {
 ///
 /// Takes the socket and read buffer by value because nothing after it in
 /// [`handle_connection`] needs them. `idle_timeout` ends the session as a
-/// cancel when the client sends nothing for that long.
+/// cancel when the client sends nothing for that long. The returned
+/// [`SessionEnd`] says which exit ended the session.
 async fn run_session(
     stream: TcpStream,
     registry: &SessionRegistry,
@@ -196,7 +257,7 @@ async fn run_session(
     mut game: Box<dyn MinigameInstance>,
     read: ReadState,
     idle_timeout: Duration,
-) {
+) -> SessionEnd {
     let ReadState {
         mut buf,
         len: mut buf_len,
@@ -217,6 +278,9 @@ async fn run_session(
     // rather than beside the game loop because the teardown below is shared
     // by *every* exit path, including a socket that dies mid-handshake.
     let mut result_reported = false;
+    // Every exit before the game loop is a failed send, so that is the
+    // default; the loop arms below overwrite it with their own reason.
+    let mut end_reason = EndReason::SendFailed;
 
     // Everything up to the end of the game loop lives in this labelled
     // block so a failed send can `break 'session` into the common teardown
@@ -351,6 +415,9 @@ async fn run_session(
                                             GameOutput::Send(vars) => {
                                                 let encoded = protocol::encode_extension(&vars);
                                                 if out.send(&encoded).await.is_err() {
+                                                    if !result_reported {
+                                                        end_reason = EndReason::SendFailed;
+                                                    }
                                                     game_complete = true;
                                                     break;
                                                 }
@@ -364,6 +431,7 @@ async fn run_session(
                                                     game = %game_name,
                                                     "Minigame victory",
                                                 );
+                                                end_reason = EndReason::Victory;
                                                 game_complete = true;
                                                 result_reported = true;
                                                 // Fire victory chains
@@ -387,6 +455,7 @@ async fn run_session(
                                                     game = %game_name,
                                                     "Minigame failure",
                                                 );
+                                                end_reason = EndReason::Defeat;
                                                 game_complete = true;
                                                 result_reported = true;
                                                 send_minigame_result(
@@ -443,15 +512,21 @@ async fn run_session(
                                 reason = "message_too_long",
                                 "Minigame frame over the size limit; closing",
                             );
+                            end_reason = EndReason::FrameTooLong;
                             game_complete = true;
                         }
-                        Err(ReadError::Closed | ReadError::Io(_)) => {
+                        Err(err @ (ReadError::Closed | ReadError::Io(_))) => {
                             // Connection closed
                             tracing::debug!(
                                 entity_id,
                                 entity_name = player.name(),
                                 "Minigame connection closed",
                             );
+                            end_reason = if matches!(err, ReadError::Io(_)) {
+                                EndReason::ReadFailed
+                            } else {
+                                EndReason::ClientClosed
+                            };
                             game_complete = true;
                         }
                     }
@@ -468,6 +543,7 @@ async fn run_session(
                         timeout_s = idle_timeout.as_secs(),
                         "Minigame session idle; closing",
                     );
+                    end_reason = EndReason::IdleTimeout;
                     game_complete = true;
                 }
 
@@ -486,6 +562,9 @@ async fn run_session(
                             GameOutput::Send(vars) => {
                                 let encoded = protocol::encode_extension(&vars);
                                 if out.send(&encoded).await.is_err() {
+                                    if !result_reported {
+                                        end_reason = EndReason::SendFailed;
+                                    }
                                     game_complete = true;
                                     break;
                                 }
@@ -499,6 +578,7 @@ async fn run_session(
                                     game = %game_name,
                                     "Minigame victory (tick)",
                                 );
+                                end_reason = EndReason::Victory;
                                 game_complete = true;
                                 result_reported = true;
                                 send_minigame_result(
@@ -521,6 +601,7 @@ async fn run_session(
                                     game = %game_name,
                                     "Minigame timeout",
                                 );
+                                end_reason = EndReason::Defeat;
                                 game_complete = true;
                                 result_reported = true;
                                 send_minigame_result(
@@ -567,7 +648,8 @@ async fn run_session(
             player_id = player.id,
             player_name = player.name(),
             game = %game_name,
-            "Minigame aborted -- client closed without reporting a result",
+            end_reason = end_reason.as_str(),
+            "Minigame aborted without a result",
         );
         for output in game.aborted() {
             if let GameOutput::Send(vars) = output {
@@ -600,4 +682,9 @@ async fn run_session(
     let room_del =
         format!("<msg t='sys'><body action='roomDel'><rm id='{room_id}' /></body></msg>");
     let _ = out.send(&room_del).await;
+
+    SessionEnd {
+        reason: end_reason,
+        room_id,
+    }
 }
