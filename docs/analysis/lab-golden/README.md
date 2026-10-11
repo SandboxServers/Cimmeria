@@ -90,7 +90,7 @@ new Praxis character on 2026-10-10.
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
 | GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | BlockedDependency |
-| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Writing |
+| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | packet-coder | M | 2 | GD-01, GD-02 | BlockedDependency |
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | packet-coder | M | 3 | GD-03 | BlockedDependency |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | BlockedDependency |
