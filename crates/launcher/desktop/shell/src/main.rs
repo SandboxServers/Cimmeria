@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
-mod updater_restart;
 #[cfg(test)]
 mod release_version;
+mod updater_restart;
 mod webview2;
 
 use cimmeria_launcher_engine::client_changes::{
