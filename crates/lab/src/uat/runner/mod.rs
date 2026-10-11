@@ -45,7 +45,9 @@ use super::ledger;
 use super::spec::{PoseSpec, RowSpec, SectionSpec};
 
 pub use players::SecondPlayer;
+pub(crate) use players::Who;
 pub use session::client_fingerprint;
+pub(crate) use targets::ResolvedTag;
 
 /// A parsed spec file and where it came from.
 #[derive(Debug, Clone)]

@@ -41,11 +41,28 @@ pub struct Candidate {
     pub pitch_deg: Option<f64>,
 }
 
+/// The finest bearing step a caller may ask for: 360 bearings a radius.
+pub const MIN_BEARING_STEP_DEG: f64 = 1.0;
+/// The most candidates one pose sweeps, the current pose included. The
+/// default grid is 325; a caller's grid over this is refused, and
+/// [`candidates`] stops here whatever it is given.
+pub const MAX_CANDIDATES: usize = 2000;
+
+/// How many grid candidates `grid` gives, without building them (the
+/// current pose, when there is one, adds one more).
+pub fn count(grid: &Grid) -> usize {
+    bearing_count(grid.bearing_step_deg)
+        .saturating_mul(grid.radii_m.len())
+        .saturating_mul(grid.yaw_offsets_deg.len())
+        .saturating_mul(grid.pitches_deg.len())
+}
+
 /// The current pose (when it has one) first, then radius-major, bearing
 /// ascending from the current pose's bearing rounded to the step (else 0),
 /// then yaw, then pitch. Deterministic: the same inputs give the same list.
+/// At most [`MAX_CANDIDATES`]; the rest of a larger grid is never built.
 pub fn candidates(current: Option<&PoseSpec>, grid: &Grid) -> Vec<Candidate> {
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity((count(grid) + 1).min(MAX_CANDIDATES));
     if let Some(p) = current {
         out.push(Candidate {
             radius_m: p.radius_m,
@@ -59,6 +76,9 @@ pub fn candidates(current: Option<&PoseSpec>, grid: &Grid) -> Vec<Candidate> {
         for &bearing_deg in &bearings {
             for &yaw_offset_deg in &grid.yaw_offsets_deg {
                 for &pitch_deg in &grid.pitches_deg {
+                    if out.len() >= MAX_CANDIDATES {
+                        return out;
+                    }
                     out.push(Candidate {
                         radius_m,
                         bearing_deg,
@@ -77,16 +97,24 @@ pub fn candidates(current: Option<&PoseSpec>, grid: &Grid) -> Vec<Candidate> {
 /// A step that is not finite, not positive or above 360 gives none: the
 /// `360 / step` count would be 0 or saturate, and `% n` would panic.
 fn bearings(from: Option<f64>, step: f64) -> Vec<f64> {
-    if !(step.is_finite() && step > 0.0 && step <= 360.0) {
+    let n = bearing_count(step);
+    if n == 0 {
         return Vec::new();
     }
-    let n = ((360.0 / step).round() as usize).max(1);
     // rem_euclid so a negative bearing wraps (-30 starts at 330) instead of
     // saturating to index 0.
     let first = from.map_or(0, |b| {
         ((b / step).round() as i64).rem_euclid(n as i64) as usize
     });
     (0..n).map(|i| ((first + i) % n) as f64 * step).collect()
+}
+
+/// Bearings a step gives a radius; 0 for a step [`bearings`] refuses.
+fn bearing_count(step: f64) -> usize {
+    if !(step.is_finite() && step > 0.0 && step <= 360.0) {
+        return 0;
+    }
+    ((360.0 / step).round() as usize).max(1)
 }
 
 #[cfg(test)]
@@ -193,5 +221,20 @@ mod tests {
         assert_eq!(bearings(Some(90.0), 360.0), [0.0]);
         assert_eq!(bearings(Some(-30.0), 90.0), [0.0, 90.0, 180.0, 270.0]);
         assert_eq!(bearings(Some(-100.0), 90.0), [270.0, 0.0, 90.0, 180.0]);
+    }
+
+    #[test]
+    fn count_matches_the_list_and_a_huge_grid_stops_at_the_cap() {
+        let grid = Grid::default();
+        assert_eq!(count(&grid), candidates(None, &grid).len());
+        // A step that would give a billion bearings is counted, not built.
+        let tiny = Grid {
+            bearing_step_deg: 1e-6,
+            ..Grid::default()
+        };
+        assert!(count(&tiny) > MAX_CANDIDATES);
+        let all = candidates(Some(&pose_at(10.0)), &tiny);
+        assert_eq!(all.len(), MAX_CANDIDATES);
+        assert_eq!(all[0].bearing_deg, 10.0, "the current pose still leads");
     }
 }
