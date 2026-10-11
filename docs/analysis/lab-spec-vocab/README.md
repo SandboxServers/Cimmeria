@@ -111,7 +111,7 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | SV-13 | Migrate `first-session.toml` to the new vocabulary | rust-gameserver-dev | S | 3 | SV-03, SV-04, SV-07, SV-08 | Integrated (#1453) |
 | SV-14 | Docs: authoring guide, lab guide, lab-driver brief, tool rows | documentation-writer | M | 4 | SV-12, SV-13 | Integrated (#1466) |
 | SV-15 | Acceptance: recalibrate the Praxis rows, calibrate the SGU rows, 5 clean runs | coordinator (live UAT) | M | 5 | SV-12, SV-13, D-SV9 | UATPending (paused 2026-10-11; [worknote](worknotes/SV-15.md)) |
-| SV-16 | Close-out | documentation-writer | S | 6 | all | In review (this close-out) |
+| SV-16 | Close-out | documentation-writer | S | 6 | all | Done (2026-10-11; SV-15 left resumable) |
 
 The wave-2 ledger update was #1450. Everything through SV-14 shipped to the
 colo on 2026-10-11 (release-container run 38128114603).
@@ -285,7 +285,7 @@ Leftovers carried forward (also in the [close-out handoff](handoffs/2026-10-11-s
   `client_hover_probe`.
 - `lab_login`'s fixed 15 s bridge dispatch timeout, and the display
   keep-awake engaging about 2 minutes after launch: lab infrastructure, not
-  this campaign's code (issue to be filed).
+  this campaign's code (#1483).
 - D-SV7 (a) "one pose at a time" on the colo is not enforced by
   `lab_uat_calibrate` (a call with no `pose` sweeps every pose of the row);
   the CLI and `-Heal` pass one pose each (SV-10's worknote).
