@@ -77,6 +77,31 @@ fn resolve_player_id(
     }
 }
 
+/// WARN for a contact-list call whose args are shorter than its layout. The
+/// call is dropped; the row names the entity and its account so the drop can
+/// be traced from the log alone.
+fn warn_malformed_call(
+    entity_id: u32,
+    space_mgr: &SpaceManager,
+    op: &str,
+    args_len: usize,
+    need: usize,
+) {
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        event = "contacts.call_malformed",
+        reason = "malformed_args",
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        account_id = id.account_id,
+        account_name = id.account_name,
+        op,
+        args_len,
+        need,
+        "contact list call dropped: args shorter than its layout"
+    );
+}
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 pub async fn dispatch(
@@ -148,6 +173,7 @@ pub async fn dispatch(
 
         DELETE => {
             if args.len() < 4 {
+                warn_malformed_call(entity_id, space_mgr, "contactListDelete", args.len(), 4);
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -187,6 +213,7 @@ pub async fn dispatch(
 
         RENAME => {
             if args.len() < 4 {
+                warn_malformed_call(entity_id, space_mgr, "contactListRename", args.len(), 4);
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -237,6 +264,13 @@ pub async fn dispatch(
 
         FLAGS_UPDATE => {
             if args.len() < 8 {
+                warn_malformed_call(
+                    entity_id,
+                    space_mgr,
+                    "contactListFlagsUpdate",
+                    args.len(),
+                    8,
+                );
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -279,6 +313,7 @@ pub async fn dispatch(
 
         ADD_MEMBERS => {
             if args.len() < 4 {
+                warn_malformed_call(entity_id, space_mgr, "contactListAddMembers", args.len(), 4);
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -329,6 +364,13 @@ pub async fn dispatch(
 
         REMOVE_MEMBERS => {
             if args.len() < 4 {
+                warn_malformed_call(
+                    entity_id,
+                    space_mgr,
+                    "contactListRemoveMembers",
+                    args.len(),
+                    4,
+                );
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
