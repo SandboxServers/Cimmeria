@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,257 |
-| Files with tests | 2,155 |
-| Gated in CI (every crate but CI's exclude list) | 9,869 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,265 |
+| Files with tests | 2,156 |
+| Gated in CI (every crate but CI's exclude list) | 9,877 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,695 |
 | Inventory threshold (5% of the tests) | 613 |
 
@@ -108,9 +108,9 @@ with no file in this directory yet.
 | `crates/admin-api` | `cimmeria-admin-api` | 229 | 34 | 0 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 217 | 37 | 1 | yes | none |
 | `crates/base` | `cimmeria-base` | 216 | 43 | 17 | yes | none |
-| `crates/base-world-entry` | `cimmeria-base-world-entry` | 197 | 55 | 35 | yes | none |
+| `crates/base-world-entry` | `cimmeria-base-world-entry` | 199 | 56 | 35 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
-| `crates/resources` | `cimmeria-resources` | 161 | 24 | 3 | yes | none |
+| `crates/resources` | `cimmeria-resources` | 162 | 24 | 3 | yes | none |
 | `crates/server` | `cimmeria-server` | 118 | 21 | 0 | yes | [server.md](server.md) |
 | `crates/discord` | `cimmeria-discord` | 109 | 22 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 99 | 16 | 0 | no | none |
@@ -120,7 +120,7 @@ with no file in this directory yet.
 | `crates/cell-org` | `cimmeria-cell-org` | 74 | 8 | 0 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 73 | 18 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
-| `crates/minigame` | `cimmeria-minigame` | 61 | 8 | 0 | yes | none |
+| `crates/minigame` | `cimmeria-minigame` | 66 | 8 | 0 | yes | none |
 | `crates/services` | `cimmeria-services` | 58 | 17 | 24 | yes | [services.md](services.md) |
 | `crates/cell-duel` | `cimmeria-cell-duel` | 53 | 12 | 0 | yes | none |
 | `crates/cell-pets` | `cimmeria-cell-pets` | 53 | 7 | 0 | yes | none |
