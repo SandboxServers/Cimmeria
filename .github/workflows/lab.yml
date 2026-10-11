@@ -90,6 +90,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # test-ops.ps1 checks `lab doctor`'s version test against
+          # origin/main and the commit before main's last tools/lab change.
+          fetch-depth: 0
       - name: pwsh tests
         shell: pwsh
         run: |
