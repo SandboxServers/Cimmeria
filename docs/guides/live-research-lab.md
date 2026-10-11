@@ -312,6 +312,8 @@ WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 `server_log_tail`, `server_content_reload`, `server_db_query`, and
 `server_stage_fixture`, which stages a UAT row fixture for an offline lab
 fixture character ([below](#staging-a-row-fixture-server_stage_fixture)).
+A lab-chaos build adds `server_chaos_set`, `server_chaos_clear` and
+`server_chaos_status`.
 See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
@@ -319,12 +321,18 @@ per row from the anchor to teardown, always stopped.
 
 Two of them take filters the UAT runner relies on for
 [poses and server waits](automated-uat.md#targets-poses-and-waits). Both
-are reads.
+are reads. The three `server_chaos_*` tools exist only in a server built
+with `--features lab-chaos` and refuse unless it runs with `DEVELOPER_MODE`
+on ([lab chaos](../analysis/lab-chaos/README.md)). Every refusal is a
+successful call that replies `{refused: "<reason>"}`.
 
 | Tool | Arguments | Reply |
 |---|---|---|
 | `server_entity_query` | `space_id`, `template_id`, `class_id` (2 player, 4 NPC), `tag` (a `spawnlist.tag`, exact), `radius` with `around_entity` or `around_point`; all AND-combined | `entities` (each with `tag`, `space_id`, `position`), `returned`, `total_matched`, `capped` (at 256). Always give `space_id` with `tag`: one tag matches once in every player's copy of an instanced map |
 | `server_log_tail` | `level`, `target` (the tracing target, exact), `contains` (a case-sensitive substring of the message), `since_ms` (strictly after), `limit` (default 100) | `entries` (`timestamp_ms`, `level`, `target`, `message`, `fields`), `count`, `total_buffered`, `newest_ms` |
+| `server_chaos_set` (lab-chaos builds only) | `entity_id`; `net` (`latency`, `jitter` in ms, at most 5000; `loss`, `dup` in percent with one decimal; `reorder` in packets, at most 1000) and/or `flush` (`mode` `delay` with `delay_ms` at most 60000, `reorder`, `pack` with `records` 1 to 255, or `shift` with `shift` 0, 2 to 36 or `"sweep"`); `seed` (default 0); `ttl_s` (default 300; 0 or over 1800 is refused, never clamped); `label` (the spec text logged as `level`, built from the profiles when omitted) | `{set: true, expires_in_s}`, or `{refused}` with the server's reason. Replaces the session's chaos |
+| `server_chaos_clear` (lab-chaos builds only) | `entity_id`, or none for every session | `{cleared: n}` |
+| `server_chaos_status` (lab-chaos builds only) | none | `{sessions: [{entity_id, net?, flush?, expires_in_s}]}`, by entity id (never an address), at most 10 |
 
 `server_log_tail` reads a ring of the last 500 lines (or 2 MiB). Its
 `total_buffered` counts the lines that passed the filters, while

@@ -6,6 +6,12 @@
 //! set is fixed: no dynamic registration, no eval, no filesystem access.
 
 mod abilities;
+// The lab chaos tools (CH-05) exist only in a `lab-chaos` build.
+#[cfg(feature = "lab-chaos")]
+mod chaos;
+#[cfg(test)]
+#[path = "chaos_tests.rs"]
+mod chaos_tests;
 mod console;
 mod content;
 mod db;
@@ -134,10 +140,10 @@ struct PacketTapArgs {
 #[tool_router]
 impl LabTools {
     pub fn new(state: LabState) -> Self {
-        Self {
-            state,
-            tool_router: Self::tool_router(),
-        }
+        let tool_router = Self::tool_router();
+        #[cfg(feature = "lab-chaos")]
+        let tool_router = tool_router + Self::chaos_router();
+        Self { state, tool_router }
     }
 
     /// Enumerate every `.`-console command with its arg/target contract.
