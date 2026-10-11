@@ -325,6 +325,11 @@ WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
 is the earlier, sampled signal for a pool running out of connections. See the
 [target catalog](observability-target-catalog.md).
 
+**Content engine conditions (TG-MIS-13).** `cimmeria_content_engine=debug`
+exports the crate's DEBUG rows, including the fail-closed condition decisions
+in `conditions` (`Condition::World`, `EntityTagState`, `TutorialShown`), which
+the leading `info` used to cut. See the [target catalog](observability-target-catalog.md).
+
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps

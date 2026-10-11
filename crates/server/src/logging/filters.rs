@@ -293,6 +293,13 @@ use crate::otel;
 /// `db_pool_saturated` (Pattern D, 60 s) when no connection is free. `debug`
 /// so the samples reach SigNoz. sqlx's own slow-statement WARN (250 ms) rides
 /// `sqlx::query`.
+///
+/// `cimmeria_content_engine=debug` (TG-MIS-13) exports the content engine's
+/// condition rows, including the fail-closed ones in `conditions`, which were
+/// invisible under the leading `info`. The crate row, not `conditions` alone,
+/// because its other modules (`chain`, `loader`) must reach SigNoz too for
+/// `every_in_process_crate_has_its_own_otel_row`. The `mission=info` row went:
+/// no target emits under the bare `mission` prefix.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -327,6 +334,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_chatter=debug,\
                 cimmeria_cell_org=debug,\
                 cimmeria_cell_effect_scripts=debug,\
+                cimmeria_content_engine=debug,\
                 cimmeria_base_crafting=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
@@ -360,7 +368,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 threat=info,\
                 auth=info,\
                 world_entry=info,\
-                vendor=info,progression=info,inventory=info,mission=info,\
+                vendor=info,progression=info,inventory=info,\
                 abilities=debug,\
                 crafting=debug,\
                 content.resolve=debug,\
