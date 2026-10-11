@@ -84,6 +84,7 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "launcher",
         "the player's launcher; its rows reach the server only as `launcher.*` replays",
     ),
+    ("launcher-core", "library for the launcher process; its rows reach the server only as `launcher.*` replays"),
     ("client-launch", "library for the launcher process"),
     (
         "client-hookgate",

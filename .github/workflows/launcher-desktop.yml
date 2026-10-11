@@ -5,6 +5,8 @@ on:
     paths:
       - 'crates/launcher/desktop/**'
       - 'crates/launcher/src/**'
+      - 'crates/launcher-core/**'
+      - 'crates/client-launch/**'
       - 'crates/patchset/**'
       - 'crates/upk/**'
       - 'crates/workspace-hack/**'
@@ -21,6 +23,8 @@ on:
     paths:
       - 'crates/launcher/desktop/**'
       - 'crates/launcher/src/**'
+      - 'crates/launcher-core/**'
+      - 'crates/client-launch/**'
       - 'crates/patchset/**'
       - 'crates/upk/**'
       - 'crates/workspace-hack/**'

@@ -562,7 +562,7 @@ Each spec carries a `title` and `description` for the launcher's
 into the manifest entry; they are not in the zip, so adding them to a
 published patch changes nothing a player downloads. The launcher keeps
 the same text as a fallback for manifests published without it
-(`builtin_description` in `crates/launcher/src/client_changes.rs`), and
+(`builtin_description` in `crates/launcher-core/src/client_changes.rs`), and
 the test `builtin_catalog_matches_every_patch_spec` keeps the two in step.
 
 ### 013-ihpet-world-map
