@@ -76,38 +76,69 @@ pub fn to_text(g: &GoldenFile) -> Result<String, String> {
     Ok(text)
 }
 
-/// Write the golden, creating its folder. Returns the bytes written.
+/// Write the golden, creating its folder. Returns the bytes written. The
+/// text goes to a temporary file first and is renamed over the target, so a
+/// failed write never destroys the previous golden.
 pub fn save(path: &Path, g: &GoldenFile) -> Result<usize, String> {
+    check_consistent(g)?;
     let text = to_text(g)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     }
-    std::fs::write(path, &text).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("replace {}: {e}", path.display())
+    })?;
     Ok(text.len())
 }
 
 /// Read a golden. Both its own schema and the fingerprint's must be the
 /// ones this build writes, or the rows would be compared unlike for unlike.
+/// The schemas are checked before the shape, so a golden from another
+/// schema says so instead of failing on a missing field.
 pub fn load(path: &Path) -> Result<GoldenFile, String> {
-    let text =
-        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let g: GoldenFile =
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    if g.schema != GOLDEN_SCHEMA {
+    let at = path.display();
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read {at}: {e}"))?;
+    let raw: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("{at}: {e}"))?;
+    let schema = raw.get("schema").and_then(|v| v.as_u64());
+    if schema != Some(u64::from(GOLDEN_SCHEMA)) {
         return Err(format!(
-            "{}: golden schema {} is not {GOLDEN_SCHEMA}",
-            path.display(),
-            g.schema
+            "{at}: golden schema {} is not {GOLDEN_SCHEMA}",
+            schema.map_or("missing".to_string(), |s| s.to_string())
         ));
     }
-    if g.fingerprint.schema != FINGERPRINT_SCHEMA {
+    let fp_schema = raw.pointer("/fingerprint/schema").and_then(|v| v.as_u64());
+    if fp_schema != Some(u64::from(FINGERPRINT_SCHEMA)) {
         return Err(format!(
-            "{}: fingerprint schema {} is not {FINGERPRINT_SCHEMA}",
-            path.display(),
-            g.fingerprint.schema
+            "{at}: fingerprint schema {} is not {FINGERPRINT_SCHEMA}",
+            fp_schema.map_or("missing".to_string(), |s| s.to_string())
         ));
     }
+    let g: GoldenFile = serde_json::from_value(raw).map_err(|e| format!("{at}: {e}"))?;
+    check_consistent(&g).map_err(|e| format!("{at}: {e}"))?;
     Ok(g)
+}
+
+/// The header must describe the fingerprint it carries: same section, and
+/// `rows` exactly the fingerprint's row ids in order. A hand-edited golden
+/// that disagrees would be diffed against rows nobody recorded.
+fn check_consistent(g: &GoldenFile) -> Result<(), String> {
+    if g.fingerprint.section != g.section {
+        return Err(format!(
+            "section {} but the fingerprint is for {}",
+            g.section, g.fingerprint.section
+        ));
+    }
+    let fp_rows: Vec<&str> = g.fingerprint.rows.iter().map(|r| r.row.as_str()).collect();
+    if fp_rows != g.rows.iter().map(String::as_str).collect::<Vec<_>>() {
+        return Err(format!(
+            "rows {:?} but the fingerprint holds {fp_rows:?}",
+            g.rows
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -165,11 +196,21 @@ mod tests {
         let path = golden_path(dir.path(), "gm-parity");
         assert_eq!(path, dir.path().join("golden").join("gm-parity.json"));
 
-        let g = golden_with(vec![row_with(
+        let mut row = row_with(
             "FS-01",
             vec!["c2s interact target=tag:ArmYourself_FrostBody".to_string()],
-        )]);
+        );
+        // The resolved variance is stored per row (D-GD5), so it must
+        // survive the trip too.
+        row.variance.ignore = vec!["avatarUpdate*".to_string()];
+        row.variance.allow_unordered = vec!["onEffectResults".to_string()];
+        row.variance
+            .key_args
+            .insert("onSequence".to_string(), vec!["target_id".to_string()]);
+        row.variance.late_bind_settle_ms = 750;
+        let g = golden_with(vec![row]);
         let bytes = save(&path, &g).unwrap();
+        assert!(!path.with_extension("json.tmp").exists());
         assert_eq!(bytes, std::fs::read(&path).unwrap().len());
         assert_eq!(load(&path).unwrap(), g);
     }
@@ -226,36 +267,108 @@ mod tests {
         assert!(err.contains("fingerprint schema"), "{err}");
     }
 
-    /// Every committed golden parses, fits the cap, names a section in the
-    /// committed specs, and lists only rows that section has. A missing
-    /// folder passes: no golden is committed until GD-10.
+    /// Every problem with the goldens in `specs_dir/golden/`, given each
+    /// committed section's id and row ids. Empty when all are good.
+    fn golden_problems(specs_dir: &Path, sections: &[(String, Vec<String>)]) -> Vec<String> {
+        let dir = specs_dir.join("golden");
+        let mut problems = Vec::new();
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let is_json = path
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("json"));
+            if !is_json {
+                continue;
+            }
+            let at = path.display();
+            // The committed bytes, which autocrlf or hand edits can grow.
+            let on_disk = std::fs::metadata(&path).unwrap().len();
+            if on_disk > GOLDEN_MAX_BYTES as u64 {
+                problems.push(format!("{at}: {on_disk} bytes on disk, over the cap"));
+            }
+            let g = match load(&path) {
+                Ok(g) => g,
+                Err(e) => {
+                    problems.push(e);
+                    continue;
+                }
+            };
+            if let Err(e) = to_text(&g) {
+                problems.push(format!("{at}: {e}"));
+            }
+            if path != golden_path(specs_dir, &g.section) {
+                problems.push(format!(
+                    "{at}: section {} belongs in another file",
+                    g.section
+                ));
+            }
+            match sections.iter().find(|(id, _)| *id == g.section) {
+                None => problems.push(format!("{at}: no spec section {}", g.section)),
+                Some((_, rows)) => {
+                    for row in g.rows.iter().filter(|r| !rows.contains(r)) {
+                        problems.push(format!("{at}: row {row} is not in section {}", g.section));
+                    }
+                }
+            }
+        }
+        problems
+    }
+
+    /// Every committed golden parses, fits the cap, sits at its section's
+    /// path, names a section in the committed specs, and lists only rows
+    /// that section has. A missing folder passes: no golden is committed
+    /// until GD-10.
     #[test]
     fn committed_goldens_parse_and_fit() {
         let specs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/uat-specs");
-        let dir = specs.join("golden");
-        if !dir.is_dir() {
+        if !specs.join("golden").is_dir() {
             return;
         }
-        let sections = load_sections(&specs, None).unwrap();
-        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-            let path = entry.path();
-            if !path.extension().is_some_and(|x| x == "json") {
-                continue;
-            }
-            let g = load(&path).unwrap_or_else(|e| panic!("{e}"));
-            to_text(&g).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            let section = sections
-                .iter()
-                .find(|s| s.spec.section.id == g.section)
-                .unwrap_or_else(|| panic!("{}: no spec section {}", path.display(), g.section));
-            for row in &g.rows {
-                assert!(
-                    section.spec.rows.iter().any(|r| &r.id == row),
-                    "{}: row {row} is not in section {}",
-                    path.display(),
-                    g.section
-                );
-            }
-        }
+        let sections: Vec<(String, Vec<String>)> = load_sections(&specs, None)
+            .unwrap()
+            .iter()
+            .map(|s| {
+                let rows = s.spec.rows.iter().map(|r| r.id.clone()).collect();
+                (s.spec.section.id.clone(), rows)
+            })
+            .collect();
+        let problems = golden_problems(&specs, &sections);
+        assert!(problems.is_empty(), "{problems:#?}");
+    }
+
+    /// The guard catches each way a committed golden can be wrong, so the
+    /// committed-golden test is not vacuous while the folder is empty.
+    #[test]
+    fn the_golden_guard_reports_bad_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let sections = vec![("gm-parity".to_string(), vec!["FS-01".to_string()])];
+        let good = golden_with(vec![row_with("FS-01", Vec::new())]);
+        save(&golden_path(dir.path(), "gm-parity"), &good).unwrap();
+        assert!(golden_problems(dir.path(), &sections).is_empty());
+
+        // A misnamed file, a row the spec lacks, and a tampered header.
+        save(&dir.path().join("golden").join("other.json"), &good).unwrap();
+        let mut ghost_row = golden_with(vec![row_with("FS-99", Vec::new())]);
+        ghost_row.section = "gm-parity".to_string();
+        std::fs::write(
+            golden_path(dir.path(), "gm-parity"),
+            serde_json::to_string(&ghost_row).unwrap(),
+        )
+        .unwrap();
+        let mut tampered = good.clone();
+        tampered.rows = vec!["FS-02".to_string()];
+        std::fs::write(
+            dir.path().join("golden").join("tampered.JSON"),
+            serde_json::to_string(&tampered).unwrap(),
+        )
+        .unwrap();
+
+        let problems = golden_problems(dir.path(), &sections).join("\n");
+        assert!(problems.contains("belongs in another file"), "{problems}");
+        assert!(
+            problems.contains("row FS-99 is not in section"),
+            "{problems}"
+        );
+        assert!(problems.contains("but the fingerprint holds"), "{problems}");
     }
 }

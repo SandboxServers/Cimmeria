@@ -93,7 +93,7 @@ new Praxis character on 2026-10-10.
 | GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | packet-coder | M | 2 | GD-01, GD-02 | BlockedDependency |
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | packet-coder | M | 3 | GD-03 | BlockedDependency |
-| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | BlockedDependency |
+| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | BlockedDependency |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
 | GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
@@ -180,3 +180,10 @@ then the reference, not the spec.
   (interact is 8 bytes without the 0xBD sub-slot) rather than "None for 0
   to 8 bytes". The ledger's F5 dialog 2982 is from another capture; the
   FS-P3 fixture's first `dialogButtonChoice` is 3995.
+- **GD-05.** `save` and `load` also refuse a golden whose header disagrees
+  with its fingerprint (`section`, and `rows` equal to the fingerprint's row
+  ids in order). `save` writes `<name>.json.tmp` and renames it over the
+  target. `load` checks both schemas on the raw JSON before deserialising.
+  The committed-golden guard also checks the file sits at
+  `golden_path(section)` and the on-disk byte size, and its logic is tested
+  against a temporary folder of bad goldens.
