@@ -104,22 +104,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                         on_p2(who)
                     ));
                 }
-                // lab-spec-vocab (SV-07): a tag is resolved through the
-                // server, from the player's own entity; block up front rather
-                // than fail half-way through the row. `@stand { point }`
-                // needs no server, only the arrival poll.
-                let by_tag = targets::names_a_tag(a.args.as_ref());
-                if by_tag && self.server.is_none() {
-                    out.push(format!("{t} by tag {}", targets::NEEDS_SERVER));
-                }
-                if (by_tag || t == STAND_TOOL) && !inv.has_tool(targets::FIND_TOOL) {
-                    out.push(format!(
-                        "{t} needs tool {}, which is not routed{}",
-                        targets::FIND_TOOL,
-                        on_p2(who)
-                    ));
-                }
-                // end lab-spec-vocab
+                self.check_targets(who, self.chosen_action(who, a), out);
             }
             Ok(ActionKind::Chat) => {
                 let line = a.chat.as_deref().unwrap_or_default();
@@ -159,6 +144,29 @@ impl<I: ToolInvoker> Runner<'_, I> {
             Err(e) => out.push(format!("spec: {e}")),
         }
     }
+
+    /// lab-spec-vocab (SV-07): a tag is resolved through the server, from
+    /// the player's own entity; block up front rather than fail half-way
+    /// through the row. `a` is the action `exec` will choose (a fallback
+    /// when the primary is not routed). `@stand { point }` needs no server,
+    /// only the arrival poll.
+    fn check_targets(&self, who: Who, a: &ActionSpec, out: &mut Vec<String>) {
+        let Some(t) = a.tool.as_deref() else {
+            return;
+        };
+        let by_tag = targets::names_a_tag(a.args.as_ref());
+        if by_tag && self.server.is_none() {
+            out.push(format!("{t} by tag {}", targets::NEEDS_SERVER));
+        }
+        if (by_tag || t == STAND_TOOL) && !self.on(who).has_tool(targets::FIND_TOOL) {
+            out.push(format!(
+                "{t} needs tool {}, which is not routed{}",
+                targets::FIND_TOOL,
+                on_p2(who)
+            ));
+        }
+    }
+    // end lab-spec-vocab
 
     /// A fallback runs on its parent action's client.
     pub(crate) fn action_available(&self, who: Who, a: &ActionSpec) -> bool {

@@ -12,9 +12,10 @@
 //! and action indices do not move.
 //!
 //! A `pose` given together with `name`, `entity_id` or `point` (or the
-//! `face_*` ones on the camera) wins: the client tool gets only the
-//! resolved target. Any other argument given next to a pose (`zoom`,
-//! `pitch_deg`, `rotate_camera`, `aim`, ...) wins over the pose's value.
+//! `face_*` ones on the camera) is refused: the spec validator says so, and
+//! the runner again for arguments built from `${vars}`. Any other argument
+//! given next to a pose (`zoom`, `pitch_deg`, `rotate_camera`, `aim`, ...)
+//! wins over the pose's value.
 
 use std::time::Duration;
 
@@ -26,6 +27,7 @@ use super::{RowCtx, Runner};
 use crate::uat::evidence::ActionRecord;
 use crate::uat::invoke::{ServerInvoker, ToolInvoker};
 use crate::uat::spec::{AimMode, PoseSpec};
+use crate::uat::spec_validate::pose_clashes;
 use crate::uat::tools::STAND_TOOL;
 
 /// Why a tag cannot be resolved without the server lab MCP.
@@ -47,6 +49,8 @@ pub(crate) const STAND_TOLERANCE_M: f64 = 0.5;
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ResolvedTag {
     pub tag: String,
+    /// The lab player's own entity, looked up on the way.
+    pub player: u32,
     pub entity_id: u32,
     pub space_id: u32,
     /// Live server position, metres.
@@ -61,6 +65,22 @@ pub(crate) fn names_a_tag(args: Option<&Value>) -> bool {
 
 fn find_args() -> Value {
     json!({ "include_player": true, "limit": 1, "project": false })
+}
+
+/// A stand poll: the player by id, so the client scans no other entity.
+fn poll_args(player: u32) -> Value {
+    json!({ "entity_id": player, "include_player": true, "limit": 1, "project": false })
+}
+
+/// A `pose` next to an argument it replaces, refused (SV-07).
+pub(super) fn refuse_pose_clash(tool: &str, m: &Map<String, Value>) -> Result<(), String> {
+    if !m.contains_key("pose") {
+        return Ok(());
+    }
+    match pose_clashes(tool).iter().find(|c| m.contains_key(**c)) {
+        Some(c) => Err(format!("pose with {c}: give one")),
+        None => Ok(()),
+    }
 }
 
 fn as_u32(v: &Value) -> Option<u32> {
@@ -152,6 +172,9 @@ fn apply_aim_args(pose: &mut PoseSpec, m: &Map<String, Value>) -> Result<(), Str
         Some(other) => return Err(format!("aim {other:?}: give \"entity\" or \"point\"")),
     }
     if let Some(d) = m.get("aim_dy_m") {
+        if pose.aim == AimMode::Entity {
+            return Err("aim_dy_m needs aim = \"point\"".into());
+        }
         pose.aim_dy_m = Some(d.as_f64().ok_or("aim_dy_m must be a number")?);
     }
     if pose.aim == AimMode::Point && pose.aim_dy_m.is_none() {
@@ -276,6 +299,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }}));
         Ok(ResolvedTag {
             tag: tag.to_string(),
+            player,
             entity_id,
             space_id,
             position,
@@ -314,6 +338,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if !TAG_ARGS.iter().any(|k| m.contains_key(*k)) {
             return Ok(Value::Object(m));
         }
+        refuse_pose_clash(tool, &m)?;
         let named = named_pose(&m, ctx)?;
         let from_pose = named.is_some();
         let mut pose = match named {
@@ -370,14 +395,21 @@ impl<I: ToolInvoker> Runner<'_, I> {
         Ok(Value::Object(m))
     }
 
-    /// D-SV11: `/gmgotoxyz`, then wait for arrival. `lab-fixtures` reuses it.
+    /// D-SV11: `/gmgotoxyz`, then wait until `player` (the lab player's
+    /// entity, from [`Self::player_entity`]) is there. `lab-fixtures` reuses
+    /// it: the caller's earlier `rec.ok` does not decide the outcome.
     pub(crate) async fn stand_at(
         &self,
         who: Who,
+        player: u32,
         point: [f64; 3],
         rec: &mut ActionRecord,
     ) -> Result<(), String> {
         let line = format!("/gmgotoxyz {:.2} {:.2} {:.2}", point[0], point[1], point[2]);
+        // `send_chat` reports through `rec` and the macro path only ever
+        // fails it, so start clean.
+        rec.ok = true;
+        rec.error = None;
         self.send_chat(who, &line, rec).await;
         if !rec.ok {
             return Err(rec
@@ -389,16 +421,23 @@ impl<I: ToolInvoker> Runner<'_, I> {
         // Only the last poll is kept: 20 identical reads say nothing more.
         let mut dist: Option<f64> = None;
         let mut why = String::new();
-        let last = loop {
-            tokio::time::sleep(STAND_POLL).await;
-            let args = find_args();
+        let mut last = Value::Null;
+        loop {
+            // The deadline bounds the whole wait: the last sleep is cut
+            // short, and none starts past it.
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            tokio::time::sleep(STAND_POLL.min(left)).await;
+            let args = poll_args(player);
             let out = self.on(who).call(FIND_TOOL, args.clone()).await;
             // Server metres against server metres: the stand point is.
             let at = out
                 .ok
                 .then(|| out.json.pointer("/player/position/server").and_then(as_xyz))
                 .flatten();
-            let last = json!({ "tool": FIND_TOOL, "args": args, "ok": out.ok, "position": at.map(point_json) });
+            last = json!({ "tool": FIND_TOOL, "args": args, "ok": out.ok, "position": at.map(point_json) });
             match at {
                 Some(p) => {
                     let d = horizontal(p, point);
@@ -414,10 +453,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                         .unwrap_or_else(|| "no /player/position/server".into());
                 }
             }
-            if tokio::time::Instant::now() >= deadline {
-                break last;
-            }
-        };
+        }
         rec.calls.push(last);
         let secs = STAND_TIMEOUT.as_secs();
         Err(match dist {
@@ -440,11 +476,19 @@ impl<I: ToolInvoker> Runner<'_, I> {
         rec: &mut ActionRecord,
     ) {
         rec.tool = Some(STAND_TOOL.into());
-        let point = match self.stand_point_of(who, args, ctx, rec).await {
+        let (point, player) = match self.stand_point_of(who, args, ctx, rec).await {
             Ok(p) => p,
             Err(e) => return fail(rec, e),
         };
-        let res = self.stand_at(who, point, rec).await;
+        // A point stand has not looked the player up yet.
+        let player = match player {
+            Some(id) => id,
+            None => match self.player_entity(who, rec).await {
+                Ok(id) => id,
+                Err(e) => return fail(rec, e),
+            },
+        };
+        let res = self.stand_at(who, player, point, rec).await;
         // `send_chat` names the sender it used; the record is the stand.
         rec.tool = Some(STAND_TOOL.into());
         rec.result = json!({ "stand_point": point_json(point) });
@@ -457,15 +501,18 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
     }
 
+    /// The stand point, and the player's entity when resolving a tag
+    /// already looked it up.
     async fn stand_point_of(
         &self,
         who: Who,
         args: &Value,
         ctx: &RowCtx,
         rec: &mut ActionRecord,
-    ) -> Result<[f64; 3], String> {
+    ) -> Result<([f64; 3], Option<u32>), String> {
         let empty = Map::new();
         let m = args.as_object().unwrap_or(&empty);
+        refuse_pose_clash(STAND_TOOL, m)?;
         let pose = match named_pose(m, ctx)? {
             Some(p) => p,
             None if m.contains_key("tag") => pose_of_args(m, true)?,
@@ -473,10 +520,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 return m
                     .get("point")
                     .and_then(as_xyz)
+                    .map(|p| (p, None))
                     .ok_or_else(|| "@stand needs pose, tag or point = { x, y, z }".into());
             }
         };
         let target = self.resolve_pose(who, &pose, rec).await?;
-        Ok(pose.stand_point(target.position))
+        Ok((pose.stand_point(target.position), Some(target.player)))
     }
 }
