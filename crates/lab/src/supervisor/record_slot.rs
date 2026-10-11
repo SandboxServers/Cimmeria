@@ -10,14 +10,11 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use super::world::memory::PlayerCamera;
 use super::Supervisor;
 use crate::uat::record::sampler::{BoxedJson, ClientProbe};
 
-// The items below are dead until LR-07 wires the record tools in
-// (cimmeria-lab is a binary); the tests use them all.
-
 /// A running recording: where it writes, its counters, and how to stop it.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug)]
 pub struct RecordHandle {
     /// `recording_id`: the start time and the instance.
@@ -26,6 +23,9 @@ pub struct RecordHandle {
     pub dir: PathBuf,
     /// The section being played, as the start line names it.
     pub section: String,
+    /// Where stop writes the draft (`<specs_dir>/drafts/`), when start was
+    /// given one.
+    pub specs_dir: Option<PathBuf>,
     /// Host clock at begin, ms since the epoch.
     pub started_ms: i64,
     /// Ticks written so far (the sampler task counts).
@@ -40,7 +40,6 @@ pub struct RecordHandle {
 }
 
 /// What `lab_record_status` reports about the slot.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordStatus {
     /// The recording's id.
@@ -58,28 +57,28 @@ pub struct RecordStatus {
     pub running: bool,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Default)]
 struct Slot {
     handle: Option<RecordHandle>,
     /// A start holds the slot between `reserve` and `arm`.
     reserved: bool,
+    /// The player controller and camera `camera_read` found last, so a
+    /// tick re-checks two vtables instead of rescanning every actor. Dropped
+    /// whenever a read fails.
+    camera: Option<PlayerCamera>,
 }
 
 /// This instance's recording, if any.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Default)]
 pub struct RecordSlot(Mutex<Slot>);
 
 /// The right to arm this instance's slot; dropping it unarmed frees the
 /// slot for the next start.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug)]
 pub struct RecordReservation {
     slot: Arc<RecordSlot>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl RecordSlot {
     fn lock(&self) -> MutexGuard<'_, Slot> {
         // A panic while holding the lock leaves a valid slot behind.
@@ -104,9 +103,38 @@ impl RecordSlot {
         })
     }
 
-    /// Empty the slot (stop collects the handle and awaits its task).
+    /// Empty the slot whatever it holds (the tests; the stop uses
+    /// [`Self::take_if`]).
+    #[cfg(test)]
     pub fn take(&self) -> Option<RecordHandle> {
         self.lock().handle.take()
+    }
+
+    /// Empty the slot only when it holds `recording_id`: the stop's gate.
+    /// Any other id leaves the recording armed and running, and the error
+    /// names what is there.
+    pub fn take_if(&self, recording_id: &str) -> Result<RecordHandle, String> {
+        let mut slot = self.lock();
+        match &slot.handle {
+            Some(h) if h.recording_id == recording_id => {
+                Ok(slot.handle.take().expect("matched above"))
+            }
+            Some(h) => Err(format!(
+                "recording {recording_id} is not this instance's; {} ({}) is",
+                h.recording_id, h.section
+            )),
+            None => Err("no recording on this instance".to_string()),
+        }
+    }
+
+    /// The camera pair the last good `camera_read` used.
+    pub(super) fn cached_camera(&self) -> Option<PlayerCamera> {
+        self.lock().camera
+    }
+
+    /// Keep `c` for the next `camera_read`; `None` after a failed read.
+    pub(super) fn cache_camera(&self, c: Option<PlayerCamera>) {
+        self.lock().camera = c;
     }
 
     /// The armed recording's id, section, counters and whether its task is
@@ -123,7 +151,6 @@ impl RecordSlot {
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl RecordReservation {
     /// Arm `h`, the final check: if a recording is somehow running here,
     /// `h` is refused and told to stop (not aborted), so its `finish`
@@ -146,7 +173,6 @@ impl Drop for RecordReservation {
 }
 
 /// Why the slot cannot take a new recording: one is still running.
-#[cfg_attr(not(test), allow(dead_code))]
 fn busy(slot: &Slot) -> Option<String> {
     slot.handle
         .as_ref()
@@ -161,9 +187,6 @@ fn busy(slot: &Slot) -> Option<String> {
 
 impl Supervisor {
     /// This instance's recording slot.
-    // Unused until LR-07, in the test build too: no test here builds a
-    // whole Supervisor.
-    #[allow(dead_code)]
     pub fn record_slot(&self) -> &Arc<RecordSlot> {
         &self.record
     }
@@ -194,6 +217,7 @@ mod tests {
             recording_id: id.to_string(),
             dir: PathBuf::from("records").join(id),
             section: "first-session".to_string(),
+            specs_dir: None,
             started_ms: 1,
             ticks: Arc::new(AtomicU32::new(3)),
             anchors: Arc::new(AtomicU32::new(1)),
@@ -282,6 +306,19 @@ mod tests {
         );
         b_task.abort();
         slot.take().unwrap().done.abort();
+    }
+
+    /// LR-07's stop gate: a wrong id leaves the recording armed.
+    #[tokio::test]
+    async fn only_the_running_id_empties_the_slot() {
+        let slot = Arc::new(RecordSlot::default());
+        assert!(slot.take_if("a").unwrap_err().contains("no recording"));
+        slot.reserve().unwrap().arm(handle("a", forever())).unwrap();
+        let err = slot.take_if("b").unwrap_err();
+        assert!(err.contains("a (first-session) is"), "{err}");
+        assert_eq!(slot.status().unwrap().recording_id, "a");
+        slot.take_if("a").unwrap().done.abort();
+        assert!(slot.status().is_none());
     }
 
     #[tokio::test]

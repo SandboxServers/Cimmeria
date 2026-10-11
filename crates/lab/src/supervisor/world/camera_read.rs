@@ -1,8 +1,5 @@
 //! The camera readout without the camera tool (lab-record LR-06).
 
-// Dead until LR-07 wires the record tools in (cimmeria-lab is a binary).
-#![cfg_attr(not(test), allow(dead_code))]
-
 use serde_json::Value;
 
 use super::io::{LiveWorld, WorldIo};
@@ -14,7 +11,15 @@ impl Supervisor {
     /// `ensure_focus`, no `look`. A recording samples this while a person
     /// plays, and the person owns the mouse (D-LR2): turning virtual focus
     /// on would fight their input.
+    ///
+    /// The controller and camera found by one read are kept for the next
+    /// (re-checked by vtable before use), so a tick every 500 ms does not
+    /// rescan the actor list; a failed read drops them.
     pub(crate) async fn camera_read(&self) -> Result<Value, String> {
-        LiveWorld::new(self).camera_readout().await
+        let mut world = LiveWorld::new(self).with_camera(self.record.cached_camera());
+        let out = world.camera_readout().await;
+        let keep = out.as_ref().ok().and_then(|_| world.camera());
+        self.record.cache_camera(keep);
+        out
     }
 }

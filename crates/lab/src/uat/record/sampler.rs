@@ -38,9 +38,6 @@ mod server;
 
 use reads::{camera_sample, find_session, named_target, ui_sample};
 pub use reads::{check_character, recording_id, snapshot_sql};
-// Unused until LR-07 builds the guard in the sampler task (the tests reach
-// it through the module).
-#[allow(unused_imports)]
 pub use relog::TapStopGuard;
 use relog::{start_tap, TAP_REPLACED};
 use server::{call_ok, db_snapshot, is_noise, lookup_player_id};
@@ -268,6 +265,7 @@ impl<'a> Sampler<'a> {
     }
 
     /// The tapped player entity (it changes on a relog).
+    #[cfg(test)]
     pub fn player_entity(&self) -> u32 {
         self.entity
     }

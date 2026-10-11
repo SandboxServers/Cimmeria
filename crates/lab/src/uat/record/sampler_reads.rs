@@ -3,8 +3,8 @@
 
 use serde_json::Value;
 
+use super::super::decode::{decode_call, Call};
 use super::super::log::{CameraSample, DialogSample, EntitySample};
-use crate::supervisor::entity_table::decode_hex;
 
 /// D-LR2: the character name is the one value spliced into SQL as text, so
 /// it must match `^[A-Za-z][A-Za-z ]{0,63}$` before any call is made.
@@ -76,30 +76,20 @@ pub(super) fn find_session(sessions: &Value, player_id: i32) -> Result<u32, Stri
     }
 }
 
-/// The entity an inbound call names (contract mapping table): the target
-/// of `setTargetID` and `interact`, the second INT32 of `useItem` and
-/// `useAbility`. Args start after the 4-byte entity prefix, plus the
-/// sub-slot byte when `msg_id` is `0xBD`. 0 (`interact`'s "current
-/// target") names nothing.
-// TODO(LR-02): read this through `decode::decode_call` once it merges.
+/// The entity an inbound call names (contract mapping table), as LR-02's
+/// decoder reads it: the target of `setTargetID`, `interact`, `useItem` and
+/// `useAbility`. 0 (`interact`'s "current target") names nothing, and
+/// neither does an id that was negative on the wire.
 pub(super) fn named_target(row: &Value) -> Option<u32> {
-    if row.get("dir").and_then(Value::as_str) != Some("in") {
-        return None;
+    match decode_call(row)? {
+        Call::SetTarget { target }
+        | Call::Interact { target }
+        | Call::UseItem { target, .. }
+        | Call::UseAbility { target, .. } => {
+            Some(target).filter(|&id| id != 0 && i32::try_from(id).is_ok())
+        }
+        _ => None,
     }
-    let nth = match row.get("msg_name").and_then(Value::as_str)? {
-        "setTargetID" | "interact" => 0,
-        "useItem" | "useAbility" => 1,
-        _ => return None,
-    };
-    let args = decode_hex(row.get("args_hex").and_then(Value::as_str)?).ok()?;
-    let start = if row.get("msg_id").and_then(Value::as_u64) == Some(0xBD) {
-        5
-    } else {
-        4
-    };
-    let at = start + 4 * nth;
-    let id = i32::from_le_bytes(args.get(at..at + 4)?.try_into().ok()?);
-    u32::try_from(id).ok().filter(|&id| id != 0)
 }
 
 /// `server_entity_get`'s `{entity}` as a sample; `None` when the entity

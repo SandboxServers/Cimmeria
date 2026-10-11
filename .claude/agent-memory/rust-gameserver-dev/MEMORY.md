@@ -89,6 +89,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
 - [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
+- [lab-record-tap-fixture-and-recorder-seams](lab-record-tap-fixture-and-recorder-seams.md) — tap fixtures need a cell msg_id + method_index for decode_call; Recorder test seams.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -104,6 +105,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — Tailer refresh() retain drops other roots' files (egui tail ships nothing once sessions/ exists); tick order is HashMap order; opt-out discard counter.
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — one refresh per tick; NTFS coarse creation times vs baseline; same-tick ties; shared queue across sessions; undo must not bump discards.
 - [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`; macOS job layout and bash 3.2 trap.
+- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — refresh() drops other roots' files; one refresh per tick; NTFS coarse times; shared queue; undo must not bump discards.
 
 ## Injected client DLLs
 

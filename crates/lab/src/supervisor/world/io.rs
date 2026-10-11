@@ -111,6 +111,18 @@ impl<'a> LiveWorld<'a> {
         }
     }
 
+    /// Start from a controller and camera an earlier read found; they are
+    /// re-checked by vtable before use, like the pair this one caches.
+    pub(super) fn with_camera(mut self, camera: Option<PlayerCamera>) -> Self {
+        self.camera = camera;
+        self
+    }
+
+    /// The controller and camera this world last resolved.
+    pub(super) fn camera(&self) -> Option<PlayerCamera> {
+        self.camera
+    }
+
     /// The player's controller and camera: the cached pair while both
     /// vtables still match, else a fresh actor scan.
     async fn player_camera(&mut self) -> Result<PlayerCamera, String> {
