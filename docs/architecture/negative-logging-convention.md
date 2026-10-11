@@ -1085,6 +1085,18 @@ Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_log
 
 Guard: `short_dialog_choice_payload_logs_malformed_args` in `interaction/dialog_choice_gate_tests.rs` sends a 4-byte `dialogButtonChoice` and asserts the WARN with `reason = "malformed_args"` and that the method is still consumed. `short_interact_payload_logs_malformed_args` (same file) sends a 3-byte `interact` and asserts `args_len=3` and `need=4`. `interact_without_player_id_logs_one_missing_row_per_click` (same file) asserts exactly one `player_id_missing` row with `call=interact`.
 
+## Base mission persist rows (TG-MIS-11)
+
+`handle_mission_update` and `try_query_saved_missions` (`base/world_entry/methods/missions/mod.rs` in `cimmeria-base-methods`). The persist rows used to carry no step, and a failed write put the error in the message. Every row below has `player_id`, `player_name`, `mission_id` and `mission_name`; `current_step_id` is a number (absent when the mission has no current step) beside `current_step_name`. A failed saved-missions read keeps its TG-DB-07 row (`missions_query_failed`, above), so `query_failed` is not used here.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| DEBUG | none | `Mission state persisted`: the UPSERT succeeded | `current_step_id`, `current_step_name`, `status`, `repeats` |
+| ERROR | `db_write_failed` | `Failed to persist mission` (the UPSERT) or `Failed to delete abandoned mission` (an abandon with no repeats) | `current_step_id`, `current_step_name`, `status`, `error` |
+| DEBUG | `no_db_pool` | `MissionUpdate: no DB pool` (the write) or `Saved missions not read: no DB pool` (the read); dev only | identity only |
+
+Guards: `live_db_persist_row_carries_step_and_reason` in `missions/tests.rs` asserts `current_step_id=7` on the persisted row, then writes for a player with no `sgw_player` row so the foreign key fails, and asserts the ERROR with `reason = "db_write_failed"`, `current_step_id` and `error`. `saved_missions_read_without_a_pool_logs_no_db_pool` (same file) pins the no-pool read row.
+
 ## Unsent onEndAidWait on respawn (TG-CMB-10)
 
 `handle_respawn` (`cell/respawn/mod.rs` in `cimmeria-cell-interactions`) closes the Defeat Window with `onEndAidWait` before it reanchors or travels. A closed base channel leaves the window open on the client, so the failed send is logged rather than dropped. The cross-world INFO row carries the identity too.

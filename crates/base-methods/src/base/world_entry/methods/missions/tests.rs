@@ -237,8 +237,8 @@ async fn live_db_query_saved_missions_clamps_out_of_range_status_to_i8_min() {
 #[tokio::test]
 async fn live_db_persist_row_carries_step_and_reason() {
     let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE + 300;
-    let player_id = TEST_PLAYER_BASE + 301;
+    let account_id = TEST_PLAYER_BASE + 60;
+    let player_id = TEST_PLAYER_BASE + 61;
     cleanup(&pool, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
     let db_pool = Some(Arc::new(pool.clone()));
@@ -266,7 +266,7 @@ async fn live_db_persist_row_carries_step_and_reason() {
     );
 
     // No `sgw_player` row for this id: the FK rejects the UPSERT.
-    let orphan_player_id = TEST_PLAYER_BASE + 302;
+    let orphan_player_id = TEST_PLAYER_BASE + 62;
     handle_mission_update(
         orphan_player_id,
         12345,
@@ -293,4 +293,21 @@ async fn live_db_persist_row_carries_step_and_reason() {
     );
 
     cleanup(&pool, account_id, player_id).await;
+}
+
+/// TG-MIS-11: with no pool (dev only), the saved-missions read says so at
+/// DEBUG with `reason = "no_db_pool"` instead of silently returning none.
+#[tokio::test]
+async fn saved_missions_read_without_a_pool_logs_no_db_pool() {
+    let capture = LogCapture::install();
+    let missions = try_query_saved_missions(&None, TEST_PLAYER_BASE + 63)
+        .await
+        .expect("no pool reads as none");
+    assert!(missions.is_empty());
+    assert!(
+        capture
+            .find_event(Level::DEBUG, "Saved missions not read", "no_db_pool")
+            .is_some(),
+        "the no-pool read must log DEBUG reason = no_db_pool"
+    );
 }

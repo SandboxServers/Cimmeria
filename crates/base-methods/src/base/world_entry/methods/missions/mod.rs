@@ -42,7 +42,15 @@ pub async fn try_query_saved_missions(
 ) -> Result<Vec<SavedMission>, sqlx::Error> {
     let pool = match db_pool {
         Some(p) => p,
-        None => return Ok(vec![]),
+        None => {
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                reason = "no_db_pool",
+                "Saved missions not read: no DB pool"
+            );
+            return Ok(vec![]);
+        }
     };
 
     #[derive(sqlx::FromRow)]
@@ -112,7 +120,7 @@ pub async fn try_query_saved_missions(
         mission_id,
         mission_name = tracing::field::Empty,
         status,
-        ?current_step_id,
+        current_step_id,
         current_step_name = tracing::field::Empty,
         repeats,
     ),
