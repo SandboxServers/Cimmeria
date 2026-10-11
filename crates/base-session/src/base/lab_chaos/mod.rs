@@ -69,12 +69,12 @@ pub enum FlushChaos {
     /// keeping each entity's phase-1 record whole.
     Reorder { seed: u64 },
     /// The pre-#1341-mitigation shape: one single-packet phase-1 bundle of up
-    /// to `records`. From 1 to 255.
+    /// to `records`. From 1 to [`PACK_RECORDS_MAX`].
     Pack { records: u16 },
-    /// Prepend one filler message of `len` bytes to the phase-1 bundle.
-    /// 0 (no filler) or 2..=36: the filler is `updateFrequencyNotification`
-    /// (0x02, exactly 2 bytes) or `voiceData` (0x33, 3 to 36), and no message
-    /// is 1 byte long.
+    /// Prepend `len` bytes of filler to a single-packet phase-1 bundle.
+    /// 0 (no filler) or 2..=[`SHIFT_LEN_MAX`]: `updateFrequencyNotification`
+    /// (0x02, exactly 2 bytes) for 2, `voiceData` (0x33, 3 to 36) for 3 to
+    /// 36, and both for 37 and 38. No message is 1 byte long.
     Shift { len: u16 },
     /// Shift by a seeded length, a new one per flush.
     ShiftSweep { seed: u64 },
@@ -464,17 +464,37 @@ fn check_net(net: &NetChaos) -> Result<(), ChaosRefused> {
     Ok(())
 }
 
+/// The longest shift filler: `updateFrequencyNotification` (2 bytes) plus a
+/// 36-byte `voiceData`. 38 is the 1-byte residue class plus one record
+/// (37), which reaches every cursor a 1-byte filler would (CH-07 filler
+/// design, `docs/analysis/lab-chaos/worknotes/CH-07-filler.md`).
+#[cfg(feature = "lab-chaos")]
+pub const SHIFT_LEN_MAX: u16 = 38;
+
+/// One phase-1 introduction record: CREATE_ENTITY (11 bytes) then
+/// UPDATE_AVATAR (26 bytes).
+#[cfg(feature = "lab-chaos")]
+pub const PHASE1_RECORD_LEN: u16 = 37;
+
+/// The most records a single-packet phase-1 bundle holds with the longest
+/// filler ahead of them (34). `Pack` is refused above it rather than
+/// clamped, so a run never silently tests a smaller bundle than it asked for.
+#[cfg(feature = "lab-chaos")]
+pub const PACK_RECORDS_MAX: u16 = ((cimmeria_mercury::packet::FRAGMENT_BODY_SIZE
+    - SHIFT_LEN_MAX as usize)
+    / PHASE1_RECORD_LEN as usize) as u16;
+
 #[cfg(feature = "lab-chaos")]
 fn check_flush(flush: &FlushChaos) -> Result<(), ChaosRefused> {
     match *flush {
         FlushChaos::Delay { ms } if ms > 60_000 => {
             Err(ChaosRefused::BadKnob("flush delay is over 60000 ms"))
         }
-        FlushChaos::Pack { records } if !(1..=255).contains(&records) => {
-            Err(ChaosRefused::BadKnob("flush pack records is not 1 to 255"))
-        }
-        FlushChaos::Shift { len } if len != 0 && !(2..=36).contains(&len) => {
-            Err(ChaosRefused::BadKnob("flush shift len is not 0 or 2 to 36"))
+        FlushChaos::Pack { records } if !(1..=PACK_RECORDS_MAX).contains(&records) => Err(
+            ChaosRefused::BadKnob("flush pack records is not 1 to 34 (one packet)"),
+        ),
+        FlushChaos::Shift { len } if len != 0 && !(2..=SHIFT_LEN_MAX).contains(&len) => {
+            Err(ChaosRefused::BadKnob("flush shift len is not 0 or 2 to 38"))
         }
         _ => Ok(()),
     }
