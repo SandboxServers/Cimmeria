@@ -67,6 +67,8 @@ When every step, wait, coordinate and camera move is in the spec, no model is ne
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
 ```
 
+While a batch runs, [`lab watch`](live-research-lab.md#commands) in another terminal shows it live (each lane's run, the row under way, the last failure), and `lab watch -Once -Json` gives an agent a snapshot without waiting for the batch to end.
+
 **`-Heal`.** When a row fails because a pose's click, target or camera move missed in the world, its summary carries a heal hint, `heal: { pose, step }`, with `step` one of `hover`, `on_screen`, `face`, `abs_pitch` or `abs_yaw` (the camera steps only when the closed loop ran and missed, not when the readout was missing). With `-Heal` (it needs `-Leases 1`, else exit 2 before the daemon is asked), `lab uat` then recalibrates each distinct `(row, pose)` pair of the failed runs' hints with one `lab_uat_calibrate` call each, on the batch's instance, at the default budget ([Calibrate a row](#calibrate-a-row)). Each proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed. `batch.json`, `summary.md` and the `-Json` object gain `heal: [{row, pose, diff}]` only when a proposal was written (`-Json` lists at most 3, then `more_heal: <n>`), and the command then exits **8**, over every other code, 1 and 5 included. Nothing is applied: the spec file is never written. With no hints it prints `heal: no failed row carries a heal hint` and exits as the batch would. A heal adds up to 15 minutes of lab time per pose; Ctrl+C during the batch skips it, and Ctrl+C during the heal keeps the diffs already written.
 
 ### Hand a run to a cheap agent
