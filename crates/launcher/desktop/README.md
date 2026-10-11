@@ -215,8 +215,8 @@ uncertainty retaining evidence. Dated results live in the implementation ledger.
 
 `install_progress::ProgressSink::latest()` retains one progress value through a
 Tokio watch channel. A stalled or disconnected observer cannot build a backlog
-or fail installation. The existing egui worker uses the legacy adapter and
-preserves its event stream. Progress is observational, not an operation journal
+or fail installation. The legacy adapter keeps the unbounded event stream the
+retired egui launcher's worker read. Progress is observational, not an operation journal
 or proof that the game is ready.
 
 Before HTTP, shared seed extraction checks an existing cache's complete declared

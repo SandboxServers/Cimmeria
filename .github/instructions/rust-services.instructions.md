@@ -32,7 +32,7 @@ Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the 
 
 1. Iterate with `cargo check -p <crate>` on the crate you changed. `cimmeria-services` is a small facade over the split crates, so `-p cimmeria-services` doesn't cover them.
 2. Agent and worker `cargo` calls go through the build lane, `tools/build-lane/lane.sh`, which limits how many builds run on the machine at once.
-3. Workspace builds for final validation only, with the seven `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
+3. Workspace builds for final validation only, with the six `--exclude` flags CI uses (`.github/workflows/test.yml`), under `lane.sh --exclusive`.
 
 ## File caps
 

@@ -32,7 +32,7 @@ $root = (git rev-parse --show-toplevel).Trim()
 Set-Location $root
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
-$excludes = @('cimmeria-app', 'cimmeria-content-editor', 'cimmeria-scene-editor', 'sgw-launcher',
+$excludes = @('cimmeria-app', 'cimmeria-content-editor', 'cimmeria-scene-editor',
     'cimmeria-client-telemetry', 'cimmeria-client-patches', 'cimmeria-lab') | ForEach-Object { '--exclude', $_ }
 
 # --- memory sampler ---------------------------------------------------------------------------

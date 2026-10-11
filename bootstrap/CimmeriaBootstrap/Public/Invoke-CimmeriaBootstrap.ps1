@@ -10,7 +10,7 @@ function Invoke-CimmeriaBootstrap {
         Step 2: Install-CimmeriaDependencies     (PostgreSQL server binaries)
         Step 3: Build-CimmeriaServer             (cargo build --workspace)
         Step 4: Build admin panel                (npm install + cargo build) [if -WithAdmin]
-        Step 5: Build launcher                   (cargo build sgw-launcher) [if -WithLauncher]
+        Step 5: Install-CimmeriaLauncher         (released zip from launcher-current) [if -WithLauncher]
         Step N: Initialize-CimmeriaDatabase      (PostgreSQL + schema)
         Step N: Start-CimmeriaServer             (launch cimmeria-server)
 
@@ -27,7 +27,8 @@ function Invoke-CimmeriaBootstrap {
         Also build the Tauri admin panel (requires Node.js).
 
     .PARAMETER WithLauncher
-        Also build the SGW game launcher.
+        Also download the released desktop launcher and unpack it into
+        launcher\ beside the server. Runs with -SkipBuild too: nothing is built.
 
     .PARAMETER NoLaunch
         Stop after setup - do not launch the server.
@@ -56,7 +57,7 @@ function Invoke-CimmeriaBootstrap {
 
     .EXAMPLE
         Invoke-CimmeriaBootstrap -WithAdmin -WithLauncher
-        # Build everything including admin panel and launcher
+        # Build everything including the admin panel; fetch the launcher
 
     .EXAMPLE
         Invoke-CimmeriaBootstrap -SkipBuild -ResetDatabase -NoLaunch
@@ -89,8 +90,8 @@ function Invoke-CimmeriaBootstrap {
     $steps = @("Prerequisites", "Dependencies", "Build Server")
     if (-not $SkipBuild) {
         if ($WithAdmin) { $steps += "Build Admin Panel" }
-        if ($WithLauncher) { $steps += "Build Launcher" }
     }
+    if ($WithLauncher) { $steps += "Install Launcher" }
     $steps += "Game Data"
     $steps += "Database"
     if ($WithReToolchain) { $steps += "RE Toolchain" }
@@ -154,7 +155,7 @@ function Invoke-CimmeriaBootstrap {
             Write-Host ""
             Write-Host "--- Step $step/$totalSteps`: Build Server ---" -ForegroundColor Cyan
             try {
-                Build-CimmeriaServer -Configuration $Configuration -WithAdmin:$WithAdmin -WithLauncher:$WithLauncher
+                Build-CimmeriaServer -Configuration $Configuration -WithAdmin:$WithAdmin
             } catch {
                 Write-Host ""
                 Write-Host "FAILED at Step $step`: Build-CimmeriaServer" -ForegroundColor Red
@@ -176,24 +177,24 @@ function Invoke-CimmeriaBootstrap {
                     Write-Host "  The admin panel is optional. The game server will work without it." -ForegroundColor DarkGray
                 }
             }
-
-            # Step 5: Build launcher (optional)
-            if ($WithLauncher) {
-                $step++
-                Write-Host ""
-                Write-Host "--- Step $step/$totalSteps`: Build Launcher ---" -ForegroundColor Cyan
-                try {
-                    Build-CimmeriaLauncher -Configuration $Configuration
-                } catch {
-                    Write-Host ""
-                    Write-Host "WARNING: Step $step (Build-CimmeriaLauncher) failed - continuing" -ForegroundColor Yellow
-                    Write-Host "  $_" -ForegroundColor Yellow
-                    Write-Host "  The launcher is optional. Use Update-CimmeriaClient instead." -ForegroundColor DarkGray
-                }
-            }
         } else {
             Write-Host ""
             Write-Host "--- Build steps: Skipped (-SkipBuild) ---" -ForegroundColor DarkGray
+        }
+
+        # Launcher (optional): the released zip, not a build
+        if ($WithLauncher) {
+            $step++
+            Write-Host ""
+            Write-Host "--- Step $step/$totalSteps`: Install Launcher ---" -ForegroundColor Cyan
+            try {
+                Install-CimmeriaLauncher
+            } catch {
+                Write-Host ""
+                Write-Host "WARNING: Step $step (Install-CimmeriaLauncher) failed - continuing" -ForegroundColor Yellow
+                Write-Host "  $_" -ForegroundColor Yellow
+                Write-Host "  The launcher is optional. Use Update-CimmeriaClient instead." -ForegroundColor DarkGray
+            }
         }
 
         # Game Data (PAK files from client)

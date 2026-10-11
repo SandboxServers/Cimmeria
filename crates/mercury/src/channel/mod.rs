@@ -6,8 +6,9 @@
 //!
 //! # Module layout
 //!
-//! - [`state`] — lifecycle state ([`ChannelState`]) and per-packet TX/RX
-//!   bookkeeping records ([`TxEntry`], [`RxEntry`]).
+//! - [`state`] — lifecycle state ([`ChannelState`]), the peer's
+//!   [`LogIdentity`] and per-packet TX/RX bookkeeping records
+//!   ([`TxEntry`], [`RxEntry`]).
 //! - [`channel_core`] — the [`Channel`] struct and its state-machine impl.
 //! - [`ack`] — inbound ACK processing (one ACK retires the one packet it
 //!   names) and the transmit-hole watchdog.
@@ -42,7 +43,8 @@ pub use ack::TxHoleStall;
 pub use channel_core::Channel;
 pub use rx_order::{RxDelivery, RxOutcome, RxStall};
 pub use state::{
-    AbandonedPacket, ChannelHealth, ChannelState, MessageNames, RxEntry, TxEntry, TxHole,
+    AbandonedPacket, ChannelHealth, ChannelState, LogIdentity, MessageNames, RxEntry, TxEntry,
+    TxHole,
 };
 pub use tick::TickActions;
 

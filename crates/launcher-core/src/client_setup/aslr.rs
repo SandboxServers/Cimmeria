@@ -145,7 +145,7 @@ mod tests {
     // Manual check: the stock 0.8348 SGW.exe with ASLR cleared must equal a
     // known-good QA client's SGW.exe byte for byte.
     //   SGW_STOCK_EXE=<stock SGW.exe> SGW_GOOD_EXE=<QA client SGW.exe> \
-    //     cargo test -p sgw-launcher real_sgw_exe -- --ignored
+    //     cargo test -p cimmeria-launcher-core real_sgw_exe -- --ignored
     #[test]
     #[ignore = "needs a stock and a known-good SGW.exe; see the comment"]
     fn real_sgw_exe() {

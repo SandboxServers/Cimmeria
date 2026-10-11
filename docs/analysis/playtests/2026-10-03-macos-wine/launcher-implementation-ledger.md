@@ -763,3 +763,15 @@ Local Linux lane at `8f5e082f4`: engine 423 passed/4 ignored; admin-api plus ser
 all 22 checks, native Windows and macOS included, at `4361679e7` (the earlier token design); read the PR for the
 current head before claiming it. Open, as a later and separately decided rollout: a production endpoint (https,
 publicly trusted certificate; not the plain-HTTP login port), and the consent copy and frontend UAT.
+
+### 2026-10-11: distribution moved to the launcher consolidation campaign
+
+Distribution of the desktop launcher is now tracked by the
+[launcher consolidation](../../launcher-consolidation/README.md) ledger. LX-15
+publishes a Windows zip with a signed updater feed and LX-28 an ad-hoc signed
+macOS zip, both on the rolling `launcher-current` release; LX-18 retired the egui
+launcher. The player docs (the [launcher guide](../../../client/launcher-guide.md)
+and [Playing on a Mac](../../../guides/macos.md)) were rewritten for those zips in
+LX-22: download, drag to Applications, Open Anyway once, the Wine runtime fetched
+at first install, and manual macOS updates. No player has yet run the packaged
+macOS app from a fresh Mac; that is LX-26 step 13.

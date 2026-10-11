@@ -23,3 +23,5 @@ Moving `crates/launcher/src/*` into `cimmeria-launcher-core` (LX-01, 2026-10-10)
 - Core is in both hakari exclude lists, so the workspace-hack did not change.
 
 Related: [[crate-split-extraction-traps]], [[services-split-extraction-traps]].
+
+**2026-10-11:** the egui launcher (`sgw-launcher`, `crates/launcher/src/`) was deleted in LX-18. The desktop engine is now the only crate that enables `test-fixtures`, and nothing compiles core files by `#[path]` any more.

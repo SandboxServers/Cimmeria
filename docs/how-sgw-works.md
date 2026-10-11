@@ -87,7 +87,7 @@ This dual system likely reflects a transition partway through development.
 
 Cimmeria reimplements the **server side** — AuthenticationServer, BaseApp, and CellApp — while using the **original unmodified client**. The client doesn't know (or care) that it's talking to our server instead of the original CME servers.
 
-To connect the client to our server, the hardcoded SOAP login hostname `www.stargateworlds.com` has to be redirected. Cimmeria ships its own launcher (`crates/launcher/`) which does this as a one-time on-disk `.rdata` byte patch of SGW.exe — the replacement host is written into the original 22-byte slot, zero-padded, so no surrounding strings or pointers shift (`crates/launcher/src/patch_rdata.rs`). Data-section edits avoid ASLR and PE-checksum recalculation, which is why this was chosen over the runtime DLL injection the original **AtreaRL** loader used. AtreaRL remains an RE reference only; it is not part of the build.
+To connect the client to our server, Cimmeria's launcher ([`crates/launcher/desktop/`](../crates/launcher/desktop/README.md)) rewrites the client's login-server list, `LoginInternal.lua`, which the login screen reads, before every Play, and clears the ASLR flag in `SGW.exe`'s PE header (`crates/launcher-core/src/client_setup/`). The hardcoded `www.stargateworlds.com` string in `.rdata` needs no patch: it is only the SOAP namespace, not a host the client connects to (an early launcher byte-patched it, which redirected nothing). The original **AtreaRL** loader injected a runtime DLL instead; it remains an RE reference only and is not part of the build. Cimmeria's own DLLs, the client patches and opt-in telemetry, are injected by the launcher at Play.
 
 ## Key Numbers
 

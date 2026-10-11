@@ -333,18 +333,34 @@ fn bootstrap_phase2() {
     );
     let _ = producer.try_emit(builder);
 
-    // Step 6: spawn the uploader thread. It owns the consumer
-    // end and runs for the lifetime of the process. We
-    // intentionally don't keep the JoinHandle — Phase 7's
-    // shutdown hook will use a stop-flag and a sibling JoinHandle
-    // static when it lands.
+    // Step 6: spawn the uploader thread. It owns the consumer end and runs
+    // until the exit hooks raise the stop flag (TG-PIPE-03,
+    // `crate::shutdown`), then posts its last batch and signals done. The
+    // JoinHandle is not kept: the hooks wait on the shutdown signal, which
+    // is bounded, where a join would not be.
     let cfg = crate::uploader::UploaderConfig::from_session(&session.telemetry);
-    std::thread::Builder::new()
+    let shutdown = crate::shutdown::global();
+    shutdown.arm();
+    let spawned = std::thread::Builder::new()
         .name("cimmeria-uploader".into())
         .spawn(move || {
-            crate::uploader::run_uploader(consumer, cfg, || false);
-        })
-        .ok();
+            // Released on a normal return and on a panic alike.
+            let _done = crate::shutdown::FlushedOnDrop;
+            crate::uploader::run_uploader(consumer, cfg, || {
+                crate::shutdown::global().stop_requested()
+            });
+        });
+    if let Err(e) = spawned {
+        // Nothing will ever post: exit hooks must not wait for it. The row
+        // is queued for a ring dump; the log line is what survives.
+        shutdown.disarm();
+        crate::log::line(format_args!("uploader thread failed to start: {e}"));
+        producer.try_emit(crate::boot_report::uploader_spawn_failed(&e));
+    }
+    // The hook installer takes the producer; the lab bridge reports on a
+    // clone of it.
+    #[cfg(feature = "lab-bridge")]
+    let reporter = producer.clone();
 
     // Step 6.5: the fingerprint gate, then the hooks. Each hook clones
     // the producer handle (Arc-backed inside crossbeam-channel) so the
@@ -360,7 +376,13 @@ fn bootstrap_phase2() {
     // nothing) unless `current-session.json` carried a `lab` block.
     // The Tick hook's drain is a no-op until the handle is installed.
     #[cfg(feature = "lab-bridge")]
-    match crate::bridge::maybe_start(&session) {
+    let started = crate::bridge::maybe_start(&session);
+    #[cfg(feature = "lab-bridge")]
+    if let Some(event) = crate::boot_report::report_bridge_result(&started) {
+        reporter.try_emit(event);
+    }
+    #[cfg(feature = "lab-bridge")]
+    match started {
         None => crate::log::line("no lab block in the session; lab bridge not started"),
         Some(Err(e)) => crate::log::line(format_args!("lab bridge failed to start: {e}")),
         Some(Ok(handle)) => {
@@ -379,7 +401,10 @@ fn bootstrap_phase2() {
             // keyboard and mouse, so the lab can drive it without focus.
             match crate::bridge::input::install() {
                 Ok(()) => crate::log::line("lab input: DirectInput8Create hooked"),
-                Err(e) => crate::log::line(format_args!("lab input: not hooked: {e}")),
+                Err(e) => {
+                    crate::log::line(format_args!("lab input: not hooked: {e}"));
+                    reporter.try_emit(crate::boot_report::input_unhooked(&e));
+                }
             }
             // Outer-tier crash capture (ADR §6 / #685 scope 4). Only in
             // a lab session — a normal telemetry launch must not replace
@@ -435,6 +460,7 @@ fn gate_and_install(producer: crate::queue::Producer) -> bool {
         // hooking a shared site now could let its MH_EnableHook overwrite
         // ours and silently drop the detour.
         crate::log::line("another DLL still holds the install lock; no hooks installed");
+        producer.try_emit(crate::boot_report::install_lock_unavailable(HOOK_LOCK_WAIT));
         return false;
     }
 

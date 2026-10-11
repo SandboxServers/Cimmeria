@@ -132,9 +132,8 @@ impl Telemetry {
     ///
     /// `endpoint_policy` decides which plain-http addresses are allowed
     /// (see [`endpoint`]); build it from the launcher's login servers.
-    /// `queue_dir` holds the on-disk overflow queue: the egui launcher
-    /// passes its own directory, which is where [`recover_pending_on_startup`]
-    /// looks on the next start.
+    /// `queue_dir` holds the on-disk overflow queue, which is where
+    /// [`recover_pending_on_startup`] looks on the next start.
     pub async fn start_session(
         http: &reqwest::Client,
         auth_base_url: &str,

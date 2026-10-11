@@ -1,15 +1,17 @@
 ---
-applyTo: "crates/launcher/**"
+applyTo: "crates/launcher/**,crates/launcher-core/**"
 ---
 
 # Launcher review rules
 
-`crates/launcher/src/` is `sgw-launcher`, the Windows launcher players run
-today. A behaviour change there reaches every current player on their next
-update, so call out any change to what an existing install does. The desktop
-launcher under `crates/launcher/desktop/` is a separate Cargo workspace with
-its own lockfile and its own workflow (`.github/workflows/launcher-desktop.yml`).
-The root workspace's fmt, clippy and hakari checks do not cover it.
+`crates/launcher/desktop/` is the launcher players run, released as a zip
+(`.github/workflows/launcher-release.yml`). A behaviour change there reaches
+every player on their next update, so call out any change to what an existing
+install does. It is a separate Cargo workspace with its own lockfile and its
+own workflow (`.github/workflows/launcher-desktop.yml`); the root workspace's
+fmt, clippy and hakari checks do not cover it. Its install, manifest, extraction
+and telemetry code lives in the root-workspace crate `crates/launcher-core/`,
+which these rules cover too: a change there reaches players the same way.
 
 ## Integrity
 

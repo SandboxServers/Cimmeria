@@ -26,7 +26,7 @@ In scope:
 
 - The Rust server in [`crates/`](crates/) (auth, base, cell, mercury, admin API).
 - The bundled PostgreSQL provisioning under [`bootstrap/`](bootstrap/) and [`db/`](db/).
-- The Tauri admin app and player-facing `sgw-launcher` under [`crates/launcher/`](crates/launcher/) and [`tools/`](tools/).
+- The Tauri admin app under [`src-tauri/`](src-tauri/), the player-facing desktop launcher under [`crates/launcher/desktop/`](crates/launcher/desktop/) and [`crates/launcher-core/`](crates/launcher-core/), and the tools under [`tools/`](tools/).
 - The Mercury wire protocol implementation and AES-256-CBC + HMAC-MD5 crypto.
 - The dev-session telemetry pipeline and any HMAC token surfaces.
 

@@ -1,7 +1,9 @@
 //! Cimmeria client-side telemetry DLL.
 //!
-//! Side-loaded into `SGW.exe` by `sgw-launcher`'s injector
-//! ([`crates/launcher/src/inject.rs`]) at game start. Once attached,
+//! Side-loaded into `SGW.exe` at game start by the desktop launcher's
+//! 32-bit launch worker, through `cimmeria-client-launch`'s injector
+//! (`crates/client-launch/src/inject.rs`), or by the lab supervisor the
+//! same way. Once attached,
 //! the DLL installs function hooks and log tees that observe gameplay
 //! without modifying it; events flow
 //! through a lock-free MPMC ring to a separate uploader thread that
@@ -38,6 +40,7 @@
 // session loader, and uploader thread compile and run on Linux for
 // unit tests; only the Windows cdylib actually executes them inside
 // SGW.exe.
+pub mod boot_report;
 pub mod capture;
 pub mod events;
 pub mod fingerprint;
@@ -47,6 +50,7 @@ pub mod log;
 pub mod msvc_string;
 pub mod queue;
 pub mod session;
+pub mod shutdown;
 pub mod uploader;
 
 // Live Research Lab client bridge — an inbound command channel behind
@@ -61,12 +65,13 @@ pub mod bridge;
 /// the literal is in `.rdata` of whichever build it names.
 ///
 /// Players get the telemetry DLL only when they opt in, and it must be
-/// the build without the inbound TCP listener. Three checks read this
-/// exact text from a DLL image and refuse a lab build: the launcher's
-/// `build.rs` (it will not embed one), the launcher at launch time
-/// (`crates/launcher/src/client_telemetry_dll.rs`, which also pins that
-/// every copy of the text agrees), and the `verify` stage of
-/// `tools/launcher-release/build.sh`. Change all of them together.
+/// the build without the inbound TCP listener. These checks read this
+/// exact text from a DLL image and refuse a lab build: the desktop
+/// launcher's staging (`crates/launcher/desktop/tools/stage-helper.py`),
+/// the desktop launcher at launch time
+/// (`crates/launcher/desktop/engine/src/storage/launch/resource.rs`), and
+/// the `verify` stages of `tools/launcher-release/build-desktop.sh` and
+/// `build-desktop-macos.sh`. Change all of them together.
 pub const LAB_BRIDGE_MARKER: &str = "cimmeria-client-telemetry build flavour: lab-bridge";
 
 /// This build's marker: [`LAB_BRIDGE_MARKER`] under `lab-bridge`, else a
@@ -121,8 +126,8 @@ mod build_marker_tests {
         assert_eq!(BUILD_FLAVOR, "lab-bridge");
     }
 
-    /// Pinned: the launcher and `tools/launcher-release/build.sh` search
-    /// DLL images for this exact text.
+    /// Pinned: the desktop launcher and `tools/launcher-release/build-desktop*.sh`
+    /// search DLL images for this exact text.
     #[test]
     fn the_lab_bridge_marker_text_is_pinned() {
         assert_eq!(

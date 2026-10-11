@@ -36,3 +36,5 @@ doesn't push, beyond silencing the warning.
 hotbar and UI state), `Logs\`, `CrashDumps\`, `Content\LocalShaderCache-*.upk`.
 
 Related: [[reference_client_map_tree]], [[project_dialog_portrait_client_patch]].
+
+**2026-10-11:** the egui launcher was retired (LX-18). The unpack code is in `crates/launcher-core/src/unpack/` and `install_layout::place_bundled_cooked_data` in `crates/launcher-core/src/install_layout.rs` (moved in LX-01); the desktop launcher runs both.

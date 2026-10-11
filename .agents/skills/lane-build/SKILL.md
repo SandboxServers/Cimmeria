@@ -26,10 +26,10 @@ pwsh tools/build-lane/lane.ps1 cargo test -p cimmeria-cell -- --nocapture
 pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy --workspace <EXCL> --all-targets -- -D warnings
 ```
 
-`<EXCL>` is CI's seven exclusions (GUI apps and Windows-only cdylibs):
+`<EXCL>` is CI's six exclusions (GUI apps and Windows-only cdylibs):
 
 ```text
---exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
+--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 
 - `cimmeria-services` is a thin facade over about 20 crates. Check the crate you changed

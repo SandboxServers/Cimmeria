@@ -15,8 +15,8 @@ launcher tails) lands in SigNoz as its own service,
 ```text
 launcher                            cimmeria-server
 ────────────────                    ────────────────
-sgw-launcher.exe                    /api/auth/dev-session
-   ├─ identity.json                 POST → HMAC token
+desktop launcher (Play)             /api/auth/dev-session
+   ├─ game-telemetry.json identity  POST → HMAC token
    ├─ tail Binaries/sessions/*.log
    ├─ POST /api/telemetry/upload-chunk  ───┐
    ├─ game exits                            ▼
@@ -83,10 +83,11 @@ gh secret set CIMMERIA_TELEMETRY_HMAC_SECRET \
 1. Generate new value: `openssl rand -hex 64`.
 2. Update the GitHub Secret.
 3. Redeploy cimmeria-server.
-4. Existing in-flight tokens become invalid mid-flight; affected
-   launchers retry through `auth::fetch_dev_session` and get a fresh
-   token within seconds. No user-visible disruption beyond a single
-   `Telemetry session error` log line.
+4. Existing in-flight tokens become invalid mid-flight. A launcher's own
+   uploads get a 401, mint a fresh token through
+   `auth::fetch_dev_session` (`crates/launcher-core/src/telemetry/auth.rs`)
+   and carry on. A game already running keeps its DLL's old token, so the
+   DLL's uploads stop until the next Play. Players see nothing.
 
 **Cadence:** rotate every ~90 days or immediately on any suspicion of
 exposure. The secret lives only in GitHub Actions secret store + the
@@ -118,20 +119,19 @@ The launcher sends telemetry to:
   `http://` login servers (the list written into `LoginInternal.lua`; the
   default is `http://play.cimmeria.app:8081`).
 
-That rule applies to `telemetry.auth_url` in `launcher-config.json`
-(default `http://play.cimmeria.app:8081/api`) and to every
-`upload_endpoint` the server hands back, including after a token
-refresh. Anything else fails the session before a byte is sent, with
-"telemetry needs an https:// server address" in the status log
-([`telemetry/endpoint.rs`](../../crates/launcher/src/telemetry/endpoint.rs)).
+The desktop launcher mints from the installation's first login server
+(`<login server>/api/auth/dev-session`), so the rule applies to that
+address and to every `upload_endpoint` the server hands back, including
+after a token refresh. Anything else leaves the telemetry DLL out before a
+byte is sent; Settings shows the last Play's status as `endpoint_refused`
+([`telemetry/endpoint.rs`](../../crates/launcher-core/src/telemetry/endpoint.rs)).
 Another port on a login server's host, such as `8443`, is still refused.
+To point a launcher at a local server, put it first in **Settings → Login
+servers** (for example `Local = http://localhost:8081`).
 
-**Existing launcher configs.** Config schema 2 moved the default
-`auth_url`. A schema-1 `launcher-config.json` whose `auth_url` is exactly
-the old default, `http://localhost:8443/api`, is rewritten to the new
-default once, on the first start of the new launcher. Any other value is
-kept. A developer with a local server sets `http://localhost:8443/api`
-(or `http://localhost:8081/api`) again afterwards, and it sticks.
+**The retired egui launcher** kept a separate `telemetry.auth_url` in its
+`launcher-config.json`. The desktop launcher's legacy import keeps that
+value in its record but mints from the login server list.
 
 The dev-session mint hands the launcher an `upload_endpoint` URL from
 `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`. The default,
@@ -402,7 +402,7 @@ covers about ten sessions; raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP`
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Developers see "Launch + Telemetry" fall back to a plain launch, server logs a WARN with `reason=dev_session_quota_exceeded`, `scope=mint/ip` | Shared egress address | Raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`, or `0` to disable |
+| Players' Play sessions start without the telemetry DLL (Settings shows `session_unavailable`), server logs a WARN with `reason=dev_session_quota_exceeded`, `scope=mint/ip` | Shared egress address | Raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`, or `0` to disable |
 | Mint returns `400 Invalid branch: must not contain control characters` (or another metadata field) | The launcher sent a field with a control character or over 256 bytes; refused so it cannot forge a log line | Fix the launcher-side value; the server does not strip it |
 | One machine repeatedly refused while others are fine | A launcher relaunching in a loop | Investigate that install before raising `..._PER_INSTALL` |
 | Telemetry stops partway through a very long session | Session passed `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | Expected; the next launch mints a fresh session. Raise the cap only with a reason |
@@ -700,33 +700,32 @@ be stored.
 
 ## Player opt-in
 
-Telemetry is **opt-in**. The launcher's `TelemetrySettings`
-(`telemetry.opted_in` in `launcher-config.json`, default `false`) is
-off until the player turns it on, from the one-time "Help us fix
-bugs?" prompt or the **Send telemetry (opt-in)** checkbox beside the
-launch buttons. Both save at once, and apply from the next launch.
-Launchers before this change wrote `"enabled": true` on the player's
-behalf; that key is ignored, so every existing install starts opted
-out.
+Telemetry is **opt-in**. The desktop launcher (`crates/launcher/desktop/`,
+Windows and macOS) asks with the **Send game diagnostics while playing**
+checkbox in Settings, off by default and separate from its
+setup-diagnostics checkbox. The choice is saved in `game-telemetry.json` in
+the launcher's state directory, with the install identity minted at the
+first opt-in, and applies from the next Play.
 
-While it is on, **Launch SGW.exe** mints a player session before the
-game starts and injects the telemetry DLL after the client patches (owner
-decision 2026-09-29). Release launchers carry the DLL, the build without
-the `lab-bridge` feature, so no player's machine gets the lab's command
-port. If the DLL is missing, or is a `lab-bridge` build, the launcher
-says so in its status log and starts the game without it; play is never
-blocked. See [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
-
-The desktop launcher (`crates/launcher/desktop/`, macOS and Windows) has the
-same opt-in as its own choice: the **Send game diagnostics while playing**
-checkbox in Settings, off by default and separate from its setup-diagnostics
-checkbox. While it is on, Play mints a session on the login server, writes
-`current-session.json` beside the game and injects the DLL after the client
-patches. Its sessions carry the tags `desktop-launcher`, the host OS and `wine`
-or `native`. It does not tail logs or upload bundles, and it mints one token
-per Play without refreshing it. The capture switches stay off unless a
+While it is on, Play mints a player session on the installation's first
+login server before the game starts, writes `current-session.json` beside
+the game and injects the telemetry DLL after the client patches (owner
+decision 2026-09-29). Its sessions carry the tags `desktop-launcher`, the
+host OS and `wine` or `native`. The launcher also tails the game's logs,
+uploads them in chunks, refreshes its own token, and at game exit sends a
+`game_exited` event and the end-of-session bundle. Release launchers carry
+the player build of the DLL, never `lab-bridge`, so no player's machine
+gets the lab's command port. With no session, a refused address or an
+unwritable session file, the DLL is left out and the game starts without
+it; play is never blocked, and Settings shows why. An adopted install
+plays without the DLL for now. The capture switches stay off unless a
 developer sets `CIMMERIA_CLIENT_CAPTURE` in the launcher's own environment.
-Contract: [launch.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+Contract: [launch.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry);
+background: [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
+
+The retired egui launcher kept the choice as `telemetry.opted_in` in its
+`launcher-config.json`. The desktop launcher's legacy import keeps that
+answer in its record; it does not turn game diagnostics on.
 
 While it is off:
 

@@ -234,7 +234,7 @@ fn dir_size_best_effort(path: &Path) -> u64 {
 /// [`test_documents::set`] holds it for as long as its override lasts.
 ///
 /// Test-only so it doesn't leak into release builds; the `test-fixtures`
-/// feature exposes it to the egui launcher's tests, which take it too.
+/// feature exposes it to other crates' tests, which take it too.
 #[cfg(any(test, feature = "test-fixtures"))]
 pub fn env_test_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();

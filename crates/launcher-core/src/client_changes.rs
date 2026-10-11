@@ -13,7 +13,7 @@
 //! else by [`builtin_description`] for the patches published before
 //! those fields existed, else by its id. Nothing is ever left out.
 //!
-//! Pure: [`list`] takes plain inputs and is unit-tested without egui.
+//! Pure: [`list`] takes plain inputs and is unit-tested without a UI.
 
 use crate::manifest::PatchEntry;
 use crate::overlay_meta::{DEFAULT_ID_PREFIX, OVERLAY_DESCRIPTION, OVERLAY_TITLE};
@@ -113,7 +113,8 @@ pub struct LaunchFacts {
 }
 
 impl LaunchFacts {
-    /// The rows follow the two settings alone, as the egui launcher shows them.
+    /// The rows follow the two settings alone, as the retired egui launcher
+    /// showed them.
     pub const SETTINGS_ONLY: Self = Self {
         adopted: false,
         patches_dll_present: true,
@@ -220,9 +221,7 @@ fn patch_change(patch: &PatchEntry, installed: &InstalledState) -> ClientChange 
     }
 }
 
-/// The telemetry DLL's file name, which the telemetry row names. The egui
-/// launcher's `client_telemetry_dll` uses this one constant, so the row
-/// cannot name a file the launcher does not load.
+/// The telemetry DLL's file name, which the telemetry row names.
 pub const TELEMETRY_DLL_FILE_NAME: &str = "cimmeria-client-telemetry.dll";
 
 fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {

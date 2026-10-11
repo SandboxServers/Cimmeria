@@ -9,7 +9,7 @@
 //! own `LoadLibraryW`, and a suspended WOW64 target has no 32-bit kernel32
 //! mapped yet anyway. `inject_dll` refuses it with `BitnessMismatch`. The
 //! helper does the suspended launch and the injection at the target's
-//! bitness, exactly as `sgw-launcher` does since #984; the contract is in
+//! bitness, as the launcher has since #984; the contract is in
 //! `crates/client-launch/README.md`.
 //!
 //! Everything is keyed on the **PID** rather than a retained kernel

@@ -14,7 +14,7 @@ applyTo: ".github/workflows/**,.github/actions/**"
 - Install Rust through `.github/actions/rust-toolchain`, which reads
   `rust-toolchain.toml`, so CI's clippy is the pinned one. A hard-coded
   toolchain version is a finding.
-- Workspace-wide cargo steps use the same seven `--exclude` flags as
+- Workspace-wide cargo steps use the same six `--exclude` flags as
   `.github/workflows/test.yml`. A new GUI app or Windows-only cdylib must be
   added to every one of those lists, and to the list in `CLAUDE.md`.
 - Pin a newly added third-party action (anything outside `actions/*` and

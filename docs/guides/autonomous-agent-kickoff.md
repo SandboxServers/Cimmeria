@@ -109,7 +109,7 @@ Issues with only `bug`, `enhancement`, `documentation`, or other type labels but
 - it is an umbrella (a `[security-audit] CAT-*` category, a tracking issue, or a body with five or
   more task checkboxes), unless you scope your claim to exactly one sub-item;
 - the fix needs a crate the Linux build excludes: `cimmeria-app`, `cimmeria-content-editor`,
-  `cimmeria-scene-editor`, `sgw-launcher`, `cimmeria-client-telemetry`;
+  `cimmeria-scene-editor`, `cimmeria-client-telemetry`, `cimmeria-client-patches`, `cimmeria-lab`;
 - the title asks for a decision: design, RFC, proposal, "should we".
 
 **Rank** the remaining `ready-for-agent` issues, best tier first, then pick at random among the

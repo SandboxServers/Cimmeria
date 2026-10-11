@@ -1,5 +1,6 @@
 //! TG-MER-02 guard: a reliable resend writes one `mercury.retransmit` row
 //! that carries its cause fields, and nothing else on the resend path.
+//! TG-MER-03 guard: the row names the session's account and player.
 //!
 //! The row is written by the channel's scan (`Channel::check_timeouts`),
 //! which the tick loop reaches through `collect_pending_retransmits`. The
@@ -118,4 +119,48 @@ async fn retransmit_row_has_age_and_no_duplicate() {
         !events.iter().any(|e| e.message_contains("RTO fired")),
         "the duplicate per-resend row is gone: {events:#?}"
     );
+}
+
+/// TG-MER-03: the channel knows only the peer address, so the retransmit
+/// row names the session only because `collect_pending_retransmits` copies
+/// the session identity onto the channel before the scan. Account 6 playing
+/// player 72: the row carries both IDs and both names. Deleting the sync
+/// (or the fields on the row) leaves every identity field off.
+#[test]
+fn retransmit_row_names_the_account() {
+    let addr: SocketAddr = "127.0.0.1:52412".parse().unwrap();
+    let clock = Arc::new(ManualClock {
+        base: Instant::now(),
+        offset: Mutex::new(Duration::ZERO),
+    });
+    let mut channel = cimmeria_mercury::channel::Channel::with_clock(addr, clock.clone());
+    channel
+        .register_sent_packet(
+            Packet::new(Default::default(), 1, Bytes::new()),
+            Bytes::from(vec![0x5Au8; 32]),
+        )
+        .unwrap();
+    let mut state = test_default_connected_client_state();
+    state.account_id = 6;
+    state.account_name = Some("mer03_login".to_string());
+    state.active_player_id = Some(72);
+    state.player_name = Some("Mer03 Carter".to_string());
+    state.channel = Mutex::new(channel);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    // Past the RTO ceiling: the entry is expired on the first scan.
+    *clock.offset.lock().unwrap() += Duration::from_secs(5);
+
+    let capture = LogCapture::install();
+    let resent = collect_pending_retransmits(&connected, addr);
+    assert_eq!(resent.len(), 1, "the expired entry is resent");
+
+    let events = capture.all();
+    let row = events
+        .iter()
+        .find(|e| e.target == "mercury.retransmit")
+        .unwrap_or_else(|| panic!("no retransmit row: {events:#?}"));
+    assert!(row.has_field("account_id", "6"), "{row:#?}");
+    assert!(row.has_field("account_name", "mer03_login"), "{row:#?}");
+    assert!(row.has_field("player_id", "72"), "{row:#?}");
+    assert!(row.has_field("player_name", "Mer03 Carter"), "{row:#?}");
 }

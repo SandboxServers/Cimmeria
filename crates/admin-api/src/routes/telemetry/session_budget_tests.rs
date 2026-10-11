@@ -99,6 +99,7 @@ fn priority_is_level_and_the_must_keep_families() {
     assert!(is_priority(&native("client.telemetry.rollup", "info")));
     assert!(is_priority(&native("client.telemetry.health", "info")));
     assert!(is_priority(&native("client.dll.attached", "info")));
+    assert!(is_priority(&native("client.session.end", "info")));
     assert!(is_priority(&native("client.ability.recv", "info")));
     assert!(is_priority(&native("client.hooks.fingerprint", "info")));
     assert!(!is_priority(&native("client.lua.pcall", "debug")));
@@ -156,16 +157,27 @@ fn a_runaway_chunk_is_cut_at_the_budget_and_counted() {
         r#"{"type":"client_native","ts_ms":1,"seq":0,"target":"client.lua.error","level":"warn"}"#
             .to_string(),
     );
+    // TG-CLI-04: the DLL's clean-exit row is info, and must still replay
+    // with the session over budget.
+    lines.push(
+        r#"{"type":"client_native","ts_ms":1,"seq":0,"target":"client.session.end","level":"info","fields":{"reason":"crt_exit"}}"#
+            .to_string(),
+    );
     let events = parse_ndjson(&lines.join("\n")).unwrap();
     let (admitted, totals) = admit_budgeted(&claims, &events, 1_000);
+    assert_eq!(
+        admitted.last(),
+        Some(&true),
+        "client.session.end replays over budget"
+    );
     let counts = replay_events(&claims, events, &EntityLabels::none(), &admitted);
-    assert_eq!(counts.parsed, EVENTS_PER_WINDOW + extra + 1);
+    assert_eq!(counts.parsed, EVENTS_PER_WINDOW + extra + 2);
     assert_eq!(
         counts.accepted,
-        EVENTS_PER_WINDOW + 1,
-        "the budget plus the warn"
+        EVENTS_PER_WINDOW + 2,
+        "the budget plus the warn and the session end"
     );
     assert_eq!(counts.suppressed, extra);
     assert_eq!(totals.suppressed_total, extra);
-    assert_eq!(totals.accepted_total, EVENTS_PER_WINDOW + 1);
+    assert_eq!(totals.accepted_total, EVENTS_PER_WINDOW + 2);
 }

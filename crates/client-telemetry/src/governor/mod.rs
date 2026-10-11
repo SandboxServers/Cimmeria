@@ -166,6 +166,12 @@ pub struct ExternalDrops {
     pub ring_dropped: u64,
     /// Events the uploader discarded after failed POSTs.
     pub upload_dropped: u64,
+    /// POSTs that failed: a network error or a non-2xx answer (TG-PIPE-13).
+    pub upload_failures: u64,
+    /// HTTP status of the most recent POST that got an answer. `None`
+    /// before the first answer, and when the last POST got none (a network
+    /// error), so the health row never reports a made-up 0.
+    pub last_status: Option<u16>,
 }
 
 /// The governor state. One per process, behind a mutex (see
@@ -292,14 +298,14 @@ impl Governor {
         }
         let last = *self.last_health_ms.get_or_insert(now_ms);
         if now_ms - last >= self.cfg.health_every_ms {
-            self.emit_health(now_ms, drops, out);
+            self.emit_health(now_ms, drops, false, out);
         }
     }
 
     /// Close the window and emit health unconditionally (shutdown).
     pub fn finish(&mut self, now_ms: i64, drops: ExternalDrops, out: &mut Vec<ClientNativeEvent>) {
         self.close_window(now_ms, "shutdown", out);
-        self.emit_health(now_ms, drops, out);
+        self.emit_health(now_ms, drops, true, out);
     }
 
     /// Returns `false` when the event was held as a repeat.
@@ -389,11 +395,21 @@ impl Governor {
         self.window_start_ms = Some(now_ms);
     }
 
-    fn emit_health(&mut self, now_ms: i64, drops: ExternalDrops, out: &mut Vec<ClientNativeEvent>) {
+    /// `is_final` marks the shutdown row (`final: true`): the last health
+    /// report of the process, so a reader can tell a closed session from
+    /// one whose reports just stopped (TG-PIPE-03).
+    fn emit_health(
+        &mut self,
+        now_ms: i64,
+        drops: ExternalDrops,
+        is_final: bool,
+        out: &mut Vec<ClientNativeEvent>,
+    ) {
         // A drop since the last report is a non-happy outcome: warn, so the
         // report itself can never be summarized away and stands out.
         let new_drops = drops.ring_dropped > self.last_drops.ring_dropped
-            || drops.upload_dropped > self.last_drops.upload_dropped;
+            || drops.upload_dropped > self.last_drops.upload_dropped
+            || drops.upload_failures > self.last_drops.upload_failures;
         self.last_drops = drops;
         self.last_health_ms = Some(now_ms);
         let s = &self.stats;
@@ -414,6 +430,11 @@ impl Governor {
         );
         f.insert("ring_dropped_total".into(), json!(drops.ring_dropped));
         f.insert("upload_dropped_total".into(), json!(drops.upload_dropped));
+        f.insert("upload_failures_total".into(), json!(drops.upload_failures));
+        if let Some(status) = drops.last_status {
+            f.insert("last_upload_status".into(), json!(status));
+        }
+        f.insert("final".into(), json!(is_final));
         let level = if new_drops { "warn" } else { "info" };
         self.push_generated(event(HEALTH_TARGET, level, now_ms, f), out);
         // The AB-C6 timing histograms ride the health cadence (and the

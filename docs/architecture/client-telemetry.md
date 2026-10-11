@@ -2,11 +2,11 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-11 (the desktop launcher is now the only launcher, LX-18)
 > **Engine capture (2026-09-28)**: adds the engine layer on top of the hooks below: log sinks for BigWorld, UE3, log4cxx and the OS, plus subsystem seams (actors, Matinee, level streaming, Bink, FMOD, PhysX, file I/O, D3D9, frame health): 6 inline, 4 vtable and 15 IAT hooks, a vectored exception handler and 3 D3D9 COM patches. See [Engine layer: log sinks and subsystem seams](#engine-layer-log-sinks-and-subsystem-seams). Statically verified, not yet run in a live client.
 > **Status**: Phases 2-5 substantially landed; the launcher injects the DLL for players who opt in to telemetry (see [Who gets the DLL](#who-gets-the-dll) and the fingerprint section). **68 hooks total** across 3 techniques: 57 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup, and 11 entity-lifecycle, inbound-message and outgoing-RPC hooks added 2026-09-28, 5 Mercury receive-path hooks added 2026-09-29, 3 SequenceManager drop hooks and 3 `Debug:log` hooks added 2026-09-29, and 24 ability hooks added 2026-10-04, partly seen live on 2026-10-04 (see [Ability telemetry](#ability-telemetry-clientability)): 12 for presses, sends and the sequence join ([AB-C1, AB-C2](#presses-and-sends-ab-c1-ab-c2)) and 12 for `client.ability.applied` and the `onSequence` net-in drop ([AB-C4, AB-C5](#what-the-client-applied-clientabilityapplied-ab-c4))), 8 IAT-swap hooks (3 Lua + 4 OS + raw `recvfrom`), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every inline address is fingerprinted; the `recvfrom` IAT slot is checked against the loaded Winsock export before swapping. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
-How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
+How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by the [desktop launcher](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry) (and by the lab supervisor), what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
 The per-anchor hook table lives in [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md). This document is the design rationale and the stack-pick justification — read the anchor doc for "where do I hook function X?" and this doc for "why does the whole thing look like this?"
 
@@ -18,7 +18,7 @@ The motivating use case: the cold-relog freeze investigation (2026-05-26). Serve
 
 ## Trust model
 
-Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships alongside `sgw-launcher.exe` (signed at deployment time; not per-injection). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory; outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint.
+Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships in the launcher zip's `windows\` folder, and the launcher refuses to inject a copy whose SHA-256 is not the one compiled into it (releases are not code-signed, D-LX10). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory; outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint.
 
 **Project preference (issue #417):** authored from scratch. AteraLoader.exe / AtreaRL.dll are reverse-engineering references only — their behaviour in [`docs/technical/atrearl-loader.md`](../technical/atrearl-loader.md) is useful for "what hooks work in practice," not as code we extend or wrap.
 
@@ -28,21 +28,21 @@ Same machine, same user, same launcher session. The launcher is already a truste
 
 Owner decision, 2026-09-29: players get the DLL, but only when they opt in to telemetry in the launcher.
 
-- **Opt-in on.** **Launch SGW.exe** starts the telemetry session first: the dev-session handshake (at most 10 s) mints a player token and writes `current-session.json` next to `SGW.exe`, because the DLL reads its token and upload endpoint from that file as it boots. The game then starts through `sgw-start32` with the client-patches DLL and, after it, the telemetry DLL, the same order as the lab's `launch_request`. Both upload with the same player token.
-- **Opt-in off.** The launch is the non-telemetry launch: client patches only, no session, no telemetry DLL. The checkbox takes effect from the next launch.
-- **Never blocks play.** No session (server down, refused, timed out): the game starts without the DLL. DLL missing or refused: the game starts without it, and the status log and the launcher's `client.telemetry_dll.launch` event say why. A failed two-DLL injection is retried with the client patches alone, then plainly.
+- **Opt-in on.** **Play** starts the telemetry session first: the dev-session handshake against the installation's first login server (bounded to 8 s) mints a player token and writes `Working\Binaries\sessions\current-session.json`, because the DLL reads its token and upload endpoint from that file as it boots. The game then starts through the launcher's i686 launch worker (`cimmeria-launch-worker.exe`) with the client-patches DLL and, after it, the telemetry DLL, the same order as the lab's `launch_request`. Both upload with the same player token.
+- **Opt-in off.** The launch is the non-telemetry launch: client patches only, no session, no telemetry DLL. The setting ("Send game diagnostics while playing") takes effect from the next Play. An adopted install launches without the DLL for now.
+- **Never blocks play.** No session (server down, refused, timed out), a refused upload address or an unwritable session file: the DLL is left out and the game starts as it would with telemetry off. `game-telemetry-status.json` in the launcher's state directory records which (`attached`, `session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings shows it.
 
-**Only the player build ships.** The release build compiles the DLL with default features (`tools/launcher-release/build.sh i686`), never `lab-bridge`, and embeds it in the launcher, which writes it to `<launcher dir>/client-telemetry/<sha256 prefix>/` at launch (a dev launcher uses a `cimmeria-client-telemetry.dll` beside itself). A `lab-bridge` build logs `cimmeria_client_telemetry::LAB_BRIDGE_MARKER` at boot, so the text is in its image; three checks refuse an image containing it: the launcher's `build.rs` will not embed it, the release `verify` stage fails, and the launcher will not inject one it finds at launch. The `sgw-testhost` boot tests pin the check against real builds (the lab build carries the marker, the default build does not and opens no port even with a `lab` block in its session). Every `client.dll.attached` event carries `dll_flavor` (`player` or `lab-bridge`).
+**Only the player build ships.** The release build compiles the DLL with default features (the `helpers` stage of `tools/launcher-release/build-desktop.sh`), never `lab-bridge`, stages it in `windows\` beside the launcher and compiles its SHA-256 into the launcher as `CIMMERIA_CLIENT_TELEMETRY_SHA256`. A `lab-bridge` build logs `cimmeria_client_telemetry::LAB_BRIDGE_MARKER` at boot, so the text is in its image; the image is refused by `tools/stage-helper.py --kind client-telemetry`, by the release `verify` stage, when the launcher resolves its bundle, and at Play admission ([launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry)). The `sgw-testhost` boot tests pin the check against real builds (the lab build carries the marker, the default build does not and opens no port even with a `lab` block in its session). Every `client.dll.attached` event carries `dll_flavor` (`player` or `lab-bridge`).
 
 **Known limit.** The DLL reads the session once, at boot, and never refreshes its token. Dev-session tokens live 8 hours, so a session longer than that stops uploading DLL events (the launcher's own uploads refresh and continue).
 
 ## Architecture
 
 ```text
-sgw-launcher (egui, 64-bit) -- Launch SGW.exe, telemetry opted in
-   1. POST /auth/dev-session (no session_kind -> player token)
+desktop launcher (Tauri, 64-bit) -- Play, game diagnostics on
+   1. POST /api/auth/dev-session (no session_kind -> player token)
       write <Binaries>/sessions/current-session.json
-   2. sgw-start32.exe (i686 helper, embedded in the launcher):
+   2. cimmeria-launch-worker.exe (i686 helper in the zip's windows\ folder):
      - spawn SGW.exe suspended
      - inject cimmeria-client-patches.dll, then cimmeria-client-telemetry.dll
      - resume
@@ -100,7 +100,7 @@ Choices made for issue #417 after 2026-current-best-practice research. Each row 
 | IAT hooks | Hand-rolled PE walk + `goblin` | Re-scan on `LoadLibraryW` for delay-loaded modules |
 | Vtable hooks | Single atomic pointer store, restore on detach | Standard UE3 modding idiom; atomic + re-entry-safe |
 | MPMC ring | `thingbuf` | `crossbeam-queue::ArrayQueue` is provably not lock-free |
-| Injection | `CreateProcess(SUSPENDED)` + `CreateRemoteThread(LoadLibraryW)` | Same pattern every ASI loader / ReShade / Special K uses; Defender-default-clean. The injector passes its own `LoadLibraryW` address, so it must be 32-bit like `SGW.exe`: the 64-bit launcher injects through the i686 `sgw-start32` helper ([client-launch README](../../crates/client-launch/README.md)), and a 64-bit direct injection is refused with `BitnessMismatch`. The launcher injects `cimmeria-client-patches` first when both DLLs go in ([client-patches.md](client-patches.md)) |
+| Injection | `CreateProcess(SUSPENDED)` + `CreateRemoteThread(LoadLibraryW)` | Same pattern every ASI loader / ReShade / Special K uses; Defender-default-clean. The injector passes its own `LoadLibraryW` address, so it must be 32-bit like `SGW.exe`: the 64-bit desktop launcher injects through its i686 launch worker (`cimmeria-launch-worker.exe`) and the lab through the i686 `sgw-start32` helper, both built on `cimmeria-client-launch` ([client-launch README](../../crates/client-launch/README.md)), and a 64-bit direct injection is refused with `BitnessMismatch`. The launcher injects `cimmeria-client-patches` first when both DLLs go in ([client-patches.md](client-patches.md)) |
 | HTTP from DLL | `ureq` + `rustls-tls` | No tokio runtime inside an injected DLL; no `opentelemetry-otlp` SDK |
 | ProcessEvent filter | `FName` integer allowlist (built once), thread-local re-entry guard | String compare in a function called millions of times/sec halts the game |
 | CME subscriber object | `#[repr(C)]` fake-vtable struct, `extern "thiscall"` slots, **static `.data` allocation** | Subscriber lifetime: process-lifetime mandatory (see below) |
@@ -117,6 +117,53 @@ This is the load-bearing engineering constraint for the entire DLL:
 4. **No heap-allocated subscriber state** — anything stored alongside the fake-vtable must also be `.data` static (or live behind a `&'static` reference). Per-subscriber state goes in a static struct accessible via the subscriber field at `CmeMemberCallback+0x4`.
 
 For instrumentation purposes (read-only telemetry) the "DLL never unloads" stance is correct. The host process exits, the kernel reclaims everything, the constraint never materialises as a leak.
+
+## Process exit and the final flush
+
+TG-PIPE-03. Recovered from the QA `SGW.exe` with headless Ghidra on 2026-10-11; the evidence is addresses, not a live exit trace.
+
+| Path | Where | Reaches `ExitProcess` how |
+|---|---|---|
+| Forced quit | `UGameEngine__unknown_004910b0(force != 0)` @ `0x004910b0`, `ExitProcess(1)` at `0x004910b9` | SGW.exe's own `ExitProcess` IAT slot `0x017ef238` |
+| Second quit request | the function containing `0x004cc107`: if the quit flag `DAT_01ead7ec` is already set, `ExitProcess(0)` at `0x004cc125` | same slot `0x017ef238` |
+| Ordinary quit | `force == 0` posts `WM_QUIT` (`PostQuitMessage(0)`) and sets `DAT_01ead7ec`; the message loop ends, WinMain `FUN_004161d0` returns, and `___tmainCRTStartup` @ `0x012376e3` calls `exit(code)` at `0x01237832` | the MSVCR80 `exit` IAT slot `0x017ef9a8`; `exit` calls `ExitProcess` inside MSVCR80, **not** through SGW.exe's slot |
+| "Failed to load Login_Map. Exiting." | `FUN_00417fe0` @ `0x00417fe0` | `exit(0)`, the same MSVCR80 slot |
+| Crash | `___report_gsfailure` @ `0x01238218` is the only SGW.exe caller of `TerminateProcess` (slot `0x017ef0d4`) | not a clean exit; left to the exception sink |
+
+Hooking `ExitProcess` alone would miss the ordinary quit, which is the path nearly every player session takes. The DLL therefore swaps both IAT slots (`hooks/iat_hooks/exit.rs`, the IAT set grows from 8 hooks to 10). Each detour calls `shutdown::flush_at_exit`, which raises the stop flag the uploader polls and waits for the uploader to report its last POST done, then chains to the real function.
+
+**Why not `DLL_PROCESS_DETACH`.** Detach runs under the loader lock, after the process's other threads are gone: the uploader cannot run, and any wait would only stall the exit. The detach is still a deliberate no-op (see [Subscriber lifetime](#subscriber-lifetime--the-hard-constraint)). The hooks run on the game's own thread before `ExitProcess` takes the loader lock, so a bounded wait there cannot deadlock the loader.
+
+**The bounds.**
+
+| Limit | Value | Where |
+|---|---|---|
+| Hook wait for the uploader | 1.5 s | `shutdown::FINAL_FLUSH_BUDGET` |
+| Final POST, whole request | 1.2 s | `uploader::FINAL_POST_TIMEOUT` (ordinary POSTs keep the 10 s connect and 30 s read limits) |
+| Uploader idle wake | 100 ms | `STOP_POLL` in `uploader.rs`, so a stop is noticed inside a tick instead of after a 2 s flush interval |
+
+A server that never answers costs the exit at most 1.5 s; the batch is then lost, and the local log (`exit via <reason>: final flush TimedOut`) records it. If an exit hook runs twice (`exit` first, then a direct `ExitProcess`), the first reason is kept and the second call returns at once.
+
+**`client.session.end` (TG-CLI-04).** The first exit hook to run emits one `client.session.end` row (info) with `reason` set to `exit_process` (SGW.exe's own `ExitProcess`: a forced or repeated quit) or `crt_exit` (the CRT's `exit` after the message loop ends: the ordinary quit). `Shutdown::flush_reporting` emits it through the producer's non-blocking `try_emit` before it raises the stop flag, so the uploader's final drain finds it and the row lands in the final POST ahead of the `final: true` health row. A second hook (`exit`, then a direct `ExitProcess`) emits nothing. The row is must-keep in the governor (`client.session.*`), and the ingest replays it even over a session's budget (`client.session.` in `PRIORITY_PREFIXES`, `admin-api` `session_budget.rs`).
+
+The packet spec listed `ue3_shutdown` and `crash` as reasons too. The exit-path RE above found no UE3 shutdown site worth hooking apart from the CRT `exit`, which is `crt_exit`. There is no `crash` value: the first-chance exception sink fires on handled exceptions as well as fatal ones, and the lab's unhandled-exception filter must not take locks or wait (the #686 rule), so neither can truthfully say "the session ended here" and then flush. A session that has neither `client.session.end` nor a `final: true` health row ended by a path no hook sees: a crash, `TerminateProcess` or a lab kill. Those still lose the tail window.
+
+Upload-failure accounting is TG-PIPE-13.
+
+## Boot failures
+
+TG-PIPE-14. Four boot steps that can fail used to write only to the local log. Each now also queues a `warn` row (builders in `crates/client-telemetry/src/boot_report.rs`). All four are must-keep in the governor and replayed over budget by the ingest (`client.dll.*`, `client.hooks.*`).
+
+| Target | When | Fields |
+|---|---|---|
+| `client.dll.uploader_spawn_failed` | the uploader thread could not be spawned | `error` |
+| `client.dll.bridge_failed` | a lab session asked for the bridge and it did not start | `reason`, `error` |
+| `client.dll.input_unhooked` | the bridge started but its DirectInput hook did not go in, so the lab cannot drive input without focus | `error` |
+| `client.hooks.install_lock_unavailable` | the install lock shared with the client-patches DLL was not taken within the wait, so no hooks went in | `wait_ms` |
+
+`reason` on `client.dll.bridge_failed` is one of `invalid_token` (the lab token is not 64 hex characters), `addr_in_use`, `addr_not_available`, `permission_denied` or `io_error` (anything else). `boot_report::report_bridge_result` picks it from the start result and returns no row when no bridge was asked for or it started.
+
+`client.dll.uploader_spawn_failed` is queued, but with no uploader nothing ships it: its local log line (`uploader thread failed to start`) is the record that survives. In SigNoz the failure looks like a launch with no DLL rows at all, `client.dll.attached` included.
 
 ## Hook taxonomy
 
@@ -152,7 +199,7 @@ The event variant on both sides is `ClientNative`:
 
 Wire shape pinned by paired tests:
 
-- Launcher side: [`crates/launcher/src/telemetry/events.rs`] `client_native_serializes_with_expected_shape`
+- Launcher side: [`crates/launcher-core/src/telemetry/events.rs`] `client_native_serializes_with_expected_shape`
 - Server side: [`crates/admin-api/src/routes/telemetry/`] `client_native_event_matches_launcher_shape`
 
 If either side renames a field, the symmetric test fails loudly.
@@ -197,9 +244,11 @@ Per-entity and budgeted events also **collapse**. An event identical to the prev
 | `numeric` | `{field: {n, min, max, sum}}` for up to 16 numeric fields |
 | `last_fields` | The last absorbed event's fields, as an exemplar (for a load freeze: what was loading last) |
 
-**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. Since TG-PIPE-13 it also carries `upload_failures_total`, the POSTs that failed (a network error or a non-2xx answer; the batch is kept and retried, so a failure loses nothing until the retained batch overflows into `upload_dropped_total`), and `last_upload_status`, the HTTP status of the most recent POST. `last_upload_status` is absent before the first answer and when the last POST got no answer at all (a network error), never `0`. The counters are atomics on the queue's consumer. If any of the three counts has grown since the last report, the health event is `warn`. A failed final POST at exit has no later health row to report it, so it goes to the local log (`final POST of N events failed`).
 
-**Shutdown flush: not wired yet.** The shutdown rollups and health event run only when the uploader's stop callback returns `true`. The DLL passes `|| false` today (`boot.rs`, pending the Phase 7 stop flag), so when `SGW.exe` exits, the last window's rollups and held repeats are lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, not for the tail of a session.
+A retried batch the server had already taken (its answer was lost) arrives twice: the chunk route replays every row and keeps no `(session_id, seq)` set, so the duplicate rows in SigNoz share a `seq`. The uploader's comment used to claim the server deduplicated them; it never did. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+
+**Shutdown flush (TG-PIPE-03).** The shutdown rollups and held repeats run when the uploader's stop callback returns `true`, and the closing health row carries `final: true` (periodic rows carry `final: false`), so a reader can tell a closed session from one whose reports just stopped. The DLL's stop callback is `shutdown::global().stop_requested()`; the exit hooks raise it. See [Process exit and the final flush](#process-exit-and-the-final-flush). When the client dies by a path with no hook (crash, `TerminateProcess`, a lab kill), the tail window is still lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, and for the tail only on a hooked exit.
 
 **Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
 
@@ -518,7 +567,7 @@ The client already logs through five paths and swallows failures at a dozen seam
 
 | Target | Hook | Fields | Level | Volume control |
 |---|---|---|---|---|
-| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated` | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
+| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated`; `after_unpack_fault` and `seq` on a message raised on the game thread after a `client.mercury.unpack_fault` and before the next bundle (TG-CLI-02: a per-thread mark, since `unpack` and the message loop's own errors run on the same thread; it lapses after 250 ms, and the fault's own message raised inside `unpack` is not tagged) | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
 | `client.viewport.unknown_entity` | the same `DebugMsgHelper::message` hook, checked before the throttle | `entity_id`, `count`, `first_ts` | `warn` | TG-CLI-01: the `ServerConnection::svidFollow: Viewport for entity %d ... is unknown` message becomes one row per entity at first sight, then a rollup of the later count every 10 s, instead of a free-text row per message (9.4k in the triage). At most 256 entities are tracked; past that a message takes the free-text path |
 | `client.ue3.log` | inline, `FOutputDeviceRedirector::Serialize` `0x004ce0b0` (`GLog`) | `category` (the `FName`), `event`, `message`, `suppressed_category`, `suppressed`, `truncated` | by category (`Error` `error`, `*Warning` `warn`, `Dev*` `debug`, else `info`) | per category; warnings per message shape. Low volume: `debugf`/`warnf` are compiled out of this build |
 | `client.ue3.fatal_error` | inline, `FOutputDeviceWindowsError::Serialize` `0x004ce3a0` (`GError`) | `category`, `event`, `message`, `fatal` | `error` | none; also written synchronously to the local log, because the process ends |
@@ -649,7 +698,7 @@ To preserve "observe without changing behavior":
 
   The lab build must bind the session's loopback port, refuse a wrong token, accept the right one, and answer a request. With no `Tick` hook in the host, that answer is the dispatch timeout.
 - Main `.github/workflows/test.yml` excludes the Windows-only cdylib from the Linux workspace check.
-- `crates/launcher/`'s existing CI continues to cover the injector module via its own pipeline.
+- The injector lives in `cimmeria-client-launch`, which the `client-launch.yml` workflow covers; the desktop launcher's launch worker that calls it is covered by `launcher-desktop.yml`.
 
 ## Cross-references
 
@@ -669,6 +718,6 @@ To preserve "observe without changing behavior":
 | Event | Level | When |
 |---|---|---|
 | `client.mercury.request_misparse` | warn | `unpack` is about to parse a message as a request (iterator next-request offset == cursor) in a packet without the has-requests flag; the client's uninitialized iterator field, see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md#the-iterators-next-request-offset-is-never-initialized-confirmed-live-2026-09-29) |
-| `client.mercury.unpack_fault` | warn | Any other `unpack` error, with the client's decoded length and the raw bytes at the cursor. Both rows carry the packet's `seq` and, when the packet filter recorded it, the encrypted datagram's `wire_fingerprint` (TG-MER-12) |
+| `client.mercury.unpack_fault` | warn | Any other `unpack` error, with the client's decoded length and the raw bytes at the cursor. Both rows carry the packet's `seq` and, when the packet filter recorded it, the encrypted datagram's `wire_fingerprint` (TG-MER-12). After a fault, the `client.bw.message` rows of the rest of the bundle carry `after_unpack_fault` and the same `seq` (TG-CLI-02) |
 
 Hook switches: `CIMMERIA_CLIENT_HOOKS_DISABLE` leaves named inline hooks uninstalled; `CIMMERIA_CLIENT_HOOKS_ENABLE` installs default-off hooks. `mercury_process_ordered_packet` is default-off because sitting in its call path changes the client's behaviour.

@@ -31,16 +31,23 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Download the launcher
 
-Players on Windows download the launcher from one stable link, which always
-holds the newest release:
-[`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
-Unzip it anywhere and run `cimmeria-launcher-desktop.exe`. The old
-`sgw-launcher.exe` no longer updates itself on Windows. See the
+Players download the launcher from a stable link, which always holds the
+newest release:
+
+- **Windows:** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
+  Unzip it into a folder of its own and run `cimmeria-launcher-desktop.exe`,
+  keeping the `windows` and `graphics` folders beside it. It updates itself
+  from Settings.
+- **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip).
+  See [Playing on a Mac](docs/guides/macos.md).
+
+The old `sgw-launcher.exe` was retired and no longer updates itself; the new
+launcher can import its settings and adopt the game it installed. See the
 [launcher guide](docs/client/launcher-guide.md).
 
 ## Tests & CI
 
-The Rust workspace currently carries **<!-- gen:tests-total -->13,418<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,335<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,629<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab). **<!-- gen:tests-live-db -->1,761<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **<!-- gen:tests-total -->13,418<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,335<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,629<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab; the desktop launcher is a separate workspace with its own workflow). **<!-- gen:tests-live-db -->1,761<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -310,7 +317,8 @@ Cimmeria/
 │   ├── upk-objects/        UPK object type definitions
 │   ├── navmesh-extractor/  UE3 .umap geometry → .obj for NavBuilder
 │   ├── occluder/           Collision-geometry occluders for server-side line of sight
-│   ├── launcher/           egui game launcher + DLL injection (sgw-launcher)
+│   ├── launcher/desktop/   Desktop launcher (Tauri + Effect), its own workspace
+│   ├── launcher-core/      Shared installer, manifest and telemetry code for the launcher
 │   └── client-telemetry/   Windows-only cdylib injected into SGW.exe
 ├── src-tauri/              Tauri desktop GUI wrapping the server (cimmeria-app)
 ├── entities/               XML entity definitions and type registry

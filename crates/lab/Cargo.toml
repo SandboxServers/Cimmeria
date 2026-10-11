@@ -7,8 +7,7 @@ description = "Live Research Lab supervisor: an MCP server (stdio per session, o
 
 # Windows-only: it drives a running SGW.exe on the owner's dev box.
 # Excluded from the workspace default build and CI's workspace jobs
-# (mirrors how sgw-launcher is excluded) so Linux dev hosts don't try
-# to build it. It is a normal x86_64-pc-windows-msvc host binary.
+# (like the GUI apps) so Linux dev hosts don't try to build it. It is a normal x86_64-pc-windows-msvc host binary.
 [[bin]]
 name = "cimmeria-lab"
 path = "src/main.rs"
@@ -45,7 +44,7 @@ tonic = { version = "0.14", default-features = false }
 async-trait = { workspace = true }
 
 # Shared suspended-launch + inject pipeline (issue #685) — the same code
-# path sgw-launcher uses.
+# path the desktop launcher's launch worker uses.
 cimmeria-client-launch = { path = "../client-launch" }
 
 # Per-launch lab token = two v4 UUIDs (32 random bytes → 64 hex). Reuses

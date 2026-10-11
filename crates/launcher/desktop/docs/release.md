@@ -1,6 +1,6 @@
 # Releasing the desktop launcher
 
-> How-to and reference · desktop launcher maintainers · 2026-10-11 (macOS release, LX-28)
+> How-to and reference · desktop launcher maintainers · 2026-10-11 (egui launcher retired, LX-18)
 
 A maintainer comments `/release-launcher` on a merged PR. That dispatches
 [`launcher-release.yml`](../../../../.github/workflows/launcher-release.yml),
@@ -17,7 +17,7 @@ stable links:
 
 | Release | Assets | Written when |
 |---|---|---|
-| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (with the updater key), the client-patches overlay patch when one is committed, `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256`, and `sgw-launcher-macos-wine-<tag>.exe` with its `.sha256` | Every release; the macOS zip when the macOS build succeeded |
+| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (with the updater key), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
 | Rolling, `launcher-current` (D-LX7) | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Only with the updater key, and only for the day's first release |
 
 The `.sha256` is in `sha256sum` format (`<hex>  <file name>`). The `.zip.sig` is
@@ -29,8 +29,7 @@ If a macOS build fails, the release still publishes everything else, and
 `launcher-current` keeps whatever macOS zip it had beside the new Windows one.
 Its notes name the macOS zip only while one is there, so their link never
 fails. `publish-macos` runs whenever `publish` succeeded, attaches what was
-built, and then fails if `mac-pieces`, `desktop-macos` or `egui-macos-wine`
-did not succeed. So the run shows both the failed build and `publish-macos`
+built, and then fails if `mac-pieces` or `desktop-macos` did not succeed. So the run shows both the failed build and `publish-macos`
 red, and **"Re-run failed jobs"** reruns the two (and anything they skipped),
 which attaches the missing asset. Do it within a day: the Windows pieces the
 macOS build needs are kept one day.
@@ -42,8 +41,8 @@ publish jobs replace this release's own assets on the dated release and, when
 signed, on `launcher-current`.
 
 The dated release's notes converge whatever the order of runs and re-runs:
-`publish.sh` always writes them as the release's base text plus one paragraph
-for each macOS asset the release holds at that moment.
+`publish.sh` always writes them as the release's base text plus the macOS
+paragraph while the release holds the macOS zip.
 
 ### Jobs
 
@@ -63,8 +62,7 @@ them.
 | `desktop-macos` | The reusable [`launcher-desktop-macos.yml`](../../../../.github/workflows/launcher-desktop-macos.yml), which the PR dry run also calls. On `macos-15` (arm64), from the same commit: checks the pieces against `mac-pieces`' output, stages them, fetches the pinned D9VK, builds the app, signs it ad hoc, checks it, zips it and uploads the zip and `.sha256` as an artifact. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` and `LAUNCHER_LOG_SAS_URL` on the app build step only. No updater key of either kind |
 | `sign` | Not for a same-day build. In the `launcher-release` environment: downloads the zip artifact only and checks it against the build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs, writes `latest.json`, checks the feed as a launcher would, and uploads the `.zip.sig` and `latest.json` as an artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
 | `publish` | Unless the run was cancelled, when `sign` succeeded or was skipped: checks the zip's digest again, creates or updates the dated release, then, when signed, refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
-| `egui-macos-wine` | Builds the original egui launcher and uploads it as an artifact named for the release, `sgw-launcher-macos-wine-<tag>.exe` with its `.sha256` (D-LX14, below) | `contents: read`; the manifest key and the log SAS for its build |
-| `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks each built artifact against its build job's digest, attaches the egui exe and the macOS zip to the dated release (one job, because both rewrite the notes), replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if either build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
+| `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks the macOS zip against `desktop-macos`' digest output, attaches it to the dated release and rewrites its notes, replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if the macOS build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
 
 Every third-party action in the workflow is pinned to a full commit SHA.
 
@@ -76,19 +74,16 @@ any error failing the job, so a re-run repairs a refresh that stopped part-way.
 against a stub `gh` on every PR that touches them
 ([`test-release-scripts.sh`](../../../../tools/launcher-release/test-release-scripts.sh)).
 
-### The egui launcher (D-LX2, D-LX14)
+### The retired egui launcher (D-LX1, D-LX2)
 
-The release no longer publishes `sgw-launcher-<tag>.exe`, the exact name the egui
-launcher updates itself from, so Windows players of the egui launcher are not
-offered later releases and move to the zip (D-LX2: announced, no bridge build).
-Every dated release's notes say so, telling those players their old launcher
-will no longer update and to download the zip from the stable link; the
-repository README points there too.
-Some Mac players still run the egui launcher under Wine
-([macOS guide](../../../../docs/guides/macos.md)), so the release still carries
-it, under a macOS-labelled name the egui self-update does not look for, until
-LX-18 deletes the job with the egui launcher. Those players download it again
-for each release, or move to the macOS desktop launcher below.
+The egui launcher (`sgw-launcher.exe`) was deleted from the repository in LX-18,
+and no release builds it. Releases never publish `sgw-launcher-<tag>.exe`, the
+exact name it updates itself from, so copies still installed are not offered
+later releases and their players move to the zip (D-LX2: announced, no bridge
+build). Every dated release's notes say so, telling those players their old
+launcher will no longer update and to download the zip from the stable link;
+the repository README points there too. Mac players who ran it under Wine move
+to the macOS desktop launcher below.
 
 ## Version and tag
 
@@ -240,8 +235,8 @@ signature pins those exact bytes, and a dated release's assets never change, so
 a launcher that reads the feed while `launcher-current` is being refreshed is
 still pointed at a zip that matches it. `launcher-current` replaces each asset
 with `gh release upload --clobber` (which deletes and uploads it; a release
-asset cannot be replaced in place), `latest.json` last. It is never marked latest, and its tag has no date, which the egui
-launcher's self-update skips.
+asset cannot be replaced in place), `latest.json` last. It is never marked latest, and its tag has no date, which a
+retired egui launcher's self-update skips.
 
 ## Secrets and variables
 

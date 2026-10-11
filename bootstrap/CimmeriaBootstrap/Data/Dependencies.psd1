@@ -25,15 +25,6 @@
         Notes     = "Detour navmesh query library. Compiled from source via cc crate during cargo build. DT_NAVMESH_VERSION=7."
     }
 
-    SevenZip = @{
-        Version       = "26.00"
-        ExtraUrl      = "https://github.com/ip7z/7zip/releases/download/26.00/7z2600-extra.7z"
-        ExtraFileName = "7z2600-extra.7z"
-        # 7zr.exe is a standalone binary that can extract .7z archives (bootstrap only)
-        BootstrapUrl  = "https://www.7-zip.org/a/7zr.exe"
-        Notes         = "7-Zip Extra: standalone 7za.exe console version. Bundled with sgw-launcher."
-    }
-
     # =============================================================================
     # Reverse-Engineering Toolchain (opt-in via -WithReToolchain)
     # =============================================================================

@@ -83,7 +83,7 @@ if stamp $'0\n1'; then fail "stamp: refuses the same commit from another run"; e
 export TAG VERSION="$BASE"
 cd "$WORK"
 mkdir -p artifacts
-for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-macos-arm64.zip "sgw-launcher-macos-wine-$TAG.exe"; do
+for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-macos-arm64.zip; do
   echo "$f bytes" > "artifacts/$f"
   printf '%s  %s\n' "$(sha256sum "artifacts/$f" | cut -d' ' -f1)" "$f" > "artifacts/$f.sha256"
 done
@@ -104,12 +104,11 @@ scenario() {
   for step in "$@"; do "$HERE/publish.sh" "$step" >/dev/null; done
   cat "$STUB_STORE/$TAG/body"
 }
-A="$(scenario a dated egui macos)"
-B="$(scenario b dated macos egui dated)"
-C="$(scenario c dated macos dated egui macos)"
+A="$(scenario a dated macos)"
+B="$(scenario b dated macos dated)"
+C="$(scenario c dated macos dated macos)"
 if [ "$A" = "$B" ] && [ "$A" = "$C" ]; then pass "dated notes converge in any order"; else fail "dated notes converge in any order"; fi
-if [ "$(grep -cF '**macOS (under Wine):**' <<<"$A")" = 1 ] && [ "$(grep -cF '**macOS (Apple silicon):**' <<<"$A")" = 1 ] \
-  && grep -qF '**Windows:**' <<<"$A"; then pass "dated notes: each paragraph once"; else fail "dated notes: each paragraph once"; fi
+if [ "$(grep -cF '**macOS (Apple silicon):**' <<<"$A")" = 1 ] && grep -qF '**Windows:**' <<<"$A"; then pass "dated notes: each paragraph once"; else fail "dated notes: each paragraph once"; fi
 D="$(scenario d dated)"
 if grep -qF 'macOS' <<<"$D"; then fail "dated notes: no macOS paragraph without its asset"; else pass "dated notes: no macOS paragraph without its asset"; fi
 

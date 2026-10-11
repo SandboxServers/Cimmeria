@@ -24,6 +24,31 @@ pub enum ChannelState {
     Disconnected,
 }
 
+// ── Log identity ────────────────────────────────────────────────────────────
+
+/// Who is on the other end of a channel, for the channel's own log rows
+/// (Rule 5 identity with its Rule 6 names). The transport knows only the
+/// peer address, so the service copies the session's identity in through
+/// [`Channel::set_log_identity`](super::Channel::set_log_identity) and the
+/// channel stamps it on the rows it writes (`mercury.retransmit`,
+/// `mercury.backpressure`, `mercury.tx_hole`, `mercury.rx_order`).
+///
+/// Every field is `Option` and starts `None`: before Phase 3 resolves the
+/// account the channel has no one to name, and an unknown field is left off
+/// the row, never written as `""` or `0`. Names are interned by the service,
+/// so the struct is `Copy` and a per-tick sync costs no allocation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogIdentity {
+    /// The login's `account.account_id`.
+    pub account_id: Option<u32>,
+    /// The login name, paired with `account_id`.
+    pub account_name: Option<&'static str>,
+    /// The `sgw_player.player_id` being played; `None` at character select.
+    pub player_id: Option<i32>,
+    /// The character name, paired with `player_id`.
+    pub player_name: Option<&'static str>,
+}
+
 // ── Per-packet TX metadata ──────────────────────────────────────────────────
 
 /// A sent packet's first message, identified and named by the service
