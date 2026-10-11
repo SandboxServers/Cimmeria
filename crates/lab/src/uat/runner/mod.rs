@@ -13,6 +13,7 @@
 
 mod actions;
 mod cast_id;
+mod chaos;
 mod checks;
 mod clauses;
 mod client_events;
@@ -94,6 +95,9 @@ pub struct RunRequest {
     /// against the server's session-end lines, as row `_session_end`
     /// (TG-PIPE-08). Never under `plan_only`. `lab_uat_run` defaults it on.
     pub end_session: bool,
+    /// Chaos specs (lab-chaos CH-08), already checked by the caller; the
+    /// runner resolves them with the run's seed ([`chaos`]).
+    pub chaos: Vec<String>,
 }
 
 /// When a row's fixture is applied: `auto` (the row has one), `always`,
@@ -153,6 +157,8 @@ pub struct RunOutcome {
     pub rows: Vec<RowSummary>,
     /// The ledger blocks for the rows this call ran, ready to paste.
     pub ledger: String,
+    /// One chaos header per spec, as the run resolved it (seed included).
+    pub chaos: Vec<String>,
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -212,6 +218,8 @@ pub(crate) struct RowCtx {
     /// `wait_server` waits from, read before the action in front of it,
     /// or why that read failed (the wait then reads a late one itself).
     pub log_mark: Option<Result<server_wait::LogMark, String>>,
+    /// The chaos this row set on the server, until cleared ([`chaos`]).
+    pub chaos: chaos::RowChaos,
 }
 
 /// The last row the run finished, for fixture mode `auto` (D-FX10).
@@ -249,6 +257,8 @@ pub struct Runner<'a, I: ToolInvoker> {
     /// A character an `end_session` could not drain; the next one drains
     /// it before its own (F24).
     pub(crate) pending_drain: Option<String>,
+    /// The run's chaos, resolved with its seed (lab-chaos CH-08).
+    pub(crate) chaos: crate::chaos::run::RunChaos,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -259,7 +269,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         req: RunRequest,
     ) -> Result<Self, String> {
         let t = now_ms();
-        let (run, manifest) = match &req.run_dir {
+        let (run, mut manifest) = match &req.run_dir {
             Some(dir) => {
                 let run = RunDir::open(dir)?;
                 let m: RunManifest = run.read_json(&run.run_json())?;
@@ -289,10 +299,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     owner_approvals: req.owner_approvals.clone(),
                     vars: Value::Object(req.vars.clone()),
                     rows: vec![],
+                    chaos: None,
                 };
                 (run, m)
             }
         };
+        let chaos = chaos::resolve(&req.chaos, &mut manifest)?;
         let mut runner = Self {
             inv,
             server,
@@ -308,6 +320,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             progress: None,
             last_row: None,
             pending_drain: None,
+            chaos,
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -329,6 +342,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         let sections = self.req.sections.clone();
         // Cleared when run_all returns, on every path (D-LW1).
         let _progress = self.begin_progress();
+        let _cpu = self.chaos_cpu_start(); // Stops on every return, as above.
         for loaded in &sections {
             for row in &loaded.spec.rows {
                 if let Some(only) = &self.req.rows {
@@ -381,6 +395,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 .map(|r| ledger::block(r, &build))
                 .collect::<Vec<_>>()
                 .join("\n"),
+            chaos: self.chaos.headers(),
         })
     }
 
@@ -443,8 +458,10 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             parity: None,
             poses: row.pose.clone(),
             log_mark: None,
+            chaos: Default::default(),
         };
         ctx.blocked = self.static_blocks(spec, row);
+        ctx.blocked.extend(self.chaos_blocks(row));
         if let Some(r) = self.revocation_reason() {
             // The lease went before this row started: drive nothing.
             ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
@@ -464,6 +481,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
                 // The cut-off row's tap and capture are still in `ctx`.
                 self.tap_abandon(&mut ctx).await;
+                self.chaos_clear(&mut ctx).await; // Not lease-gated, like the tap.
             }
         }
 
@@ -473,6 +491,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         // next login may meet the character still online: show it.
         g.flags
             .extend(ctx.session_end.iter().map(|e| format!("session end: {e}")));
+        g.flags.extend(ctx.chaos.errors.iter().cloned());
         super::snapshot::apply_parity(&mut g, ctx.parity.as_ref());
         // Plan only: a row that could run is SKIPPED, not graded.
         let result = if planned {
@@ -539,6 +558,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
 #[cfg(test)]
 mod ability_tests;
+#[cfg(test)]
+mod chaos_tests;
 #[cfg(test)]
 mod fingerprint_tests;
 #[cfg(test)]

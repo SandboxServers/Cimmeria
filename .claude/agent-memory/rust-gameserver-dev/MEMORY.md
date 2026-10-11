@@ -95,6 +95,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-mcp-feature-gated-tool-router](lab-mcp-feature-gated-tool-router.md) — feature-gated lab-mcp tools: second `#[tool_router(router, vis)]` block in the submodule, `+` merge in new().
 - [lab-record-tap-fixture-and-recorder-seams](lab-record-tap-fixture-and-recorder-seams.md) — tap fixtures need a cell msg_id + method_index for decode_call; Recorder test seams.
 - [lab-record-click-sampling-traps](lab-record-click-sampling-traps.md) — parsed specs resolve @aliases; toml writes newline strings as `"""`; clicks and calls land a tick apart.
+- [lab-console-tee-misses-async-spawn-ids](lab-console-tee-misses-async-spawn-ids.md) — server_console_exec never returns spawned npc ids (async, after the reply); no despawn-by-id command.
+- [lab-cli-json-capture-and-parallel-stubs](lab-cli-json-capture-and-parallel-stubs.md) — uat.ps1 -Json goes to [Console]::Out (SetOut to capture); stubs don't reach -Parallel lanes.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher

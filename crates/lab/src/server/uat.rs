@@ -80,10 +80,23 @@ pub struct UatRunArgs {
     /// releases it when the run ends.
     #[serde(default)]
     pub lease_id: Option<String>,
+    /// Chaos specs (`cpu`, `net:break`, `flush:pack:seed=7`): every row runs
+    /// under them and the result carries one header per spec. A bad spec,
+    /// or `burst` (not wired yet), refuses the call, plan_only too.
+    #[serde(default)]
+    pub chaos: Option<Vec<String>>,
 }
 
 fn end_session_default() -> bool {
     true
+}
+
+/// The call's chaos texts once they parse (with a placeholder seed: the run
+/// resolves them with its own), or the refusal.
+fn run_chaos(a: &UatRunArgs) -> Result<Vec<String>, McpError> {
+    let texts = a.chaos.clone().unwrap_or_default();
+    crate::chaos::run::RunChaos::parse(&texts, 0).map_err(|e| McpError::invalid_params(e, None))?;
+    Ok(texts)
 }
 
 /// Args for `lab_uat_report`.
@@ -376,6 +389,8 @@ impl LabServer {
         Parameters(a): Parameters<UatRunArgs>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        // Before the lease: a bad chaos spec takes nothing.
+        let chaos = run_chaos(&a)?;
         // The run's lease, held until this function returns (an own lease is
         // released on drop, whatever the outcome). A plan drives nothing.
         let run_lease = if a.plan_only {
@@ -434,6 +449,7 @@ impl LabServer {
             fixtures: a.fixtures,
             fingerprint: a.fingerprint,
             end_session: a.end_session && !a.plan_only,
+            chaos,
         };
         let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
@@ -535,9 +551,14 @@ impl LabServer {
                 .bridge_call("input_release", json!({}))
                 .await;
         }
+        let mut head = json!({ "run_dir": out.run_dir, "rows": out.rows });
+        // The runner's own headers (seed resolved), which the CLI prints in
+        // place of the text it was given (lab-chaos CH-08).
+        if !out.chaos.is_empty() {
+            head["chaos"] = json!(out.chaos);
+        }
         let mut blocks = vec![ContentBlock::text(
-            serde_json::to_string_pretty(&json!({ "run_dir": out.run_dir, "rows": out.rows }))
-                .unwrap_or_default(),
+            serde_json::to_string_pretty(&head).unwrap_or_default(),
         )];
         if !out.ledger.is_empty() {
             blocks.push(ContentBlock::text(out.ledger));
@@ -611,89 +632,5 @@ impl LabServer {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// TG-PIPE-08: a run ends its session unless the caller says not to.
-    #[test]
-    fn uat_run_ends_the_session_by_default() {
-        let args = |v| serde_json::from_value::<UatRunArgs>(v).unwrap().end_session;
-        assert!(args(json!({})));
-        assert!(!args(json!({ "end_session": false })));
-    }
-
-    #[test]
-    fn the_self_instance_check_ignores_case() {
-        assert!(is_same_instance(Some("p2"), "p2"));
-        assert!(is_same_instance(Some("P2"), "p2"));
-        assert!(is_same_instance(Some("p2"), "P2"));
-        assert!(!is_same_instance(None, "p2"));
-        assert!(!is_same_instance(Some("p3"), "p2"));
-    }
-
-    /// Regression guard (LP-05b2): a takeover of p2 stops p2's actions even
-    /// inside p1's run scope, because each action checks p2's own lease.
-    #[tokio::test]
-    async fn p2_actions_check_p2s_own_lease() {
-        use crate::lease::{permit, AcquireRequest, LeaseBook};
-        let b1 = Arc::new(LeaseBook::default());
-        let b2 = Arc::new(LeaseBook::default());
-        let p1 = RunLease::acquire_own(b1.clone(), "p1".into()).unwrap();
-        let p2 = RunLease::acquire_own(b2.clone(), "p2".into()).unwrap();
-        permit::scope(
-            p1.permit(),
-            under_lease(Some(&p2), async {
-                assert!(permit::ensure("bridge x").is_ok());
-                b2.acquire(AcquireRequest {
-                    owner: "other".into(),
-                    purpose: "takeover".into(),
-                    force: true,
-                    reason: Some("test".into()),
-                    ..Default::default()
-                })
-                .unwrap();
-                assert!(
-                    permit::ensure("bridge x").is_err(),
-                    "a takeover of p2 must stop p2's actions"
-                );
-            }),
-        )
-        .await;
-    }
-
-    fn supervisor(instance: Option<&str>) -> Arc<Supervisor> {
-        let config = SupervisorConfig {
-            install_dir: None,
-            dll_path: None,
-            patches_dll: None,
-            helper_path: None,
-            bind: "127.0.0.1".into(),
-            port: 8770,
-            instance: instance.map(String::from),
-            telemetry: Default::default(),
-        };
-        let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", ""));
-        Arc::new(Supervisor::new(bridge, config))
-    }
-
-    /// A hosted p2 is the second player's own supervisor; a single-instance
-    /// daemon falls back to the in-process p2, never its own supervisor.
-    #[test]
-    fn p2_is_the_hosted_instance_or_the_in_process_fallback() {
-        let s2 = supervisor(Some("p2"));
-        let hosted = LabServer::new_multi(crate::server::Instances::new(vec![
-            crate::server::Hosted {
-                label: "default".into(),
-                supervisor: supervisor(None),
-            },
-            crate::server::Hosted {
-                label: "p2".into(),
-                supervisor: s2.clone(),
-            },
-        ]));
-        assert!(Arc::ptr_eq(&hosted.p2_lab("p2").supervisor, &s2));
-        let own = supervisor(None);
-        let single = LabServer::new(own.clone());
-        assert!(!Arc::ptr_eq(&single.p2_lab("p2").supervisor, &own));
-    }
-}
+#[path = "uat_tests.rs"]
+mod tests;

@@ -74,6 +74,18 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if row.state == "in_world" && row.anchor.unwrap_or(true) {
             self.anchor(ctx).await;
         }
+        // In world, so the player entity exists; before the tap and setup,
+        // so everything the row drives runs under the chaos (lab-chaos CH-08).
+        if let Err(e) = self.chaos_set(row, ctx).await {
+            ctx.blocked.push(format!("chaos not set: {e}"));
+            self.chaos_clear(ctx).await;
+            if ctx.fixture_mode == Some(fixture::MODE_FIXTURE) {
+                if let Err(e) = self.end_session(ctx).await {
+                    ctx.session_end.push(e);
+                }
+            }
+            return;
+        }
         // A row fixture (FX-06) is established before this point: the tap
         // starts after it, then the steps.
         let packet = row.expect.iter().any(|c| c.source == Source::Packet);
@@ -99,6 +111,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 ctx.actions.push(rec);
             }
         }
+        // After teardown, on the failed-step and failed-setup paths too.
+        self.chaos_clear(ctx).await;
         self.fp_write(ctx);
         // The session ends with the row (D-FX5), on the failed-setup path
         // too. A lease takeover drops this future before here; the next

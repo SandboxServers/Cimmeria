@@ -128,6 +128,9 @@ impl ServerInvoker for FakeServer {
                           "spawn_id": 412, "template_id": 15 },
                     ]
                 })),
+                // lab-chaos (CH-05's replies; `chaos_tests` scripts refusals).
+                "server_chaos_set" => ok(json!({ "set": true, "expires_in_s": args["ttl_s"] })),
+                "server_chaos_clear" => ok(json!({ "cleared": 1 })),
                 _ => ToolOutcome::err(format!("unknown tool {name}")),
             }
         };
