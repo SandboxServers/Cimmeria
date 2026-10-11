@@ -31,6 +31,9 @@ pub struct NativeSnapshot {
     pub operation: Snapshot,
     pub preferences: Preferences,
     pub requires_reopen: bool,
+    /// The reviewed list an adopted copy keeps at Play (`null` otherwise):
+    /// saving `login_servers` does not change what that copy logs in to.
+    pub adopted_login_servers: Option<Vec<LoginServer>>,
 }
 
 impl DesktopState {
@@ -40,6 +43,7 @@ impl DesktopState {
             operation: self.operations().snapshot().clone(),
             preferences: self.preferences().clone(),
             requires_reopen: self.requires_reopen(),
+            adopted_login_servers: self.adopted_login_servers(),
         }
     }
 
@@ -132,6 +136,45 @@ mod tests {
         assert_eq!(
             std::fs::read(dir.path().join("preferences.json")).unwrap(),
             bytes
+        );
+    }
+
+    #[test]
+    fn an_invalid_server_list_is_refused_and_writes_nothing_but_empty_means_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let save = |expected_revision, login_servers| NativeCommand::SaveClientOptions {
+            schema_version: 1,
+            expected_revision,
+            login_servers,
+            client_patches_enabled: true,
+        };
+        let server = |name: &str, url: &str| LoginServer {
+            name: name.into(),
+            url: url.into(),
+        };
+        for invalid in [
+            vec![server("Local", "login.example:8081")],
+            vec![
+                server("Good", "http://good.example"),
+                server("", "http://x"),
+            ],
+            vec![server("Quote\"d", "http://login.example")],
+        ] {
+            assert!(matches!(
+                state.dispatch(save(0, invalid.clone())),
+                Err(StorageError::InvalidServerList)
+            ));
+            assert_eq!(state.preferences(), &Preferences::default(), "{invalid:?}");
+            assert!(!dir.path().join("preferences.json").exists());
+        }
+        let saved = state.dispatch(save(0, vec![])).unwrap().preferences;
+        assert_eq!(saved.revision, 1);
+        assert!(saved.login_servers.is_empty());
+        // The code reaches the frontend as one flat string.
+        assert_eq!(
+            serde_json::to_value(StorageError::InvalidServerList).unwrap(),
+            serde_json::json!("invalid_server_list")
         );
     }
 

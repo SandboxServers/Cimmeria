@@ -21,6 +21,8 @@ export const NativeSnapshot = Schema.Struct({
     login_servers: Schema.Array(LoginServer), client_patches_enabled: Schema.Boolean,
   }),
   requires_reopen: Schema.Boolean,
+  // An adopted copy plays with the list its adoption reviewed, whatever is saved above.
+  adopted_login_servers: Schema.NullOr(Schema.Array(LoginServer)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
@@ -34,7 +36,7 @@ export type Command = {command: "inspect"; schema_version: 1} | {
 
 // Native storage codes as `StorageError` serializes them.
 export type StorageCode = "in_use" | "io" | "corrupt" | "unsupported_schema" | "too_large" | "unsafe_file" |
-  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain";
+  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" | "invalid_server_list";
 /** The three scaffold commands (LX-02) fail with one flat code string: a storage code or `"unavailable"`. */
 export type ScaffoldError = StorageCode | "unavailable";
 
@@ -60,11 +62,12 @@ export type ClientChangesError = ScaffoldError;
 
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{
   readonly code: "transport" | "schema" | "in_use" | "io" | "corrupt" | "unsupported_schema" |
-    "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain";
+    "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" |
+    "invalid_server_list";
 }> {}
 
 const nativeCodes = new Set(["in_use", "io", "corrupt", "unsupported_schema", "too_large", "unsafe_file",
-  "invalid_directory", "stale_revision", "busy", "persistence_uncertain"]);
+  "invalid_directory", "stale_revision", "busy", "persistence_uncertain", "invalid_server_list"]);
 export function safeFailure(error: unknown): BridgeFailure {
   return new BridgeFailure({code: typeof error === "string" && nativeCodes.has(error)
     ? error as BridgeFailure["code"] : "transport"});

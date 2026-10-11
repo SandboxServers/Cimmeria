@@ -6,7 +6,13 @@ use std::sync::Mutex;
 
 /// Mint a session for a plan that carries the telemetry DLL. The choice is read
 /// again here, so a player who opted out since admission gets no session.
-pub(super) async fn session(state: &Arc<Mutex<DesktopState>>, plan: &Plan) -> Option<Session> {
+/// `servers` is the list this Play writes into `LoginInternal.lua`: the session
+/// comes from the server the game logs in to, not the install-time list.
+pub(super) async fn session(
+    state: &Arc<Mutex<DesktopState>>,
+    plan: &Plan,
+    servers: &[LoginServer],
+) -> Option<Session> {
     plan.resources.client_telemetry.as_ref()?;
     let identity = {
         let owner = state.lock().ok()?;
@@ -19,7 +25,7 @@ pub(super) async fn session(state: &Arc<Mutex<DesktopState>>, plan: &Plan) -> Op
         "native"
     };
     let tags = ["desktop-launcher", std::env::consts::OS, backend];
-    match game_telemetry::start(&identity, &plan.installation.login_servers, &tags).await {
+    match game_telemetry::start(&identity, servers, &tags).await {
         Ok(session) => Some(session),
         Err(outcome) => {
             record(state, plan, outcome);

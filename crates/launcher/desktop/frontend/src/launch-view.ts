@@ -12,7 +12,7 @@ export function launchText(s:LaunchState):string {
  if(o?.phase==='process_started')return 'Game process started. Login and world entry are not verified.';
  if(o?.phase==='host_started'||o?.phase==='preparing')return 'Preparing the game and waiting for its process…';
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
- if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again.';
+ if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
  if(launchBlocked(status))return 'Another operation owns the game. Wait for it to finish.';
  return status.installation_id?'Ready to Play.':'Finish installation and compatibility checks to enable Play.';

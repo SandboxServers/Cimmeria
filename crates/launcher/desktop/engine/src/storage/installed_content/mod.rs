@@ -123,6 +123,17 @@ impl DesktopState {
             .map(Some)
     }
 
+    /// The login servers an adopted copy was reviewed with, for display only.
+    /// `None` for any other install, or when the record cannot be read; Play
+    /// decides from `installed_for_launch`, never from this.
+    pub fn adopted_login_servers(&self) -> Option<Vec<LoginServer>> {
+        let record: Record = read(&self.directory.root.join(NAME)).ok().flatten()?;
+        record
+            .adoption
+            .is_some()
+            .then_some(record.intent.login_servers)
+    }
+
     /// Read-only admission view: the verified owner and its signed release, plus
     /// the provenance of an adopted copy. Older successful installs can be checked
     /// without materializing the installed-content index. Imported settings are
