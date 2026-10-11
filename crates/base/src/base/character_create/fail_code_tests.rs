@@ -151,6 +151,10 @@ async fn skin_tint_out_of_range_is_invalid_skin_color() {
     let line = capture
         .find_message(tracing::Level::INFO, "character creation refused")
         .unwrap_or_else(|| panic!("no refusal row: {:#?}", capture.all()));
+    assert!(
+        line.has_field("event", "character_create_failed"),
+        "{line:#?}"
+    );
     assert!(line.has_field("reason", "invalid_skin_tint"), "{line:#?}");
     assert!(line.has_field("account_id", "7"), "{line:#?}");
     // ...and what was refused.
@@ -169,6 +173,10 @@ async fn unknown_char_def_is_invalid_character_type() {
     let line = capture
         .find_message(tracing::Level::WARN, "character creation refused")
         .unwrap_or_else(|| panic!("no refusal row: {:#?}", capture.all()));
+    assert!(
+        line.has_field("event", "character_create_failed"),
+        "{line:#?}"
+    );
     assert!(line.has_field("reason", "unknown_char_def"), "{line:#?}");
     assert!(line.has_field("account_id", "7"), "{line:#?}");
     assert!(line.has_field("char_def_id", "999"), "{line:#?}");
