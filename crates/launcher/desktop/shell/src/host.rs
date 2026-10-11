@@ -21,6 +21,7 @@ pub use updater::UpdaterCommand;
 mod launch;
 mod log_upload;
 mod migration;
+mod physx;
 pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
@@ -56,6 +57,10 @@ pub struct NativeHost {
     firesky_fixture: Option<PathBuf>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
+    /// One PhysX installer at a time; its last result outlives a lost reply.
+    physx_installing: std::sync::atomic::AtomicBool,
+    physx_last:
+        Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     repair_worker: Mutex<Option<repair::Worker>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -87,6 +92,8 @@ impl NativeHost {
             firesky_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
+            physx_installing: std::sync::atomic::AtomicBool::new(false),
+            physx_last: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
         }

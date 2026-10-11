@@ -16,6 +16,7 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::{PathOutcome, PathStatus};
 
 use super::detectors::MoveSource;
+use super::dispatch::UNWITNESSED_LEG_SAMPLE;
 use super::path_failure::{report_path_failure, PathFailReason, PathFailure, PathFallback};
 use crate::cell::space_manager::SpaceManager;
 
@@ -100,12 +101,17 @@ fn log_request(
         "status" => status,
     );
     let suppressed = if outcome.is_some_and(|o| o.status == PathStatus::Ok) {
-        match space_mgr.npc_detectors.admit_sample(
-            req.npc_id,
-            "path_request_ok",
-            now,
-            OK_REQUEST_SAMPLE_INTERVAL,
-        ) {
+        // An NPC nobody can see samples its ok requests on a slower window
+        // (TG-NPC-09); a witnessed NPC keeps the existing one.
+        let (kind, interval) = if space_mgr.has_witness(req.npc_id) {
+            ("path_request_ok", OK_REQUEST_SAMPLE_INTERVAL)
+        } else {
+            ("unwitnessed_path_request_ok", UNWITNESSED_LEG_SAMPLE)
+        };
+        match space_mgr
+            .npc_detectors
+            .admit_sample(req.npc_id, kind, now, interval)
+        {
             Some(n) => n,
             None => return,
         }

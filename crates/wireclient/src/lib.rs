@@ -63,6 +63,11 @@
 //! - [`semantic`] — typed, strict decoders for server-to-client entity
 //!   methods, written from the dispatch table rather than the server's own
 //!   serializers, so the fixture checks are independent.
+//! - [`mirror`] — what the client has been told about the world, and
+//!   queries that find an entity by it.
+//! - [`script`] — `ScriptSession`: every server message logged in order
+//!   through the mirror, waits that move a cursor through the log, and the
+//!   idle client's keep-alive while a script waits.
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
@@ -77,6 +82,8 @@ pub mod calls;
 pub mod error;
 pub mod handshake;
 pub mod login_probe;
+pub mod mirror;
+pub mod script;
 pub mod semantic;
 pub mod session;
 pub mod session_trace;
