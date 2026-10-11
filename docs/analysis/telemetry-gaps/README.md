@@ -57,20 +57,20 @@ Each domain agent adversarially reviewed its own system's telemetry footprint, p
 | D-TG2 | labd ships its log to the colo SigNoz as `service.name=cimmeria-lab`, with local paths reduced to the instance name | Decided 2026-10-10 | Makes #1342 (orphan SGW.exe) and unexplained short sessions visible |
 | D-TG3 | `session_kind` is client-declared and server-verified: trusted only for accounts flagged as test accounts | Decided 2026-10-10 | A player can't hide from friction alerts by claiming to be the lab |
 | D-TG4 | Client DLL packets are in scope and ship with the next signed launcher release, after a lab load check | Decided 2026-10-10 | Server packets merge independently |
-| D-TG5 | Purge the SigNoz rows that hold leaked secrets: 541 `*-keys.txt` lines and 14 `current-session.json` token lines from bundle replay (2026-09-29 to 10-06), and the 2 Discord error rows with the webhook URL (2026-10-04)? | Open | TG-PIPE-01 and TG-SOC-01 stop new leaks; old rows stay until purged or aged out |
-| D-TG6 | Rotate the Discord webhook, whose token sits in retained logs? | Open | TG-SOC-01 (PR #1349) only stops future leaks |
-| D-TG7 | TG-MER-09: reverse NA25 and move per-datagram `mercury.packet` to a TRACE firehose with a 1-in-53 sample and a counter? | Open | 63M rows a week, 49% of all SigNoz rows; NA25 chose INFO for more data |
+| D-TG5 | Purge the SigNoz rows that hold leaked secrets: 541 `*-keys.txt` lines and 14 `current-session.json` token lines from bundle replay (2026-09-29 to 10-06), and the 2 Discord error rows with the webhook URL (2026-10-04)? | Decided 2026-10-10: purge | Owner chose to purge. A targeted `ALTER TABLE signoz_logs.logs_v2 DELETE` was run that day for `launcher.client_log` rows whose `source_file` ends in `-keys.txt` or `current-session.json` (1,164 rows over all time) and the 2 webhook rows |
+| D-TG6 | Rotate the Discord webhook, whose token sits in retained logs? | Owner action | The owner rotates the webhook; PR #1349 only stops future leaks |
+| D-TG7 | TG-MER-09: reverse NA25 and move per-datagram `mercury.packet` to a TRACE firehose with a 1-in-53 sample and a counter? | Decided 2026-10-10: sample, keep anomalies | Keep every anomalous row (retransmit, duplicate, gap, error). Sample routine per-datagram rows per channel, with a per-minute count summary so rates stay exact |
 | D-TG8 | TG-DB-11: demote `sqlx::query` to INFO once TG-DB-06's slow-statement WARN lands, losing per-statement `elapsed_secs` history? | Open | 189k rows a week, 92% from two idle pollers |
-| D-TG9 | TG-SOC-03: on character delete, refund held bids and return mail attachments by mail first, or accept destruction with TG-SOC-02 as the audit? | Open | The schema cascades destroy listings, held cash and attachments; social invariants 3 and 4 say refund |
-| D-TG10 | TG-SOC-04: should presence (login, level, death, gate) skip players who put the subject on their Ignore list, and should trade honour the Ignore list too? | Open | Today an ignorer still gets CM 89 for the harasser; trade is the only social action that ignores Ignore |
-| D-TG11 | TG-ITM-14: when the player load fails, abort the appearance refresh instead of caching and broadcasting the default "naked human male" model? | Open | A behaviour change inside a telemetry campaign |
+| D-TG9 | TG-SOC-03: on character delete, refund held bids and return mail attachments by mail first, or accept destruction with TG-SOC-02 as the audit? | Decided 2026-10-10: accept destruction, audit it | Owner keeps the cascade. TG-SOC-02 logs every destroyed listing, held bid and attachment so it can be restored by hand; TG-SOC-03 is dropped |
+| D-TG10 | TG-SOC-04: should presence (login, level, death, gate) skip players who put the subject on their Ignore list, and should trade honour the Ignore list too? | Decided 2026-10-10: yes to both | Presence skips ignorers. A trade request from an ignored player is refused, with visible feedback to the requester |
+| D-TG11 | TG-ITM-14: when the player load fails, abort the appearance refresh instead of caching and broadcasting the default "naked human male" model? | Decided 2026-10-10: retry once, then keep last good | On a failed load, retry once after a short delay. If it fails again, keep broadcasting the previous appearance and WARN with the player and the load error |
 | D-TG12 | TG-ITM-07: is a free repair or recharge with no trailing vendor template id legitimate, or an authority hole to close first? | Open | `server-authority-enforcer` checks whether the stock client ever omits it |
-| D-TG13 | Server-side `session_kind` comes from the account's test flag alone, since the game client has no way to declare it on the wire without a client patch. Accept? | Open | D-TG3 says "client-declared"; only the dev-session mint declares today, and it has no account to verify against |
+| D-TG13 | Server-side `session_kind` comes from the account's test flag alone, since the game client has no way to declare it on the wire without a client patch. Accept? | Decided 2026-10-10: account flag alone (revises D-TG3) | A seeded test-account flag marks lab accounts; server events for their sessions carry `session_kind=lab`. Client telemetry keeps its own declared kind |
 | D-TG14 | TG-NET-18: which join key ties a game session to its client telemetry stream (account on the dev-session mint, or something else)? | Open | The mint carries no account, so T8 can't be detected server-side yet |
-| D-TG15 | TG-DB-02: how long may shutdown wait to drain position and ammo saves inside the container stop grace, and in what stop order? | Open | Every deploy rolls in-world players back to their last gate today |
+| D-TG15 | TG-DB-02: how long may shutdown wait to drain position and ammo saves inside the container stop grace, and in what stop order? | Decided 2026-10-10: up to 10 s | Save every in-world player in parallel. After 10 s, shut down anyway and WARN once per player not saved, with player_id and name |
 | D-TG16 | Add a periodic counter of OTLP records the exporter dropped, accepting an exporter-side change? | Open | `opentelemetry=off` correctly stops loops, but a dropped batch leaves no trace |
 | D-TG17 | TG-MOV-09 (after the RE): keep sending method 116 to `SGWGmPlayer` clients, skip it, or route the streaming hint another way? | Open | 195 of 200 client `method_dropped` rows are this |
-| D-TG18 | When the player load degrades (TG-DB-07), refuse world entry or suppress mission persistence for that session? | Open | A failed saved-missions read lets a re-accept overwrite completed progress (the #411 shape) |
+| D-TG18 | When the player load degrades (TG-DB-07), refuse world entry or suppress mission persistence for that session? | Open: owner rejected both options 2026-10-10 | Coordinator proposal pending: retry the read; if it still fails, enter the world with mission state marked unknown, refuse accept/advance of those missions with visible feedback, keep retrying in the background |
 
 ## Packet status
 
@@ -82,7 +82,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-SOC-01 | Strip the webhook URL from Discord send errors | W0 | high | Review (PR #1349) |
 | TG-NET-08 | `admin.request` row for every admin API request | W0 | high | Ready |
 | TG-DB-01 | Shutdown logs each in-world player's unsaved state | W0 | high | Ready |
-| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | BlockedDecision (D-TG15) |
+| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | Ready (D-TG15 decided) |
 | TG-DB-03 | Cell position-save skips and queues are logged | W0 | high | Ready |
 | TG-DB-04 | `PersistPosition` rows: identity, Pattern B, reason | W0 | med | Ready |
 | TG-DB-07 | Player-load fallbacks say they degraded | W0 | med | Ready |
@@ -91,10 +91,10 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-ITM-09 | Loot silent drops and lost cash | W0 | med | Ready |
 | TG-ITM-03 | Outbox replay row and identity on outbox WARNs | W0 | med | Ready |
 | TG-SOC-02 | `character.delete_cascade` row | W0 | high | Ready |
-| TG-SOC-03 | Character delete: refund or destroy | W0 | high | BlockedDecision (D-TG9) |
+| TG-SOC-03 | Character delete: refund or destroy | W0 | high | Dropped (D-TG9: accept destruction) |
 | TG-MIS-07 | Log dropped deferred content actions | W0 | med | Ready |
 | TG-MER-08 | Delete the per-packet encrypt/decrypt TRACE rows | W1 | high | Ready |
-| TG-MER-09 | `mercury.packet` to the firehose plus a counter | W1 | high | BlockedDecision (D-TG7) |
+| TG-MER-09 | `mercury.packet` to the firehose plus a counter | W1 | high | Ready (D-TG7 decided) |
 | TG-NPC-01 | Sample unwitnessed Patrol/Wander tick rows | W1 | high | Ready |
 | TG-NPC-02 | Gate `movement.npc` step rows on witnesses | W1 | high | Ready |
 | TG-NPC-03 | Drop `no_candidates` rows with zero witnesses | W1 | high | Ready |
@@ -121,7 +121,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-NET-13 | Dev-session refusals no longer dropped | W2 | med | Ready |
 | TG-NET-15 | `session.start` says login or travel | W2 | low | Ready (domain agent) |
 | TG-NET-16 | Test-account flag on `account` | W2 | med | Ready (domain agent) |
-| TG-NET-17 | `cimmeria.session_kind` on server session rows | W2 | high | BlockedDecision (D-TG13) |
+| TG-NET-17 | `cimmeria.session_kind` on server session rows | W2 | high | Ready (D-TG13 decided) |
 | TG-NET-18 | World entry says whether client telemetry exists | W2 | med | BlockedDecision (D-TG14) |
 | TG-PIPE-17 | labd ships its log to SigNoz | W2 | high | Ready (domain agent) |
 | TG-PIPE-05 | labd launch, stop and pid-overwrite rows | W2 | med | Ready |
@@ -154,7 +154,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-CMB-08 | Proximity aggro: combat flag not announced | W3 | low | BlockedDependency (TG-NPC-11) |
 | TG-CMB-10 | Log a failed `onEndAidWait` send | W3 | low | Ready |
 | TG-ITM-01 | Appearance refresh outcome rows | W3 | high | Ready |
-| TG-ITM-14 | Abort an appearance refresh on a failed load | W3 | high | BlockedDecision (D-TG11) |
+| TG-ITM-14 | Abort an appearance refresh on a failed load | W3 | high | Ready (D-TG11 decided) |
 | TG-ITM-02 | Loot roll outcome row | W3 | high | Ready |
 | TG-ITM-04 | Inline move refusals get event and reason | W3 | med | Ready |
 | TG-ITM-05 | After-commit: no silent drops | W3 | med | Ready |
@@ -202,7 +202,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-NPC-12 | Respawn tick negative gaps | W3 | low | Ready |
 | TG-NPC-13 | DoT kill-credit miss WARN | W3 | low | Ready |
 | TG-NPC-15 | `spawner.npc_behaviour` field hygiene | W3 | low | BlockedDependency (TG-NPC-06) |
-| TG-SOC-04 | Presence skips Ignore-list watchers | W3 | high | BlockedDecision (D-TG10) |
+| TG-SOC-04 | Presence skips Ignore-list watchers | W3 | high | Ready (D-TG10 decided) |
 | TG-SOC-05 | Presence fan-out counts | W3 | med | Ready |
 | TG-SOC-06 | Cell trade events and cancel reason | W3 | med | Ready |
 | TG-SOC-07 | Spatial chat send failures and identity | W3 | med | Ready |
