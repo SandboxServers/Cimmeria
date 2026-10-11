@@ -24,6 +24,8 @@ const CHAR_DEF_PRAXIS: i32 = 3;
 const RECV: Duration = Duration::from_secs(5);
 /// `onUpdateItem` on the player (idbase 61): the starter kit at entry.
 const ON_UPDATE_ITEM: u16 = 72;
+/// The server's refusal code for an unknown char def (`fail_code.rs`).
+const INVALID_CHARACTER_TYPE: i32 = 10001;
 
 #[tokio::test]
 async fn wire_created_praxis_character_enters_castle_cellblock_live_db() {
@@ -58,10 +60,15 @@ async fn wire_created_praxis_character_enters_castle_cellblock_live_db() {
     assert_eq!(first_login, 1, "a new character's first login is pending");
     assert_eq!(world_location, "Castle_CellBlock");
 
-    let before = session.entry_bundles.len();
+    // Only world entry records bundles: the character list, then play's.
+    assert_eq!(
+        session.entry_bundles.len(),
+        1,
+        "only the character list so far"
+    );
     session.play(player_id, RECV).await.expect("play");
     assert!(session.player_entity_id.is_some(), "own entity id set");
-    let entry = &session.entry_bundles[before..];
+    let entry = &session.entry_bundles[1..];
     assert!(
         entry.len() >= 3,
         "world entry recorded {} bundles",
@@ -100,7 +107,10 @@ async fn create_character_refusal_is_an_error_live_db() {
         .create_character_on_wire("Wirerefused", -1, &[], RECV)
         .await;
     assert!(
-        matches!(result, Err(Error::CharacterCreateFailed(_))),
+        matches!(
+            result,
+            Err(Error::CharacterCreateFailed(INVALID_CHARACTER_TYPE))
+        ),
         "char def -1 must be refused, got {result:?}"
     );
 

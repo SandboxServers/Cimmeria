@@ -57,10 +57,10 @@ impl GameSession {
             if remaining.is_zero() {
                 break;
             }
+            // The create reply is not world entry, so it stays out of
+            // `entry_bundles`.
             for bundle in self.recv_meaningful_bundles(1, remaining).await {
-                let outcome = create_outcome(&bundle);
-                self.entry_bundles.push(bundle);
-                match outcome {
+                match create_outcome(&bundle) {
                     Some(Ok(())) => return Ok(()),
                     Some(Err(code)) => return Err(Error::CharacterCreateFailed(code)),
                     None => {}

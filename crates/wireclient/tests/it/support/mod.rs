@@ -163,8 +163,8 @@ pub async fn default_visual_choices(pool: &PgPool, char_def_id: i32) -> Vec<(i32
 /// Delete `account_id` and every row a test created under it: the
 /// characters' missions, inventory and player rows, then the account. Each
 /// statement matches the exact sentinel account id, so no other account's
-/// rows are touched. The foreign keys to `sgw_player` cascade as well, so
-/// these explicit deletes only fix the order.
+/// rows are touched. The other foreign keys to `sgw_player` cascade (two set
+/// NULL, on mail senders and auction bidders, which a test never creates).
 pub async fn cleanup_account(pool: &PgPool, account_id: i32) {
     let statements = [
         "DELETE FROM sgw_mission WHERE player_id IN \
