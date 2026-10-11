@@ -56,7 +56,12 @@ function Select-UatChaosHeader($Runs, [string]$Fallback) {
     $seen = @(@($Runs) | ForEach-Object { [string](Get-UatField $_ 'Chaos') } | Where-Object { $_ } | Select-Object -Unique)
     if (-not $seen.Count) { return $(if ($Fallback) { $Fallback } else { $null }) }
     if ($seen.Count -eq 1) { return $seen[0] }
-    return "$($seen[0]) (+$($seen.Count - 1) other seed(s) in batch.jsonl)"
+    # Several runs differ only by seed: name the seed once as <per run> (each
+    # run's own is in batch.jsonl and its divergence ref), which keeps -Json
+    # inside its budget with 20-digit seeds.
+    $norm = @($seen | ForEach-Object { $_ -replace 'seed=\d+', 'seed=<per run>' } | Select-Object -Unique)
+    if ($norm.Count -eq 1) { return $norm[0] }
+    return "$($norm[0]) (+$($norm.Count - 1) other spec(s) in batch.jsonl)"
 }
 
 # Attaches the chaos header to a run summary, so -Json and summary.md carry it.

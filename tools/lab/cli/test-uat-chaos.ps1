@@ -57,7 +57,7 @@ Check ($null -eq (Get-UatRunChaos ([pscustomobject]@{ rows = @() }))) 'a result 
 $oneSeed = @([pscustomobject]@{ Chaos = 'chaos=cpu seed=5' }, [pscustomobject]@{ Chaos = 'chaos=cpu seed=5' })
 Check ((Select-UatChaosHeader $oneSeed 'chaos=cpu') -ceq 'chaos=cpu seed=5') "the runs' header replaces the typed one, not appended to it"
 $twoSeeds = @([pscustomobject]@{ Chaos = 'chaos=cpu seed=5' }, [pscustomobject]@{ Chaos = 'chaos=cpu seed=9' }, [pscustomobject]@{ Error = 'x' })
-Check ((Select-UatChaosHeader $twoSeeds 'chaos=cpu') -ceq 'chaos=cpu seed=5 (+1 other seed(s) in batch.jsonl)') 'runs with different seeds keep the first header and count the rest'
+Check ((Select-UatChaosHeader $twoSeeds 'chaos=cpu') -ceq 'chaos=cpu seed=<per run>') 'runs that differ only by seed name the seed once as <per run>'
 Check ((Select-UatChaosHeader @([pscustomobject]@{ Error = 'x' }) 'chaos=cpu') -ceq 'chaos=cpu') 'no run returned a header: the typed one stays'
 Check ($null -eq (Select-UatChaosHeader @() $null)) 'no chaos at all gives no header'
 
