@@ -35,8 +35,8 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,924 |
-| Files with tests | 2,259 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,928 |
+| Files with tests | 2,260 |
 | Gated in CI (every crate but CI's exclude list) | 10,380 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,746 |
 | Inventory threshold (5% of the tests) | 646 |
@@ -84,7 +84,7 @@ with no file in this directory yet.
 
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
-| `crates/lab` | `cimmeria-lab` | 925 | 146 | 0 | no | none |
+| `crates/lab` | `cimmeria-lab` | 929 | 147 | 0 | no | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 912 | 164 | 48 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 904 | 144 | 507 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 833 | 153 | 0 | no | [launcher.md](launcher.md) |
