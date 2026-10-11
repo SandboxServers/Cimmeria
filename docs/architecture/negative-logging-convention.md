@@ -814,6 +814,17 @@ World entry no longer falls back to "no saved missions" (that let a re-accept ov
 
 Guards: the live-DB test `live_db_unreadable_missions_block_reaccept` (`crates/services/src/mission_state_lock_tests.rs`) makes the read fail, re-accepts a completed mission and asserts the refusal, the feedback line, both WARNs and the unchanged row. `missions::state_lock::tests` (base) pins the retry count, the final ERROR, the persist WARN and the recovery unlock; `cell::missions::state_lock_tests` pins the cell refusal, the whole-chain drop and the recovery unlock.
 
+## Boot effect-script registration (TG-CMB-04)
+
+The cell's boot check of effect `script_name`s (`cell/service/startup.rs`) names only real missing registrations. `EffectScripts::unregistered` (`cell/effects/registry.rs` in `cimmeria-cell-world`) skips a blank `script_name` and the `NATIVE_EFFECT_NAMES` entries: `Reload` (effect 658) runs through the reload pipeline. Those rows are logged once at INFO, not WARN. The shipped seed has no unregistered script left, so a normal boot writes no WARN.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "effect_script_unregistered"`, `reason = "no_registered_script"`, `count`, `scripts` | An effect row names a script no registered script answers (once per boot) |
+| INFO | `event = "effect_script_native"`, `reason = "native_or_blank"`, `count`, `scripts` (script name to effect ids) | Effect rows name a blank or native script, which needs no registered script (once per boot) |
+
+Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `cimmeria-cell-world`) pins the skip; `every_seeded_script_name_is_registered` (`cell/effects/registry.rs` in `cimmeria-cell-effect-scripts`) pins an empty missing list on the seed.
+
 ## UDP connection-reset throttle (TG-MER-10)
 
 On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WSAECONNRESET (10054). That error is per destination, not a socket failure, and the receive loop carries on. `log_connreset()` in `base/connect_loop/mod.rs` throttles it (Pattern D). The first reset writes at once. The resets inside the next 10 s are counted, and the next row carries them in `suppressed`. The throttle is process-wide, not keyed by entity or peer. Every reset, written or counted, bumps `udp_connreset_total`.
@@ -823,6 +834,19 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 | DEBUG | message `UDP recv: WSAECONNRESET (10054) -- remote closed, continuing`, `reason = "icmp_port_unreachable"`, `suppressed` | A UDP recv returned WSAECONNRESET; at most one row per 10 s |
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
+
+## Minigame result and start seam (TG-MG-01)
+
+`cell_dispatch/minigame.rs` in `cimmeria-base-world-entry`. A minigame result is forwarded to the cell for its victory chains; when that hand-off cannot happen the chains never run, so it is logged. The identity is the entity pair (`entity_id`, `entity_name`) and the result is named by `result_code` and `result`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| ERROR | `cell_channel_closed` | `MinigameResult` reached the base, but the cell's receiver was dropped; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count`, `error` |
+| WARN | `no_cell_channel` | No cell channel is configured; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count` |
+| WARN | `minigame_server_disabled` | `StartMinigame` with no minigame registry; the player is never sent `onStartMinigame` | entity pair, `game_name` |
+| WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
+
+Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
 
 ## Related
 

@@ -56,10 +56,6 @@ pub const SIGNOZ_ONLY_EVENTS: &[(&str, &str)] = &[
     // (Castle_CellBlock, one per login) spawn the same rows again, so it
     // posted the same handful of spawns all day (2026-09-29).
     ("spawner.npc_behaviour", "spawn_off_mesh"),
-    // Effect rows naming a script nothing registers: one row per boot for a
-    // known, test-pinned seed gap (the scripts crate's live-DB guard), so
-    // it posted once per deploy with nothing new to act on.
-    ("abilities", "effect_script_unregistered"),
 ];
 
 pub struct DiscordLayer {

@@ -4,6 +4,7 @@ use super::*;
 use crate::{OperationKind, OperationState};
 use cimmeria_runtime_probe::prerequisite::{decode_result, PrepareResult, ResultKind};
 mod prepared;
+pub mod windows_physx;
 pub use prepared::PreparedRuntime;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
