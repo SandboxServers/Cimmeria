@@ -340,6 +340,9 @@ fn has_net_follows_every_net_entry_change() {
     assert!(chaos.clear_if_not(addr(40_112), 3));
     assert!(!chaos.has_net(), "clear_if_not");
     set_net(&chaos, addr(40_112), 2, 1, now);
+    assert_eq!(chaos.clear_entity(2), 1);
+    assert!(!chaos.has_net(), "clear_entity");
+    set_net(&chaos, addr(40_112), 2, 1, now);
     assert_eq!(chaos.clear(None), 2);
     assert!(!chaos.has_net(), "clear all");
     set_net(&chaos, addr(40_112), 2, 1, now);
