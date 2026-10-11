@@ -78,6 +78,9 @@ struct EntityQueryArgs {
     /// Restrict to a wire class id (2 = SGWPlayer, 4 = SGWMob).
     #[serde(default)]
     class_id: Option<u8>,
+    /// Restrict to entities with this spawn tag (`spawnlist.tag`), exact.
+    #[serde(default)]
+    tag: Option<String>,
     /// Radius in world units. Requires a center: `around_entity` or `around_point`.
     #[serde(default)]
     radius: Option<f32>,
@@ -231,7 +234,7 @@ impl LabTools {
 
     /// Query live cell entities, filtered by space / template / class / radius.
     #[tool(
-        description = "Query live cell entities filtered by space_id, template_id, class_id (2=player, 4=NPC), and/or a radius around an entity or point. Capped at 256 snapshots; reports total_matched and capped."
+        description = "Query live cell entities filtered by space_id, template_id, class_id (2=player, 4=NPC), tag (spawn tag, exact), and/or a radius around an entity or point. Capped at 256 snapshots; reports total_matched and capped."
     )]
     async fn server_entity_query(
         &self,
@@ -241,6 +244,7 @@ impl LabTools {
             "space_id": args.space_id,
             "template_id": args.template_id,
             "class_id": args.class_id,
+            "tag": args.tag,
             "radius": args.radius,
             "around_entity": args.around_entity,
             "around_point": args.around_point,
@@ -253,6 +257,7 @@ impl LabTools {
                 args.space_id,
                 args.template_id,
                 args.class_id,
+                args.tag,
                 args.radius,
                 args.around_entity,
                 args.around_point,
