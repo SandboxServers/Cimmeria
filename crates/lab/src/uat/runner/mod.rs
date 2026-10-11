@@ -26,6 +26,7 @@ mod players;
 mod revocation;
 mod session;
 mod snapshot;
+mod targets;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -39,7 +40,7 @@ use super::evidence::{
 use super::grade::grade;
 use super::invoke::{ServerInvoker, ToolInvoker};
 use super::ledger;
-use super::spec::{RowSpec, SectionSpec};
+use super::spec::{PoseSpec, RowSpec, SectionSpec};
 
 pub use players::SecondPlayer;
 pub use session::client_fingerprint;
@@ -182,6 +183,8 @@ pub(crate) struct RowCtx {
     pub session_end: Vec<String>,
     /// A chained fixture row's parity with its fixture (FX-10).
     pub parity: Option<super::snapshot::Parity>,
+    /// The row's poses, for `pose = "<id>"` arguments ([`targets`]).
+    pub poses: Vec<PoseSpec>,
 }
 
 /// The last row the run finished, for fixture mode `auto` (D-FX10).
@@ -390,6 +393,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             fixture_mode: None,
             session_end: vec![],
             parity: None,
+            poses: row.pose.clone(),
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -506,6 +510,8 @@ mod revocation_tests;
 mod snapshot_mode_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod targets_tests;
 #[cfg(test)]
 mod test_server;
 #[cfg(test)]

@@ -528,8 +528,6 @@ fn default_dy_m() -> f64 {
     0.1
 }
 
-// The calibrate and record packets (SV-07, SV-08) are the first non-test callers.
-#[cfg_attr(not(test), allow(dead_code))]
 impl PoseSpec {
     /// D-SV3: `target + radius * (cos b, 0, sin b)`, `y = target.y + dy_m`.
     pub fn stand_point(&self, target: [f64; 3]) -> [f64; 3] {
@@ -558,6 +556,9 @@ impl PoseSpec {
     /// line it writes always loads (359.96 deg writes as 0.0, a pitch of
     /// -78.75 as -78.7); control characters in `calibrated` become spaces,
     /// so the pose stays one line (D-SV2).
+    // The calibrate and record packets (SV-09, lab-record) are the first
+    // non-test callers.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn to_inline_toml(&self) -> String {
         let bearing = match round_to(self.bearing_deg, 1) {
             b if b >= 360.0 => 0.0,
