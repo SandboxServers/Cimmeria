@@ -224,6 +224,7 @@ mod tests {
                 1,
                 vec![1017],
                 Some("Hacker".into()),
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             )
             .await
             .unwrap();

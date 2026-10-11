@@ -46,16 +46,26 @@ pub(super) async fn start_minigame(
     if let Some(registry) = minigame_registry {
         // The minigame server only sees the entity id; hand it the
         // character's name so its Discord result names the player.
-        let player_name = entity_to_addr
+        let addr = entity_to_addr
             .lock()
             .ok()
-            .and_then(|m| m.get(&entity_id).copied())
-            .and_then(|a| {
-                connected
-                    .lock()
-                    .ok()
-                    .and_then(|c| c.get(&a).and_then(|s| s.player_name.clone()))
-            });
+            .and_then(|m| m.get(&entity_id).copied());
+        let player_name = addr.and_then(|a| {
+            connected
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&a).and_then(|s| s.player_name.clone()))
+        });
+        // The listener admits only the game connection's IP, so a session
+        // without one can never be claimed.
+        if addr.is_none() {
+            tracing::warn!(
+                entity_id,
+                entity_name = player_label,
+                reason = "no_client_addr",
+                "Minigame session registered without a client address; the listener will refuse its SWF"
+            );
+        }
         let seed = rand::random::<u32>();
         let ticket = registry
             .register(
@@ -70,6 +80,7 @@ pub(super) async fn start_minigame(
                 1, // abilities, intelligence, player_level
                 on_victory_chains,
                 player_name,
+                addr.map(|a| a.ip()),
             )
             .await;
 

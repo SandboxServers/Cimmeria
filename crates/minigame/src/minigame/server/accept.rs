@@ -1,5 +1,6 @@
-//! The accept loop: bind, admit or refuse each socket against
-//! [`ListenerLimits`], and hand admitted ones to a connection task.
+//! The accept loop: bind, close sockets from peers no minigame session
+//! expects, admit or refuse the rest against [`ListenerLimits`], and hand
+//! admitted ones to a connection task.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -95,10 +96,30 @@ pub(super) async fn serve(
     let tracker = ConnectionTracker::new(&limits);
     let mut total_cap_log = LogThrottle::new(LOG_WINDOW);
     let mut accept_error_log = LogThrottle::new(LOG_WINDOW);
+    let mut unexpected_peer_log = LogThrottle::new(LOG_WINDOW);
 
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
+                // Before any byte is read and before a connection slot is
+                // taken: a scanner gets a closed socket and nothing else.
+                if !registry.expects_peer(peer.ip()).await {
+                    drop(stream);
+                    if let Some(suppressed) = unexpected_peer_log.admit(Instant::now()) {
+                        tracing::info!(
+                            %peer,
+                            reason = "unexpected_peer",
+                            suppressed,
+                            "Minigame connection refused: no minigame session expects this address",
+                        );
+                    }
+                    tracing::debug!(
+                        %peer,
+                        reason = "unexpected_peer",
+                        "Minigame connection refused: no minigame session expects this address",
+                    );
+                    continue;
+                }
                 let permit = match tracker.try_acquire(peer.ip()) {
                     Ok(permit) => permit,
                     Err(refusal) => {

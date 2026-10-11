@@ -26,6 +26,7 @@ fn make_session(difficulty: u32, tech: u32, level: u32) -> MinigameSession {
         ticket: String::new(),
         on_victory_chains: vec![],
         player_name: None,
+        client_ip: None,
         created_at: tokio::time::Instant::now(),
         connected: false,
     }

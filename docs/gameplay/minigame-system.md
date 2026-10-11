@@ -198,6 +198,15 @@ in within a second.
 | One send to the client | 10 s (`SEND_TIMEOUT`) | The connection is treated as gone: no further frames are sent, and a session ends as a cancel. DEBUG row `reason=send_timeout` |
 | TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s for an idle connection. With data in flight, TCP retransmission and the 10 s send timeout apply instead |
 
+Ahead of these, the listener admits only peers whose IP address matches a
+registered minigame session: the source address of the player's game
+connection, recorded when the session starts. Any other socket is closed
+before a byte is read and before a connection slot is taken. Those refusals
+log a throttled INFO row `reason=unexpected_peer` (at most once a minute,
+with a `suppressed` count) and a DEBUG row for each one. A session whose
+game connection had no known address admits nobody, and its player's SWF
+is refused.
+
 The defaults are `ListenerLimits::default()` in
 [`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
 `server::run_with_limits` takes other values; the server configuration has

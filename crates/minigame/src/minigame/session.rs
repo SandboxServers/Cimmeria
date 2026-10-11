@@ -61,6 +61,9 @@ pub struct MinigameSession {
     /// game. The minigame server only ever sees the entity id; this is what
     /// names the player in the Discord result (NT-10).
     pub player_name: Option<String>,
+    /// The IP of the player's game connection, the only address the minigame
+    /// listener admits for this session.
+    pub client_ip: Option<std::net::IpAddr>,
     /// `tokio::time::Instant` rather than `std::time::Instant` so
     /// `tokio::time::pause()` / `advance()` drive the TTL deterministically
     /// in tests instead of a wall-clock sleep.
@@ -126,6 +129,7 @@ impl SessionRegistry {
         player_level: u32,
         on_victory_chains: Vec<i64>,
         player_name: Option<String>,
+        client_ip: Option<std::net::IpAddr>,
     ) -> Option<String> {
         let ticket = generate_ticket();
         let session = MinigameSession {
@@ -141,6 +145,7 @@ impl SessionRegistry {
             ticket: ticket.clone(),
             on_victory_chains,
             player_name,
+            client_ip,
             created_at: Instant::now(),
             connected: false,
         };
@@ -243,6 +248,18 @@ impl SessionRegistry {
         }
         session.connected = true;
         Ok(session.clone())
+    }
+
+    /// Whether a registered session (pending or connected) belongs to a
+    /// player whose game connection comes from `ip`. The listener admits
+    /// only those peers (scanners never get a byte read).
+    pub async fn expects_peer(&self, ip: std::net::IpAddr) -> bool {
+        let ip = ip.to_canonical();
+        let inner = self.inner.lock().await;
+        inner
+            .sessions
+            .values()
+            .any(|s| s.client_ip.map(|c| c.to_canonical()) == Some(ip))
     }
 
     /// Validate a ticket without claiming the session.
@@ -394,6 +411,7 @@ mod tests {
                 5,
                 vec![1017],
                 None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             )
             .await
             .unwrap();
@@ -406,8 +424,21 @@ mod tests {
     #[tokio::test]
     async fn wrong_ticket_fails() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
-            .await;
+        reg.register(
+            42,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
+        .await;
 
         assert!(reg.authenticate(42, "WRONG", "Livewire").await.is_none());
     }
@@ -416,7 +447,20 @@ mod tests {
     async fn wrong_game_name_fails() {
         let reg = SessionRegistry::new();
         let ticket = reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
+            .register(
+                42,
+                1,
+                "Livewire".into(),
+                1,
+                50,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            )
             .await
             .unwrap();
 
@@ -426,12 +470,38 @@ mod tests {
     #[tokio::test]
     async fn duplicate_session_rejected() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
-            .await
-            .unwrap();
+        reg.register(
+            42,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
+        .await
+        .unwrap();
 
         assert!(reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
+            .register(
+                42,
+                1,
+                "Livewire".into(),
+                1,
+                50,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+            )
             .await
             .is_none());
     }
@@ -439,14 +509,40 @@ mod tests {
     #[tokio::test]
     async fn remove_allows_re_register() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
-            .await
-            .unwrap();
+        reg.register(
+            42,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
+        .await
+        .unwrap();
 
         reg.remove(42).await;
 
         assert!(reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
+            .register(
+                42,
+                1,
+                "Livewire".into(),
+                1,
+                50,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+            )
             .await
             .is_some());
     }
@@ -456,6 +552,69 @@ mod tests {
         let ticket = generate_ticket();
         assert_eq!(ticket.len(), 64);
         assert!(ticket.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[tokio::test]
+    async fn expects_peer_matches_only_registered_ip() {
+        let reg = SessionRegistry::new();
+        reg.register(
+            42,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            reg.expects_peer(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5)))
+                .await
+        );
+        assert!(
+            !reg.expects_peer(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6)))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn expects_peer_normalises_v4_mapped() {
+        let reg = SessionRegistry::new();
+        reg.register(
+            42,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+        )
+        .await
+        .unwrap();
+
+        let mapped: std::net::Ipv6Addr = "::ffff:10.0.0.5".parse().unwrap();
+        assert!(reg.expects_peer(std::net::IpAddr::V6(mapped)).await);
+    }
+
+    #[tokio::test]
+    async fn expects_peer_false_without_sessions() {
+        let reg = SessionRegistry::new();
+        assert!(
+            !reg.expects_peer(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+                .await
+        );
     }
 
     // ── Session expiry (defect B4) ───────────────────────────────────────
@@ -479,6 +638,7 @@ mod tests {
             1,
             vec![],
             None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
         .await
     }

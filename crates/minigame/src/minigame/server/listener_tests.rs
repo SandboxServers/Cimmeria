@@ -66,8 +66,32 @@ pub(super) async fn spawn_connection(
     connect_to(SessionRegistry::new(), limits).await
 }
 
-/// Stand up [`accept::serve`] on an ephemeral port.
+/// Stand up [`accept::serve`] on an ephemeral port, with one loopback
+/// session registered so the expected-peer check admits the test's clients.
 async fn spawn_listener(limits: ListenerLimits) -> SocketAddr {
+    let registry = SessionRegistry::new();
+    registry
+        .register(
+            4399,
+            7,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
+        .await
+        .expect("register loopback session");
+    spawn_listener_on(registry, limits).await
+}
+
+/// Stand up [`accept::serve`] on an ephemeral port over `registry`.
+async fn spawn_listener_on(registry: SessionRegistry, limits: ListenerLimits) -> SocketAddr {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback");
@@ -76,7 +100,7 @@ async fn spawn_listener(limits: ListenerLimits) -> SocketAddr {
     tokio::spawn(async move {
         // Keep the receiver alive as long as the server.
         let _rx = rx;
-        accept::serve(listener, 9339, SessionRegistry::new(), tx, limits).await;
+        accept::serve(listener, 9339, registry, tx, limits).await;
     });
     addr
 }
@@ -102,6 +126,22 @@ pub(super) fn assert_no_warn_or_error(capture: &crate::test_support::LogCaptureG
         loud.is_empty(),
         "input from a peer that never logged in must not WARN or ERROR \
          (those reach Discord): {loud:#?}",
+    );
+}
+
+/// A peer no minigame session expects is closed before any byte is read: the
+/// server sends nothing and the socket reaches EOF. Without the expected-peer
+/// check the connection is admitted and sits waiting for a handshake, so the
+/// read times out and this fails.
+#[tokio::test]
+async fn listener_closes_unexpected_peer() {
+    let addr = spawn_listener_on(SessionRegistry::new(), ListenerLimits::default()).await;
+
+    let mut client = TcpStream::connect(addr).await.expect("connect");
+
+    assert!(
+        closed_within(&mut client, Duration::from_secs(2)).await,
+        "a peer no session expects must be closed without being read from",
     );
 }
 
@@ -385,7 +425,20 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
     let capture = LogCapture::install();
     let registry = SessionRegistry::new();
     let ticket = registry
-        .register(4313, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![99], None)
+        .register(
+            4313,
+            7,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![99],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
         .await
         .expect("fresh registry must accept the session");
 
@@ -445,7 +498,20 @@ async fn crafted_logins_for_a_registered_entity_do_not_warn() {
     let capture = LogCapture::install();
     let registry = SessionRegistry::new();
     let ticket = registry
-        .register(4314, 7, "Livewire".into(), 1, 1, 0, 0, 0, 1, vec![], None)
+        .register(
+            4314,
+            7,
+            "Livewire".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
         .await
         .expect("fresh registry must accept the session");
     // `send_handshake` logs in to the `Hack` zone.
