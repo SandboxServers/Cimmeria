@@ -415,7 +415,7 @@ pub async fn template_query(pool: &PgPool, template_id: i32) -> EntityQuery;    
 
 Sentinel ids for this campaign: block `0x7000_9C00` to `0x7000_9CFF` (unused
 on `main` @ `c05c0638a`). WC-10 uses `0x7000_9C01` and `0x7000_9C04` (the refusal test), WC-14 `0x7000_9C02`,
-WC-15 `0x7000_9C03`.
+WC-15 `0x7000_9C03`, WC-12's live test `0x7000_9C05`.
 
 ---
 
