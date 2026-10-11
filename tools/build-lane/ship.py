@@ -3,8 +3,9 @@
 
 Usage:
   tools/build-lane/ship.sh pr -C <worktree> (-m MSG | -F FILE) [--title T] [--body-file F]
-                              [--paths P ...] [--draft] [--force-with-lease] [-v]
-  tools/build-lane/ship.sh merge <PR> [--retire NAME] [--timeout 30m] [--no-wait] [-v]
+                              [--paths P ...] [--base BRANCH] [--draft] [--force-with-lease] [-v]
+  tools/build-lane/ship.sh merge <PR> [--retire NAME] [--timeout 30m] [--queue-timeout 60m]
+                                 [--no-wait] [--allow-red-main] [-v]
 
 pr: -C must be a registered worktree, not the main checkout, whose toplevel is that
 directory, on a branch other than main/master. Anything else is refused before git runs, so
@@ -12,23 +13,38 @@ a worker whose worktree vanished cannot push the main checkout. It stages every 
 --paths), commits with the trailers in $SHIP_TRAILERS (newline-separated, each added only
 if missing), pushes with -u, and opens a PR unless the branch has an open one. The PR title
 defaults to the branch's first commit subject; the body is --body-file (else that commit's
-body) plus $SHIP_PR_FOOTER.
+body) plus $SHIP_PR_FOOTER. --base stacks the PR on another PR's branch (default main).
 
-merge: kind=docs (every changed file is *.md or under .claude/agent-memory/) merges at once
-with --admin, the owner's rule for Markdown and memory-only PRs. kind=code rebases with
-rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for the gating checks
-(fmt, clippy, build + nextest; `skipping` passes), plus any path-filtered lab or build-lane
-check the PR's changes made run (CONDITIONAL), and merges with --squash. The build +
-nextest gate includes the live-DB tier (same job since 2026-10-11); coverage is not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
-pwsh on Windows, the .sh under bash elsewhere).
+merge: refuses a stacked PR (its base is not main): merge its base first, which retargets
+it. kind=code is refused while a `main-red` issue is open (tools/main-red/main-red.sh: a
+post-merge check is failing on main) unless --allow-red-main, for the PR that fixes it.
+kind=code rebases with rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for
+the gating checks (fmt, clippy, build + nextest; `skipping` passes, and on a PR push the
+build + nextest job skips: it runs in the merge queue), plus any path-filtered lab or
+build-lane check the PR's changes made run (CONDITIONAL). kind=docs (every changed file is
+*.md or under .claude/agent-memory/) waits for nothing.
+
+When main requires a merge queue (docs/agents/pre-pr-checks.md § Merge queue), the PR is
+added to it (`gh pr merge`, no --admin for any kind: a merge around the queue makes it
+rebuild every group in flight) and ship waits up to --queue-timeout for it to land. A PR
+the queue drops is rebased and queued again if it now conflicts (three tries), else
+reported as queue-failed. Without a queue, kind=docs merges with --squash --admin (the
+owner's rule for Markdown and memory-only PRs) and kind=code with --squash.
+
+After the merge, open PRs stacked on the merged branch are restacked onto main
+(rebase-pr.sh --upstream <the merged head> --push, retargeted to main if GitHub has not
+already), and --retire runs `rm-worktree --no-prune NAME` (the .ps1 under pwsh on Windows,
+the .sh under bash elsewhere).
 
 Output: one line, `status=... key=value ...`; a value with spaces is double-quoted. The full
 git and gh output goes to a log whose path is printed only on failure; -v copies it to
 stderr as it runs.
 
-Exit codes: 0 ok, noop or merged; 1 rebase conflict or a failed check; 2 refused (bad
-arguments, unsafe worktree, PR closed or draft); 3 timed out waiting for checks; 4 a git or
-gh command failed; 5 merged, but the worktree was not retired.
+Exit codes: 0 ok, noop, merged, or queued with --no-wait; 1 rebase conflict, a failed check,
+main-red, or queue-failed; 2 refused (bad arguments, unsafe worktree, PR closed, draft or
+stacked); 3 timed out waiting for checks or for the queue (status=queued: it still merges
+on its own; rerun merge to retire); 4 a git or gh command failed; 5 merged, but the worktree
+was not retired.
 """
 
 from __future__ import annotations
@@ -45,6 +61,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import ship_queue  # noqa: E402
+
 GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
 RM_WORKTREE = str(HERE / ("rm-worktree.ps1" if os.name == "nt" else "rm-worktree.sh"))
@@ -55,6 +74,9 @@ RENAMED = {"cargo build + nextest (workspace, no DB)": "cargo build + nextest (w
 # Path-filtered jobs (lab.yml, build-lane-scripts.yml) that gate only when the
 # PR's changes made them run: present means required, absent means not run.
 CONDITIONAL = (
+    # test.yml's aggregate, the check main's ruleset requires. A PR whose last CI ran
+    # before it existed doesn't report it; the queue runs it either way.
+    "ci gate",
     "cargo clippy -D warnings (cimmeria-lab)",
     "cargo nextest (cimmeria-lab, UAT specs)",
     "lab CLI PowerShell tests",
@@ -210,7 +232,10 @@ def pr_body(wt: str, args, first: str) -> str:
 def cmd_pr(args) -> dict:
     wt = args.C
     branch = check_worktree(wt)
-    git(wt, "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main", what="fetch-failed")
+    base = args.base
+    if base == branch:
+        raise Stop(2, "refused", f"bad-base: {base} is this branch")
+    git(wt, "fetch", "-q", "origin", f"+refs/heads/{base}:refs/remotes/origin/{base}", what="fetch-failed")
     git(wt, "fetch", "-q", "origin", f"+refs/heads/{branch}:refs/remotes/origin/{branch}", check=False)
     remote_old = rev(wt, f"refs/remotes/origin/{branch}")
 
@@ -227,11 +252,13 @@ def cmd_pr(args) -> dict:
         finally:
             os.unlink(f.name)
     head = rev(wt, "HEAD")
-    ahead = git(wt, "rev-list", "--count", "origin/main..HEAD").stdout.strip()
-    changed = git(wt, "diff", "--name-only", "origin/main...HEAD").stdout.split()
+    ahead = git(wt, "rev-list", "--count", f"origin/{base}..HEAD").stdout.strip()
+    changed = git(wt, "diff", "--name-only", f"origin/{base}...HEAD").stdout.split()
     out = {"branch": branch, "commit": head[:9], "kind": classify(changed)}
+    if base != "main":
+        out["base"] = base
     if ahead == "0":
-        return {"status": "noop", **out, "reason": "the branch has no commits beyond origin/main"}
+        return {"status": "noop", **out, "reason": f"the branch has no commits beyond origin/{base}"}
 
     pr = open_pr(wt, branch)
     unpushed = head != remote_old
@@ -246,18 +273,18 @@ def cmd_pr(args) -> dict:
             hint = " (origin has commits this branch lacks: rebase, or pass --force-with-lease)" if "rejected" in r.stderr else ""
             raise Stop(4, "push-failed", r.stderr.strip().splitlines()[-1][:200] + hint if r.stderr.strip() else "push failed", **out)
     if not pr:
-        first = git(wt, "rev-list", "--reverse", "origin/main..HEAD").stdout.split()[0]
+        first = git(wt, "rev-list", "--reverse", f"origin/{base}..HEAD").stdout.split()[0]
         title = args.title or git(wt, "log", "-1", "--format=%s", first).stdout.strip()
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".md", encoding="utf-8") as f:
             f.write(pr_body(wt, args, first))
         try:
-            create = ["pr", "create", "--head", branch, "--base", "main", "--title", title, "--body-file", f.name]
+            create = ["pr", "create", "--head", branch, "--base", base, "--title", title, "--body-file", f.name]
             url = gh(*create, *(["--draft"] if args.draft else []), cwd=wt, what="pr-create-failed").stdout.strip().splitlines()[-1]
         finally:
             os.unlink(f.name)
         m = re.search(r"/pull/(\d+)", url)
         pr = {"number": int(m.group(1)) if m else "?", "url": url}
-    return {"status": "ok", "branch": branch, "commit": head[:9], "pr": pr["number"], "url": pr["url"], "kind": out["kind"]}
+    return {"status": "ok", **out, "pr": pr["number"], "url": pr["url"]}
 
 
 # ── merge ────────────────────────────────────────────────────────────────────
@@ -347,35 +374,119 @@ def retire_target(repo: str, name: str, branch: str) -> str:
     return path
 
 
+def ready(pr: str, repo: str, kind: str, args, deadline: float) -> None:
+    """Rebase when GitHub asks for it and wait for the PR's gating checks."""
+    for _ in range(3):
+        state = merge_state(pr, repo)
+        if state == "DIRTY" or (state == "BEHIND" and kind == "code"):
+            rebase(pr, repo)
+        if kind == "docs" or args.no_wait:
+            return
+        wait_for_checks(pr, repo, deadline)
+        if merge_state(pr, repo) not in ("BEHIND", "DIRTY"):
+            return   # main moved during the wait: rebase and wait again
+
+
+def wait_for_queue(pr: str, repo: str, deadline: float) -> dict | None:
+    """Poll until the PR merges (its status) or leaves the queue unmerged (None). Three
+    polls out of the queue with no auto-merge pending count as left: right after
+    `gh pr merge`, GitHub can report neither for a moment."""
+    out = 0
+    while True:
+        s = ship_queue.queue_status(gh, pr, repo)
+        if s is None:   # the lookup failed: no verdict, poll again
+            s = {"state": "OPEN", "in_queue": True, "auto": False}
+        if s["state"] == "MERGED":
+            return s
+        if s["state"] == "CLOSED":
+            raise Stop(2, "refused", f"PR {pr} was closed while queued")
+        out = 0 if (s["in_queue"] or s["auto"]) else out + 1
+        if out >= 3:
+            return None
+        if time.monotonic() >= deadline:
+            raise Stop(3, "queued", "still in the merge queue; it merges on its own (rerun merge to retire)", pr=pr)
+        time.sleep(poll_seconds())
+
+
+def merge_through_queue(pr: str, repo: str, kind: str, args, deadline: float) -> dict:
+    for _ in range(3):
+        ready(pr, repo, kind, args, deadline)
+        gh("pr", "merge", pr, cwd=repo, what="enqueue-failed")   # the queue sets the method
+        if args.no_wait:
+            return {"status": "queued"}
+        # From the enqueue, not the start: the check wait must not eat the queue's budget.
+        s = wait_for_queue(pr, repo, time.monotonic() + parse_timeout(args.queue_timeout))
+        if s:
+            return {"status": "merged", "mergedAt": s["merged_at"]}
+        if merge_state(pr, repo) != "DIRTY":
+            raise Stop(1, "queue-failed", "the merge queue dropped the PR: a merge_group check failed (see the PR's checks)")
+    raise Stop(1, "queue-failed", "the merge queue dropped the PR three times")
+
+
+def restack(repo: str, branch: str, head: str) -> tuple[list[str], list[str]]:
+    """Rebase the open PRs stacked on a just-merged branch onto main. (restacked, failed)."""
+    done, failed = [], []
+    for child in ship_queue.stacked_children(gh, lambda *a, **kw: git(repo, *a, **kw), repo, branch, head):
+        n = str(child["number"])
+        p = run([*REBASE, "--repo", repo, "--upstream", head, "--push", n], cwd=repo, check=False)
+        if p.returncode != 0:
+            failed.append(n)
+            continue
+        if child["baseRefName"] != "main":
+            gh("pr", "edit", n, "--base", "main", cwd=repo, check=False)
+        done.append(n)
+    return done, failed
+
+
 def cmd_merge(args) -> dict:
     repo = norm(git(args.repo or os.getcwd(), "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip())
     repo = os.path.dirname(repo)   # the main checkout, where rm-worktree runs
     pr = str(args.pr)
-    info = view(pr, repo, "number,state,isDraft,headRefName,files,mergedAt")
+    info = view(pr, repo, "number,state,isDraft,headRefName,headRefOid,baseRefName,files,mergedAt")
     kind = classify([f["path"] for f in info.get("files") or []]) if len(info.get("files") or []) < 100 else "code"
+    branch, head = info["headRefName"], info.get("headRefOid", "")
     if info["state"] == "CLOSED":
         raise Stop(2, "refused", f"PR {pr} is closed")
     if info["state"] != "MERGED":
         if info.get("isDraft"):
             raise Stop(2, "refused", f"PR {pr} is a draft")
+        base = info.get("baseRefName") or "main"
+        if base not in PROTECTED:
+            raise Stop(2, "refused", f"stacked: PR {pr} targets {base}; merge that PR first (its merge restacks this one onto main)")
         if args.retire:
-            retire_target(repo, args.retire, info["headRefName"])
+            retire_target(repo, args.retire, branch)
+        if kind == "code" and not args.allow_red_main:
+            red = ship_queue.red_issues(gh, repo)
+            if red:
+                raise Stop(1, "main-red", "main is red: " + "; ".join(i["title"] for i in red)
+                           + " (fix it first; --allow-red-main is for the PR that does)",
+                           issues=",".join(str(i["number"]) for i in red))
         deadline = time.monotonic() + parse_timeout(args.timeout)
-        for _ in range(3):
-            state = merge_state(pr, repo)
-            if state == "DIRTY" or (state == "BEHIND" and kind == "code"):
-                rebase(pr, repo)
-            if kind == "docs" or args.no_wait:
-                break
-            wait_for_checks(pr, repo, deadline)
-            if merge_state(pr, repo) not in ("BEHIND", "DIRTY"):
-                break   # main moved during the wait: rebase and wait again
-        flags = ["--admin"] if kind == "docs" else []
-        gh("pr", "merge", pr, "--squash", *flags, cwd=repo, what="merge-failed")
-        info = view(pr, repo, "state,mergedAt")
-        if info["state"] != "MERGED":
-            raise Stop(4, "merge-failed", f"PR {pr} is {info['state']} after gh pr merge")
+        queue = ship_queue.queue_required(gh, repo)
+        if queue is None:
+            raise Stop(4, "error", "could not read main's branch rules (gh api rules/branches/main); try again")
+        if queue and args.no_wait and args.retire:
+            raise Stop(2, "refused", "--no-wait only queues the PR; retire after it lands (rerun merge --retire)")
+        if queue:
+            result = merge_through_queue(pr, repo, kind, args, deadline)
+            if result["status"] == "queued":
+                return {"status": "queued", "pr": pr, "kind": kind, "retired": "none"}
+            info = {"state": "MERGED", "mergedAt": result["mergedAt"]}
+        else:
+            ready(pr, repo, kind, args, deadline)
+            flags = ["--admin"] if kind == "docs" else []
+            gh("pr", "merge", pr, "--squash", *flags, cwd=repo, what="merge-failed")
+            info = view(pr, repo, "state,mergedAt")
+            if info["state"] != "MERGED":
+                raise Stop(4, "merge-failed", f"PR {pr} is {info['state']} after gh pr merge")
+    # Also on a rerun for a PR that already merged (after a queue timeout or --no-wait):
+    # restacking finds nothing left to do once its children are on main.
+    restacked, stuck = restack(repo, branch, head) if head else ([], [])
     out = {"status": "merged", "pr": pr, "merged_at": info.get("mergedAt", ""), "kind": kind, "retired": "none"}
+    if restacked:
+        out["restacked"] = ",".join(restacked)
+    if stuck:
+        out["restack_conflict"] = ",".join(stuck)
     if args.retire:
         p = run([*rm_worktree_cmd(), "--no-prune", args.retire], cwd=repo, check=False)
         if p.returncode != 0 or not re.search(r"^retired 1, skipped 0$", p.stdout, re.M):
@@ -412,13 +523,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--title")
     p.add_argument("--body-file")
     p.add_argument("--paths", nargs="+", help="stage only these paths (default: every change)")
+    p.add_argument("--base", default="main", help="the branch to open the PR against (stack on another PR's branch)")
     p.add_argument("--draft", action="store_true")
     p.add_argument("--force-with-lease", action="store_true")
-    m = sub.add_parser("merge", help="wait for the gating checks and squash-merge")
+    m = sub.add_parser("merge", help="wait for the gating checks and squash-merge, or queue")
     m.add_argument("pr")
     m.add_argument("--retire", metavar="NAME", help="retire .claude/worktrees/NAME after the merge")
     m.add_argument("--timeout", default="30m", help="how long to wait for checks (30m, 90s, 1h)")
-    m.add_argument("--no-wait", action="store_true", help="merge without waiting for checks")
+    m.add_argument("--queue-timeout", default="60m", help="how long to wait for the merge queue to land it")
+    m.add_argument("--no-wait", action="store_true", help="merge (or queue) without waiting for checks")
+    m.add_argument("--allow-red-main", action="store_true", help="merge although a main-red issue is open (the fix)")
     m.add_argument("--repo", help=argparse.SUPPRESS)
     for s in (p, m):
         s.add_argument("-v", "--verbose", action="store_true")

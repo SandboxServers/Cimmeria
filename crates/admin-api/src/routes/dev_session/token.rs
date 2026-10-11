@@ -1,8 +1,8 @@
 //! Dev-session token format: claims, HMAC encode/decode, secret loading.
 //!
 //! ```text
-//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
-//! sig     = base64url(HMAC-SHA256(secret, payload))
+//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct], [mid]})
+//! sig    = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
 
@@ -51,6 +51,19 @@ pub struct TokenClaims {
     /// label for filtering, never a privilege.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// The game account the launcher says it is playing (TG-NET-18, D-TG14),
+    /// the join key world entry uses to find this stream. Omitted when the
+    /// launcher sent none (every launcher before it), so such a token keeps
+    /// its old bytes. Like `kind`, a signed label, not proof of identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acct: Option<String>,
+    /// The launcher's hashed machine id (its request's `machine_id`; the raw
+    /// Windows `MachineGuid` never leaves the machine), the key world entry
+    /// joins on together with the request's address (TG-NET-18). Omitted
+    /// when the request's `machine_id` is blank, and absent from tokens
+    /// minted before it, which still decode. A signed label, not proof.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid: Option<String>,
 }
 
 impl TokenClaims {
@@ -273,7 +286,46 @@ mod tests {
             exp: 1_700_028_800,
             scope: vec!["telemetry.write".into()],
             kind: None,
+            acct: None,
+            mid: None,
         }
+    }
+
+    /// A token without an account carries no `acct` key, and one minted
+    /// before the claim existed decodes with none; an account survives the
+    /// signed round trip. Reverting `skip_serializing_if` puts `"acct":null`
+    /// in every old-launcher payload and fails this.
+    #[test]
+    fn acct_claim_is_omitted_when_absent_and_round_trips_when_present() {
+        let json = serde_json::to_string(&fake_claims()).unwrap();
+        assert!(!json.contains("acct"), "{json}");
+        let old = r#"{"iss":"cimmeria-server","sub":"i","sid":"s","iat":1,"exp":2,"scope":["telemetry.write"]}"#;
+        assert_eq!(serde_json::from_str::<TokenClaims>(old).unwrap().acct, None);
+        let claims = TokenClaims {
+            acct: Some("sgc_login".into()),
+            ..fake_claims()
+        };
+        let token = encode_token(&claims, &test_secret()).unwrap();
+        let back = decode_token(&token, &test_secret()).unwrap();
+        assert_eq!(back.acct.as_deref(), Some("sgc_login"));
+    }
+
+    /// A token without a machine id carries no `mid` key, one minted before
+    /// the claim existed decodes with none, and a machine id survives the
+    /// signed round trip. Reverting `skip_serializing_if` fails the first.
+    #[test]
+    fn mid_claim_is_omitted_when_absent_and_round_trips_when_present() {
+        let json = serde_json::to_string(&fake_claims()).unwrap();
+        assert!(!json.contains("mid"), "{json}");
+        let old = r#"{"iss":"cimmeria-server","sub":"i","sid":"s","iat":1,"exp":2,"scope":["telemetry.write"]}"#;
+        assert_eq!(serde_json::from_str::<TokenClaims>(old).unwrap().mid, None);
+        let claims = TokenClaims {
+            mid: Some("0123456789abcdef".into()),
+            ..fake_claims()
+        };
+        let token = encode_token(&claims, &test_secret()).unwrap();
+        let back = decode_token(&token, &test_secret()).unwrap();
+        assert_eq!(back.mid.as_deref(), Some("0123456789abcdef"));
     }
 
     /// A player token carries no `kind` key at all, so its bytes are what

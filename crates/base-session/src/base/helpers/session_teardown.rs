@@ -124,6 +124,36 @@ pub fn log_session_end(row: &SessionEndRow<'_>) {
     );
 }
 
+/// One DEBUG `chat.channel_left` row per user channel a session's character
+/// left at session end (TG-SOC-14): `reason = "session_end"`, the channel's
+/// `wire_id` and `display_name`, whether the leave `deleted` it, and the
+/// session's identity (Rule 5). `leaves` is what
+/// [`UserChannelRegistry::leave_all`](crate::base::user_channels::UserChannelRegistry::leave_all)
+/// returned.
+pub fn log_channel_leaves(
+    addr: SocketAddr,
+    identity: PlayerIdentity,
+    leaves: &[(u8, String, bool)],
+) {
+    for (wire_id, display_name, deleted) in leaves {
+        tracing::debug!(
+            target: "chat",
+            event = "chat.channel_left",
+            reason = "session_end",
+            %addr,
+            wire_id = *wire_id,
+            wire_name = display_name.as_str(),
+            display_name = display_name.as_str(),
+            deleted = *deleted,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
+            "user channel left at session end"
+        );
+    }
+}
+
 /// Destroy all entities associated with a disconnecting client and remove it from the map.
 ///
 /// Safe to call multiple times for the same address -- returns silently if the
@@ -412,7 +442,8 @@ fn teardown_session(
         // client-initiated logOff covers. Neither call site fires for gate
         // travel (`base-world-entry/gate_travel`), which reuses the same
         // entity id, so membership survives a world change untouched.
-        crate::base::user_channels::user_channel_registry().leave_all(player_eid);
+        let leaves = crate::base::user_channels::user_channel_registry().leave_all(player_eid);
+        log_channel_leaves(addr, identity, &leaves);
 
         // Notify CellService to disconnect and destroy the cell entity, and
         // hold `player_eid` out of `EntityManager`'s free list until the

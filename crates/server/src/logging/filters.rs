@@ -292,7 +292,8 @@ use crate::otel;
 /// connect, a DEBUG `size` / `idle` sample every 15 s, and WARN
 /// `db_pool_saturated` (Pattern D, 60 s) when no connection is free. `debug`
 /// so the samples reach SigNoz. sqlx's own slow-statement WARN (250 ms) rides
-/// `sqlx::query`.
+/// `sqlx::query`, which is `info` (TG-DB-11, D-TG8): that WARN and the
+/// `sqlx::pool::acquire` WARN export, the per-statement DEBUG rows do not.
 ///
 /// `cimmeria_content_engine::conditions=debug` (TG-MIS-13) exports the content
 /// engine's fail-closed condition rows, invisible under the leading `info`.
@@ -355,6 +356,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.create_emit=debug,\
                 aoi.introduce=debug,\
                 aoi.appearance=debug,\
+                aoi.bundle_manifest=debug,\
                 base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
@@ -375,8 +377,10 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 content.resolve=debug,\
                 dialog.display=debug,\
                 mission.step_context=debug,\
+                mission.step_anchor=info,\
                 movement.movement_type=debug,\
                 movement.position_sample=debug,\
+                movement.teleport=debug,\
                 movement.validation=debug,\
                 player.journal=debug,player.respawn=debug,\
                 trade.atomic_swap=debug,\
@@ -393,7 +397,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
                 db.pool=debug,\
-                sqlx::query=debug,\
+                sqlx::query=info,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
 

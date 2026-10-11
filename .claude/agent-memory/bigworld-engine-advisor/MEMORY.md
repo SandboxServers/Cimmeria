@@ -11,6 +11,8 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [client-recv-thread-order.md](client-recv-thread-order.md) - **[NEW 2026-10-11]** recvfrom→filter→window→reassembly all on the network thread; tbb queue only before processOrderedPacket; draft spec Fig 33 wrong.
+
 - [mercury-telemetry-footprint.md](mercury-telemetry-footprint.md) - **[NEW 2026-10-10]** mercury.packet+encrypt = 86% of SigNoz rows; old_duplicate unjoinable; AUTHENTICATE per bundle.
 - [reliable-datagram-size-budget.md](reliable-datagram-size-budget.md) - **[NEW 2026-10-05]** No reliable datagram over 1472 B: measure before reserving seq, fragment oversize bodies (#1274).
 - [client-world-id-and-same-map-load.md](client-world-id-and-same-map-load.md) - **[NEW 2026-10-04]** onClientMapLoad skips the reload when mapPath is unchanged; getCurrentWorldID comes from setupWorldParameters.

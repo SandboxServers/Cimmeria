@@ -255,6 +255,7 @@ fn session_token(kind: Option<&str>) -> String {
         launcher_version: "0.1.0".into(),
         tags: Vec::new(),
         session_kind: kind.map(str::to_string),
+        account_name: None,
     })
     .expect("session mint")
     .token

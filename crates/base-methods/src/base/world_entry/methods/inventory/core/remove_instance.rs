@@ -303,6 +303,20 @@ pub(super) async fn remove_instance(
     )
     .await;
 
+    // Stack counts before and after this removal, so a partial decrement is
+    // visible without a second query. A full removal leaves nothing behind.
+    let stack_before = source.stack_size;
+    let stack_after = if removed_all {
+        0
+    } else {
+        stack_before - quantity
+    };
+    let origin = match (op, notify_gm) {
+        (AccessOp::Use, _) => "consume_for_use",
+        (AccessOp::Remove, true) => "gm",
+        (AccessOp::Remove, false) => "remove",
+    };
+
     let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
@@ -313,6 +327,12 @@ pub(super) async fn remove_instance(
         item_name = cimmeria_names::owned::item(source.type_id),
         quantity,
         total_items,
+        stack_before,
+        stack_after,
+        removed_all,
+        origin,
+        container_id = source.container_id,
+        container_name = cimmeria_names::owned::container(source.container_id),
         "Inventory remove persisted"
     );
 

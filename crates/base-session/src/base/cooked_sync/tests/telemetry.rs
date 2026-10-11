@@ -28,7 +28,7 @@ async fn a_resync_logs_its_reply_start_and_finish() {
     assert!(reply.has_field("outcome", "full_resync"));
     assert!(reply.has_field("reason", "version_mismatch"));
     assert!(reply.has_field("client_version", "5959"));
-    assert!(reply.has_field("server_version", &format!("Some({served})")));
+    assert!(reply.has_field("server_version", &served.to_string()));
     assert!(reply.has_field("invalidate_all", "true"));
 
     let start = events
@@ -53,6 +53,31 @@ async fn a_resync_logs_its_reply_start_and_finish() {
     assert!(finish.has_field("bytes", &bytes.to_string()));
     assert!(finish.fields.contains_key("duration_ms"));
     assert!(finish.fields.contains_key("packets"));
+}
+
+/// `server_version` is recorded as a bare number, never as `Some(..)`: a
+/// `?` on the `Option` would ship the string and fail this parse.
+#[tokio::test]
+async fn version_reply_server_version_is_numeric() {
+    let rig = rig(47_403);
+    let capture = LogCapture::install();
+    rig.request(WORLD_INFO, 5959).await;
+    let served = server_version(WORLD_INFO);
+    let events = capture.all();
+
+    let reply = events
+        .iter()
+        .find(|e| e.has_field("event", "cooked_data.version_reply"))
+        .unwrap_or_else(|| panic!("no reply event; saw {events:#?}"));
+    let recorded = reply
+        .fields
+        .get("server_version")
+        .unwrap_or_else(|| panic!("no server_version field; saw {reply:#?}"));
+    assert_eq!(
+        recorded.parse::<u32>().ok(),
+        Some(served),
+        "got {recorded:?}"
+    );
 }
 
 #[tokio::test]

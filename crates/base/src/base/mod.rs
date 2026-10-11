@@ -16,6 +16,7 @@
 pub(crate) mod character_create;
 pub(crate) mod connect_loop;
 pub(crate) mod dispatch;
+mod dispatch_timing;
 pub(crate) mod login;
 mod service;
 

@@ -278,6 +278,10 @@ pub async fn handle_remove_inventory_item_by_type(
     )
     .await;
 
+    // Stack counts before and after, as in `remove_instance`.
+    let stack_before = source.stack_size;
+    let stack_after = if removed_all { 0 } else { stack_before - count };
+
     let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
@@ -287,7 +291,12 @@ pub async fn handle_remove_inventory_item_by_type(
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
         count,
+        stack_before,
+        stack_after,
         removed_all,
+        origin = "remove_by_type",
+        container_id = source.container_id,
+        container_name = cimmeria_names::book().container(source.container_id),
         total_items,
         "RemoveInventoryItemByType: persisted"
     );

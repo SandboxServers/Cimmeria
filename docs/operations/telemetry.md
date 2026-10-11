@@ -543,7 +543,8 @@ Useful first queries:
 - `service.name = 'cimmeria-client' AND client_target = 'client.dll.attached'`:
   one row per DLL start, with `dll_version` (and `dll_flavor`, `player`
   or `lab-bridge`, inside `fields`). A `player` session must never show
-  `lab-bridge`.
+  `lab-bridge`. The row's `pid` field (in `fields`) is the process that
+  wrote its chunks: the `X-Cimmeria-Client-Pid` header, from TG-PIPE-02.
 - `service.name = 'cimmeria-client' AND client_target = 'client.telemetry_dll.launch'`:
   the launcher's record of whether an opted-in player's telemetry DLL
   went in (`outcome` = `injected`, `unavailable` or `inject_failed`, in

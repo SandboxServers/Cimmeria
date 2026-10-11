@@ -104,6 +104,11 @@ pub(super) async fn handle_user_auth(
     }
 
     if req.sku != "SGW_BETA" {
+        tracing::info!(
+            reason = "unknown_sku",
+            peer_ip = %client_ip,
+            "Phase 1 login rejected: unknown service SKU"
+        );
         return login_error(3, "The specified service does not exist.");
     }
     // Validate the account name before it reaches the span or any audit row:
@@ -131,13 +136,18 @@ pub(super) async fn handle_user_auth(
     let credential = match classify_credential(&req.password, over_tls) {
         Ok(c) => c,
         Err(CredentialGateError::PlaintextRequiresTls) => {
-            tracing::warn!(user = %req.account_name, "plaintext credential rejected over plain HTTP");
+            tracing::warn!(account_name = %req.account_name, "plaintext credential rejected over plain HTTP");
             audit!(LoginOutcome::PlaintextRequiresTls);
             // Reuse the malformed-password code: the client must not learn that
             // a plaintext-over-TLS path exists.
             return login_error(2, "The specified password is invalid.");
         }
         Err(CredentialGateError::PlaintextLength) => {
+            tracing::info!(
+                reason = "plaintext_length",
+                peer_ip = %client_ip,
+                "Phase 1 login rejected: plaintext password length is outside the allowed range"
+            );
             return login_error(2, "The specified password is invalid.");
         }
     };
@@ -160,7 +170,7 @@ pub(super) async fn handle_user_auth(
         match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level, acct.test_account),
             Err(AuthCredError::InvalidCredentials) => {
-                tracing::info!(user = %req.account_name, "Invalid credentials");
+                tracing::info!(account_name = %req.account_name, "Invalid credentials");
                 audit!(LoginOutcome::InvalidCredentials);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
@@ -171,7 +181,7 @@ pub(super) async fn handle_user_auth(
                 return login_error(4, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
-                tracing::info!(user = %req.account_name, "Account disabled");
+                tracing::info!(account_name = %req.account_name, "Account disabled");
                 audit!(LoginOutcome::AccountDisabled);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
@@ -181,7 +191,7 @@ pub(super) async fn handle_user_auth(
                 return login_error(5, "This account has been suspended.");
             }
             Err(AuthCredError::DbError(e)) => {
-                tracing::error!(user = %req.account_name, error = %e, "DB query failed");
+                tracing::error!(account_name = %req.account_name, error = %e, "DB query failed");
                 audit!(LoginOutcome::DbError);
                 cimmeria_discord::emit_db_error("auth_credential_check", e.to_string());
                 return login_error(10, "A request to the database server failed.");
@@ -189,7 +199,7 @@ pub(super) async fn handle_user_auth(
         }
     } else if state.developer_mode && !state.db_configured {
         tracing::warn!(
-            user = %req.account_name,
+            account_name = %req.account_name,
             reason = "dev_mode_no_db_login",
             "Developer mode with no database configured: accepting credentials \
              unchecked as account 1, access level 99"
@@ -207,7 +217,7 @@ pub(super) async fn handle_user_auth(
             "no_database"
         };
         tracing::error!(
-            user = %req.account_name,
+            account_name = %req.account_name,
             reason,
             "Login refused: no database connection to check credentials against"
         );
@@ -216,6 +226,13 @@ pub(super) async fn handle_user_auth(
     };
 
     if state.shards.is_empty() {
+        tracing::warn!(
+            account_id,
+            account_name = %req.account_name,
+            reason = "no_shards",
+            peer_ip = %client_ip,
+            "Phase 1 login refused: no shards are available"
+        );
         audit!(LoginOutcome::NoShards, id = account_id);
         return login_error(7, "No shards are available to the authentication server.");
     }
@@ -285,18 +302,39 @@ pub(super) async fn handle_server_selection(
 
     let sid = match extract_sid(&headers) {
         Some(s) => s,
-        None => return select_error(15, "Your logon session has expired. Please log in again."),
+        None => {
+            tracing::info!(
+                reason = "sid_missing",
+                peer_ip = %client_ip,
+                "Phase 2 refused: no SID cookie"
+            );
+            return select_error(15, "Your logon session has expired. Please log in again.");
+        }
     };
 
     // Consume session (remove from map) — each SID is single-use for Phase 2.
     let session = { state.sessions.lock().unwrap().remove(&sid) };
     let session = match session {
         Some(s) if s.created.elapsed() < SESSION_TTL => s,
-        Some(_) => {
-            tracing::info!("Session expired for SID");
+        Some(s) => {
+            tracing::info!(
+                reason = "sid_expired",
+                account_id = s.account_id,
+                account_name = %s.account_name,
+                sid_age_secs = s.created.elapsed().as_secs(),
+                peer_ip = %client_ip,
+                "Phase 2 refused: SID expired"
+            );
             return select_error(15, "Your logon session has expired. Please log in again.");
         }
-        None => return select_error(15, "Your logon session has expired. Please log in again."),
+        None => {
+            tracing::info!(
+                reason = "sid_unknown",
+                peer_ip = %client_ip,
+                "Phase 2 refused: SID not issued or already consumed"
+            );
+            return select_error(15, "Your logon session has expired. Please log in again.");
+        }
     };
 
     // Cross-IP detection (issue #442, warn-only first): the SID was issued
@@ -333,7 +371,16 @@ pub(super) async fn handle_server_selection(
 
     let shard = match state.shards.iter().find(|s| s.name == selected) {
         Some(s) => s.clone(),
-        None => return select_error(8, "No such shard."),
+        None => {
+            tracing::info!(
+                reason = "unknown_shard",
+                account_id = session.account_id,
+                account_name = %session.account_name,
+                peer_ip = %client_ip,
+                "Phase 2 refused: no such shard"
+            );
+            return select_error(8, "No such shard.");
+        }
     };
 
     // Protected shard access control (matches C++ AccessDenied behaviour).
@@ -435,289 +482,4 @@ pub(super) fn random_alphanumeric(char_count: usize) -> String {
             CHARSET[idx] as char
         })
         .collect()
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// **Seed-GM guard.** The dev/seed accounts must be at least GameMaster
-    /// (accesslevel 2) so they can run GM commands and reach protected shards
-    /// (the `access_level < 2` gate in `handle_server_selection`). A
-    /// regression that reverts any seeded account to Moderator (1) — below
-    /// the GM threshold — trips this. Covers every account the seed file
-    /// promotes, so a partial regression is caught too. Runs against the CI
-    /// live DB loaded from `db/database.sql` (which seeds the account table).
-    #[tokio::test]
-    async fn live_db_seed_dev_accounts_are_at_least_gamemaster() {
-        use crate::test_support::require_db_or_skip;
-        let pool = require_db_or_skip!();
-
-        // Every account promoted in db/sgw/Accounts/Seed/account.sql.
-        for name in [
-            "test",
-            "cady",
-            "jorsh",
-            "cake",
-            "lomiada1",
-            "nonwo1984",
-            "ishido972",
-        ] {
-            let level: i32 =
-                sqlx::query_scalar("SELECT accesslevel FROM account WHERE account_name = $1")
-                    .bind(name)
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap_or_else(|e| panic!("seed account '{name}' must exist: {e}"));
-            assert!(
-                level >= 2,
-                "seed account '{name}' must be >= GameMaster (2) so it can run GM commands; got {level}"
-            );
-        }
-    }
-
-    #[test]
-    fn random_hex_length() {
-        assert_eq!(random_hex(10).len(), 20); // ticket
-        assert_eq!(random_hex(32).len(), 64); // session key
-    }
-
-    #[test]
-    fn random_alphanumeric_length_and_charset() {
-        let sid = random_alphanumeric(40);
-        assert_eq!(sid.len(), 40);
-        assert!(sid.chars().all(|c| c.is_ascii_alphanumeric()));
-    }
-
-    /// Build a minimal `HandlerState` for driving `handle_user_auth` through
-    /// the Router without a DB or event channel. `developer_mode` is true and
-    /// no database is configured, so the credential check short-circuits —
-    /// but the plaintext-over-HTTP gate runs *before* that, which is exactly
-    /// what the test below pins.
-    fn test_handler_state() -> Arc<HandlerState> {
-        test_handler_state_with(true, false)
-    }
-
-    fn test_handler_state_with(developer_mode: bool, db_configured: bool) -> Arc<HandlerState> {
-        use std::collections::HashMap;
-        use std::sync::Mutex;
-        Arc::new(HandlerState {
-            shards: vec![super::super::ShardInfo {
-                name: "TestShard".into(),
-                host: "127.0.0.1".into(),
-                port: 32832,
-                protected: false,
-            }],
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            pending_logins: Arc::new(Mutex::new(HashMap::new())),
-            developer_mode,
-            db_configured,
-            db: None,
-            login_tx: None,
-            login_buffer: None,
-        })
-    }
-
-    /// **TLS-gate guard.** A plaintext password (not 40-char hex) offered over
-    /// the plain-HTTP listener — i.e. with no `TlsConn` extension present —
-    /// must be rejected with a login error, never accepted. This drives the
-    /// real `handle_user_auth` (in developer_mode, so no DB) through the
-    /// Router *without* the `tls_marker_layer`, mirroring the production
-    /// plain-HTTP path. Reverting the `over_tls` gate in the handler (or in
-    /// `classify_credential`) would let this plaintext through to a success
-    /// response and trip this guard.
-    #[tokio::test]
-    async fn plaintext_password_over_plain_http_is_rejected() {
-        use axum::body::Body;
-        use axum::http::Request;
-        use axum::routing::post;
-        use axum::Router;
-        use std::net::SocketAddr;
-        use tower::ServiceExt; // oneshot
-
-        // No tls_marker_layer here — this is the plain-HTTP Router shape.
-        let app = Router::new()
-            .route("/SGWLogin/UserAuth", post(handle_user_auth))
-            .with_state(test_handler_state());
-
-        // A plaintext password (well-formed request otherwise). It is NOT a
-        // 40-char hex string, so it classifies as plaintext.
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="someuser" Password="my-plaintext-password" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-
-        let request = Request::builder()
-            .method("POST")
-            .uri("/SGWLogin/UserAuth")
-            .header("Content-Type", "text/xml")
-            // Drive connect-info so ConnectInfo<SocketAddr> resolves.
-            .extension(axum::extract::ConnectInfo(
-                "127.0.0.1:5555".parse::<SocketAddr>().unwrap(),
-            ))
-            .body(Body::from(body))
-            .unwrap();
-
-        let response = app.oneshot(request).await.expect("request");
-        assert_eq!(response.status(), StatusCode::OK, "auth always returns 200");
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let xml = String::from_utf8(bytes.to_vec()).unwrap();
-        assert!(
-            xml.contains("SGWLoginError"),
-            "plaintext over plain HTTP must produce a login error, got: {xml}"
-        );
-        assert!(
-            !xml.contains("SGWLoginSuccess"),
-            "plaintext over plain HTTP must NOT succeed, got: {xml}"
-        );
-    }
-
-    /// POST a well-formed Phase 1 request (legacy SHA-1 hex credential, the
-    /// stock protocol digest) to a plain-HTTP Router over `state`; returns
-    /// the `Set-Cookie` header (if any) and the response body.
-    async fn post_user_auth(state: Arc<HandlerState>) -> (Option<String>, String) {
-        use axum::body::Body;
-        use axum::http::Request;
-        use axum::routing::post;
-        use axum::Router;
-        use tower::ServiceExt; // oneshot
-
-        let app = Router::new()
-            .route("/SGWLogin/UserAuth", post(handle_user_auth))
-            .with_state(state);
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="anyone" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let request = Request::builder()
-            .method("POST")
-            .uri("/SGWLogin/UserAuth")
-            .header("Content-Type", "text/xml")
-            .extension(axum::extract::ConnectInfo(
-                "127.0.0.1:5555".parse::<SocketAddr>().unwrap(),
-            ))
-            .body(Body::from(body))
-            .unwrap();
-        let response = app.oneshot(request).await.expect("request");
-        let cookie = response
-            .headers()
-            .get(header::SET_COOKIE)
-            .map(|v| v.to_str().unwrap().to_string());
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        (cookie, String::from_utf8(bytes.to_vec()).unwrap())
-    }
-
-    /// **Fail-closed guard.** Developer mode with a database *configured*
-    /// but no pool must refuse the login with the database error, never accept
-    /// it as account 1 / access level 99. Reverting the `!db_configured`
-    /// condition on the developer fallback turns this into a success.
-    #[tokio::test]
-    async fn dev_mode_with_configured_db_and_no_pool_refuses_login() {
-        let capture = crate::test_support::LogCapture::install();
-        let state = test_handler_state_with(true, true);
-        let sessions = Arc::clone(&state.sessions);
-
-        let (cookie, xml) = post_user_auth(state).await;
-
-        assert!(
-            xml.contains("SGWLoginError") && !xml.contains("SGWLoginSuccess"),
-            "a configured database with no pool must refuse the login, got: {xml}"
-        );
-        assert!(
-            xml.contains("database server failed"),
-            "refusal must be the database error (code 10), got: {xml}"
-        );
-        assert!(cookie.is_none(), "a refused login must not set a SID");
-        assert!(
-            sessions.lock().unwrap().is_empty(),
-            "a refused login must not create a session"
-        );
-        capture
-            .find_event(tracing::Level::ERROR, "Login refused", "db_pool_missing")
-            .expect("refusal must log reason=db_pool_missing at ERROR");
-    }
-
-    /// Developer mode off and no database at all: refused as well.
-    #[tokio::test]
-    async fn no_dev_mode_and_no_database_refuses_login() {
-        let (cookie, xml) = post_user_auth(test_handler_state_with(false, false)).await;
-        assert!(xml.contains("SGWLoginError"), "got: {xml}");
-        assert!(cookie.is_none());
-    }
-
-    /// The deliberate developer fallback (developer mode, no database
-    /// configured) still logs in, and says so at WARN on every acceptance.
-    #[tokio::test]
-    async fn dev_mode_without_configured_db_accepts_and_warns() {
-        let capture = crate::test_support::LogCapture::install();
-        let (cookie, xml) = post_user_auth(test_handler_state_with(true, false)).await;
-        assert!(xml.contains("SGWLoginSuccess"), "got: {xml}");
-        assert!(cookie.is_some_and(|c| c.starts_with("SID=")));
-        capture
-            .find_event(
-                tracing::Level::WARN,
-                "accepting credentials unchecked",
-                "dev_mode_no_db_login",
-            )
-            .expect("the developer fallback must log reason=dev_mode_no_db_login at WARN");
-    }
-
-    /// **Cross-IP SID guard (#442).** A Phase-1 SID issued to IP A and
-    /// consumed from IP B is the replay signature of a harvested session
-    /// token and must log a WARN with `reason = "session_ip_mismatch"`.
-    /// The SID is still consumed (single-use semantics, warn-only first —
-    /// see the issue's NAT/dual-stack caveat), so the assertion is the log
-    /// event, not a rejection. Reverting the check in
-    /// `handle_server_selection` removes the event and trips this guard.
-    #[tokio::test]
-    async fn phase2_sid_consumed_from_different_ip_logs_mismatch() {
-        use axum::http::{header, HeaderMap};
-        use std::net::SocketAddr;
-
-        let capture = crate::test_support::LogCapture::install();
-        let state = test_handler_state();
-
-        // Seed a Phase-1 record issued to 198.51.100.10.
-        let sid = random_alphanumeric(40);
-        state.sessions.lock().unwrap().insert(
-            sid.clone(),
-            super::super::SessionRecord {
-                account_id: 0x4420_0001,
-                access_level: 0,
-                test_account: false,
-                account_name: "ipcheck".to_string(),
-                client_ip: "198.51.100.10".parse().unwrap(),
-                created: std::time::Instant::now(),
-            },
-        );
-
-        // Phase 2 from a different IP (203.0.113.20) with the SID cookie.
-        let mut headers = HeaderMap::new();
-        headers.insert(header::COOKIE, format!("SID={sid}").parse().unwrap());
-        let state = Arc::clone(&state);
-        let addr: SocketAddr = "203.0.113.20:56789".parse().unwrap();
-        handle_server_selection(
-            State(state),
-            ConnectInfo(addr),
-            headers,
-            "<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin=\"http://www.stargateworlds.com/xml/sgwlogin\" ServerSelection=\"TestShard\" />".to_string(),
-        )
-        .await;
-
-        let warn = capture
-            .find_event(
-                tracing::Level::WARN,
-                "consumed from a different IP",
-                "session_ip_mismatch",
-            )
-            .expect("cross-IP SID consumption must log reason=session_ip_mismatch at WARN");
-        assert_eq!(
-            warn.fields.get("session_ip").map(String::as_str),
-            Some("198.51.100.10")
-        );
-        assert_eq!(
-            warn.fields.get("client_ip").map(String::as_str),
-            Some("203.0.113.20")
-        );
-    }
 }

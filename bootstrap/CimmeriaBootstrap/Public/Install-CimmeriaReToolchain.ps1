@@ -40,6 +40,13 @@ function Install-CimmeriaReToolchain {
         Re-run every step even if the install looks complete. Does NOT overwrite
         an existing .mcp.json — that's always protected.
 
+    .PARAMETER SgwInstallDir
+        The game install (the folder holding Binaries\SGW.exe), written into
+        the optional stdio lab entries of the generated .mcp.json. Default:
+        CIMMERIA_LAB_INSTALL_DIR. When neither is set the <SGW_INSTALL_DIR>
+        placeholder stays; the default lab entry (the shared daemon) does not
+        use it.
+
     .EXAMPLE
         Install-CimmeriaReToolchain
 
@@ -60,7 +67,9 @@ function Install-CimmeriaReToolchain {
     param(
         [switch]$SkipDownload,
         [switch]$SkipPrereqCheck,
-        [switch]$Force
+        [switch]$Force,
+        [string]$SgwInstallDir = $(if ($env:CIMMERIA_LAB_INSTALL_DIR) { $env:CIMMERIA_LAB_INSTALL_DIR }
+                                   else { [Environment]::GetEnvironmentVariable('CIMMERIA_LAB_INSTALL_DIR', 'User') })
     )
 
     $ErrorActionPreference = "Stop"
@@ -565,11 +574,26 @@ function Install-CimmeriaReToolchain {
     } else {
         if ($PSCmdlet.ShouldProcess($mcpJsonPath, "Generate .mcp.json")) {
             $template = Get-Content $mcpExamplePath -Raw
+            # Paths go into JSON strings, so each backslash is doubled (a literal
+            # .Replace: the old -replace '\\','\\\\' quadrupled them).
+            $jsonPath = { param($p) $p.Replace('\', '\\') }
+            $labBin = Join-Path $env:LOCALAPPDATA 'cimmeria-lab\bin'
             # Literal .Replace() rather than -replace: a path can contain `$`
             # sequences that -replace would read as backreferences.
-            $resolved = $template.Replace('<CIMMERIA_ROOT>', ($ProjectRoot -replace '\\', '\\\\'))
+            $resolved = $template.Replace('<CIMMERIA_ROOT>', (& $jsonPath $ProjectRoot))
+            $resolved = $resolved.Replace('<LAB_BIN>', (& $jsonPath $labBin))
+            if ($SgwInstallDir) {
+                $resolved = $resolved.Replace('<SGW_INSTALL_DIR>', (& $jsonPath $SgwInstallDir))
+            }
             Set-Content -Path $mcpJsonPath -Value $resolved -Encoding UTF8
             Write-Status ".mcp.json: generated from .mcp.json.example" "Green"
+            Write-Status "  cimmeria-lab is the shared lab daemon (tools/lab/daemon.ps1 install);" "DarkGray"
+            Write-Status "  lab-server reads CIMMERIA_LAB_MCP_URL / CIMMERIA_LAB_MCP_TOKEN" "DarkGray"
+            Write-Status "  (pwsh tools/lab/lab.ps1 local-setup sets them)." "DarkGray"
+            if (-not $SgwInstallDir) {
+                Write-Status "  <SGW_INSTALL_DIR> left in the optional stdio entries under _alternatives:" "Yellow"
+                Write-Status "  set CIMMERIA_LAB_INSTALL_DIR (or pass -SgwInstallDir) to fill it." "Yellow"
+            }
         }
     }
 

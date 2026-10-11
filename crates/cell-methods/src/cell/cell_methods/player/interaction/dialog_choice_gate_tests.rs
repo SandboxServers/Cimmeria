@@ -391,6 +391,36 @@ async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
     );
 }
 
+/// **TG-MIS-10.** A `dialogButtonChoice` payload shorter than its 8-byte
+/// layout is dropped with no chain fired, and logged at WARN with
+/// `reason = "malformed_args"`. Removing the warn leaves the capture empty.
+#[tokio::test]
+async fn short_dialog_choice_payload_logs_malformed_args() {
+    use crate::test_support::LogCapture;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.player_id = Some(42);
+    }
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    let handled = dispatch(1, DIALOG_BUTTON_CHOICE, &[0u8; 4], &tx, &mut mgr, &engine).await;
+    assert!(handled, "handler still consumes the method");
+
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "dialogButtonChoice: truncated args",
+                "malformed_args"
+            )
+            .is_some(),
+        "a 4-byte payload must log WARN reason=malformed_args"
+    );
+}
+
 /// **Client-opened tutorial close.** The client opens some tutorial windows
 /// by itself (5863, the inventory help), so their `-1` close arrives for an
 /// id the server never offered. It must still be rejected (no chain fires)
@@ -480,5 +510,119 @@ async fn a_non_close_choice_on_an_unoffered_tutorial_still_warns() {
             .find_message(tracing::Level::DEBUG, "client-opened tutorial")
             .is_none(),
         "only a close takes the quiet tutorial path"
+    );
+}
+
+/// **TG-MIS-10.** An `interact` payload shorter than its 4-byte target id is
+/// dropped with no chain fired, and logged at WARN with
+/// `reason = "malformed_args"`, carrying the received and required lengths.
+#[tokio::test]
+async fn short_interact_payload_logs_malformed_args() {
+    use crate::test_support::LogCapture;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.player_id = Some(42);
+    }
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    let handled = dispatch(1, INTERACT, &[0u8; 3], &tx, &mut mgr, &engine).await;
+    assert!(handled, "handler still consumes the method");
+
+    let row = capture
+        .find_event(
+            tracing::Level::WARN,
+            "interact: truncated args",
+            "malformed_args",
+        )
+        .expect("a 3-byte interact payload must log WARN reason=malformed_args");
+    assert!(
+        row.has_field("args_len", "3"),
+        "args_len must be the received length"
+    );
+    assert!(
+        row.has_field("need", "4"),
+        "need must be the required length"
+    );
+}
+
+/// **TG-MIS-10.** A player with no `player_id` yet still fires the tag chain
+/// (with `player_id` 0), but the gap is logged exactly once per click, and the
+/// row names `call = "interact"`. The tag and dialog sites share one
+/// resolution, so the row is not duplicated.
+#[tokio::test]
+async fn interact_without_player_id_logs_one_missing_row_per_click() {
+    use crate::test_support::LogCapture;
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+
+    const PLAYER: u32 = 1;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(PLAYER, "Agnos", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(PLAYER) {
+        p.is_player = true;
+        p.player_id = None;
+        p.clear_all_state_flags();
+    }
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let npc = mgr.get_entity_mut(npc_id).unwrap();
+    npc.faction = 1;
+    npc.clear_all_state_flags();
+    npc.tag = Some("MissingIdProbe".into());
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        id: 70482,
+        name: "missing player_id probe".into(),
+        enabled: true,
+        trigger: Trigger::OnInteractTag {
+            entity_tag: "MissingIdProbe".into(),
+        },
+        conditions: vec![],
+        actions: vec![Action::IncrementCounter {
+            counter_name: "missing_probe".into(),
+            amount: 1,
+        }],
+        action_delays: vec![],
+        priority: 0,
+        once: false,
+    });
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    dispatch(
+        PLAYER,
+        INTERACT,
+        &(npc_id as i32).to_le_bytes(),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    assert_eq!(
+        counter(&mgr, PLAYER, "missing_probe"),
+        1,
+        "the tag chain must still fire with player_id 0"
+    );
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("reason", "player_id_missing"))
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "one click must log exactly one player_id_missing row"
+    );
+    assert!(
+        rows[0].has_field("call", "interact"),
+        "the row must name the interact caller"
     );
 }

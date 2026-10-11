@@ -243,6 +243,8 @@ The server resolves its own `session_kind` for every game session, from the acco
 
 `session.end` also carries the session's Mercury channel health (TG-MER-07), snapshotted from `Channel::health()` before the session is removed: `tx_outstanding` (reliable packets sent and not acked, TX window plus deferred queue), `oldest_unacked_age_ms` (from the oldest one's first send; absent when none), `retransmits_total`, `tx_holes`, `tx_hole_stalls`, `rx_stalls` (lifetime counters), `srtt_ms` (absent before a clean RTT sample) and `last_rx_age_ms`. A large `last_rx_age_ms` with `tx_outstanding = 0` is a client that vanished; a deep `tx_outstanding` with an old `oldest_unacked_age_ms` and climbing `retransmits_total` is a peer that still talks but stopped acking.
 
+Each reliable resend writes one `mercury.retransmit` INFO row (`event = "retransmit"`) from `Channel::check_timeouts`, bounded by the per-tick retransmit budget. Beside `peer`, `seq`, `retransmit_count` and `rto_ms` it carries the cause fields (TG-MER-02): `age_ms` (since the packet's first send), `srtt_ms` (absent before a clean RTT sample), `peer_last_rx_ms` (since the peer last sent anything), `send_kind`, `fragment_index`, `msg_id` (only where the sender recorded the message head, a bundle fragment past the first; the retained bytes are encrypted) and `wire_fingerprint`, which joins it to the client's socket log. A high `peer_last_rx_ms` is a peer that went silent; a low one with climbing `retransmit_count` is a peer that talks but does not ack. The tick loop that puts the resend on the wire logs only a failed send; its per-resend "RTO fired before ACK" DEBUG duplicate is gone.
+
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
 Black Market overlay's `[Cimmeria BM]` lines), `client.sequence.dropped` (a
@@ -323,7 +325,10 @@ slow-statement threshold (sqlx's default is 1 s), so every statement over
 250 ms is a WARN on `sqlx::query` carrying the SQL text (never its bound
 parameters; values written into the SQL text itself are logged). sqlx also
 WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
-is the earlier, sampled signal for a pool running out of connections. See the
+is the earlier, sampled signal for a pool running out of connections.
+`sqlx::query=info` (TG-DB-11, D-TG8) keeps both WARNs in SigNoz and drops
+sqlx's per-statement DEBUG rows (about 189k a week, mostly two idle pollers),
+so per-statement `elapsed_secs` survives only for statements over 250 ms. See the
 [target catalog](observability-target-catalog.md).
 
 **Content engine conditions (TG-MIS-13).** `cimmeria_content_engine=debug`
@@ -468,6 +473,7 @@ space ids to world names by hand):
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
 | `movement_navmesh_missing_total` | `world` (~24), `reason` (2: `missing`, `load_failed`) | TG-MOV-12: one per space created without a navmesh, beside its `movement.navmesh` WARN (`navmesh_missing` or `navmesh_load_failed`). Counted once per space creation, not per tick |
+| `movement_teleport_dest_off_mesh_total` | `world` (~24) | TG-MOV-02: one per server-authoritative move that puts a player off the navmesh in an `enforce` world, beside its `movement.teleport` WARN `reason = "teleport_dest_off_mesh"` |
 | `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
 | `base_cell_channel_stalls_total` | none | Every base-to-cell send that waited 50 ms or more on a full cell queue (it holds the base receive loop, and with it every client's ACKs), including ones the 5 s log throttle suppresses (TG-MER-05) |
 | `discord_events_total` | `outcome` (7) | TG-SOC-12: one per Discord event, at the point it ends: `sent`, `filtered`, `dropped_full`, `dropped_closed`, `no_webhook`, `rate_limited`, `failed`. Every drop counts, including the ones the `discord.dropped` WARN throttle (one per 60 s per outcome, with `suppressed`) swallows |

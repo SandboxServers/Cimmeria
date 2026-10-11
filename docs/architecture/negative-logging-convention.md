@@ -108,7 +108,7 @@ A third, cheap: state is released on `destroy_entity`.
 | `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. Social sweep renames (NT-26): `type_id` on items is `item_type_id`, `item_def_id` is `item_type_id`, the chat `target` text is `chat_target`, and a Black Market `sequence_id` logged as an auction is `auction_id`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
 | `<key>_names` next to every bitflag word (`state_field_names`, `flags_names`, `interaction_flags_names`, `recipient_flags_names`, `from_mask_names`, …) | always, beside the raw word | The set bits' names joined `A\|B\|C` in the enum's order, from the flag set's one `FlagSet` table (`cimmeria_common::flag_names`): `STATE_FLAGS` (`cimmeria_wire::state_field`), `EFFECT_FLAGS` (cell-combat `cone_aoe`), `INTERACTION_FLAGS` (`cimmeria_entity::interaction_flags`), `MAIL_FLAGS` (`cimmeria_wire::cell::mail::codes::flags`), `ORG_PERMISSIONS` (`cimmeria_entity::organization`), `PACKET_FLAGS` (`cimmeria_mercury::packet`). Log it with `%`: `state_field, state_field_names = %STATE_FLAGS.render(state_field)`. Bits no token names render as one hex remainder (`BSF_Dead\|0x200`), and a zero word renders `0x0`. Each table is pinned to `entities/defs/enumerations.xml` by a test. A numeric enum code gets a name the same way: `error_code` pairs with `error_name` (`cimmeria_names::book().error_code`), and a code from another vocabulary logs its Rust enum with `?` under its domain's key (the Black Market's `bm_error = ?error`). Leave `_names` off rows exported per packet or per tick: the OTLP appender allocates a string per field per event. NT-31. |
 | `<domain>_arg` (`design_arg`, `mission_arg`, `template_arg`, `name_or_id_arg`), `target_raw` | GM console input that failed to parse | The raw text or out-of-range number a GM typed where an ID was expected. It is not an ID, so it has no name and never takes an `_id` key: a typed `DesignId` that isn't a number is logged as `mission_arg` / `template_arg` / `design_arg` (item), never `design_id`. A parsed one is logged under its domain key (`mission_id`, `template_id`, `item_type_id`) with its name (NT-27). |
-| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id` and keeps `user`: the name the client typed, which may name no account. Never a password, key or ticket (see [Credential fields](#credential-fields)). |
+| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id`; it still logs the name the client typed as `account_name`, which may name no account (TG-NET-04 retired the last `user` keys in `auth/handlers.rs`). Never a password, key or ticket (see [Credential fields](#credential-fields)). |
 | Names for closed enum IDs (`bag_name`, `stat_name`, `target_type_name`, `event_name`) | beside the ID | A small client enum logged as an ID is named from its `entities/defs/enumerations.xml` token, through one table each, pinned to the XML by a test: `cimmeria_entity::inventory::bag_name` (`EInventoryContainerId`, beside `bag_id`), `cimmeria_entity::stats::stat_name` (`EStats`, beside `stat_id`), `cimmeria_entity::abilities::target_type_name` (`ETargetType`, beside `target_type_id`) and `sequence_event_name` (`ESequenceEventType`, beside `event_id`). Content IDs that may be `None` resolve through `cimmeria_cell_world::cell::effects::content_names` (`ability_name`, `effect_name`, `template_name`, `item_name`). NT-20. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
@@ -283,6 +283,27 @@ Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
 
+## Login refusal reasons (TG-NET-04)
+
+The Phase 1 and Phase 2 refusals listed in the table below each log one row
+with a `reason`. None of the rows carries the password, the SID or a
+ticket. Each `reason` is pinned by a `LogCapture` test in `auth/handlers_tests.rs`.
+
+| Seam | Level | `reason` | Fields |
+|---|---|---|---|
+| Phase 1 `handle_user_auth`, SKU is not `SGW_BETA` | `info!` | `unknown_sku` | `peer_ip` |
+| Phase 1, plaintext over TLS outside 1 to 128 bytes | `info!` | `plaintext_length` | `peer_ip` |
+| Phase 1, valid login with no shards registered | `warn!` | `no_shards` | `account_id`, `account_name`, `peer_ip` |
+| Phase 2 `handle_server_selection`, no `SID` cookie | `info!` | `sid_missing` | `peer_ip` |
+| Phase 2, SID never issued or already consumed | `info!` | `sid_unknown` | `peer_ip` |
+| Phase 2, SID older than the 300 s session TTL | `info!` | `sid_expired` | `account_id`, `account_name`, `sid_age_secs`, `peer_ip` |
+| Phase 2, selected shard does not exist | `info!` | `unknown_shard` | `account_id`, `account_name`, `peer_ip` |
+
+Key change (TG-NET-04): the `user` field on the `auth/handlers.rs` rows
+(plaintext over HTTP, invalid credentials, disabled account, DB query
+failure, developer-mode fallback, no database) is now `account_name`.
+`peer_ip` is the new key for the client address on the refusal rows.
+
 ## Database startup and credential-check seams
 
 A configured database (`DB_URL` not empty) is required. The server
@@ -391,6 +412,7 @@ Its rows:
 | `relaunch_account_mismatch` | `warn!` | The fresh ticket is for another account and may not displace the live session. Refused, the ticket burned, the live session kept. A spoofed source address looks like this. Also `error!`, with only the ticket fields, when the session lock is poisoned. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the live session), `ticket_account_id`, `ticket_account_name`, `ticket_ip_matches` |
 | `address_reclaimed` | `warn!` | The session on the address is another account's that registered with a ticket issued to a different IP, and this login's ticket was issued to this address's IP: a squatter on a spoofed address. It is evicted (its teardown carries `disconnect_reason = address_reclaimed`) and the login accepted. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the squatter), `ticket_account_id`, `ticket_account_name` |
 | `ticket_expired` | `warn!` | Any Phase 3 login whose ticket is older than `TICKET_TTL` (30 s). The ticket is burned and nothing registered. | `addr`, `account_id`, `account_name`, `ticket_age_ms` |
+| `ticket_unknown` | `warn!` | A Phase 3 login whose ticket is not in the pending map: unknown or already consumed. Refused; nothing registered. | `addr`, `ticket_prefix` |
 | `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
 | `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
 
@@ -939,6 +961,18 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Post-commit move drops (TG-ITM-05)
+
+Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A move is committed before these side effects run, so a failure here cannot undo it. The cell notification used to be `let _ = cell_tx.send(...)`, and the equipment appearance lookup used `.ok().flatten()`, so both losses were silent. The notification drop is now a WARN. A failed appearance lookup is an ERROR, and the refresh is skipped. The DEBUG move row also carries the containers, the swapped occupant and `source_deleted`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_id`, `item_name`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
+| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_type_id`, `item_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
+| DEBUG | `Inventory move persisted`, plus `source_container_id`, `source_container_name`, `target_container_id`, `target_container_name`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
+
+Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
+
 ## Deferred-AoI cap drops (TG-AOI-01)
 
 A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
@@ -1056,6 +1090,12 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 | WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
+## Malformed interact and dialog calls (TG-MIS-10)
+
+`interact` (`interaction/interact.rs`) and `dialogButtonChoice` (`interaction/dialog.rs`) used to drop a short payload or fall back to `player_id` 0 with no trace. Both now log. A payload shorter than its layout (`interact` needs 4 bytes, `dialogButtonChoice` needs 8) is dropped with no chain fired and writes one WARN: `reason = "malformed_args"`, `args_len`, `need`, Rule 5 identity, `entity_id` with `entity_name`. Message: `interact: truncated args, dropping` or `dialogButtonChoice: truncated args, dropping`. When a chain is about to fire for a player with no `player_id` yet, `chain_player_id` in `interact.rs` (shared by both handlers) logs a WARN first: `reason = "player_id_missing"`, `call` (the handler name: `interact` or `dialogButtonChoice`), Rule 5 identity, `entity_id` with `entity_name`. One click logs at most one such row, even when both the tag/template dispatch and the dialog fall-through would fire a chain. The chain still fires with `player_id` 0; the row only records the gap. Message: `player has no player_id, chain fires with player_id 0`.
+
+Guard: `short_dialog_choice_payload_logs_malformed_args` in `interaction/dialog_choice_gate_tests.rs` sends a 4-byte `dialogButtonChoice` and asserts the WARN with `reason = "malformed_args"` and that the method is still consumed. `short_interact_payload_logs_malformed_args` (same file) sends a 3-byte `interact` and asserts `args_len=3` and `need=4`. `interact_without_player_id_logs_one_missing_row_per_click` (same file) asserts exactly one `player_id_missing` row with `call=interact`.
 
 ## Unsent onEndAidWait on respawn (TG-CMB-10)
 
@@ -1186,6 +1226,12 @@ Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dis
 
 Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
 
+## Datagrams from unknown addresses (TG-NET-12)
+
+`connect_loop/mod.rs` in `cimmeria-base`. A datagram from an address with no session used to be a TRACE row. Internet scanners hit that path, and it was invisible at the exported level. It now logs INFO `event = "unknown_peer_datagram"` with `addr`, `flags` (the first byte) and `suppressed`, under the constant message "Datagram from unknown address". The rate is Pattern D, per address: the first datagram logs at once, then at most one row per 60 s with the swallowed count in `suppressed`. At most 256 addresses are tracked; past that, the one whose window opened longest ago is evicted.
+
+Guards: `unknown_peer_burst_writes_one_row_per_window` and `unknown_peer_addresses_are_throttled_independently`.
+
 ## MinigamePlayer stub rows (TG-MG-02)
 
 `cell_methods/minigame.rs` in `cimmeria-cell-methods`. Every MinigamePlayer stub logs each call once at INFO, with the entity pair and `args_len`, whatever the payload. Each arm reads only the INT32s that `entities/defs/interfaces/MinigamePlayer.def` declares for it; a field whose bytes are missing is left out, never `0`. `endCurrentMinigame` declares no arguments, so `winner_*` and `loser_*` are gone. Key changes: `winner_id`, `winner_name`, `loser_id`, `loser_name`, `host_entity_id`, `host_entity_name`, `target_entity_id`, `target_entity_name`, `game_def_id`, `help_level` are removed; `target_player_id` and `target_player_name` (spectate), `calling_player_id` and `calling_player_name` (accept, decline) and `contact_id` and `contact_name` (contact request) are new. The stubs still do nothing: minigame behaviour is #1303's.
@@ -1195,6 +1241,16 @@ Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no
 | INFO | `UNIMPLEMENTED: <method>` | Every call to a MinigamePlayer stub | entity pair, `args_len`, the declared INT32s and their name pairs |
 
 Guard: `cell_methods/minigame_names_tests.rs` `end_current_minigame_logs_with_wire_payload`. A 4-byte `00000000` payload gives the INFO row with `args_len = 4`. The earlier `args.len() >= N` guard logged nothing for it, so reverting fails the test.
+
+## Cell-to-base dispatch slow WARN (TG-DB-05)
+
+The base's cell-to-base loop in `base/service.rs` times each `route_cell_message` call. A dispatch that takes 250 ms or more writes one WARN. `msg_kind` is the fixed snake_case name from `CellToBaseMsg::kind()` (`cell_to_base_kind.rs` in `cimmeria-wire`), never payload text. The rows are throttled per `msg_kind` (Pattern D): the first is written at once, then at most one per 10 s, carrying `suppressed`. `queue_depth` is the cell channel's backlog when the dispatch finished.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_dispatch_slow"`, `msg_kind`, `elapsed_ms`, `queue_depth`, `suppressed` | A cell-to-base dispatch took 250 ms or more; at most one row per kind per 10 s |
+
+Guard: `base/dispatch_timing.rs` tests. `slow_dispatch_burst_writes_one_row_per_window` captures the WARN and asserts `suppressed` is `0` and then `49` after a burst of 50. `slow_dispatch_throttle_is_per_kind` checks that a second kind's first row is not swallowed and that a fast dispatch writes nothing.
 
 ## Related
 
