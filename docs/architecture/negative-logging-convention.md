@@ -1021,6 +1021,12 @@ Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_wa
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Contact-list short args (TG-SOC-09)
+
+`contact_list/mod.rs` in `cimmeria-cell-methods`. Five contact-list ops (delete, rename, flags update, add members, remove members) drop a call whose args are shorter than its layout. Each logs one WARN `event = "contacts.call_malformed"` with `reason = "malformed_args"`, `op`, `args_len`, `need`, `entity_id` + `entity_name`, and `account_id` + `account_name`. The `create` op keeps its own WARN and is not part of this row. A well-formed call logs nothing new.
+
+Guard: `short_args_log_a_malformed_row_per_op` in `contact_list/tests.rs`, which drives `dispatch` with two bytes per op and asserts `reason`, `op` and the entity and account fields on each row.
+
 ## Chat malformed and relay refusals (TG-SOC-08)
 
 `crates/base/src/base/dispatch/chat_malformed.rs`, called from `dispatch/chat.rs`. Two WARN rows on `target: "chat"`. Both carry `player_id` + `player_name`, `account_id` + `account_name` and `reason`.
