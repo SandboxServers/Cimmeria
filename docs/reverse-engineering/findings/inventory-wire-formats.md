@@ -282,24 +282,39 @@ Alias for INT32 — 4 bytes.
 </rechargeItems>
 ```
 
-**Wire format for purchaseItems / sellItems / buybackItems** (same structure):
+**Verified against the client (2026-10-10, static RE of `SGW.exe`; no live capture).** The stock `SGWPlayer.def` shipped in the client (`Common/res/entities/defs/SGWPlayer.def`) is byte-identical to `entities/defs/SGWPlayer.def`. Each method is `<Exposed/>` with only the arguments shown above. An `ARRAY` is a `u32` count followed by the elements (see the dispatch-table notes and the client array decoder `FUN_015a2e60`), so every element is a bare `INT32`.
 
-| Offset | Size | Type | Field | Description |
-|--------|------|------|-------|-------------|
-| 0 | 1 | uint8 | Header | `methodID \| 0x80` |
-| 1 | 4 | uint32 | ItemCount | Number of item IDs |
-| 5 | 4*N | int32[] | ItemIds/Indices | Item IDs or store indices |
-| var | 4 | uint32 | QtyCount | Number of quantities |
-| var | 4*M | int32[] | Quantities | Quantity per item |
+Cell-method args (after the method-id header byte `methodID | 0x80`), all little-endian:
 
-**Wire format for repairItems / rechargeItems**:
+| Method | Index | Args on the wire |
+|--------|-------|------------------|
+| `purchaseItems` | 78 | `u32 n`, `n x i32 ItemIndices`, `u32 m`, `m x i32 Quantities` |
+| `sellItems` | 79 | `u32 n`, `n x i32 ItemIds`, `u32 m`, `m x i32 Quantities` |
+| `buybackItems` | 80 | `u32 n`, `n x i32 ItemIds`, `u32 m`, `m x i32 Quantities` |
+| `repairItems` | 81 | `u32 n`, `n x i32 ItemIds` |
+| `rechargeItems` | 82 | `u32 n`, `n x i32 ItemIds` |
 
-| Offset | Size | Type | Field | Description |
-|--------|------|------|-------|-------------|
-| 0 | 1 | uint8 | Header | `methodID \| 0x80` |
-| 1 | 4 | uint32 | Count | Number of item IDs |
-| 5 | 4*N | int32[] | ItemIds | Items to repair/recharge |
+- **Two parallel arrays, not `(id, qty)` pairs.** Element `i` of the second array is the quantity for element `i` of the first. The client always builds both arrays with the same length.
+- **No vendor template id is sent by any of the five methods.** There is no trailing `INT32`, in the `.def`, in the Lua call sites or in the native senders. The vendor is known server-side from the player's open vendor session. A server that requires a trailing template id (or reads a bare `(id, qty)` pair stream) will mis-parse every real request: the first array's `u32` count is read as the pair count, and the bytes after it are interpreted as pairs.
+- `ItemIndices` (purchase) is the vendor-list row index the Lua UI passes (`vendorBuyIndividual( index, -1 )`, 0-based `scrollPos + i - 1`). `ItemIds` (sell, buyback, repair, recharge) is the inventory item instance id (`getVendorItemInfo( index, VendorItem.VendorItem ).ItemId`).
+- **Quantity `-1` is resolved client-side before sending.** For the individual-click path the Lua passes `-1`; the native sender replaces it with the item's own stack count from the container cache (`FUN_00e0e930` reads `*(item + 0x10)` through `thunk_FUN_00e1c450(*(SGWPlayer+0x8c -> +0x24), itemId)`). The server never sees `-1` from this path.
+- The "selected" (multi-select) path builds the two arrays from every selected row whose selected quantity is `> 0`: row `ItemIds` from `*(*(row + 8) + 0xc)`, quantity from `*(row + 0xc)`; the vendor window's quantities are zeroed on completion.
 
+**Evidence trail** (`SGW.exe`, headless Ghidra `Probe.java`, static):
+
+| Step | Address | Evidence |
+|------|---------|----------|
+| Lua call sites | `Content/UI/Core/Vendor/Vendor.lua:741-772, 850-866` | `vendorBuySelected()`, `vendorSellSelected()`, `vendorBuybackSelected()`, `vendorRepairSelected()`, `vendorRechargeSelected()`; right-click: `vendorBuyIndividual( index, -1 )`, `vendorSellIndividual( ItemId, -1 )`, `vendorBuybackIndividual( ItemId, -1 )`, `vendorRepairIndividual( ItemId )`, `vendorRechargeIndividual( ItemId )` |
+| Lua binding table | `0x00ad4f20-0x00ad5001` (inside the CEGUI Lua registration, `FUN_00403ec0(L, name, fn)`) | Individual: sell `0xaa3c30`, buyback `0xaa3d30`, repair `0xaa3e30`, recharge `0xaa3f00`; selected: buy `0xaa3b40`, sell `0xaa3ce0`, buyback `0xaa3de0`, repair `0xaa3eb0`, recharge `0xaa3f80`. Arg checks: `(index, qty)` for buy/sell/buyback individual, `(itemId)` for repair/recharge individual |
+| Thunks to the vendor manager | `0x00ad7ea0-0x00ad7fe0` | Each does `FUN_00c66ad0()+0x8c -> [ptr] -> +0x28` (vendor object) and jumps to the sender |
+| Senders, individual | sell `0x00e0e930`, buyback `0x00e0ee60`, repair `0x00e0f390`, recharge `0x00e0f6e0` | Build one CME event, put `"ItemIds"` (and for sell/buyback `"Quantities"`) property lists, emit it |
+| Senders, selected | buy `0x00e0e640`, sell `0x00e0eb70`, buyback `0x00e0f0a0`, repair `0x00e0f4f0`, recharge `0x00e0f840` | Walk the selected rows and fill the same property lists. Buy uses `"ItemIndices"` and `"Quantities"` |
+| Event classes | `Event_NetOut_PurchaseItems` ctor `0x00d97c30`, `SellItems` `0x00d97ed0`, `BuybackItems` `0x00d98180`, `RepairItems` `0x00d98420`, `RechargeItems` `0x00d986c0` | One event per method. No other property names appear in any sender |
+| Event to method mapping | `register_NetOut_onStrikeTeamResponse@00db3390` (mislabelled; it is a bulk NetOut registration), sites `0x00dc279f-0x00dc29d5`; handler objects ctor `0x00d5a0f0, 0x00d5a230, 0x00d5a370, 0x00d5a4b0, 0x00d5a5f0` | Maps each NetOut event to its cell method name; the args are the event properties named as the `.def` `ArgName`s |
+
+The event property names (`ItemIndices`, `ItemIds`, `Quantities`) equal the `.def` `ArgName`s exactly and the lists are single `INT32` lists, which is what makes the two-array layout above the only one the stock client can produce. Note `0x00d470e0`, sometimes cited as the emit site, is the `Event_NetOut_RepairItems` `MemberCallback` RTTI accessor (`annotation-script-shift-bugs.md`), not a sender.
+
+**Evidence level.** HIGH for the layout: stock `.def` plus a complete static trace from the Lua call through the native sender to the typed events, with matching property names. Not confirmed: a byte capture of a real client request (the final event-to-Mercury marshalling in `SGWNetworkManager` was inferred from the `.def`/property-name match, not traced byte by byte), and the pair-stream-plus-template-id layout in `crates/cell-methods/.../vendor/wire.rs` has no support anywhere in the binary.
 ---
 
 ### lootItem
