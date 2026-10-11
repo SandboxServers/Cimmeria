@@ -225,6 +225,7 @@ per-session is a record attribute instead:
 | `cimmeria.session_kind` | `lab` (a Live Research Lab session) or `player`, from the signed `kind` claim |
 | `lab` | `true` for a lab session |
 | `ts_ms`, `seq` | The uploader's clock and sequence number |
+| `client_pid` | The uploading process's id, from the `X-Cimmeria-Client-Pid` header (TG-PIPE-04). Absent when the header is absent or not a `u32`; never 0 |
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
 | `class_id` + `class_name`, `method_index` + `method_name`, `msg_id` + `msg_name` | Lifted from the DLL's `fields` bag (`type_id` becomes `class_id`) and named from the NT-30 wire tables: `method_index` is a flat ClientMethod index, looked up in the row's entity type when it has one; `msg_id` is read from the server's interface on `client.net.out` and `client.ability.sent*`, the client's otherwise |
