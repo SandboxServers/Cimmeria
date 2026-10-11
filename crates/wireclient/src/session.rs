@@ -158,6 +158,20 @@ impl GameSession {
         self.peer.send_bundle(body, reliable).await
     }
 
+    /// Send one unreliable `AUTHENTICATE`, as the SGW client does every
+    /// tick while idle. It carries the ACKs this session owes: `LoopbackPeer`
+    /// only piggybacks them on an outbound packet, so a session that sends
+    /// nothing leaves every reliable packet unacked and the server
+    /// retransmitting it (#1371).
+    pub async fn send_keepalive(&self) -> std::io::Result<()> {
+        self.peer.send_bundle(&Self::authenticate(), false).await
+    }
+
+    /// How many received reliable packets this session has not acked yet.
+    pub fn pending_acks_len(&self) -> usize {
+        self.peer.pending_acks_len()
+    }
+
     /// Wait for `n` reassembled bundles from the server, or until
     /// `timeout` elapses (returning however many arrived).
     pub async fn recv_bundles(&self, n: usize, timeout: Duration) -> Vec<Bytes> {

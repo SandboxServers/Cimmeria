@@ -10,10 +10,15 @@
 //! elevated latency, and a deterministic burst drop with retransmit --
 //! the conditions that were never exercised before this round.
 //! `LossyTransport`'s reorder-buffer primitive (also added this round) is
-//! unit-tested in `crates/mercury/src/lossy_transport.rs` but deliberately
+//! unit-tested in `crates/mercury/src/lossy_transport/mod.rs` but deliberately
 //! **not** exercised end to end here -- see the doc comment on
 //! `lossy_network_both_directions_still_converge` for why it breaks the
 //! Mercury phase-3 handshake's positional parsing.
+//!
+//! The scenarios run in a populated Castle (#1007): its NPCs, some of them
+//! wandering, are in the AoI from the first entry. Every wait sends the
+//! client's idle keep-alive, which carries the ACKs, and latency in
+//! `LossyTransport` is a pipeline delay, not a cap on the sender (#1371).
 //!
 //! Shared setup/driver helpers live in `tests/it/support/mod.rs`.
 //!
@@ -84,8 +89,13 @@ async fn lossy_network_both_directions_still_converge() {
     let (raw_transport, base_port) = bind_base_socket().await;
     // Send (server->client): ~7% loss, 5ms base latency + 30ms jitter.
     // Recv (client->server): lossless -- see the doc comment above.
+    // The first two sends to each client are the phase-3 handshake.
+    // `GameSession::connect` reads them positionally, so losing one fails
+    // the connect (the server's RTO resend comes too late), not the
+    // channel this scenario is about.
     let send_cfg = LossyConfig::new(Duration::from_millis(5), 70, 0, 0xCA57_7E01)
-        .with_jitter(Duration::from_millis(30));
+        .with_jitter(Duration::from_millis(30))
+        .with_lossless_first_sends(2);
     let recv_cfg = LossyConfig::new(Duration::ZERO, 0, 0, 0xCA57_7E02);
     let lossy = Arc::new(LossyTransport::new_asymmetric(
         raw_transport,
@@ -268,16 +278,10 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
 
     // A settles first -- fully onClientReady'd. `enter_castle_with_timeout`
     // returns as soon as A's *own* onClientReady bytes are sent, not once
-    // the server has finished reacting to it -- A's own post-ready burst
-    // bundle (BeingAppearance resend + chat-joined + welcome) and its own
-    // AoI-tick discovery of Castle's existing NPCs both still land
-    // asynchronously afterward. Empirically (`aoi.create_emit` /
-    // `mercury.lossy_transport` tracing), arming the drop immediately after
-    // `enter_castle_with_timeout` returns races that settling traffic --
-    // the drop can catch A's *own* burst bundle instead of B's later
-    // introduction. A short quiescence wait avoids the race; everything A
-    // triggers on its own is on a lossless transport in this test, so it
-    // completes in well under this window on localhost.
+    // the server has finished reacting to it. A must have acked its own
+    // introductions (28 NPCs since #1007) before the drop is armed, or the
+    // drop lands on an RTO retransmit of one of them (#1371). `settle`
+    // waits for that condition instead of a fixed time.
     let a = enter_castle_with_timeout(
         &server.auth_url,
         &gm_creds,
@@ -287,7 +291,7 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
     )
     .await;
     let a_addr = a.local_addr().expect("A's local UDP addr");
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    support::settle(&a, Duration::from_secs(10)).await;
 
     // Arm the targeted drop on A's address now that A has fully settled.
     // B's own world-entry traffic goes to B's address and is untouched.
