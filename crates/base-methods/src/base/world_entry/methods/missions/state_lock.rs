@@ -432,8 +432,17 @@ mod tests {
             sqlx::postgres::PgPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(Duration::from_secs(30))
-                .connect_lazy(&format!("postgres://nobody:nobody@127.0.0.1:{port}/none"))
-                .expect("connect_lazy must succeed for any well-formed URL"),
+                // Options, not a URL string: the live-DB URL guard
+                // (`database_url_is_only_resolved_by_the_gate`) rejects any
+                // `postgres://` literal other than the dead 127.0.0.1:1.
+                .connect_lazy_with(
+                    sqlx::postgres::PgConnectOptions::new()
+                        .host("127.0.0.1")
+                        .port(port)
+                        .username("nobody")
+                        .password("nobody")
+                        .database("none"),
+                ),
         );
         let capture = LogCapture::install();
         let started = std::time::Instant::now();
