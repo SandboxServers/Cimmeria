@@ -114,10 +114,11 @@ async fn session_start_carries_session_kind() {
 }
 
 /// A friction row a content chain fires right after world entry, before the
-/// first movement packet runs `player_tick`, still carries the session kind
-/// and the player's name: `InitPlayerState` fills the friction watch's row
-/// context. Without that call the watch is empty here and both
-/// `dialog_displaced` and `objective_never_completed` lose the field.
+/// first movement packet runs `player_tick`, still carries the session kind,
+/// the player's name, identity and world: `InitPlayerState` fills the
+/// friction watch's row context. Without that call the watch is empty here
+/// and both `dialog_displaced` and `objective_never_completed` lose the
+/// fields (TG-NET-17, TG-MIS-02).
 #[tokio::test]
 async fn friction_rows_before_first_tick_carry_session_kind() {
     use crate::cell::playtest_friction;
@@ -160,5 +161,20 @@ async fn friction_rows_before_first_tick_carry_session_kind() {
             Some("Daniel"),
             "{signal} row lacks the player's name: {row:#?}"
         );
+        // TG-MIS-02: identity (Rule 5) and world from the same cache.
+        // `player_id` comes from the message itself: the entity stamp lands
+        // only after `note_session` runs.
+        for (field, want) in [
+            ("player_id", "4111"),
+            ("account_id", "6"),
+            ("account_name", "lab_login"),
+            ("world", WORLD),
+        ] {
+            assert_eq!(
+                row.fields.get(field).map(String::as_str),
+                Some(want),
+                "{signal} row lacks {field}: {row:#?}"
+            );
+        }
     }
 }
