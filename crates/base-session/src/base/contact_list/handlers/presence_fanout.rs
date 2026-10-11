@@ -72,7 +72,9 @@ pub(crate) fn watcher_summary(rows: &[(i32, i32)]) -> (HashSet<i32>, usize) {
 /// Generic core used by `fanout_login_status` and the three new presence
 /// events (GainLevel, Death, GateTravel). `event_id` is one of the
 /// `EVENT_*` bitfield constants from `wire.rs`; `data_value` is the
-/// event-specific payload (new level, 0, or world_id).
+/// event-specific payload (new level, 0, or world_id). `subject_player_id` is
+/// the subject's `sgw_player.player_id`, logged as `player_id` next to
+/// `player_name` (Rule 6 pair).
 ///
 /// Fire-and-forget — spawn this via `tokio::spawn` at call sites that must
 /// not block a critical path (gate travel, XP grant, death burst).
@@ -84,6 +86,7 @@ pub(crate) fn watcher_summary(rows: &[(i32, i32)]) -> (HashSet<i32>, usize) {
 /// `ignoring_watchers` meanwhile.
 pub async fn fanout_contact_event(
     player_name: &str,
+    subject_player_id: i32,
     event_id: u32,
     data_value: i32,
     db_pool: &Option<Arc<PgPool>>,
@@ -96,6 +99,7 @@ pub async fn fanout_contact_event(
         None => {
             tracing::warn!(
                 player_name,
+                player_id = subject_player_id,
                 event_id,
                 event_name = contact_event_name(event_id),
                 "ContactList presence fanout: no DB pool, skipping"
@@ -109,28 +113,35 @@ pub async fn fanout_contact_event(
         Err(e) => {
             tracing::error!(
                 player_name,
+                player_id = subject_player_id,
                 event_id,
                 event_name = contact_event_name(event_id),
-                "ContactList presence fanout: find_watchers_with_flags failed: {e}"
+                error = %e,
+                "ContactList presence fanout: find_watchers_with_flags failed"
             );
             return;
         }
     };
 
     // Build a HashSet for O(1) membership tests during the connected scan below.
-    // An empty set falls through: no entity matches, and the summary still logs.
+    // An empty set skips the connected scan entirely: no entity can match, and
+    // the summary still logs with `online_watchers = 0` and `sent = 0`.
     let (watcher_set, ignoring_watchers) = watcher_summary(&watcher_rows);
 
     let args = build_on_contact_list_event(player_name, event_id, data_value);
 
     // Map player_id → entity_id for online players only.
     // Locks `connected` to iterate active sessions; does NOT take entity_to_addr.
-    let watcher_entity_ids: Vec<u32> = {
+    let watcher_entity_ids: Vec<u32> = if watcher_set.is_empty() {
+        Vec::new()
+    } else {
         let clients = match connected.lock() {
             Ok(g) => g,
             Err(_) => {
                 tracing::error!(
                     player_name,
+                    player_id = subject_player_id,
+                    event = "contacts.presence_fanout",
                     event_id,
                     event_name = contact_event_name(event_id),
                     "ContactList presence fanout: connected lock poisoned"
@@ -171,6 +182,7 @@ pub async fn fanout_contact_event(
     tracing::debug!(
         event = "contacts.presence_fanout",
         player_name,
+        player_id = subject_player_id,
         event_id,
         event_name = contact_event_name(event_id),
         data_value,
@@ -189,6 +201,7 @@ pub async fn fanout_contact_event(
 /// (`data_value = DATA_OFFLINE`). Thin wrapper around `fanout_contact_event`.
 pub async fn fanout_login_status(
     player_name: &str,
+    subject_player_id: i32,
     is_online: bool,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
@@ -198,6 +211,7 @@ pub async fn fanout_login_status(
     let data_value = if is_online { DATA_ONLINE } else { DATA_OFFLINE };
     fanout_contact_event(
         player_name,
+        subject_player_id,
         EVENT_LOGGED_IN_STATUS,
         data_value,
         db_pool,

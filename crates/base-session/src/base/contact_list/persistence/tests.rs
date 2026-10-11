@@ -1,6 +1,10 @@
 use super::*;
 use crate::base::contact_list::handlers::presence_fanout;
-use crate::test_support::require_db_or_skip;
+use crate::base::contact_list::wire::EVENT_DEATH;
+use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};
+use cimmeria_mercury::transport::Transport;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Sentinel base for contact-list persistence tests.
 /// Distinct from crafting (the `0x7000_Cxxx` block) to avoid collisions.
@@ -292,6 +296,118 @@ async fn live_db_presence_fanout_counts_ignoring_watcher() {
 
     cleanup(&pool, friend_account, friend_player).await;
     cleanup(&pool, ignorer_account, ignorer_player).await;
+}
+
+/// Fan-out summary row, end to end: `fanout_contact_event` itself logs the
+/// DEBUG `contacts.presence_fanout` row with `watchers=2`,
+/// `ignoring_watchers=1`, and the subject's `player_id` beside `player_name`.
+/// No client is connected, so `online_watchers` and `sent` are both 0.
+#[tokio::test]
+async fn live_db_presence_fanout_logs_summary_row() {
+    let pool = require_db_or_skip!();
+    let friend_account = TEST_BASE + 90;
+    let friend_player = TEST_BASE + 91;
+    let ignorer_account = TEST_BASE + 92;
+    let ignorer_player = TEST_BASE + 93;
+    let subject_player = TEST_BASE + 94;
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
+    insert_minimal_player(&pool, friend_account, friend_player).await;
+    insert_minimal_player(&pool, ignorer_account, ignorer_player).await;
+
+    let friends = create_list(&pool, friend_player, "Friends", 300)
+        .await
+        .unwrap();
+    let ignore = create_list(&pool, ignorer_player, "Ignore", 301)
+        .await
+        .unwrap();
+    add_members(
+        &pool,
+        friend_player,
+        friends,
+        &["FanoutRowSubject".to_string()],
+    )
+    .await
+    .unwrap();
+    add_members(
+        &pool,
+        ignorer_player,
+        ignore,
+        &["FanoutRowSubject".to_string()],
+    )
+    .await
+    .unwrap();
+
+    let capture = LogCapture::install();
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let db_pool = Some(Arc::new(pool.clone()));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    presence_fanout::fanout_contact_event(
+        "FanoutRowSubject",
+        subject_player,
+        EVENT_DEATH,
+        0,
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let row = capture
+        .find_message(
+            tracing::Level::DEBUG,
+            "ContactList: presence fanout complete",
+        )
+        .expect("fanout must log the summary row");
+    assert!(row.has_field("event", "contacts.presence_fanout"));
+    assert!(row.has_field("player_name", "FanoutRowSubject"));
+    assert!(row.has_field("player_id", &subject_player.to_string()));
+    assert!(row.has_field("watchers", "2"));
+    assert!(row.has_field("ignoring_watchers", "1"));
+    assert!(row.has_field("online_watchers", "0"));
+    assert!(row.has_field("sent", "0"));
+
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
+}
+
+/// Zero watchers: the fanout skips the connected scan and still logs the
+/// summary row, with `watchers=0`, `online_watchers=0` and `sent=0`.
+#[tokio::test]
+async fn live_db_presence_fanout_empty_watchers_logs_zero_row() {
+    let pool = require_db_or_skip!();
+    let capture = LogCapture::install();
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let db_pool = Some(Arc::new(pool.clone()));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    presence_fanout::fanout_contact_event(
+        "FanoutEmptySubject",
+        TEST_BASE + 95,
+        EVENT_DEATH,
+        0,
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let row = capture
+        .find_message(
+            tracing::Level::DEBUG,
+            "ContactList: presence fanout complete",
+        )
+        .expect("empty watcher set must still log the summary row");
+    assert!(row.has_field("event", "contacts.presence_fanout"));
+    assert!(row.has_field("player_name", "FanoutEmptySubject"));
+    assert!(row.has_field("player_id", &(TEST_BASE + 95).to_string()));
+    assert!(row.has_field("watchers", "0"));
+    assert!(row.has_field("ignoring_watchers", "0"));
+    assert!(row.has_field("online_watchers", "0"));
+    assert!(row.has_field("sent", "0"));
 }
 
 /// Character delete cascades: after deleting the owning `sgw_player` row,

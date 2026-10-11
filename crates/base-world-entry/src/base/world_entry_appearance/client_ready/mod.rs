@@ -604,6 +604,7 @@ pub async fn handle_on_client_ready(
     // already complete and we must not block it on per-watcher DB + sends.
     if let Some(ref name) = player_name {
         let name_owned = name.clone();
+        let player_id_owned = pending.player_id;
         let pool_c = db_pool.clone();
         let transport_c = transport.clone();
         let connected_c = connected.clone();
@@ -611,6 +612,7 @@ pub async fn handle_on_client_ready(
         tokio::spawn(async move {
             super::super::contact_list::handlers::fanout_login_status(
                 &name_owned,
+                player_id_owned,
                 true, // online
                 &pool_c,
                 &transport_c,

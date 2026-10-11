@@ -135,6 +135,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
 
         CellToBaseMsg::ContactListPresenceEvent {
             player_name,
+            player_id,
             event_id,
             data_value,
         } => {
@@ -147,6 +148,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             tokio::spawn(async move {
                 fanout_contact_event(
                     &player_name,
+                    player_id,
                     event_id,
                     data_value,
                     &db_pool,
