@@ -4,7 +4,28 @@
 //! configuration from the server config. Corresponds to the SOCI 3.2.1
 //! session management in the original C++ codebase.
 
-use sqlx::PgPool;
+use std::str::FromStr;
+use std::time::Duration;
+
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::{ConnectOptions, PgPool};
+use tokio::task::JoinHandle;
+
+use crate::db_pool_monitor;
+
+/// The pool's connection ceiling (sqlx's default, which the server used
+/// before TG-DB-06 set it explicitly).
+pub const MAX_CONNECTIONS: u32 = 10;
+
+/// How long a query waits for a free connection before it fails (sqlx's
+/// default, as before TG-DB-06).
+pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// A statement slower than this is logged by sqlx at WARN on target
+/// `sqlx::query` ("slow statement"), with the SQL text, `elapsed_secs` and
+/// the row counts. sqlx never logs bound parameter values, so names and
+/// passwords passed as binds stay out of the row. sqlx's default is 1 s.
+pub const SLOW_STATEMENT_THRESHOLD: Duration = Duration::from_millis(250);
 
 /// Errors specific to database operations.
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +48,14 @@ pub enum DatabaseError {
 /// pool from the original C++ codebase.
 pub struct DatabasePool {
     pool: PgPool,
+    /// The `db.pool` sampler ([`db_pool_monitor`]), aborted on drop.
+    monitor: JoinHandle<()>,
+}
+
+impl Drop for DatabasePool {
+    fn drop(&mut self) {
+        self.monitor.abort();
+    }
 }
 
 impl DatabasePool {
@@ -49,12 +78,26 @@ impl DatabasePool {
             libpq_to_url(connection_string)
         };
 
-        let pool = PgPool::connect(&url)
+        let options = PgConnectOptions::from_str(&url)
+            .map_err(|e| DatabaseError::ConnectionFailed(e.to_string()))?
+            .log_slow_statements(log::LevelFilter::Warn, SLOW_STATEMENT_THRESHOLD);
+        let pool = PgPoolOptions::new()
+            .max_connections(MAX_CONNECTIONS)
+            .acquire_timeout(ACQUIRE_TIMEOUT)
+            .connect_with(options)
             .await
             .map_err(|e| DatabaseError::ConnectionFailed(e.to_string()))?;
 
-        tracing::info!("Database connection pool established");
-        Ok(Self { pool })
+        tracing::info!(
+            target: "db.pool",
+            event = "db_pool_configured",
+            max_connections = MAX_CONNECTIONS,
+            acquire_timeout_ms = ACQUIRE_TIMEOUT.as_millis() as u64,
+            slow_statement_ms = SLOW_STATEMENT_THRESHOLD.as_millis() as u64,
+            "Database connection pool established"
+        );
+        let monitor = db_pool_monitor::spawn(pool.clone(), MAX_CONNECTIONS);
+        Ok(Self { pool, monitor })
     }
 
     /// Get a reference to the underlying connection pool.

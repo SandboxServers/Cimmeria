@@ -287,6 +287,12 @@ use crate::otel;
 /// draws and returns, damage modifiers and loot drops (DEBUG) and their
 /// refusals (WARN). AM-F adds the row before any DEBUG emitter exists so no
 /// Wave-1 packet has to edit this file.
+///
+/// `db.pool` (TG-DB-06) is the database pool: INFO `db_pool_configured` at
+/// connect, a DEBUG `size` / `idle` sample every 15 s, and WARN
+/// `db_pool_saturated` (Pattern D, 60 s) when no connection is free. `debug`
+/// so the samples reach SigNoz. sqlx's own slow-statement WARN (250 ms) rides
+/// `sqlx::query`.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -376,6 +382,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 launcher=debug,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
+                db.pool=debug,\
                 sqlx::query=debug,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
