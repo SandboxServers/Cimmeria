@@ -139,6 +139,7 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `triggerClientHintedGenericRegion refused` | `region_tag` | `region_name` (left off when the region is unknown) | NT-28a |
 | `interact: no items_event_sets binding` (`event = weapon_unbound`) | `item_id` (held the weapon's design id) | `item_type_id` + `item_name` | NT-28a |
 | `setRingTransporterDestination` | `destination_id` | `destination_region_id` + `destination_region_name` | NT-28a |
+| `PersistPosition` rows (`cell_dispatch/position.rs`) | `position` (the coordinate array, `?position`) | `x`, `y`, `z` (floats) | TG-DB-04 |
 | `useItem` and `UseInventoryItem send to base failed` | `target_id` (the client's raw target) | `wire_target_id` + `wire_target_name` | NT-28a |
 | `friction: server sees the player inside a region…` (`signal = region_dwell_no_hint`) | `region_tag` | `region_name` | NT-28a |
 
@@ -579,6 +580,27 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
 
+## Silent loot drops (TG-ITM-09)
+
+Target `interactions`. The cell takes a loot item off a corpse before it hands
+it to the base, so three losses on the cell side were silent: the corpse gone
+after its item left the list, a cash grant that never reached the base, and an
+`onLootDisplay` send that failed. Each is a WARN now. `loot_item_lost` is
+defensive: the corpse was found a moment earlier with no await between, so it
+is not expected to fire. A container that vanished before its roll is a
+`loot.container_refused` INFO row with `reason = container_gone` (the content
+executor, `open_loot`). That row is also defensive and logs only; it is
+unreachable on a press because the range check before it already refuses a
+missing container with the out-of-range feedback line.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_item_lost` | WARN | `entity_missing` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `item_id` + `item_name`, `quantity` |
+| `loot_cash_lost` | WARN | `base_channel_closed` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `amount` |
+| `loot_display_lost` | WARN | `base_channel_closed` | `entity_id`, `entity_name`, `npc_entity_id`, `npc_entity_name` |
+
+The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
@@ -648,6 +670,18 @@ withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirm
 intercepts the `DisconnectEntity` before replying, and proves a concurrent
 `EntityManager::create_entity` call does not receive the id under teardown).
 
+## Logout position-save seam (TG-DB-03)
+
+On `DisconnectEntity`, the cell's `persist_last_position` (`crates/cell/src/cell/service/base_messages/lifecycle.rs`) hands a player's live position to the base as `PersistPosition`. A cell-side skip and a base-side write that never ran look the same in the database, so each outcome logs on its own. NPCs stay silent: they have no `sgw_player` row to update.
+
+| Level | Message | Meaning |
+|---|---|---|
+| WARN | `DisconnectEntity: entity not found — last position not persisted` (`reason = "entity_missing"`, `entity_id`) | The entity id is no longer in the cell's space manager when the teardown runs, so there is no position to read |
+| WARN | `DisconnectEntity: player has no player_id — last position not persisted` (`reason = "player_id_missing"`, the identity fields) | A player entity that never received its `player_id` (a session that dropped before character select). The position cannot be stored, and the next login resumes at the previous stored position |
+| DEBUG | `DisconnectEntity: last position queued for persistence` (`event = "persist_position_queued"`, the identity fields, `world`, `x`, `y`, `z`) | The `PersistPosition` was queued on the Cell→Base channel. This is the normal path, so it is DEBUG |
+
+The identity fields are `account_id`, `account_name`, `player_id` and `player_name` (Rule 5), with `entity_id` + `entity_name` (Rule 6). The `player_id_missing` row omits `player_id` when it is `None`; it is never sent as `"None"`. A failed send keeps its existing WARN (`PersistPosition send failed`, `error = %e`). Pinned by `persist_position_skip_and_queue_rows` in the same file.
+
 ## NPC-vs-NPC target refusals and NPC-only kills (#1009)
 
 Two seams, both carrying both entities' ids and factions so a standoff can be debugged from SigNoz alone:
@@ -661,6 +695,51 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 - The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. They now log `item_type_id` (a number; `item_id` is for instances) with `item_name`, and keep `design_id`, as a number, for the cell/base loot join.
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
+
+## Player-load degraded fallbacks (TG-DB-07)
+
+Every fallback in the player-load loaders logs `event = "player_load_degraded"` with a stable `reason` and `error` (`error = %e`) at `error!`, except `no_db_pool` (offline mode, expected), which logs at `debug!`. The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
+
+| `reason` | Site | Fields |
+|---|---|---|
+| `player_row_missing` | `player_load/core/player_data.rs`, no `sgw_player` row for the account and player | `player_id`, `player_name`, `account_id`, `account_name` |
+| `no_db_pool` | `player_data.rs`, no database pool configured (`debug!`) | the above |
+| `player_query_failed` | `player_data.rs`, the base row read | the above, plus `error` |
+| `equipment_visuals_query_failed` | `player_data.rs`, the equipment-slot visuals | the above, plus `error` |
+| `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
+| `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
+| `bandolier_query_failed` | `player_load/meta.rs`, `query_bandolier_items` | `player_id`, `player_name`, `error` |
+| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
+
+Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
+
+### Shutdown unsaved-state report (TG-DB-01)
+
+When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player entity. Its logout position and any dirty bandolier ammo are not saved |
+| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_with_dirty_ammo` | Once per shutdown |
+
+NPCs log nothing. Once TG-DB-02 drains the saves on shutdown, the WARN fires only for players the drain missed.
+
+## Logout position persistence (TG-DB-04)
+
+`PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
+
+| Level | Message | Meaning |
+|---|---|---|
+| INFO | `PersistPosition: persisted` | The row was written (`account_id`, `account_name`, `player_id`, `player_name`, `world`, `x`, `y`, `z`) |
+| WARN | `PersistPosition: no rows updated (player row missing?)` | Zero rows matched: `rows_affected = 0`, `expected = 1`, `reason = "player_row_missing"` (Pattern B counts) |
+| WARN | `PersistPosition: DB write failed (next login will use the previous position)` | The UPDATE failed: `reason = "db_write_failed"`, `error = %e` |
+| DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
+
+The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
+
+## Deferred content actions dropped on teardown (TG-MIS-07)
+
+A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
 
 ## Related
 

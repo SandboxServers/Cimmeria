@@ -43,16 +43,29 @@ pub(super) async fn persist_position(
 ) {
     let Some(pool) = db_pool else {
         // No pool means the server is running without persistence (test
-        // / repl / smoke mode). Silent no-op like the sibling handlers.
+        // / repl / smoke mode). A DEBUG row only: it is expected there.
+        tracing::debug!(
+            player_id,
+            player_name,
+            world = world_name,
+            reason = "no_db_pool",
+            "PersistPosition: no database pool, position not stored"
+        );
         return;
     };
+
+    // The session may already be gone when this runs; the name cache keeps
+    // the character name for the rows below.
+    let player_name = player_name.or_else(|| cimmeria_entity::known_names::player_name(player_id));
 
     if !position.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             player_id,
             player_name,
             world = world_name,
-            ?position,
+            x = position[0],
+            y = position[1],
+            z = position[2],
             reason = "non_finite_position",
             "PersistPosition: refusing to store a non-finite coordinate — the \
              row keeps its previous position"
@@ -60,32 +73,26 @@ pub(super) async fn persist_position(
         return;
     }
 
-    match sqlx::query(
+    match sqlx::query_scalar::<_, i32>(
         "UPDATE sgw_player \
            SET world_location = $1, \
                world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
                pos_x = $2, pos_y = $3, pos_z = $4 \
-         WHERE player_id = $5",
+         WHERE player_id = $5 \
+         RETURNING account_id",
     )
     .bind(world_name)
     .bind(position[0])
     .bind(position[1])
     .bind(position[2])
     .bind(player_id)
-    .execute(pool.as_ref())
+    .fetch_optional(pool.as_ref())
     .await
     {
-        Ok(res) if res.rows_affected() == 0 => {
-            tracing::warn!(
-                player_id,
-                player_name,
-                world = world_name,
-                ?position,
-                "PersistPosition: no rows updated (player row missing?)"
-            );
-        }
-        Ok(_) => {
+        Ok(Some(account_id)) => {
             tracing::info!(
+                account_id,
+                account_name = cimmeria_entity::known_names::account_name(account_id),
                 player_id,
                 player_name,
                 world = world_name,
@@ -95,12 +102,29 @@ pub(super) async fn persist_position(
                 "PersistPosition: persisted"
             );
         }
-        Err(e) => {
+        Ok(None) => {
             tracing::warn!(
+                rows_affected = 0,
+                expected = 1,
+                reason = "player_row_missing",
                 player_id,
                 player_name,
                 world = world_name,
-                ?position,
+                x = position[0],
+                y = position[1],
+                z = position[2],
+                "PersistPosition: no rows updated (player row missing?)"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                reason = "db_write_failed",
+                player_id,
+                player_name,
+                world = world_name,
+                x = position[0],
+                y = position[1],
+                z = position[2],
                 error = %e,
                 "PersistPosition: DB write failed (next login will use the previous position)"
             );
@@ -183,12 +207,16 @@ mod tests {
     /// the creation point and fails the first assertion.
     #[tokio::test]
     async fn live_db_logout_position_round_trips_with_world_id() {
+        use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
         cleanup(&pool, account_id).await;
         insert_player(&pool, account_id, player_id).await;
         let pool_opt = Some(Arc::new(pool.clone()));
+        // The session is gone at logout, so the name comes from the cache.
+        let player_name = format!("ppos-{player_id}");
+        cimmeria_entity::known_names::remember_player(player_id, &player_name);
 
         // Resolve the expected world_id from the seed rather than hard-coding
         // the Castle row id — the table is recovered data and may be renumbered.
@@ -202,6 +230,7 @@ mod tests {
             "fixture sanity: the seed must carry a resources.worlds row named Castle"
         );
 
+        let capture = LogCapture::install();
         persist_position(
             player_id,
             None,
@@ -210,6 +239,18 @@ mod tests {
             &pool_opt,
         )
         .await;
+
+        let event = capture
+            .find_message(tracing::Level::INFO, "PersistPosition: persisted")
+            .expect("a persisted position must log an INFO row");
+        assert!(
+            event.has_field("account_id", &account_id.to_string()),
+            "persisted row must carry the RETURNING account_id; got {event:?}"
+        );
+        assert!(
+            event.has_field("player_name", &player_name),
+            "persisted row must carry the cached player_name; got {event:?}"
+        );
 
         let stored = read_position(&pool, player_id).await;
         assert_eq!(
@@ -346,6 +387,10 @@ mod tests {
         assert!(
             event.has_field("player_id", &phantom_id.to_string()),
             "warn must carry player_id field; got {event:?}"
+        );
+        assert!(
+            event.has_field("rows_affected", "0") && event.has_field("expected", "1"),
+            "warn must carry the Pattern B counts rows_affected = 0, expected = 1; got {event:?}"
         );
     }
 }
