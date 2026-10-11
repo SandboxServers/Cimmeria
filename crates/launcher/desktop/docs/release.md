@@ -59,7 +59,8 @@ A release build also sets, on the build step only:
   worker injects DLLs into the game, which is what Defender and SmartScreen
   react to.
 - **The WebView2 runtime.** Windows 11 has it and Windows 10 usually does.
-  Nothing here installs it.
+  Nothing here installs it. When it is missing, the launcher says so at start
+  and offers Microsoft's download page instead of exiting silently.
 - **A release name.** The window title and the UI still say "development".
 - **Broad testing.** One native Windows machine ran a debug build on
   2026-10-04: Install, Play, login and character select. Repair, uninstall,
