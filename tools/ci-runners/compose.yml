@@ -1,0 +1,310 @@
+# Five self-hosted runners for one node, each paired with its own docker-in-docker
+# daemon. The runner joins its daemon's network namespace, so a job's service
+# container (`ports: 5432:5432`) is on localhost for that runner only: five
+# concurrent live-DB jobs on one node never clash on a port, and no job can reach
+# the host's docker socket (the production containers on node5).
+#
+# Generated layout; edit the anchors, not the five copies. Deploy with deploy.ps1.
+name: gha-runners
+
+x-dind: &dind
+  image: docker:28-dind
+  privileged: true
+  restart: unless-stopped
+  # Bypass dockerd-entrypoint.sh, which always adds a 0.0.0.0:2375 listener when
+  # TLS is off. The socket lives on a volume shared with the runner; gid 1001 is
+  # the image's `runner` group.
+  entrypoint: ["dind", "dockerd", "--host=unix:///run/dind/docker.sock", "--group=1001"]
+  labels:
+    com.centurylinklabs.watchtower.enable: "false"
+  # CI yields to production: a quarter of the default CPU weight.
+  cpu_shares: 256
+
+x-runner: &runner
+  image: cimmeria-gha-runner:latest
+  build: .
+  restart: unless-stopped
+  labels:
+    com.centurylinklabs.watchtower.enable: "false"
+  cpu_shares: 256
+  mem_limit: ${RUNNER_MEM_LIMIT:-20g}
+  pids_limit: 16384
+  # Time for the listener to close its GitHub session; a killed one leaves a
+  # stale session and the new container retries on "Conflict" for minutes.
+  stop_grace_period: 1m
+  shm_size: 2g
+  # Hooks are read per job, so deploy.ps1 updates them without recreating a runner.
+
+services:
+  # Routing HTTPS proxy for the runners: CONNECTs to 57.0.0.0/8 (Azure Storage
+  # ranges the colo can't reach, README "Colo egress") go to the exit proxy in
+  # EGRESS_EXIT; everything else connects directly. Without EGRESS_EXIT it is a
+  # plain direct proxy.
+  # The node's shared compile cache: every runner here uses it as its sccache
+  # backend, so a crate compiled by any job on this node is a hit for the others.
+  # A cache, not a store: no persistence (a restart means one cold run), LRU
+  # eviction at CACHE_MAXMEMORY. One node's cache serves every node (deploy.ps1
+  # -CacheHost): that node's runners reach it here on the compose network (Docker
+  # drops traffic between its bridge networks, so not via the published port), the
+  # others via the published port. If it is down, sccache counts lookups as misses
+  # and compiles.
+  cache:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    command:
+      - redis-server
+      - --requirepass
+      - ${CACHE_PASSWORD:?set CACHE_PASSWORD in .env (deploy.ps1 does)}
+      - --maxmemory
+      - ${CACHE_MAXMEMORY:-16gb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # sccache stores whole rlibs; the largest are tens of MB.
+      - --proto-max-bulk-len
+      - 512mb
+    mem_limit: ${CACHE_MEM_LIMIT:-18g}
+    # The cache host (deploy.ps1 -CacheHost) publishes it for the other nodes'
+    # runners (a UniFi policy admits TCP 6379 from their networks); elsewhere it
+    # is bound to loopback, i.e. not published.
+    ports:
+      - "${CACHE_PUBLISH:-127.0.0.1:6379}:6379"
+  # The node's shared BuildKit daemon. pr-container.yml builds through it
+  # (setup-buildx `driver: remote`), so image layers and the Dockerfile's cargo
+  # cache mounts (registry, /build/target) persist across jobs and runners on this
+  # node. GitHub's `type=gha` cache stores layers only, never cache mounts, so
+  # there every crates/ change recompiled the release build from scratch.
+  # GC: keep 10 GB, always leave 100 GB of disk free, cap at BUILDKIT_MAX_MB.
+  buildkitd:
+    image: moby/buildkit:v0.33.1
+    restart: unless-stopped
+    privileged: true
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    command:
+      - --addr
+      - tcp://0.0.0.0:1234
+      - --oci-worker-gc
+      - --oci-worker-gc-keepstorage
+      - 10000,100000,${BUILDKIT_MAX_MB:-50000}
+    volumes:
+      - buildkit:/var/lib/buildkit
+    cpu_shares: 256
+  egress:
+    build:
+      context: .
+      dockerfile: egress.Dockerfile
+    image: cimmeria-egress-proxy:latest
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    environment:
+      EGRESS_EXIT: ${EGRESS_EXIT:-}
+    entrypoint: ["sh", "-c", 'exec python -I -u /egress_proxy.py --listen 0.0.0.0:3128 $${EGRESS_EXIT:+--via $$EGRESS_EXIT --via-dst 57.0.0.0/8}']
+  dind1:
+    <<: *dind
+    volumes:
+      - dind1:/var/lib/docker
+      - sock1:/run/dind
+      - work1:/home/runner/_work
+  runner1:
+    <<: *runner
+    network_mode: service:dind1
+    depends_on: [cache, egress, dind1]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-r1
+      RUNNER_LABELS: cimmeria-linux,${NODE}
+      DOCKER_HOST: unix:///run/dind/docker.sock
+      SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - work1:/home/runner/_work
+      - state1:/home/runner/state
+      - sock1:/run/dind
+      - sccache1:/home/runner/sccache
+      - cargo-registry1:/home/runner/.cargo/registry
+      - cargo-git1:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
+      # Registration token for a first start only (deploy.ps1 fills it, then empties it).
+      # A file, not an environment variable: a changed variable recreates the runner.
+      - ./runner-token:/run/runner-token:ro
+  dind2:
+    <<: *dind
+    volumes:
+      - dind2:/var/lib/docker
+      - sock2:/run/dind
+      - work2:/home/runner/_work
+  runner2:
+    <<: *runner
+    network_mode: service:dind2
+    depends_on: [cache, egress, dind2]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-r2
+      RUNNER_LABELS: cimmeria-linux,${NODE}
+      DOCKER_HOST: unix:///run/dind/docker.sock
+      SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - work2:/home/runner/_work
+      - state2:/home/runner/state
+      - sock2:/run/dind
+      - sccache2:/home/runner/sccache
+      - cargo-registry2:/home/runner/.cargo/registry
+      - cargo-git2:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
+      # Registration token for a first start only (deploy.ps1 fills it, then empties it).
+      # A file, not an environment variable: a changed variable recreates the runner.
+      - ./runner-token:/run/runner-token:ro
+  dind3:
+    <<: *dind
+    volumes:
+      - dind3:/var/lib/docker
+      - sock3:/run/dind
+      - work3:/home/runner/_work
+  runner3:
+    <<: *runner
+    network_mode: service:dind3
+    depends_on: [cache, egress, dind3]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-r3
+      RUNNER_LABELS: cimmeria-linux,${NODE}
+      DOCKER_HOST: unix:///run/dind/docker.sock
+      SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - work3:/home/runner/_work
+      - state3:/home/runner/state
+      - sock3:/run/dind
+      - sccache3:/home/runner/sccache
+      - cargo-registry3:/home/runner/.cargo/registry
+      - cargo-git3:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
+      # Registration token for a first start only (deploy.ps1 fills it, then empties it).
+      # A file, not an environment variable: a changed variable recreates the runner.
+      - ./runner-token:/run/runner-token:ro
+  dind4:
+    <<: *dind
+    volumes:
+      - dind4:/var/lib/docker
+      - sock4:/run/dind
+      - work4:/home/runner/_work
+  runner4:
+    <<: *runner
+    network_mode: service:dind4
+    depends_on: [cache, egress, dind4]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-r4
+      RUNNER_LABELS: cimmeria-linux,${NODE}
+      DOCKER_HOST: unix:///run/dind/docker.sock
+      SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - work4:/home/runner/_work
+      - state4:/home/runner/state
+      - sock4:/run/dind
+      - sccache4:/home/runner/sccache
+      - cargo-registry4:/home/runner/.cargo/registry
+      - cargo-git4:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
+      # Registration token for a first start only (deploy.ps1 fills it, then empties it).
+      # A file, not an environment variable: a changed variable recreates the runner.
+      - ./runner-token:/run/runner-token:ro
+  dind5:
+    <<: *dind
+    volumes:
+      - dind5:/var/lib/docker
+      - sock5:/run/dind
+      - work5:/home/runner/_work
+  runner5:
+    <<: *runner
+    network_mode: service:dind5
+    depends_on: [cache, egress, dind5]
+    environment:
+      REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
+      RUNNER_NAME: ${NODE:?set NODE in .env}-r5
+      RUNNER_LABELS: cimmeria-linux,${NODE}
+      DOCKER_HOST: unix:///run/dind/docker.sock
+      SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
+    volumes:
+      - work5:/home/runner/_work
+      - state5:/home/runner/state
+      - sock5:/run/dind
+      - sccache5:/home/runner/sccache
+      - cargo-registry5:/home/runner/.cargo/registry
+      - cargo-git5:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
+      # Registration token for a first start only (deploy.ps1 fills it, then empties it).
+      # A file, not an environment variable: a changed variable recreates the runner.
+      - ./runner-token:/run/runner-token:ro
+volumes:
+  buildkit:
+  dind1:
+  work1:
+  state1:
+  sccache1:
+  cargo-registry1:
+  cargo-git1:
+  sock1:
+  dind2:
+  work2:
+  state2:
+  sccache2:
+  cargo-registry2:
+  cargo-git2:
+  sock2:
+  dind3:
+  work3:
+  state3:
+  sccache3:
+  cargo-registry3:
+  cargo-git3:
+  sock3:
+  dind4:
+  work4:
+  state4:
+  sccache4:
+  cargo-registry4:
+  cargo-git4:
+  sock4:
+  dind5:
+  work5:
+  state5:
+  sccache5:
+  cargo-registry5:
+  cargo-git5:
+  sock5:

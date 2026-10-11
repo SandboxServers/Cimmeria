@@ -1,11 +1,14 @@
 //! Evaluating one expected clause against the live client (or queueing
 //! it for attestation).
 
+use std::time::Duration;
+
 use serde_json::{json, Value};
 
 use super::actions::{captured_value, subst, subst_str, unresolved, CHAT_READ_TOOL};
 use super::packet::ENTITY_VAR;
 use super::players::Who;
+use super::server_wait::WAIT_POLL;
 use super::{now_ms, utc_of, RowCtx, Runner};
 use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
@@ -40,11 +43,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         };
         match c.source {
             Source::Chat => self.eval_chat_clause(who, c, ctx, &mut r).await,
-            Source::Tool => {
-                let tool = c.tool.clone().unwrap_or_default();
-                let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-                self.eval_read(who, &tool, args, c, &mut r).await;
-            }
+            Source::Tool | Source::Server => self.eval_polled(who, c, ctx, &mut r).await,
             Source::Lua => {
                 let chunk = subst_str(c.chunk.as_deref().unwrap_or_default(), &ctx.vars);
                 self.eval_lua(who, &chunk, c, &mut r).await;
@@ -121,43 +120,6 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 });
             }
             Source::ClientEvent => self.eval_client_event(who, c, ctx, &mut r).await,
-            Source::Server => match self.server {
-                Some(server) => {
-                    let tool = c.tool.clone().unwrap_or_default();
-                    let mut args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-                    // `server_ability_state` with no entity reads the lab
-                    // character's own (found by name, as the packet tap is).
-                    if tool == ABILITY_STATE_TOOL && args.get("entity_id").is_none() {
-                        match self.tap_entity(server, ctx).await {
-                            Ok(e) => {
-                                ctx.vars.insert(ENTITY_VAR.into(), json!(e));
-                                if !args.is_object() {
-                                    args = json!({});
-                                }
-                                args["entity_id"] = json!(e);
-                            }
-                            Err(e) => {
-                                r.detail = Some(format!("{tool}: {e}"));
-                                return r;
-                            }
-                        }
-                    }
-                    let out = server.call(&tool, args).await;
-                    if out.ok {
-                        let v = json_at(&out.json, c.pointer.as_deref()).cloned();
-                        judge(c, v, &mut r);
-                    } else {
-                        r.detail =
-                            Some(format!("server lab MCP: {}", out.error.unwrap_or_default()));
-                    }
-                }
-                None => {
-                    r.detail = Some(
-                        "server lab MCP not configured (CIMMERIA_LAB_MCP_URL/_TOKEN); check the SigNoz clauses instead"
-                            .into(),
-                    );
-                }
-            },
             Source::Packet => {
                 // Graded from the tap read before teardown (`packet.rs`).
                 r.detail = Some("a packet clause is graded from the row's tap".into());
@@ -174,6 +136,107 @@ impl<I: ToolInvoker> Runner<'_, I> {
             capture(c, Some(&r.observed), ctx);
         }
         r
+    }
+
+    /// A tool or server clause. With `timeout_ms`, a FAIL is read again
+    /// every 250 ms until it passes or the time is up (README F9: a value
+    /// persisted a moment after the step). Only FAIL repeats: UNVERIFIED,
+    /// BLOCKED and a read that did not reach the tool end the loop, so
+    /// polling can never turn them into a PASS. Each read is bounded by
+    /// the deadline too: one that has not returned by then is a FAIL.
+    async fn eval_polled(
+        &mut self,
+        who: Who,
+        c: &ExpectSpec,
+        ctx: &mut RowCtx,
+        r: &mut ClauseResult,
+    ) {
+        let deadline = c
+            .timeout_ms
+            .map(|t| tokio::time::Instant::now() + Duration::from_millis(t));
+        let mut polls = 0u32;
+        loop {
+            polls += 1;
+            r.verdict = Verdict::Unverified;
+            r.observed = Value::Null;
+            r.detail = None;
+            r.evaluated_ms = now_ms();
+            let read = async {
+                if c.source == Source::Server {
+                    self.eval_server(c, ctx, r).await;
+                } else {
+                    let tool = c.tool.clone().unwrap_or_default();
+                    let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    self.eval_read(who, &tool, args, c, r).await;
+                }
+            };
+            let Some(deadline) = deadline else {
+                read.await;
+                break;
+            };
+            if tokio::time::timeout_at(deadline, read).await.is_err() {
+                r.verdict = Verdict::Fail;
+                r.observed = Value::Null;
+                r.detail = Some(format!(
+                    "the read did not return within {} ms",
+                    c.timeout_ms.unwrap_or_default()
+                ));
+                tracing::warn!(target: "lab.uat", event = "clause_read_timed_out",
+                    clause = %c.id, tool = c.tool.as_deref().unwrap_or_default(), polls,
+                    "a polled clause read did not return before its timeout");
+                break;
+            }
+            let now = tokio::time::Instant::now();
+            if r.verdict != Verdict::Fail || now >= deadline {
+                break;
+            }
+            // Always a real sleep, `no_settle` too: a zero sleep would spin
+            // (and never advance a paused test clock).
+            tokio::time::sleep(WAIT_POLL.min(deadline - now)).await;
+        }
+        if polls > 1 {
+            r.detail = Some(match r.detail.take() {
+                Some(d) => format!("polls: {polls}; {d}"),
+                None => format!("polls: {polls}"),
+            });
+        }
+    }
+
+    /// One read of a server clause over the server lab MCP.
+    async fn eval_server(&mut self, c: &ExpectSpec, ctx: &mut RowCtx, r: &mut ClauseResult) {
+        let Some(server) = self.server else {
+            r.detail = Some(
+                "server lab MCP not configured (CIMMERIA_LAB_MCP_URL/_TOKEN); check the SigNoz clauses instead"
+                    .into(),
+            );
+            return;
+        };
+        let tool = c.tool.clone().unwrap_or_default();
+        let mut args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+        // `server_ability_state` with no entity reads the lab
+        // character's own (found by name, as the packet tap is).
+        if tool == ABILITY_STATE_TOOL && args.get("entity_id").is_none() {
+            match self.tap_entity(server, ctx).await {
+                Ok(e) => {
+                    ctx.vars.insert(ENTITY_VAR.into(), json!(e));
+                    if !args.is_object() {
+                        args = json!({});
+                    }
+                    args["entity_id"] = json!(e);
+                }
+                Err(e) => {
+                    r.detail = Some(format!("{tool}: {e}"));
+                    return;
+                }
+            }
+        }
+        let out = server.call(&tool, args).await;
+        if out.ok {
+            let v = json_at(&out.json, c.pointer.as_deref()).cloned();
+            judge(c, v, r);
+        } else {
+            r.detail = Some(format!("server lab MCP: {}", out.error.unwrap_or_default()));
+        }
     }
 
     async fn eval_chat_clause(

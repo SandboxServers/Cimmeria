@@ -216,7 +216,7 @@ impl Worker {
             };
             let Some(path) = resolved else {
                 let _ = events_tx.send(Event::WipeError(
-                    "Could not resolve %USERPROFILE% or $HOME — no user profile to wipe.".into(),
+                    "Could not find your Documents folder (nor %USERPROFILE% or $HOME) — no user profile to wipe.".into(),
                 ));
                 return;
             };
@@ -505,29 +505,23 @@ mod tests {
         }
     }
 
-    // Wipe cache: with USERPROFILE pointed at a temp dir containing
+    // Wipe cache: with Documents pointed at a temp dir containing
     // populated Cache.en-US, WipeClientCache emits Wiped{kind=Cache.en-US}
     // and the cache contents are gone.
     //
-    // Env-mutation is serialized via the env_lock pattern used in other
-    // launcher tests; here we just save/restore around the body because
-    // there's only one test that mutates USERPROFILE per run path and
-    // tests in the same process are parallel-but-distinct via this
-    // restore-on-drop guard.
+    // The override replaces the shell's Documents lookup, which ignores
+    // USERPROFILE on a redirected machine, so the wipe never reaches the
+    // player's real cache. It is process-wide and serializes its holders.
     #[test]
     fn spawn_wipe_cache_clears_cache_subdir() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
+        let _documents =
+            crate::client_paths::test_documents::set(Some(dir.path().join("Documents")));
         let cache = dir
             .path()
             .join("Documents/My Games/Firesky/SGWGame/Cache.en-US");
         std::fs::create_dir_all(&cache).unwrap();
         std::fs::write(cache.join("override.pak"), b"stale").unwrap();
-
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", dir.path());
-        std::env::remove_var("HOME");
 
         let (mut worker, rt) = make_worker();
         worker.dispatch(Command::WipeClientCache);
@@ -537,15 +531,6 @@ mod tests {
             })
             .await
         });
-
-        // Restore env BEFORE asserting so a panic doesn't leak global state.
-        match prev_profile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
 
         match ev {
             Event::Wiped { kind, report } => {
@@ -565,20 +550,16 @@ mod tests {
         );
     }
 
-    // Wipe all client state: with USERPROFILE set, WipeAllClientState
+    // Wipe all client state: with Documents overridden, WipeAllClientState
     // emits Wiped{kind=Firesky} and the Firesky tree is empty after.
     #[test]
     fn spawn_wipe_all_clears_firesky_tree() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
+        let _documents =
+            crate::client_paths::test_documents::set(Some(dir.path().join("Documents")));
         let firesky = dir.path().join("Documents/My Games/Firesky");
         std::fs::create_dir_all(firesky.join("SGWGame/Config")).unwrap();
         std::fs::write(firesky.join("SGWGame/Config/user.ini"), b"keybinds=...").unwrap();
-
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", dir.path());
-        std::env::remove_var("HOME");
 
         let (mut worker, rt) = make_worker();
         worker.dispatch(Command::WipeAllClientState);
@@ -588,14 +569,6 @@ mod tests {
             })
             .await
         });
-
-        match prev_profile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
 
         match ev {
             Event::Wiped { kind, .. } => assert_eq!(kind, "Firesky"),
@@ -607,16 +580,12 @@ mod tests {
         assert!(std::fs::read_dir(&firesky).unwrap().next().is_none());
     }
 
-    // Resolution failure path: neither USERPROFILE nor HOME set →
-    // WipeError instead of Wiped. Important so a CI runner with a
-    // weird env doesn't silently nuke files relative to cwd.
+    // Resolution failure path: no Documents folder → WipeError instead of
+    // Wiped. Important so a CI runner with a weird env doesn't silently
+    // nuke files relative to cwd.
     #[test]
     fn spawn_wipe_emits_error_when_no_profile_env() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::remove_var("USERPROFILE");
-        std::env::remove_var("HOME");
+        let _documents = crate::client_paths::test_documents::set(None);
 
         let (mut worker, rt) = make_worker();
         worker.dispatch(Command::WipeClientCache);
@@ -626,13 +595,6 @@ mod tests {
             })
             .await
         });
-
-        if let Some(v) = prev_profile {
-            std::env::set_var("USERPROFILE", v);
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
 
         match ev {
             Event::WipeError(msg) => assert!(

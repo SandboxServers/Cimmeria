@@ -64,7 +64,8 @@ pub struct FixtureItem {
 }
 
 impl FixtureMission {
-    /// `step` set means Active; no `step` and no `state` is a spec error.
+    /// `step` set means Active; no `step` and no `state` is a spec error, and
+    /// so is `state = "active"` with no `step` (an active mission has a step).
     pub fn resolved_state(&self) -> Result<FixtureMissionState, String> {
         match (self.step, self.state) {
             (Some(_), None | Some(FixtureMissionState::Active)) => Ok(FixtureMissionState::Active),
@@ -72,6 +73,9 @@ impl FixtureMission {
                 "mission {}: a step makes it active, not {s:?}",
                 self.id
             )),
+            (None, Some(FixtureMissionState::Active)) => {
+                Err(format!("mission {}: active needs a step", self.id))
+            }
             (None, Some(s)) => Ok(s),
             (None, None) => Err(format!("mission {}: needs a step or a state", self.id)),
         }

@@ -13,7 +13,7 @@ use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::lab_commands;
 use crate::uat::spec::{ActionKind, ActionSpec, RowSpec};
 use crate::uat::tier::{self, Role};
-use crate::uat::tools::TARGET_PLAYER_TOOL;
+use crate::uat::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
 
 /// The press tool whose result carries the ability and the event seq the
 /// cast-id capture starts from.
@@ -84,6 +84,19 @@ pub(crate) fn unresolved(s: &str) -> Option<String> {
 }
 
 impl<I: ToolInvoker> Runner<'_, I> {
+    /// The action [`Self::exec`] runs: the primary, or when its tool is not
+    /// routed the first available fallback (the primary again if none is).
+    pub(crate) fn chosen_action<'a>(&self, who: Who, a: &'a ActionSpec) -> &'a ActionSpec {
+        if a.tool.as_deref().is_some_and(|t| !self.routed(who, t)) {
+            a.fallback
+                .iter()
+                .find(|f| self.action_available(who, f))
+                .unwrap_or(a)
+        } else {
+            a
+        }
+    }
+
     /// Run one action and record it. Tool fallbacks are tried in order
     /// only when the primary tool is not routed.
     pub(crate) async fn exec(
@@ -93,14 +106,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         ctx: &mut RowCtx,
     ) -> ActionRecord {
         let who = Who::of(a.client.as_deref());
-        let chosen: &ActionSpec = if a.tool.as_deref().is_some_and(|t| !self.routed(who, t)) {
-            a.fallback
-                .iter()
-                .find(|f| self.action_available(who, f))
-                .unwrap_or(a)
-        } else {
-            a
-        };
+        let chosen = self.chosen_action(who, a);
         let fallback_used = !std::ptr::eq(chosen, a);
         let mut rec = ActionRecord {
             index: ctx.actions.len(),
@@ -124,6 +130,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
             result: Value::Null,
             calls: vec![],
             client: who.tag(),
+            // The primary's flag, as `drive_steps` reads it to stop a row.
+            optional: a.optional,
         };
         let t0 = std::time::Instant::now();
         match chosen.kind() {
@@ -177,8 +185,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
             // lab-spec-vocab (SV-03)
             Ok(ActionKind::ServerWait) => {
-                rec.kind = "wait_server".into();
-                fail(&mut rec, "wait_server: not implemented yet (SV-08)".into());
+                // `kind()` said ServerWait, so the field is set.
+                if let Some(w) = &chosen.wait_server {
+                    self.exec_server_wait(w, who, ctx, &mut rec).await;
+                }
             }
             // end lab-spec-vocab
             Err(e) => fail(&mut rec, e),
@@ -214,6 +224,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if let Some(v) = unresolved(&args.to_string()) {
             return fail(rec, format!("unresolved variable {v}"));
         }
+        // lab-spec-vocab (SV-07): `@stand`, and tag targets resolved by the
+        // runner (D-SV1); the record shows the arguments the tool got.
+        if name == STAND_TOOL {
+            return self.exec_stand(who, &args, ctx, rec).await;
+        }
+        let args = match self.expand_target_args(who, &name, args, ctx, rec).await {
+            Ok(a) => a,
+            Err(e) => return fail(rec, e),
+        };
+        rec.args = args.clone();
+        // end lab-spec-vocab
         // `@dummy`, `@cooldowns_reset`, `@clear_effects`: typed dot commands.
         match lab_commands::build(&name, &args) {
             Ok(Some(cmd)) => return self.exec_lab_command(cmd, who, ctx, rec).await,
