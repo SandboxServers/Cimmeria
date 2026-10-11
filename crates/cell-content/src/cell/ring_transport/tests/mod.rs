@@ -621,3 +621,127 @@ async fn send_visible_warns_when_cell_to_base_channel_closed() {
         capture.all()
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// FSM transition rows (TG-MOV-05).
+// ──────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn one_hide_deadline_logs_one_ring_transition_row() {
+    use crate::cell::ring_transport::{handle_select_destination, run_tick_with_engine};
+    use crate::test_support::LogCapture;
+    use support::{spawn_player, three_ring_mgr, FakeClock};
+
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    spawn_player(&mut mgr, 42, 700);
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    let capture = LogCapture::install();
+
+    mgr.ring_transporters
+        .get_mut(1)
+        .unwrap()
+        .region_triggered(true, 42);
+    handle_select_destination(1, 2, 42, &tx, &mut mgr, &engine).await;
+    // Past the 3.5s hide deadline, short of the 4.0s warmup.
+    clock.advance(std::time::Duration::from_millis(3_600));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "ring.transition") && c.has_field("deadline", "hide"))
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "one hide deadline must log exactly one `ring.transition deadline=hide` row; \
+         reverting the transition log drops it. Captured: {:#?}",
+        capture.all()
+    );
+    // The hide arm leaves the source in SendWarmup and hides the one
+    // passenger it is carrying; a row that drops any of these is wrong.
+    let row = &rows[0];
+    assert!(
+        row.has_field("state_before", "SendWarmup")
+            && row.has_field("state_after", "SendWarmup")
+            && row.has_field("passengers", "1"),
+        "the hide row must carry state_before=SendWarmup, state_after=SendWarmup and \
+         passengers=1 read from send_players. Captured: {:#?}",
+        capture.all()
+    );
+}
+
+/// A destination-side deadline must report its passengers from
+/// `players_loaded`, not from `send_players`, which is empty on the
+/// destination ring. Drives the remote_warmup and cooldown deadlines through
+/// the tick and asserts both rows count the one loaded passenger.
+#[tokio::test]
+async fn destination_deadline_rows_count_loaded_passengers() {
+    use crate::cell::ring_transport::run_tick_with_engine;
+    use crate::test_support::LogCapture;
+    use support::{state_of, three_ring_mgr, FakeClock};
+
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+
+    // Park the destination in RemoteLoadWait with passenger 42 expected, then
+    // deliver its load. That arms `remote_warmup_at` and leaves 42 in
+    // `players_loaded` with `send_players` empty.
+    let dst = mgr.ring_transporters.get_mut(2).unwrap();
+    dst.state = State::RemoteLoadWait;
+    dst.remote_expect(vec![42]);
+    handle_remote_player_loaded(2, 42, &tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 2), State::RemoteWarmup);
+    assert!(mgr
+        .ring_transporters
+        .get(2)
+        .unwrap()
+        .send_players
+        .is_empty());
+
+    let capture = LogCapture::install();
+
+    // Past the 3.0s remote-warmup deadline.
+    clock.advance(std::time::Duration::from_millis(3_100));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+    let remote_rows = capture
+        .all()
+        .iter()
+        .filter(|c| {
+            c.has_field("event", "ring.transition")
+                && c.has_field("deadline", "remote_warmup")
+                && c.has_field("passengers", "1")
+        })
+        .count();
+    assert_eq!(
+        remote_rows,
+        1,
+        "remote_warmup row must report passengers=1 from players_loaded; a count taken \
+         from send_players reads 0 here. Captured: {:#?}",
+        capture.all()
+    );
+
+    // Past the 2.5s cooldown deadline that the remote_warmup expiry armed.
+    clock.advance(std::time::Duration::from_millis(2_600));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+    let cooldown_rows = capture
+        .all()
+        .iter()
+        .filter(|c| {
+            c.has_field("event", "ring.transition")
+                && c.has_field("deadline", "cooldown")
+                && c.has_field("passengers", "1")
+        })
+        .count();
+    assert_eq!(
+        cooldown_rows,
+        1,
+        "cooldown row must report passengers=1 from players_loaded, read before the \
+         cooldown expiry clears it. Captured: {:#?}",
+        capture.all()
+    );
+}
