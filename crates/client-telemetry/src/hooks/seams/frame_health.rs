@@ -14,9 +14,11 @@
 //! - **`client.engine.memory`**: every 30 seconds, the working set, the
 //!   private bytes, the peak working set, and (the one that matters for a
 //!   32-bit process) the free address space: an `SGW.exe` that has used up its
-//!   2 GB of address space fails allocations while the machine still has
+//!   4 GB of address space (the stock exe is Large Address Aware) fails allocations while the machine still has
 //!   gigabytes of RAM free, and a steadily falling `avail_virtual_mb` is the
-//!   warning.
+//!   warning. Each sample also carries the frame-time percentiles of the
+//!   window since the previous one (`frames`, `frame_p50_ms`, `frame_p95_ms`,
+//!   `frame_max_ms`), from the tick gaps the hitch check already measures.
 //!
 //! Both are read on the main thread. The memory numbers come from
 //! `K32GetProcessMemoryInfo` and `GlobalMemoryStatusEx`, declared here
@@ -119,6 +121,91 @@ pub fn memory_level(m: &MemorySnapshot) -> &'static str {
     }
 }
 
+/// Upper bounds in ms of the frame-gap buckets; the last is open-ended.
+pub const FRAME_BUCKETS_MS: [u32; 12] = [8, 12, 17, 25, 33, 50, 67, 100, 150, 200, 500, u32::MAX];
+
+/// Tick-to-tick gaps of one memory-sample window, bucketed; no allocation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrameGaps {
+    counts: [u32; 12],
+    max_ms: f64,
+    frames: u32,
+}
+
+impl FrameGaps {
+    /// An empty window.
+    pub const fn new() -> Self {
+        Self {
+            counts: [0; 12],
+            max_ms: 0.0,
+            frames: 0,
+        }
+    }
+
+    /// Counts one tick-to-tick gap.
+    pub fn record(&mut self, gap_ms: f64) {
+        let bucket = FRAME_BUCKETS_MS
+            .iter()
+            .position(|&bound| f64::from(bound) >= gap_ms)
+            .unwrap_or(FRAME_BUCKETS_MS.len() - 1);
+        self.counts[bucket] += 1;
+        self.frames += 1;
+        self.max_ms = self.max_ms.max(gap_ms);
+    }
+
+    /// Bucket upper bound at or above the percentile `p` (0.0..=1.0); `None`
+    /// when the window is empty.
+    pub fn percentile_ms(&self, p: f64) -> Option<u32> {
+        if self.frames == 0 {
+            return None;
+        }
+        let rank = ((p * f64::from(self.frames)).ceil() as u32).clamp(1, self.frames);
+        let mut seen = 0;
+        for (bound, count) in FRAME_BUCKETS_MS.iter().zip(self.counts.iter()) {
+            seen += count;
+            if seen >= rank {
+                return Some(*bound);
+            }
+        }
+        None
+    }
+
+    /// The window so far, leaving this one empty.
+    pub fn take(&mut self) -> FrameGaps {
+        std::mem::take(self)
+    }
+}
+
+impl Default for FrameGaps {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The frame fields of a memory sample: `frames`, `frame_p50_ms`, `frame_p95_ms`,
+/// `frame_max_ms`; empty when no frame was recorded (no nulls).
+pub fn frame_fields(g: &FrameGaps) -> Fields {
+    // The open-ended last bucket has no bound to report; the window's
+    // longest gap stands in for it.
+    let bound = |b: u32| {
+        if b == u32::MAX {
+            g.max_ms.ceil() as u32
+        } else {
+            b
+        }
+    };
+    let (Some(p50), Some(p95)) = (g.percentile_ms(0.5), g.percentile_ms(0.95)) else {
+        return Vec::new();
+    };
+    let (p50, p95) = (bound(p50), bound(p95));
+    vec![
+        ("frames", json!(g.frames)),
+        ("frame_p50_ms", json!(p50)),
+        ("frame_p95_ms", json!(p95)),
+        ("frame_max_ms", json!((g.max_ms * 10.0).round() / 10.0)),
+    ]
+}
+
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static FRAME: AtomicU64 = AtomicU64::new(0);
 /// The previous tick's time plus one millisecond (0 = no previous tick, so a
@@ -127,6 +214,9 @@ static FRAME: AtomicU64 = AtomicU64::new(0);
 static LAST_TICK: AtomicU64 = AtomicU64::new(0);
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static LAST_MEMORY_MS: AtomicU64 = AtomicU64::new(0);
+/// The tick gaps since the previous memory sample.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static FRAME_GAPS: std::sync::Mutex<FrameGaps> = std::sync::Mutex::new(FrameGaps::new());
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod os {
@@ -242,6 +332,9 @@ pub(in crate::hooks) fn on_tick() {
     let last = LAST_TICK.swap(now + 1, Ordering::Relaxed);
     if last != 0 {
         let gap = (now + 1).saturating_sub(last) as f64;
+        if let Ok(mut g) = FRAME_GAPS.lock() {
+            g.record(gap);
+        }
         let threshold = hitch_threshold(crate::capture::current().firehose);
         if is_hitch(gap, threshold) {
             if let Decision::Emit { suppressed } = THROTTLE.check("hitch") {
@@ -257,13 +350,11 @@ pub(in crate::hooks) fn on_tick() {
     }
     if memory_due(now, LAST_MEMORY_MS.load(Ordering::Relaxed)) {
         LAST_MEMORY_MS.store(now, Ordering::Relaxed);
+        let taken = FRAME_GAPS.lock().map(|mut g| g.take()).unwrap_or_default();
         if let Some(m) = os::snapshot() {
-            emit(
-                MEMORY_TARGET,
-                memory_level(&m),
-                "engine.memory",
-                memory_fields(&m),
-            );
+            let mut fields = memory_fields(&m);
+            fields.extend(frame_fields(&taken));
+            emit(MEMORY_TARGET, memory_level(&m), "engine.memory", fields);
         }
     }
 }
@@ -342,5 +433,59 @@ mod tests {
         assert_eq!(get("avail_virtual_mb"), Some(json!(5.0)));
         assert_eq!(get("total_virtual_mb"), Some(json!(6.0)));
         assert_eq!(get("machine_load_percent"), Some(json!(42)));
+    }
+
+    #[test]
+    fn frame_percentiles_pick_the_bucket_bound() {
+        let mut g = FrameGaps::new();
+        for _ in 0..90 {
+            g.record(16.0);
+        }
+        for _ in 0..10 {
+            g.record(120.0);
+        }
+        assert_eq!(g.percentile_ms(0.5), Some(17));
+        assert_eq!(g.percentile_ms(0.95), Some(150));
+        let f = frame_fields(&g);
+        let get = |k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("frames"), Some(json!(100)));
+        assert_eq!(get("frame_max_ms"), Some(json!(120.0)));
+    }
+
+    #[test]
+    fn taking_the_window_resets_it() {
+        let mut g = FrameGaps::new();
+        g.record(16.0);
+        g.record(40.0);
+        let taken = g.take();
+        let f = frame_fields(&taken);
+        assert!(f.iter().any(|(n, v)| *n == "frames" && *v == json!(2)));
+        let again = g.take();
+        assert_eq!(again, FrameGaps::new());
+        assert!(frame_fields(&again).is_empty());
+        assert_eq!(again.percentile_ms(0.5), None);
+    }
+
+    #[test]
+    fn a_percentile_in_the_open_bucket_reports_the_longest_gap() {
+        let mut g = FrameGaps::new();
+        for _ in 0..10 {
+            g.record(16.0);
+        }
+        for _ in 0..90 {
+            g.record(30_000.4);
+        }
+        assert_eq!(g.percentile_ms(0.95), Some(u32::MAX));
+        let f = frame_fields(&g);
+        assert!(f
+            .iter()
+            .any(|(n, v)| *n == "frame_p95_ms" && *v == json!(30_001)));
+    }
+
+    #[test]
+    fn an_empty_window_has_no_frame_fields() {
+        let g = FrameGaps::default();
+        assert!(frame_fields(&g).is_empty());
+        assert_eq!(g.percentile_ms(0.95), None);
     }
 }
