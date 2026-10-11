@@ -961,6 +961,18 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Post-commit move drops (TG-ITM-05)
+
+Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A move is committed before these side effects run, so a failure here cannot undo it. The cell notification used to be `let _ = cell_tx.send(...)`, and the equipment appearance lookup used `.ok().flatten()`, so both losses were silent. The notification drop is now a WARN. A failed appearance lookup is an ERROR, and the refresh is skipped. The DEBUG move row also carries the containers, the swapped occupant and `source_deleted`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_id`, `item_name`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
+| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_type_id`, `item_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
+| DEBUG | `Inventory move persisted`, plus `source_container_id`, `source_container_name`, `target_container_id`, `target_container_name`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
+
+Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
+
 ## Deferred-AoI cap drops (TG-AOI-01)
 
 A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
