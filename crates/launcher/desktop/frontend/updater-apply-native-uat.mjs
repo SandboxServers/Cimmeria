@@ -1,4 +1,4 @@
-// Real Effect Apply command -> native temp bundle swap + replacement process.
+// Real Effect Apply command -> native temp swap: Mac bundle exchange + spawned fixture, or Windows zip swap + recorded relaunch.
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
@@ -24,6 +24,7 @@ try{
  assert.equal(get('check-updater').disabled,true);assert.equal(get('apply-updater').disabled,true);
  await send({command:'acknowledge'});await app.refresh();await tick();assert.match(get('updater-status').textContent,/confirmed its compiled release version/);
  await send({command:'try_game_mutation'});
- console.log('Apply UAT passed: production Effect/view, one native Apply per double click, real isolated Mac bundle replacement and spawned fixture executable, durable pending ownership, game exclusion, reopen without false success, simulated compiled-version acknowledgment.');
- console.log('Not covered: packaged Tauri IPC/layout/exit, replacement of the actual launcher, new production binary identity, Windows installer execution, OS signing/notarization, app health, release publication.');
+ const swap=process.platform==='win32'?'real isolated Windows zip swap (.old aside, new files in, executable last) with the relaunch recorded, and .old/stage cleanup on the acknowledging start':'real isolated Mac bundle replacement and spawned fixture executable';
+ console.log(`Apply UAT passed: production Effect/view, one native Apply per double click, ${swap}, durable pending ownership, game exclusion, reopen without false success, simulated compiled-version acknowledgment.`);
+ console.log('Not covered: packaged Tauri IPC/layout/exit, replacement of the actual running launcher, new production binary identity, the pid wait before the single-instance guard, OS signing/notarization, app health, release publication.');
 }finally{await app.dispose();child.stdin.end();await new Promise(resolve=>child.once('exit',resolve));}

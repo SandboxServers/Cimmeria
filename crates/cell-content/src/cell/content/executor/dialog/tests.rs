@@ -568,3 +568,49 @@ async fn second_bind_on_same_template_pushes_both_indicator_bits() {
     }
     assert!(rx.try_recv().is_err(), "one push per bind");
 }
+
+/// TG-MIS-12: `add_dialog_set` used to log three INFO rows per action.
+/// It now logs one row carrying the resolved entry and the stored count.
+/// Reverting to the three-row shape trips the count assertion.
+#[tokio::test]
+async fn add_dialog_set_logs_one_info() {
+    use crate::cell::spawner::DialogSetMapEntry;
+
+    const TEMPLATE_GERSCHON: i32 = 149;
+    const SET_MAP_3060: i32 = 3060;
+    const DIALOG_2573: i32 = 2573;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.dialog_set_maps.insert(
+        SET_MAP_3060,
+        DialogSetMapEntry {
+            dialog_id: Some(DIALOG_2573),
+            interaction_flags: 0,
+        },
+    );
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    add_dialog_set(SET_MAP_3060, TEMPLATE_GERSCHON, 1, 1201, &tx, &mut mgr).await;
+
+    let infos: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.level == Level::INFO && c.message_contains("Content: adding dialog set"))
+        .collect();
+    assert_eq!(
+        infos.len(),
+        1,
+        "exactly one INFO per add_dialog_set: {infos:#?}"
+    );
+    assert!(
+        infos[0].has_field("dialog_id", &DIALOG_2573.to_string())
+            && infos[0].has_field("interactions_count", "1"),
+        "the one row must carry the dialog and the stored count: {infos:#?}"
+    );
+}

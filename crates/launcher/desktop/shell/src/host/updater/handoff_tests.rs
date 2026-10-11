@@ -12,7 +12,8 @@ use std::{
 };
 
 fn ready(state: &mut DesktopState) -> (updater::Config, Snapshot) {
-    let bytes = b"inert signed installer fixture";
+    // A release-shaped zip; the injected start stands in for the relaunch.
+    let bytes = &updater::zip_fixture(&[("launcher.exe", b"new native executable")])[..];
     let keys = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
     let signature = minisign::sign(
         Some(&keys.pk),
@@ -42,7 +43,7 @@ fn ready(state: &mut DesktopState) -> (updater::Config, Snapshot) {
                     "id": Uuid::new_v4(),
                     "version": "1.1.0",
                     "notes": "",
-                    "url": "https://updates.example.test/launcher.exe",
+                    "url": "https://updates.example.test/StargateWorlds-Launcher-windows-x64.zip",
                     "signature": STANDARD.encode(signature.to_string()),
                 }))
                 .unwrap(),
@@ -101,7 +102,7 @@ async fn successful_engine_spawn_shuts_down_once_despite_post_spawn_persistence_
                         assert_eq!(record["phase"], "installing");
                         assert_eq!(record["apply"]["handoff"], true);
                         *spawned_owner.lock().unwrap() = Some(record["owner"].clone());
-                        assert_eq!(fs::read(path).unwrap(), b"inert signed installer fixture");
+                        assert_eq!(fs::read(path).unwrap(), b"new native executable");
                         // The simulated spawn has succeeded. Fail the NEXT real atomic
                         // save, never the durable intent which precedes process launch.
                         updater::fail_next_update_save_for_test(after_replace);

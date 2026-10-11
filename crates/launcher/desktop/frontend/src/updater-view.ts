@@ -10,7 +10,7 @@ export function updaterText(s:UpdaterState):string {
  if(s.status?.requires_reopen)return 'Restart the launcher before continuing with updates.';
  const error=s.error??(s.status?.failure?updaterFailureCode(s.status.failure):null);
  if(s.status?.phase==='disabled')return 'Launcher updates are unavailable in this development build.';
- if(s.status?.phase==='reconciliation_required')return 'Launcher update completion is not confirmed. Game and setup changes are blocked. Finish the installer or reopen the updated launcher; do not retry installation while an installer may still be running.';
+ if(s.status?.phase==='reconciliation_required')return 'Launcher update completion is not confirmed. Game and setup changes are blocked. Reopen the updated launcher to confirm it; do not retry the update while the new launcher may still be starting.';
  if(error){
   if(error==='busy')return 'Wait for the game or setup operation to finish, then refresh update status.';
   if(error==='signature'||error==='signed_version')return 'The package signature or signed release version could not be verified. Nothing was installed. Check again for a fresh offer.';
@@ -26,7 +26,7 @@ export function updaterText(s:UpdaterState):string {
   case 'downloading':case 'verifying':return 'The package is downloading or its signature is being verified. Refresh to see the result.';
   case 'ready':return 'Signed launcher package verified and saved. The running launcher has not changed. Apply and restart installs this update and closes the launcher.';
   case 'installing':return 'Installing the verified launcher update. Wait for the replacement to start.';
-  case 'restart_required':return 'Replacement or installer started. Update completion is pending startup of the new launcher.';
+  case 'restart_required':return 'New launcher files are in place and the new launcher was started. Update completion is pending its startup.';
   case 'installed':return 'The updated launcher started and confirmed its compiled release version.';
   default:return 'Check for a signed launcher release. Apply and restart becomes available after package verification.';
  }

@@ -125,7 +125,7 @@ async fn run(ctx: SyncContext, token: Arc<AtomicU32>) {
                 warn_abandoned(&ctx, who, p, abandon);
             }
             for lost in registry::abandon(ctx.addr, &token) {
-                warn_never_started(&ctx, who, lost);
+                debug_never_started(&ctx, who, lost);
             }
             return;
         }
@@ -472,8 +472,9 @@ fn warn_abandoned(ctx: &SyncContext, who: PlayerIdentity, p: &InProgress, abando
     cimmeria_observability::counter!("cooked_data_resyncs_total", "outcome" => "abandoned");
 }
 
-fn warn_never_started(ctx: &SyncContext, who: PlayerIdentity, job: SyncJob) {
-    tracing::warn!(
+/// A queued job dropped with its session: a normal logout race, so DEBUG.
+fn debug_never_started(ctx: &SyncContext, who: PlayerIdentity, job: SyncJob) {
+    tracing::debug!(
         addr = %ctx.addr,
         account_id = who.account_id,
         account_name = who.account_name,

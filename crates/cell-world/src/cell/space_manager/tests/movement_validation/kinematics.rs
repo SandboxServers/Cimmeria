@@ -299,3 +299,62 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
          dashboard: {warn:#?}"
     );
 }
+
+/// A packet that lands on the same clock instant as the previous one has an
+/// infinite implied speed. That is bunching, not speed: it must log one DEBUG
+/// `speed_bunched` row and no WARN. A later packet with a real gap still
+/// warns, with a finite ratio.
+///
+/// Reverting the `speed_bunched` arm in `client_move.rs` puts the WARN back on
+/// the bunched packet and the first assertion fails.
+#[test]
+fn bunched_packets_do_not_speed_warn() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 0.3 u away, same instant as the seed sample: dt = 0.
+    let bunched = [SPAWN_POS[0] + 0.3, 0.0, SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(t0, 100, bunched, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == bunched),
+        "a bunched packet is accepted, got {outcome:?}"
+    );
+    assert!(
+        capture
+            .find_message(Level::WARN, "movement.speed_warning")
+            .is_none(),
+        "a bunched packet must not WARN"
+    );
+    let debug_rows = capture
+        .all()
+        .iter()
+        .filter(|c| c.level == Level::DEBUG && c.has_field("reason", "speed_bunched"))
+        .count();
+    assert_eq!(
+        debug_rows, 1,
+        "one DEBUG speed_bunched row per bunched packet"
+    );
+
+    // 5 u in 0.1 s = 50 u/s, over the 12.19 u/s warn threshold: a real warn.
+    let sprint = [SPAWN_POS[0] + 5.3, 0.0, SPAWN_POS[2]];
+    mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        sprint,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    let warn = capture
+        .find_event(Level::WARN, "movement.speed_warning", "speed")
+        .expect("a real 50 u/s move must still WARN after the bunched packet");
+    let ratio: f32 = warn
+        .fields
+        .get("ratio")
+        .and_then(|r| r.parse().ok())
+        .expect("the speed warn carries a numeric ratio");
+    assert!(ratio.is_finite(), "ratio must be finite, got {ratio}");
+}

@@ -83,6 +83,34 @@ async fn disconnect_mid_push_abandons_and_the_next_login_resyncs() {
     assert!(warn.has_field("category_id", &WORLD_INFO.to_string()));
 }
 
+/// A logout with a second category still queued: the queued job is dropped
+/// with the session. That is a normal race, so its row is DEBUG, not WARN.
+#[tokio::test]
+async fn sync_abandoned_by_logout_is_debug() {
+    const STARGATES: u32 = 13;
+    let rig = rig(47_306);
+    let capture = LogCapture::install();
+    let served = server_version(WORLD_INFO);
+    rig.request(WORLD_INFO, served.wrapping_add(1)).await;
+    rig.request(STARGATES, server_version(STARGATES).wrapping_add(1))
+        .await;
+    rig.idle_turns(200).await;
+
+    rig.connected.lock().unwrap().remove(&rig.addr);
+    rig.idle_turns(200).await;
+
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|e| {
+            e.has_field("event", "cooked_data.sync_finish")
+                && e.has_field("reason", "session_gone_before_start")
+        })
+        .unwrap_or_else(|| panic!("no before-start row; saw {:#?}", capture.all()));
+    assert_eq!(row.level, tracing::Level::DEBUG);
+    assert!(row.has_field("category_id", &STARGATES.to_string()));
+}
+
 /// A relog from the same address mid-push: the old session's push stops,
 /// and the new session's request (at the placeholder version the first push
 /// stamped) resyncs to the server's table.
