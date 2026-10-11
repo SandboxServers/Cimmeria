@@ -203,7 +203,7 @@ async fn the_idle_scan_names_its_rejects() {
     let rejected = rows(&logs, "npc_ai.aggro_scan", "candidate_rejected");
     assert_eq!(rejected.len(), 1, "{:#?}", logs.all());
     assert!(rejected[0].has_field("reason", "same_faction"));
-    assert!(rejected[0].has_field("player_id", "101"));
+    assert!(rejected[0].has_field("witness_id", "101"));
     assert!(
         rejected[0].has_field("aggro_radius", "18.0"),
         "{:?}",
