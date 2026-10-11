@@ -1,0 +1,71 @@
+{
+  "section": "first-session",
+  "rows": [
+    "FS-01",
+    "FS-02",
+    "FS-P1",
+    "FS-P2",
+    "FS-P3",
+    "FS-P4",
+    "FS-P5"
+  ],
+  "leases": 2,
+  "runs_per_lease": 1,
+  "started": "2026-10-10T19:39:06.1408095-05:00",
+  "minutes": 2.4,
+  "summary": {
+    "ok": true,
+    "runs": 2,
+    "passed": 2,
+    "failed": 0,
+    "failed_known": 0,
+    "failed_new": 0,
+    "rows": {
+      "FS-01": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-02": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-P1": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-P2": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-P3": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-P4": {
+        "total": 2,
+        "pass": 2
+      },
+      "FS-P5": {
+        "total": 2,
+        "pass": 2
+      }
+    },
+    "lanes": [
+      {
+        "lane": 1,
+        "instance": "default",
+        "runs": 1,
+        "passed": 1,
+        "braked": false
+      },
+      {
+        "lane": 2,
+        "instance": "p2",
+        "runs": 1,
+        "passed": 1,
+        "braked": false
+      }
+    ],
+    "failures": []
+  }
+}
