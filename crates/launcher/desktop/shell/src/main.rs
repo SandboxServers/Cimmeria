@@ -364,6 +364,15 @@ fn main() {
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
     tauri::Builder::default()
+        // First, so a second launch never reaches setup or the state lock. The plugin
+        // exits the second process with status 0 after this callback focuses the first.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
