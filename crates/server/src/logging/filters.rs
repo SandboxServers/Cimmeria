@@ -295,6 +295,11 @@ use crate::otel;
 /// `sqlx::query`, which is `info` (TG-DB-11, D-TG8): that WARN and the
 /// `sqlx::pool::acquire` WARN export, the per-statement DEBUG rows do not.
 ///
+/// `lab.chaos` (lab-chaos campaign) is lab chaos, compiled only with the
+/// `lab-chaos` feature: WARN `lab_chaos_set`, INFO clears and expiries, the
+/// flush modes' rows, and DEBUG rows when the net shim starts or stops
+/// shaping a session. `debug` so a chaos run is readable from SigNoz alone.
+///
 /// `cimmeria_content_engine::conditions=debug` (TG-MIS-13) exports the content
 /// engine's fail-closed condition rows, invisible under the leading `info`.
 /// The crate row stays at `info` (`every_in_process_crate_has_its_own_otel_row`):
@@ -397,6 +402,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
                 db.pool=debug,\
+                lab.chaos=debug,\
                 sqlx::query=info,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";

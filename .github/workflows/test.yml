@@ -380,7 +380,7 @@ jobs:
       # gated server code are built here or nowhere. After the uploads: this
       # nextest run rewrites target/nextest/ci/junit.xml.
       - name: cargo nextest run (lab-chaos feature)
-        run: cargo nextest run --profile=ci -p cimmeria-base-session -p cimmeria-base -p cimmeria-lab-mcp --features lab-chaos
+        run: cargo nextest run --profile=ci -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-lab-mcp --features lab-chaos
       - name: cargo check (server, lab-chaos feature)
         run: cargo check -p cimmeria-server --features lab-chaos
 

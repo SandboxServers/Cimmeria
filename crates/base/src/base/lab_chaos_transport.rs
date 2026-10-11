@@ -288,11 +288,7 @@ impl Transport for ChaosTransport {
             return self.inner.send_to(bytes, addr).await;
         };
         if roll.drop {
-            tracing::trace!(
-                target: "lab.chaos",
-                len = bytes.len(),
-                "lab chaos dropped an outbound datagram"
-            );
+            // No row per drop: the seed replays the drop pattern exactly.
             // A wire-side drop: the kernel would have accepted the write.
             return Ok(bytes.len());
         }

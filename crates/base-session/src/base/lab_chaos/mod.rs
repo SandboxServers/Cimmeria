@@ -19,8 +19,10 @@
 //! ([`DEFAULT_TTL_S`]) is the caller's to apply. Session teardown clears the
 //! address's entry, so a later session on that address (a relaunched client)
 //! starts clean; so does a return to character select, which keeps the
-//! session (`clear_lab_chaos_on_character_select`). The net shim (CH-06) and the first-login flush (CH-07) read
-//! it per send through [`LabChaos::net_for`] and [`LabChaos::flush_for`].
+//! session (`clear_lab_chaos_on_character_select`). The net shim (CH-06)
+//! and the first-login flush (CH-07) read it per send through
+//! [`LabChaos::net_for`] and [`LabChaos::flush_for`]. Knob bounds live in
+//! `bounds.rs`.
 
 /// True only in a binary built with the `lab-chaos` feature.
 pub const COMPILED: bool = cfg!(feature = "lab-chaos");
@@ -37,6 +39,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+#[cfg(feature = "lab-chaos")]
+mod bounds;
+#[cfg(feature = "lab-chaos")]
+use bounds::{check_flush, check_net};
+#[cfg(feature = "lab-chaos")]
+pub use bounds::{PACK_RECORDS_MAX, PHASE1_RECORD_LEN, SHIFT_LEN_MAX};
 
 /// The `net` profile's knobs, resolved to integers. Loss and duplication are
 /// per thousand so the profile's one-decimal percentages stay exact. Each
@@ -441,62 +450,6 @@ impl Drop for SessionsGuard<'_> {
         // Runs before `map` (the MutexGuard) drops, so still under the lock.
         let n = self.map.values().filter(|c| c.net.is_some()).count();
         self.net_entries.store(n, Ordering::Release);
-    }
-}
-
-#[cfg(feature = "lab-chaos")]
-fn check_net(net: &NetChaos) -> Result<(), ChaosRefused> {
-    if net.loss_per_thousand > 1000 {
-        return Err(ChaosRefused::BadKnob("net loss is over 1000 per thousand"));
-    }
-    if net.dup_per_thousand > 1000 {
-        return Err(ChaosRefused::BadKnob("net dup is over 1000 per thousand"));
-    }
-    if net.latency_ms > 5000 {
-        return Err(ChaosRefused::BadKnob("net latency is over 5000 ms"));
-    }
-    if net.jitter_ms > 5000 {
-        return Err(ChaosRefused::BadKnob("net jitter is over 5000 ms"));
-    }
-    if net.reorder > 1000 {
-        return Err(ChaosRefused::BadKnob("net reorder is over 1000 packets"));
-    }
-    Ok(())
-}
-
-/// The longest shift filler: `updateFrequencyNotification` (2 bytes) plus a
-/// 36-byte `voiceData`. 38 is the 1-byte residue class plus one record
-/// (37), which reaches every cursor a 1-byte filler would (CH-07 filler
-/// design, `docs/analysis/lab-chaos/worknotes/CH-07-filler.md`).
-#[cfg(feature = "lab-chaos")]
-pub const SHIFT_LEN_MAX: u16 = 38;
-
-/// One phase-1 introduction record: CREATE_ENTITY (11 bytes) then
-/// UPDATE_AVATAR (26 bytes).
-#[cfg(feature = "lab-chaos")]
-pub const PHASE1_RECORD_LEN: u16 = 37;
-
-/// The most records a single-packet phase-1 bundle holds with the longest
-/// filler ahead of them (34). `Pack` is refused above it rather than
-/// clamped, so a run never silently tests a smaller bundle than it asked for.
-#[cfg(feature = "lab-chaos")]
-pub const PACK_RECORDS_MAX: u16 = ((cimmeria_mercury::packet::FRAGMENT_BODY_SIZE
-    - SHIFT_LEN_MAX as usize)
-    / PHASE1_RECORD_LEN as usize) as u16;
-
-#[cfg(feature = "lab-chaos")]
-fn check_flush(flush: &FlushChaos) -> Result<(), ChaosRefused> {
-    match *flush {
-        FlushChaos::Delay { ms } if ms > 60_000 => {
-            Err(ChaosRefused::BadKnob("flush delay is over 60000 ms"))
-        }
-        FlushChaos::Pack { records } if !(1..=PACK_RECORDS_MAX).contains(&records) => Err(
-            ChaosRefused::BadKnob("flush pack records is not 1 to 34 (one packet)"),
-        ),
-        FlushChaos::Shift { len } if len != 0 && !(2..=SHIFT_LEN_MAX).contains(&len) => {
-            Err(ChaosRefused::BadKnob("flush shift len is not 0 or 2 to 38"))
-        }
-        _ => Ok(()),
     }
 }
 
