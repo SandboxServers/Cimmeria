@@ -94,7 +94,7 @@ new Praxis character on 2026-10-10.
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Integrated |
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | BlockedDependency |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
-| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | BlockedDependency |
+| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
 | GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
 | GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
@@ -212,3 +212,21 @@ then the reference, not the spec.
   Status field on a mission, step or objective update drops the transition
   with a `tracing::debug!`. A tap body with no `coverage` key reads as
   `full` (bundles from before fingerprint mode).
+- **GD-06.** To keep every grade unchanged, fingerprint mode's recorded
+  server calls (the tap start, `server_entity_get`, `server_entity_query`)
+  go to `actions[]` as `setup` only when the row ends, re-indexed, so the
+  step indices in the reasons do not move. A row with no packet clause is
+  tapped by the capture itself (a silent session lookup, then the recorded
+  start), not by `tap_start`, which would record a `server_sessions` call
+  before the steps. A row with a packet clause keeps `tap_start` and is
+  never late-bound, because its clauses grade the tap. The capture never
+  sets `${player_entity_id}`. A failed late start is recorded once and ends
+  the tries. Each snapshot also carries its own `space_id` (the top-level
+  one is the first found). `FpCapture::coverage` takes `bound`, not
+  `bound_at_start`. FX-06's fixture establish goes before the tap start in
+  `drive_row` (a comment marks the place). Review fixes: when the lease is
+  lost mid-row, `run_row` calls `tap_abandon`, which stops the server tap
+  (recorded as teardown), writes `packet-tap.json` with `read_ok: false`,
+  and still writes the fingerprint attachments. A window sample whose
+  `client_ui_state` reply carries a `windows:` error is `{after, error}`,
+  never an empty set.

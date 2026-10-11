@@ -60,6 +60,12 @@ pub struct UatRunArgs {
     /// When a row's fixture is applied: `auto` (default), `always`, `never`.
     #[serde(default)]
     pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs: a packet tap on every
+    /// in-world row, bound late when the row enters the world, entity
+    /// snapshots and window samples. lab golden and lab uat -DiffGolden set
+    /// it.
+    #[serde(default)]
+    pub fingerprint: bool,
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
@@ -401,6 +407,7 @@ impl LabServer {
             no_settle: false,
             instance: Some(self.supervisor.label().to_string()),
             fixtures: a.fixtures,
+            fingerprint: a.fingerprint,
         };
         let inv = RouterInvoker {
             server: self,

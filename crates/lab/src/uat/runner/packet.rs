@@ -36,15 +36,26 @@ pub(crate) struct RowTap {
     /// Why the tap could not be stopped (after one retry). A tap still
     /// running may have dropped or mixed in rows, so no clause passes.
     pub stop_error: Option<String>,
+    /// `server_packet_tap_start` replaced a tap already on the entity (an
+    /// observer's `lab_timeline`, README F3): its rows are gone.
+    pub replaced_existing: bool,
 }
 
 /// A var holding an entity id, as a number or a numeric string.
-fn as_entity(v: &Value) -> Option<u32> {
+pub(super) fn as_entity(v: &Value) -> Option<u32> {
     match v {
         Value::Number(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()),
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
     }
+}
+
+/// `server_packet_tap_start`'s `replaced_existing` (false when absent).
+pub(super) fn replaced_existing(reply: &Value) -> bool {
+    reply
+        .get("replaced_existing")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// The one session whose character is `want`. The server lists the
@@ -75,6 +86,25 @@ pub(crate) fn find_session(sessions: &Value, want: &str) -> Result<u32, String> 
             many.len()
         )),
     }
+}
+
+/// One server tool call, timed, with the action record it makes. The
+/// caller decides where the record goes (the row, or fingerprint mode's
+/// deferred list).
+pub(super) async fn timed_call(
+    server: &dyn ServerInvoker,
+    role: Role,
+    tool: &str,
+    args: Value,
+) -> (ActionRecord, ToolOutcome) {
+    let mut rec = server_record(0, role, tool, &args);
+    let t0 = std::time::Instant::now();
+    let out = server.call(tool, args).await;
+    rec.elapsed_ms = t0.elapsed().as_millis() as u64;
+    rec.ok = out.ok;
+    rec.error.clone_from(&out.error);
+    rec.result = clip(&out.json, 500);
+    (rec, out)
 }
 
 fn server_record(index: usize, role: Role, tool: &str, args: &Value) -> ActionRecord {
@@ -110,18 +140,13 @@ impl<I: ToolInvoker> Runner<'_, I> {
         args: Value,
         ctx: &mut RowCtx,
     ) -> ToolOutcome {
-        let mut rec = server_record(ctx.actions.len(), role, tool, &args);
-        let t0 = std::time::Instant::now();
-        let out = server.call(tool, args).await;
-        rec.elapsed_ms = t0.elapsed().as_millis() as u64;
-        rec.ok = out.ok;
-        rec.error.clone_from(&out.error);
+        let (mut rec, out) = timed_call(server, role, tool, args).await;
+        rec.index = ctx.actions.len();
         // The read's rows go to the attachment, not into run.json.
-        rec.result = if tool == "server_packet_tap_read" {
-            json!({ "count": out.json.get("count"), "dropped": out.json.get("dropped") })
-        } else {
-            clip(&out.json, 500)
-        };
+        if tool == "server_packet_tap_read" {
+            rec.result =
+                json!({ "count": out.json.get("count"), "dropped": out.json.get("dropped") });
+        }
         ctx.actions.push(rec);
         out
     }
@@ -174,6 +199,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     .await;
                 if out.ok {
                     tap.entity = Some(entity);
+                    tap.replaced_existing = replaced_existing(&out.json);
                 } else {
                     tap.error = Some(format!(
                         "server_packet_tap_start: {}",
@@ -223,7 +249,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .run
             .attach_dir(&ctx.section, &ctx.row_id)
             .join("packet-tap.json");
-        let body = json!({
+        let mut body = json!({
             "entity_id": entity,
             "read_ok": read.ok,
             "read_error": read.error,
@@ -231,6 +257,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
             "stop_error": stop.error,
             "tap": read.json,
         });
+        if let Some(fp) = &ctx.fp {
+            body["coverage"] = json!(fp.coverage(true));
+            body["replaced_existing"] =
+                json!(ctx.tap.as_ref().is_some_and(|t| t.replaced_existing));
+        }
         if self.run.write_json(&path, &body).is_ok() {
             ctx.attachments.push(Attachment {
                 name: "packet_tap".into(),
