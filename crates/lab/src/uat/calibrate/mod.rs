@@ -41,12 +41,11 @@ pub struct CalibrateOutcome {
     /// Only the fields that changed: `{ "bearing_deg": [322.5, 330.0] }`.
     #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
     pub changed: serde_json::Map<String, Value>,
-    /// The proposed diff file, when there is a change to propose.
+    /// The proposed diff file, on the first outcome of a call that proposed
+    /// (D-SV12: once). Later poses' proposals are in the same diff; the
+    /// diff's own header names the spec file it applies to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_path: Option<String>,
-    /// The spec file the diff applies to.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spec_path: Option<String>,
     /// Hover probes spent, confirmations included.
     pub probes: u32,
     /// Why the pose was not calibrated, when `ok` is false; with `ok`, why

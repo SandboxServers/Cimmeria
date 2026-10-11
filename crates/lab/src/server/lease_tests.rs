@@ -237,6 +237,30 @@ async fn a_uat_run_respects_the_lease() {
     );
 }
 
+/// A section with one calibratable pose.
+const CALIBRATE_SPEC: &str = r#"schema = 1
+[section]
+id = "first-session"
+system = "Calibration"
+guide = "unified-uat.md#first-session"
+ledger = "lab-spec-vocab/README.md"
+account = "gm"
+
+[[row]]
+id = "FS-P3"
+title = "frost"
+expected = "Clicks Frost."
+pose = [
+  { id = "frost", tag = "ArmYourself_FrostBody", radius_m = 4.16, bearing_deg = 322.5, dy_m = 0.13 },
+]
+step = [{ tool = "@world_click", args = { pose = "frost" }, label = "go" }]
+[[row.expect]]
+id = "c"
+text = "t"
+source = "chat"
+contains = "Welcome"
+"#;
+
 /// lab-spec-vocab (SV-10): a calibration with no `lease_id` takes a lease of
 /// its own (owner `lab_uat_calibrate`) and releases it when it ends, here on
 /// a missing section; it is refused while another session holds the lab and
@@ -266,10 +290,16 @@ async fn a_uat_calibrate_takes_and_releases_its_own_lease() {
     let a_id = lease_id(&acquire(&mut a, "session-a").await);
     let r = b.call("lab_uat_calibrate", args.clone()).await;
     assert!(error_text(&r).contains("session-a"), "{r}");
+    // Under the holder's lease it gets past the lease and loads the
+    // section: the first refusal is its own grid argument, which only a
+    // call that did not try to take a lease of its own can reach. (A valid
+    // grid would drive, and write a run folder into the real UAT root.)
+    std::fs::write(specs.path().join("first-session.toml"), CALIBRATE_SPEC).unwrap();
     let mut with = args.clone();
     with["lease_id"] = json!(a_id);
+    with["bearing_step_deg"] = json!(0.5);
     let r = a.call("lab_uat_calibrate", with).await;
-    assert!(!error_text(&r).contains("lease"), "{r}");
+    assert!(error_text(&r).contains("bearing_step_deg"), "{r}");
     let st = status_json(&a.call("lab_lease_status", json!({})).await);
     assert_eq!(st["lease"]["owner"], "session-a", "{st}");
 }

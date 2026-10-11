@@ -81,6 +81,7 @@ pub(super) fn scratch() -> ActionRecord {
         tier: None,
         tier_source: None,
         fallback_used: false,
+        optional: false,
         host_started_ms: 0,
         elapsed_ms: 0,
         ok: true,
@@ -208,9 +209,24 @@ pub(super) async fn look_and_probe<I: ToolInvoker>(
     }
 }
 
+/// The reason a lost lease stops a sweep with, the runner's `lease revoked`
+/// prefix included.
+pub(super) fn revoked(reason: &str) -> String {
+    format!("lease revoked: {reason}")
+}
+
+/// How a confirmation ended: re-probes passed, and why it stopped before
+/// judging the candidate (the lease, or the confirmation limit).
+#[derive(Debug, Default)]
+pub(super) struct Confirmation {
+    pub(super) passed: u32,
+    pub(super) stop: Option<String>,
+}
+
 /// D-SV6: up to [`CONFIRM_RUNS`] re-probes of candidate `i`, each from a
 /// fresh teleport (the opposite bearing, then back). Stops at the first
-/// that fails; returns how many passed.
+/// that fails, and before a re-stand once the lease is revoked or `limit`
+/// has passed.
 pub(super) async fn confirm<I: ToolInvoker>(
     runner: &Runner<'_, I>,
     out_dir: &Path,
@@ -218,9 +234,22 @@ pub(super) async fn confirm<I: ToolInvoker>(
     pose: &PoseSpec,
     (i, c): (usize, &Candidate),
     probes: &mut u32,
-) -> u32 {
+    limit: tokio::time::Instant,
+) -> Confirmation {
     let away = (c.bearing_deg + 180.0).rem_euclid(360.0);
     for k in 0..CONFIRM_RUNS {
+        if let Some(r) = runner.revocation_reason() {
+            return Confirmation {
+                passed: k,
+                stop: Some(revoked(&r)),
+            };
+        }
+        if tokio::time::Instant::now() >= limit {
+            return Confirmation {
+                passed: k,
+                stop: Some(format!("budget: confirmation cut at {k} of {CONFIRM_RUNS}")),
+            };
+        }
         let stood = match stand(runner, target, pose, c.radius_m, away).await {
             Ok(()) => stand(runner, target, pose, c.radius_m, c.bearing_deg).await,
             Err(e) => Err(e),
@@ -234,8 +263,14 @@ pub(super) async fn confirm<I: ToolInvoker>(
         };
         log_line(out_dir, &sample_line(&pose.id, i, c, &s, Some(k + 1)));
         if !(s.ok && s.hits >= CONFIRM_MIN_HITS) {
-            return k;
+            return Confirmation {
+                passed: k,
+                stop: None,
+            };
         }
     }
-    CONFIRM_RUNS
+    Confirmation {
+        passed: CONFIRM_RUNS,
+        stop: None,
+    }
 }

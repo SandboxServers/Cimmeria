@@ -18,8 +18,8 @@ use std::time::Duration;
 use serde_json::{json, Map, Value};
 
 use super::candidate::{
-    confirm, log_line, look_and_probe, round, sample_line, scratch, stand, stand_key, Sample,
-    Stood, Target,
+    confirm, log_line, look_and_probe, revoked, round, sample_line, scratch, stand, stand_key,
+    Sample, Stood, Target,
 };
 use super::grid::{self, Candidate, Grid};
 use super::score::{self, CONFIRM_RUNS};
@@ -37,6 +37,10 @@ pub const MAX_BUDGET: Duration = Duration::from_secs(30 * 60);
 pub const DEFAULT_ZOOM: f64 = 250.0;
 /// Winners tried before the sweep gives up confirming (D-SV6).
 const MAX_WINNERS: usize = 3;
+/// How long past the budget a winner's confirmations may still start a
+/// re-stand. At most one more re-stand (two stands, a camera and a probe)
+/// runs after it.
+const CONFIRM_GRACE: Duration = Duration::from_secs(2 * 60);
 const CLICK_TOOL: &str = "client_world_click";
 const STATUS_TOOL: &str = "lab_client_status";
 
@@ -48,8 +52,9 @@ pub struct CalibrateRequest {
     /// None: every pose a `client_world_click` step of the row names, in step order.
     pub pose: Option<String>,
     pub grid: Grid,
-    /// For the whole call, checked between candidates; confirmations of a
-    /// winner already found still run. Capped at [`MAX_BUDGET`].
+    /// For the whole call, checked between candidates and before each pose
+    /// after the first; confirmations of a winner already found still run,
+    /// for up to [`CONFIRM_GRACE`] past it. Capped at [`MAX_BUDGET`].
     pub budget: Duration,
     /// The calibrate run folder.
     pub out_dir: PathBuf,
@@ -180,16 +185,33 @@ pub async fn calibrate<I: ToolInvoker>(
     let deadline = tokio::time::Instant::now() + req.budget.min(MAX_BUDGET);
     let spec_rel = repo_relative(&req.spec.path);
     let mut text = original.clone();
+    let mut diff_named = false;
     let mut out = Vec::with_capacity(poses.len());
-    for pose in &poses {
+    for (n, pose) in poses.iter().enumerate() {
+        // A displaced call drives nothing more; a spent budget starts no
+        // further pose (the first always runs its first candidate).
+        let skip = match runner.revocation_reason() {
+            Some(r) => Some(revoked(&r)),
+            None if n > 0 && tokio::time::Instant::now() >= deadline => {
+                Some("budget: not started".to_string())
+            }
+            None => None,
+        };
+        if let Some(why) = skip {
+            out.push(refused(&pose.id, why));
+            continue;
+        }
         let (mut o, proposal) = calibrate_pose(runner, req, pose, deadline).await;
         if let Some(new) = proposal {
-            // Each proposal builds on the last, so one diff carries them all.
+            // Each proposal builds on the last, so one diff carries them all;
+            // D-SV12 names it once, on the first outcome that proposed.
             match propose(req, &spec_rel, &original, &text, &new) {
                 Ok((t, diff)) => {
                     text = t;
-                    o.diff_path = Some(diff.display().to_string());
-                    o.spec_path = Some(spec_rel.clone());
+                    if !diff_named {
+                        diff_named = true;
+                        o.diff_path = Some(diff.display().to_string());
+                    }
                 }
                 Err(e) => {
                     o.ok = false;
@@ -291,7 +313,7 @@ async fn calibrate_pose<I: ToolInvoker>(
         // up to 9 camera poses.
         if i > 0 {
             if let Some(r) = runner.revocation_reason() {
-                stop = Some(format!("lease revoked: {r}"));
+                stop = Some(revoked(&r));
                 break;
             }
             if tokio::time::Instant::now() >= deadline {
@@ -323,7 +345,10 @@ async fn calibrate_pose<I: ToolInvoker>(
         return (o, None);
     }
 
-    // Step 4: confirm the best, falling to the next best on a failure.
+    // Step 4: confirm the best, falling to the next best on a failure. The
+    // budget does not cut a winner already found, but confirmations get
+    // only CONFIRM_GRACE past it.
+    let limit = deadline + CONFIRM_GRACE;
     let mut excluded = vec![false; scores.len()];
     let mut winner: Option<usize> = None;
     for _ in 0..MAX_WINNERS {
@@ -333,15 +358,25 @@ async fn calibrate_pose<I: ToolInvoker>(
             .map(|(s, x)| if *x { None } else { *s })
             .collect();
         let Some(w) = score::best(&open) else { break };
-        o.confirmed = confirm(
+        let c = confirm(
             runner,
             &req.out_dir,
             &target,
             pose,
             (w, &cands[w]),
             &mut o.probes,
+            limit,
         )
         .await;
+        o.confirmed = c.passed;
+        if let Some(r) = c.stop {
+            if r.starts_with("lease") {
+                o.reason = Some(r);
+                return (o, None);
+            }
+            stop = Some(stop.map_or(r.clone(), |s| format!("{s}; {r}")));
+            break;
+        }
         if o.confirmed == CONFIRM_RUNS {
             winner = Some(w);
             break;
@@ -363,8 +398,9 @@ async fn calibrate_pose<I: ToolInvoker>(
     o.reason = stop;
     let new = new_pose(pose, &cands[w], pitches[w], target.zoom, &req.stamp);
     o.changed = changed_fields(pose, &new);
-    let proposal = (!o.changed.is_empty()).then_some(new);
-    (o, proposal)
+    // Proposed even when only `calibrated` changed: a re-measurement leaves
+    // its provenance in the spec (SV-15 reads it).
+    (o, Some(new))
 }
 
 /// Step 5: the winner as a pose. An explicit pitch is the one asked for
