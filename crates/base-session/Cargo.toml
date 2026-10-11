@@ -41,6 +41,14 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 # crates' tests. cimmeria-services turns it on through its [dev-dependencies];
 # a production build never sees it.
 test-support = []
+# The lab chaos registry (`base::lab_chaos`, lab-chaos campaign). Forwarded by
+# cimmeria-base-world-entry, cimmeria-base, cimmeria-services,
+# cimmeria-lab-mcp and cimmeria-server, and only ever turned on from the
+# command line (`--features lab-chaos`): no crate may enable it in
+# [dependencies] or [dev-dependencies], or feature unification and hakari
+# would compile it into ordinary builds. cimmeria-server's
+# `default_build_has_no_lab_chaos` guards that.
+lab-chaos = []
 
 [dev-dependencies]
 # The outbox payload round-trip tests.

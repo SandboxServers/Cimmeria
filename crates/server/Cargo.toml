@@ -41,3 +41,10 @@ opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "http-proto",
 opentelemetry-appender-tracing = "0.33"
 tracing-opentelemetry = "0.34"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[features]
+# Lab chaos (lab-chaos campaign): `cargo build -p cimmeria-server --features
+# lab-chaos` builds a lab server whose chaos registry installs at startup when
+# DEVELOPER_MODE is on. Never enabled from a dependency entry;
+# `default_build_has_no_lab_chaos` fails if one starts to.
+lab-chaos = ["cimmeria-services/lab-chaos", "cimmeria-lab-mcp/lab-chaos"]

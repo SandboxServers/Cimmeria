@@ -30,6 +30,11 @@ cimmeria-admin-api = { workspace = true }
 cimmeria-names = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
+[features]
+# The lab chaos tools (CH-05) over cimmeria-services' `base::lab_chaos`.
+# Command line only, never from a dependency entry.
+lab-chaos = ["cimmeria-services/lab-chaos"]
+
 [dev-dependencies]
 # The live-DB gate (`require_db_or_skip!`) for `server_stage_fixture`'s
 # guards (FX-04), re-exported from the `#[cfg(test)] mod test_support` shim
