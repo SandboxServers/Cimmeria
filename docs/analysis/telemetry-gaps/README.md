@@ -78,22 +78,22 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 
 | ID | Title | Wave | Sev | State |
 |---|---|---|---|---|
-| TG-PIPE-01 | Bundle replay allowlists log files | W0 | high | Writing (branch `fix/bundle-replay-allowlist`) |
-| TG-SOC-01 | Strip the webhook URL from Discord send errors | W0 | high | Review (PR #1349) |
-| TG-NET-08 | `admin.request` row for every admin API request | W0 | high | Ready |
-| TG-DB-01 | Shutdown logs each in-world player's unsaved state | W0 | high | Ready |
-| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | In review: branch `telemetry-gaps/TG-DB-02-shutdown-flush` (compose stop grace raised to 45 s) |
-| TG-DB-03 | Cell position-save skips and queues are logged | W0 | high | Ready |
-| TG-DB-04 | `PersistPosition` rows: identity, Pattern B, reason | W0 | med | Ready |
-| TG-DB-07 | Player-load fallbacks say they degraded | W0 | med | Ready |
-| TG-DB-12 | Lock unreadable missions instead of overwriting them (D-TG18) | W0 | high | BlockedDependency (TG-DB-07) |
-| TG-ITM-06 | Stale bandolier ammo writeback to WARN with counts | W0 | med | Ready |
-| TG-ITM-11 | Bandolier flush summary and dropped-slot trace | W0 | med | Ready |
-| TG-ITM-09 | Loot silent drops and lost cash | W0 | med | Ready |
-| TG-ITM-03 | Outbox replay row and identity on outbox WARNs | W0 | med | Ready |
-| TG-SOC-02 | `character.delete_cascade` row | W0 | high | Ready |
+| TG-PIPE-01 | Bundle replay allowlists log files | W0 | high | Integrated (#1351) |
+| TG-SOC-01 | Strip the webhook URL from Discord send errors | W0 | high | Integrated (#1349) |
+| TG-NET-08 | `admin.request` row for every admin API request | W0 | high | Integrated (#1378, #1384) |
+| TG-DB-01 | Shutdown logs each in-world player's unsaved state | W0 | high | Integrated (#1372) |
+| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | Integrated (#1388) |
+| TG-DB-03 | Cell position-save skips and queues are logged | W0 | high | Integrated (#1367, #1384) |
+| TG-DB-04 | `PersistPosition` rows: identity, Pattern B, reason | W0 | med | Integrated (#1370) |
+| TG-DB-07 | Player-load fallbacks say they degraded | W0 | med | Integrated (#1375) |
+| TG-DB-12 | Lock unreadable missions instead of overwriting them (D-TG18) | W0 | high | Integrated (#1394) |
+| TG-ITM-06 | Stale bandolier ammo writeback to WARN with counts | W0 | med | Integrated (#1377) |
+| TG-ITM-11 | Bandolier flush summary and dropped-slot trace | W0 | med | Integrated (#1385) |
+| TG-ITM-09 | Loot silent drops and lost cash | W0 | med | Integrated (#1376) |
+| TG-ITM-03 | Outbox replay row and identity on outbox WARNs | W0 | med | Integrated (#1380) |
+| TG-SOC-02 | `character.delete_cascade` row | W0 | high | Integrated (#1382) |
 | TG-SOC-03 | Character delete: refund or destroy | W0 | high | Dropped (D-TG9: accept destruction) |
-| TG-MIS-07 | Log dropped deferred content actions | W0 | med | Ready |
+| TG-MIS-07 | Log dropped deferred content actions | W0 | med | Integrated (#1368) |
 | TG-MER-08 | Delete the per-packet encrypt/decrypt TRACE rows | W1 | high | Ready |
 | TG-MER-09 | `mercury.packet` to the firehose plus a counter | W1 | high | Ready (D-TG7 decided) |
 | TG-NPC-01 | Sample unwitnessed Patrol/Wander tick rows | W1 | high | Ready |
