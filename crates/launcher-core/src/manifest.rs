@@ -10,12 +10,15 @@
 //!   "patches": [
 //!     { "id": "001-base",    "blob": "patches/001.zip", "size": 123, "sha256": "...", "after": null },
 //!     { "id": "002-mercury", "blob": "patches/002.zip", "size": 456, "sha256": "...", "after": "001-base" }
-//!   ]
+//!   ],
+//!   "file_index": { "blob": "index/file-index.json", "size": 1048576, "sha256": "..." }
 //! }
 //! ```
 //!
 //! Patches are applied in declared order. `after` is validated: every
 //! referenced patch id must have been declared earlier in the array.
+//! `file_index` is optional: it names the signed per-file index
+//! ([`crate::file_index`]) that a manifest without it does not have.
 //!
 //! A patch may also carry `"root": "sgw_game"`: its zip entries are then
 //! relative to the client's `SGWGame/` directory instead of the install
@@ -169,6 +172,9 @@ pub struct Manifest {
     pub seed: SeedEntry,
     #[serde(default)]
     pub patches: Vec<PatchEntry>,
+    /// Signed per-file index (any-install D-AI2). Optional: no schema bump.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_index: Option<crate::file_index::FileIndexRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -449,6 +455,7 @@ mod tests {
             min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", None), patch("b", Some("a"))],
+            file_index: None,
         };
         m.validate().unwrap();
     }
@@ -460,6 +467,7 @@ mod tests {
             min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", Some("b")), patch("b", None)],
+            file_index: None,
         };
         assert!(matches!(m.validate(), Err(ManifestError::BrokenChain(_))));
     }
@@ -471,6 +479,7 @@ mod tests {
             min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", Some("zzz"))],
+            file_index: None,
         };
         assert!(matches!(m.validate(), Err(ManifestError::BrokenChain(_))));
     }
@@ -482,6 +491,7 @@ mod tests {
             min_launcher: None,
             seed: seed(),
             patches: vec![patch("a", None), patch("a", Some("a"))],
+            file_index: None,
         };
         assert!(matches!(m.validate(), Err(ManifestError::BrokenChain(_))));
     }
@@ -493,11 +503,33 @@ mod tests {
             min_launcher: None,
             seed: seed(),
             patches: vec![],
+            file_index: None,
         };
         assert!(matches!(
             m.validate(),
             Err(ManifestError::UnsupportedSchema(99))
         ));
+    }
+
+    /// A manifest without `file_index` keeps its bytes: the field is skipped
+    /// when `None`, so an old signed manifest's digest does not change.
+    #[test]
+    fn manifest_without_file_index_round_trips_byte_for_byte() {
+        let json = r#"{"schema":1,"seed":{"blob":"s.zip","size":1,"sha256":"h"},"patches":[]}"#;
+        let m: Manifest = serde_json::from_str(json).unwrap();
+        assert!(m.file_index.is_none());
+        assert_eq!(serde_json::to_string(&m).unwrap(), json);
+    }
+
+    /// The signed index reference survives a parse and re-serialize, so the
+    /// field is not dropped.
+    #[test]
+    fn manifest_file_index_round_trips() {
+        let json = r#"{"schema":1,"seed":{"blob":"s.zip","size":1,"sha256":"h"},"patches":[],"file_index":{"blob":"index/file-index.json","size":5,"sha256":"ab"}}"#;
+        let m: Manifest = serde_json::from_str(json).unwrap();
+        let index = m.file_index.as_ref().unwrap();
+        assert_eq!(index.blob, "index/file-index.json");
+        assert_eq!(serde_json::to_string(&m).unwrap(), json);
     }
 
     #[test]

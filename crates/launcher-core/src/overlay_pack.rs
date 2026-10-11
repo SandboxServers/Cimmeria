@@ -291,6 +291,7 @@ mod tests {
                 sha256: "s".into(),
             },
             patches,
+            file_index: None,
         }
     }
 

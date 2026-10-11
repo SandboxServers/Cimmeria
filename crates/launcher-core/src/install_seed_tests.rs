@@ -53,6 +53,7 @@ async fn exercise(uncertain: bool, bad_hash: bool) {
             size: 13,
         },
         patches: vec![],
+        file_index: None,
     };
     if uncertain {
         manifest.patches.push(PatchEntry {
