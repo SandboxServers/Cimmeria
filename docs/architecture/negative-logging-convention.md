@@ -157,6 +157,17 @@ The prefix is six characters, which is enough to correlate one login's events an
 
 Two deliberate exceptions remain. Credentials of six characters or fewer appear in full in `CredentialPrefix` output — there is nothing left to truncate — and the `UDP_IN` TRACE hex dump in `base/connect_loop/mod.rs` captures pre-encryption packet bytes, including the ticket field in `baseAppLogin`. That dump is required for wire-level debugging; production login tickets are long enough that the prefix rule still holds in practice.
 
+## Witness refusal causes (TG-AOI-05)
+
+A `RequestEntityUpdate` id that is not in the witness's AoI is refused at WARN with `reason = "not_in_witness_aoi"` and a `cause` that says why. The checks run in this order, so the first match wins:
+
+| `cause` | Meaning | Fields |
+|---|---|---|
+| `entity_gone` | The requested id names no entity in any space. | `witness_id`, `entity_id`, `reason` |
+| `other_space` | The entity exists in a different space from the witness. | `witness_id`, `entity_id`, `reason` |
+| `not_introduced_yet` | The witness is in the same space but has no AoI state yet, so the AoI tick has not introduced anything. | `witness_id`, `entity_id`, `reason` |
+| `outside_aoi` | The entity is in the same space and the witness has AoI state, but the entity is not in its witness set. | `witness_id`, `entity_id`, `reason` |
+
 ## Level discipline
 
 | Level | When |
