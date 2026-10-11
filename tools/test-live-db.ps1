@@ -1,6 +1,7 @@
 # Run the live-DB test tier: the lib tests of every crate that has live-DB tests, in ONE
 # nextest invocation under the `ci-live-db` profile, each live-DB test on its own database
-# clone. PowerShell twin of
+# clone. With --wireclient it runs the wireclient end-to-end tests instead, under the
+# `wireclient-e2e` profile. PowerShell twin of
 # tools/test-live-db.sh; see that file for why the list exists and why it is one run.
 #
 # Usage:

@@ -142,6 +142,8 @@ fn nextest_profile_groups_the_live_db_filter() {
     for want in [
         "[test-groups]live-db={max-threads=",
         "[[profile.ci-live-db.overrides]]filter=\"test(~live_db)\"test-group=\"live-db\"",
+        // tools/test-live-db.* --wireclient runs this profile.
+        "[[profile.wireclient-e2e.overrides]]filter=\"package(cimmeria-wireclient)&kind(test)\"test-group=\"live-db\"",
     ] {
         assert!(flat.contains(want), "{} lacks `{want}`", path.display());
     }

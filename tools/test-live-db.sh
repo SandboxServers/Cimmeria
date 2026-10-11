@@ -2,11 +2,13 @@
 # Run the live-DB test tier: the lib tests of every crate that has live-DB tests, in ONE
 # nextest invocation under the `ci-live-db` profile, each live-DB test on its own database
 # clone. CI (test.yml's test-live-db and coverage-live-db jobs) and
-# tools/build-lane/live-db-test.sh call this.
+# tools/build-lane/live-db-test.sh call this. With --wireclient it runs the wireclient
+# end-to-end tests instead, under the `wireclient-e2e` profile.
 #
 # Usage:
 #   DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw tools/test-live-db.sh [args...]
 #   tools/test-live-db.sh --llvm-cov [args...]   # under `cargo llvm-cov --no-report nextest`
+#   tools/test-live-db.sh [--llvm-cov] --build-only   # compile only; no database needed
 #   tools/test-live-db.sh [--llvm-cov] [--build-only] --wireclient [args...]   # the wireclient e2e tests only
 # Extra args pass through to nextest, e.g. a test-name substring or `--no-fail-fast`.
 #
