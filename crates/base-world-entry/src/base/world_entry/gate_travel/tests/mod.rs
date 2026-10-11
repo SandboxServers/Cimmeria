@@ -61,6 +61,7 @@ pub(super) fn make_state() -> ConnectedClientState {
         account_id: 0xAABB,
         account_name: Some("testacct".into()),
         access_level: 0,
+        session_kind: None,
         dnd_message: None,
         afk_message: None,
         ignore: Default::default(),

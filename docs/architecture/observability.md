@@ -238,6 +238,8 @@ per-session is a record attribute instead:
 
 Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
+The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on server session rows, so one filter spans client, launcher and server rows.
+
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
 Black Market overlay's `[Cimmeria BM]` lines), `client.sequence.dropped` (a

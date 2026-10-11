@@ -38,6 +38,7 @@ pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedCl
         account_id: 0,
         account_name: None,
         access_level: 0,
+        session_kind: None,
         dnd_message: None,
         afk_message: None,
         ignore: Default::default(),
