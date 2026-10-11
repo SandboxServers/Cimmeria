@@ -331,6 +331,16 @@ impl Orchestrator {
     /// Stop all services in reverse dependency order.
     ///
     /// Shutdown sequence: cell -> base -> auth (reverse of startup).
+    ///
+    /// The cell stop includes the shutdown flush (TG-DB-02, D-TG15): the
+    /// cell loop hands every in-world player's position and dirty ammo to the
+    /// base's cell-message task, which is still running and still holds the
+    /// pool, and waits for its answer, at most `SHUTDOWN_FLUSH_DEADLINE`
+    /// (10 s) plus a 1 s grace. So when `cell.stop()` returns, every cell
+    /// message queued before the stop has been handled and the flush writes
+    /// have landed or been abandoned. Only then is the pool dropped. Stop
+    /// order: `docs/architecture/service-architecture.md`, "Rust server stop
+    /// order".
     pub async fn stop_all(&self) {
         tracing::info!("Stopping all services");
 

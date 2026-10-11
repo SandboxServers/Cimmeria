@@ -681,10 +681,25 @@ When the cell's message loop is told to shut down (every colo deploy), it report
 
 | Level | Row | When |
 |---|---|---|
-| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player entity. Its logout position and any dirty bandolier ammo are not saved |
-| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_with_dirty_ammo` | Once per shutdown |
+| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player the shutdown flush (below) did not save. Its position and any dirty bandolier ammo are lost |
+| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_not_persisted`, `players_with_dirty_ammo` | Once per shutdown. The last two count only the players not saved |
 
-NPCs log nothing. Once TG-DB-02 drains the saves on shutdown, the WARN fires only for players the drain missed.
+NPCs log nothing.
+
+### Shutdown flush (TG-DB-02)
+
+Before that report, the cell saves every in-world player through the base (`crates/cell/src/cell/service/shutdown_flush.rs`, `cell_dispatch/shutdown_flush.rs`), in parallel, for up to 10 s (D-TG15). Stop order: [service-architecture.md](service-architecture.md#rust-server-stop-order).
+
+| Level | Row | When |
+|---|---|---|
+| INFO | `event = "shutdown_flush_started"`, `players_in_world`, `deadline_ms` | Once per shutdown, before the request goes to the base |
+| INFO | `event = "shutdown_flush_finished"`, `players_in_world`, `saved`, `missed`, `elapsed_ms` | Once per shutdown, after the base answers or the wait ends |
+| WARN | `event = "shutdown_flush_failed"`, `reason` (`base_channel_closed`, `reply_dropped`, `deadline_reached`) | The base never answered: every player counts as missed and gets the WARN above |
+| WARN | `event = "shutdown_flush_task_failed"`, `reason = "task_panicked"`, `error` | A player's save task panicked; that player counts as missed |
+| DEBUG | `event = "shutdown_flush_deadline_reached"`, `abandoned` | The base hit the deadline and aborted the saves still running |
+| DEBUG | `event = "shutdown_flush_reply_dropped"`, `reason = "cell_stopped_waiting"` | The cell stopped waiting before the base answered |
+
+Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, so a failed write also logs that writer's own WARN (below) with its reason. A player missed for any reason gets exactly one `player_state_not_persisted`.
 
 ## Logout position persistence (TG-DB-04)
 

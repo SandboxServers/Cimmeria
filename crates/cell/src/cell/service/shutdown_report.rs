@@ -1,15 +1,20 @@
-//! Shutdown report: the unsaved state of every in-world player, logged before
-//! the cell loop exits.
+//! Shutdown report: the unsaved state of every in-world player the shutdown
+//! flush missed, logged before the cell loop exits.
 //!
-//! Called from the `shutdown` arm of the message loop. One WARN per player
+//! Called from the `shutdown` arm of the message loop, after
+//! `shutdown_flush` (TG-DB-02). One WARN per player the flush did not save
 //! (`event = "player_state_not_persisted"`), then one INFO summary. NPCs are
 //! not reported: they have no persisted state to lose.
 
+use std::collections::HashSet;
+
 use crate::cell::space_manager::SpaceManager;
 
-/// Log each in-world player's unsaved state, then a summary row.
-pub(super) fn report_unsaved_on_shutdown(space_mgr: &SpaceManager) {
+/// Log the unsaved state of each in-world player not in `saved` (entity
+/// IDs the shutdown flush saved), then a summary row.
+pub(super) fn report_unsaved_on_shutdown(space_mgr: &SpaceManager, saved: &HashSet<u32>) {
     let mut players_in_world: usize = 0;
+    let mut players_not_persisted: usize = 0;
     let mut players_with_dirty_ammo: usize = 0;
     for eid in space_mgr.all_player_entity_ids() {
         let Some(e) = space_mgr.get_entity(eid) else {
@@ -18,9 +23,13 @@ pub(super) fn report_unsaved_on_shutdown(space_mgr: &SpaceManager) {
         if e.player_id.is_none() {
             continue;
         }
+        players_in_world += 1;
+        if saved.contains(&eid) {
+            continue;
+        }
+        players_not_persisted += 1;
         let id = e.identity();
         let dirty_ammo_slots = e.bandolier_ammo_dirty.len();
-        players_in_world += 1;
         if dirty_ammo_slots > 0 {
             players_with_dirty_ammo += 1;
         }
@@ -44,6 +53,7 @@ pub(super) fn report_unsaved_on_shutdown(space_mgr: &SpaceManager) {
     tracing::info!(
         event = "shutdown_unsaved_summary",
         players_in_world,
+        players_not_persisted,
         players_with_dirty_ammo,
         "unsaved player state at shutdown"
     );
@@ -81,7 +91,7 @@ mod tests {
     fn shutdown_report_warns_once_per_player_not_npc() {
         let mgr = mgr();
         let capture = LogCapture::install();
-        report_unsaved_on_shutdown(&mgr);
+        report_unsaved_on_shutdown(&mgr, &HashSet::new());
         let rows: Vec<_> = capture
             .all()
             .into_iter()
@@ -98,5 +108,28 @@ mod tests {
             .iter()
             .any(|c| c.has_field("event", "shutdown_unsaved_summary")
                 && c.has_field("players_in_world", "1")));
+    }
+
+    /// TG-DB-02: a player the shutdown flush saved gets no WARN; the summary
+    /// still counts it in the world. Dropping the `saved` check warns for it.
+    #[test]
+    fn shutdown_report_skips_players_the_flush_saved() {
+        let mgr = mgr();
+        let capture = LogCapture::install();
+        report_unsaved_on_shutdown(&mgr, &HashSet::from([1]));
+        assert!(
+            !capture
+                .all()
+                .iter()
+                .any(|c| c.has_field("event", "player_state_not_persisted")),
+            "a saved player must not be reported: {:#?}",
+            capture.all()
+        );
+        assert!(capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "shutdown_unsaved_summary")
+                && c.has_field("players_in_world", "1")
+                && c.has_field("players_not_persisted", "0")));
     }
 }

@@ -505,6 +505,17 @@ cleanup():
 
 **Implication**: A server crash or shutdown will lose any unsaved entity state since the last explicit `persist()` call. This is a known limitation of the current implementation.
 
+### Rust server stop order
+
+The Rust server saves in-world players at a stop (TG-DB-02, decision D-TG15). On SIGTERM (`docker stop`, a watchtower swap) or Ctrl-C, `main` calls `Orchestrator::stop_all` (`crates/services/src/orchestrator.rs`), which stops the services in this order:
+
+1. **Cell.** `CellService::stop` notifies the cell loop and awaits it. The loop's shutdown arm runs the shutdown flush (`crates/cell/src/cell/service/shutdown_flush.rs`): it sends one `CellToBaseMsg::ShutdownFlush` with every in-world player's world, position and dirty bandolier ammo, and waits for the answer.
+2. The **base's cell-message task** is still running and still holds the database pool. It handles the request inline (`cell_dispatch/shutdown_flush.rs`), so every cell message queued before it, such as a logout's `PersistPosition`, has already been handled. It saves each player in a task of its own, in parallel, through the same writers a logout uses. At `SHUTDOWN_FLUSH_DEADLINE` (10 s) it aborts the saves still running and answers with the players saved. The cell waits at most one more second for that answer.
+3. The cell logs `shutdown_flush_finished` (`saved`, `missed`, `elapsed_ms`) and then `shutdown_report` warns `player_state_not_persisted` once for each player the flush missed, with the player's IDs, names and position.
+4. **Base**, then **auth**, then the pool is dropped. The Discord shutdown notice gets its 1 s drain after that.
+
+A stop therefore takes up to about 11 s more than before when players are in the world. The container stop grace covers it: `stop_grace_period: 45s` on the `cimmeria` service and `WATCHTOWER_TIMEOUT: 45s` on watchtower in `docker/compose.yml`. Docker's default of 10 s would kill the server mid-flush. Inside the container, s6 stops `cimmeria-server` before `postgres` (it depends on it), so the database is still up while the flush runs.
+
 ---
 
 ## TODO

@@ -82,7 +82,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-SOC-01 | Strip the webhook URL from Discord send errors | W0 | high | Review (PR #1349) |
 | TG-NET-08 | `admin.request` row for every admin API request | W0 | high | Ready |
 | TG-DB-01 | Shutdown logs each in-world player's unsaved state | W0 | high | Ready |
-| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | Ready (D-TG15 decided) |
+| TG-DB-02 | Flush positions and ammo on shutdown | W0 | high | In review: branch `telemetry-gaps/TG-DB-02-shutdown-flush` (compose stop grace raised to 45 s) |
 | TG-DB-03 | Cell position-save skips and queues are logged | W0 | high | Ready |
 | TG-DB-04 | `PersistPosition` rows: identity, Pattern B, reason | W0 | med | Ready |
 | TG-DB-07 | Player-load fallbacks say they degraded | W0 | med | Ready |

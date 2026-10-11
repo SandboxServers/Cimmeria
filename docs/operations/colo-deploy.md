@@ -124,6 +124,8 @@ Watchtower checks `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` eve
 
 It touches nothing else. `WATCHTOWER_LABEL_ENABLE=true` limits it to containers labelled `com.centurylinklabs.watchtower.enable=true`, which only the `cimmeria` service is. Never run a watchtower without that or a `WATCHTOWER_SCOPE`: it would update every container on the host. `DOCKER_API_VERSION=1.44` is required on Docker 29 and later, which refuses watchtower's default API version, and watchtower then fails every poll.
 
+Stopping the old container saves every in-world player's position and ammo first, for up to 10 s (TG-DB-02). Two settings in `compose.yml` give it the time: `stop_grace_period: 45s` on `cimmeria` (for `docker compose` stops) and `WATCHTOWER_TIMEOUT: 45s` on watchtower (for swaps). Both defaults are 10 s, which kills the server mid-save; a miss shows as `player_state_not_persisted` in the old build's last rows. Both arrived with the TG-DB-02 compose change, so run `docker compose up -d` once after pulling it.
+
 **Edits to the compose files or `.env` don't reach the running container until you run `docker compose up -d`.** Watchtower builds each replacement from the *old container's* settings, not from the files. Get into the habit: edit, then `docker compose up -d`, then check `docker inspect cimmeria` shows the change.
 
 Releases are cut by hand (`/release` on a merged PR, or a manual run of `release-container.yml`), so merging to `main` alone never restarts the colo.
