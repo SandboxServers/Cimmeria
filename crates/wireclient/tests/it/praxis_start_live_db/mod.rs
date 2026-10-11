@@ -1,40 +1,51 @@
 //! The Praxis start, mission 622 "Arm Yourself!", end to end on the wire
 //! (WC-14). A wire-created Praxis Commando on a GM account plays the ten
 //! client calls of the lab capture (`praxis_start_tap.json`; ADR § Praxis
-//! start) and the test checks every server answer the capture shows, in the
-//! capture's order, then reads the server's own record (`sgw_mission`) as
-//! the lab rows do. Run with
+//! start). After each call the test waits for the answers the WC-14 packet's
+//! step table lists, plus the `InteractionType` clears, mission 1360's first
+//! step and the weapon abilities the capture also shows, in the capture's
+//! order; then it reads the server's own record (`sgw_mission`) as the lab
+//! rows do. Not every capture answer is asserted yet: the worknote
+//! (`docs/analysis/wireclient-ci/worknotes/WC-14.md`) lists the rest for
+//! WC-17. Run with
 //! `pwsh tools/build-lane/live-db-test.ps1 --wireclient praxis_start`.
 //!
 //! No entity id is a literal: Frost is found through the mirror by template
 //! 14's static mesh and name id (D-WC1), and the Guard's body is whichever
-//! entity the server flags as a mission object when Frost is searched. The
-//! pistol is the item the Guard's dialog grants, by design id from the seed.
+//! entity the server flags as a mission object when Frost is searched,
+//! cross-checked against template 21. The pistol is the item the Guard's
+//! dialog grants, by design id from the seed.
 //!
 //! Every wait has a deadline and fails with the last 30 observed messages
-//! and the last 30 decoded events (D-WC9); nothing sleeps. Waiting between DB polls pumps the session, so
-//! keep-alives and ACKs keep flowing.
+//! and the last 30 decoded events (D-WC9); nothing sleeps. Waiting between
+//! DB polls pumps the session, so keep-alives and ACKs keep flowing.
 //!
 //! Cleanup: the account and its rows are deleted at the start of the test
 //! and at the end of a passing run. A panic skips the end-of-run cleanup;
 //! the next run's start-of-test cleanup removes the leftovers, which is safe
 //! because each running test has its own database clone (`wireclient-e2e`).
 
-use std::time::{Duration, Instant};
+mod predicates;
+mod waits;
 
-use sqlx::PgPool;
+use std::time::{Duration, Instant};
 
 use cimmeria_wireclient::calls::CLIENT_CALL_ENTITY_ID;
 use cimmeria_wireclient::script::{Observed, ScriptSession};
-use cimmeria_wireclient::semantic::{DialogDisplay, InvItem, S2CEvent};
+use cimmeria_wireclient::semantic::S2CEvent;
 use cimmeria_wireclient::session::GameSession;
-use cimmeria_wireclient::tap_fixture::{TapCapture, TapRecord};
+use cimmeria_wireclient::tap_fixture::TapCapture;
 
 use crate::support::{
     self, cleanup_account, credentials_for, default_visual_choices,
     insert_sentinel_account_with_level, item_granted_by_dialog, start_server, template_query,
     SHARD,
 };
+use predicates::{
+    dialog, goto_pos, interaction_on, is_interaction, is_teleport_line, knows_all, mission,
+    region_id, region_pos, sequence, step, update_has,
+};
+use waits::{check, fail, only_item, send, wait_mission_status, wait_since};
 
 /// Campaign sentinel block 0x7000_9C00..=0x7000_9CFF; WC-14 owns 0x..02.
 const ACCOUNT: i32 = 0x7000_9C02;
@@ -45,6 +56,10 @@ const ACCESS_GM: i32 = 2;
 const CHAR_DEF_PRAXIS: i32 = 3;
 /// Corporal Frost's corpse (README F5).
 const FROST_TEMPLATE: i32 = 14;
+/// The Guard's corpse, `CA-Props.CA-GuardCorpse02`: the only template with
+/// that mesh, spawned once in the Cellblock (spawnlist 15,
+/// `ArmYourself_GuardBody`).
+const GUARD_BODY_TEMPLATE: i32 = 21;
 const INTRO_MOVIE: &str = "Cine-SGWLogo.SGWLogo";
 
 const DIALOG_ARRIVAL: i32 = 2982;
@@ -56,15 +71,27 @@ const MISSION_FROSTS_LETTER: i32 = 1360;
 const STEP_SEARCH_FROST: i32 = 2113;
 const STEP_SEARCH_GUARD: i32 = 80623;
 const STEP_EQUIP_PISTOL: i32 = 80622;
+/// Mission 1360's first step, "Find a way to get Cpl. Frost's Letter to his
+/// family" (fixture #29).
+const STEP_FROSTS_LETTER: i32 = 4037;
 const SEQ_STASIS_DOOR: i32 = 10000;
-const SEQ_AFTER_EQUIP: i32 = 1872;
-/// The four CORE_TUTORIAL abilities the Guard's body teaches (fixture #49
-/// lists them as 597, 1218, 592, 594). The list is the player's whole known
-/// set, which the cell keeps in a hash set, so its order changes from run to
-/// run; the test compares it as a set.
+/// The Human archetype's `Item_Equip` animation (sequence 1872, event 4000,
+/// `KIS-abilities_human.KIS-handling`, in event set 804 "Item handling
+/// generic event set"): the equip itself plays it, not a mission effect.
+const SEQ_HUMAN_ITEM_EQUIP: i32 = 1872;
+/// The four CORE_TUTORIAL abilities the Guard's body teaches (chain 1005;
+/// fixture #49 lists them as 597, 1218, 592, 594).
 const TUTORIAL_ABILITIES: [i32; 4] = [592, 594, 597, 1218];
+/// The pistol's own abilities once it is the active bandolier weapon:
+/// `items_event_sets` for item 55, 579 ranged (event 7) and 708 melee
+/// (event 6). Fixture #71's list is these plus the tutorial four.
+const PISTOL_ABILITIES: [i32; 2] = [579, 708];
 /// `INT_MissionWorldObject`: the highlight on a searchable corpse.
 const INT_MISSION_WORLD_OBJECT: u64 = 0x4000_0000;
+/// What a searched corpse's interaction type drops to once the content
+/// chain clears its search bit (`set_interaction_type` op `~`, mask
+/// 0x40_0000; fixture #21 on Frost, #44 on the body).
+const INT_NONE: u64 = 0;
 /// Mission and step status on the wire: 0 started, 1 done.
 const STARTED: i8 = 0;
 const DONE: i8 = 1;
@@ -81,24 +108,6 @@ const RECV: Duration = Duration::from_secs(5);
 const STEP: Duration = Duration::from_secs(10);
 /// The AoI flush after `cancelMovie` introduces the whole Cellblock.
 const FROST_WAIT: Duration = Duration::from_secs(20);
-/// How long one pump runs while a helper below waits on the log or the DB.
-const PUMP_SLICE: Duration = Duration::from_millis(50);
-const DB_POLL: Duration = Duration::from_millis(100);
-/// How many entries a failure prints (D-WC9).
-const TRAIL: usize = 30;
-
-/// Unwrap a script result, or [`fail`] with its error and both trails. The
-/// result is bound first, so the script call's `&mut` borrow has ended
-/// before `fail` reads the log.
-macro_rules! checked {
-    ($script:ident, $result:expr) => {{
-        let result = $result;
-        match result {
-            Ok(value) => value,
-            Err(err) => fail(&$script, err),
-        }
-    }};
-}
 
 #[tokio::test]
 async fn praxis_start_completes_mission_622_live_db() {
@@ -109,11 +118,15 @@ async fn praxis_start_completes_mission_622_live_db() {
     insert_sentinel_account_with_level(&pool, ACCOUNT, ACCOUNT_NAME, ACCESS_GM).await;
     let pistol_design = item_granted_by_dialog(&pool, DIALOG_GUARD).await;
     let frost_query = template_query(&pool, FROST_TEMPLATE).await;
+    let body_query = template_query(&pool, GUARD_BODY_TEMPLATE).await;
 
-    // Positions from the capture's bits, not decimals (README F12).
+    // Positions and the region id from the capture's bits, not decimals
+    // (README F12).
     let cap = TapCapture::praxis_start();
     let p1 = goto_pos(cap.expect(4, "gmGotoXYZ"));
-    let p1_region = region_pos(cap.expect(8, "triggerClientHintedGenericRegion"));
+    let region_record = cap.expect(8, "triggerClientHintedGenericRegion");
+    let p1_region_id = region_id(region_record);
+    let p1_region = region_pos(region_record);
     let p2 = goto_pos(cap.expect(35, "gmGotoXYZ"));
 
     let server = start_server(&support::db_url()).await;
@@ -162,7 +175,8 @@ async fn praxis_start_completes_mission_622_live_db() {
     .await;
 
     // ── 0b: Frost arrives in the flush; the arrival dialog is up ─────────
-    let frost = checked!(script, script.wait_entity(&frost_query, FROST_WAIT).await);
+    let result = script.wait_entity(&frost_query, FROST_WAIT).await;
+    let frost = check(&script, result);
     let arrival = wait_since(&mut script, 0, "the arrival dialog 2982", STEP, |o| {
         dialog(o, DIALOG_ARRIVAL).is_some()
     })
@@ -180,25 +194,23 @@ async fn praxis_start_completes_mission_622_live_db() {
     )
     .await;
 
-    // ── 2: GM teleport next to Frost, then report leaving region 14 ──────
+    // ── 2: GM teleport next to Frost, then report leaving the region ─────
     send(
         &mut script,
         GameSession::gm_goto_xyz(CLIENT_CALL_ENTITY_ID, p1),
     )
     .await;
-    checked!(
-        script,
-        script
-            .wait_event("step 2: the gmGotoXYZ line", STEP, is_teleport_line)
-            .await
-    );
+    let result = script
+        .wait_event("step 2: the gmGotoXYZ line", STEP, is_teleport_line)
+        .await;
+    check(&script, result);
     // The client reports the region exit after it has moved (fixture #8
     // follows #5).
     send(
         &mut script,
         GameSession::trigger_client_hinted_generic_region(
             CLIENT_CALL_ENTITY_ID,
-            14,
+            p1_region_id,
             false,
             p1_region,
         ),
@@ -208,17 +220,22 @@ async fn praxis_start_completes_mission_622_live_db() {
     // ── 3: search Frost ──────────────────────────────────────────────────
     // Frost is still the one entity the mirror matches: a second match that
     // arrived after `wait_entity` returned would make the id ambiguous.
-    script
-        .mirror
-        .find_one(&frost_query)
-        .unwrap_or_else(|e| panic!("Frost after the flush: {e}"));
+    if let Err(e) = script.mirror.find_one(&frost_query) {
+        fail(&script, format!("Frost after the flush: {e}"));
+    }
     let frost_i32 = i32::try_from(frost).expect("entity id fits INT32");
     send(
         &mut script,
         GameSession::interact(CLIENT_CALL_ENTITY_ID, frost_i32),
     )
     .await;
-    let step3 = script
+    // Fixture #20-#29. Chains 1003 (letter, Guard unlock, step advance) and
+    // 1121 (accept 1360) both trigger on dialog_open 3995 at priority 0, and
+    // run in chain-id order: `engine_loader.rs` loads chains ORDER BY
+    // chain_id and `content-engine` `chain/mod.rs` sorts each trigger bucket
+    // by priority with a stable sort. So 1003's "80623 started" comes before
+    // 1121's "1360 accepted"; a priority change on either chain flips it.
+    let result = script
         .expect_in_order(
             "step 3: search Frost",
             STEP,
@@ -226,6 +243,10 @@ async fn praxis_start_completes_mission_622_live_db() {
                 ("onDialogDisplay 3995 on Frost", &mut |o: &Observed| {
                     dialog(o, DIALOG_FROST).is_some_and(|d| d.entity_id == frost_i32)
                 }),
+                (
+                    "InteractionType 0 on Frost (search bit cleared)",
+                    &mut |o: &Observed| interaction_on(o, frost, INT_NONE),
+                ),
                 (
                     "InteractionType mission object on the body",
                     &mut |o: &Observed| {
@@ -242,11 +263,29 @@ async fn praxis_start_completes_mission_622_live_db() {
                 ("mission 1360 accepted", &mut |o: &Observed| {
                     mission(o, MISSION_FROSTS_LETTER, STARTED)
                 }),
+                ("step 4037 started", &mut |o: &Observed| {
+                    step(o, STEP_FROSTS_LETTER, STARTED)
+                }),
             ],
         )
         .await;
-    let seen = checked!(script, step3);
-    let body = seen[1].msg.entity_id.expect("the body's entity id");
+    let seen = check(&script, result);
+    let Some(body) = seen[2].msg.entity_id else {
+        fail(
+            &script,
+            "the mission-object InteractionType has no entity id",
+        );
+    };
+    // The flagged entity is the Guard's corpse, not some other prop that
+    // happens to carry the highlight.
+    let result = script.wait_entity(&body_query, STEP).await;
+    let guard_body = check(&script, result);
+    if body != guard_body {
+        fail(
+            &script,
+            format!("the highlighted entity {body} is not template 21's entity {guard_body}"),
+        );
+    }
     let body_i32 = i32::try_from(body).expect("entity id fits INT32");
 
     // ── 4, 5: close Frost's dialog; teleport next to the body ────────────
@@ -260,12 +299,10 @@ async fn praxis_start_completes_mission_622_live_db() {
         GameSession::gm_goto_xyz(CLIENT_CALL_ENTITY_ID, p2),
     )
     .await;
-    checked!(
-        script,
-        script
-            .wait_event("step 5: the gmGotoXYZ line", STEP, is_teleport_line)
-            .await
-    );
+    let result = script
+        .wait_event("step 5: the gmGotoXYZ line", STEP, is_teleport_line)
+        .await;
+    check(&script, result);
 
     // ── 6: search the Guard's body ───────────────────────────────────────
     let grant_from = script.log().len();
@@ -274,7 +311,8 @@ async fn praxis_start_completes_mission_622_live_db() {
         GameSession::interact(CLIENT_CALL_ENTITY_ID, body_i32),
     )
     .await;
-    let step6 = script
+    // Fixture #43-#54.
+    let result = script
         .expect_in_order(
             "step 6: search the Guard's body",
             STEP,
@@ -282,6 +320,10 @@ async fn praxis_start_completes_mission_622_live_db() {
                 ("onDialogDisplay 3996 on the body", &mut |o: &Observed| {
                     dialog(o, DIALOG_GUARD).is_some_and(|d| d.entity_id == body_i32)
                 }),
+                (
+                    "InteractionType 0 on the body (search bit cleared)",
+                    &mut |o: &Observed| interaction_on(o, body, INT_NONE),
+                ),
                 ("step 80623 done", &mut |o: &Observed| {
                     step(o, STEP_SEARCH_GUARD, DONE)
                 }),
@@ -289,11 +331,12 @@ async fn praxis_start_completes_mission_622_live_db() {
                     step(o, STEP_EQUIP_PISTOL, STARTED)
                 }),
                 (
-                    "onKnownAbilitiesUpdate, the tutorial four",
-                    &mut |o: &Observed| {
-                        matches!(&o.event, Some(S2CEvent::KnownAbilitiesUpdate { ability_ids })
-                        if sorted(ability_ids) == TUTORIAL_ABILITIES)
-                    },
+                    "onKnownAbilitiesUpdate with the tutorial four",
+                    // Containment, not equality: the list is the player's
+                    // whole known set (in hash-set order), and a future
+                    // `char_creation_abilities` row for char def 3 would add
+                    // to it.
+                    &mut |o: &Observed| knows_all(o, &TUTORIAL_ABILITIES),
                 ),
                 ("onDialogDisplay 5882 on the player", &mut |o: &Observed| {
                     dialog(o, DIALOG_WEAPON_TUTORIAL)
@@ -302,7 +345,7 @@ async fn praxis_start_completes_mission_622_live_db() {
             ],
         )
         .await;
-    checked!(script, step6);
+    check(&script, result);
 
     // The pistol arrives in an `onUpdateItem` from the base (chain 1005's
     // `add_item` to the backpack). It is not in the world-entry inventory:
@@ -316,10 +359,12 @@ async fn praxis_start_completes_mission_622_live_db() {
     )
     .await;
     let pistol = only_item(&script, |i| i.dbid == pistol_design);
-    assert_ne!(
-        pistol.container_id, BAG_BANDOLIER,
-        "the pistol must start outside the bandolier: {pistol:?}"
-    );
+    if pistol.container_id == BAG_BANDOLIER {
+        fail(
+            &script,
+            format!("the pistol must start outside the bandolier: {pistol:?}"),
+        );
+    }
 
     // ── 7, 8: close the tutorial, then the Guard's dialog ────────────────
     send(
@@ -334,6 +379,21 @@ async fn praxis_start_completes_mission_622_live_db() {
     .await;
 
     // ── 9: drag the pistol to the bandolier ──────────────────────────────
+    // Pin the mission's completion to the move: nothing so far may have
+    // opened the door or completed 622 (a regression completing it on a
+    // dialog close would otherwise pass the ordered wait below). The
+    // script's cursor cannot be moved to the send (ScriptSession has no
+    // setter), so this check is what ties the answers to the move.
+    if let Some(early) = script
+        .log()
+        .iter()
+        .find(|o| sequence(o, SEQ_STASIS_DOOR) || mission(o, MISSION_ARM_YOURSELF, DONE))
+    {
+        fail(
+            &script,
+            format!("mission 622's completion arrived before the move: {early:?}"),
+        );
+    }
     let move_from = script.log().len();
     send(
         &mut script,
@@ -346,7 +406,8 @@ async fn praxis_start_completes_mission_622_live_db() {
         ),
     )
     .await;
-    let step9 = script
+    // Fixture #66-#72.
+    let result = script
         .expect_in_order(
             "step 9: equip the pistol",
             STEP,
@@ -360,13 +421,19 @@ async fn praxis_start_completes_mission_622_live_db() {
                 ("mission 622 complete", &mut |o: &Observed| {
                     mission(o, MISSION_ARM_YOURSELF, DONE)
                 }),
-                ("onSequence 1872", &mut |o: &Observed| {
-                    sequence(o, SEQ_AFTER_EQUIP)
+                (
+                    "onKnownAbilitiesUpdate with the pistol's two and the tutorial four",
+                    &mut |o: &Observed| {
+                        knows_all(o, &PISTOL_ABILITIES) && knows_all(o, &TUTORIAL_ABILITIES)
+                    },
+                ),
+                ("onSequence 1872 (Item_Equip)", &mut |o: &Observed| {
+                    sequence(o, SEQ_HUMAN_ITEM_EQUIP)
                 }),
             ],
         )
         .await;
-    checked!(script, step9);
+    check(&script, result);
     // The base's answer to the move: the full-inventory resync
     // (`after_commit`), which the cell-side tap never saw (README F11).
     wait_since(
@@ -378,10 +445,14 @@ async fn praxis_start_completes_mission_622_live_db() {
     )
     .await;
     let equipped = only_item(&script, |i| i.id == pistol.id);
-    assert_eq!(equipped.container_id, BAG_BANDOLIER, "{equipped:?}");
     // `onUpdateItem` carries the slot 1-based, as `moveItem` does
     // (`send_update_item` adds one to the stored slot).
-    assert_eq!(equipped.slot_id, BANDOLIER_SLOT_WIRE, "{equipped:?}");
+    if equipped.container_id != BAG_BANDOLIER || equipped.slot_id != BANDOLIER_SLOT_WIRE {
+        fail(
+            &script,
+            format!("want the pistol in container 3, wire slot 1: {equipped:?}"),
+        );
+    }
 
     // ── 10: the server's own record ──────────────────────────────────────
     // Mission state is written as it changes (`CellToBaseMsg::MissionUpdate`
@@ -392,6 +463,7 @@ async fn praxis_start_completes_mission_622_live_db() {
         player_id,
         MISSION_ARM_YOURSELF,
         DB_COMPLETED,
+        STEP,
     )
     .await;
     wait_mission_status(
@@ -400,6 +472,7 @@ async fn praxis_start_completes_mission_622_live_db() {
         player_id,
         MISSION_FROSTS_LETTER,
         DB_ACTIVE,
+        STEP,
     )
     .await;
 
@@ -410,188 +483,4 @@ async fn praxis_start_completes_mission_622_live_db() {
     );
     server.orchestrator.stop_all().await;
     cleanup_account(&pool, ACCOUNT).await;
-}
-
-/// Send one client call as its own reliable bundle.
-async fn send(script: &mut ScriptSession, msg: Vec<u8>) {
-    script
-        .send(&[msg])
-        .await
-        .unwrap_or_else(|e| panic!("send: {e}"));
-}
-
-/// Pump until a log entry at or after `from` matches `pred`, without moving
-/// the script's cursor. For answers whose order against the cursor's last
-/// match is not fixed (two senders, the base and the cell).
-async fn wait_since(
-    script: &mut ScriptSession,
-    from: usize,
-    what: &str,
-    timeout: Duration,
-    mut pred: impl FnMut(&Observed) -> bool,
-) -> Observed {
-    let deadline = Instant::now() + timeout;
-    let mut scanned = from;
-    loop {
-        if let Some(o) = script.log()[scanned..].iter().find(|o| pred(o)) {
-            return o.clone();
-        }
-        scanned = script.log().len();
-        let now = Instant::now();
-        if now >= deadline {
-            fail(script, format!("waited {timeout:?} for {what}"));
-        }
-        checked!(script, script.pump((deadline - now).min(PUMP_SLICE)).await);
-    }
-}
-
-/// Poll `sgw_mission` every [`DB_POLL`] for up to [`STEP`] until the
-/// mission's status is `want`. The script pumps between polls.
-async fn wait_mission_status(
-    script: &mut ScriptSession,
-    pool: &PgPool,
-    player_id: i32,
-    mission_id: i32,
-    want: i32,
-) {
-    let deadline = Instant::now() + STEP;
-    loop {
-        let status: Option<i32> = sqlx::query_scalar(
-            "SELECT status FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
-        )
-        .bind(player_id)
-        .bind(mission_id)
-        .fetch_optional(pool)
-        .await
-        .unwrap_or_else(|e| panic!("read sgw_mission {mission_id}: {e}"));
-        if status == Some(want) {
-            return;
-        }
-        if Instant::now() >= deadline {
-            fail(
-                script,
-                format!(
-                    "sgw_mission {mission_id} status is {status:?} after {STEP:?}, want {want}"
-                ),
-            );
-        }
-        checked!(script, script.pump(DB_POLL).await);
-    }
-}
-
-/// Fail with `why`, the raw trail (the last [`TRAIL`] messages, which
-/// `ScriptTimeout` also carries) and the last [`TRAIL`] decoded events. NPC
-/// avatar updates (`0x10`) can fill the whole raw trail while the script
-/// waits; the decoded list still shows what the server answered.
-fn fail(script: &ScriptSession, why: impl std::fmt::Display) -> ! {
-    panic!(
-        "{why}\nlast messages:\n{}\nlast decoded events:\n{}",
-        script.trail(TRAIL),
-        events_trail(script, TRAIL)
-    )
-}
-
-/// The last `n` log entries that decoded to an event, one line each.
-fn events_trail(script: &ScriptSession, n: usize) -> String {
-    let mut lines: Vec<String> = script
-        .log()
-        .iter()
-        .rev()
-        .filter_map(|o| {
-            let event = o.event.as_ref()?;
-            let mut text = format!("{event:?}");
-            if text.len() > 200 {
-                text.truncate(text.floor_char_boundary(200));
-                text.push_str("...");
-            }
-            Some(format!(
-                "+{:.3}s entity {} {text}",
-                o.at.as_secs_f64(),
-                o.msg
-                    .entity_id
-                    .map_or_else(|| "-".to_owned(), |id| id.to_string())
-            ))
-        })
-        .take(n)
-        .collect();
-    if lines.is_empty() {
-        return "(none)".to_owned();
-    }
-    lines.reverse();
-    lines.join("\n")
-}
-
-/// The one inventory item matching `pred` in the mirror.
-fn only_item(script: &ScriptSession, pred: impl Fn(&InvItem) -> bool) -> InvItem {
-    let found: Vec<&InvItem> = script
-        .mirror
-        .inventory()
-        .values()
-        .filter(|i| pred(i))
-        .collect();
-    match found.as_slice() {
-        [only] => (*only).clone(),
-        other => panic!("want exactly one matching inventory item, found {other:?}"),
-    }
-}
-
-fn dialog(o: &Observed, dialog_id: i32) -> Option<&DialogDisplay> {
-    match &o.event {
-        Some(S2CEvent::DialogDisplay(d)) if d.dialog_id == dialog_id => Some(d),
-        _ => None,
-    }
-}
-
-fn step(o: &Observed, step_id: i32, status: i8) -> bool {
-    matches!(o.event, Some(S2CEvent::StepUpdate { step_id: s, status: st }) if s == step_id && st == status)
-}
-
-fn mission(o: &Observed, mission_id: i32, status: i8) -> bool {
-    matches!(o.event, Some(S2CEvent::MissionUpdate { mission_id: m, status: st, .. })
-        if m == mission_id && st == status)
-}
-
-fn sequence(o: &Observed, seq_id: i32) -> bool {
-    matches!(&o.event, Some(S2CEvent::Sequence(s)) if s.kismet_event_set_seq_id == seq_id)
-}
-
-fn sorted(ids: &[i32]) -> Vec<i32> {
-    let mut ids = ids.to_vec();
-    ids.sort_unstable();
-    ids
-}
-
-fn is_interaction(o: &Observed, type_id: u64) -> bool {
-    matches!(o.event, Some(S2CEvent::InteractionType { type_id: t }) if t == type_id)
-}
-
-/// The SYSTEM line `gmGotoXYZ` answers with (`cell-console` `gm/travel.rs`).
-fn is_teleport_line(o: &Observed) -> bool {
-    matches!(&o.event, Some(S2CEvent::PlayerCommunication { text, .. })
-        if text.starts_with("gmGotoXYZ: teleported to"))
-}
-
-fn update_has(o: &Observed, pred: impl Fn(&InvItem) -> bool) -> bool {
-    matches!(&o.event, Some(S2CEvent::UpdateItem { items }) if items.iter().any(pred))
-}
-
-/// `gmGotoXYZ`'s position: three `f32` after the 4-byte entity id and the
-/// `0xBD` sub-slot byte.
-fn goto_pos(rec: &TapRecord) -> [f32; 3] {
-    let a = rec.args();
-    [f32_at(&a, 5), f32_at(&a, 9), f32_at(&a, 13)]
-}
-
-/// The region trigger's position: after the prefix, the sub-slot byte, the
-/// INT32 region id and the UINT8 entering flag.
-fn region_pos(rec: &TapRecord) -> [f32; 3] {
-    let a = rec.args();
-    [f32_at(&a, 10), f32_at(&a, 14), f32_at(&a, 18)]
-}
-
-fn f32_at(args: &[u8], at: usize) -> f32 {
-    let bytes: [u8; 4] = args[at..at + 4]
-        .try_into()
-        .expect("the fixture record holds a full f32 here");
-    f32::from_le_bytes(bytes)
 }

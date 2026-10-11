@@ -33,15 +33,19 @@ pub async fn template_query(pool: &PgPool, template_id: i32) -> EntityQuery {
     query
 }
 
-/// The item design id that opening `dialog_id` grants (`add_item` actions of
-/// every chain triggered by `dialog_open` of that dialog). Several chains may
-/// grant it (archetype-gated twins); they must agree on one design.
+/// The bandolier-equippable item design that opening `dialog_id` grants:
+/// the `add_item` actions of every enabled chain triggered by `dialog_open`
+/// of that dialog, kept to designs whose `container_sets` include the
+/// bandolier (3). Several chains may grant it (archetype-gated twins, such
+/// as chains 1005 and 1010 on dialog 3996); they must agree on one design.
 pub async fn item_granted_by_dialog(pool: &PgPool, dialog_id: i32) -> i32 {
     let ids: Vec<i32> = sqlx::query_scalar(
         "SELECT DISTINCT a.target_id FROM resources.content_actions a \
          JOIN resources.content_triggers t ON t.chain_id = a.chain_id \
-         WHERE t.event_type = 'dialog_open' AND t.event_key = $1 \
-           AND a.action_type = 'add_item' AND a.target_id IS NOT NULL",
+         JOIN resources.content_chains c ON c.chain_id = a.chain_id \
+         JOIN resources.items i ON i.item_id = a.target_id \
+         WHERE c.enabled AND t.event_type = 'dialog_open' AND t.event_key = $1 \
+           AND a.action_type = 'add_item' AND 3 = ANY(i.container_sets)",
     )
     .bind(dialog_id.to_string())
     .fetch_all(pool)
@@ -49,6 +53,11 @@ pub async fn item_granted_by_dialog(pool: &PgPool, dialog_id: i32) -> i32 {
     .unwrap_or_else(|e| panic!("read the items dialog {dialog_id} grants: {e}"));
     match ids.as_slice() {
         [only] => *only,
-        other => panic!("dialog {dialog_id} grants {other:?}, expected exactly one item design"),
+        other => panic!(
+            "dialog {dialog_id} grants bandolier designs {other:?}, expected exactly one \
+             (for 3996: chains 1005 and 1010's pistol). A second bandolier add_item on \
+             that trigger (ammo for the pistol, OD-CS13, if its design fits the \
+             bandolier; or a weapon per archetype) needs this query to pick one"
+        ),
     }
 }
