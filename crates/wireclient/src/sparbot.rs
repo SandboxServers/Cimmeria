@@ -332,10 +332,13 @@ mod tests {
     /// A decoded entity-method message as the bundle decoder builds it.
     fn method_msg(entity: u32, method_index: u16, args: &[u8]) -> S2CMessage {
         let mut payload = entity.to_le_bytes().to_vec();
+        let mut sub_index = None;
         let msg_id = if method_index < 61 {
             0x80 | method_index as u8
         } else {
-            payload.push((method_index - 61) as u8);
+            let sub = (method_index - 61) as u8;
+            payload.push(sub);
+            sub_index = Some(sub);
             0xBD
         };
         payload.extend_from_slice(args);
@@ -344,6 +347,8 @@ mod tests {
             entity_id: Some(entity),
             class_id: None,
             method_index: Some(method_index),
+            sub_index,
+            offset: 0,
             payload: Bytes::from(payload),
         }
     }

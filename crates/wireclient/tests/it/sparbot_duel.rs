@@ -74,6 +74,8 @@ fn sparbot_wire_matches_the_server() {
         entity_id: Some(7),
         class_id: None,
         method_index: Some(ON_DUEL_CHALLENGE),
+        sub_index: Some((ON_DUEL_CHALLENGE - 61) as u8),
+        offset: 0,
         payload: payload.into(),
     };
     assert_eq!(
