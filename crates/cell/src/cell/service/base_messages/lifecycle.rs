@@ -388,17 +388,37 @@ async fn flush_bandolier_ammo_for_entity(
 }
 
 /// Queue `CellToBaseMsg::PersistPosition` for a player entity that is about
-/// to be torn down. No-op for NPCs and for entities that never received
-/// their `player_id` (a session that dropped before character select).
+/// to be torn down. No-op for NPCs. A player that never received its
+/// `player_id` (a session that dropped before character select) is a WARN:
+/// its position cannot be persisted, and the next login resumes elsewhere.
 async fn persist_last_position(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
     let Some(entity) = space_mgr.get_entity(entity_id) else {
+        tracing::warn!(
+            entity_id, // nt:id-only the entity is gone, so there is no name to pair
+            reason = "entity_missing",
+            "DisconnectEntity: entity not found — last position not persisted"
+        );
         return;
     };
-    let (true, Some(player_id)) = (entity.is_player, entity.player_id) else {
+    if !entity.is_player {
+        return;
+    }
+    let Some(player_id) = entity.player_id else {
+        let id = entity.identity();
+        tracing::warn!(
+            entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            reason = "player_id_missing",
+            "DisconnectEntity: player has no player_id — last position not persisted"
+        );
         return;
     };
     let Some(world_name) = space_mgr.get_entity_world_name(entity_id) else {
@@ -416,7 +436,7 @@ async fn persist_last_position(
         return;
     };
     let position = [entity.position.x, entity.position.y, entity.position.z];
-    if let Err(e) = tx
+    match tx
         .send(CellToBaseMsg::PersistPosition {
             player_id,
             world_name: world_name.clone(),
@@ -424,19 +444,122 @@ async fn persist_last_position(
         })
         .await
     {
-        let id = entity.identity();
-        tracing::warn!(
-            entity_id,
-            entity_name = id.player_name,
-            account_id = id.account_id,
-            account_name = id.account_name,
-            player_id,
-            player_name = id.player_name,
-            world = %world_name,
-            ?position,
-            error = %e,
-            "DisconnectEntity: PersistPosition send failed — the next login will use \
-             the previously stored position"
+        Ok(()) => {
+            let id = entity.identity();
+            tracing::debug!(
+                event = "persist_position_queued",
+                entity_id,
+                entity_name = id.player_name,
+                account_id = id.account_id,
+                account_name = id.account_name,
+                player_id,
+                player_name = id.player_name,
+                world = %world_name,
+                x = position[0],
+                y = position[1],
+                z = position[2],
+                "DisconnectEntity: last position queued for persistence"
+            );
+        }
+        Err(e) => {
+            let id = entity.identity();
+            tracing::warn!(
+                entity_id,
+                entity_name = id.player_name,
+                account_id = id.account_id,
+                account_name = id.account_name,
+                player_id,
+                player_name = id.player_name,
+                world = %world_name,
+                ?position,
+                error = %e,
+                "DisconnectEntity: PersistPosition send failed — the next login will use \
+                 the previously stored position"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+
+    /// A manager with one instanced world, `Castle_CellBlock`.
+    fn make_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr
+    }
+
+    /// Revert-verifier: deleting the entity-missing WARN, the player-without-
+    /// `player_id` WARN, or the success DEBUG row fails this test. A second
+    /// player with a `player_id` and an open receiver must queue and log the
+    /// DEBUG row; the `player_id`-less player must log the WARN and queue
+    /// nothing.
+    #[tokio::test]
+    async fn persist_position_skip_and_queue_rows() {
+        let capture = LogCapture::install();
+        let mut mgr = make_mgr();
+        let (tx, mut rx) = mpsc::channel(32);
+
+        // Entity 1: a player whose session dropped before character select.
+        mgr.create_entity(1, "Castle_CellBlock", [1.0, 2.0, 3.0], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+        }
+        persist_last_position(1, &tx, &mgr).await;
+        assert!(
+            capture
+                .find_event(
+                    tracing::Level::WARN,
+                    "has no player_id",
+                    "player_id_missing"
+                )
+                .is_some(),
+            "a player without a player_id must WARN: {:#?}",
+            capture.all()
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "no PersistPosition may be queued without a player_id"
+        );
+
+        // Entity 2: a normal player; the receiver stays open.
+        mgr.create_entity(2, "Castle_CellBlock", [4.0, 5.0, 6.0], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(2) {
+            e.is_player = true;
+            e.player_id = Some(200);
+        }
+        persist_last_position(2, &tx, &mgr).await;
+        let queued = capture
+            .find_message(tracing::Level::DEBUG, "last position queued")
+            .expect("a queued position must log a DEBUG row");
+        assert!(queued.has_field("event", "persist_position_queued"));
+        assert!(queued.has_field("world", "Castle_CellBlock"));
+        assert!(queued.has_field("x", "4.0"));
+        assert!(queued.has_field("y", "5.0"));
+        assert!(queued.has_field("z", "6.0"));
+        assert!(
+            matches!(
+                rx.try_recv(),
+                Ok(CellToBaseMsg::PersistPosition { player_id: 200, .. })
+            ),
+            "the normal player must queue exactly its PersistPosition"
+        );
+
+        // Entity 99 does not exist.
+        persist_last_position(99, &tx, &mgr).await;
+        assert!(
+            capture
+                .find_event(tracing::Level::WARN, "entity not found", "entity_missing")
+                .is_some(),
+            "a missing entity must WARN"
         );
     }
 }

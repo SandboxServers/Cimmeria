@@ -69,8 +69,8 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 
 | Packet | Wave | Title | Agent | Depends on | Status |
 |---|---|---|---|---|---|
-| LX-01 | 0 | Shared `cimmeria-launcher-core` crate | rust-gameserver-dev | | Writing |
-| LX-02 | 0 | Scaffold every new command, preference and view (the contract) | rust-gameserver-dev | LX-01 | BlockedDependency |
+| LX-01 | 0 | Shared `cimmeria-launcher-core` crate | rust-gameserver-dev | | Done ([#1361](https://github.com/SandboxServers/Cimmeria/pull/1361)) |
+| LX-02 | 0 | Scaffold every new command, preference and view (the contract) | rust-gameserver-dev | LX-01 | Review |
 | LX-03 | 1 | Server list editor | packet-coder | LX-02 | BlockedDependency |
 | LX-04 | 1 | Client-patches toggle | packet-coder | LX-02 | BlockedDependency |
 | LX-05 | 1 | Debug log upload | packet-coder | LX-02 | BlockedDependency |
@@ -81,23 +81,23 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-08c | 2 | Telemetry events: install result, patch verdict, BM counts | packet-coder | LX-08a | BlockedDependency |
 | LX-09 | 1 | Single instance | packet-coder | LX-02 | BlockedDependency |
 | LX-10 | 1 | Windows in-place adoption | rust-gameserver-dev | LX-02 | BlockedDependency |
-| LX-11 | 1 | WebView2 runtime check | packet-coder | | Review ([#1356](https://github.com/SandboxServers/Cimmeria/pull/1356)) |
+| LX-11 | 1 | WebView2 runtime check | packet-coder | | UATPending ([#1356](https://github.com/SandboxServers/Cimmeria/pull/1356); LX-26 step 1) |
 | LX-12 | 1 | Windows PhysX setup | rust-gameserver-dev | LX-02 | BlockedDependency |
 | LX-13 | 1 | Zip self-update apply on Windows | rust-gameserver-dev | LX-02 | BlockedDependency |
-| LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-patchset` | packet-coder | LX-01 | BlockedDependency |
+| LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-launcher-core` | packet-coder | LX-01 | Writing |
 | LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | BlockedDependency |
 | LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | BlockedDependency |
 | LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | BlockedDependency |
 | LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | BlockedDecision |
-| LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Review ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
+| LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | BlockedDependency |
 | LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | BlockedDependency |
 | LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | BlockedDependency |
 | LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
 | LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |
-| LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Review |
+| LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Done ([#1357](https://github.com/SandboxServers/Cimmeria/pull/1357)) |
 | LX-28 | 2 | macOS release: ad-hoc signed app from a macOS CI job | rust-gameserver-dev | LX-15; redistribution check | BlockedDependency |
-| LX-29 | 1 | Native Windows test proofs (G-13) | coordinator | | Ready |
+| LX-29 | 1 | Native Windows test proofs (G-13) | coordinator | | Done (this PR) |
 | LX-26 | 5 | Windows UAT of the released zip | owner (+ lab-uat for Play) | Waves 1-4 | BlockedDependency |
 | LX-27 | 5 | Close-out | coordinator | LX-26 | BlockedDependency |
 

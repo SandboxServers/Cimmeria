@@ -241,6 +241,38 @@ async fn loot_item_out_of_range_is_denied() {
     );
 }
 
+/// **TG-ITM-09 lost cash.** The looter takes a cash drop, but the base
+/// receiver is gone, so the `GrantCash` send fails. The cash has already
+/// left the corpse, so the loss must be a WARN with the amount. Reverting
+/// the send to `let _ =` drops the WARN and trips this guard.
+#[tokio::test]
+async fn loot_cash_send_failure_warns() {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use tokio::sync::mpsc;
+
+    let mut mgr = make_loot_mgr([2.0, 0.0, 0.0]);
+    let npc_id = mgr.get_entity(1).and_then(|e| e.looting_entity).unwrap();
+
+    let capture = LogCapture::install();
+    let (tx, rx) = mpsc::channel(16);
+    drop(rx);
+    handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+    assert_eq!(
+        mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(99),
+        0,
+        "the cash leaves the corpse before the grant is sent"
+    );
+    let warn = capture
+        .find_event(tracing::Level::WARN, "cash grant", "base_channel_closed")
+        .expect("a lost cash grant must WARN with reason base_channel_closed");
+    assert!(
+        warn.has_field("amount", "50"),
+        "the WARN must carry the lost amount: {warn:?}"
+    );
+}
+
 // ── ammo campaign: `ammo_loot_dropped` (#1026, AM-12) ─────────────
 
 /// Loot one item with design id `design_id` (20 of them) off a corpse whose
