@@ -674,6 +674,10 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Deferred content actions dropped on teardown (TG-MIS-07)
+
+A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
