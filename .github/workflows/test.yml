@@ -1,14 +1,24 @@
 name: ci
 
+# Where the full suite runs (docs/agents/pre-pr-checks.md § Merge queue): main
+# requires a merge queue, and the build + nextest + live-DB job runs in the queue
+# (`merge_group`), on the exact code that lands. A PR push runs fmt, clippy and the
+# quick jobs only; the `full-ci` label adds the full job to a PR (add it, then
+# push: a `labeled` trigger would let an unrelated label's skipped run stand in
+# for a gating check). The nightly schedule runs everything on main, coverage
+# included. Nothing runs on push to main: every commit there came through the
+# queue, except regen-docs' Markdown.
 on:
-  push:
-    branches: [main]
   pull_request:
+  merge_group:
+  schedule:
+    - cron: '23 9 * * *'   # nightly, 02:23 Pacific
+  workflow_dispatch:
 
 # Cancel superseded runs on the same PR branch — saves runner minutes when a
-# PR gets force-pushed during review. Runs on main are never cancelled: a
-# cancelled run doesn't save its rust-cache, and main's caches are the ones
-# every PR restores (see `save-if` on each rust-cache step).
+# PR gets force-pushed during review. A merge group's ref is unique to it, so
+# a group the queue abandons keeps its run going to the end; keeping direct
+# pushes to main rare (regen-docs every six hours) keeps those wasted runs rare.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -55,8 +65,13 @@ jobs:
   # and so does tools/token-profile/, whose contract tests read its Markdown.
   # The generated weapon-requirement audit doc counts as code: the
   # build-and-test job's `--check` is what catches a hand edit to it.
-  # Pushes to main always run everything. Any doubt (API error, empty list,
+  # A merge group is judged by its diff against the queue's base. The nightly
+  # and manual runs always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
+  #
+  # Output `full` says whether the build + nextest + live-DB job runs: always in
+  # a merge group and on the nightly/manual runs, and on a PR only with the
+  # `full-ci` label. Docs-only changes skip it either way (`code`).
   #
   # It also picks the runner for this run's build jobs (output `linux`): the
   # self-hosted `cimmeria-linux` pool, or GitHub-hosted `ubuntu-latest` when
@@ -70,9 +85,11 @@ jobs:
     name: detect code changes
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',changes,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     permissions:
+      contents: read        # the compare API, for a merge group's files
       pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      full: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
       linux: ${{ steps.route.outputs.linux }}
     steps:
       - id: route
@@ -98,12 +115,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.merge_group.head_sha }}
           REPO: ${{ github.repository }}
         run: |
           code=true
-          if [ "$EVENT" = "pull_request" ] \
-            && files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')" \
-            && [ -n "$files" ] && [ "$(echo "$files" | wc -l)" -lt 3000 ]; then
+          files=""
+          cap=0   # the API's file-list cap: a list that reaches it may be cut short
+          case "$EVENT" in
+            pull_request) cap=3000; files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')" || files="" ;;
+            merge_group) cap=300; files="$(gh api "repos/$REPO/compare/$BASE...$HEAD" --jq '.files[].filename')" || files="" ;;
+          esac
+          if [ -n "$files" ] && [ "$(echo "$files" | wc -l)" -lt "$cap" ]; then
             nocode='\.md$|^\.claude/|^docs/.*\.(svg|png|jpe?g|gif)$'
             if ! echo "$files" | grep -Ev "$nocode" | grep -q . \
               && ! echo "$files" | grep -q '^docs/protocol/' \
@@ -208,10 +231,15 @@ jobs:
   # one template database. Guard tests in cimmeria-test-support fail when a
   # test that reaches require_db_or_skip! lacks the `live_db` marker, or when
   # test code reads DATABASE_URL around the slot resolver.
+  #
+  # It runs in the merge queue, nightly, and on a PR labelled `full-ci`
+  # (output `full`). On other PR pushes it reports `skipped`, which the
+  # required check and tools/build-lane/ship.py count as passing there; the
+  # queue then runs it on the merged result before anything lands.
   build-and-test:
     name: cargo build + nextest (workspace + live DB)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full == 'true'
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',build-and-test,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     services:
@@ -382,6 +410,56 @@ jobs:
       - name: check the generated GM slash command XML is current
         run: python3 tools/client-patches/gm_slash_commands.py --check
 
+  # The one required check in main's ruleset. A job whose `needs` failed is
+  # skipped, and a skipped required check passes, so requiring fmt, clippy and
+  # build-and-test directly would let a merge group land untested whenever the
+  # `changes` job itself failed. This job always runs and passes only when
+  # `changes` succeeded and every gating job succeeded or was skipped by design.
+  gate:
+    name: ci gate
+    needs: [changes, fmt, clippy, build-and-test]
+    if: always()
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',gate,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          bad = {k: v["result"] for k, v in needs.items()
+                 if v["result"] != "success" and not (k != "changes" and v["result"] == "skipped")}
+          for k, r in bad.items():
+              print(f"::error::{k}: {r}")
+          sys.exit(1 if bad else 0)
+          PY
+
+  # The nightly run is main's own check: everything landed through the queue,
+  # so a failure here is drift (a flake, a toolchain or service change) or a
+  # gap the queue missed. tools/main-red/main-red.sh opens a `main-red` issue,
+  # which stops ship.py merging code until a passing night closes it.
+  nightly-report:
+    name: report the nightly run
+    needs: [changes, fmt, clippy, build-and-test, overlay-lua]
+    # A manual dispatch on main reports too, so a fix can clear the issue without
+    # waiting for the next night.
+    if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ${{ (vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',nightly-report,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
+    permissions:
+      contents: read   # actions/checkout
+      issues: write    # the main-red issue
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/main-red
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # Anything but success or skipped (failure, cancelled, timed out) is a fail.
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: bash tools/main-red/main-red.sh "$([ "$FAILED" = true ] && echo fail || echo pass)" "nightly ci" "$RUN"
+
   # Coverage, in two jobs that run at the same time: the workspace pass
   # without a DB, and the live-DB crates' lib tests (tools/test-live-db.sh
   # --llvm-cov) against a live Postgres. Most of each job is compiling
@@ -393,14 +471,16 @@ jobs:
   # Non-blocking: continue-on-error so a coverage-tool flake doesn't gate
   # merges. The artifacts and summaries are advisory.
   #
-  # Pushes to main only (and workflow_dispatch), not PRs: each job rebuilds the
-  # workspace instrumented, two full builds per push for a report that never
-  # gates a merge. A PR that wants its own report gets the `coverage` label;
-  # add it, then push, because a re-run reuses the labels the run started with.
+  # Nightly on main (and workflow_dispatch), not per merge or per PR: each job
+  # rebuilds the workspace instrumented, two full builds for a report that
+  # never gates a merge. It ran on every push to main until 2026-10-11, when
+  # ~180 merges a day made it the self-hosted pool's second-largest load. A PR
+  # that wants its own report gets the `coverage` label; add it, then push,
+  # because a re-run reuses the labels the run started with.
   coverage-workspace:
     name: cargo llvm-cov (workspace, no DB)
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+    if: needs.changes.outputs.code == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'coverage'))
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage-workspace,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
@@ -467,7 +547,7 @@ jobs:
   coverage-live-db:
     name: cargo llvm-cov (live DB)
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
+    if: needs.changes.outputs.code == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'coverage'))
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage-live-db,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true

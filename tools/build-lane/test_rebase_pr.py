@@ -289,6 +289,37 @@ class SemanticConflictTests(RebaseCase):
         self.assertEqual(self.head(), before)
 
 
+class StackedRebaseTests(RebaseCase):
+    """A child PR stacked on `feat`, after `feat` squash-merges into main."""
+
+    def setUp(self):
+        super().setUp()
+        # The parent edits one line twice: its squash is not patch-identical to either
+        # commit, so replaying them onto main conflicts.
+        self.repo.commit(self.wt, {"src.rs": "fn a() { one }\nfn b() {}\n"}, "parent 1")
+        self.parent_tip = self.repo.commit(self.wt, {"src.rs": "fn a() { two }\nfn b() {}\n"}, "parent 2")
+        self.child = self.tmp / "child"
+        sh("git", "worktree", "add", "-q", "-b", "child", str(self.child), "feat", cwd=self.repo.main)
+        self.repo.commit(self.child, {"child.rs": "fn c() {}\n"}, "child")
+        sh("git", "merge", "-q", "--squash", "feat", cwd=self.repo.main)
+        sh("git", "commit", "-q", "-m", "parent (squashed)", cwd=self.repo.main)
+        self.repo.push_main()
+
+    def test_upstream_replays_only_the_childs_commits(self):
+        code, out = self.run_tool("--upstream", self.parent_tip, target="child")
+        self.assertEqual(code, 0, out)
+        main = sh("git", "rev-parse", "origin/main", cwd=self.repo.main)
+        self.assertEqual(sh("git", "rev-parse", "HEAD~1", cwd=self.child), main, "main plus the child's one commit")
+        self.assertEqual((self.child / "child.rs").read_text(), "fn c() {}\n")
+        self.assertEqual((self.child / "src.rs").read_text(), "fn a() { two }\nfn b() {}\n")
+
+    def test_without_upstream_the_parents_commits_conflict(self):
+        # The guard above is not theatre: a plain rebase replays the parent's commits.
+        code, out = self.run_tool(target="child")
+        self.assertEqual(code, 1, out)
+        self.assertIn("semantic=src.rs", out)
+
+
 class ResolveGeneratedTests(unittest.TestCase):
     def test_block_only_the_branch_adds_keeps_its_body(self):
         base = b"a\nb\n"

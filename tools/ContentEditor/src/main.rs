@@ -1,3 +1,5 @@
+//! `cimmeria-content-editor`: the Tauri content editor for missions, dialogs, effects and
+//! content-engine chains.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;

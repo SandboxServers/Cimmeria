@@ -17,6 +17,11 @@ Usage:
   python kismet_extractor.py <zone_dir> --sql             # Generate content chain SQL
   python kismet_extractor.py <zone_dir> --json            # Full JSON graph export
   python kismet_extractor.py <file.umap> --graph          # Single file mode
+
+Rust counterpart: `pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin extract_kismet --
+<file.umap|zone_dir> [--graph]`. Kept because the Rust
+binary prints only the survey and sequence/event-chain graph: it has no --sql
+content-chain generation and no --json graph export.
 """
 
 import sys

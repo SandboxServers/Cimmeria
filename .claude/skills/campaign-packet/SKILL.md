@@ -92,7 +92,13 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 2. The coordinator verifies each finding, fixes what's real in the worktree,
    and reruns the packet's lane checks.
 3. Ship and merge with the `ship-pr` skill (`ship.ps1 pr -C <worktree>`, then
-   `ship.ps1 merge <PR> --retire <worktree>`). Merge on the minimum CI.
+   `ship.ps1 merge <PR> --retire <worktree>`). Merge on the minimum CI:
+   `ship.ps1 merge` puts the PR in `main`'s merge queue, which runs the full
+   build + nextest there, so the packet's lane nextest must be green first.
+   A packet that builds on an unmerged one can stack on its branch
+   (`ship.ps1 pr -C <worktree> --base <branch>`); merge the base first and
+   `ship.ps1` restacks the child. Code merges stop while a `main-red` issue is
+   open ([pre-pr-checks.md § Main is red](../../../docs/agents/pre-pr-checks.md#main-is-red)).
 4. Update the packet's row in the ledger and write
    `worknotes/<packet>.md` if anything is left over.
 

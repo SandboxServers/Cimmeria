@@ -1,4 +1,5 @@
-//! `cimmeria-lab` — Live Research Lab supervisor, phase 1.
+//! `cimmeria-lab`: the Live Research Lab supervisor, an MCP server (stdio, or HTTP as the
+//! shared daemon) that launches and drives the game client through the injected bridge.
 //!
 //! A minimal stdio MCP server that proxies three tools
 //! (`client_lua_eval`, `client_module_info`, `client_mem_read`) to

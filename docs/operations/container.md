@@ -2,7 +2,7 @@
 title: "Container distribution"
 type: how-to
 audience: operators
-last_updated: 2026-10-10
+last_updated: 2026-10-11
 ---
 
 # Container distribution
@@ -19,7 +19,12 @@ Releases are **explicit**. Pushing to `main` does not publish a container — ma
 2. **Manual UI dispatch.** Open **Actions → `release-container`**, click "Run workflow", pick `main`. Useful when you decided post-merge that something is ship-worthy and don't want to leave a comment trail.
 3. **CLI dispatch.** `gh workflow run release-container.yml --ref main`.
 
-PRs that touch the container release surface still get built and smoke-tested by [`pr-container.yml`](../../.github/workflows/pr-container.yml) (path-filtered to crates / docker / db / `.cargo` / etc.) — the gate is on *publishing*, not on *catching breakage*. PR-level breakage is caught pre-merge regardless of release intent.
+Breakage is still caught without a release. [`pr-container.yml`](../../.github/workflows/pr-container.yml) builds and smoke-tests the image, without pushing it, in two places:
+
+- **On a PR that touches the container files** (`docker/**`, `Cargo.lock`, `.trivyignore`, the two container workflows, `tools/container-smoke.sh`), before merge.
+- **On `main` after a merge that touches any image input** (crates, `db/`, `entities/defs/`, cooked data, `.cargo/`, and the container files). A burst of merges is checked once, at the newest commit. A failure opens a `main-red` issue, and `ship.py merge` refuses code PRs until a passing run closes it ([pre-pr-checks.md § Main is red](../agents/pre-pr-checks.md#main-is-red)). So a crates-only change that breaks the image is caught one merge later, not before it lands.
+
+Until 2026-10-11 every crates or `db/` PR ran the container build, which made it the self-hosted runners' largest load for a check that never gated a merge. `release-container.yml` itself never runs on a push to `main`.
 
 ## Pull
 
@@ -85,7 +90,7 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `MERCURY_ENCRYPTION_VERSION` | `1` | Server-wide Mercury wire-encryption version. `1` = legacy (the only version unpatched clients understand); `2` = modernized. No per-client negotiation. |
 | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | Poll interval for hot-reloading the auth TLS cert/key on change (e.g. a Let's Encrypt renewal). `0` disables. Only active when the TLS listener is configured. |
 | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` and `cimmeria.deploy_env` on every span/log/metric. Set to `colo` on a colo box so its data doesn't mix with dev-laptop noise. `OTEL_RESOURCE_ATTRIBUTES` cannot override either. |
-| `CIMMERIA_GIT_SHA` | `unknown` | **Build argument, not a runtime variable.** Baked in by `crates/server/build.rs` as the OTLP `service.version` resource attribute. `release-container.yml` passes `github.sha` and `pr-container.yml` the PR head SHA; a source build falls back to `git rev-parse HEAD`. |
+| `CIMMERIA_GIT_SHA` | `unknown` | **Build argument, not a runtime variable.** Baked in by `crates/server/build.rs` as the OTLP `service.version` resource attribute. `release-container.yml` passes `github.sha` and `pr-container.yml` the PR head SHA (`github.sha` on `main`); a source build falls back to `git rev-parse HEAD`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP collector endpoint. Unset ⇒ exporter disabled. [`docker/compose.yml`](../../docker/compose.yml) sets this to `http://otel-collector:4317`, the SigNoz collector on the `signoz-net` network. When set, the container waits up to `OTEL_WAIT_TIMEOUT` seconds (default 120) for it at start, then starts without it. See [signoz-deployment.md](signoz-deployment.md). |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` or `http/protobuf`. |
 | `OTEL_SERVICE_NAME` | `cimmeria-server` | `service.name` in SigNoz's service map. |
@@ -158,7 +163,7 @@ It does not probe `AUTH_PORT` (13001): no listener binds that port, and probing 
 
 ## CI login smoke
 
-`pr-container.yml` (on every PR that touches the image's inputs) and `release-container.yml` (on every release) run the same check, [`tools/container-smoke.sh`](../../tools/container-smoke.sh), against the image they just built. It starts the container with the image's defaults, publishing only the login port (`LOGON_PORT`, TCP) and the BaseApp port (`BASE_PORT`, UDP) as the image sets them, and then:
+`pr-container.yml` (on PRs that touch the container files, and on `main` after a merge that touches the image's inputs; see [Release model](#release-model)) and `release-container.yml` (on every release) run the same check, [`tools/container-smoke.sh`](../../tools/container-smoke.sh), against the image they just built. It starts the container with the image's defaults, publishing only the login port (`LOGON_PORT`, TCP) and the BaseApp port (`BASE_PORT`, UDP) as the image sets them, and then:
 
 1. **Waits for readiness, probed from inside the container**: `pg_isready`, a TCP connect to the login port, and the BaseApp's UDP socket (the image's `BASE_PORT`) in `/proc/net/udp`. Auth starts before the BaseApp, so the login port alone is not enough. A host-side probe of a published port always connects, because docker-proxy accepts the handshake itself. The budget is about 120 s; a container that exits during the wait is reported as "container exited".
 2. **Logs in as a client with `login-probe`**, from the runner through the published ports. The probe is a binary in `cimmeria-wireclient` (`crates/wireclient/src/login_probe.rs`), compiled in the image's builder stage and exported by the Dockerfile's `login-probe` target, so it never ships in the image. Its four steps run in order.
@@ -203,7 +208,7 @@ docker logs dbcheck 2>&1 | grep 'cannot log in to the database'
 docker rm dbcheck
 ```
 
-`pr-container.yml` runs the same check on every container PR. The bundled Postgres trusts loopback connections, so in this image a wrong password is not refused, but a wrong user or database name is. Against an external Postgres that checks passwords, a wrong password fails the same way.
+`pr-container.yml` runs the same check on every container PR and on `main`. The bundled Postgres trusts loopback connections, so in this image a wrong password is not refused, but a wrong user or database name is. Against an external Postgres that checks passwords, a wrong password fails the same way.
 
 The login fallback that accepts any credential as account 1 with access level 99 now needs developer mode **and** an empty `DB_URL`, and logs a WARN (`reason=dev_mode_no_db_login`) at startup and on every login it accepts. This image never meets the second condition.
 
@@ -255,6 +260,6 @@ docker run -d --name cimmeria \
 
 - **Base images pinned by SHA digest** (`postgres:17.9-bookworm@sha256:...`, `rust:1-bookworm@sha256:...`). Tag-only references are vulnerable to tag mutation; the digest is the integrity anchor. Dependabot ([`.github/dependabot.yml`](../../.github/dependabot.yml)) opens weekly PRs to bump the digests when upstream rebuilds.
 - **Third-party downloads SHA256-verified.** `external/recast` and the `s6-overlay` tarballs are checksum-checked before extraction; bumping the version ARG without bumping its companion SHA ARG is a loud build failure, not a silent acceptance of a different file.
-- **CVE scanning on every build.** Trivy runs against the locally-built image before any `docker push` in [`release-container.yml`](../../.github/workflows/release-container.yml) and on every release-relevant PR via [`pr-container.yml`](../../.github/workflows/pr-container.yml). Severity threshold is CRITICAL, fixable-only — the goal is to block known-exploited CVEs, not chase every theoretical issue.
+- **CVE scanning on every build.** Trivy runs against the locally-built image before any `docker push` in [`release-container.yml`](../../.github/workflows/release-container.yml) and in every [`pr-container.yml`](../../.github/workflows/pr-container.yml) build (container PRs, and `main` after a merge that touches the image). Severity threshold is CRITICAL, fixable-only — the goal is to block known-exploited CVEs, not chase every theoretical issue.
 - **OCI provenance + SBOM attestations** generated by buildx (`provenance: true, sbom: true` in the workflow). Enables downstream verification via `cosign verify-attestation` once we set up signing.
 - **Network exposure caveat.** Same as the standalone server — do not expose to the public internet without a trusted client base. The legacy Stargate Worlds protocol the client speaks is not designed to withstand hostile peers. Run on a LAN or a trusted VPN.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the release launcher in stages. The release workflow
+# Build the sgw-launcher release (its 32-bit DLLs and helper, then the 64-bit launcher)
+# in stages. The release workflow
 # (.github/workflows/launcher-release.yml) runs these; launcher-build.yml runs
 # the same stages on every launcher PR as a dry run, so the release is
 # exercised before it is needed.

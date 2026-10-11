@@ -16,13 +16,14 @@ For human-readable project overview, see [README.md](README.md).
 The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md). The ones that cost the most when missed:
 
 - **Check `docs/` first.** Search the docs and the `docs/protocol/*-dispatch-table.md` files before Ghidra, before counting `.def` entries, before guessing.
+- **Look for an existing tool before writing one.** Before writing a script, parser, decoder, extractor or CLI, search the catalog in [tools/README.md](tools/README.md#tools-catalog), `crates/*/src/bin/` and [crates/README.md](crates/README.md); extend the closest tool rather than adding a sibling, and give a new one a summary line (docstring, leading comment, `.SYNOPSIS` or `//!`) so the catalog picks it up.
 - **A ticket or draft chapter is a claim, not evidence.** Reconcile it against `docs/protocol/` and the RE findings before changing a wire constant, index, or layout. If sources disagree, verify against the binary and fix the losing doc in the same PR — see [docs/agents/domain.md](docs/agents/domain.md).
 - **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entries skipped): `Account = 0x07`, not its `entities.xml` row.
 - **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
 - **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
 - **Every button press gets visible feedback on the first press**, whatever the original server did.
 - **Status docs change once per campaign.** `docs/gap-analysis.md` (with its area files in `docs/gap-analysis/`) and `docs/project-status.md` are updated in the campaign's close-out or release packet, not per packet. Per-packet progress goes in the campaign's ledger under `docs/analysis/<campaign>/`.
-- **Never hand-edit a generated block.** Text between `<!-- gen:NAME -->` markers (and the crate graph) is owned by `tools/docs-gen/regen.py`, which a workflow reruns on `main` after every merge. Run it locally to see the numbers, but commit the result only when your PR adds the marker.
+- **Never hand-edit a generated block.** Text between `<!-- gen:NAME -->` markers (and the crate graph) is owned by `tools/docs-gen/regen.py`, which a workflow reruns on `main` every six hours. Run it locally to see the numbers, but commit the result only when your PR adds the marker.
 - **Parallel agents: one worktree each, one test database each**, and every compiling `cargo` call goes through the build lane below. Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 - **Project memory is committed.** Project and reference facts you learn while researching or writing code go in `.claude/agent-memory/main-session/` (subagents use their own folder), committed with the change that produced them. Personal preferences, local paths and in-flight session state stay in your personal memory. The repo is public, so no IPs, credentials or account names. Verified facts graduate to `docs/`. Rules: [development-workflow.md § Project memory](docs/agents/development-workflow.md#project-memory).
 
@@ -160,7 +161,7 @@ Sessions and agents across the SandboxServers repos coordinate on the agent boar
 
 ## Agent skills
 
-Repo skills are in `.claude/skills/` (`ship-pr`, `lane-build`, `lab-uat`, `telemetry-triage`, `re-lookup`, `seed-change`, `campaign-packet`); load the matching one before that kind of work. Edit them only there and run `python tools/agent-skills/sync.py` to refresh the Codex/Copilot mirror in `.agents/skills/` (it also generates `.codex/agents/lab-driver.toml` from `.claude/agents/lab-driver.md` and rewrites cross-folder links). A `PreToolUse` hook refuses direct compiling `cargo` calls and shell-only file reads — [development-workflow.md § Agent skills](docs/agents/development-workflow.md#agent-skills-and-the-shell-guard).
+Repo skills are in `.claude/skills/` (`ship-pr`, `lane-build`, `lab-uat`, `telemetry-triage`, `re-lookup`, `seed-change`, `campaign-packet`); load the matching one before that kind of work. Edit them only there and run `python tools/agent-skills/sync.py` to refresh the Codex/Copilot mirror in `.agents/skills/` (it also generates a Codex agent `.codex/agents/<name>.toml` from every `.claude/agents/<name>.md` and rewrites cross-folder links). A `PreToolUse` hook refuses direct compiling `cargo` calls and shell-only file reads — [development-workflow.md § Agent skills](docs/agents/development-workflow.md#agent-skills-and-the-shell-guard).
 
 Per-repo configuration for agent skills that triage, write tickets, or model the domain lives in [docs/agents/](docs/agents/):
 

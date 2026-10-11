@@ -961,6 +961,18 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Post-commit move drops (TG-ITM-05)
+
+Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A move is committed before these side effects run, so a failure here cannot undo it. The cell notification used to be `let _ = cell_tx.send(...)`, and the equipment appearance lookup used `.ok().flatten()`, so both losses were silent. The notification drop is now a WARN. A failed appearance lookup is an ERROR, and the refresh is skipped. The DEBUG move row also carries the containers, the swapped occupant and `source_deleted`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "move_cell_notify_failed"`, `reason = "cell_channel_closed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_id`, `item_name`, `error` | A committed move could not reach the cell's `InventoryItemMoveApplied`, so the cell's copy of the container is stale |
+| ERROR | `event = "move_appearance_lookup_failed"`, `entity_id`, `entity_name`, `player_id`, `player_name`, `item_type_id`, `item_name`, `error` | The equipment appearance lookup failed; the appearance refresh is skipped |
+| DEBUG | `Inventory move persisted`, plus `source_container_id`, `source_container_name`, `target_container_id`, `target_container_name`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
+
+Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
+
 ## Deferred-AoI cap drops (TG-AOI-01)
 
 A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
@@ -1139,6 +1151,29 @@ Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `dup
 | `send_error` | The transport refused the packet |
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
+
+## Contact-list header ops (TG-SOC-10)
+
+`handlers/header_ops.rs` in `cimmeria-base-session`. Every row carries `event` (`contacts.list_created`, `contacts.list_deleted`, `contacts.list_renamed`, `contacts.list_flags_updated`) and the identity pair `account_id` + `account_name`, beside `player_id` + `player_name`. A failed create logs WARN with `reason` and `error = %e`; its message is the constant `ContactListCreate: list not created`.
+
+| `reason` | Meaning |
+|---|---|
+| `duplicate_name` | Postgres rejected the unique `(player_id, name)` key (`is_unique_violation()`) |
+| `db_write_failed` | Any other insert error |
+
+Guard: `live_db_header_ops_log_event_account_and_duplicate_reason` in `handlers/header_ops/tests.rs` asserts `event` and `account_id` on each op and `reason=duplicate_name` on the second create. `no_pool_rows_carry_event_and_account` guards the no-pool rows.
+## Cinematic AoI hold lifecycle (TG-AOI-06)
+
+`release` in `cinematic_aoi_hold/mod.rs` (`cimmeria-base-world-entry`) and `log_discarded_on_teardown` in `base/deferred_aoi.rs` (`cimmeria-base-session`). A `release` that finds no hold to end used to return silently. It now logs DEBUG `target: "aoi.cinematic_hold"`, `event = "hold_release_skipped"`, with `witness_id` + `witness_name` and `reason`; `witness_name` is absent when the session is gone. A teardown inside a hold with a non-empty buffer logs INFO `event = "hold_abandoned"` with `discarded` (buffered messages), `held_ms` and the account and player identity fields. An intro-only buffer, which the entity-method row skips, is covered by this row.
+
+| `reason` | Meaning |
+|---|---|
+| `session_gone` | The session is no longer in the connected map |
+| `no_hold` | The session has no cinematic hold to end |
+| `already_releasing` | Another task has claimed the hold and is flushing it |
+| `token_mismatch` | The releasing task belongs to an earlier hold |
+
+Guard: `release_without_a_session_logs_session_gone` in `cinematic_aoi_hold/tests.rs`, and `teardown_inside_a_hold_logs_the_abandoned_buffer` in `base/deferred_aoi.rs`.
 
 ## DoT kill with no credited player (TG-NPC-13)
 

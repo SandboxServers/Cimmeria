@@ -202,7 +202,7 @@ def render(full: bool = False) -> str:
             "layer-to-layer arrows)"
         )
         + ". Dev-dependencies are not drawn. The `regen-docs` workflow regenerates this block on `main` "
-        "after every merge (`python tools/docs-gen/regen.py`); `crate_graph.py --full` draws every edge.*"
+        "every six hours (`python tools/docs-gen/regen.py`); `crate_graph.py --full` draws every edge.*"
     )
     return "\n".join(lines) + "\n\n" + caption
 

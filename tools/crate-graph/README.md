@@ -17,7 +17,7 @@ python tools/crate-graph/crate_graph.py --full    # every edge, no transitive re
 - **Transitive reduction:** an edge implied by a longer path is omitted, so the picture shows the layering rather than every direct dependency. The caption records how many edges exist and how many are drawn.
 - **Groups:** layer groups come from [groups.toml](groups.toml). A crate that isn't listed falls back to a name-prefix rule (`cimmeria-cell-*`, `cimmeria-base-*`) and then to "Other". When you add a crate that belongs to an existing layer, add it there.
 
-You don't need to run it in a PR: [`tools/docs-gen/regen.py`](../docs-gen/README.md) calls it, and the `regen-docs` workflow reruns that on `main` after every merge and commits the new graph. Run it locally to preview a `Cargo.toml` change. It needs Python 3.11+ (for `tomllib`) and cargo.
+You don't need to run it in a PR: [`tools/docs-gen/regen.py`](../docs-gen/README.md) calls it, and the `regen-docs` workflow reruns that on `main` every six hours and commits the new graph. Run it locally to preview a `Cargo.toml` change. It needs Python 3.11+ (for `tomllib`) and cargo.
 
 The planned target graph for the `cimmeria-services` split is drawn by hand in
 [docs/architecture/services-crate-split.md](../../docs/architecture/services-crate-split.md#1-target-crate-map).
