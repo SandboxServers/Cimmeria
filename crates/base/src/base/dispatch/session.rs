@@ -70,6 +70,23 @@ pub(super) async fn handle_log_off(
                     _ => None,
                 };
                 c.listed_online = false;
+                // Return to character select keeps the session, so no
+                // teardown will see this character: this handler owns its
+                // `session.end`. Taking the entity id here, under the same
+                // lock that decides to emit, is what makes the ownership
+                // exclusive: a DISCONNECT or inactivity teardown that runs
+                // during the awaits below finds `player_entity_id` empty
+                // and writes no second row. The gate is the entity id, the
+                // same one teardown uses, not `listed_online`: a logOff(0)
+                // between the cell's `session.start` and `onClientReady`
+                // has a character in the world that was never listed.
+                // A full exit leaves the id for the teardown that follows
+                // the client's disconnect, which writes that session's row.
+                let entity_id = if disconnect == 0 {
+                    c.player_entity_id.take()
+                } else {
+                    c.player_entity_id
+                };
                 // The character leaves the world: the Team and Command
                 // invites it holds go too (D-ORG06). The session survives a
                 // return to character select, so this is not the teardown's
@@ -89,7 +106,7 @@ pub(super) async fn handle_log_off(
                     );
                 }
                 (
-                    c.player_entity_id,
+                    entity_id,
                     c.enc_version,
                     ended,
                     c.plugins.clone(),
@@ -116,6 +133,18 @@ pub(super) async fn handle_log_off(
         player_name = identity.player_name,
         "SGWPlayer.logOff"
     );
+    // The row this handler owns (see the `take` above): written once the
+    // ownership is settled, before any await can interleave a teardown.
+    if let (0, Some(entity_id)) = (disconnect, entity_id) {
+        log_session_end(&SessionEndRow {
+            addr,
+            identity,
+            entity_id,
+            entity_name: identity.player_name,
+            disconnect_reason: "logoff_character_select",
+            session_secs,
+        });
+    }
 
     if let Some(entity_id) = entity_id {
         // Tell CellService to disconnect and destroy the entity
@@ -190,19 +219,6 @@ pub(super) async fn handle_log_off(
         // `ChannelManager.leaveChannel(self, channelId, True)` for every
         // held membership).
         cimmeria_base_session::base::user_channels::user_channel_registry().leave_all(entity_id);
-    }
-
-    // Return to character select keeps the session, so no teardown writes
-    // its `session.end`: this is the row for a character that was in the world.
-    if let (0, Some(ended)) = (disconnect, &ended) {
-        log_session_end(&SessionEndRow {
-            addr,
-            identity,
-            entity_id: ended.entity_id,
-            entity_name: identity.player_name,
-            disconnect_reason: "logoff_character_select",
-            session_secs,
-        });
     }
 
     // Fan out offline status to contact-list watchers and organization
