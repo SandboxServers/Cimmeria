@@ -92,7 +92,7 @@ new Praxis character on 2026-10-10.
 | GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Integrated |
 | GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Integrated |
-| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | BlockedDependency |
+| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | Integrated |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
@@ -230,3 +230,18 @@ then the reference, not the spec.
   and still writes the fingerprint attachments. A window sample whose
   `client_ui_state` reply carries a `windows:` error is `{after, error}`,
   never an empty set.
+- **GD-04.** `diff_row` compares parts in the packet's order: Variance,
+  Tap, TapFault, Result, Clause, Transition, Event, WindowsOpened,
+  WindowsClosed, Unordered. `Part::Variance` comes first and refuses a run
+  fingerprinted under a variance other than the golden row's, which is how
+  D-GD5 holds inside `diff_run`'s fixed signature. **GD-07's diff calls
+  `diff_run_dir(golden, &RunDir)`**, which fingerprints the run under the
+  golden's stored variance and reports a missing golden row as `Missing`.
+  Its `not_in_golden` is always empty by design; a run's extra rows are caught
+  by `agree`'s `ExtraRow`, not by a diff. `AgreeError` adds `NoRows`,
+  `Mismatch` (section or schema), `TapUnreliable` (any tap fault or an
+  `unavailable` tap, even without the pass rule) and `ExtraRow`.
+  `check_runs` treats an empty build or hash as missing. In a divergence line
+  control characters become spaces, and the `after` value shrinks (cap 60,
+  then down to 3) so the line fits 300 characters with `expected` and `got`
+  whole.
