@@ -297,6 +297,8 @@ async fn second_cone_after_a_clamped_end_does_not_kill() {
 async fn third_party_kill_is_normal_death() {
     let logs = LogCapture::install();
     let mut mgr = duel_mgr();
+    // The death presence event needs a character name (TG-SOC-15).
+    mgr.get_entity_mut(B).unwrap().character_name = Some("Bravo".into());
     // The death end is the duel plugin's death hook (#962).
     mgr.install_plugins(
         cimmeria_cell_world::cell::plugin::CellPlugins::build(&[&cimmeria_cell_duel::DuelPlugin])

@@ -84,8 +84,7 @@ pub(super) async fn apply_death_transition(
         if target_is_player {
             let character_name = space_mgr
                 .get_entity(target_eid)
-                .and_then(|e| e.character_name.clone())
-                .unwrap_or_else(|| format!("entity:{target_eid}"));
+                .and_then(|e| e.character_name.clone());
             let cause = if attacker_is_player { "pvp" } else { "pve" };
             cimmeria_discord::emit_player_death(
                 space_mgr.discord_character(target_eid),
@@ -99,39 +98,60 @@ pub(super) async fn apply_death_transition(
             // data_value=0 per spec (client ignores it; shows "{Name} has died").
             // The deceased's `player_id` pairs with `player_name` (Rule 6).
             // Death fires only for player entities, which always carry one.
-            let subject_player_id = space_mgr
-                .player_identity(target_eid)
-                .player_id
-                .unwrap_or_default();
-            if tx
-                .send(CellToBaseMsg::ContactListPresenceEvent {
-                    player_name: character_name,
-                    player_id: subject_player_id,
-                    event_id: EVENT_DEATH,
-                    data_value: 0,
-                })
-                .await
-                .is_err()
-            {
-                let who = space_mgr.player_identity(target_eid);
-                crate::cell::abilities::metrics::wire_send_failed_in(
-                    space_mgr,
-                    target_eid,
-                    crate::cell::abilities::metrics::WireMessage::ContactListPresenceEvent,
-                );
-                tracing::warn!(
-                    target: "abilities.wire",
-                    event = "wire_send_failed",
-                    method = "ContactListPresenceEvent",
-                    entity_id = target_eid,
-                    entity_name = space_mgr.entity_label(target_eid),
-                    account_id = who.account_id,
-                    account_name = who.account_name,
-                    player_id = who.player_id,
-                    player_name = who.player_name,
-                    reason = "cell_to_base_closed",
-                    "death presence event not queued: the cell-to-base channel is closed, so                      contacts never see \"has died\""
-                );
+            // No character name means nothing to show, so no event is sent:
+            // a bare `entity:{eid}` placeholder must not reach contact lists.
+            match character_name {
+                Some(player_name) => {
+                    let subject_player_id = space_mgr
+                        .player_identity(target_eid)
+                        .player_id
+                        .unwrap_or_default();
+                    if tx
+                        .send(CellToBaseMsg::ContactListPresenceEvent {
+                            player_name,
+                            player_id: subject_player_id,
+                            event_id: EVENT_DEATH,
+                            data_value: 0,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        let who = space_mgr.player_identity(target_eid);
+                        crate::cell::abilities::metrics::wire_send_failed_in(
+                            space_mgr,
+                            target_eid,
+                            crate::cell::abilities::metrics::WireMessage::ContactListPresenceEvent,
+                        );
+                        tracing::warn!(
+                            target: "abilities.wire",
+                            event = "wire_send_failed",
+                            method = "ContactListPresenceEvent",
+                            entity_id = target_eid,
+                            entity_name = space_mgr.entity_label(target_eid),
+                            account_id = who.account_id,
+                            account_name = who.account_name,
+                            player_id = who.player_id,
+                            player_name = who.player_name,
+                            reason = "cell_to_base_closed",
+                            "death presence event not queued: the cell-to-base channel is closed, so                      contacts never see \"has died\""
+                        );
+                    }
+                }
+                None => {
+                    let who = space_mgr.player_identity(target_eid);
+                    tracing::debug!(
+                        target: "abilities",
+                        event = "contacts.presence_skipped",
+                        reason = "no_character_name",
+                        entity_id = target_eid,
+                        entity_name = space_mgr.entity_label(target_eid),
+                        account_id = who.account_id,
+                        account_name = who.account_name,
+                        player_id = who.player_id,
+                        player_name = who.player_name,
+                        "death presence skipped: the player has no character name, so contacts see no \"has died\""
+                    );
+                }
             }
         } else {
             // NPC / mob death (off by default — high volume during combat).
