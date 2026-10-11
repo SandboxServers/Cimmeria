@@ -15,7 +15,7 @@ use cimmeria_base_session::base::plugin::{BaseCtx, WorldEntryCall, WorldEntryHoo
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
-use crate::cell::messages::BaseToCellMsg;
+use crate::cell::messages::{BaseToCellMsg, WorldEntryCause};
 
 use super::super::helpers::send_bundle_to_witness_reliable;
 use super::super::world_entry::handle_map_loaded;
@@ -125,7 +125,16 @@ pub async fn handle_on_client_ready(
     // still awaiting DB reads — a hold armed any later (say, next to
     // `send_cinematic`) lets those creates reach a client that is about to
     // play a fullscreen movie. See `cinematic_aoi_hold`.
-    let (pending, player_name, access_level, account_id, aoi_hold, plugins, account_name) = {
+    let (
+        pending,
+        player_name,
+        access_level,
+        account_id,
+        aoi_hold,
+        plugins,
+        account_name,
+        entry_cause,
+    ) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
@@ -136,6 +145,15 @@ pub async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
+                // Read before the listing below sets the flag: a character
+                // already listed is finishing a cross-world hop, not a login
+                // (TG-NET-15). `logOff` and teardown clear it, so the next
+                // `playCharacter` counts as a login again.
+                let entry_cause = if c.listed_online {
+                    WorldEntryCause::Travel
+                } else {
+                    WorldEntryCause::Login
+                };
                 // The client has created its player entity: list it in the
                 // online name index (tells, duel challenges) until logOff or
                 // teardown. Only a pending finalization lists, and only once:
@@ -157,12 +175,22 @@ pub async fn handle_on_client_ready(
                     c.plugins.clone(),
                     // The login name for this function's lines (Rule 6).
                     super::super::session_identity::session_identity(c).account_name,
+                    entry_cause,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
             // before `account_id` is ever read. The 0 is unreachable filler,
             // not a sentinel any log will carry.
-            None => (None, None, 0, 0, None, Default::default(), None),
+            None => (
+                None,
+                None,
+                0,
+                0,
+                None,
+                Default::default(),
+                None,
+                WorldEntryCause::Login,
+            ),
         }
     };
 
@@ -380,6 +408,7 @@ pub async fn handle_on_client_ready(
                 body_set,
                 looted_containers,
                 shown_tutorials,
+                entry_cause,
             })
             .await
         {
