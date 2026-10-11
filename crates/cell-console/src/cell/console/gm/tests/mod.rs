@@ -182,5 +182,6 @@ mod spawn_sets;
 mod stats;
 mod travel;
 mod travel_entry_point;
+mod travel_identity;
 mod travel_pets;
 mod world;

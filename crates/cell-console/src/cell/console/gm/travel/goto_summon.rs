@@ -18,6 +18,8 @@ pub(in crate::cell::console::gm) async fn handle_goto(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The calling GM's Rule 5 identity, carried on every row below.
+    let who = space_mgr.player_identity(entity_id);
     let Some(target_eid) = parse_target_id(entity_id, args, "gmGoto", space_mgr) else {
         send_gm_feedback(
             entity_id,
@@ -34,6 +36,10 @@ pub(in crate::cell::console::gm) async fn handle_goto(
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 target_entity_id = target_eid,
                 target_entity_name = space_mgr.entity_label(target_eid),
                 "gmGoto: target in a different space — refused"
@@ -50,6 +56,10 @@ pub(in crate::cell::console::gm) async fn handle_goto(
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
                 "gmGoto: target not found"
             );
@@ -68,6 +78,15 @@ pub(in crate::cell::console::gm) async fn handle_goto(
             [e.position.x, e.position.y, e.position.z],
         ),
         None => {
+            tracing::warn!(
+                entity_id, // nt:id-only the caller is gone, so it has no name
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                reason = "entity_missing",
+                "gmGoto: caller entity not found"
+            );
             send_gm_feedback(entity_id, "gmGoto: caller entity not found", tx).await;
             return true;
         }
@@ -75,6 +94,10 @@ pub(in crate::cell::console::gm) async fn handle_goto(
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         target_entity_id = target_eid,
         target_entity_name = space_mgr.entity_label(target_eid),
         subject_player_id = space_mgr.player_identity(target_eid).player_id,
@@ -133,6 +156,8 @@ pub(in crate::cell::console::gm) async fn handle_summon(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The calling GM's Rule 5 identity, carried on every row below.
+    let who = space_mgr.player_identity(entity_id);
     let Some(target_eid) = parse_target_id(entity_id, args, "gmSummon", space_mgr) else {
         send_gm_feedback(
             entity_id,
@@ -146,6 +171,10 @@ pub(in crate::cell::console::gm) async fn handle_summon(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             "gmSummon: cannot summon yourself"
         );
         send_gm_feedback(entity_id, "gmSummon: cannot summon yourself", tx).await;
@@ -166,6 +195,10 @@ pub(in crate::cell::console::gm) async fn handle_summon(
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 target_entity_id = target_eid,
                 target_entity_name = space_mgr.entity_label(target_eid),
                 "gmSummon: target in a different space — refused"
@@ -182,6 +215,10 @@ pub(in crate::cell::console::gm) async fn handle_summon(
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
                 "gmSummon: target not found"
             );
@@ -197,6 +234,10 @@ pub(in crate::cell::console::gm) async fn handle_summon(
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         target_entity_id = target_eid,
         target_entity_name = space_mgr.entity_label(target_eid),
         subject_player_id = space_mgr.player_identity(target_eid).player_id,
