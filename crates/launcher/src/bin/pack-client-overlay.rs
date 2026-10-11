@@ -18,12 +18,9 @@
 //! entry is the launcher's own `PatchEntry`, so the tool and the reader
 //! cannot disagree on the schema.
 
-// The manifest module serves the launcher; this tool uses its types only.
-#[allow(dead_code)]
-#[path = "../manifest.rs"]
-mod manifest;
-#[path = "../overlay_meta.rs"]
-mod overlay_meta;
+// The manifest types and overlay names are `cimmeria-launcher-core`'s; the
+// pack logic is still the launcher's own file.
+use cimmeria_launcher_core::{manifest, overlay_meta};
 #[path = "../overlay_pack.rs"]
 mod overlay_pack;
 

@@ -2,7 +2,7 @@
 //!
 //! The launcher writes `LoginMod.servers["<name>"] = "<url>"` lines into
 //! `<install>/SGWGame/Content/UI/Startup/Login/LoginInternal.lua` before
-//! every launch (`crates/launcher/src/client_setup/login_servers.rs`). The
+//! every launch (`crates/launcher-core/src/client_setup/login_servers.rs`). The
 //! URL is the server's login port, which also serves
 //! `/api/auth/dev-session`, so the lab mints its telemetry token from the
 //! same server the client logs into, with no extra config.

@@ -1,0 +1,75 @@
+[package]
+name = "cimmeria-launcher-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Launcher logic shared by the egui sgw-launcher and the desktop launcher's engine: the signed manifest, install, unpack (zip, RAR, the 2009 cabinet set), client setup, install state, log bundles, the client-changes list and the dev-session telemetry pipeline."
+
+[features]
+# Test fixtures other crates' tests build on: the archive fixtures in
+# `unpack::test_fixtures`, the dev manifest signing key and the
+# environment lock `client_paths` tests take. The desktop engine and the
+# egui launcher turn it on as a dev-dependency.
+test-fixtures = ["dep:crc32fast"]
+
+[dependencies]
+# `process_watch` waits on the game process the shared launch crate started.
+cimmeria-client-launch = { path = "../client-launch" }
+# Patch zips that rebuild client files from the player's own stock files
+# by delta (src/unpack/zip.rs), and the stock file-name spelling.
+cimmeria-patchset = { path = "../patchset" }
+
+# Declared directly, not `workspace = true`: the workspace's reqwest is a
+# newer major with native-tls on, and the desktop engine pins 0.12 with
+# rustls. rustls-tls keeps the binary independent of system OpenSSL /
+# Schannel.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "multipart"] }
+# Not the workspace's `full`: the desktop launcher builds this crate too.
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
+tokio-util = "0.7"
+futures-util = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+zip = { workspace = true }
+
+# Gzip compression for telemetry chunk uploads.
+flate2 = "1"
+# RAR seeds: the archived 2009 client is a RAR holding the original
+# installer's cabinet set (see src/unpack/). The crate is MIT/Apache and
+# builds RARLAB's UnRAR C++ source, whose licence allows extraction.
+unrar = "0.5"
+walkdir = "2"
+gethostname = "1.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+# Ed25519 detached signature verification on the manifest. Defaults off
+# bring the dep down to just what we need (no rand for signing — the
+# launcher only verifies — and no PEM/PKCS#8 parsing).
+ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+
+# CRC-32 for the hand-built RAR fixture in src/unpack/test_fixtures.rs.
+crc32fast = { version = "1", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    # FDICreate/FDICopy: expand the installer cabinet set (src/unpack/fdi.rs).
+    "Win32_Storage_Cabinets",
+    # DosDateTimeToFileTime + LocalFileTimeToFileTime: stamp extracted
+    # files with the archive's DOS date/time (src/unpack/dos_time.rs).
+    "Win32_Storage_FileSystem",
+    "Win32_System_WindowsProgramming",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+# Mock HTTP server for the install / download pipeline tests. Lets us assert
+# Range-header resume, status-code branches, and call-count expectations
+# (e.g. "second pass over an idempotent install hits the server zero times").
+wiremock = "0.6"
+crc32fast = "1"

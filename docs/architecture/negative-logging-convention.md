@@ -139,6 +139,7 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `triggerClientHintedGenericRegion refused` | `region_tag` | `region_name` (left off when the region is unknown) | NT-28a |
 | `interact: no items_event_sets binding` (`event = weapon_unbound`) | `item_id` (held the weapon's design id) | `item_type_id` + `item_name` | NT-28a |
 | `setRingTransporterDestination` | `destination_id` | `destination_region_id` + `destination_region_name` | NT-28a |
+| `PersistPosition` rows (`cell_dispatch/position.rs`) | `position` (the coordinate array, `?position`) | `x`, `y`, `z` (floats) | TG-DB-04 |
 | `useItem` and `UseInventoryItem send to base failed` | `target_id` (the client's raw target) | `wire_target_id` + `wire_target_name` | NT-28a |
 | `friction: server sees the player inside a region…` (`signal = region_dwell_no_hint`) | `region_tag` | `region_name` | NT-28a |
 
@@ -648,6 +649,18 @@ withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirm
 intercepts the `DisconnectEntity` before replying, and proves a concurrent
 `EntityManager::create_entity` call does not receive the id under teardown).
 
+## Logout position-save seam (TG-DB-03)
+
+On `DisconnectEntity`, the cell's `persist_last_position` (`crates/cell/src/cell/service/base_messages/lifecycle.rs`) hands a player's live position to the base as `PersistPosition`. A cell-side skip and a base-side write that never ran look the same in the database, so each outcome logs on its own. NPCs stay silent: they have no `sgw_player` row to update.
+
+| Level | Message | Meaning |
+|---|---|---|
+| WARN | `DisconnectEntity: entity not found — last position not persisted` (`reason = "entity_missing"`, `entity_id`) | The entity id is no longer in the cell's space manager when the teardown runs, so there is no position to read |
+| WARN | `DisconnectEntity: player has no player_id — last position not persisted` (`reason = "player_id_missing"`, the identity fields) | A player entity that never received its `player_id` (a session that dropped before character select). The position cannot be stored, and the next login resumes at the previous stored position |
+| DEBUG | `DisconnectEntity: last position queued for persistence` (`event = "persist_position_queued"`, the identity fields, `world`, `x`, `y`, `z`) | The `PersistPosition` was queued on the Cell→Base channel. This is the normal path, so it is DEBUG |
+
+The identity fields are `account_id`, `account_name`, `player_id` and `player_name` (Rule 5), with `entity_id` + `entity_name` (Rule 6). The `player_id_missing` row omits `player_id` when it is `None`; it is never sent as `"None"`. A failed send keeps its existing WARN (`PersistPosition send failed`, `error = %e`). Pinned by `persist_position_skip_and_queue_rows` in the same file.
+
 ## NPC-vs-NPC target refusals and NPC-only kills (#1009)
 
 Two seams, both carrying both entities' ids and factions so a standoff can be debugged from SigNoz alone:
@@ -678,6 +691,34 @@ Every fallback in the player-load loaders logs `event = "player_load_degraded"` 
 | `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
 
 Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
+
+### Shutdown unsaved-state report (TG-DB-01)
+
+When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player entity. Its logout position and any dirty bandolier ammo are not saved |
+| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_with_dirty_ammo` | Once per shutdown |
+
+NPCs log nothing. Once TG-DB-02 drains the saves on shutdown, the WARN fires only for players the drain missed.
+
+## Logout position persistence (TG-DB-04)
+
+`PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
+
+| Level | Message | Meaning |
+|---|---|---|
+| INFO | `PersistPosition: persisted` | The row was written (`account_id`, `account_name`, `player_id`, `player_name`, `world`, `x`, `y`, `z`) |
+| WARN | `PersistPosition: no rows updated (player row missing?)` | Zero rows matched: `rows_affected = 0`, `expected = 1`, `reason = "player_row_missing"` (Pattern B counts) |
+| WARN | `PersistPosition: DB write failed (next login will use the previous position)` | The UPDATE failed: `reason = "db_write_failed"`, `error = %e` |
+| DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
+
+The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
+
+## Deferred content actions dropped on teardown (TG-MIS-07)
+
+A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
 
 ## Related
 
