@@ -10,7 +10,7 @@ runners.
 | File | What it is |
 | --- | --- |
 | `Dockerfile` | The runner image: Ubuntu 24.04 (as `ubuntu-latest`), the Actions runner, the pinned Rust toolchain, sccache, clang + mold, psql 17, lua5.1, gh, docker CLI |
-| `compose.yml` | A node's stack: five runner/dind pairs with their volumes, CPU weight and memory caps, plus the node's `cache` (sccache Redis), `buildkitd` and `egress` proxy |
+| `compose.yml` | A node's stack: five build runner/dind pairs with their volumes, CPU weight and memory caps, two quick runners, plus the node's `cache` (sccache Redis), `buildkitd` and `egress` proxy |
 | `entrypoint.sh` | Registers on first start, restores the registration afterwards, writes the job environment, waits for dind |
 | `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report, cache stats and cleanup |
 | `egress_proxy.py`, `egress.Dockerfile` | The HTTPS proxy for the colo egress detour, node and exit roles |
@@ -120,6 +120,7 @@ is baked in again.
   GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the
   colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps
   10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2, node1).
+- **Parallel compiles per job.** `CARGO_BUILD_JOBS` comes from `deploy.ps1`: a node's `Jobs` if it has one, else its core count (never empty, which cargo rejects). Five jobs each running one compile per core oversubscribe a 16-core node five times over; on 2026-10-11 node1 spent about 19% of its CPU in the kernel under that load. node1 runs `Jobs = 8` as an experiment: compare its job durations with node2's and node5's in `status.ps1` before changing the others.
 - **sccache instead of rust-cache.** Self-hosted jobs skip `Swatinem/rust-cache`
   (`if: runner.environment == 'github-hosted'`); downloading a multi-GB cache from GitHub
   is slower than a shared sccache hit. Every runner builds in the same path, so cache
@@ -142,18 +143,28 @@ real figures:
 docker system df -v | grep gha-runners
 ```
 
-## Routing and the kill switch
+## Routing, overflow and the kill switches
 
-The routed jobs use:
+Three pools:
 
-```yaml
-runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
-```
+| Pool | Jobs | Where |
+| --- | --- | --- |
+| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container | Five per node |
+| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt`, `overlay-lua` | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
+| `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow and anything sent there by a variable | GitHub-hosted |
 
-Set the repository variable `CI_LINUX_RUNNER` to `hosted` (Settings, Secrets and
-variables, Actions, Variables) to send everything back to GitHub-hosted runners while
-the nodes are down. GitHub has no automatic overflow between pools: a job targets a
-label and waits for a runner that has it.
+GitHub has no overflow between pools (a job waits for a runner with its label), so
+`test.yml`'s `changes` job decides: it counts idle, online `cimmeria-linux` runners
+with the `RUNNER_STATUS_TOKEN` secret (a fine-grained token with Administration: read
+on this repo only), and when fewer than `CI_OVERFLOW_MIN_IDLE` (default 2) are idle it
+sends that run's build jobs (clippy, build-and-test, coverage) to GitHub-hosted runners.
+Without the secret, or if the call fails, they stay self-hosted.
+
+Repository variables (Settings, Secrets and variables, Actions, Variables):
+
+- `CI_LINUX_RUNNER=hosted`: every routed job to GitHub-hosted runners, e.g. while the nodes are down.
+- `CI_HOSTED_JOBS`: comma-separated job ids (e.g. `coverage-workspace,e2e`) that always run GitHub-hosted.
+- `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow.
 
 ## Security
 
