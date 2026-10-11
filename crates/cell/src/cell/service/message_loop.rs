@@ -252,7 +252,7 @@ pub(super) async fn run_cell_loop(
                 // In-combat player vitals sample (`vitals` `combat_sample`),
                 // every 2 s; see `ticks::vitals` for the budget.
                 if aoi_tick_counter.is_multiple_of(super::ticks::VITALS_SAMPLE_EVERY_TICKS) {
-                    super::ticks::vitals_sample_tick(&space_mgr);
+                    super::ticks::vitals_sample_tick(&mut space_mgr);
                 }
 
                 // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).

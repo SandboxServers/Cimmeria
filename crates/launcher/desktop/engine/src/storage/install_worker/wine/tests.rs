@@ -332,7 +332,7 @@ async fn original_signed_release_prepares_patched_content() {
     ));
     std::fs::copy(source, &archive).unwrap();
     let http = download_client().unwrap();
-    let outcome = install_claimed(
+    let (outcome, _) = install_claimed(
         &state,
         &intent,
         &release,

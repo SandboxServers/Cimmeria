@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Heal] [-Json].
+    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Chaos ...] [-Heal] [-Json].
 
 .DESCRIPTION
     Calls lab_uat_run on the shared lab daemon. -Leases lanes run at once, one
@@ -34,6 +34,13 @@
     -Fixtures auto|always|never sets when a row's [row.fixture] is applied
     (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
     continues a passing chain and starts from its fixture otherwise).
+
+    -Chaos <profile[:level][:knobs]> passes chaos specs to the runner
+    unchanged (lab_uat_run `chaos`); profiles land in later lab-chaos packets.
+    Give several as -Chaos cpu,flush:pack or -Chaos @('cpu','flush:pack').
+    A multi-knob spec contains commas, so quote it: -Chaos 'net:latency=120,loss=1'.
+    The run's header (chaos=<spec>, joined with "; ") leads the summary and
+    -Json gets a chaos key, only when -Chaos was given.
 
     -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
@@ -89,6 +96,8 @@ param(
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
+    # One or more chaos specs (profile[:level][:knobs]); a multi-knob spec must be quoted.
+    [string[]]$Chaos,
     [switch]$DiffGolden,
     [switch]$Heal,
     # Used by lab golden: runs capture what a golden fingerprint needs.
@@ -120,7 +129,7 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Chaos spec,...] [-Heal] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
@@ -167,6 +176,7 @@ function Invoke-LabUat {
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
     if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
+    $chaosHeader = Set-UatChaos $baseArgs $Chaos
     if ($Fingerprint -or $DiffGolden) { $baseArgs.fingerprint = $true }
     # lab_golden_diff's arguments less run_dir, or $null without -DiffGolden.
     $diffArgs = if ($DiffGolden) { @{ section = $Section; specs_dir = $specs } } else { $null }
@@ -283,6 +293,7 @@ function Invoke-LabUat {
         $allRuns = @(Read-UatRecords $jsonl)
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
+        Add-UatChaosHeader $summary $chaosHeader
         $title = "lab uat $Section"
         $batch = @{ Dir = $batchDir; Title = $title; Section = $Section; RowIds = $rowIds
                     LaneCount = $plan.Lanes.Count; RunsPerLease = $RunsPerLease; Started = $started }

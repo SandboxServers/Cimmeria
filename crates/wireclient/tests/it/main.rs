@@ -18,6 +18,7 @@ mod client_calls;
 mod duel_two_duelists_and_a_spectator;
 mod isolation;
 mod login_probe;
+mod script_session_live_db;
 mod sparbot_duel;
 mod support;
 mod trace_load;

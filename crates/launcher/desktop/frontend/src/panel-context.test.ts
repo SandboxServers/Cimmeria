@@ -4,7 +4,7 @@ import type {NativeSnapshot} from './contract';
 import {makePanelContext} from './panel-context';
 
 const snapshot=(revision:number):NativeSnapshot=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},
- preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false,adopted_login_servers:null});
+ preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null}});
 
 test('a panel sees the latest snapshot and each later one until it unsubscribes',()=>{
  const {context,publish}=makePanelContext();

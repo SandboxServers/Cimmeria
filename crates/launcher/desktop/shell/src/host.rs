@@ -152,6 +152,7 @@ impl NativeHost {
             if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
                 // Only the running binary's compiled version acknowledges a handoff.
                 // Failure leaves the updater owner visible and excludes game work.
+                // That is the D-LX8 release version the feed signs, not the package's.
                 let _ = state.reconcile_launcher_update(&target, updater::compiled_version());
             }
             if state.preferences().revision == 0
@@ -203,6 +204,20 @@ impl NativeHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn handoffs_are_acknowledged_with_the_release_version_not_the_package_version() {
+        // A test build has no CIMMERIA_LAUNCHER_VERSION, so compiled_version()
+        // equals the package version and no runtime check can tell them apart.
+        // A release is `YYYY.M.D` while the package stays `0.1.0`: acknowledging
+        // with the package version would leave every handoff unreconciled. So
+        // this pins the startup call itself.
+        let source = include_str!("host.rs");
+        let start = source.find("reconcile_launcher_update(").unwrap();
+        let call = &source[start..start + source[start..].find(");").unwrap()];
+        assert!(call.contains("compiled_version()"), "{call}");
+        assert!(!call.contains("CARGO_PKG_VERSION"), "{call}");
+    }
 
     #[test]
     fn host_reuses_one_store_and_only_opens_the_saved_existing_directory() {

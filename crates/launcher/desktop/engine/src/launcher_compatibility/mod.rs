@@ -24,7 +24,7 @@ pub fn compiled_version() -> &'static str {
 impl Identity {
     pub fn current() -> Self {
         Self::from_parts(
-            env!("CARGO_PKG_VERSION"),
+            compiled_version(),
             option_env!("CIMMERIA_DESKTOP_SOURCE_REVISION"),
             option_env!("CIMMERIA_LAUNCHER_TAG"),
             option_env!("CIMMERIA_LAUNCHER_BUILD_EPOCH"),
