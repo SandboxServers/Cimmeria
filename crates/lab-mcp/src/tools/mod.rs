@@ -10,6 +10,7 @@ mod console;
 mod content;
 mod db;
 mod entities;
+mod fixture;
 mod logs;
 mod names;
 mod packet_tap;
@@ -52,6 +53,15 @@ struct LogTailArgs {
     /// Optional level filter, case-insensitive (e.g. "warn").
     #[serde(default)]
     level: Option<String>,
+    /// Optional exact tracing target (e.g. "aoi.cinematic_hold").
+    #[serde(default)]
+    target: Option<String>,
+    /// Optional case-sensitive substring of the message.
+    #[serde(default)]
+    contains: Option<String>,
+    /// Optional: only entries with `timestamp_ms` strictly greater than this.
+    #[serde(default)]
+    since_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -168,14 +178,28 @@ impl LabTools {
     }
 
     /// Read the most recent buffered server log lines.
-    #[tool(description = "Return the most recent server log lines, optionally filtered by level.")]
+    #[tool(
+        description = "Return the most recent server log lines, optionally filtered by level, target, message text and since_ms; newest_ms is the buffer's newest timestamp."
+    )]
     async fn server_log_tail(
         &self,
         Parameters(args): Parameters<LogTailArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let limit = args.limit.unwrap_or(logs::DEFAULT_LIMIT);
-        let audit_args = json!({ "limit": limit, "level": args.level });
-        let v = logs::log_tail(&self.state, limit, args.level.as_deref());
+        let audit_args = json!({
+            "limit": limit,
+            "level": args.level,
+            "target": args.target,
+            "contains": args.contains,
+            "since_ms": args.since_ms,
+        });
+        let filter = logs::LogFilter {
+            level: args.level,
+            target: args.target,
+            contains: args.contains,
+            since_ms: args.since_ms,
+        };
+        let v = logs::log_tail(&self.state, &filter, limit);
         audit::emit("server_log_tail", &audit_args, OUTCOME_OK);
         ok(v)
     }
@@ -212,6 +236,35 @@ impl LabTools {
             Err(e) => {
                 audit::emit("server_db_query", &audit_args, OUTCOME_ERROR);
                 err(e)
+            }
+        }
+    }
+
+    /// Stage a lab row fixture for an offline lab fixture character
+    /// (lab-fixtures FX-04).
+    #[tool(
+        description = "Lab only: stage a row fixture (world, position, missions, exact item counts, tutorials to mark unseen) for a lab fixture character (last name Fx followed by letters) on a GM account that is offline or mid-login (a character whose world entry has not been sent yet counts as offline; a fixture staged then applies at that account's next Play within 10 minutes), named by its full name or the name's last word. Nothing is written now: the server applies it at that character's next Play, takes it once, and drops it unclaimed after 10 minutes. Staging again replaces it. Every refusal is an invalid_params error starting 'stage refused: '; a server database failure is an internal error."
+    )]
+    async fn server_stage_fixture(
+        &self,
+        Parameters(call): Parameters<fixture::StageFixtureCall>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = call.0.clone();
+        match fixture::stage_fixture(&self.state, call).await {
+            Ok(v) => {
+                audit::emit("server_stage_fixture", &audit_args, OUTCOME_OK);
+                ok(v)
+            }
+            Err(e) => {
+                audit::emit("server_stage_fixture", &audit_args, OUTCOME_ERROR);
+                // The FX contract: a refusal is a protocol-level
+                // invalid_params error, unlike the other tools' error results.
+                // A database failure is the server's, not the caller's.
+                if e.internal {
+                    Err(ErrorData::internal_error(e.message, None))
+                } else {
+                    Err(ErrorData::invalid_params(e.message, None))
+                }
             }
         }
     }
@@ -351,8 +404,10 @@ impl ServerHandler for LabTools {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "Cimmeria live-research-lab control endpoint. Fixed tool set: \
              inspect and drive a running SGW server (console, sessions, logs, \
-             content reload, read-only SQL), snapshot live entities and witness \
-             relationships (entity_get/entity_query/witnesses), read one              entity's ability state (ability_state), and capture \
+             content reload, read-only SQL), stage a lab fixture for an \
+             offline lab fixture character (server_stage_fixture), snapshot live \
+             entities and witness relationships (entity_get/entity_query/witnesses), \
+             read one entity's ability state (ability_state), and capture \
              decoded per-session Mercury traffic (packet_tap_start/read/stop).",
         )
     }

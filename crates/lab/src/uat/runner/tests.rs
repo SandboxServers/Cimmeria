@@ -16,7 +16,7 @@ use crate::uat::spec;
 
 /// A pretend client.
 pub(super) struct Fake {
-    tools: HashSet<String>,
+    pub(super) tools: HashSet<String>,
     /// Typed chat line → lines the "server" answers with.
     replies: HashMap<String, Vec<String>>,
     chat: Mutex<Vec<String>>,
@@ -26,10 +26,10 @@ pub(super) struct Fake {
     /// Every call with its arguments (the two-player tests read these).
     pub(super) log: Mutex<Vec<(String, Value)>>,
     /// The flows' client state: running, and the login screen reached.
-    running: Mutex<bool>,
-    login: Mutex<String>,
+    pub(super) running: Mutex<bool>,
+    pub(super) login: Mutex<String>,
     /// The character `client_player_state` reports.
-    name: String,
+    pub(super) name: String,
     /// The lab event store (`client_wait_event`), and the events a tool
     /// call or typed line adds to it (see `ability_tests`).
     pub(super) events: Mutex<Vec<Value>>,
@@ -38,6 +38,8 @@ pub(super) struct Fake {
     pub(super) press_delay_ms: Mutex<i64>,
     /// Scripted replies per tool, popped in order (see `answer`).
     canned: Mutex<HashMap<String, VecDeque<Value>>>,
+    /// Tools that take effect and then report this error (`fail_after`).
+    fail_after: Mutex<HashMap<String, String>>,
 }
 
 /// The next scripted reply for `name`: the front of its queue, or the last
@@ -105,7 +107,18 @@ impl Fake {
             triggers: Mutex::new(vec![]),
             press_delay_ms: Mutex::new(0),
             canned: Mutex::new(HashMap::new()),
+            fail_after: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// `tool` changes the fake's state as usual, then fails with `err`
+    /// (a Play that reached the world and timed out waiting for a window).
+    pub(super) fn fail_after(self, tool: &str, err: &str) -> Self {
+        self.fail_after
+            .lock()
+            .unwrap()
+            .insert(tool.to_string(), err.to_string());
+        self
     }
 
     /// Script the replies `tool` gives, in order; the last one repeats.
@@ -175,7 +188,8 @@ impl ToolInvoker for Fake {
             json,
             ..Default::default()
         };
-        match name {
+        let fail_after = self.fail_after.lock().unwrap().get(name).cloned();
+        let out = match name {
             "lab_client_status" => ok(json!({
                 "running": *self.running.lock().unwrap(),
                 "login_state": *self.login.lock().unwrap(),
@@ -183,6 +197,11 @@ impl ToolInvoker for Fake {
             "lab_client_start" => {
                 *self.running.lock().unwrap() = true;
                 ok(json!({ "pid": 1 }))
+            }
+            "lab_client_stop" => {
+                *self.running.lock().unwrap() = false;
+                *self.login.lock().unwrap() = "not_started".into();
+                ok(json!({ "stopped": true }))
             }
             "lab_login" | "lab_logout" => {
                 *self.login.lock().unwrap() = "character_select".into();
@@ -241,6 +260,11 @@ impl ToolInvoker for Fake {
                 ..Default::default()
             },
             _ => ok(json!({})),
+        };
+        // The call took effect (state above changed) and then failed.
+        match fail_after {
+            Some(e) => ToolOutcome::err(e),
+            None => out,
         }
     }
 }
@@ -617,7 +641,7 @@ async fn plan_only_drives_nothing() {
 /// The tools the router exposes on `main` today: a live `run.json` from
 /// 2026-09-29, the #1099 world tools, the item tools and
 /// `client_window_click`.
-const MAIN_TOOLS: &str =
+pub(super) const MAIN_TOOLS: &str =
     "client_call_native client_console client_cursor_move client_entity_table \
 client_events_read client_hook_install client_hook_list client_hook_remove client_input_focus \
 client_input_key client_input_mouse client_input_release client_input_status client_lua_eval \
@@ -737,17 +761,8 @@ async fn committed_specs_plan_against_main_tools() {
             None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
         }
     }
-    // First session (the smoke run): every row plans as ready, so a row
-    // that picks up an unrouted tool or a standing reason fails here.
-    let first_session: Vec<_> = out
-        .rows
-        .iter()
-        .filter(|r| r.section == "first-session")
-        .collect();
-    assert_eq!(first_session.len(), 14, "the section lost or gained rows");
-    for r in first_session {
-        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
-    }
+    // First session (the smoke run) is planned with and without a server
+    // in `first_session_plan_tests.rs`.
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");

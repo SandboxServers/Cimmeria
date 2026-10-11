@@ -1,0 +1,7 @@
+{
+  "samples": [
+    { "after": "start", "windows": ["SelfStatusWin"] },
+    { "after": "frost", "windows": ["DialogWin", "SelfStatusWin"] },
+    { "after": "close", "windows": ["SelfStatusWin"] }
+  ]
+}

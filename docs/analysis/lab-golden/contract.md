@@ -15,12 +15,14 @@ crates/lab/src/uat/
   spec.rs             GoldenSpec; SectionMeta.golden, RowSpec.golden          (GD-01)
   spec_validate.rs    check_golden                                           (GD-01)
   golden/
-    mod.rs            module doc, pub use, the dead_code allow (GD-02; GD-07 removes the allow)
+    mod.rs            module doc and the module list (GD-02; GD-07 removed the
+                      dead_code allow and the `pub use event::{..}` re-export)
     event.rs          Dir, Event, Variance, RowFingerprint, RunFingerprint   (GD-02)
     labels.rs         EntityLabels                                           (GD-02)
     key_args.rs       OUTBOUND_KEYS, ENTITY_FIELDS, InArg, decode_inbound    (GD-02)
-    normalise.rs      DEFAULT_IGNORE, resolve, glob_match, events_from_tap,
-                      transitions, windows                                   (GD-03)
+    normalise.rs      DEFAULT_IGNORE, resolve, glob_match, normalise_tap,
+                      transitions, windows                                   (GD-03;
+                      GD-07 removed the unused events_from_tap wrapper)
     build.rs          RowInput, RunMeta, build_row, load_row_input,
                       fingerprint_run, fingerprint_run_with                  (GD-03)
     testkit.rs        #[cfg(test)] bundle builders                           (GD-03)

@@ -142,9 +142,35 @@ async fn a_gm_at_the_hub_is_granted_every_enterable_gate_and_the_client_is_told(
 
     assert!(
         capture
-            .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
+            .find_event(tracing::Level::INFO, "debug dial hub", "gm_dial_hub_grant")
             .is_some(),
-        "the grant is an audit event and must WARN with reason=gm_dial_hub_grant"
+        "the grant is an audit event and must INFO with reason=gm_dial_hub_grant"
+    );
+}
+
+/// The GM grant row is an intended grant, so it logs at INFO, not WARN. The
+/// row is still emitted with `reason=gm_dial_hub_grant`, and no WARN carries
+/// that reason. Restoring `tracing::warn!` on the grant row fails the INFO
+/// lookup.
+#[tokio::test]
+async fn gm_gate_grant_logs_at_info() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = hub_manager(GM);
+    let (tx, _rx) = tokio::sync::mpsc::channel(32);
+
+    top_up_gm_dial_hub(1, HUB, &tx, &mut mgr).await.unwrap();
+
+    assert!(
+        capture
+            .find_event(tracing::Level::INFO, "debug dial hub", "gm_dial_hub_grant")
+            .is_some(),
+        "the grant row must log at INFO"
+    );
+    assert!(
+        capture
+            .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
+            .is_none(),
+        "the grant row must not log at WARN"
     );
 }
 
@@ -293,8 +319,8 @@ async fn the_hub_leaves_out_a_gate_with_a_known_unusable_arrival() {
         .contains(&MENFA_SGU));
     assert!(!update_ids(&dial_feedback::drain(&mut rx)).contains(&MENFA_SGU));
     let warn = capture
-        .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
-        .expect("the grant warn");
+        .find_event(tracing::Level::INFO, "debug dial hub", "gm_dial_hub_grant")
+        .expect("the grant info");
     let excluded = warn.fields.get("excluded").cloned().unwrap_or_default();
     assert!(
         excluded.contains("22") && excluded.contains("arrival_* pin"),
@@ -375,8 +401,8 @@ async fn the_world_entry_pass_grants_on_the_hub_world_and_leaves_the_dhd_nothing
         ]
     );
     let warn = capture
-        .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
-        .expect("the grant warn");
+        .find_event(tracing::Level::INFO, "debug dial hub", "gm_dial_hub_grant")
+        .expect("the grant info");
     assert_eq!(
         warn.fields.get("trigger").map(String::as_str),
         Some("world_entry")
