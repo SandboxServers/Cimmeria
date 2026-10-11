@@ -24,8 +24,9 @@ workflows' light Linux jobs stay on GitHub-hosted runners.
 
 ## Colo egress
 
-The colo cannot open TCP connections to Microsoft's `57.150.0.0/15` (Azure Storage),
-which is where GitHub stores job logs, artifacts and test results. Outbound reaches
+The colo cannot open TCP connections to Microsoft's `57.150.0.0/15` or to some of
+`52.239.0.0/16` (both Azure Storage), which is where GitHub stores job logs, artifacts
+and test results. Outbound reaches
 Microsoft, but the replies are lost on the upstream's return path (a ticket is open
 with the colo provider). Without a workaround, every job finishes its steps and then
 hangs on the log upload.
@@ -35,11 +36,17 @@ The workaround is a detour for that one block:
 - Each node runs an `egress` container (`egress_proxy.py`, node role). Runners and
   their job steps get `HTTPS_PROXY=http://egress:3128`, with `NO_PROXY` for localhost
   and the stack's own services. It connects most destinations directly, and sends
-  CONNECTs to `57.0.0.0/8` to the exit proxy named in the node's `.env` as `EGRESS_EXIT`
-  (`deploy.ps1 -EgressExit host:port`).
+  CONNECTs to `57.0.0.0/8` and `52.239.0.0/16` to the exit proxy named in the node's
+  `.env` as `EGRESS_EXIT` (`deploy.ps1 -EgressExit host:port`). A host goes through the
+  exit if any of its addresses is in those ranges: GitHub's results accounts
+  `productionresultssa9`, `16`, `17` and `18` share the stamp `bn9prdstrz04a`, whose
+  DNS rotates `20.150.82.228`, `20.150.88.228` and `52.239.172.36`, and only the last
+  is unreachable. Before `52.239.0.0/16` was added (2026-10-11), every connect that
+  drew `52.239.172.36` first timed out after 20 s (about 450 a day across the three
+  nodes) and failed the artifact upload it carried.
 - The exit proxy (`egress_proxy.py`, exit role, `start-exit.ps1`) runs in Docker on
   the operator's workstation, published only on its colo-VPN address. It only
-  connects to `57.0.0.0/8`. A Windows firewall rule on the VPN adapter admits only the
+  connects to those ranges. A Windows firewall rule on the VPN adapter admits only the
   colo runner subnet:
 
   ```powershell
