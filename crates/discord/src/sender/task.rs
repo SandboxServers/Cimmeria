@@ -15,7 +15,7 @@ use crate::event::{ChannelKind, Event};
 use crate::router::channel_for;
 
 use super::handle::{DiscordSender, SendError, SenderHandle};
-use super::stats::Stats;
+use super::stats::{Outcome, Stats};
 use super::token_bucket::TokenBucket;
 use super::{MAX_RETRIES, QUEUE_CAPACITY, RETRY_BASE};
 
@@ -56,12 +56,14 @@ async fn run_sender_task<S: DiscordSender>(
             // and now). Filtered events don't update the dropped
             // counter — they're not failures.
             stats.filtered.fetch_add(1, Ordering::Relaxed);
+            Outcome::Filtered.count();
             continue;
         }
 
         if crate::mute::is_muted(&cfg.muted_accounts, &event) {
             // A lab or test account: never posted, counted as filtered.
             stats.filtered.fetch_add(1, Ordering::Relaxed);
+            Outcome::Filtered.count();
             continue;
         }
 
@@ -69,6 +71,7 @@ async fn run_sender_task<S: DiscordSender>(
         let channel = channel_for(kind);
         let Some(url) = cfg.webhook_url_for(kind) else {
             stats.dropped_closed.fetch_add(1, Ordering::Relaxed);
+            stats.record_drop(Outcome::NoWebhook, kind);
             continue;
         };
         let rate = cfg.rate_limit_for(kind).unwrap_or(60);
@@ -96,12 +99,7 @@ async fn run_sender_task<S: DiscordSender>(
         };
         if !acquired {
             stats.dropped_rate_limit.fetch_add(1, Ordering::Relaxed);
-            tracing::debug!(
-                target: "cimmeria_discord",
-                channel = channel.as_str(),
-                event = kind.as_str(),
-                "rate-limit drop"
-            );
+            stats.record_drop(Outcome::RateLimited, kind);
             continue;
         }
 
@@ -112,9 +110,11 @@ async fn run_sender_task<S: DiscordSender>(
         match send_with_retries(sender_ref, &url, &body, stats_ref).await {
             Ok(()) => {
                 stats.sent.fetch_add(1, Ordering::Relaxed);
+                Outcome::Sent.count();
             }
             Err(e) => {
                 stats.failed.fetch_add(1, Ordering::Relaxed);
+                Outcome::Failed.count();
                 tracing::warn!(
                     target: "cimmeria_discord",
                     channel = channel.as_str(),
@@ -325,5 +325,64 @@ mod tests {
         // Initial + MAX_RETRIES retries
         assert_eq!(calls.load(Ordering::Relaxed), (MAX_RETRIES + 1) as u64);
         assert_eq!(stats.retried.load(Ordering::Relaxed), MAX_RETRIES as u64);
+    }
+
+    /// Keeps the text of every WARN on this thread, for asserting on
+    /// `discord.dropped`.
+    #[derive(Clone, Default)]
+    struct WarnCapture(Arc<std::sync::Mutex<Vec<String>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for WarnCapture {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            if *event.metadata().level() != tracing::Level::WARN {
+                return;
+            }
+            let mut text = FieldText(String::new());
+            event.record(&mut text);
+            self.0.lock().unwrap().push(text.0);
+        }
+    }
+
+    struct FieldText(String);
+
+    impl tracing::field::Visit for FieldText {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!("{}={:?} ", field.name(), value));
+        }
+    }
+
+    /// A stalled sender lets the queue fill. The first drop WARNs with
+    /// `suppressed=0`; the rest of the burst is counted but not warned.
+    #[tokio::test(flavor = "current_thread")]
+    async fn queue_full_warns_once_for_the_burst() {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        struct Stalled;
+        #[async_trait::async_trait]
+        impl DiscordSender for Stalled {
+            async fn send(&self, _: &str, _: &Value) -> Result<(), SendError> {
+                std::future::pending::<()>().await;
+                Ok(())
+            }
+        }
+        let capture = WarnCapture::default();
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+        let (handle, _task) = spawn(Stalled, test_config(EventToggles::default()));
+
+        for _ in 0..(QUEUE_CAPACITY + 32) {
+            let _ = handle.try_send(login_event());
+        }
+
+        let rows = capture.0.lock().unwrap();
+        assert_eq!(rows.len(), 1, "one WARN for the whole burst");
+        assert!(rows[0].contains("event=\"discord.dropped\""), "{}", rows[0]);
+        assert!(rows[0].contains("outcome=\"dropped_full\""), "{}", rows[0]);
+        assert!(rows[0].contains("suppressed=0 "), "{}", rows[0]);
+        assert_eq!(handle.stats().dropped_full, 32);
     }
 }
