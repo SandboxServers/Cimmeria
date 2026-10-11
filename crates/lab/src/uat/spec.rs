@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use super::tier::Tier;
 
+pub use super::spec_fixture::FixtureSpec;
 pub use super::spec_validate::{validate, without_vars};
 
 /// Current spec schema version.
@@ -55,6 +56,9 @@ pub struct SectionMeta {
     pub character: String,
     #[serde(default)]
     pub fresh: Option<FreshCharacter>,
+    /// Reusable fixture characters, by profile name (`[section.profiles.praxis]`).
+    #[serde(default)]
+    pub profiles: std::collections::BTreeMap<String, FreshCharacter>,
 }
 
 fn default_account() -> String {
@@ -132,6 +136,9 @@ pub struct RowSpec {
     #[serde(default)]
     pub pose: Vec<PoseSpec>,
     // end lab-spec-vocab
+    /// The state the runner establishes before setup (lab-fixtures).
+    #[serde(default)]
+    pub fixture: Option<FixtureSpec>,
 }
 
 fn default_native() -> Tier {
@@ -604,3 +611,7 @@ pub fn parse(text: &str) -> Result<SectionSpec, String> {
 #[cfg(test)]
 #[path = "spec_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "spec_fixture_tests.rs"]
+mod fixture_tests;
