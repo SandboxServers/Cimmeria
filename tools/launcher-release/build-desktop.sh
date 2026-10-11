@@ -16,14 +16,45 @@
 #                    checks each one's architecture and digest
 #   launcher         build the UI and the 64-bit launcher, pinned to the
 #                    SHA-256 of each staged file; a release exports
-#                    CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH and
-#                    LAUNCHER_MANIFEST_PUBKEY_HEX first
+#                    CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
+#                    CIMMERIA_LAUNCHER_VERSION, LAUNCHER_MANIFEST_PUBKEY_HEX
+#                    and, once the updater key exists, LAUNCHER_UPDATER_PUBKEY
 #   verify           check the result: bitness, the telemetry DLL is not a
-#                    lab-bridge build, and the files beside the launcher are
-#                    the ones it was pinned to
-#   package <tag>    zip the launcher and its resources into
-#                    artifacts/stargate-worlds-launcher-desktop-windows-<tag>.zip
+#                    lab-bridge build, the files beside the launcher are the
+#                    ones it was pinned to, and the release stamps reached it
+#   package          zip the launcher and its resources into
+#                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
+#                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
+#   play-pieces      after stage: copy the three staged Play pieces into
+#                    artifacts/play-pieces/ with a play-pieces.sha256 list,
+#                    for the release's separate mac-pieces job
+#   play-pieces-in <dir> <sha256>
+#                    check <dir>/play-pieces.sha256 against <sha256> and each
+#                    piece against it, then put them back as the staged files
+#   mac-helpers      build the two Windows pieces only the macOS app carries,
+#                    for Install under Wine: the 64-bit
+#                    cimmeria-archive-worker.exe and the 32-bit
+#                    cimmeria-prerequisite-worker.exe
+#   mac-pieces       after stage (or play-pieces-in) and mac-helpers: copy the
+#                    five Windows pieces the macOS app carries into
+#                    artifacts/mac-pieces/ with a
+#                    mac-pieces.sha256 listing them, for
+#                    build-desktop-macos.sh pieces on the macOS runner
+#   feed-tool        build the release_feed example (always the release
+#                    profile) that sign and verify-feed run; never with the
+#                    signing key in the environment
+#   sign <version> <url> <notes>
+#                    Minisign-sign the zip with LAUNCHER_UPDATER_MINISIGN_KEY
+#                    (and _PASSWORD) and write artifacts/<zip>.sig and
+#                    artifacts/latest.json, the feed offering it from <url>;
+#                    runs the built tool, no cargo
+#   verify-feed <version>
+#                    run the launcher engine's own feed, signature and zip
+#                    checks on those files against LAUNCHER_UPDATER_PUBKEY
+#   feed-dry-run <version>
+#                    feed-tool, then sign and verify-feed with a throwaway key
+#                    made here, for the PR dry run, which has no real key
 #   paths            print the artifact paths
 #
 # PROFILE=release (default) or dev. Output goes under cargo's target dir
@@ -55,6 +86,18 @@ TELEMETRY_DLL="$TARGET_DIR/$I686/$PROFILE_DIR/cimmeria_client_telemetry.dll"
 STAGED="$DESKTOP/shell/resources/windows"
 OUT="$DESKTOP_DIR/$PROFILE_DIR"
 LAUNCHER="$OUT/cimmeria-launcher-desktop.exe"
+# The release names (docs/analysis/launcher-consolidation/work-packets.md,
+# "Release names"). The launcher's updater offers whatever latest.json names,
+# but players and docs link to the zip by this exact name on launcher-current.
+ZIP_NAME="StargateWorlds-Launcher-windows-x64.zip"
+ZIP="artifacts/$ZIP_NAME"
+FEED="artifacts/latest.json"
+# The macOS app's Install pieces: the archive worker for the host (x86-64)
+# and the prerequisite worker for i686, both of the desktop workspace.
+ARCHIVE_WORKER="$OUT/cimmeria-archive-worker.exe"
+PREREQUISITE_WORKER="$DESKTOP_DIR/$I686/$PROFILE_DIR/cimmeria-prerequisite-worker.exe"
+MAC_PIECES="artifacts/mac-pieces"
+PLAY_PIECES="artifacts/play-pieces"
 
 # The staged file name of each piece and the build variable that pins it.
 PIECES=(
@@ -90,10 +133,23 @@ print(hex(struct.unpack_from("<H", d, pe + 4)[0]))
 PY
 }
 
-# Exit 0 when the file contains the given text.
+# Return 0 when the file contains the given text, 1 when it does not. Anything
+# else (an unreadable file, an empty needle, python failing) ends the build, so
+# a "does not contain" check can never pass because the search did not run.
 has_text() {
-  python -c "import sys; sys.exit(0 if open(sys.argv[1],'rb').read().find(sys.argv[2].encode()) >= 0 else 1)" \
-    "$(winpath "$1")" "$2"
+  [ -n "$2" ] || die "has_text: empty search text for $1"
+  local rc=0
+  python -c '
+import sys
+try:
+    data = open(sys.argv[1], "rb").read()
+except OSError as error:
+    print(f"cannot read {sys.argv[1]}: {error}", file=sys.stderr)
+    sys.exit(2)
+sys.exit(0 if data.find(sys.argv[2].encode()) >= 0 else 1)
+' "$(winpath "$1")" "$2" || rc=$?
+  [ "$rc" -le 1 ] || die "could not search $1 (exit $rc)"
+  return "$rc"
 }
 
 stage_helpers() {
@@ -176,27 +232,176 @@ stage_verify() {
       || die "the launcher does not embed its release tag $CIMMERIA_LAUNCHER_TAG"
     echo "launcher embeds release tag $CIMMERIA_LAUNCHER_TAG"
   fi
+  # A stamp that never reached the compile would leave the package version
+  # (the updater compares against it) or a Disabled updater, silently.
+  if [ -n "${CIMMERIA_LAUNCHER_VERSION:-}" ]; then
+    has_text "$LAUNCHER" "$CIMMERIA_LAUNCHER_VERSION" \
+      || die "the launcher does not embed its version $CIMMERIA_LAUNCHER_VERSION"
+    echo "launcher embeds version $CIMMERIA_LAUNCHER_VERSION"
+  fi
+  if [ -n "${LAUNCHER_UPDATER_PUBKEY:-}" ]; then
+    has_text "$LAUNCHER" "$LAUNCHER_UPDATER_PUBKEY" \
+      || die "the launcher does not embed LAUNCHER_UPDATER_PUBKEY"
+    echo "launcher embeds the updater public key"
+  fi
   echo "verified: 64-bit launcher pinned to its 32-bit launch worker and DLLs (player telemetry build)"
 }
 
 stage_package() {
-  local tag="${1:?package needs the release tag}"
   need "$LAUNCHER"
-  local name="stargate-worlds-launcher-desktop-windows-$tag"
-  local root="artifacts/$name"
-  rm -rf "$root" "artifacts/$name.zip" "artifacts/$name.zip.sha256"
+  local root="artifacts/package-root"
+  rm -rf "$root" "$ZIP" "$ZIP.sha256" "$ZIP.sig" "$FEED"
   mkdir -p "$root"
   cp "$LAUNCHER" "$root/"
   # Everything the bundle configuration ships: windows/ and graphics/.
   cp -R "$OUT/windows" "$OUT/graphics" "$root/"
-  python - "$(winpath artifacts)" "$name" <<'PY'
-import shutil, sys
-shutil.make_archive(f"{sys.argv[1]}/{sys.argv[2]}", "zip", sys.argv[1], sys.argv[2])
+  # The executable sits at the zip's root, not in a folder: the self-update
+  # swap (engine updater/apply/zip_swap.rs) refuses a zip without exactly one
+  # root .exe. Files only, sorted, `/` separators.
+  python - "$(winpath "$root")" "$(winpath "$ZIP")" <<'PY'
+import os, sys, zipfile
+root, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for here, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(here, name)
+            z.write(path, os.path.relpath(path, root).replace(os.sep, "/"))
 PY
   rm -rf "$root"
-  need "artifacts/$name.zip"
-  printf '%s  %s\n' "$(sha "artifacts/$name.zip")" "$name.zip" > "artifacts/$name.zip.sha256"
-  cat "artifacts/$name.zip.sha256"
+  need "$ZIP"
+  printf '%s  %s\n' "$(sha "$ZIP")" "$ZIP_NAME" > "$ZIP.sha256"
+  cat "$ZIP.sha256"
+}
+
+stage_mac_helpers() {
+  cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+    --bin cimmeria-archive-worker "${PROFILE_FLAG[@]}" --target-dir "$DESKTOP_DIR"
+  cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-runtime-probe \
+    --bin cimmeria-prerequisite-worker "${PROFILE_FLAG[@]}" --target "$I686" --target-dir "$DESKTOP_DIR"
+  need "$ARCHIVE_WORKER"; need "$PREREQUISITE_WORKER"
+  [ "$(pe_machine "$ARCHIVE_WORKER")" = 0x8664 ] || die "$ARCHIVE_WORKER is not 64-bit"
+  [ "$(pe_machine "$PREREQUISITE_WORKER")" = 0x14c ] || die "$PREREQUISITE_WORKER is not 32-bit"
+}
+
+# The three Play pieces are the staged files the Windows launcher was pinned
+# to, so both platforms ship the same bytes from one build. The manifest is
+# written with printf, not sha256sum, whose MSYS build marks names with `*`.
+stage_mac_pieces() {
+  need "$ARCHIVE_WORKER"; need "$PREREQUISITE_WORKER"
+  local name var
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    need "$STAGED/$name"
+  done
+  rm -rf "$MAC_PIECES"
+  mkdir -p "$MAC_PIECES"
+  cp "$ARCHIVE_WORKER" "$PREREQUISITE_WORKER" "$MAC_PIECES/"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    cp "$STAGED/$name" "$MAC_PIECES/"
+  done
+  local file
+  for name in cimmeria-archive-worker.exe cimmeria-prerequisite-worker.exe \
+    cimmeria-launch-worker.exe cimmeria_client_patches.dll cimmeria_client_telemetry.dll; do
+    file="$MAC_PIECES/$name"
+    need "$file"
+    printf '%s  %s\n' "$(sha "$file")" "$name"
+  done > "$MAC_PIECES/mac-pieces.sha256"
+  cat "$MAC_PIECES/mac-pieces.sha256"
+}
+
+# The release builds the macOS pieces in their own job, off the Windows
+# release's critical path. play-pieces hands that job the three staged Play
+# pieces the Windows launcher was pinned to; play-pieces-in takes them back in,
+# checked against the list's digest from the Windows job's output, a channel
+# separate from the artifact store.
+stage_play_pieces() {
+  local name var
+  rm -rf "$PLAY_PIECES"
+  mkdir -p "$PLAY_PIECES"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    need "$STAGED/$name"
+    cp "$STAGED/$name" "$PLAY_PIECES/"
+    printf '%s  %s\n' "$(sha "$PLAY_PIECES/$name")" "$name"
+  done > "$PLAY_PIECES/play-pieces.sha256"
+  cat "$PLAY_PIECES/play-pieces.sha256"
+}
+
+stage_play_pieces_in() {
+  local dir="${1:?play-pieces-in needs the artifact directory}" expected="${2:-}"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] \
+    || die "play-pieces-in needs the SHA-256 of play-pieces.sha256 from the Windows job, got '$expected'"
+  local list="$dir/play-pieces.sha256"
+  need "$list"
+  [ "$(sha "$list")" = "$expected" ] || die "$list is not the one the Windows job wrote"
+  [ "$(wc -l < "$list" | tr -d ' ')" -eq "${#PIECES[@]}" ] \
+    || die "$list must list exactly ${#PIECES[@]} pieces"
+  local name var digest
+  mkdir -p "$STAGED"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    digest="$(awk -v n="$name" '$2 == n { print $1 }' "$list")"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || die "$list has no single digest for $name"
+    need "$dir/$name"
+    [ "$(sha "$dir/$name")" = "$digest" ] || die "$dir/$name is not the file the Windows job staged"
+    cp "$dir/$name" "$STAGED/$name"
+  done
+  echo "took in the three Play pieces the Windows launcher was pinned to"
+}
+
+# The release-profile example that signs and checks the feed with the
+# launcher engine's own code (engine/examples/release_feed.rs). It is always a
+# release build, whatever PROFILE says.
+FEED_TOOL="$DESKTOP_DIR/release/examples/release_feed"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) FEED_TOOL="$FEED_TOOL.exe" ;; esac
+
+# Built in its own step, before any key is in the environment: compiling it
+# runs build scripts and proc macros of its dependencies for the first time,
+# and none of them may see the signing key.
+stage_feed_tool() {
+  cargo build --locked --release --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+    --example release_feed --target-dir "$DESKTOP_DIR"
+  need "$FEED_TOOL"
+}
+
+# Runs the already-built tool. No cargo here, so `sign` compiles nothing while
+# the key is set.
+release_feed() {
+  need "$FEED_TOOL"
+  "$FEED_TOOL" "$@"
+}
+
+stage_sign() {
+  local version="${1:?sign needs the version}" url="${2:?sign needs the zip URL}" notes="${3:-}"
+  need "$ZIP"
+  [ -n "${LAUNCHER_UPDATER_MINISIGN_KEY:-}" ] || die "sign needs LAUNCHER_UPDATER_MINISIGN_KEY"
+  release_feed sign "$(winpath "$ZIP")" "$version" "$url" "$notes" "$(winpath artifacts)"
+  need "$ZIP.sig"; need "$FEED"
+}
+
+stage_verify_feed() {
+  local version="${1:?verify-feed needs the version}"
+  need "$ZIP"; need "$ZIP.sig"; need "$FEED"
+  [ -n "${LAUNCHER_UPDATER_PUBKEY:-}" ] || die "verify-feed needs LAUNCHER_UPDATER_PUBKEY"
+  release_feed verify "$(winpath "$FEED")" "$(winpath "$ZIP")" "$(winpath "$ZIP.sig")" \
+    "$LAUNCHER_UPDATER_PUBKEY" "$version"
+}
+
+stage_feed_dry_run() {
+  local version="${1:?feed-dry-run needs the version}"
+  stage_feed_tool
+  local keys; keys="$(mktemp -d)"
+  # Throwaway: made here, used once, deleted. Never a release key.
+  export LAUNCHER_UPDATER_MINISIGN_PASSWORD="dry-run-$RANDOM$RANDOM"
+  release_feed keygen "$(winpath "$keys")"
+  LAUNCHER_UPDATER_MINISIGN_KEY="$(cat "$keys/secret.key")" \
+    stage_sign "$version" \
+    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-dry-run/$ZIP_NAME" \
+    "Dry run $version"
+  LAUNCHER_UPDATER_PUBKEY="$(cat "$keys/public.key")" stage_verify_feed "$version"
+  rm -rf "$keys"
 }
 
 case "${1:-}" in
@@ -204,7 +409,15 @@ case "${1:-}" in
   stage) stage_stage ;;
   launcher) stage_launcher ;;
   verify) stage_verify ;;
-  package) shift; stage_package "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" ;;
-  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
+  package) stage_package ;;
+  mac-helpers) stage_mac_helpers ;;
+  mac-pieces) stage_mac_pieces ;;
+  play-pieces) stage_play_pieces ;;
+  play-pieces-in) shift; stage_play_pieces_in "$@" ;;
+  feed-tool) stage_feed_tool ;;
+  sign) shift; stage_sign "$@" ;;
+  verify-feed) shift; stage_verify_feed "$@" ;;
+  feed-dry-run) shift; stage_feed_dry_run "$@" ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
+  *) sed -n '2,58p' "$0" >&2; exit 2 ;;
 esac

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::mercury::read_wstring;
+use crate::test_support::{make_space_manager, LogCapture};
 
 // Helper: encode a WSTRING.
 fn wstring(s: &str) -> Vec<u8> {
@@ -195,4 +196,54 @@ fn parse_wstring_array_clamps_at_exact_boundary() {
         MAX_MEMBERS_PER_REQUEST,
         "exactly MAX+1 names must be clamped to MAX"
     );
+}
+
+/// Every short-args early return logs one `contacts.call_malformed` row that
+/// names the op, both byte counts, the entity and the account.
+///
+/// Revert-verifier: removing the `warn_malformed_call` call at any one of the
+/// five sites in `dispatch` leaves that op without a row and fails its check.
+#[tokio::test]
+async fn short_args_log_a_malformed_row_per_op() {
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(1000);
+        e.account_id = Some(900);
+        e.stamp_log_names(Some("Teal'c"), Some("teal"));
+    }
+
+    let capture = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(8);
+    let short = [0u8; 2];
+    for (index, op, need) in [
+        (DELETE, "contactListDelete", "4"),
+        (RENAME, "contactListRename", "4"),
+        (FLAGS_UPDATE, "contactListFlagsUpdate", "8"),
+        (ADD_MEMBERS, "contactListAddMembers", "4"),
+        (REMOVE_MEMBERS, "contactListRemoveMembers", "4"),
+    ] {
+        assert!(
+            dispatch(1, index, &short, &tx, &mut mgr).await,
+            "{op} handled"
+        );
+        let row = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("op", op))
+            .unwrap_or_else(|| panic!("no malformed row for {op}"));
+        for (k, v) in [
+            ("event", "contacts.call_malformed"),
+            ("reason", "malformed_args"),
+            ("args_len", "2"),
+            ("need", need),
+            ("entity_id", "1"),
+            ("entity_name", "Teal'c"),
+            ("account_id", "900"),
+            ("account_name", "teal"),
+        ] {
+            assert!(row.has_field(k, v), "{op}: field {k}={v}: {:?}", row.fields);
+        }
+    }
 }

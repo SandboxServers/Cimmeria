@@ -1,11 +1,12 @@
 ---
 type: how-to
 audience: New Cimmeria contributors setting up the reverse-engineering toolchain (Ghidra MCP + x64dbg MCP + Claude Code)
-last_updated: 2026-09-27
+last_updated: 2026-10-11
 prerequisites: [Windows 10/11, PowerShell 7+, ~10 GB free disk]
 companion_docs:
   - reverse-engineering-with-claude.md
   - sgw-live-debugging.md
+  - lab-contributor-setup.md
   - ../reverse-engineering/toolchain/install-ghidra-mcp.md
 ---
 
@@ -190,10 +191,10 @@ With both MCPs wired, Claude Code can:
 
 The lab is the runtime complement to Ghidra's static view: Ghidra finds the *where*, the lab proves the *what* (see [`reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md#static-vs-runtime--ghidra-x64dbg-and-the-lab)). Two entries in `.mcp.json` wire it (both are in [`.mcp.json.example`](../../.mcp.json.example)):
 
-- **`cimmeria-lab`** — the supervisor. The supported setup is one shared daemon for every session (`type: http` with a `headersHelper`, installed by `tools/lab/daemon.ps1`; see [The shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http)); the stdio entry below is the older one-per-session setup. Build and install it with [`tools/lab/install.ps1`](../../tools/lab/install.ps1) (Windows only; see [Install or update the lab](live-research-lab.md#install-or-update-the-lab)), which also installs the bridge DLL, the patch DLL and `sgw-start32.exe`. Point the `command` at `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` and set `CIMMERIA_LAB_INSTALL_DIR` to your SGW install. To use the merged timeline it also needs `CIMMERIA_LAB_MCP_URL` + `CIMMERIA_LAB_MCP_TOKEN` pointing at the server endpoint below. The client bridge only exists in a telemetry DLL built `--features lab-bridge`. The supervisor is 64-bit and `SGW.exe` is 32-bit, so it injects that DLL through the i686 `sgw-start32.exe` helper (#985), which the install script puts beside `cimmeria-lab.exe` (or point `CIMMERIA_LAB_START32` at another copy). Without it `lab_client_start` refuses with a message saying so.
-- **`lab-server`** (http) — the in-server endpoint, present only when `cimmeria-server` was started with `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` set (fail-closed). Locally that is `http://127.0.0.1:8444/mcp`; on the colo it is the WireGuard address only — see [`docs/operations/colo-deploy.md`](../operations/colo-deploy.md).
+- **`cimmeria-lab`** — the supervisor, as one shared daemon for every session: a `type: http` entry with a `headersHelper` and a `timeout`, served by the `CimmeriaLabDaemon` task that `tools/lab/daemon.ps1 install` registers ([The shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http)). That is the default and the supported setup; a stdio entry per session is the older one. Build and install the lab with [`tools/lab/install.ps1`](../../tools/lab/install.ps1) (Windows only; it adds the `i686-pc-windows-msvc` Rust target itself), which also installs the bridge DLL, the patch DLL and `sgw-start32.exe` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)). The daemon's settings live in `labd.env`, not in `.mcp.json`: `CIMMERIA_LAB_INSTALL_DIR` for your SGW install, and `CIMMERIA_LAB_MCP_URL` for the server endpoint below, whose token `CIMMERIA_LAB_MCP_TOKEN` the daemon reads from your user environment ([the keys](live-research-lab.md#labdenv-keys)). The client bridge only exists in a telemetry DLL built `--features lab-bridge`. The supervisor is 64-bit and `SGW.exe` is 32-bit, so it injects that DLL through the i686 `sgw-start32.exe` helper (#985), which the install script puts beside `cimmeria-lab.exe` (or point `CIMMERIA_LAB_START32` at another copy). Without it `lab_client_start` refuses with a message saying so.
+- **`lab-server`** (http) — the in-server endpoint, present only when `cimmeria-server` was started with `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` set (fail-closed). Locally that is `http://127.0.0.1:8451/mcp` (8444 is the dev supervisor's default port on a dev box); on the colo it is the WireGuard address only — see [`docs/operations/colo-deploy.md`](../operations/colo-deploy.md).
 
-The full tool set, the experiment loop, and the rules of the road are in [`docs/guides/live-research-lab.md`](live-research-lab.md); the design is the ADR at [`docs/architecture/live-research-lab.md`](../architecture/live-research-lab.md).
+Setting the lab up end to end on your own machine (local server, secrets, Claude Code or Codex registration, the first UAT row) is [`lab-contributor-setup.md`](lab-contributor-setup.md). The full tool set, the experiment loop, and the rules of the road are in [`docs/guides/live-research-lab.md`](live-research-lab.md); the design is the ADR at [`docs/architecture/live-research-lab.md`](../architecture/live-research-lab.md).
 
 The workflow that puts them together — when to invoke which agent, how to hand off findings, what NOT to delegate — is documented in [`docs/guides/reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md). Read it before your first dig.
 

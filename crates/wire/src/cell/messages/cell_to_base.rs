@@ -810,6 +810,8 @@ pub enum CellToBaseMsg {
     /// 0 for death, destination world_id for gate travel).
     ContactListPresenceEvent {
         player_name: String,
+        /// The subject's `sgw_player.player_id`, paired with `player_name`.
+        player_id: i32,
         event_id: u32,
         data_value: i32,
     },

@@ -10,6 +10,7 @@ pub(crate) mod install_event;
 pub mod patch_events;
 mod session;
 pub use session::{passthrough_environment, start, Session};
+pub mod session_loop;
 #[cfg(test)]
 mod tests;
 pub mod transport;

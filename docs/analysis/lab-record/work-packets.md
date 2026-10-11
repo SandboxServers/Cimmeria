@@ -576,7 +576,8 @@ Tests (unit):
   (settle 500 ms). Fails if the start snapshot is taken at or after the
   anchor's tick (tick 32 still holds the old state, on purpose).
 - `timeouts_have_floors_ceilings_and_quarter_seconds`: `clause_timeout_ms(0)
-  == 3000`, `(1600) == 4750`, `(40000) == 60000`; `dialog_timeout_ms(1) == 2000`;
+  == 3000`, `(1600) == 4750`, `(40000) == 60000`; `dialog_timeout_ms(0) == 2000`,
+  `dialog_timeout_ms(1) == 2250` (round up to 250, D-LR7);
   `server_wait_timeout_ms(17000) == 34000`.
 - `a_removed_mission_is_an_absent_clause` and
   `an_item_count_change_is_one_clause_per_container`.

@@ -38,6 +38,7 @@ LIVE_DB_CRATES=(
   cimmeria-wire
   cimmeria-cell-catalog
   cimmeria-names
+  cimmeria-content-engine
   cimmeria-minigame
   cimmeria-base-session
   cimmeria-cell-world

@@ -65,6 +65,13 @@ pub struct DevSessionRequest {
     pub launcher_version: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// The game account the player logs in with (TG-NET-18, D-TG14). The
+    /// server signs it into the token so world entry can find this
+    /// session's client telemetry. Left out of the body when `None`, so the
+    /// request is what it was before the field existed and an older server
+    /// is not handed a key it does not know.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -151,7 +158,23 @@ mod tests {
             git_sha: "abc".into(),
             launcher_version: "0.1.0".into(),
             tags: vec![],
+            account_name: None,
         }
+    }
+
+    /// No account: the body has no `account_name` key, byte-for-byte the
+    /// body an older launcher sent. An account goes out under that key,
+    /// which the server's `DevSessionRequest` reads.
+    #[test]
+    fn account_name_is_sent_only_when_set() {
+        let body = serde_json::to_value(fake_request()).unwrap();
+        assert!(body.get("account_name").is_none(), "{body}");
+        let body = serde_json::to_value(DevSessionRequest {
+            account_name: Some("sgc_login".into()),
+            ..fake_request()
+        })
+        .unwrap();
+        assert_eq!(body["account_name"], "sgc_login");
     }
 
     fn fake_response_body(token: &str, exp_ms: i64) -> serde_json::Value {

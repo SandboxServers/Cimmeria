@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
@@ -14,7 +15,7 @@ use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
 use cimmeria_base_session::base::helpers::{
-    log_session_end, session_idle_ms, LogoffRequested, SessionEndRow,
+    log_session_end, session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 use cimmeria_base_session::base::plugin::BasePlugins;
 
@@ -24,9 +25,9 @@ use crate::minigame::SessionRegistry;
 
 use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
-    archetype_name, black_market, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
-    session_identity, world_entry::route_cell_message, BaseError, ConnectedClientState,
-    OnlinePlayer,
+    archetype_name, black_market, connect_loop::run_connect_loop, dispatch_timing, outbox,
+    resources::ResourceCache, session_identity, world_entry::route_cell_message, BaseError,
+    ConnectedClientState, OnlinePlayer,
 };
 
 /// BaseApp service -- manages persistent entity state and client connections.
@@ -313,7 +314,10 @@ impl BaseService {
         if let Some(mut cell_rx) = cell_rx {
             tokio::spawn(async move {
                 tracing::debug!("Base service CellToBase message handler started");
+                let mut slow_throttle = dispatch_timing::SlowDispatchThrottle::default();
                 while let Some(msg) = cell_rx.recv().await {
+                    let kind = msg.kind();
+                    let started = Instant::now();
                     route_cell_message(
                         msg,
                         &transport_for_cell,
@@ -327,6 +331,14 @@ impl BaseService {
                         &plugins_for_cell,
                     )
                     .await;
+                    let finished = Instant::now();
+                    dispatch_timing::note_dispatch(
+                        &mut slow_throttle,
+                        kind,
+                        finished.duration_since(started),
+                        cell_rx.len(),
+                        finished,
+                    );
                 }
                 tracing::debug!("Base service CellToBase message handler exited");
             });
@@ -422,6 +434,8 @@ impl BaseService {
                 idle_ms: session_idle_ms(c),
                 in_world: c.listed_online,
                 world: c.world_name.as_deref(),
+                session_kind: c.session_kind,
+                channel: session_channel_health(c),
             });
             ended += 1;
         }
@@ -470,6 +484,8 @@ mod tests {
         player.player_name = Some("Lomiada".to_string());
         player.active_player_id = Some(71);
         player.account_id = 9;
+        // TG-NET-17: the shutdown row carries the lab/player flag too.
+        player.session_kind = Some("lab");
         let account_only = test_default_connected_client_state();
 
         let mut svc = BaseService::new(&ServerConfig::default());
@@ -495,6 +511,10 @@ mod tests {
         assert!(row.has_field("player_name", "Lomiada"));
         assert!(row.has_field("account_id", "9"));
         assert!(row.has_field("addr", "127.0.0.1:54810"));
+        assert!(
+            row.has_field("cimmeria.session_kind", "lab"),
+            "the shutdown row lacks the session kind: {row:#?}"
+        );
 
         let count = capture
             .find_message(

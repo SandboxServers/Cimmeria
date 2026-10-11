@@ -44,9 +44,16 @@ pub async fn dispatch(
                 if respawn_refusal(entity_id, "callForAid", Some(respawner_id), space_mgr) {
                     return true;
                 }
+                let who = space_mgr.player_identity(entity_id);
+                let world = space_mgr.get_entity_world_name(entity_id);
                 tracing::info!(
                     entity_id,
                     entity_name = space_mgr.entity_label(entity_id),
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    world = world.as_deref(),
                     respawner_id,
                     respawner_name = cimmeria_names::book().respawner(respawner_id),
                     "callForAid"
@@ -72,10 +79,17 @@ pub async fn dispatch(
                 respawn::handle_respawn(entity_id, respawner_id, tx, space_mgr).await;
                 if let (Some(b), Some(a)) = (before, snap(space_mgr)) {
                     let dead = crate::cell::combat::state::BSF_DEAD;
+                    let who = space_mgr.player_identity(entity_id);
+                    let world = space_mgr.get_entity_world_name(entity_id);
                     tracing::info!(
                         target: "player.respawn",
                         entity_id,
                         entity_name = space_mgr.entity_label(entity_id),
+                        account_id = who.account_id,
+                        account_name = who.account_name,
+                        player_id = who.player_id,
+                        player_name = who.player_name,
+                        world = world.as_deref(),
                         respawner_id,
                         respawner_name = cimmeria_names::book().respawner(respawner_id),
                         state_flags_before = b.0,

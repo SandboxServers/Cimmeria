@@ -36,8 +36,8 @@ x-runner: &runner
   # Hooks are read per job, so deploy.ps1 updates them without recreating a runner.
 
 services:
-  # Routing HTTPS proxy for the runners: CONNECTs to 57.0.0.0/8 (Azure Storage
-  # ranges the colo can't reach, README "Colo egress") go to the exit proxy in
+  # Routing HTTPS proxy for the runners: CONNECTs to 57.0.0.0/8 and 52.239.0.0/16
+  # (Azure Storage ranges the colo can't reach, README "Colo egress") go to the exit proxy in
   # EGRESS_EXIT; everything else connects directly. Without EGRESS_EXIT it is a
   # plain direct proxy.
   # The node's shared compile cache: every runner here uses it as its sccache
@@ -164,7 +164,7 @@ services:
       com.centurylinklabs.watchtower.enable: "false"
     environment:
       EGRESS_EXIT: ${EGRESS_EXIT:-}
-    entrypoint: ["sh", "-c", 'exec python -I -u /egress_proxy.py --listen 0.0.0.0:3128 $${EGRESS_EXIT:+--via $$EGRESS_EXIT --via-dst 57.0.0.0/8}']
+    entrypoint: ["sh", "-c", 'exec python -I -u /egress_proxy.py --listen 0.0.0.0:3128 $${EGRESS_EXIT:+--via $$EGRESS_EXIT --via-dst 57.0.0.0/8 52.239.0.0/16}']
   dind1:
     <<: *dind
     volumes:

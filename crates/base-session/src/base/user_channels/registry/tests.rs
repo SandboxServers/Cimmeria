@@ -267,6 +267,39 @@ fn leave_all_removes_the_entity_from_every_channel() {
 fn leave_all_on_an_entity_in_no_channel_is_a_no_op() {
     let reg = UserChannelRegistry::new();
     reg.join("chat", &key("chat"), 1);
-    reg.leave_all(999);
+    assert!(reg.leave_all(999).is_empty(), "nothing left");
     assert_eq!(reg.channel_count(), 1, "untouched");
+}
+
+/// TG-SOC-14: `leave_all` returns each channel it left as
+/// `(wire_id, display_name, deleted)`, in wire-id order: `deleted` is false
+/// where a bystander keeps the channel and true where the leave emptied it.
+#[test]
+fn leave_all_returns_each_channel_left_with_its_name_and_deleted_flag() {
+    let reg = UserChannelRegistry::new();
+    let JoinOutcome::Joined {
+        wire_id: chat_id, ..
+    } = reg.join("Chat", &key("Chat"), 1)
+    else {
+        panic!("expected Joined");
+    };
+    let JoinOutcome::Joined {
+        wire_id: roleplay_id,
+        ..
+    } = reg.join("roleplay", &key("roleplay"), 1)
+    else {
+        panic!("expected Joined");
+    };
+    reg.join("chat", &key("chat"), 2);
+
+    let left = reg.leave_all(1);
+
+    assert_eq!(
+        left,
+        vec![
+            (chat_id, "Chat".to_string(), false),
+            (roleplay_id, "roleplay".to_string(), true),
+        ],
+        "chat keeps its bystander; roleplay was emptied and deleted"
+    );
 }

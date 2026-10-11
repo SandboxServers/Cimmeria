@@ -76,7 +76,7 @@ client-side rows (`client.native`, `launcher.client_log`,
 `launcher.debug_log`, `launcher.session_meta`) to the SigNoz service
 `cimmeria-client` and nowhere else. Each row carries the token's
 `session_id` and `install_id`, `cimmeria.session_kind` (`lab` or
-`player`) and `lab`; `client.native` rows add the DLL's event name as
+`player`) and `lab`, and `client_pid` when the upload's `X-Cimmeria-Client-Pid` header carried one (absent from older DLLs, never 0); `client.native` rows add the DLL's event name as
 `client_target` and a few keys lifted out of its `fields` bag. The full
 table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
 
@@ -321,7 +321,7 @@ one whose DLL never went in.
 ## Token format
 
 ```text
-payload = base64url(JSON {iss, sub, sid, iat, exp, scope, kind?})
+payload = base64url(JSON {iss, sub, sid, iat, exp, scope, kind?, acct?, mid?})
 sig     = base64url(HMAC-SHA256(secret, payload))
 token   = payload || "." || sig
 ```
@@ -333,6 +333,36 @@ a player token is byte-identical to one minted before the claim existed
 and older tokens still decode. It is signed, so an upload cannot relabel
 itself, but minting is open, so it is a filter label and never a
 privilege. A refresh keeps it. Any other requested kind is a 400.
+
+`mid` is the request's `machine_id`, which every launcher already sends:
+a truncated SHA-256 of the Windows `MachineGuid` (of the host name on other
+platforms and in the desktop launcher), so the raw `MachineGuid` never
+leaves the machine. It is omitted when the request's `machine_id` is blank.
+`acct` is the game account named in the mint request's optional
+`account_name` field, absent when the request has no name or a blank one.
+No launcher sends one today, because the launcher mints before the game
+logs in. A name over 20 bytes (the game login's own cap) or with a control
+character is a 400. Both are signed labels, not proof of identity, and a
+refresh keeps both.
+
+The mint and every refresh record the stream in
+`cimmeria_auth::auth::client_telemetry` (TG-NET-18, owner decision D-TG14)
+under its `mid`, its `acct` (ASCII case ignored) and the address the
+request came from. The `World entry complete` row joins on the game
+session's address:
+
+| `client_telemetry` | When | Extra fields |
+| --- | --- | --- |
+| `present` | A live stream names the session's account, or exactly one machine has a live stream from the session's address | `client_telemetry_session_id` (the `session_id` on the stream's replayed rows), `client_machine_id` |
+| `ambiguous` | Several machines have live streams from the address, such as a shared NAT | `client_telemetry_candidates` |
+| `absent` | Streams have been recorded since boot, none matches | none |
+| `unknown` | No stream has been recorded since boot | none |
+
+Anyone can mint a token under any machine id or account name, so
+`present` and `client_telemetry_session_id` are a launcher's claim, not
+proof. The registry is in-process and holds at most 4096 streams per
+index; a stream lapses at its token's `exp`, and a stale refresh never
+replaces a newer stream for the same machine.
 
 `iat` is the **original mint** time and survives every refresh, so
 `exp` − `iat` is 8 hours only on a freshly minted token and shrinks

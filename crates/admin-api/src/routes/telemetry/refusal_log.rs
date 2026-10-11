@@ -149,9 +149,11 @@ impl RefusalLog {
             route = route.path(),
             reason,
             budget = err.budget(),
+            pool = err.pool(),
             limit = err.limit(),
             session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
             install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
+            cimmeria.session_kind = who.session_kind.as_deref(),
             peer = %who.peer,
             suppressed,
             "telemetry upload refused: {reason}"

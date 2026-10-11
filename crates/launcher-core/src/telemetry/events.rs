@@ -94,6 +94,10 @@ pub enum SessionMetaKind {
     Started,
     FileRotated,
     DroppedWindow,
+    /// The game process ended. The desktop launcher's fields: `exit_code`,
+    /// `pid` (the game's), `host_pid` (the launch helper's) and `early`
+    /// (it ran under ten seconds).
+    GameExited,
 }
 
 /// Parsed fields of one client log line, returned by
@@ -237,6 +241,8 @@ mod tests {
         });
         let json = serde_json::to_value(&ev).unwrap();
         assert_eq!(json["kind"], "file_rotated");
+        let exited = serde_json::to_value(SessionMetaKind::GameExited).unwrap();
+        assert_eq!(exited, "game_exited");
     }
 
     #[test]

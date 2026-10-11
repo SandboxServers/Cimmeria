@@ -79,3 +79,69 @@ async fn fans_out_to_witnessing_players_only() {
     }
     assert_eq!(recipients, vec![OBSERVER]);
 }
+
+/// One connected player alone in a space: nobody witnesses it.
+fn lone_player() -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-8000" MaxX="8000" MinY="-8000" MaxY="8000" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(OBSERVEE, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(OBSERVEE);
+    let _ = mgr.compute_aoi_changes();
+    mgr
+}
+
+/// Revert-verifier: deleting the `aoi.appearance` INFO row fails this test.
+/// With one witness the row carries `witness_count=1`; with none it carries
+/// `witness_count=0`.
+#[tokio::test]
+async fn appearance_rebroadcast_counts_witnesses() {
+    use crate::test_support::LogCapture;
+
+    let rebroadcast_rows = |capture: &crate::test_support::LogCaptureGuard| {
+        capture
+            .all()
+            .into_iter()
+            .filter(|c| {
+                c.target == "aoi.appearance" && c.has_field("event", "appearance_rebroadcast")
+            })
+            .collect::<Vec<_>>()
+    };
+    let msg = || BaseToCellMsg::BroadcastToWitnesses {
+        entity_id: OBSERVEE,
+        method_index: crate::mercury::method_idx::BEING_APPEARANCE,
+        args: vec![0xAA],
+    };
+
+    // One witness: OBSERVER stands beside OBSERVEE.
+    let capture = LogCapture::install();
+    let mut mgr = shared_space();
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    handle_base_message(msg(), &tx, &mut mgr, &engine, &[]).await;
+    let rows = rebroadcast_rows(&capture);
+    assert_eq!(rows.len(), 1, "one rebroadcast row: {:#?}", capture.all());
+    assert!(
+        rows[0].has_field("witness_count", "1"),
+        "one witness must give witness_count=1: {:#?}",
+        rows[0]
+    );
+    drop(capture);
+
+    // No witness: the observee stands alone.
+    let capture = LogCapture::install();
+    let mut mgr = lone_player();
+    handle_base_message(msg(), &tx, &mut mgr, &engine, &[]).await;
+    let rows = rebroadcast_rows(&capture);
+    assert_eq!(rows.len(), 1, "one rebroadcast row: {:#?}", capture.all());
+    assert!(
+        rows[0].has_field("witness_count", "0"),
+        "no witness must give witness_count=0: {:#?}",
+        rows[0]
+    );
+}

@@ -83,6 +83,7 @@ pub(super) fn request(install_id: &str) -> DevSessionRequest {
         launcher_version: "0.1.0".into(),
         tags: Vec::new(),
         session_kind: None,
+        account_name: None,
     }
 }
 
@@ -292,6 +293,8 @@ fn token_minted_at(iat: i64, exp: i64) -> String {
         exp,
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
         kind: None,
+        acct: None,
+        mid: None,
     };
     encode_token(&claims, &secret()).unwrap()
 }

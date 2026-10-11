@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use super::playtest_friction_watch::RowContext;
 use super::space_manager::SpaceManager;
 
 /// Interacts on one target that all dead-ended.
@@ -98,6 +99,11 @@ fn with<R>(f: impl FnOnce(&mut Detectors) -> R) -> R {
     f(&mut guard)
 }
 
+// Every friction row carries the player's identity (Rule 5), `world`
+// (TG-MIS-02), and `cimmeria.session_kind` (TG-NET-17: lab runs stop on
+// purpose and would otherwise read as player pain), all from
+// `RowContext::of`. An NPC or an entity gone leaves them out.
+
 /// An interact reached the end of the dispatcher with nothing to do.
 ///
 /// The names (Rule 6) and the target's `tag` are looked up only when the
@@ -117,7 +123,8 @@ pub fn interact_no_effect(
         )
     });
     if let Some(count) = fired {
-        let id = space_mgr.player_identity(entity_id);
+        let row = RowContext::of(space_mgr, entity_id);
+        let id = row.identity;
         let target = space_mgr.entity_names(target_entity_id);
         let target_entity = space_mgr.get_entity(target_entity_id);
         tracing::warn!(
@@ -130,6 +137,8 @@ pub fn interact_no_effect(
             account_name = id.account_name,
             player_id = id.player_id,
             player_name = id.player_name,
+            world = row.world,
+            cimmeria.session_kind = row.session_kind,
             target_entity_id,
             target_entity_name = target.entity_name,
             template_id = target.template_id,
@@ -157,12 +166,19 @@ pub fn item_use_no_chain(space_mgr: &SpaceManager, entity_id: u32, item_id: i32)
         )
     });
     if let Some(count) = fired {
+        let row = RowContext::of(space_mgr, entity_id);
         tracing::warn!(
             target: "playtest.friction",
             signal = "repeat_item_use_no_chain",
             reason = "no_chain_matched",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = row.identity.account_id,
+            account_name = row.identity.account_name,
+            player_id = row.identity.player_id,
+            player_name = row.identity.player_name,
+            world = row.world,
+            cimmeria.session_kind = row.session_kind,
             item_id,
             item_name = cimmeria_names::book().item(item_id),
             count,
@@ -190,12 +206,19 @@ pub fn console_rejected(space_mgr: &SpaceManager, entity_id: u32, command: &str,
         )
     });
     if let Some(count) = fired {
+        let row = RowContext::of(space_mgr, entity_id);
         tracing::warn!(
             target: "playtest.friction",
             signal = "console_reject_streak",
             reason = reject,
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = row.identity.account_id,
+            account_name = row.identity.account_name,
+            player_id = row.identity.player_id,
+            player_name = row.identity.player_name,
+            world = row.world,
+            cimmeria.session_kind = row.session_kind,
             command,
             count,
             window_secs = CONSOLE_REJECT_WINDOW.as_secs(),
@@ -223,6 +246,8 @@ pub fn escort_tick(
             .note(key, ESCORT_THRESHOLD, ESCORT_WINDOW, Instant::now())
     });
     if let Some(count) = fired {
+        // The followed player's context: identity, world, session kind.
+        let leader = RowContext::of(space_mgr, target_id);
         tracing::warn!(
             target: "playtest.friction",
             signal = "escort_separated",
@@ -231,6 +256,12 @@ pub fn escort_tick(
             npc_name = space_mgr.entity_label(npc_id),
             target_id,
             target_name = space_mgr.entity_label(target_id),
+            account_id = leader.identity.account_id,
+            account_name = leader.identity.account_name,
+            player_id = leader.identity.player_id,
+            player_name = leader.identity.player_name,
+            world = leader.world,
+            cimmeria.session_kind = leader.session_kind,
             dist,
             max_d,
             count,
@@ -242,8 +273,8 @@ pub fn escort_tick(
 // The time-based and event-driven signals live in a sibling file; re-exported
 // so every call site keeps using `playtest_friction::...`.
 pub use super::playtest_friction_watch::{
-    dialog_answered, dialog_shown, forget, leader_teleported, objectives_never_completed,
-    player_tick, region_contains_xz, region_hint, respawned,
+    dialog_answered, dialog_shown, forget, leader_teleported, note_session,
+    objectives_never_completed, player_tick, region_contains_xz, region_hint, respawned,
 };
 
 #[cfg(test)]

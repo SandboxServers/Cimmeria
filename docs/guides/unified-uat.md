@@ -55,7 +55,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
-**Automated runs.** Many rows can also be run by an agent through the live research lab: see [automated-uat.md](automated-uat.md). Its specs keep these step ids, and its results use the template below.
+**Automated runs.** Many rows can also be run by an agent through the live research lab: see [automated-uat.md](automated-uat.md). Its specs keep these step ids, and its results use the template below. Every lab run ends with an extra row, `_session_end`: it logs out and disconnects the way a player does and checks the server's `session.end disconnect_reason=logoff_character_select` and `Client entities cleaned up disconnect_reason=logoff` lines, so a run that leaves the session open fails there.
 
 **Status legend.** Each section, and some steps, carry one of these:
 

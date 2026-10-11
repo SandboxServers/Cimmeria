@@ -6,7 +6,7 @@
 //! - [`encrypted::handle_encrypted_datagram`] — bundle scanner + msg dispatch
 //! - [`account_arms`] / [`cell_arms`] — per-msg-family handler groups
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
@@ -28,7 +28,9 @@ use super::resources::ResourceCache;
 use super::ConnectedClientState;
 
 mod account_arms;
+mod bundle_drop;
 mod cell_arms;
+mod cell_send;
 mod encrypted;
 #[cfg(test)]
 mod relaunch_tests;
@@ -86,7 +88,17 @@ pub(crate) async fn run_connect_loop(
                 )
                 .await
                 {
-                    tracing::warn!(%addr, "Datagram handler error: {e}");
+                    let identity = super::session_identity::identity_for_addr(&connected, addr);
+                    tracing::warn!(
+                        %addr,
+                        account_id = identity.account_id,
+                        account_name = identity.account_name,
+                        player_id = identity.player_id,
+                        player_name = identity.player_name,
+                        reason = "handler_error",
+                        error = %e,
+                        "Datagram handler error"
+                    );
                 }
             }
             Err(e) => {
@@ -148,6 +160,79 @@ fn log_connreset_at(window: &mut ConnResetWindow, now: Instant) {
             );
         }
     }
+}
+
+/// How long one unknown-peer row covers. An address writes at most one row
+/// per window; the datagrams it sends inside the window only count.
+const UNKNOWN_PEER_WINDOW: Duration = Duration::from_secs(60);
+
+/// Most addresses the unknown-peer throttle tracks. At the cap, the entry
+/// whose window opened longest ago is dropped to make room.
+const UNKNOWN_PEER_CAP: usize = 256;
+
+/// The open throttle window for one unknown address: when it opened, and
+/// how many datagrams it has swallowed since its row.
+#[derive(Debug)]
+struct UnknownPeerWindow {
+    opened: Instant,
+    suppressed: u64,
+}
+
+/// The process-wide throttle behind [`log_unknown_peer`], keyed by address.
+static UNKNOWN_PEERS: Mutex<BTreeMap<SocketAddr, UnknownPeerWindow>> = Mutex::new(BTreeMap::new());
+
+/// Count one datagram from an address with no channel and log it at most
+/// once per [`UNKNOWN_PEER_WINDOW`] per address. A reaped client that keeps
+/// sending shows up here.
+fn log_unknown_peer(addr: SocketAddr, flags: u8) {
+    let mut windows = UNKNOWN_PEERS.lock().unwrap_or_else(PoisonError::into_inner);
+    log_unknown_peer_at(&mut windows, addr, flags, Instant::now());
+}
+
+/// The throttle decision and the row, at `now`. The first datagram from an
+/// address writes at once with `suppressed = 0`.
+fn log_unknown_peer_at(
+    windows: &mut BTreeMap<SocketAddr, UnknownPeerWindow>,
+    addr: SocketAddr,
+    flags: u8,
+    now: Instant,
+) {
+    let suppressed = match windows.get_mut(&addr) {
+        Some(window) if now.saturating_duration_since(window.opened) < UNKNOWN_PEER_WINDOW => {
+            window.suppressed += 1;
+            return;
+        }
+        Some(window) => {
+            window.opened = now;
+            std::mem::take(&mut window.suppressed)
+        }
+        None => {
+            if windows.len() >= UNKNOWN_PEER_CAP {
+                let oldest = windows
+                    .iter()
+                    .min_by_key(|(_, window)| window.opened)
+                    .map(|(oldest, _)| *oldest);
+                if let Some(oldest) = oldest {
+                    windows.remove(&oldest);
+                }
+            }
+            windows.insert(
+                addr,
+                UnknownPeerWindow {
+                    opened: now,
+                    suppressed: 0,
+                },
+            );
+            0
+        }
+    };
+    tracing::info!(
+        event = "unknown_peer_datagram",
+        %addr,
+        flags,
+        suppressed,
+        "Datagram from unknown address"
+    );
 }
 
 /// Dispatch a single incoming UDP datagram.
@@ -257,13 +342,7 @@ async fn handle_datagram(
     // Not yet connected -- only accept the unencrypted Phase 3 login (flags=0x41).
     let login_flags = FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE; // 0x41
     if raw[0] != login_flags {
-        tracing::trace!(
-            %addr,
-            flags = raw[0],
-            flags_names = %cimmeria_mercury::packet::PACKET_FLAGS.render(raw[0]),
-            "Ignoring packet from unknown addr (flags={:#04x})",
-            raw[0]
-        );
+        log_unknown_peer(addr, raw[0]);
         return Ok(());
     }
 
@@ -353,6 +432,58 @@ mod tests {
         // 49 swallowed inside the burst.
         log_connreset_at(&mut window, start + CONNRESET_WINDOW);
         assert_eq!(rows(), vec!["0".to_string(), "49".to_string()]);
+    }
+
+    /// The `suppressed` field of every unknown-peer INFO row captured so far.
+    fn unknown_peer_rows(capture: &crate::test_support::LogCaptureGuard) -> Vec<String> {
+        capture
+            .all()
+            .iter()
+            .filter(|c| {
+                c.level == tracing::Level::INFO
+                    && c.message_contains("Datagram from unknown address")
+            })
+            .map(|c| c.fields.get("suppressed").cloned().unwrap_or_default())
+            .collect()
+    }
+
+    #[test]
+    fn unknown_peer_burst_writes_one_row_per_window() {
+        let capture = LogCapture::install();
+        let mut windows = BTreeMap::new();
+        let addr: SocketAddr = "192.0.2.1:5000".parse().unwrap();
+        let start = Instant::now();
+        for _ in 0..50 {
+            log_unknown_peer_at(&mut windows, addr, 0x00, start);
+        }
+        assert_eq!(unknown_peer_rows(&capture), vec!["0".to_string()]);
+
+        // The first datagram after the window writes the row that carries
+        // the 49 swallowed inside the burst.
+        log_unknown_peer_at(&mut windows, addr, 0x00, start + UNKNOWN_PEER_WINDOW);
+        assert_eq!(
+            unknown_peer_rows(&capture),
+            vec!["0".to_string(), "49".to_string()]
+        );
+    }
+
+    #[test]
+    fn unknown_peer_addresses_are_throttled_independently() {
+        let capture = LogCapture::install();
+        let mut windows = BTreeMap::new();
+        let noisy: SocketAddr = "192.0.2.1:5000".parse().unwrap();
+        let other: SocketAddr = "192.0.2.2:5000".parse().unwrap();
+        let start = Instant::now();
+        for _ in 0..50 {
+            log_unknown_peer_at(&mut windows, noisy, 0x00, start);
+        }
+        // A second address's first row is not swallowed by the first one's
+        // open window.
+        log_unknown_peer_at(&mut windows, other, 0x00, start);
+        assert_eq!(
+            unknown_peer_rows(&capture),
+            vec!["0".to_string(), "0".to_string()]
+        );
     }
 
     #[test]

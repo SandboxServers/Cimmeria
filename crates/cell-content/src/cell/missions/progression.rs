@@ -6,7 +6,8 @@ use tokio::sync::mpsc;
 use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED};
 
 use super::{
-    suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
+    send_mission_frame, suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE,
+    ON_STEP_UPDATE,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{EntityNames, SpaceManager};
@@ -259,26 +260,32 @@ pub async fn advance_step(
         let mut args = Vec::with_capacity(5);
         args.extend_from_slice(&sid.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_STEP_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_STEP_UPDATE,
+            args,
+            "onStepUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     // Send onStepUpdate(new_step_id, ACTIVE)
     let mut args = Vec::with_capacity(5);
     args.extend_from_slice(&new_step_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_STEP_UPDATE,
-            args,
-        })
-        .await;
+    send_mission_frame(
+        tx,
+        entity_id,
+        ON_STEP_UPDATE,
+        args,
+        "onStepUpdate",
+        mission_id,
+        &who,
+    )
+    .await;
 
     // Send onObjectiveUpdate for each new objective
     for obj in &new_objectives {
@@ -287,13 +294,16 @@ pub async fn advance_step(
         args.push(STATUS_ACTIVE as u8);
         args.push(if obj.hidden { 1 } else { 0 });
         args.push(if obj.optional { 1 } else { 0 });
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_OBJECTIVE_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_OBJECTIVE_UPDATE,
+            args,
+            "onObjectiveUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     true
@@ -438,13 +448,16 @@ pub async fn complete_objective(
         args.push(STATUS_COMPLETED as u8);
         args.push(u8::from(hidden));
         args.push(u8::from(optional));
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_OBJECTIVE_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_OBJECTIVE_UPDATE,
+            args,
+            "onObjectiveUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     // Check if all objectives are completed → advance mission
@@ -497,13 +510,16 @@ pub async fn complete_objective(
             let mut args = Vec::with_capacity(5);
             args.extend_from_slice(&step_id.to_le_bytes());
             args.push(STATUS_COMPLETED as u8);
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: ON_STEP_UPDATE,
-                    args,
-                })
-                .await;
+            send_mission_frame(
+                tx,
+                entity_id,
+                ON_STEP_UPDATE,
+                args,
+                "onStepUpdate",
+                mission_id,
+                &who,
+            )
+            .await;
         }
 
         // Send onMissionUpdate completed. The byte is `STATUS_COMPLETED`,
@@ -516,13 +532,16 @@ pub async fn complete_objective(
             args.extend_from_slice(&mission_id.to_le_bytes());
             args.push(STATUS_COMPLETED as u8);
             args.extend_from_slice(&0i32.to_le_bytes());
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: ON_MISSION_UPDATE,
-                    args,
-                })
-                .await;
+            send_mission_frame(
+                tx,
+                entity_id,
+                ON_MISSION_UPDATE,
+                args,
+                "onMissionUpdate",
+                mission_id,
+                &who,
+            )
+            .await;
         }
 
         tracing::info!(

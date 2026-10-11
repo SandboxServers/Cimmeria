@@ -74,9 +74,16 @@ impl Config {
         }
         Ok(())
     }
+    /// The stable channel offers only a release version above the installed
+    /// one. An installed prerelease counts as its base version: a same-day
+    /// rebuild is `YYYY.M.D-N` (LX-15), which SemVer orders below the day's
+    /// first build `YYYY.M.D`, so comparing with it as-is would "update" the
+    /// player back to that first build.
     pub(crate) fn newer(&self, version: &str) -> Result<Version, Error> {
         let version = Version::parse(version.trim_start_matches('v')).map_err(|_| Error::Feed)?;
-        if !version.pre.is_empty() || version.cmp_precedence(&self.current).is_le() {
+        let mut installed = self.current.clone();
+        installed.pre = semver::Prerelease::EMPTY;
+        if !version.pre.is_empty() || version.cmp_precedence(&installed).is_le() {
             return Err(Error::NotNewer);
         }
         Ok(version)
@@ -154,4 +161,44 @@ pub(crate) fn parse(config: &Config, bytes: &[u8]) -> Result<Option<Offer>, Erro
         url: artifact.url.clone(),
         signature: artifact.signature.clone(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn installed(current: &str) -> Config {
+        let keys = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        Config::new(
+            "https://updates.example.test/feed",
+            &STANDARD.encode(keys.pk.to_box().unwrap().to_string()),
+            current,
+            "windows-x86_64",
+            vec!["updates.example.test".into()],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_same_day_rebuild_is_not_offered_the_days_first_build() {
+        let config = installed("2026.10.11-2");
+        for offer in ["2026.10.11", "2026.10.10", "2026.10.11-3"] {
+            assert_eq!(config.newer(offer), Err(Error::NotNewer), "{offer}");
+        }
+    }
+
+    #[test]
+    fn a_same_day_rebuild_is_offered_the_next_day() {
+        let config = installed("2026.10.11-2");
+        assert_eq!(
+            config.newer("2026.10.12"),
+            Ok(Version::parse("2026.10.12").unwrap())
+        );
+    }
+
+    #[test]
+    fn a_release_is_not_offered_a_same_day_rebuild() {
+        let config = installed("2026.10.11");
+        assert_eq!(config.newer("2026.10.11-2"), Err(Error::NotNewer));
+    }
 }

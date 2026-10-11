@@ -231,6 +231,31 @@ async fn spatial_chat_skips_ignoring_witness() {
     );
 }
 
+/// TG-SOC-07: a send into a closed base channel is no longer silent. With the
+/// receiver dropped, Alice's emote logs one WARN per failed send (two
+/// witnesses and the echo to the speaker), each with
+/// `reason=base_channel_closed`, and the witness rows name the witness.
+/// Fails when the `let _` discards come back.
+#[tokio::test]
+async fn spatial_send_into_closed_channel_warns() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = three_player_space();
+    let (tx, rx) = tokio::sync::mpsc::channel(32);
+    drop(rx);
+    let engine = ChainEngine::new();
+    handle_chat_message(1, "Alice", 0, CHAN_EMOTE, "Hello", &tx, &mut mgr, &engine).await;
+    let warns: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "chat.spatial_send_failed"))
+        .collect();
+    assert_eq!(warns.len(), 3, "two witnesses and the echo each warn");
+    assert!(warns
+        .iter()
+        .all(|w| w.level == tracing::Level::WARN && w.has_field("reason", "base_channel_closed")));
+    assert!(warns.iter().any(|w| w.has_field("target_entity_id", "2")));
+}
+
 /// D-SS15 is one-directional: Alice ignoring Bob does not stop Bob hearing
 /// Alice. Guards against a symmetric filter (PR #585's shape).
 ///

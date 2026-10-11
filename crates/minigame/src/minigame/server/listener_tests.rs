@@ -191,6 +191,51 @@ async fn listener_closes_peer_when_session_is_for_another_ip() {
     );
 }
 
+/// A refused peer with one pending session (registered, its SWF never
+/// connected) logs `pending_sessions=1` on the unthrottled refusal row. Without
+/// the field the row has no `pending_sessions` key and this fails.
+#[tokio::test]
+async fn refused_peer_row_counts_pending_sessions() {
+    let capture = LogCapture::install();
+    let registry = SessionRegistry::new();
+    registry
+        .register(
+            4316,
+            7,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6))),
+        )
+        .await
+        .expect("fresh registry must accept the session");
+    let addr = spawn_listener_on(registry, ListenerLimits::default()).await;
+
+    let mut client = TcpStream::connect(addr).await.expect("connect");
+
+    assert!(
+        closed_within(&mut client, Duration::from_secs(2)).await,
+        "a peer no session expects must be closed even with a pending session",
+    );
+    let row = capture
+        .find_event(
+            Level::INFO,
+            "sessions are registered",
+            "unexpected_peer_with_sessions",
+        )
+        .expect("the refused peer must log the unthrottled refusal row");
+    assert!(
+        row.has_field("pending_sessions", "1"),
+        "pending_sessions must be 1 with one pending session: {row:#?}",
+    );
+}
+
 /// The per-IP cap closes the extra socket from one address, leaves the
 /// others open, and frees the slot when one of them goes away. Without the
 /// cap all three stay open and the refusal check times out.

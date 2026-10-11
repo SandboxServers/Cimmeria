@@ -623,6 +623,7 @@ pub async fn handle_gate_travel(
 
             fanout_contact_event(
                 &traveler_name,
+                active_player_id,
                 EVENT_GATE_TRAVEL,
                 world_id,
                 &db_pool_clone,

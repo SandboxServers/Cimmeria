@@ -31,6 +31,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id, // nt:id-only not a valid entity id, so nothing to name
+            event = "trade.session_refused",
             "beginTrading: invalid id"
         );
         return false;
@@ -39,6 +40,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
+            event = "trade.session_refused",
             "beginTrading: cannot trade with self"
         );
         return false;
@@ -49,6 +51,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         None => {
             tracing::warn!(
                 entity_id, // nt:id-only the caller entity is gone, nothing left to name
+                event = "trade.session_refused",
                 "beginTrading: caller entity not found"
             );
             return false;
@@ -69,6 +72,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
             partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
+            event = "trade.session_refused",
             "beginTrading: caller is not a player — rejecting"
         );
         return false;
@@ -77,6 +81,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
+            event = "trade.session_refused",
             "beginTrading: caller already in another trade session"
         );
         return false;
@@ -91,6 +96,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
                 entity_id,
                 entity_name = space_mgr.entity_names(entity_id).entity_name,
                 partner_entity_id, // nt:id-only the partner entity is gone, nothing left to name
+                event = "trade.session_refused",
                 "beginTrading: partner not found"
             );
             return false;
@@ -102,6 +108,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
             partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
+            event = "trade.session_refused",
             "beginTrading: target is not a player"
         );
         return false;
@@ -112,6 +119,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
             partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
+            event = "trade.session_refused",
             "beginTrading: partner in a different space"
         );
         return false;
@@ -124,6 +132,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             partner_entity_id,
             partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             dist,
+            event = "trade.session_refused",
             "beginTrading: too far away"
         );
         return false;
@@ -134,6 +143,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
             partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
+            event = "trade.session_refused",
             "beginTrading: partner already trading"
         );
         return false;
@@ -148,7 +158,18 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         p.trade_partner_entity_id = Some(entity_id);
         p.trade_proposal = Some(TradeProposal::default());
     }
+    let who = space_mgr.player_identity(entity_id);
+    let target = space_mgr.player_identity(partner_entity_id as u32);
     tracing::info!(
+        event = "trade.session_opened",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
+        target_account_id = target.account_id,
+        target_account_name = target.account_name,
+        target_player_id = target.player_id,
+        target_player_name = target.player_name,
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         partner_entity_id,
@@ -243,18 +264,36 @@ pub fn clear_trade_state(entity_id: u32, partner_entity_id: i32, space_mgr: &mut
 }
 
 /// Tear down a session and notify both clients with `onTradeResults(result)`.
+///
+/// `reason` names why the session ended (`user_cancel`, `bad_proposal`,
+/// `out_of_range`, `handoff_out_of_range`, `disconnect`, `send_failed`) and
+/// is logged on the `trade.session_cancelled` row.
 pub async fn cancel_session(
     entity_id: u32,
     partner_entity_id: i32,
     result: i32,
+    reason: &'static str,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Read identity before the clear so the row still names both players.
+    let who = space_mgr.player_identity(entity_id);
+    let target = space_mgr.player_identity(partner_entity_id as u32);
     clear_trade_state(entity_id, partner_entity_id, space_mgr);
     // Each player sees their partner's entity id in the wire payload.
     send_on_trade_results(entity_id, partner_entity_id, result, tx).await;
     send_on_trade_results(partner_entity_id as u32, entity_id as i32, result, tx).await;
     tracing::info!(
+        event = "trade.session_cancelled",
+        reason,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
+        target_account_id = target.account_id,
+        target_account_name = target.account_name,
+        target_player_id = target.player_id,
+        target_player_name = target.player_name,
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         partner_entity_id,
@@ -280,6 +319,7 @@ pub async fn cancel_trade_on_disconnect(
         entity_id,
         partner as i32,
         ETRADERESULTS_CANCELLED,
+        "disconnect",
         tx,
         space_mgr,
     )

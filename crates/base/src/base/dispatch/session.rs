@@ -13,7 +13,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_base_session::base::helpers::{
-    log_session_end, session_idle_ms, LogoffRequested, SessionEndRow,
+    log_session_end, session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 use cimmeria_base_session::base::plugin::{SessionEvent, SessionHookPoint};
 use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
@@ -73,7 +73,13 @@ pub(super) async fn handle_log_off(
                 };
                 // The end-cause hints for this handler's own `session.end`
                 // (TG-NET-02), taken before the flag and the world clear.
-                let end_hints = (session_idle_ms(c), c.listed_online, c.world_name.clone());
+                let end_hints = (
+                    session_idle_ms(c),
+                    c.listed_online,
+                    c.world_name.clone(),
+                    c.session_kind,
+                    session_channel_health(c),
+                );
                 c.listed_online = false;
                 // A full exit keeps the session until the client disconnects
                 // or times out: mark it so that later `session.end` says the
@@ -134,7 +140,7 @@ pub(super) async fn handle_log_off(
                 Default::default(),
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
                 0,
-                (0, false, None),
+                (0, false, None, None, Default::default()),
             ),
         }
     };
@@ -161,6 +167,8 @@ pub(super) async fn handle_log_off(
             idle_ms: end_hints.0,
             in_world: end_hints.1,
             world: end_hints.2.as_deref(),
+            session_kind: end_hints.3,
+            channel: end_hints.4,
         });
     }
 
@@ -236,7 +244,9 @@ pub(super) async fn handle_log_off(
         // `SGWPlayer::destroyed()` cleanup (`Chat.py`'s
         // `ChannelManager.leaveChannel(self, channelId, True)` for every
         // held membership).
-        cimmeria_base_session::base::user_channels::user_channel_registry().leave_all(entity_id);
+        let leaves = cimmeria_base_session::base::user_channels::user_channel_registry()
+            .leave_all(entity_id);
+        cimmeria_base_session::base::helpers::log_channel_leaves(addr, identity, &leaves);
     }
 
     // Fan out offline status to contact-list watchers and organization

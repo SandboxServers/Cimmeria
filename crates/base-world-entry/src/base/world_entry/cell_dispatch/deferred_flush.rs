@@ -16,7 +16,9 @@ use crate::mercury::compose_create_entity_base_body;
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::deferred_aoi_lifecycle::lifecycle_segments;
-use super::super::super::helpers::{send_bundle_to_witness_reliable, BundleSendOutcome};
+use super::super::super::helpers::{
+    send_bundle_to_witness_reliable_kind, BundleManifest, BundleSendOutcome,
+};
 use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 use super::aoi::{entity_invisible, entity_method_call, left_aoi, witness_entity_method};
@@ -249,6 +251,10 @@ async fn dispatch_segment(
     // process each NPC's CREATE_ENTITY transaction before its cascade).
     let mut phase1 = ChannelBundle::new(true);
     let mut phase2 = ChannelBundle::new(true);
+    // Per-message offset / id / entity for each bundle (TG-AOI-09), logged
+    // on `aoi.bundle_manifest` when the bundle is sent.
+    let mut manifest1 = BundleManifest::new();
+    let mut manifest2 = BundleManifest::new();
     let mut entered_count = 0usize;
 
     // Per-message tail — LeftAoI / EntityMethodCall keep their existing
@@ -296,22 +302,28 @@ async fn dispatch_segment(
                     outcome = "flushed_on_ready",
                     "AoI introduce: witness now ready, flushing buffered entity introduction"
                 );
-                phase1.append_raw_message(&compose_create_entity_base_body(
-                    entity_id, class_id, position, direction,
-                ));
+                manifest1.append_raw_message(
+                    &mut phase1,
+                    entity_id,
+                    &compose_create_entity_base_body(entity_id, class_id, position, direction),
+                );
                 // Joined with the observee's session NOW, not when the cell
                 // fired the event: this buffer can be seconds old and the
                 // observee's cached appearance may have changed since.
-                phase2.append_raw_message(&player_ghost::compose_cascade_body(
-                    witness_id,
+                manifest2.append_raw_message(
+                    &mut phase2,
                     entity_id,
-                    class_id,
-                    level,
-                    npc_data.as_deref(),
-                    player_data.as_ref(),
-                    connected,
-                    entity_to_addr,
-                ));
+                    &player_ghost::compose_cascade_body(
+                        witness_id,
+                        entity_id,
+                        class_id,
+                        level,
+                        npc_data.as_deref(),
+                        player_data.as_ref(),
+                        connected,
+                        entity_to_addr,
+                    ),
+                );
                 entered_count += 1;
             }
             DeferredAoiMsg::LeftAoI { entity_id } => tail.push(TailMsg::LeftAoI(entity_id)),
@@ -346,12 +358,14 @@ async fn dispatch_segment(
             phase1_packets = phase1.estimated_packet_count(),
             "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
         );
-        let outcome = send_bundle_to_witness_reliable(
+        let outcome = send_bundle_to_witness_reliable_kind(
             transport,
             connected,
             entity_to_addr,
             witness_id,
             phase1,
+            "aoi_flush_create_base",
+            manifest1.entries(),
         )
         .await;
         log_bundle_emit(
@@ -371,12 +385,14 @@ async fn dispatch_segment(
             phase2_packets = phase2.estimated_packet_count(),
             "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
         );
-        let outcome = send_bundle_to_witness_reliable(
+        let outcome = send_bundle_to_witness_reliable_kind(
             transport,
             connected,
             entity_to_addr,
             witness_id,
             phase2,
+            "aoi_flush_cascade",
+            manifest2.entries(),
         )
         .await;
         log_bundle_emit(witness_id, witness_name, entered_count, "cascade", outcome);

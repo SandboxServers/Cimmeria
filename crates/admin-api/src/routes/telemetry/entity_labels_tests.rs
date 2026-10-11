@@ -13,6 +13,7 @@ use super::entity_labels::{
     resolve, EntityLabelLink, NamingPlan, SessionClock, SessionClocks, CELL_REPLY_TIMEOUT,
     MAX_SESSIONS_PER_INSTALL, OFFSET_WINDOW,
 };
+use super::replay_tests::capture_async;
 
 fn native(ts_ms: i64, fields: serde_json::Value) -> TelemetryEvent {
     TelemetryEvent::ClientNative(ClientNativeEvent {
@@ -193,7 +194,7 @@ fn one_question() -> NamingPlan {
 /// With no link, every row replays unnamed.
 #[tokio::test]
 async fn no_link_names_nothing() {
-    let labels = resolve(one_question(), None).await;
+    let labels = resolve("sid-none", one_question(), None).await;
     assert_eq!(labels.label(0, 5), None);
 }
 
@@ -210,7 +211,7 @@ async fn concurrent_chunks_never_queue_behind_a_silent_cell() {
     let chunks: Vec<_> = (0..8)
         .map(|_| {
             let link = link.clone();
-            tokio::spawn(async move { resolve(one_question(), Some(&link)).await })
+            tokio::spawn(async move { resolve("sid-burst", one_question(), Some(&link)).await })
         })
         .collect();
     for c in chunks {
@@ -241,7 +242,7 @@ async fn a_full_label_channel_replays_unnamed_at_once() {
     .unwrap();
     let link = EntityLabelLink::new(tx);
     let started = Instant::now();
-    let labels = resolve(one_question(), Some(&link)).await;
+    let labels = resolve("sid-full", one_question(), Some(&link)).await;
     assert_eq!(labels.label(0, 5), None);
     assert!(
         started.elapsed() < Duration::from_millis(100),
@@ -249,4 +250,37 @@ async fn a_full_label_channel_replays_unnamed_at_once() {
     );
     assert_eq!(rx.len(), 1, "only the filler is queued");
     assert!(rx.recv().await.unwrap().queries.is_empty());
+}
+
+/// A chunk that finds the in-flight permit taken replays unnamed and logs
+/// `entity_labels_unavailable` with its `session_id` and `reason`. The
+/// holder takes the permit and waits on a reply that never comes; the
+/// second chunk is the one under test.
+#[tokio::test]
+async fn a_busy_link_logs_the_session_it_replayed() {
+    let (tx, _rx) = mpsc::channel::<EntityLabelsRequest>(8);
+    let link = EntityLabelLink::new(tx);
+    let holder_link = link.clone();
+    let holder =
+        tokio::spawn(
+            async move { resolve("sid-holder", one_question(), Some(&holder_link)).await },
+        );
+    // Let the holder take the permit and park on its reply.
+    tokio::task::yield_now().await;
+    let (labels, rows) = capture_async(resolve("sid-busy", one_question(), Some(&link))).await;
+    holder.abort();
+    assert_eq!(labels.label(0, 5), None);
+    let row = rows
+        .iter()
+        .find(|r| r.fields.get("event").map(String::as_str) == Some("entity_labels_unavailable"))
+        .expect("a busy link logs entity_labels_unavailable");
+    assert_eq!(row.level, tracing::Level::DEBUG);
+    assert_eq!(
+        row.fields.get("session_id").map(String::as_str),
+        Some("sid-busy")
+    );
+    assert_eq!(
+        row.fields.get("reason").map(String::as_str),
+        Some("label_link_busy")
+    );
 }

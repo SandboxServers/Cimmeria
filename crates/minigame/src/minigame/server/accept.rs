@@ -110,10 +110,12 @@ pub(super) async fn serve(
                     // is unthrottled. With none, it is most likely a scanner.
                     let registered_sessions = registry.session_count().await;
                     if registered_sessions > 0 {
+                        let pending_sessions = registry.pending_count().await;
                         tracing::info!(
                             %peer,
                             reason = "unexpected_peer_with_sessions",
                             registered_sessions,
+                            pending_sessions,
                             "Minigame connection refused: sessions are registered but none expects this address",
                         );
                     } else if let Some(suppressed) = unexpected_peer_log.admit(Instant::now()) {
@@ -124,13 +126,6 @@ pub(super) async fn serve(
                             "Minigame connection refused: no minigame session expects this address",
                         );
                     }
-                    // Per scanner hit: `cimmeria_minigame=debug` is exported,
-                    // so this stays at TRACE.
-                    tracing::trace!(
-                        %peer,
-                        reason = "unexpected_peer",
-                        "Minigame connection refused: no minigame session expects this address",
-                    );
                     continue;
                 }
                 let permit = match tracker.try_acquire(peer.ip()) {

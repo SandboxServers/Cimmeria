@@ -73,7 +73,6 @@ pub async fn run_session(
     let mut ticker = interval(Duration::from_millis(flush_ms));
     let mut tailer = Tailer::new();
     let binaries_dir = crate::install_layout::binaries_dir(&install_dir);
-    let sessions_dir = binaries_dir.join("sessions");
 
     let _ = telemetry
         .enqueue(TelemetryEvent::SessionMeta(SessionMetaEvent {
@@ -107,7 +106,7 @@ pub async fn run_session(
                 let counts_event = patch_log.as_mut().and_then(|w| w.poll_counts(now));
                 event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
                 event_count = event_count.saturating_add(
-                    tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir, MAX_CHUNKS_PER_FLUSH).await,
+                    tick_once(&telemetry, &http, &mut tailer, &binaries_dir, MAX_CHUNKS_PER_FLUSH).await,
                 );
             }
         }
@@ -117,17 +116,8 @@ pub async fn run_session(
     event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, patch_event).await);
     let counts_event = patch_log.as_mut().and_then(PatchLogWatcher::finish_counts);
     event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
-    event_count = event_count.saturating_add(
-        tick_once(
-            &telemetry,
-            &http,
-            &mut tailer,
-            &sessions_dir,
-            &binaries_dir,
-            usize::MAX,
-        )
-        .await,
-    );
+    event_count = event_count
+        .saturating_add(tick_once(&telemetry, &http, &mut tailer, &binaries_dir, usize::MAX).await);
     let queue = DiskQueue::new(&state_dir);
     let dropped_lines = queue.dropped_count();
     let outcome = match telemetry
@@ -179,22 +169,10 @@ async fn tick_once(
     telemetry: &Telemetry,
     http: &reqwest::Client,
     tailer: &mut Tailer,
-    sessions_dir: &Path,
     binaries_dir: &Path,
     max_chunks: usize,
 ) -> u64 {
-    if sessions_dir.is_dir() {
-        tailer.refresh(sessions_dir, |p| {
-            p.extension().is_some_and(|e| e == "log" || e == "txt")
-        });
-    }
-    if binaries_dir.is_dir() {
-        tailer.refresh(binaries_dir, |p| {
-            p.file_name()
-                .and_then(|s| s.to_str())
-                .is_some_and(is_debug_log)
-        });
-    }
+    refresh_tail(tailer, binaries_dir);
     let lines = tailer.tick();
     let line_count = lines.len();
     let mut enqueued = 0u64;
@@ -223,17 +201,52 @@ async fn tick_once(
     enqueued
 }
 
+/// Pick up the session's files. One walk with one predicate: `refresh`
+/// keeps only what its own walk matched, so the two walks this used to
+/// make (`sessions/`, then `Binaries/` for the debug log) each dropped the
+/// other's files and re-added them at their end, and no line shipped.
+fn refresh_tail(tailer: &mut Tailer, binaries_dir: &Path) {
+    tailer.refresh(binaries_dir, |p| is_tailed(binaries_dir, p));
+}
+
+/// True for a file the session tail follows: the client's debug log
+/// anywhere under `Binaries`, and every `.log` / `.txt` under
+/// `Binaries/sessions` at any depth (the files the end-of-session bundle
+/// takes). Case is ignored throughout; Windows paths are case-insensitive.
+pub fn is_tailed(binaries_dir: &Path, path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if is_debug_log(name) {
+        return true;
+    }
+    let Ok(relative) = path.strip_prefix(binaries_dir) else {
+        return false;
+    };
+    let mut parts = relative.components();
+    let in_sessions = parts
+        .next()
+        .and_then(|first| first.as_os_str().to_str())
+        .is_some_and(|first| first.eq_ignore_ascii_case("sessions"))
+        && parts.next().is_some();
+    in_sessions
+        && path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("log") || ext.eq_ignore_ascii_case("txt"))
+}
+
 /// True for the client's BigWorld debug log. The client (and patch
 /// `004-log-config`) writes `SGWDebugLog.log`; the match ignores case,
 /// since a lowercase-only match never tailed it.
-fn is_debug_log(file_name: &str) -> bool {
+pub fn is_debug_log(file_name: &str) -> bool {
     file_name.to_ascii_lowercase().starts_with("sgwdebuglog")
 }
 
 /// Convert a [`TailedLine`] to a [`TelemetryEvent`]. `sgwdebuglog*`
 /// goes to `DebugLog`; everything else is treated as an Atera client
 /// log line and run through [`parse_client_log_line`].
-fn line_to_event(tl: TailedLine) -> TelemetryEvent {
+pub fn line_to_event(tl: TailedLine) -> TelemetryEvent {
     if is_debug_log(&tl.source_file) {
         TelemetryEvent::DebugLog(DebugLogEvent {
             ts_ms: 0,
@@ -286,6 +299,73 @@ mod tests {
             line: "2026-09-28 21:07:21,612 DEBUG common - about to call _runThread".into(),
         });
         assert!(matches!(ev, TelemetryEvent::DebugLog(_)), "{ev:?}");
+    }
+
+    fn append(path: &Path, text: &str) {
+        use std::io::Write;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap()
+            .write_all(text.as_bytes())
+            .unwrap();
+    }
+
+    /// `tick_once`'s refresh, tick after tick, with both the debug log
+    /// and a session log growing: lines from both arrive. The two
+    /// refreshes it used to make dropped each other's files, so whenever
+    /// `sessions/` existed, neither file shipped a line.
+    #[test]
+    fn the_tail_ships_the_debug_log_and_session_logs_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let binaries = dir.path().join("Binaries");
+        std::fs::create_dir_all(binaries.join("sessions/sub")).unwrap();
+        let debug = binaries.join("SGWDebugLog.log");
+        let session = binaries.join("sessions/sub/2026-10-11.log");
+        append(&debug, "before\n");
+        append(&session, "before\n");
+        let mut tailer = Tailer::new();
+        let mut lines = Vec::new();
+        for round in 0..3 {
+            refresh_tail(&mut tailer, &binaries);
+            lines.extend(tailer.tick().into_iter().map(|l| (l.source_file, l.line)));
+            append(&debug, &format!("debug {round}\n"));
+            append(&session, &format!("session {round}\n"));
+        }
+        refresh_tail(&mut tailer, &binaries);
+        lines.extend(tailer.tick().into_iter().map(|l| (l.source_file, l.line)));
+        lines.sort();
+        let expected: Vec<(String, String)> = (0..3)
+            .map(|n| ("2026-10-11.log".to_string(), format!("session {n}")))
+            .chain((0..3).map(|n| ("SGWDebugLog.log".to_string(), format!("debug {n}"))))
+            .collect();
+        assert_eq!(lines, expected);
+    }
+
+    /// The bundle's files, at any depth under `sessions`, in any case.
+    #[test]
+    fn the_tail_takes_session_logs_at_any_depth_and_in_any_case() {
+        let binaries = Path::new("C:/game/Binaries");
+        for tailed in [
+            "SGWDebugLog.log",
+            "logs/sgwdebuglog_old.log",
+            "sessions/a.log",
+            "sessions/b.TXT",
+            "sessions/sub/deeper/c.log",
+            "Sessions/d.Log",
+        ] {
+            assert!(is_tailed(binaries, &binaries.join(tailed)), "{tailed}");
+        }
+        for other in [
+            "sessions/a.json",
+            "sessions.log",
+            "other/a.log",
+            "a.log",
+            "../sessions/a.log",
+        ] {
+            assert!(!is_tailed(binaries, &binaries.join(other)), "{other}");
+        }
     }
 
     #[test]

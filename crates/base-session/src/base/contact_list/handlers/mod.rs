@@ -165,8 +165,10 @@ pub async fn push_contact_lists_on_login(
     // ALREADY online. The login fanout (`fanout_login_status`) only notifies
     // *other* players that this player just came online; without this step a
     // player who logs in second sees their already-online friends as offline.
+    // Names on the player's own Ignore list are not announced (D-TG10).
     let member_names: Vec<String> = lists
         .iter()
+        .filter(|l| l.flags != crate::base::contact_list::ignore::IGNORE_LIST_FLAGS)
         .flat_map(|l| l.members.iter().cloned())
         .collect();
     notify_online_contacts(

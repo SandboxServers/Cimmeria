@@ -31,12 +31,18 @@ pub(super) async fn handle_remove_item(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     if args.len() >= 6 {
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let quantity = i16::from_le_bytes([args[4], args[5]]) as i32;
         tracing::debug!(
+            event = "remove_item",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             quantity,
             "removeItem"
@@ -59,7 +65,9 @@ pub(super) async fn handle_remove_item(
                     entity_id,
                     entity_name = space_mgr.entity_label(entity_id),
                     player_id,
-                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_name = who.player_name,
                     item_id, // nt:id-only instance id; the cell holds no inventory to read its type
                     quantity,
                     error = %e,
@@ -82,9 +90,15 @@ pub(super) async fn handle_list_items(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
+        event = "list_items",
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         "listItems"
     );
     if let Some(player_id) = resolve_player_id(entity_id, "listItems", space_mgr) {
@@ -99,7 +113,9 @@ pub(super) async fn handle_list_items(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
                 player_id,
-                player_name = space_mgr.player_identity(entity_id).player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_name = who.player_name,
                 error = %e,
                 "ListInventoryItems send to base failed"
             );
@@ -113,6 +129,7 @@ pub(super) async fn handle_move_item(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     if args.len() >= 16 {
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let target_container_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
@@ -127,8 +144,13 @@ pub(super) async fn handle_move_item(
         // range validation.
         let target_slot_id = wire_slot_id.saturating_sub(1);
         tracing::debug!(
+            event = "move_item",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             target_container_id,
             target_container_name = cimmeria_entity::inventory::bag_name(target_container_id),
@@ -157,7 +179,9 @@ pub(super) async fn handle_move_item(
                     entity_id,
                     entity_name = space_mgr.entity_label(entity_id),
                     player_id,
-                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_name = who.player_name,
                     item_id, // nt:id-only instance id; the cell holds no inventory to read its type
                     target_container_id,
                     target_container_name = cimmeria_entity::inventory::bag_name(target_container_id),
@@ -185,6 +209,7 @@ pub(super) async fn handle_use_item(
     space_mgr: &mut SpaceManager,
     _engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     if args.len() >= 8 {
         // The wire `aItemID` is the inventory instance id (per
         // SGWInventoryManager.def), not the item design id. Forward to base
@@ -195,8 +220,13 @@ pub(super) async fn handle_use_item(
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
         tracing::info!(
+            event = "use_item",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             wire_target_id = target_id,
             wire_target_name = space_mgr.entity_label(target_id as u32),
@@ -222,7 +252,9 @@ pub(super) async fn handle_use_item(
                     entity_id,
                     entity_name = space_mgr.entity_label(entity_id),
                     player_id,
-                    player_name = space_mgr.player_identity(entity_id).player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_name = who.player_name,
                     item_id, // nt:id-only instance id; the cell holds no inventory to read its type
                     wire_target_id = target_id,
                     wire_target_name = space_mgr.entity_label(target_id as u32),
@@ -307,6 +339,14 @@ pub(super) async fn handle_repair_item_request(
             item_id, // nt:id-only instance id; the cell holds no inventory to read its type
             repair_ratio,
             "UNIMPLEMENTED: repairItemRequest"
+        );
+    } else {
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            args_len = args.len(),
+            reason = "malformed_args",
+            "repairItemRequest: truncated args"
         );
     }
 }

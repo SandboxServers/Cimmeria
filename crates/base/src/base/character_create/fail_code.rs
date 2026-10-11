@@ -29,3 +29,16 @@ pub(super) const UNSPECIFIED: i32 = 10003;
 /// rules, or the name is taken (python checked both in
 /// `isCharacterNameAllowed` and answered both with this code).
 pub(super) const INVALID_CHARACTER_NAME: i32 = 20001;
+
+/// The `ErrorStrings` moniker of `code`, the Rule 6 name of a refusal row's
+/// `error_code`.
+pub(super) fn moniker(code: i32) -> &'static str {
+    match code {
+        NOT_ENOUGH_INFORMATION => "ERROR_CharacterCreationNotEnoughInformation",
+        INVALID_CHARACTER_TYPE => "ERROR_CharacterCreationInvalidCharacterType",
+        INVALID_SKIN_COLOR => "ERROR_CharacterCreationInvalidSkinColor",
+        UNSPECIFIED => "ERROR_CharacterCreationUnspecifiedError",
+        INVALID_CHARACTER_NAME => "ERROR_InvalidCharacterName",
+        _ => "unknown",
+    }
+}

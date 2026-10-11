@@ -40,15 +40,22 @@ fn grant_active_weapon_abilities(entity_id: u32, space_mgr: &mut SpaceManager) {
     let item_id = space_mgr
         .get_entity(entity_id)
         .and_then(|e| e.bandolier_items.get(&slot).map(|b| b.item_id));
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         target: "bandolier",
         event = "weapon_ability_swap",
         origin = "world_entry",
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         slot_id = slot, // nt:id-only inventory slot index, not a named object
-        item_id = ?item_id,
+        item_id,
         item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
+        removed_count = removed.len(),
+        added_count = added.len(),
         removed = ?removed,
         added = ?added,
         "World entry: the active weapon's granted abilities join the known list"
@@ -431,10 +438,15 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         .map_or(0, |e| e.missions.count());
     {
         let id = space_mgr.player_identity(entity_id);
-        let (archetype, level, access_level) = space_mgr
+        let (archetype, level, access_level, session_kind) = space_mgr
             .get_entity(entity_id)
             .map_or_else(Default::default, |e| {
-                (e.archetype_id.unwrap_or(0), e.level, e.access_level)
+                (
+                    e.archetype_id.unwrap_or(0),
+                    e.level,
+                    e.access_level,
+                    e.session_kind,
+                )
             });
         // Pair with `session.end`. Client telemetry (`launcher.ingest` /
         // `launcher.bundle`) is ingested by admin-api, which this crate cannot
@@ -443,7 +455,8 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // without client logs. See the "sessions vs client telemetry" view.
         // Every world entry emits this row, so a travel re-entry carries
         // `start_cause=travel`; count logins with `start_cause=login`
-        // (TG-NET-15).
+        // (TG-NET-15). `cimmeria.session_kind` (lab or player, TG-NET-17) is
+        // the key `session.end` and the ingest use, so one filter spans all.
         tracing::info!(
             target: "session.start",
             entity_id,
@@ -459,6 +472,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             world = %world_name,
             missions,
             start_cause = entry_cause.as_str(),
+            cimmeria.session_kind = session_kind,
             "player entered world"
         );
     }

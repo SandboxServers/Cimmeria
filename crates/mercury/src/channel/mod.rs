@@ -11,6 +11,9 @@
 //! - [`channel_core`] — the [`Channel`] struct and its state-machine impl.
 //! - [`ack`] — inbound ACK processing (one ACK retires the one packet it
 //!   names) and the transmit-hole watchdog.
+//! - [`retransmit`] — the per-tick RTO retransmit scan
+//!   ([`Channel::check_timeouts`]) and the dead-peer reap check
+//!   ([`Channel::is_timed_out`]).
 //! - [`retransmit_cap`] — per-entry retransmit caps: a capped packet is
 //!   dropped from the window unacked once it reaches its cap
 //!   ([`AbandonedPacket`]).
@@ -18,6 +21,8 @@
 //!   receive gate the SGW client's `queueAckForPacket` implements.
 //! - [`fragment_caps`] — the channel's entry into fragment reassembly and
 //!   the rate-limited WARN for bundles the reassembly caps drop.
+//! - [`health`] — [`Channel::health`], the [`ChannelHealth`] snapshot the
+//!   session-end and inactivity rows log.
 //! - [`tick`] — the multi-channel tick punch list ([`TickActions`]).
 //! - [`rto`] — adaptive retransmission-timeout state.
 
@@ -26,6 +31,8 @@ pub mod rto;
 mod ack;
 mod channel_core;
 mod fragment_caps;
+mod health;
+mod retransmit;
 mod retransmit_cap;
 mod rx_order;
 mod state;
@@ -34,7 +41,9 @@ mod tick;
 pub use ack::TxHoleStall;
 pub use channel_core::Channel;
 pub use rx_order::{RxDelivery, RxOutcome, RxStall};
-pub use state::{AbandonedPacket, ChannelState, MessageNames, RxEntry, TxEntry, TxHole};
+pub use state::{
+    AbandonedPacket, ChannelHealth, ChannelState, MessageNames, RxEntry, TxEntry, TxHole,
+};
 pub use tick::TickActions;
 
 #[cfg(test)]

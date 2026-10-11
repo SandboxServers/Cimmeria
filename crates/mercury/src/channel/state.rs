@@ -44,6 +44,10 @@ pub struct MessageNames {
 pub struct TxEntry {
     /// The packet that was sent (retained for metadata — flags, seq).
     pub packet: Packet,
+    /// When this packet was first sent. Unlike `last_sent`, a retransmit
+    /// does not move it, so it ages the entry for
+    /// [`ChannelHealth::oldest_unacked_age_ms`].
+    pub first_sent: Instant,
     /// When this packet was last (re)transmitted.
     pub last_sent: Instant,
     /// How many times this packet has been retransmitted.
@@ -99,6 +103,43 @@ pub struct RxEntry {
     pub packet: ParsedPacket,
     /// When the packet was received.
     pub received_at: Instant,
+}
+
+/// A point-in-time snapshot of one channel's health, from
+/// [`Channel::health`](super::Channel::health). Plain numbers, so a caller
+/// can copy it out under the channel lock and log it after the lock is
+/// gone (`session.end`, the inactivity row).
+///
+/// It answers "did the client vanish, or did the server stop getting
+/// acks?": a large `last_rx_age_ms` with an empty window is a client that
+/// went quiet; a deep `tx_outstanding` with an old
+/// `oldest_unacked_age_ms` and climbing `retransmits_total` is a peer
+/// that still talks but no longer acks what the server sends.
+///
+/// The `*_total` and stall counters run over the channel's whole life;
+/// the ages are measured at the moment of the snapshot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChannelHealth {
+    /// Reliable packets sent and not yet acked: the TX window plus the
+    /// deferred-send queue behind it.
+    pub tx_outstanding: u32,
+    /// Milliseconds since the oldest unacked packet was first sent;
+    /// `None` when nothing is outstanding.
+    pub oldest_unacked_age_ms: Option<u64>,
+    /// Retransmits sent over the channel's life (one per expired entry
+    /// resent by `check_timeouts`).
+    pub retransmits_total: u64,
+    /// Transmit holes opened over the channel's life.
+    pub tx_holes: u64,
+    /// Transmit holes that stayed open past the watchdog threshold.
+    pub tx_hole_stalls: u64,
+    /// Receive gaps that blocked delivery past the stall threshold.
+    pub rx_stalls: u64,
+    /// Smoothed round-trip time in milliseconds; `None` before the first
+    /// clean RTT sample.
+    pub srtt_ms: Option<u64>,
+    /// Milliseconds since the channel last heard from the peer.
+    pub last_rx_age_ms: u64,
 }
 
 /// A transmit hole: the oldest outstanding reliable packet, once the peer

@@ -279,6 +279,7 @@ async fn level_gate_reads_the_level_hydrated_at_world_entry() {
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
             entry_cause: crate::cell::messages::WorldEntryCause::Login,
+            session_kind: None,
         },
     )
     .await;

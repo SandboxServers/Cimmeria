@@ -150,6 +150,50 @@ async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel(
     );
 }
 
+/// `Action::Teleport` — the "teleporting entity" row carries the Rule 5
+/// `account_id` of the seeded player. Reverting the identity fields on that
+/// row drops `account_id` and fails this test.
+#[tokio::test]
+async fn content_teleport_row_carries_account_id() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let space_id = mgr.get_entity(1).unwrap().space_id.0;
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.account_id = Some(7);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1109,
+            Action::Teleport {
+                space_id,
+                position: [12.0, 34.0, 56.0],
+            },
+        )],
+        action_delays: Vec::new(),
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let row = capture
+        .find_message(Level::INFO, "Content: teleporting entity")
+        .expect("Action::Teleport must log the teleporting entity row");
+    assert!(
+        row.has_field("account_id", "7"),
+        "teleport row must carry the player's account_id; captured: {row:?}"
+    );
+}
+
 /// `Action::Teleport` — same-space chain teleport — must not re-face the
 /// entity it moves. `transport::teleport` goes through
 /// `update_position_preserving_facing`, not the raw `update_entity_position`
