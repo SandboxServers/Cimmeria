@@ -151,6 +151,7 @@ fn interrupted_atomic_swap_keeps_visible_app_and_new_startup_can_acknowledge() {
         replacement: Some(bundle::fingerprint(&extracted).unwrap()),
         staged_bundle: Some("Launcher.app".into()),
         handoff: false,
+        swap: None,
     });
     state.save_update(record).unwrap();
     exchange(&installed, &extracted).unwrap();
