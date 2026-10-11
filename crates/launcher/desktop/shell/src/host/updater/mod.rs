@@ -31,7 +31,57 @@ pub enum UpdaterCommand {
         offer_id: Uuid,
     },
 }
+/// The compiled launcher version (D-LX8, `YYYY.M.D` from
+/// `CIMMERIA_LAUNCHER_VERSION`). Both the "is this newer" check and the
+/// startup acknowledgment compare against it, so they can never disagree.
+pub(crate) const COMPILED_VERSION: &str = match option_env!("CIMMERIA_LAUNCHER_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+/// The rolling `launcher-current` release's static Tauri feed (LX-15).
+const FEED_URL: &str =
+    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/latest.json";
+/// GitHub serves release assets by redirect; every hop is checked against this.
+const FEED_HOSTS: [&str; 3] = [
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
+/// The release updater configuration, from the Minisign public key compiled in
+/// as `LAUNCHER_UPDATER_PUBKEY`. Windows only: the feed carries only the
+/// `windows-x86_64` zip, so macOS stays Disabled as before. No key, or a key
+/// that does not decode, leaves the updater Disabled.
+fn compiled_updater_config() -> Option<updater::Config> {
+    updater_config_from(
+        option_env!("LAUNCHER_UPDATER_PUBKEY"),
+        cfg!(windows).then_some("windows-x86_64"),
+    )
+}
+fn updater_config_from(
+    public_key: Option<&str>,
+    platform: Option<&str>,
+) -> Option<updater::Config> {
+    let public_key = public_key.map(str::trim).filter(|key| !key.is_empty())?;
+    let platform = platform?;
+    let hosts = FEED_HOSTS.iter().map(|host| host.to_string()).collect();
+    match updater::Config::new(FEED_URL, public_key, COMPILED_VERSION, platform, hosts) {
+        Ok(config) => Some(config),
+        Err(error) => {
+            // A release built with a bad key must not look like "no updates".
+            eprintln!("launcher updater disabled: compiled configuration refused ({error:?})");
+            None
+        }
+    }
+}
+
 impl NativeHost {
+    /// Native composition only; the renderer never supplies feed or key.
+    pub fn with_compiled_updater_config(mut self) -> Self {
+        self.updater_config = compiled_updater_config();
+        self
+    }
+
     /// Native composition installs shutdown before any Apply capability is exposed.
     pub fn with_updater_shutdown(mut self, shutdown: impl Fn() + Send + Sync + 'static) -> Self {
         self.updater_shutdown = Some(std::sync::Arc::new(shutdown));
@@ -192,6 +242,26 @@ mod tests {
             Err(Error::Disabled)
         ));
         assert!(!root.path().join("state/launcher-update.json").exists());
+    }
+    #[test]
+    fn compiled_configuration_needs_a_key_and_the_windows_feed() {
+        let keys = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        let key = base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            keys.pk.to_box().unwrap().to_string(),
+        );
+        assert!(updater_config_from(None, Some("windows-x86_64")).is_none());
+        assert!(updater_config_from(Some("  "), Some("windows-x86_64")).is_none());
+        assert!(updater_config_from(Some("not a key"), Some("windows-x86_64")).is_none());
+        assert!(
+            updater_config_from(Some(&key), None).is_none(),
+            "macOS stays disabled"
+        );
+        assert!(updater_config_from(Some(&key), Some("windows-x86_64")).is_some());
+        // Without LAUNCHER_UPDATER_PUBKEY at compile time the build is Disabled.
+        if option_env!("LAUNCHER_UPDATER_PUBKEY").is_none() {
+            assert!(compiled_updater_config().is_none());
+        }
     }
     #[test]
     fn updater_ipc_rejects_renderer_url_key_bytes_and_incomplete_apply() {

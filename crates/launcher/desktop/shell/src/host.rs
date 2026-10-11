@@ -131,7 +131,8 @@ impl NativeHost {
     fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            let restart = std::env::args_os().any(|arg| arg == "--launcher-update-restart");
+            let restart = std::env::args_os()
+                .any(|arg| arg == cimmeria_launcher_engine::updater::RESTART_ARG);
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             let mut state = loop {
                 match DesktopState::open(&self.root) {
@@ -144,7 +145,7 @@ impl NativeHost {
             if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
                 // Only the running binary's compiled version acknowledges a handoff.
                 // Failure leaves the updater owner visible and excludes game work.
-                let _ = state.reconcile_launcher_update(&target, env!("CARGO_PKG_VERSION"));
+                let _ = state.reconcile_launcher_update(&target, updater::COMPILED_VERSION);
             }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()

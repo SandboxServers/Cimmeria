@@ -1,68 +1,59 @@
 //! Native process handoff and same-volume exclusive rename primitives.
 use super::Error;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
+/// Start the relaunched launcher. CreateProcess on Windows: the launcher
+/// starts itself, needs no elevation, and a missing file fails synchronously
+/// instead of raising a shell error dialog (the ShellExecute stall, #1194).
 pub(super) fn spawn(path: &Path, args: &[String]) -> Result<(), Error> {
-    #[cfg(not(windows))]
-    {
-        use std::process::{Command, Stdio};
-        Command::new(path)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| Error::Spawn)?;
-        Ok(())
+    use std::process::{Command, Stdio};
+    let mut command = Command::new(path);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        command.current_dir(dir);
     }
+    command.spawn().map_err(|error| {
+        tracing::warn!(target: "launcher.update", event = "relaunch_failed", %error, path = %path.display(), "could not start the updated launcher");
+        Error::Spawn
+    })?;
+    Ok(())
+}
+/// Whether a process with this id is still running. The restarted launcher
+/// polls this for the old one before it takes the single-instance guard.
+/// A process this user cannot open counts as gone; the state lock still
+/// serializes the two.
+pub fn process_alive(pid: u32) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::{
-            Foundation::CloseHandle,
-            UI::{
-                Shell::{
-                    ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
-                    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
-                },
-                WindowsAndMessaging::SW_SHOW,
-            },
+            Foundation::{CloseHandle, WAIT_TIMEOUT},
+            System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE},
         };
-        let file: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-        // NSIS documents /D as the final, unquoted argument. All other native
-        // arguments use Windows quoting; neither arguments nor paths cross IPC.
-        let parameters = args
-            .iter()
-            .map(|arg| {
-                if arg.starts_with("/D=") {
-                    arg.clone()
-                } else {
-                    format!("\"{}\"", arg.replace('"', "\\\""))
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-        let parameters: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
-        let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
-        let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
-        info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-        // Report ordinary launch errors through the saved updater result instead
-        // of blocking this worker on an unowned Shell error dialog. Windows
-        // security prompts (including elevation) are explicitly exempt from NO_UI.
-        info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
-        info.lpVerb = verb.as_ptr();
-        info.lpFile = file.as_ptr();
-        info.lpParameters = parameters.as_ptr();
-        info.nShow = SW_SHOW;
-        if unsafe { ShellExecuteExW(&mut info) } == 0 {
-            return Err(Error::Spawn);
+        // SAFETY: a null handle is checked; the handle is closed once.
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+        if handle.is_null() {
+            return false;
         }
-        if !info.hProcess.is_null() {
-            unsafe { CloseHandle(info.hProcess) };
-        }
-        Ok(())
+        let alive = unsafe { WaitForSingleObject(handle, 0) } == WAIT_TIMEOUT;
+        unsafe { CloseHandle(handle) };
+        alive
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(pid) = libc::pid_t::try_from(pid) else {
+            return false;
+        };
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid, 0) == 0 }
+        || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = pid;
+        false
     }
 }
 pub(super) fn sync_parent(_path: &Path) -> Result<(), Error> {
@@ -104,28 +95,6 @@ pub(in crate::storage::updater) fn rename_new(from: &Path, to: &Path) -> Result<
         fs::rename(from, to).map_err(|_| Error::Replace)
     }
 }
-pub(super) fn msiexec() -> Result<PathBuf, Error> {
-    #[cfg(windows)]
-    {
-        let mut buffer = [0u16; 32768];
-        let len = unsafe {
-            windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW(
-                buffer.as_mut_ptr(),
-                buffer.len() as u32,
-            )
-        } as usize;
-        if len == 0 || len >= buffer.len() {
-            return Err(Error::Target);
-        }
-        use std::os::windows::ffi::OsStringExt;
-        Ok(PathBuf::from(std::ffi::OsString::from_wide(&buffer[..len])).join("msiexec.exe"))
-    }
-    #[cfg(not(windows))]
-    {
-        Err(Error::Platform)
-    }
-}
-
 /// Mac publication and rollback keep the installed name present atomically.
 pub(super) fn exchange(left: &Path, right: &Path) -> Result<(), Error> {
     #[cfg(target_os = "macos")]

@@ -213,6 +213,7 @@ fn interruption_after_old_rename_restores_original_without_spawning() {
         replacement: None,
         staged_bundle: None,
         handoff: false,
+        swap: None,
     });
     state.save_update(record.clone()).unwrap();
     let (_, backup) = record
@@ -301,58 +302,6 @@ fn duplicate_apply_and_wrong_target_reconciliation_cannot_repeat_effects() {
 }
 
 #[test]
-fn windows_installer_handoff_stays_owned_until_compiled_version_acknowledges() {
-    let temp = tempfile::tempdir().unwrap();
-    let root = temp.path().canonicalize().unwrap();
-    let (mut config, mut offer, bytes, _) = fixture(&root);
-    config.platform = "windows-x86_64".into();
-    offer.url = "https://updates.example.test/launcher.exe".into();
-    let exe = root.join("launcher.exe");
-    fs::write(&exe, b"old native executable").unwrap();
-    let target = InstalledTarget(Target::Windows {
-        executable: exe.clone(),
-    });
-    let mut state = DesktopState::open(&root.join("state")).unwrap();
-    let ready = ready(&mut state, &config, offer, &bytes);
-    let mut seen = false;
-    let status = state
-        .apply_update_with(
-            Some(&config),
-            &target,
-            ready.offer.unwrap().id,
-            ready.revision,
-            0,
-            |path, args| {
-                assert_eq!(fs::read(path).unwrap(), bytes);
-                assert_eq!(
-                    args,
-                    &[
-                        "/P".to_owned(),
-                        "/R".to_owned(),
-                        "/UPDATE".to_owned(),
-                        format!("/D={}", root.display())
-                    ]
-                );
-                seen = true;
-                Ok(())
-            },
-        )
-        .unwrap();
-    assert!(seen);
-    assert_eq!(status.phase, Phase::RestartRequired);
-    assert_eq!(fs::read(exe).unwrap(), b"old native executable");
-    drop(state);
-    let mut state = DesktopState::open(&root.join("state")).unwrap();
-    state.reconcile_launcher_update(&target, "1.0.0").unwrap();
-    assert!(state.ensure_updater_idle().is_err());
-    state.reconcile_launcher_update(&target, "1.1.0").unwrap();
-    assert_eq!(
-        state.launcher_update_snapshot(Some(&config)).unwrap().phase,
-        Phase::Installed
-    );
-}
-
-#[test]
 fn unrecognized_backup_is_preserved_and_keeps_reconciliation_owner() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();
@@ -389,8 +338,9 @@ fn unrecognized_backup_is_preserved_and_keeps_reconciliation_owner() {
     assert!(state.ensure_updater_idle().is_err());
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 mod native_uat;
+mod windows_zip;
 
 #[test]
 fn final_rename_failure_restores_original_bundle_before_releasing_ownership() {
@@ -430,17 +380,32 @@ fn final_rename_failure_restores_original_bundle_before_releasing_ownership() {
 
 #[test]
 #[cfg(windows)]
-fn native_windows_shell_handoff_launches_a_temporary_executable_without_claiming_installation() {
-    // The native test runner is an inert executable fixture. Its zero-matching
-    // test invocation is a process-launch proof, not an NSIS/MSI installation.
+fn native_relaunch_starts_an_executable_and_reports_a_missing_one() {
+    // The native test runner is an inert executable fixture; its zero-matching
+    // test invocation proves process launch, never a launcher restart.
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();
     let exe = root.join("native-process-fixture.exe");
     fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
     spawn(&exe, &["--exact".into(), "no_such_updater_test".into()]).unwrap();
+    // CreateProcess fails synchronously: no shell error dialog can stall it (#1194).
     assert_eq!(spawn(&root.join("missing.exe"), &[]), Err(Error::Spawn));
 }
 
+#[test]
+#[cfg(any(windows, target_os = "macos"))]
+fn process_probe_sees_this_process_and_not_an_exited_child() {
+    assert!(process::process_alive(std::process::id()));
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "no_such_updater_test"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    child.wait().unwrap();
+    // The handle `child` still owns keeps the id from being reused here.
+    assert!(!process::process_alive(pid));
+}
 #[test]
 fn foreign_stage_or_installer_collision_is_preserved_during_reopen_recovery() {
     for windows in [false, true] {
@@ -468,6 +433,7 @@ fn foreign_stage_or_installer_collision_is_preserved_during_reopen_recovery() {
             replacement: None,
             staged_bundle: None,
             handoff: false,
+            swap: None,
         });
         let (stage, _) = record
             .apply

@@ -51,10 +51,10 @@ A release build also sets, on the build step only:
 
 ## What the preview does not have
 
-- **An installer.** The launcher's own update path hands off to an NSIS
-  installer ([updater](updater.md)). Nothing builds one, and that path is
-  untested, so this build cannot update itself. No update feed or signing key
-  is configured either; Settings shows the updater as disabled.
+- **Self-update.** The launcher updates itself by swapping in the files of the
+  next release zip ([updater](updater.md)), but only a build with
+  `LAUNCHER_UPDATER_PUBKEY` set can verify one, and no release publishes the
+  signed `latest.json` feed yet (LX-15). Settings shows the updater as disabled.
 - **A signature.** It is unsigned, like the original launcher. The launch
   worker injects DLLs into the game, which is what Defender and SmartScreen
   react to.
