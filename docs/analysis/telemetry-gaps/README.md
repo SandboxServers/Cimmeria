@@ -1,7 +1,7 @@
 # Telemetry Gaps Campaign
 
 > Type: how-to (campaign ledger). Audience: the coordinator session and packet workers.
-> Updated: 2026-10-11 (close-out: every packet Integrated, UATPending, Merge pending, Dropped or Superseded; D-TG17 and D-TG19 recorded; [leftovers](#leftovers) listed). Status: **closed**, with the UAT owed in [unified UAT § Telemetry gaps](../../guides/unified-uat.md#telemetry-gaps) and the [close-out handoff](handoffs/2026-10-11-closeout.md). Companions: [work-packets.md](work-packets.md) (rules, contract, W0-W2), [work-packets-w3-w4.md](work-packets-w3-w4.md) (W3-W4), [reviews/](reviews/), [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md), [negative-logging-convention.md](../../architecture/negative-logging-convention.md), [observability.md](../../architecture/observability.md), [client-telemetry.md](../../architecture/client-telemetry.md).
+> Updated: 2026-10-11 (close-out: every packet Integrated, UATPending, Dropped or Superseded; D-TG17 and D-TG19 recorded; [leftovers](#leftovers) listed). Status: **closed**, with the UAT owed in [unified UAT § Telemetry gaps](../../guides/unified-uat.md#telemetry-gaps) and the [close-out handoff](handoffs/2026-10-11-closeout.md). Companions: [work-packets.md](work-packets.md) (rules, contract, W0-W2), [work-packets-w3-w4.md](work-packets-w3-w4.md) (W3-W4), [reviews/](reviews/), [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md), [negative-logging-convention.md](../../architecture/negative-logging-convention.md), [observability.md](../../architecture/observability.md), [client-telemetry.md](../../architecture/client-telemetry.md).
 
 ## Goal
 
@@ -75,9 +75,9 @@ Each domain agent adversarially reviewed its own system's telemetry footprint, p
 
 ## Packet status
 
-States at close-out (2026-10-11): **Integrated** (merged to `main`, with its PR), **UATPending** (merged, but it reaches players only with the next signed launcher release, after a lab load check, D-TG4), **Merge pending** (in an open PR at close-out), **Dropped**, **Superseded**. Lab UAT was skipped for this campaign by the owner; what a tester still owes is in [unified UAT § Telemetry gaps](../../guides/unified-uat.md#telemetry-gaps). Specs: W0-W2 in [work-packets.md](work-packets.md), W3-W4 in [work-packets-w3-w4.md](work-packets-w3-w4.md).
+States at close-out (2026-10-11): **Integrated** (merged to `main`, with its PR), **UATPending** (merged, but it reaches players only with the next signed launcher release, after a lab load check, D-TG4), **Dropped**, **Superseded**. Lab UAT was skipped for this campaign by the owner; what a tester still owes is in [unified UAT § Telemetry gaps](../../guides/unified-uat.md#telemetry-gaps). Specs: W0-W2 in [work-packets.md](work-packets.md), W3-W4 in [work-packets-w3-w4.md](work-packets-w3-w4.md).
 
-**Totals:** 161 packets (the 160 collated, plus TG-DB-12). 143 Integrated, 9 UATPending (client DLL and launcher, merged), 7 Merge pending in #1645 (the 5 DLL packets among them then become UATPending), 1 Dropped, 1 Superseded.
+**Totals:** 161 packets (the 160 collated, plus TG-DB-12). 145 Integrated, 14 UATPending (client DLL and launcher; in the launcher release the owner triggered 2026-10-11), 1 Dropped, 1 Superseded.
 
 | ID | Title | Wave | Sev | State |
 |---|---|---|---|---|
@@ -143,8 +143,8 @@ States at close-out (2026-10-11): **Integrated** (merged to `main`, with its PR)
 | TG-AOI-08 | Leave and invisible send-failure row | W3 | low | Integrated (#1543) |
 | TG-MER-01 | Numeric identity on `mercury.reliable_send` | W3 | high | Integrated (#1499) |
 | TG-MER-02 | Cause fields on `mercury.retransmit` | W3 | high | Integrated (#1614) |
-| TG-MER-03 | Channel log identity | W3 | high | Merge pending (#1645) |
-| TG-MER-04 | Identity on `tx_hole` and `rx_order` | W3 | med | Merge pending (#1645) |
+| TG-MER-03 | Channel log identity | W3 | high | Integrated (#1645) |
+| TG-MER-04 | Identity on `tx_hole` and `rx_order` | W3 | med | Integrated (#1645) |
 | TG-MER-05 | Base→cell send seam WARNs | W3 | high | Integrated (#1512) |
 | TG-MER-06 | Inbound bundle-walk drops out of TRACE | W3 | med | Integrated (#1615) |
 | TG-MER-11 | Identity on the catch-all handler rows | W3 | low | Integrated (#1587) |
@@ -230,14 +230,14 @@ States at close-out (2026-10-11): **Integrated** (merged to `main`, with its PR)
 | TG-PIPE-16 | `entity_labels_unavailable` carries `session_id` | W3 | low | Integrated (#1571) |
 | TG-PIPE-02 | DLL sends its pid with every chunk | W4 | high | UATPending (#1597) |
 | TG-PIPE-04 | Ingest stamps `client_pid` (server) | W4 | high | Integrated (#1605) |
-| TG-PIPE-03 | DLL final flush at process exit | W4 | high | Merge pending (#1645), then UATPending |
-| TG-CLI-04 | `client.session.end` from the DLL | W4 | high | Merge pending (#1645), then UATPending |
+| TG-PIPE-03 | DLL final flush at process exit | W4 | high | UATPending (#1645; in the launcher release the owner triggered 2026-10-11) |
+| TG-CLI-04 | `client.session.end` from the DLL | W4 | high | UATPending (#1645; in the launcher release the owner triggered 2026-10-11) |
 | TG-PIPE-12 | Launcher `session_meta kind=game_exited` | W4 | low | UATPending (#1601; the egui launcher sends `kind=game_exited`, not the spec's `ended`) |
-| TG-PIPE-13 | DLL upload-failure accounting | W4 | low | Merge pending (#1645), then UATPending |
-| TG-PIPE-14 | DLL boot failures as events | W4 | low | Merge pending (#1645), then UATPending |
+| TG-PIPE-13 | DLL upload-failure accounting | W4 | low | UATPending (#1645; in the launcher release the owner triggered 2026-10-11) |
+| TG-PIPE-14 | DLL boot failures as events | W4 | low | UATPending (#1645; in the launcher release the owner triggered 2026-10-11) |
 | TG-MER-12 | Client join keys on Mercury faults | W4 | med | UATPending (#1607) |
 | TG-CLI-01 | `client.viewport.unknown_entity` per entity | W4 | high | UATPending (#1603) |
-| TG-CLI-02 | Tag BigWorld errors after an unpack fault | W4 | med | Merge pending (#1645), then UATPending |
+| TG-CLI-02 | Tag BigWorld errors after an unpack fault | W4 | med | UATPending (#1645; in the launcher release the owner triggered 2026-10-11) |
 | TG-CLI-03 | Cooked pak cache write result and tier | W4 | med | UATPending (#1604) |
 | TG-CLI-05 | Main-thread phase on hitch rows | W4 | med | UATPending (#1600) |
 | TG-CLI-06 | Audio stop names its cue | W4 | med | UATPending (#1606) |
@@ -253,7 +253,7 @@ Follow-ups the campaign did not close. None blocks the close-out. Each entry has
 |---|---|---|---|---|
 | L1 | Trade honours the Ignore list (trade half of D-TG10) | TG-SOC-04 (#1616) shipped only the presence half. D-TG10 also says a trade request from a player on the target's Ignore list is refused, with visible feedback to the requester on the first press. Today trade never consults the Ignore list (the social review's "Not packeted" row). Needs its own packet with a live-DB guard and a feedback line. | social-systems-engineer | -- |
 | L2 | OTLP exporter dropped-records counter (D-TG16) | Decided 2026-10-10 (yes), never packeted. A periodic counter row of OTLP records the exporter dropped, written locally and sent to SigNoz once the exporter recovers. Accepts an exporter-side change. | rust-gameserver-dev | -- |
-| L3 | Merge #1645 | TG-MER-03/04, TG-PIPE-03, TG-CLI-04, TG-PIPE-13/14 and TG-CLI-02 were in #1645, still open at close-out. When it merges, flip those rows to Integrated (the MER pair) or UATPending (the five DLL packets). | coordinator | #1645 |
+| L3 | ~~Merge #1645~~ Done: #1645 merged 2026-10-11 and the owner triggered a launcher release. The ledger rows are flipped. | coordinator | #1645 |
 
 ### Code and test hygiene from packet reviews
 
