@@ -1,7 +1,9 @@
 //! Native signed-package ownership, platform replacement and startup acknowledgment.
 mod apply;
 mod bundle;
-pub use apply::InstalledTarget;
+#[cfg(feature = "test-support")]
+pub use apply::zip_swap::zip_fixture;
+pub use apply::{process::process_alive, InstalledTarget, RESTART_ARG};
 mod policy;
 mod transport;
 use super::{atomic, ensure_regular_or_absent, read, DesktopState, StorageError, MAX_REVISION};

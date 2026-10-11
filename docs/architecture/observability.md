@@ -444,6 +444,7 @@ space ids to world names by hand):
 | Metric | Labels | Notes |
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
+| `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (6) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC. Routes with **no** usable path only; a partial route counts in `npc_path_partial_total` |
 | `npc_path_partial_total` | `world` (~24), `state` (5) | NA02: a partial corridor that was still walked. Its `npc_ai.path_fail reason=partial` row has its own throttle window (`path_partial`), so it cannot hold back a real routing failure for the same NPC |
 | `npc_path_requests_total` | `world` (~24), `state` (5), `status` (7) | One per AI `find_path` (NA02), beside the `npc_ai.path` row — the path-status mix |
@@ -456,7 +457,7 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
-| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged |
+| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs |
 
 Never entity ids, positions or mesh hashes as labels — those are
 per-entity and per-build correlators and belong on the log event.
@@ -497,14 +498,27 @@ trace index. Estimated volume with five active players: ~75 inbound
 packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
 relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
 NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
-The remaining per-packet TRACE rows are **not** sampled: `encrypt` /
-`decrypt` in `cimmeria_mercury` (one per outbound and per inbound
-datagram), ACK queueing, `EntityMove` and
+The remaining per-packet TRACE rows are **not** sampled: ACK queueing,
+`EntityMove` and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
 packet). They are a few fields each and arrive at about the rate of
-`mercury.packet`, which `cimmeria-network` already receives unsampled —
-roughly one `cimmeria-trace` row per datagram. If that proves too much,
-move them behind `cimmeria_wire::firehose` the same way.
+datagrams — roughly one `cimmeria-trace` row per datagram. If that proves
+too much, move them behind `cimmeria_wire::firehose` the same way.
+
+TG-MER-09 (owner decision D-TG7, reversing NA25's "every datagram at INFO")
+puts the transport's per-datagram rows on the same framework, as the fourth
+entry in `FIREHOSES`. `UdpTransport` writes every datagram to
+`wire.firehose.mercury_packet` at TRACE, which `protocol.log` keeps in full
+and the OTLP filters turn off. `mercury.packet` keeps one INFO row per 53
+datagrams in each direction (a `FirehoseSampler` per direction, so the
+send-heavy side cannot starve the receive side of samples), with
+`sampled_1_in` and `suppressed`, and every failed send on its own unsampled
+`mercury_packet_failed` row. The `mercury_datagrams_total{dir}` counter
+gives the exact rate. The emitter and its targets live in
+`cimmeria_mercury::firehose`, because `cimmeria-wire` depends on the
+transport crate and not the reverse; `cimmeria_wire::firehose` re-exports
+them. For the same reason `FirehoseSampler` lives in
+`cimmeria-observability`, at the bottom of the crate graph.
 
 ### Timestamps — server-receive vs. client-generate
 

@@ -1,4 +1,5 @@
-//! The three firehose emitters. Each writes the full row on its
+//! The three wire-crate firehose emitters (the fourth, `log_mercury_packet`,
+//! is in `cimmeria_mercury::firehose`). Each writes the full row on its
 //! `wire.firehose.*` target and, when the sampler admits it, the sampled row.
 //!
 //! The sampler is a parameter so a test can count from zero; production call

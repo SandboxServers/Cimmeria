@@ -138,7 +138,11 @@ fn each_level_lands_in_its_index() {
     assert_eq!(otlp(noise, Level::DEBUG), [OTLP_NETWORK]);
     assert_eq!(otlp(noise, Level::INFO), [OTLP_NETWORK]);
     assert_eq!(otlp(noise, Level::WARN), [OTLP_SERVER]);
+    // TG-MER-09 (D-TG7 reverses NA25's "every datagram at INFO"): the
+    // `mercury.packet` sample and failure rows stay in the network index; the
+    // per-datagram firehose reaches protocol.log in full and no SigNoz index.
     assert_eq!(otlp("mercury.packet", Level::INFO), [OTLP_NETWORK]);
+    assert!(otlp(firehose::MERCURY_PACKET_TARGET, Level::TRACE).is_empty());
     assert_eq!(otlp("npc_ai.transition", Level::DEBUG), [OTLP_SERVER]);
     // Custom-target TRACE rows, which no file keeps.
     assert_eq!(otlp("npc_ai.tick", Level::TRACE), [OTLP_TRACE]);

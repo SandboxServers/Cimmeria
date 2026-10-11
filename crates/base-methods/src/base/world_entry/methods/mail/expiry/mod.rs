@@ -393,6 +393,11 @@ fn log_summary(
     s: SweepSummary,
     notify: SweepNotify<'_>,
 ) {
+    // Most sweeps scan nothing and fail nothing (100% of 4,556 rows in 30
+    // days): an empty run has no story to tell, so it writes no row.
+    if s.scanned == 0 && s.failed == 0 {
+        return;
+    }
     let who = owner_identity(notify, owner);
     tracing::debug!(
         target: "mail",
@@ -465,4 +470,39 @@ pub fn spawn_sweeper(
             sweep_due(&pool, unix_now(), Some(&ctx)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{log_summary, SweepSource, SweepSummary};
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    /// An empty sweep (nothing scanned, nothing failed) writes no
+    /// `mail.expiry_sweep` row; a sweep that expired one mail does.
+    #[test]
+    fn empty_mail_sweep_is_silent() {
+        let capture = LogCapture::install();
+        log_summary(SweepSource::Tick, None, 0, SweepSummary::default(), None);
+        assert!(
+            capture
+                .find_message(Level::DEBUG, "mail expiry sweep finished")
+                .is_none(),
+            "an empty sweep must write no row: {:#?}",
+            capture.all()
+        );
+
+        let one = SweepSummary {
+            scanned: 1,
+            deleted: 1,
+            ..SweepSummary::default()
+        };
+        log_summary(SweepSource::Login, Some(7), 0, one, None);
+        assert!(
+            capture
+                .find_message(Level::DEBUG, "mail expiry sweep finished")
+                .is_some(),
+            "a sweep that expired one mail must write its row"
+        );
+    }
 }
