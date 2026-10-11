@@ -1,0 +1,152 @@
+# Data for the `gen:tools-catalog` block in tools/README.md (tools_catalog.py).
+#
+# Patterns are fnmatch globs over repo-relative POSIX paths, where `*` also
+# matches `/`. For a crate binary the path matched is its source file.
+
+# Files that are not entry points: tests, dot-sourced libraries, app sources.
+# Python modules without an `if __name__ == "__main__"` guard are libraries too,
+# unless they sit directly in tools/ or are a package's __main__.py.
+exclude = [
+    "*/test_*.py",
+    # tests sit beside what they test; tools/test-live-db.ps1 is a runner, not a test
+    "tools/*/test-*.ps1",
+    "*/__init__.py",
+    "*-lib.ps1",
+    "tools/lab/cli/common.ps1",
+    "tools/build-lane/lane-slots.ps1",
+    "tools/ContentEditor/ui/*",
+    "tools/SceneEditor/ui/*",
+]
+
+# Script extensions the catalog scans under tools/. Each maps to the default
+# way to run one; {path} is the repo-relative file, {dir} its directory,
+# {stem} the file name without its extension.
+[run]
+".py" = "python {path}"
+".ps1" = "pwsh {path}"
+".sh" = "bash {path}"
+".java" = "headless Ghidra (see the README beside it)"
+
+# Run templates for scripts that are not run by their own path. First match wins.
+[[run_override]]
+pattern = "tools/lab/cli/*.ps1"
+run = "lab {stem}"
+
+[[run_override]]
+pattern = "*/__main__.py"
+run = "python {dir}"
+
+# Groups, in output order. A tool lands in the first group with a matching
+# pattern, and in "Other" when none matches. Headings use the words agents
+# search for.
+[[group]]
+title = "Decode packets and the wire (Mercury, pcap, login)"
+patterns = [
+    "tools/pcap_*",
+    "tools/wire_*",
+    "tools/mercury_*",
+    "tools/entity_property_sync_*",
+    "tools/generate-mercury-kat.py",
+    "tools/frag_debug*",
+    "tools/investigate_corruption.py",
+    "crates/wireclient/*",
+]
+
+[[group]]
+title = "Client assets and UPK packages"
+patterns = [
+    "tools/upk_parser.py",
+    "tools/kismet_extractor.py",
+    "tools/extract_actors.py",
+    "crates/upk/*",
+    "crates/upk-objects/*",
+]
+
+[[group]]
+title = "Maps, navmesh, cover and occluders"
+patterns = [
+    "tools/map-lab/*",
+    "tools/build-nav*",
+    "tools/ue3_extract_cover_nodes.py",
+    "tools/occluder_entry_points.py",
+    "crates/navmesh-extractor/*",
+]
+
+[[group]]
+title = "Seeds and the database"
+patterns = [
+    "tools/ability_mechanics/*",
+    "tools/ability_trees/*",
+    "tools/crafting/*",
+    "tools/generate_effect_stubs.py",
+    "tools/*speaker_id*",
+    "tools/live-db-schema-load.sh",
+    "tools/test-live-db.*",
+]
+
+[[group]]
+title = "Lab and UAT (live client)"
+patterns = [
+    "tools/lab/*",
+    "tools/testhost/*",
+    "crates/lab/*",
+    "crates/sgw-testhost/*",
+]
+
+[[group]]
+title = "Client patches and the launcher"
+patterns = [
+    "tools/client-patches/*",
+    "tools/launcher-release/*",
+    "crates/patchset/*",
+    "crates/launcher*",
+    "crates/start32/*",
+]
+
+[[group]]
+title = "Build, CI, worktrees and PRs"
+patterns = [
+    "tools/build-lane/*",
+    "tools/build-hygiene/*",
+    "tools/build-metrics/*",
+    "tools/dev-drive/*",
+    "tools/ci-runners/*",
+    "tools/container-smoke.sh",
+    "tools/agent-skills/*",
+]
+
+[[group]]
+title = "RE and Ghidra"
+patterns = [
+    "tools/re/*",
+    "tools/re_parity.py",
+]
+
+[[group]]
+title = "Telemetry, SigNoz and token profiling"
+patterns = [
+    "tools/telemetry-coverage/*",
+    "tools/signoz/*",
+    "tools/token-profile/*",
+]
+
+[[group]]
+title = "Docs, lint and generated blocks"
+patterns = [
+    "tools/docs-gen/*",
+    "tools/crate-graph/*",
+    "tools/lint-*",
+    "tools/check-figure-*",
+    "tools/add_doc_metadata.py",
+    "tools/extract_tests.py",
+    "tools/spec-lint/*",
+]
+
+[[group]]
+title = "Server, supervisor and editors"
+patterns = [
+    "crates/server/*",
+    "crates/supervisor/*",
+    "tools/ContentEditor/*",
+    "tools/SceneEditor/*",
+]

@@ -52,6 +52,10 @@ Classify before you design.
 - **Do not hard-code seed ids in tests.** Assert by relationship or re-fetch the baseline. See `TESTING.md` "Don't trust seed data".
 - **Auto-generated chains in `space_*_chains.sql` have converter bugs.** When a PR regenerates them, diff against the previous version. Review rules: [`.github/instructions/content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md).
 
+## Tools and scripts
+
+- **Look for an existing tool before you write one.** Before writing a script, parser, decoder, extractor or CLI, search the [tools catalog](../../tools/README.md#tools-catalog) (every script under `tools/` and every crate binary, grouped by task, with how to run it), `crates/*/src/bin/` and [`crates/README.md`](../../crates/README.md). Extend the tool that already does most of the job instead of adding a sibling, and give a new tool a one-line summary (module docstring, leading comment, `.SYNOPSIS`, or `//!` for a Rust binary) so the generated catalog picks it up. Why: the repo has about 150 tools, and before the catalog most crate binaries were described only in campaign worknotes, so sessions that could not find a tool wrote another beside it, with its own bugs to rediscover.
+
 ## Build and CI
 
 - **The toolchain is pinned; bump it on purpose.** `rust-toolchain.toml` pins Rust 1.98.1, and every CI workflow installs that version through `.github/actions/rust-toolchain`, so local clippy is CI's clippy. This replaces the old gotcha: CI used to float on stable, its clippy ran ahead of yours, and the workaround was a side-by-side `cargo +<version> clippy`. Don't do that anymore. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR. Clippy stops at the first failing target, so rerun until it exits 0.

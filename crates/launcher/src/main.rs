@@ -1,3 +1,7 @@
+//! `sgw-launcher`: the egui game launcher. It installs the client from a seed and patch
+//! manifest, launches `SGW.exe` (with DLLs injected through `sgw-start32`) and uploads
+//! debug logs.
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;

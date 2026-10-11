@@ -355,7 +355,7 @@ See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineer
 
 ### `tools/` -- Development Tools
 
-Design documents for development and administration tools.
+Design documents for development and administration tools. The tools themselves are catalogued outside `docs/`: [tools/README.md](../tools/README.md#tools-catalog) lists every script under `tools/` and every crate binary, grouped by task (decode packets, client assets and UPK, maps and navmesh, seeds, lab and UAT, build and CI, RE, telemetry, docs), with how to run each; [crates/README.md](../crates/README.md) is the crate table. Search them before writing a new tool.
 
 | Document | Description | Status |
 |----------|-------------|--------|

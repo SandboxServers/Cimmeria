@@ -16,6 +16,7 @@ For human-readable project overview, see [README.md](README.md).
 The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md). The ones that cost the most when missed:
 
 - **Check `docs/` first.** Search the docs and the `docs/protocol/*-dispatch-table.md` files before Ghidra, before counting `.def` entries, before guessing.
+- **Look for an existing tool before writing one.** Before writing a script, parser, decoder, extractor or CLI, search the catalog in [tools/README.md](tools/README.md#tools-catalog), `crates/*/src/bin/` and [crates/README.md](crates/README.md); extend the closest tool rather than adding a sibling, and give a new one a summary line (docstring, leading comment, `.SYNOPSIS` or `//!`) so the catalog picks it up.
 - **A ticket or draft chapter is a claim, not evidence.** Reconcile it against `docs/protocol/` and the RE findings before changing a wire constant, index, or layout. If sources disagree, verify against the binary and fix the losing doc in the same PR — see [docs/agents/domain.md](docs/agents/domain.md).
 - **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entries skipped): `Account = 0x07`, not its `entities.xml` row.
 - **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.

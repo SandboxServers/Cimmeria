@@ -1,3 +1,6 @@
+//! `cimmeria-launcher-desktop`: the Tauri shell of the desktop launcher (Windows and
+//! macOS). It hosts the settings and Play UI and forwards its commands to the native
+//! engine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
 #[cfg(test)]

@@ -2,7 +2,7 @@
 
 `regen.py` owns every number in the Markdown that PRs used to bump by hand: the
 workspace test counts, the RE findings count, the gap-analysis totals, the docs
-count, and the crate graph. Two PRs that bump the same number conflict with each
+count, the tools catalog in `tools/README.md`, and the crate graph. Two PRs that bump the same number conflict with each
 other, so no PR bumps them. The [`regen-docs`](../../.github/workflows/regen-docs.yml)
 workflow runs the script on `main` every six hours (and on a manual dispatch, `gh
 workflow run regen-docs.yml`) and commits whatever changed as `github-actions[bot]`,
@@ -71,6 +71,7 @@ regenerated blocks: the workflow does that after the merge.
 | `gap-count` | `total` or `CW+NT+...` | Sum of those columns over the system rows | Summary Completion Matrix in `docs/gap-analysis.md` |
 | `gap-pct` | statuses, then decimals (default 1) | That sum as a percentage of the total | same |
 | `gap-systems` | | Number of system rows | same |
+| `tools-catalog` | | Every script under `tools/` and every crate binary, grouped by task: path, how to run it, and its first summary line, or `(no summary)` | [`tools_catalog.py`](tools_catalog.py), with the entry-point, run and grouping rules in [`tools_catalog.toml`](tools_catalog.toml); the files come from `git ls-files`, so a new tool appears once it is `git add`ed |
 
 The gap-analysis generators read the matrix rows and skip its TOTALS line, so the
 TOTALS line and the summary percentages can never disagree with the rows. The rows

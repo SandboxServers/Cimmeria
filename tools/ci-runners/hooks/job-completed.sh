@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs after every job, pass or fail. It records what the job did with the caches,
-# then keeps the runner's disk use bounded:
+# Runs after every job, pass or fail, to record the job's cache use and keep the runner's
+# disk use bounded. In detail, it records what the job did with the caches, then:
 #   - one JSON line per job in state/jobs.jsonl: sccache requests, hits and misses
 #     for this job, and the size of target/, sccache and the cargo registry
 #     (tools/ci-runners/status.ps1 summarizes it);

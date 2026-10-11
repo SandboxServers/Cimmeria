@@ -1,3 +1,6 @@
+//! `cimmeria-runtime-probe`: a one-shot Windows x86 process that reads a request on stdin
+//! and prints a path-free JSON report of which client runtime modules load, with PhysX
+//! SDK evidence; `--self-test` checks the probe itself.
 #[cfg(not(all(windows, target_arch = "x86")))]
 fn main() {
     eprintln!("runtime-probe requires a native Windows x86 build");
