@@ -87,6 +87,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [uat-run-dir-sibling-json-trap](uat-run-dir-sibling-json-trap.md) — `RunDir::rows` parses every json beside the row JSON (skip `.snapshot.json`); attest re-grade must re-apply post-grade rules.
 - [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
+- [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher

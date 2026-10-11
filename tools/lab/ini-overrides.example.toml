@@ -1,10 +1,20 @@
 # Lab-only overrides for each instance's user SGWEngine.ini.
 #
-# To use them, copy this file to tools/lab/ini-overrides.toml (or point
-# CIMMERIA_LAB_INI_OVERRIDES at a copy), uncomment the entries you need and
-# set the value. Each launch applies them after the instance is seeded, so
-# they come back after a reseed. Each applied override is logged under
-# lab.instance (ini_override_applied). With no file, nothing is overridden.
+# To use them, copy this file, uncomment the entries you need and set the
+# value (a string, integer, float or boolean; booleans are written TRUE /
+# FALSE). The supervisor uses the first of:
+#   1. the path in CIMMERIA_LAB_INI_OVERRIDES (installed daemon:
+#      `lab env set CIMMERIA_LAB_INI_OVERRIDES <path>`, then `lab restart`);
+#   2. %LOCALAPPDATA%\cimmeria-lab\ini-overrides.toml, the lab state folder:
+#      the place for the installed daemon, which never sees a checkout;
+#   3. tools/lab/ini-overrides.toml in a checkout (a supervisor run from it).
+# With no file, nothing is overridden. The file is read at every launch.
+#
+# Each launch applies them to the instance's own seeded profile after the
+# seed, so they come back after a reseed; an instance on the shared folder
+# gets none. Each applied override is logged under lab.instance
+# (ini_override_applied, with `changed`). See docs/guides/live-research-lab.md,
+# "Ini overrides for an instance".
 #
 # [IniVersion] is refused. An override lasts only while the ini's
 # [IniVersion] matches the chain files' timestamps; see
