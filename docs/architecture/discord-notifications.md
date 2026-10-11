@@ -313,7 +313,8 @@ or every instance and has nothing new for an operator to act on:
 | Target | Event | Why it is SigNoz-only |
 |---|---|---|
 | `spawner.npc_behaviour` | `spawn_off_mesh` | Seed-placement data, read from the SigNoz views. It is deduplicated per spawn id per process, but the colo restarts on every deploy and Castle_CellBlock is instanced per login, so the same spawns posted all day (90 posts in 7 days, 2026-09-29). |
-| `abilities` | `effect_script_unregistered` | One row per boot for a known seed gap that a live-DB guard pins, so it posted once per deploy (12 in 7 days). |
+
+`effect_script_unregistered` now fires only for a real missing registration (TG-CMB-04), so it is no longer SigNoz-only and posts to Discord.
 
 Pinned by `signoz_only_events_are_filtered`, which also checks that another
 event on the same target still posts. Add a row only for an event that is

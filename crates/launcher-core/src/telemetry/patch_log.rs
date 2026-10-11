@@ -186,6 +186,29 @@ fn parse_site(message: &str) -> Option<(&str, SiteOutcome)> {
     Some((site, outcome))
 }
 
+/// The most of the log read at once. The DLL stops at 2000 lines, far
+/// below this; the cap only stops a foreign or runaway file at that path
+/// from being read whole.
+const MAX_LOG_BYTES: u64 = 1024 * 1024;
+
+/// The first `cap` bytes of `path` as text. A cut log ends at its last
+/// whole line, so a half-written count line is not parsed.
+fn read_capped(path: &Path, cap: u64) -> Option<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(cap + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > cap {
+        bytes.truncate(cap as usize);
+        let whole = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        bytes.truncate(whole);
+    }
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 /// Reads the log during one telemetry session and yields the summary
 /// event exactly once.
 #[derive(Debug)]
@@ -271,8 +294,7 @@ impl PatchLogWatcher {
         if modified + MTIME_SLACK < self.launched_at {
             return None;
         }
-        let bytes = std::fs::read(&self.path).ok()?;
-        Some(String::from_utf8_lossy(&bytes).into_owned())
+        read_capped(&self.path, MAX_LOG_BYTES)
     }
 
     fn emit(&mut self, summary: Option<PatchLogSummary>) -> Option<TelemetryEvent> {
@@ -589,5 +611,24 @@ mod tests {
         let mut off = PatchLogWatcher::new(dir.path(), launched, PatchInjection::OptedOut);
         assert!(off.poll_counts(now).is_none());
         assert!(off.finish_counts().is_none());
+    }
+
+    /// Only the first `cap` bytes are read, cut back to the last whole
+    /// line; a log within the cap is read as it is.
+    #[test]
+    fn the_log_read_stops_at_the_cap_on_a_whole_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOG_FILE_NAME);
+        std::fs::write(&path, "one\r\ntwo\r\nthree\r\n").unwrap();
+        assert_eq!(read_capped(&path, 18).unwrap(), "one\r\ntwo\r\nthree\r\n");
+        assert_eq!(read_capped(&path, 12).unwrap(), "one\r\ntwo\r\n");
+        assert_eq!(read_capped(&path, 2).unwrap(), "");
+        // The watcher reads through the same cap.
+        let big = format!("{INSTALLED_LOG}{}", "x".repeat(MAX_LOG_BYTES as usize));
+        std::fs::write(&path, big).unwrap();
+        let launched = SystemTime::now() - Duration::from_secs(1);
+        let mut w = PatchLogWatcher::new(dir.path(), launched, PatchInjection::Injected);
+        assert_eq!(w.read_text().unwrap(), INSTALLED_LOG);
+        assert!(w.poll().is_some(), "the verdict at the start still counts");
     }
 }

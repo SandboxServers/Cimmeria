@@ -64,7 +64,7 @@ mod tests;
 
 pub use cimmeria_launcher_core::telemetry::bundle::BundleOutcome;
 pub use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
-pub(crate) use queue::discard_queue;
+pub(crate) use queue::{discard_queue, queue_now};
 pub use queue::{queue_without_session, recover_on_startup, Consent, Recovery};
 
 use super::{session, Identity, Session};

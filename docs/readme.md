@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->843<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->12,953<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,262<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,393<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,746<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->853<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,005<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,271<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,406<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,747<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -335,7 +335,7 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 7 documents.
+Analysis of game client binaries, launcher tools, client asset inventories, and the client's measured limits. 9 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -347,6 +347,7 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 | [crash-dumps.md](client/crash-dumps.md) | SGW crash-dump pipeline: minidump capture, symbolication, what the dumps reveal about client state | Complete |
+| [limits/README.md](client/limits/README.md) | Client limits: every bound the server, the lab and chaos mode run into (datagrams, windows, AoI entity counts, address space, engine pools, timing, lab capacity), each with a grade and a source, in six area files | Skeleton (CL-01); the client-limits campaign fills the `not measured` rows |
 
 See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 

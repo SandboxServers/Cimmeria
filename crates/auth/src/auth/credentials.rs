@@ -97,6 +97,9 @@ pub(super) enum AuthCredError {
 pub(super) struct ValidatedAccount {
     pub account_id: u32,
     pub access_level: u32,
+    /// The account's `test_account` flag (TG-NET-16): automation-driven
+    /// accounts, whose sessions resolve to `session_kind = "lab"`.
+    pub test_account: bool,
 }
 
 /// Verify `credential` against the stored password for `account_name`.
@@ -125,10 +128,12 @@ pub(super) async fn validate_credentials(
         password_algo: i16,
         accesslevel: i32,
         enabled: bool,
+        test_account: bool,
     }
 
     let row: Option<AccountRow> = sqlx::query_as(
-        "SELECT account_id, password, password_hash_v2, password_algo, accesslevel, enabled \
+        "SELECT account_id, password, password_hash_v2, password_algo, accesslevel, enabled, \
+                test_account \
          FROM account WHERE account_name = $1",
     )
     .bind(account_name)
@@ -150,6 +155,7 @@ pub(super) async fn validate_credentials(
     let validated = ValidatedAccount {
         account_id: row.account_id as u32,
         access_level: row.accesslevel.max(0) as u32,
+        test_account: row.test_account,
     };
 
     match (row.password_algo, credential) {
