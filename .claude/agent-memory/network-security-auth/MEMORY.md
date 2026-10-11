@@ -62,3 +62,4 @@ See [security-audit.md](security-audit.md) for full details.
 - Phase 4+: AES-256-CBC encrypted Mercury UDP, HMAC-MD5 integrity
 - C++ BWMailBox is dynamic (from shard_client FES_LOGON_ACK); Rust hardcodes "1"
 - C++ has accessLevel field tracked through login flow; Rust omits it entirely
+- [session-end-telemetry-gaps.md](session-end-telemetry-gaps.md) — logOff-to-select emits no session.end; all real quits = inactivity_timeout; tower=off hides admin API rows (2026-10-10)

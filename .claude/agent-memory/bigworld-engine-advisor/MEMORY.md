@@ -11,6 +11,7 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [mercury-telemetry-footprint.md](mercury-telemetry-footprint.md) - **[NEW 2026-10-10]** mercury.packet+encrypt = 86% of SigNoz rows; old_duplicate unjoinable; AUTHENTICATE per bundle.
 - [reliable-datagram-size-budget.md](reliable-datagram-size-budget.md) - **[NEW 2026-10-05]** No reliable datagram over 1472 B: measure before reserving seq, fragment oversize bodies (#1274).
 - [client-world-id-and-same-map-load.md](client-world-id-and-same-map-load.md) - **[NEW 2026-10-04]** onClientMapLoad skips the reload when mapPath is unchanged; getCurrentWorldID comes from setupWorldParameters.
 - [plugin-architecture-compat-boundary.md](plugin-architecture-compat-boundary.md) - **[NEW 2026-09-28]** #962 plugin rules: one FIFO channel, hooks at the inline line, cell/base index spaces separate; steps 2-3 seams; step 5 base core (crafting 95-100 are CELL methods).
