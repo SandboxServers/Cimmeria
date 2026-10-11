@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::content;
-use crate::cell::messages::{CellToBaseMsg, SavedMission};
+use crate::cell::messages::{CellToBaseMsg, SavedMission, WorldEntryCause};
 use crate::cell::space_manager::SpaceManager;
 
 // The client-cache resync and the hotbar seed are shared with the respawn
@@ -93,7 +93,7 @@ pub(in crate::cell::service) fn seed_bandolier_ammo_stats(
 #[tracing::instrument(
     name = "world_entry.init_player_state",
     level = "info",
-    skip(saved_missions, abilities, bandolier_items, system_options, tx, space_mgr, engine),
+    skip(saved_missions, abilities, bandolier_items, system_options, entry_cause, tx, space_mgr, engine),
     fields(
         entity_id,
         player_id,
@@ -117,6 +117,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     system_options: cimmeria_entity::cell_entity::SystemOptions,
     access_level: u32,
+    entry_cause: WorldEntryCause,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
@@ -440,6 +441,9 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // see -- so liveness is a QUERY: a `session.start` for an account with
         // no `launcher.*` rows in the same window means the tester is playing
         // without client logs. See the "sessions vs client telemetry" view.
+        // Every world entry emits this row, so a travel re-entry carries
+        // `start_cause=travel`; count logins with `start_cause=login`
+        // (TG-NET-15).
         tracing::info!(
             target: "session.start",
             entity_id,
@@ -454,6 +458,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             access_level,
             world = %world_name,
             missions,
+            start_cause = entry_cause.as_str(),
             "player entered world"
         );
     }
