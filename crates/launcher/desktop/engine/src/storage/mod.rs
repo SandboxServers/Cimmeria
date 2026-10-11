@@ -61,6 +61,9 @@ pub enum StorageError {
     StaleRevision,
     Busy,
     PersistenceUncertain,
+    /// A login-server list `login_servers::validate` refuses: saved, or about
+    /// to be written into `LoginInternal.lua` by Play.
+    InvalidServerList,
 }
 
 /// The preferences schema this build writes. Version 1 files still read.
@@ -422,8 +425,13 @@ impl DesktopState {
         if expected_revision != self.preferences.revision {
             return Err(StorageError::StaleRevision);
         }
-        // TODO(LX-03): refuse a list `login_servers::validate` rejects before
-        // anything is written.
+        // Empty means the defaults; any other list must be one Play can write.
+        if !login_servers.is_empty()
+            && cimmeria_launcher_core::client_setup::login_servers::validate(&login_servers)
+                .is_err()
+        {
+            return Err(StorageError::InvalidServerList);
+        }
         let next = Preferences {
             schema_version: PREFERENCES_SCHEMA,
             revision: self.next_preferences_revision()?,

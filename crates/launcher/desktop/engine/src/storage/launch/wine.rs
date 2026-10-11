@@ -6,6 +6,7 @@ pub(super) fn prepare(
     plan: &Plan,
     state_root: &Path,
     session: Option<&crate::game_telemetry::Session>,
+    servers: &[LoginServer],
 ) -> Result<
     (
         HelperCommand,
@@ -16,7 +17,7 @@ pub(super) fn prepare(
 > {
     let runtime = plan.runtime.as_ref().ok_or(StorageError::Corrupt)?;
     let resources = mac_wine::prerequisites::prefix::Resources::reopen(runtime, state_root)?;
-    let binaries = preparation::prepare(plan)?;
+    let binaries = preparation::prepare(plan, servers)?;
     let graphics = plan
         .resources
         .graphics

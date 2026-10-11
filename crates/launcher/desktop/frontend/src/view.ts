@@ -25,6 +25,7 @@ const errorText: Record<BridgeFailure['code'], string> = {
   stale_revision: 'Settings changed while this request was pending. Recheck status.',
   busy: 'An operation is using the current game folder. Wait for it to finish before changing folders.',
   persistence_uncertain: 'The last save could not be confirmed. Restart the launcher to inspect the saved state.',
+  invalid_server_list: 'The login server list was refused. Fix it under Login servers, then try again.',
 };
 
 /** Mount once per application. Tab changes only hide panels; they do not own workflows. */

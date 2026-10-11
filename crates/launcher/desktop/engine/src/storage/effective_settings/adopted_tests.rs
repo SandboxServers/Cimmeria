@@ -100,6 +100,30 @@ fn refused(
 }
 
 #[test]
+fn an_adopted_copy_plays_with_its_reviewed_login_servers_not_the_saved_list() {
+    let a = adopted(false, true);
+    let mut state = DesktopState::open(&a.legacy.state_root()).unwrap();
+    let revision = state.preferences().revision;
+    state
+        .save_client_options(
+            vec![crate::client_setup::login_servers::LoginServer {
+                name: "Saved".into(),
+                url: "http://saved.example:8081".into(),
+            }],
+            true,
+            revision,
+        )
+        .unwrap();
+    let (installed, _) = state.installed_for_launch().unwrap().unwrap();
+    let servers = state.launch_login_servers(&installed.intent).unwrap();
+    let servers: Vec<_> = servers
+        .iter()
+        .map(|s| (s.name.as_str(), s.url.as_str()))
+        .collect();
+    assert_eq!(servers, fixtures::SERVERS);
+}
+
+#[test]
 fn reopened_adoption_keeps_reviewed_settings_identity_consent_and_source() {
     let a = adopted(false, true);
     let state = DesktopState::open(&a.legacy.state_root()).unwrap();

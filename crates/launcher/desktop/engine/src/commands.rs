@@ -136,6 +136,45 @@ mod tests {
     }
 
     #[test]
+    fn an_invalid_server_list_is_refused_and_writes_nothing_but_empty_means_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let save = |expected_revision, login_servers| NativeCommand::SaveClientOptions {
+            schema_version: 1,
+            expected_revision,
+            login_servers,
+            client_patches_enabled: true,
+        };
+        let server = |name: &str, url: &str| LoginServer {
+            name: name.into(),
+            url: url.into(),
+        };
+        for invalid in [
+            vec![server("Local", "login.example:8081")],
+            vec![
+                server("Good", "http://good.example"),
+                server("", "http://x"),
+            ],
+            vec![server("Quote\"d", "http://login.example")],
+        ] {
+            assert!(matches!(
+                state.dispatch(save(0, invalid.clone())),
+                Err(StorageError::InvalidServerList)
+            ));
+            assert_eq!(state.preferences(), &Preferences::default(), "{invalid:?}");
+            assert!(!dir.path().join("preferences.json").exists());
+        }
+        let saved = state.dispatch(save(0, vec![])).unwrap().preferences;
+        assert_eq!(saved.revision, 1);
+        assert!(saved.login_servers.is_empty());
+        // The code reaches the frontend as one flat string.
+        assert_eq!(
+            serde_json::to_value(StorageError::InvalidServerList).unwrap(),
+            serde_json::json!("invalid_server_list")
+        );
+    }
+
+    #[test]
     fn bridge_has_no_native_observation_or_arbitrary_field_command() {
         for input in [
             r#"{"command":"observe","schema_version":1,"state":"succeeded"}"#,

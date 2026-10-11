@@ -1,13 +1,36 @@
 //! Validate the existing preparation destinations before reusing client setup.
 use super::*;
-pub(super) fn prepare(plan: &Plan) -> Result<PathBuf, IntentError> {
+use crate::client_setup::login_servers;
+impl DesktopState {
+    /// The login servers Play writes into `LoginInternal.lua`. An adopted copy
+    /// keeps the list its adoption reviewed; any other install uses the saved
+    /// preference, or the defaults when that is empty. Checked again here, so a
+    /// list that reached `preferences.json` another way never reaches the client.
+    pub(crate) fn launch_login_servers(
+        &self,
+        installation: &InstallIntent,
+    ) -> Result<Vec<LoginServer>, IntentError> {
+        let (installed, adoption) = self.installed_for_launch()?.ok_or(StorageError::Corrupt)?;
+        if installed.intent != *installation {
+            return Err(StorageError::Corrupt.into());
+        }
+        let servers = match adoption {
+            Some(_) => installation.login_servers.clone(),
+            None if self.preferences.login_servers.is_empty() => login_servers::default_servers(),
+            None => self.preferences.login_servers.clone(),
+        };
+        login_servers::validate(&servers).map_err(|_| StorageError::InvalidServerList)?;
+        Ok(servers)
+    }
+}
+pub(super) fn prepare(plan: &Plan, servers: &[LoginServer]) -> Result<PathBuf, IntentError> {
     let game = plan.installation.destination.join("game");
     if game.canonicalize().map_err(|_| StorageError::UnsafeFile)? != game {
         return Err(StorageError::UnsafeFile.into());
     }
     let binaries = crate::install_layout::binaries_dir(&game);
     let exe = crate::install_layout::sgw_exe(&game);
-    let login = crate::client_setup::login_servers::path(&game);
+    let login = login_servers::path(&game);
     for path in [&binaries, &exe, &login] {
         contained(&game, path)?;
     }
@@ -15,8 +38,7 @@ pub(super) fn prepare(plan: &Plan) -> Result<PathBuf, IntentError> {
         let target = cimmeria_patchset::resolve_existing_case(&game, Path::new(target));
         contained(&game, &target)?;
     }
-    crate::client_setup::prepare(&game, &plan.installation.login_servers)
-        .map_err(|_| StorageError::Io)?;
+    crate::client_setup::prepare(&game, servers).map_err(|_| StorageError::Io)?;
     binaries
         .canonicalize()
         .map_err(|_| StorageError::UnsafeFile.into())
