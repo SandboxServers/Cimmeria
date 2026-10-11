@@ -379,9 +379,14 @@ jobs:
       # lab-chaos`, which no ordinary build turns on, so its tests and the
       # gated server code are built here or nowhere. After the uploads: this
       # nextest run rewrites target/nextest/ci/junit.xml.
+      - name: cargo clippy (lab-chaos feature)
+        if: ${{ !cancelled() }}
+        run: cargo clippy -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-lab-mcp -p cimmeria-server --features lab-chaos --all-targets -- -D warnings
       - name: cargo nextest run (lab-chaos feature)
+        if: ${{ !cancelled() }}
         run: cargo nextest run --profile=ci -p cimmeria-base-session -p cimmeria-base -p cimmeria-base-world-entry -p cimmeria-lab-mcp --features lab-chaos
       - name: cargo check (server, lab-chaos feature)
+        if: ${{ !cancelled() }}
         run: cargo check -p cimmeria-server --features lab-chaos
 
   # Logic UAT for the client UI overlay (BM-05): loads the patched

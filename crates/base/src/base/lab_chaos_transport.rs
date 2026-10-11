@@ -338,11 +338,7 @@ impl BidirectionalTransport for ChaosTransport {
             if !dropped {
                 return Ok((n, src));
             }
-            tracing::trace!(
-                target: "lab.chaos",
-                len = n,
-                "lab chaos dropped an inbound datagram"
-            );
+            // No row per drop: the seed replays the drop pattern exactly.
         }
     }
 }

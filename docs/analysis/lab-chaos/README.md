@@ -212,5 +212,5 @@ the code is then the reference, not the spec.
       voiceData.
     - A follow-up test should pin teardown or relaunch while a chaos `Delay`
       timer is pending (the stale-token guard in `cinematic_aoi_hold`).
-    - `client_ready/mod.rs` is over the 700-line cap: 737 lines before
+    - `client_ready/mod.rs` is over the 700-line cap: 736 lines before
       CH-07, 738 after. A split is owed outside this campaign.
