@@ -29,9 +29,18 @@ Combat & abilities | Effects | Missions (no cash or item rewards yet) | Spawn po
 
 See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
+## Download the launcher
+
+Players on Windows download the launcher from one stable link, which always
+holds the newest release:
+[`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
+Unzip it anywhere and run `cimmeria-launcher-desktop.exe`. The old
+`sgw-launcher.exe` no longer updates itself on Windows. See the
+[launcher guide](docs/client/launcher-guide.md).
+
 ## Tests & CI
 
-The Rust workspace currently carries **<!-- gen:tests-total -->13,208<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,302<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,550<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab). **<!-- gen:tests-live-db -->1,756<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **<!-- gen:tests-total -->13,414<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,334<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,625<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab). **<!-- gen:tests-live-db -->1,760<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -352,6 +361,7 @@ Test account: **test** / **test** (SHA1 hashed).
 - [Getting Started](docs/guides/getting-started.md) — first-time setup tutorial (prerequisites → `setup.ps1` → connecting the client → running tests)
 - [Building the Server](docs/building.md) — how-to for cargo builds, the test suite, and CI checks
 - [Troubleshooting](docs/troubleshooting.md) — common first-day problems and fixes
+- [Live Research Lab setup](docs/guides/lab-contributor-setup.md) — let your Claude Code or Codex agent drive your own game client against a local server
 
 **Understand the codebase:**
 

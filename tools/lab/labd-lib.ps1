@@ -43,6 +43,99 @@ function Get-McpEnvLines([string]$McpJsonText) {
     return , $out
 }
 
+# The variables labd.env is seeded with when no .mcp.json stdio entry names
+# them. Secrets are not among them: the daemon's `run` reads
+# CIMMERIA_LAB_MCP_TOKEN from the user environment, so it never lands in a file.
+$script:LabdSeedKeys = @(
+    'CIMMERIA_LAB_INSTALL_DIR',
+    'CIMMERIA_LAB_MCP_URL',
+    'CIMMERIA_LAB_TELEMETRY',
+    'CIMMERIA_LAB_SERVER_URL',
+    'CIMMERIA_LAB_START32',
+    'CIMMERIA_LAB_PATCHES_DLL',
+    'CIMMERIA_LAB_INSTANCES'
+)
+
+# Whether a value is still a template placeholder: `<SGW_INSTALL_DIR>`,
+# `REPLACE_WITH_...`, or a `${VAR}` that Claude Code expands but labd.env
+# would keep literally.
+function Test-LabdPlaceholder([string]$Value) {
+    if (-not $Value) { return $true }
+    return ($Value -match '<[A-Z_]+>' -or $Value -match '^REPLACE_WITH_' -or $Value -match '\$\{[A-Za-z_]')
+}
+
+# Whether a variable holds a secret, which labd.env never stores.
+function Test-LabdSecretKey([string]$Key) {
+    return ($Key -match 'TOKEN|SECRET')
+}
+
+# The labd.env body (KEY=VALUE lines, no header) for `daemon.ps1 install`.
+# Each of $LabdSeedKeys comes from, first to last: $Overrides (the command
+# line), $Imported (the stdio cimmeria-lab entry's env block, an ordered map
+# or $null), $Ambient (the current environment), $Existing (the labd.env
+# being rewritten, or $null) and $Defaults. Every other key of $Imported and
+# then of $Existing is kept too, so `install -Force` keeps what `lab env set`
+# added. Placeholders are skipped wherever they come from, and so is every
+# TOKEN or SECRET key: those stay in the user environment.
+# Returns @{ lines; sources; missing; secrets }: sources maps each written
+# key to where it came from (never the value), missing lists the seed keys
+# with no value, secrets the secret keys left out. Pure.
+function Get-LabdEnvSeed($Imported, $Overrides, $Ambient, $Defaults, $Existing = $null) {
+    $lines = @()
+    $sources = [ordered]@{}
+    $missing = @()
+    $secrets = @()
+    $layers = @(
+        @{ name = 'parameter'; map = $Overrides },
+        @{ name = '.mcp.json'; map = $Imported },
+        @{ name = 'environment'; map = $Ambient },
+        @{ name = 'labd.env'; map = $Existing },
+        @{ name = 'default'; map = $Defaults }
+    )
+    foreach ($key in $script:LabdSeedKeys) {
+        $found = $false
+        foreach ($layer in $layers) {
+            $map = $layer.map
+            if ($null -eq $map -or -not $map.Contains($key)) { continue }
+            $value = [string]$map[$key]
+            if (Test-LabdPlaceholder $value) { continue }
+            $lines += '{0}={1}' -f $key, $value
+            $sources[$key] = $layer.name
+            $found = $true
+            break
+        }
+        if (-not $found) { $missing += $key }
+    }
+    foreach ($layer in @(@{ name = '.mcp.json'; map = $Imported }, @{ name = 'labd.env'; map = $Existing })) {
+        if ($null -eq $layer.map) { continue }
+        foreach ($key in @($layer.map.Keys)) {
+            if ($script:LabdSeedKeys -contains $key -or $sources.Contains($key)) { continue }
+            if (Test-LabdSecretKey $key) {
+                if ($secrets -notcontains $key) { $secrets += $key }
+                continue
+            }
+            $value = [string]$layer.map[$key]
+            if (Test-LabdPlaceholder $value) { continue }
+            $lines += '{0}={1}' -f $key, $value
+            $sources[$key] = $layer.name
+        }
+    }
+    return @{ lines = $lines; sources = $sources; missing = $missing; secrets = $secrets }
+}
+
+# The stdio cimmeria-lab entry's env block in a .mcp.json text as an
+# ordered map, or $null when it has none (the daemon entry has no env).
+function Get-McpEnvMap([string]$McpJsonText) {
+    $lines = Get-McpEnvLines $McpJsonText
+    if ($null -eq $lines) { return $null }
+    $map = [ordered]@{}
+    foreach ($l in $lines) {
+        $i = $l.IndexOf('=')
+        $map[$l.Substring(0, $i)] = $l.Substring($i + 1)
+    }
+    return $map
+}
+
 # Whether $Process is the daemon that wrote $Info (labd.pid). A pid alone
 # is not enough: a daemon that died without cleaning up leaves labd.pid
 # behind, and Windows reuses pids, possibly for another cimmeria-lab (a

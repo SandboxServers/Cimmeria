@@ -68,7 +68,7 @@ When you query through the MCP, always filter on `service.name = 'cimmeria-serve
 Since NA25 every row the server writes to `logs/*.log` also reaches SigNoz, so you should not need the server's disk. TRACE-level rows go to their own service: query `service.name = 'cimmeria-trace'`, never the default `cimmeria-server`. That is where to look for:
 
 - `movement.navmesh` rows with `reason = 'advisory_off_mesh_accepted'`: where players walked off the navmesh in an advisory world (Castle, Harset). At most one row per player per 500 ms; `suppressed` counts the packets in between. This is the input for a mesh rebake.
-- The pre-world-entry and dispatch drops: `Cell method before world entry -- ignored`, `Ignoring cell method until mapLoaded arrives`, `Unhandled client message`, `Unhandled Account base method`, `Bundle truncated`, `Dropping EntityMoved while witness is pre-onClientReady`.
+- `Dropping EntityMoved while witness is pre-onClientReady`. The inbound bundle-walk drops left TRACE in TG-MER-06: query `event = 'inbound_message_dropped'` on `cimmeria-server` and read `reason` ([negative-logging-convention.md § Inbound bundle-walk drops](../architecture/negative-logging-convention.md#inbound-bundle-walk-drops-tg-mer-06)).
 - The wire sends and ACK traffic: the `UDP_OUT ...` rows, `AVATAR_UPDATE_EXPLICIT -> CellService`, `Queueing ACK for client reliable message`, `Piggybacking ACKs on tick_sync`.
 
 Two per-packet rows are sampled, not copied. `DECRYPT_OK` arrives as `scope_name = 'wire.sampled.decrypt'` (1 in 53, with the hex) and `UDP_IN` as `wire.sampled.udp_in` (1 in 53, length only). Each sample carries `sampled_1_in` and `suppressed`; the true count over a window is the sum of `1 + suppressed`. The full stream is still in `logs/base.log`.

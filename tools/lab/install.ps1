@@ -8,7 +8,8 @@
       - cimmeria-client-telemetry --features lab-bridge (release, i686): the bridge DLL
       - cimmeria-start32 and cimmeria-client-patches (release, i686): the injector
         helper and the client patch DLL
-    then installs them:
+    It first adds the i686-pc-windows-msvc Rust target (rustup target add)
+    when the checkout's toolchain lacks it. Then it installs them:
       %LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe
       %LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe
       %LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll
@@ -31,8 +32,9 @@
 
 .PARAMETER InstallDir
     The SGW install (the folder holding Binaries\SGW.exe). Default:
-    CIMMERIA_LAB_INSTALL_DIR, else the cimmeria-lab entry of the main
-    checkout's .mcp.json.
+    CIMMERIA_LAB_INSTALL_DIR, else the stdio cimmeria-lab entry of the main
+    checkout's .mcp.json, else the CIMMERIA_LAB_INSTALL_DIR line of
+    <LabHome>\labd.env.
 
 .PARAMETER LabHome
     Where the lab lives. Default: %LOCALAPPDATA%\cimmeria-lab.
@@ -94,6 +96,12 @@ if (-not $InstallDir) {
         if ($envBlock -and $envBlock.PSObject.Properties['CIMMERIA_LAB_INSTALL_DIR']) { $InstallDir = $envBlock.CIMMERIA_LAB_INSTALL_DIR }
     }
 }
+if (-not $InstallDir) {
+    # The shared daemon's environment (tools/lab/daemon.ps1 install writes it).
+    . (Join-Path $PSScriptRoot 'labd-lib.ps1')
+    $labdEnv = Read-LabdEnvFile (Join-Path $LabHome 'labd.env')
+    if ($labdEnv.Contains('CIMMERIA_LAB_INSTALL_DIR')) { $InstallDir = $labdEnv['CIMMERIA_LAB_INSTALL_DIR'] }
+}
 if (-not $InstallDir -or -not (Test-Path (Join-Path $InstallDir 'Binaries\SGW.exe'))) {
     throw "no SGW install found (got '$InstallDir'). Pass -InstallDir or set CIMMERIA_LAB_INSTALL_DIR to the folder holding Binaries\SGW.exe"
 }
@@ -139,6 +147,30 @@ if ($clients.Count -gt 0) {
     Say "  Ask the session that owns the supervisor to run lab_client_stop; killing the client makes its watchdog relaunch it."
     if (-not $DryRun) { exit 1 }
     Say "  (dry run: continuing to show the plan)"
+}
+
+# --- the 32-bit target -------------------------------------------------------------------
+# SGW.exe is 32-bit, so the bridge DLL, the patch DLL and sgw-start32 build for
+# i686. A fresh rustup has only the host target, and cargo would fail
+# part-way with "can't find crate for `core`"; add the target first.
+if (-not $SkipBuild) {
+    if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+        throw 'rustup not found; install Rust with rustup (https://rustup.rs), then rerun'
+    }
+    $installedTargets = @()
+    Push-Location $Worktree
+    try { $installedTargets = @(rustup target list --installed 2>$null) } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) { throw "rustup target list failed (exit $LASTEXITCODE) in $Worktree" }
+    if ($installedTargets -contains $I686) {
+        Say "target:  $I686 installed"
+    } elseif ($DryRun) {
+        Say "would run: rustup target add $I686 (the 32-bit client's DLLs need it)"
+    } else {
+        Say "target:  $I686 missing; adding it (the 32-bit client's DLLs need it)"
+        Push-Location $Worktree
+        try { rustup target add $I686; $rc = $LASTEXITCODE } finally { Pop-Location }
+        if ($rc -ne 0) { throw "rustup target add $I686 failed (exit $rc)" }
+    }
 }
 
 # --- build through the lane ---------------------------------------------------------------

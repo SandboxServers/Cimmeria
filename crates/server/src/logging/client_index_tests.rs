@@ -100,6 +100,8 @@ fn lab_claims() -> TokenClaims {
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
         kind: Some("lab".into()),
+        acct: None,
+        mid: None,
     }
 }
 

@@ -297,6 +297,20 @@ impl SessionRegistry {
         self.inner.lock().await.sessions.len()
     }
 
+    /// How many registered sessions are still pending, that is, never had
+    /// their SWF client connect. The listener reports it with a refused peer,
+    /// since a pending session is the one a real player's connection is
+    /// expected to claim.
+    pub async fn pending_count(&self) -> usize {
+        self.inner
+            .lock()
+            .await
+            .sessions
+            .values()
+            .filter(|s| !s.connected)
+            .count()
+    }
+
     /// Validate a ticket without claiming the session.
     ///
     /// Read-only: useful for asserting registry state in tests. A connection

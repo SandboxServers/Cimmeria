@@ -366,10 +366,11 @@ fn scan_finds_known_targets() {
         ("playtest.bookmark", Level::INFO),
         // Emitted only by crates/cell-content (wave C3 of the services split):
         // the dialog executor, the deferred content-action drain and the
-        // mission step activation.
+        // mission step activation and its anchors (TG-MIS-03).
         ("dialog.display", Level::DEBUG),
         ("content.deferred", Level::INFO),
         ("mission.step_context", Level::DEBUG),
+        ("mission.step_anchor", Level::INFO),
         // Emitted only by crates/cell-interactions (wave C4): the respawn
         // resync's active-slot resend.
         ("bandolier.resend", Level::INFO),

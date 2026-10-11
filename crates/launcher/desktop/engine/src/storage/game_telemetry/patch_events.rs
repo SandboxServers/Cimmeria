@@ -11,10 +11,11 @@
 //! Play creates one [`PatchEvents`] just before the game starts. A session
 //! loop calls [`PatchEvents::poll`] on each tick and sends what it returns;
 //! at game exit [`PatchEvents::finish`] returns what is still owed. Each
-//! event is returned once, however the two are interleaved. Without a
-//! session the exit events go to the disk queue ([`queue_at_exit`]) and ship
-//! with the next session's first flush.
-use super::transport::{queue_now, Consent, TelemetryEvent};
+//! event is returned once, however the two are interleaved. Play hands it to
+//! the session loop when a telemetry session runs. Without one the exit
+//! events go to the disk queue ([`queue_at_exit`]) and ship with the next
+//! session's first flush.
+use super::transport::{queue_now, Consent, TelemetryEvent, TransportError};
 use super::DesktopState;
 pub use cimmeria_launcher_core::telemetry::patch_log::PatchInjection;
 use cimmeria_launcher_core::telemetry::patch_log::PatchLogWatcher;
@@ -101,6 +102,8 @@ pub fn queue_at_exit(state: &Mutex<DesktopState>, events: &mut PatchEvents) -> u
         }
         match queue_now(&consent, &event) {
             Ok(()) => queued += 1,
+            // The player opted out since the consent was read: stop.
+            Err(TransportError::NotOptedIn) => break,
             Err(_) => tracing::warn!(
                 reason = "queue_write_failed",
                 "client-patches event not queued"

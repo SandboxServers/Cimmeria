@@ -52,6 +52,7 @@ mod lifecycle;
 pub mod login_servers;
 pub mod main_thread;
 pub mod process;
+pub mod record_slot;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
@@ -272,6 +273,10 @@ pub struct Supervisor {
     account: Arc<std::sync::Mutex<account::AccountCache>>,
     /// This instance's running `lab_uat_run`, for `/status`.
     uat_progress: crate::uat::progress::ProgressCell,
+    /// This instance's recording (lab-record): at most one at a time.
+    // Read by the record tools LR-07 adds.
+    #[allow(dead_code)]
+    record: Arc<record_slot::RecordSlot>,
 }
 
 impl Supervisor {
@@ -285,6 +290,7 @@ impl Supervisor {
             leases: Arc::new(crate::lease::LeaseBook::default()),
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
             uat_progress: Default::default(),
+            record: Default::default(),
         }
     }
 

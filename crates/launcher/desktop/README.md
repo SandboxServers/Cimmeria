@@ -331,8 +331,9 @@ Tauri CLI, use the lane for its nested Cargo build:
 bash tools/build-lane/lane.sh bash crates/launcher/desktop/bundle-macos-dev.sh
 ```
 
-The bundle is under `target/desktop/debug/bundle/macos/`. Creating this bundle
-is not final self-contained startup validation. Do not open it during unattended
+The bundle is under `target/desktop/debug/bundle/macos/`. The released,
+ad-hoc signed app is built in CI instead ([release](docs/release.md#what-the-macos-job-builds)).
+Creating this bundle is not final self-contained startup validation. Do not open it during unattended
 work without the tester's explicit desktop permission.
 
 On Windows, append `.exe` to the harness path. Root workspace tests do not run

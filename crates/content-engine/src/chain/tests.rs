@@ -8,7 +8,7 @@ use super::*;
 use crate::triggers::TriggerType;
 
 /// Helper to build a simple chain with no conditions.
-fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) -> Chain {
+pub(super) fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) -> Chain {
     Chain {
         id,
         name: format!("test_chain_{}", id),

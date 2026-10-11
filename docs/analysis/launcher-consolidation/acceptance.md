@@ -1,7 +1,7 @@
 # Launcher Consolidation Acceptance
 
 > Type: reference. Audience: the coordinator, packet workers and the owner running LX-26.
-> Updated: 2026-10-10. Companions: [ledger and decisions](README.md), [work packets](work-packets.md), [desktop launcher acceptance checklist (macOS/Wine)](../playtests/2026-10-03-macos-wine/launcher-acceptance.md), [desktop launcher ledger README](../playtests/2026-10-03-macos-wine/README.md), [unified UAT guide](../../guides/unified-uat.md).
+> Updated: 2026-10-11. Companions: [ledger and decisions](README.md), [work packets](work-packets.md), [desktop launcher acceptance checklist (macOS/Wine)](../playtests/2026-10-03-macos-wine/launcher-acceptance.md), [desktop launcher ledger README](../playtests/2026-10-03-macos-wine/README.md), [unified UAT guide](../../guides/unified-uat.md).
 
 This file owns two things: the desktop launcher's open Windows and platform-neutral acceptance gates, adopted from its macOS/Wine ledger by LX-25, and the result of each LX-26 UAT step. The macOS-only gates stay in [launcher-acceptance.md](../playtests/2026-10-03-macos-wine/launcher-acceptance.md).
 
@@ -49,4 +49,4 @@ The owner runs steps 1-12 on a Windows machine with no launcher state, and step 
 | 10 | Second launch focuses the first; after a self-update (step 11), a second launch also focuses the restarted launcher | LX-09, LX-13 | | | | |
 | 11 | Self-update from release N-1 to N with one network drop during the download; patch notes refresh; then a forced failed update rolls back | LX-13, LX-15, LX-17 | G-07, G-11, G-13 | | | |
 | 12 | Repair, game Update and Uninstall, on a fresh install and on the step 4 adopted folder | LX-10 | G-05, G-06, G-10 | | | |
-| 13 | macOS: a Mac that has never run the app downloads the zip, uses Open Anyway once, installs and reaches character select | LX-28 | | | | |
+| 13 | macOS: a Mac that has never run the app downloads `StargateWorlds-Launcher-macos-arm64.zip` from `launcher-current`, unzips it and drags the app to Applications in Finder, uses Open Anyway once, installs and reaches character select; then `xattr -l` on the Wine runtime cache shows no quarantine attribute | LX-28 | | | | Run on the newest macOS available: ad-hoc behaviour on macOS 26 and 27 is unverified ([LX-28 worknote](worknotes/lx-28-redistribution.md#gatekeeper-and-ad-hoc-signing)). |
