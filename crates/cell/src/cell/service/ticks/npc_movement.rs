@@ -262,22 +262,27 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 npc_id,
                 space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len()),
             );
-            // A witnessed NPC keeps the leg-head rows and the global sample.
-            // An unwitnessed NPC nobody can see writes at most one step row
-            // per [`NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL`]; `suppressed`
-            // counts the steps skipped since the last row.
-            let log_step = if space_mgr.get_witnesses_of(npc_id).is_empty() {
-                space_mgr.npc_detectors.admit_sample(
-                    npc_id,
-                    "unwitnessed_step",
-                    std::time::Instant::now(),
-                    NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL,
-                )
-            } else {
+            // A witnessed NPC keeps the leg-head rows and the global sample,
+            // and its rows carry no `suppressed`: that field only means
+            // something for the unwitnessed rate limit. An unwitnessed NPC
+            // nobody can see writes at most one step row per
+            // [`NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL`]; `suppressed` counts
+            // the steps skipped since the last row.
+            let log_step: Option<Option<u32>> = if space_mgr.has_witness(npc_id) {
                 let sampled = NPC_STEP_LOG_COUNTER
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                     .is_multiple_of(NPC_STEP_LOG_SAMPLE);
-                (leg_step <= NPC_LEG_HEAD_STEPS || sampled).then_some(0)
+                (leg_step <= NPC_LEG_HEAD_STEPS || sampled).then_some(None)
+            } else {
+                space_mgr
+                    .npc_detectors
+                    .admit_sample(
+                        npc_id,
+                        "unwitnessed_step",
+                        std::time::Instant::now(),
+                        NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL,
+                    )
+                    .map(Some)
             };
             if let Some(suppressed) = log_step {
                 // The clamp's own reading; `None` = the step kept the lerp.
