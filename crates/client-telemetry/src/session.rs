@@ -4,7 +4,7 @@
 //!
 //! The launcher writes this file to
 //! `<install_dir>/Binaries/sessions/current-session.json` at session
-//! start (see `crates/launcher/src/telemetry/session.rs`). The DLL
+//! start (see `crates/launcher-core/src/telemetry/session.rs`). The DLL
 //! reads it during bootstrap, holds onto the relevant fields for
 //! the uploader thread's lifetime, and never re-reads the file in
 //! Phase 2 — the uploader runs until process exit. Token expiry
