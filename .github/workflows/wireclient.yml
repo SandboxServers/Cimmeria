@@ -73,7 +73,8 @@ permissions:
 jobs:
   e2e:
     name: wireclient e2e (live DB)
-    runs-on: ubuntu-latest
+    # Fork PRs and CI_LINUX_RUNNER=hosted use GitHub-hosted runners (tools/ci-runners/README.md).
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:
@@ -115,6 +116,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: wireclient-e2e
           save-if: ${{ github.ref == 'refs/heads/main' }}

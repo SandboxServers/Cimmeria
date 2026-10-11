@@ -13,6 +13,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Runner routing: every job here runs on the self-hosted `cimmeria-linux` pool
+# (five runners each on node5 and node2, tools/ci-runners/README.md), except
+# that fork PRs always get GitHub-hosted `ubuntu-latest`. Set the repository
+# variable CI_LINUX_RUNNER=hosted to send everything back to GitHub-hosted
+# runners, e.g. while the nodes are down. A queued job waits for its pool; there
+# is no automatic overflow between the two.
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -43,7 +49,7 @@ jobs:
   # the API's 3000-file cap) runs everything.
   changes:
     name: detect code changes
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     permissions:
       pull-requests: read
     outputs:
@@ -80,7 +86,7 @@ jobs:
     name: cargo fmt --check
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
@@ -99,7 +105,7 @@ jobs:
     name: cargo clippy -D warnings
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/rust-toolchain
@@ -117,6 +123,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: clippy
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -147,7 +155,7 @@ jobs:
     name: cargo build + nextest (workspace, no DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -197,6 +205,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: build
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -224,7 +234,7 @@ jobs:
   # stubbed client-patch DLL. Seconds to run; no Rust involved.
   overlay-lua:
     name: client UI overlay logic UAT (Lua 5.1)
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     steps:
       - uses: actions/checkout@v7
       - name: install lua5.1
@@ -282,7 +292,7 @@ jobs:
     name: cargo nextest -p cimmeria-services (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:
@@ -332,6 +342,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: test-live-db
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -366,7 +378,7 @@ jobs:
     name: cargo llvm-cov (workspace, no DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     steps:
@@ -384,6 +396,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: coverage-workspace
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -431,7 +445,7 @@ jobs:
     name: cargo llvm-cov (live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
     services:
@@ -468,6 +482,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: coverage-live-db
           save-if: ${{ github.ref == 'refs/heads/main' }}
