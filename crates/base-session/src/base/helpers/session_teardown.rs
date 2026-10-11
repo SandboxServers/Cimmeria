@@ -142,6 +142,7 @@ pub fn log_channel_leaves(
             reason = "session_end",
             %addr,
             wire_id = *wire_id,
+            wire_name = display_name.as_str(),
             display_name = display_name.as_str(),
             deleted = *deleted,
             account_id = identity.account_id,
