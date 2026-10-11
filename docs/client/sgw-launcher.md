@@ -243,6 +243,8 @@ the client-patches DLL and every RE address in `docs/` assume the image
 base `0x00400000`. The stock exe with that byte cleared is byte-identical
 to a known-good QA client's (`client_setup::aslr` has an opt-in test).
 
+**Large Address Aware needs no patch.** The stock exe's file header already has `IMAGE_FILE_LARGE_ADDRESS_AWARE` (0x0020) set: `Characteristics` is `0x0122` (`EXECUTABLE_IMAGE` + `LARGE_ADDRESS_AWARE` + `32BIT_MACHINE`), the two bytes at file offset `0x13E` (`e_lfanew` `0x128` + `0x16`). `DllCharacteristics` (`e_lfanew` `0x128` + `0x5E`, which is `0x186`) reads `0x0040` on an untouched install and `0x0000` on a launcher-set-up copy, so `0x0020` is untouched either way. Read from the 0.8348 build on 2026-10-11 with `[IO.File]::ReadAllBytes`; the `total_virtual_mb` samples from the DLL (`client.engine.memory`) are the runtime cross-check.
+
 **The retired `.rdata` hostname patch.** Earlier launcher builds
 overwrote `www.stargateworlds.com` in `SGW.exe`. Its only ASCII
 occurrence is inside the SOAP namespace
