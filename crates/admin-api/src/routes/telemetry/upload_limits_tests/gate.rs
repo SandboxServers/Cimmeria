@@ -15,6 +15,7 @@ use crate::routes::dev_session::AuthError;
 use crate::routes::telemetry;
 use crate::routes::telemetry::chunk::chunk_inner;
 use crate::routes::telemetry::dto::IngestError;
+use crate::routes::telemetry::replay_tests::{capture_async, Row};
 use crate::routes::telemetry::upload_gate::{Route, UploadLimits, UploadPolicy, UploadState};
 
 use super::{chunk_request, run, small_chunk, Env, PEER};
@@ -120,15 +121,16 @@ fn a_chunk_is_refused_while_every_slot_is_busy() {
     });
     let policy = UploadPolicy::defaults();
     let held = state.hold_chunk_slot();
-    let err = run(chunk_inner(
+    let (result, rows) = run(capture_async(chunk_inner(
         &state,
         &policy,
         PEER,
         chunk_request("sess-busy", small_chunk(1)),
         Instant::now(),
-    ))
-    .unwrap_err();
-    assert!(matches!(err, IngestError::Busy), "{err:?}");
+    )));
+    let err = result.unwrap_err();
+    assert!(matches!(err, IngestError::Busy { .. }), "{err:?}");
+    assert_eq!(busy_row(&rows).fields["pool"], "route");
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(response.headers()[RETRY_AFTER], "5");
@@ -211,6 +213,13 @@ fn an_address_over_its_upload_rate_is_refused_whatever_the_session() {
     assert_eq!(err.reason(), "rate_limited");
 }
 
+/// The refusal row for a busy upload: the one `reason = "busy"` row logged.
+fn busy_row(rows: &[Row]) -> &Row {
+    rows.iter()
+        .find(|r| r.fields.get("reason").map(String::as_str) == Some("busy"))
+        .expect("a busy refusal is logged")
+}
+
 /// **One address holds at most one chunk slot.** While `PEER` has a chunk
 /// in flight its next one is refused as busy, another address's goes
 /// through, and once the first is done `PEER` is admitted again.
@@ -221,15 +230,16 @@ fn an_address_holds_at_most_one_chunk_slot() {
     let policy = UploadPolicy::defaults();
     let other = std::net::IpAddr::V4(std::net::Ipv4Addr::new(198, 51, 100, 9));
     let held = state.hold_peer_slot(Route::Chunk, PEER);
-    let err = run(chunk_inner(
+    let (result, rows) = run(capture_async(chunk_inner(
         &state,
         &policy,
         PEER,
         chunk_request("sess-peer-a", small_chunk(1)),
         Instant::now(),
-    ))
-    .unwrap_err();
-    assert!(matches!(err, IngestError::Busy), "{err:?}");
+    )));
+    let err = result.unwrap_err();
+    assert!(matches!(err, IngestError::Busy { .. }), "{err:?}");
+    assert_eq!(busy_row(&rows).fields["pool"], "peer_share");
     run(chunk_inner(
         &state,
         &policy,

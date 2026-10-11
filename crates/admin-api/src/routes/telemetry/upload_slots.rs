@@ -94,18 +94,50 @@ pub(super) struct UploadSlot {
     _global: OwnedSemaphorePermit,
 }
 
+/// The pool a refused upload ran out of, with that pool's size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum BusyPool {
+    /// The address already holds its whole share of the route's slots.
+    PeerShare(usize),
+    /// Every server-wide slot of the route is in use.
+    Route(usize),
+}
+
+impl BusyPool {
+    /// The pool's name on a refusal row: `peer_share` or `route`.
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            BusyPool::PeerShare(_) => "peer_share",
+            BusyPool::Route(_) => "route",
+        }
+    }
+
+    /// The pool's size: the address's share, or the route's slot count.
+    pub(super) fn limit(self) -> usize {
+        match self {
+            BusyPool::PeerShare(limit) | BusyPool::Route(limit) => limit,
+        }
+    }
+}
+
 /// Take a slot for `key` on `route`: the address's share first, then one
-/// of the route's pool.
+/// of the route's pool of `pool_size` slots. A refusal names the pool that
+/// was full.
 pub(super) fn take_slot(
     peers: &Arc<PeerSlots>,
     pool: &Arc<Semaphore>,
     route: Route,
     key: u64,
     per_peer: usize,
-) -> Option<UploadSlot> {
-    let peer = peers.try_take(route, key, per_peer)?;
-    let global = Arc::clone(pool).try_acquire_owned().ok()?;
-    Some(UploadSlot {
+    pool_size: usize,
+) -> Result<UploadSlot, BusyPool> {
+    let peer = peers
+        .try_take(route, key, per_peer)
+        .ok_or(BusyPool::PeerShare(per_peer))?;
+    let global = Arc::clone(pool)
+        .try_acquire_owned()
+        .map_err(|_| BusyPool::Route(pool_size))?;
+    Ok(UploadSlot {
         _peer: peer,
         _global: global,
     })
