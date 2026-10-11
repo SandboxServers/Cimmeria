@@ -46,9 +46,10 @@
 //! and [`crate::channel::Channel::receive_packet`]. **In production
 //! those Channel methods are unused** — the hot wire path bypasses
 //! Channel and calls `UdpTransport::send_to` / `BidirectionalTransport::recv_from`
-//! directly. The production `mercury.packet` events are emitted
-//! *inline* in the transport impl (see [`crate::transport`]) rather
-//! than through this helper, because the transport layer doesn't
+//! directly. The production `mercury.packet` events are emitted by
+//! the transport impl through [`crate::firehose`] (sampled 1-in-53
+//! since TG-MER-09) rather than through this helper, because the
+//! transport layer doesn't
 //! have `seq`/`flags` to pass — those live inside the encrypted
 //! packet body.
 //!

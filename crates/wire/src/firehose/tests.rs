@@ -1,4 +1,6 @@
-//! Sampler arithmetic and the emitters' two-row shape.
+//! The emitters' two-row shape. The sampler's arithmetic is tested beside
+//! it in `cimmeria-observability`, the mercury firehose in
+//! `cimmeria_mercury::firehose`.
 //!
 //! The routing half (full row reaches a file layer and no OTLP layer, sample
 //! reaches OTLP) is tested against the real filters in
@@ -11,46 +13,6 @@ use crate::test_support::LogCapture;
 
 fn addr() -> SocketAddr {
     "127.0.0.1:32832".parse().unwrap()
-}
-
-/// `n` occurrences through a fresh 1-in-`every` sampler. Returns the
-/// `suppressed` value of each admitted one.
-fn run(every: u64, n: u64) -> Vec<u64> {
-    let s = FirehoseSampler::new(every);
-    (0..n).filter_map(|_| s.admit()).collect()
-}
-
-#[test]
-fn sampler_admits_the_first_occurrence_then_every_nth() {
-    assert_eq!(
-        run(3, 7),
-        [0, 2, 2],
-        "occurrences 0, 3 and 6 are the samples"
-    );
-    assert_eq!(run(1, 4), [0, 0, 0, 0], "1-in-1 admits everything");
-}
-
-/// The rate identity SigNoz queries rely on: the number of samples is
-/// `ceil(n / every)`, and `sum(1 + suppressed)` reconstructs every occurrence
-/// up to and including the last sample.
-#[test]
-fn sampler_counts_add_up() {
-    for (every, n) in [(53, 1_000), (101, 10_000), (53, 53), (53, 54), (101, 1)] {
-        let samples = run(every, n);
-        assert_eq!(
-            samples.len() as u64,
-            n.div_ceil(every),
-            "every={every} n={n}"
-        );
-        let reconstructed: u64 = samples.iter().map(|s| 1 + s).sum();
-        let last_sample_index = (samples.len() as u64 - 1) * every;
-        assert_eq!(
-            reconstructed,
-            last_sample_index + 1,
-            "every={every} n={n}: 1 + suppressed must sum to the occurrences \
-             seen by the last sample"
-        );
-    }
 }
 
 /// Every call writes the full row; only the admitted ones add a sample, and
@@ -145,7 +107,15 @@ fn entity_moved_keeps_the_avatar_update_sample_and_adds_the_ratio() {
 /// renamed target or a lost row fails in this crate too.
 #[test]
 fn firehose_table_names_disjoint_prefixed_targets() {
-    assert_eq!(FIREHOSES.len(), 3);
+    assert_eq!(FIREHOSES.len(), 4);
+    assert!(
+        FIREHOSES
+            .iter()
+            .any(|f| f.full_target == "wire.firehose.mercury_packet"
+                && f.sample_target == "mercury.packet"
+                && f.sample_level == tracing::Level::INFO),
+        "TG-MER-09: the transport's datagram firehose is registered"
+    );
     for f in FIREHOSES {
         assert!(f.full_target.starts_with(FIREHOSE_TARGET_PREFIX), "{f:?}");
         assert!(
