@@ -242,10 +242,14 @@ W0 · high · packet-coder (column names confirmed by `database-persistence` in 
 
 ### TG-SOC-03 Character delete: refund or destroy
 
-W0 · high · `needs-domain-agent: database-persistence` + `social-systems-engineer` · BlockedDecision (D-TG9) · after TG-SOC-02 · crates `cimmeria-base-session`
+Dropped: D-TG9 decided to accept destruction, with TG-SOC-02 as the audit.
 
-- **Change (behaviour, after the decision):** either a pre-delete step in `delete_character` that mails refunds for held bids and returns mail attachments, or accept destruction with TG-SOC-02 as the audit.
-- **Test:** live-DB, per the chosen design; the guard fails if the refund mail is not written. **Ship:** `telemetry-gaps/TG-SOC-03-delete-refunds` · `tg-soc-03` · `fix(base-session): TG-SOC-03 refund held bids and attachments on character delete`
+### TG-DB-12 Lock unreadable missions instead of overwriting them (D-TG18)
+
+W0 · high · `needs-domain-agent: mission-systems-advisor` + `database-persistence` · Ready · after TG-DB-07 · crates `cimmeria-base-methods`, `cimmeria-cell-content`
+
+- **Change (behaviour):** `query_saved_missions` retries the read a few times with a short backoff. If it still fails, the player enters the world with missions marked `state_unknown`. Mission accept and advance for those missions are refused with visible feedback ("Mission data unavailable, try again shortly") and a WARN `event = "mission_state_unknown"`, `reason = "saved_missions_unreadable"`, identity. A background retry reloads the state and unlocks it with an INFO `event = "mission_state_recovered"`. Nothing writes mission rows while the state is unknown. If the design needs more than about 3 production files, the domain agent splits it into a read-retry packet and a lock packet before dispatch.
+- **Test:** live-DB `live_db_unreadable_missions_block_reaccept`: make the saved-missions read fail, enter the world, attempt a re-accept of a completed mission, and assert the refusal, the WARN and that the completed row is unchanged. Removing the lock lets the re-accept overwrite the row, which fails the test. **Ship:** `telemetry-gaps/TG-DB-12-missions-unknown-lock` · `tg-db-12` · `fix(base-methods): TG-DB-12 lock unreadable missions instead of overwriting progress`
 
 ### TG-MIS-07 Log dropped deferred content actions
 

@@ -70,7 +70,7 @@ Each domain agent adversarially reviewed its own system's telemetry footprint, p
 | D-TG15 | TG-DB-02: how long may shutdown wait to drain position and ammo saves inside the container stop grace, and in what stop order? | Decided 2026-10-10: up to 10 s | Save every in-world player in parallel. After 10 s, shut down anyway and WARN once per player not saved, with player_id and name |
 | D-TG16 | Add a periodic counter of OTLP records the exporter dropped, accepting an exporter-side change? | Open | `opentelemetry=off` correctly stops loops, but a dropped batch leaves no trace |
 | D-TG17 | TG-MOV-09 (after the RE): keep sending method 116 to `SGWGmPlayer` clients, skip it, or route the streaming hint another way? | Open | 195 of 200 client `method_dropped` rows are this |
-| D-TG18 | When the player load degrades (TG-DB-07), refuse world entry or suppress mission persistence for that session? | Open: owner rejected both options 2026-10-10 | Coordinator proposal pending: retry the read; if it still fails, enter the world with mission state marked unknown, refuse accept/advance of those missions with visible feedback, keep retrying in the background |
+| D-TG18 | When the player load degrades (TG-DB-07), refuse world entry or suppress mission persistence for that session? | Decided 2026-10-10: enter with missions locked | Retry the saved-missions read a few times. If it still fails, enter the world with those missions marked unknown, refuse accepting or advancing them with visible feedback and a WARN, and keep retrying in the background. Unlock once the read succeeds. Nothing overwrites completed progress |
 
 ## Packet status
 
@@ -86,6 +86,7 @@ States: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integra
 | TG-DB-03 | Cell position-save skips and queues are logged | W0 | high | Ready |
 | TG-DB-04 | `PersistPosition` rows: identity, Pattern B, reason | W0 | med | Ready |
 | TG-DB-07 | Player-load fallbacks say they degraded | W0 | med | Ready |
+| TG-DB-12 | Lock unreadable missions instead of overwriting them (D-TG18) | W0 | high | BlockedDependency (TG-DB-07) |
 | TG-ITM-06 | Stale bandolier ammo writeback to WARN with counts | W0 | med | Ready |
 | TG-ITM-11 | Bandolier flush summary and dropped-slot trace | W0 | med | Ready |
 | TG-ITM-09 | Loot silent drops and lost cash | W0 | med | Ready |
