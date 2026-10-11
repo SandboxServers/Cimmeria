@@ -8,12 +8,14 @@
 //! Split along lifecycle seams:
 //! - [`resend`] — resend active mission state on map load.
 //! - [`lifecycle`] — accept / abandon.
-//! - [`progression`] — advance step, complete objective, complete direct.
+//! - [`progression`] — advance step, complete objective.
+//! - [`complete_direct`] — a chain action completes the whole mission.
 //! - [`persist`] — serialize the live instance into the base-side
 //!   `MissionUpdate` that UPSERTs `sgw_mission`.
 //! - [`state_lock`] — the unreadable-saved-missions lock (TG-DB-12): every
 //!   mutation and persist above refuses while it holds.
 
+mod complete_direct;
 mod lifecycle;
 mod persist;
 mod progression;
@@ -25,13 +27,16 @@ mod abandon_persist_tests;
 #[cfg(test)]
 mod hidden_frames_tests;
 #[cfg(test)]
+mod lifecycle_tests;
+#[cfg(test)]
 mod progression_tests;
 #[cfg(test)]
 mod state_lock_tests;
 
+pub use complete_direct::complete_mission_direct;
 pub use lifecycle::{abandon_mission, accept_mission};
 pub use persist::{mission_update_msg, send_mission_update};
-pub use progression::{advance_step, complete_mission_direct, complete_objective};
+pub use progression::{advance_step, complete_objective};
 pub use resend::resend_missions;
 
 /// Hidden-mission client-frame gate (#715).

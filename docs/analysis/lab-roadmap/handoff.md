@@ -149,13 +149,13 @@ The wire-client CI campaign (`docs/analysis/wireclient-ci/`) was planned in the 
   - **Bundles:** the max bundle and fragment counts, and the request-offset residue bug (#1341).
 - **AoI and entities:** entity count and AoI radius limits, the create-burst size the client absorbs, and how the cinematic hold interacts with them.
 - **Process:** 32-bit SGW.exe means a 2 GB address space unless Large Address Aware is set. Measure working-set peaks per map.
-- **Engine:** frame time under load, the UE3 texture streaming pool, the background-window throttle (5 ms sleep per tick; virtual focus defeats it).
+- **Engine:** frame time under load, the UE3 texture streaming pool, the background-window throttle (an editor-only block; the player client has none, per CL-04).
 - **Timing:** the server tick, client interpolation, and teleport and AoI refresh latency.
 
 **What could be raised** (each is a candidate packet with a risk note and a rollback):
 
-- Set the **LAA flag** on SGW.exe (4 GB on 64-bit Windows). This is a client patch, so it needs a maintainer decision.
-- Raise the **UE3 ini pools**: `TextureStreaming PoolSize`, `MaxSmoothedFrameRate`, the background-throttle settings.
+- The **LAA flag** on SGW.exe is already set in the stock exe (4 GB address space for a Large Address Aware 32-bit process on 64-bit Windows); nothing to patch (CL-04).
+- Raise the **UE3 streaming margins and smoothing keys** (`HysteresisLimit`, `DropMipLevelsLimit`, `StopIncreasingLimit`, `StopStreamingLimit`, `MaxSmoothedFrameRate`; see `docs/client/limits/engine.md`). `PoolSize` is inert and no background-throttle setting exists.
 - Widen **server-side pacing**: AoI introduction batch sizes, flush pacing, send rate caps.
 - Increase **lab capacity**: more than 5 clients across two machines; a low-resolution render mode.
 

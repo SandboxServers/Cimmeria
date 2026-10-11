@@ -234,6 +234,29 @@ try {
     }
     if (-not $up) { throw "the egress proxy is not listening on $EgressListen (see $Root\egress\log\egress.log)" }
 
+    # node3 hosts other people's VMs, and its Users group can read their storage folders.
+    # Deny the runner account read and list there (inherited by every file below), and
+    # change nothing else: only an ACE is added, the VMs themselves are never touched.
+    # The folders come from Hyper-V's own settings, read-only: the host defaults and
+    # each VM's configuration, checkpoint, smart-paging and disk locations.
+    $vmDirs = [Collections.Generic.List[string]]::new()
+    if (Get-Command Get-VMHost -ErrorAction SilentlyContinue) {
+        $h = Get-VMHost
+        $vmDirs.Add($h.VirtualHardDiskPath); $vmDirs.Add($h.VirtualMachinePath)
+        foreach ($vm in Get-VM) {
+            foreach ($p in $vm.ConfigurationLocation, $vm.SnapshotFileLocation, $vm.SmartPagingFilePath) { $vmDirs.Add($p) }
+            foreach ($d in $vm.HardDrives) { if ($d.Path) { $vmDirs.Add((Split-Path -Parent $d.Path)) } }
+        }
+    }
+    $vmDirs = @($vmDirs | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } |
+            ForEach-Object { (Resolve-Path -LiteralPath $_).ProviderPath.TrimEnd('\') } | Sort-Object -Unique)
+    foreach ($d in $vmDirs) {
+        # /C: carry on past a file that refuses (an open VHD); icacls merges a repeat deny.
+        $out = icacls $d /deny "${Account}:(OI)(CI)(RX)" /C /Q 2>&1
+        if ($LASTEXITCODE -ne 0) { $notes.Add("denying $Account on ${d}: $out") }
+    }
+    Step "runner account denied on VM storage: $($vmDirs -join ', ')"
+
     # The listener refuses to start unless it can list every directory above its own, so
     # the account may list $Root itself (this folder only, nothing inherited).
     Set-Dacl $Root @("${Account}:(RX)")
