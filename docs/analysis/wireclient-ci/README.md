@@ -7,12 +7,13 @@
 > flush tail drop). Packet specs: [work-packets.md](work-packets.md). ADR:
 > [wireclient.md](../../architecture/wireclient.md).
 >
-> **Campaign status (2026-10-10): waves 1 to 3 merged** (WC-01 to WC-10 and
-> WC-13; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are decided (option
-> (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is Ready. The
-> `wireclient e2e` job runs on every server PR but stays red, reporting only,
-> until #1371 (the three chaos tests, failing on `main` since late September)
-> is fixed; WC-16 cannot pass until then.
+> **Campaign status (2026-10-11): waves 1 to 3 and WC-18 merged** (WC-01 to
+> WC-10, WC-13, WC-18; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are
+> decided (option (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is
+> Ready. WC-18 (#1447) fixed the three chaos tests (#1371, closed), so the
+> `wireclient e2e` job, still reporting only, passes. Linux CI moved to the
+> self-hosted `cimmeria-linux` runners on 2026-10-11 (#1410); WC-16's
+> shakedown counts green runs there.
 
 ## Purpose
 
@@ -99,7 +100,7 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
 | WC-17 | Close-out: ADR, TESTING.md, status docs, #281 | documentation-writer | M | 8 | all | BlockedDependency |
-| WC-18 | Chaos tests vs a populated Castle (#1371): pipelined `LossyTransport` latency, keep-alive ACKs in the test waits | packet-coder | M | any | none | Ready |
+| WC-18 | Chaos tests vs a populated Castle (#1371): pipelined `LossyTransport` latency, keep-alive ACKs in the test waits | packet-coder | M | any | none | Done (#1447) |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
 
@@ -185,3 +186,12 @@ then the reference, not the spec.
 - **WC-13 (#1404).** As specified, plus `data/cache/**` in both path filters
   (the server loads those paks at startup). First run: 25 tests, 22 passed,
   3 failed, all three #1371.
+
+- **WC-18 (#1447).** Root cause by a `rust-gameserver-dev` investigation (F19),
+  implemented by a Haiku `packet-coder` and finished by the coordinator. Beyond
+  the spec: `LossyConfig::with_lossless_first_sends` (the wire client reads
+  the phase-3 handshake positionally, so the lossy scenario exempts its two
+  datagrams), and `lossy_transport.rs` split into `lossy_transport/mod.rs`
+  and `tests.rs`. First green Linux run:
+  https://github.com/SandboxServers/Cimmeria/actions/runs/38118805363/job/114409089613.
+  Details in [worknotes/WC-18.md](worknotes/WC-18.md).
