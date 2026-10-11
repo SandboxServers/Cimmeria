@@ -13,12 +13,13 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::contact_list::persistence::find_watchers;
+use crate::base::contact_list::ignore::IGNORE_LIST_FLAGS;
+use crate::base::contact_list::persistence::find_watchers_with_flags;
 use crate::base::contact_list::wire::{
     build_on_contact_list_event, DATA_OFFLINE, DATA_ONLINE, EVENT_DEATH, EVENT_GAIN_LEVEL,
     EVENT_GATE_TRAVEL, EVENT_LOGGED_IN_STATUS,
 };
-use crate::base::helpers::send_to_witness_reliable;
+use crate::base::helpers::{send_to_witness_reliable, WitnessSendOutcome};
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
@@ -51,6 +52,20 @@ fn collect_watcher_entity_ids(
         .collect()
 }
 
+/// Distinct watcher `player_id`s from the `(player_id, flags)` rows of
+/// `find_watchers_with_flags`, and how many of those watchers hold the
+/// subject on an Ignore list (`IGNORE_LIST_FLAGS`). Pure; shared with the
+/// persistence tests.
+pub(crate) fn watcher_summary(rows: &[(i32, i32)]) -> (HashSet<i32>, usize) {
+    let watchers: HashSet<i32> = rows.iter().map(|&(id, _)| id).collect();
+    let ignoring: HashSet<i32> = rows
+        .iter()
+        .filter(|&&(_, flags)| flags == IGNORE_LIST_FLAGS)
+        .map(|&(id, _)| id)
+        .collect();
+    (watchers, ignoring.len())
+}
+
 /// Fan out `onContactListEvent` (CM 89) to all online players who have
 /// `player_name` in any of their contact lists.
 ///
@@ -63,9 +78,10 @@ fn collect_watcher_entity_ids(
 /// not block a critical path (gate travel, XP grant, death burst).
 ///
 /// # Invariant #5 (ignore-list leak)
-/// Does NOT filter on the recipient's ignore list — `find_watchers` returns
-/// all contact-list watchers regardless. Ignore-list filtering before fanout
-/// is deferred to Phase 5.
+/// Does NOT filter on the recipient's ignore list — `find_watchers_with_flags`
+/// returns all contact-list watchers regardless. Ignore-list filtering before
+/// fanout is deferred to Phase 5; the summary log counts those watchers as
+/// `ignoring_watchers` meanwhile.
 pub async fn fanout_contact_event(
     player_name: &str,
     event_id: u32,
@@ -88,25 +104,22 @@ pub async fn fanout_contact_event(
         }
     };
 
-    let watcher_ids = match find_watchers(pool, player_name).await {
-        Ok(ids) => ids,
+    let watcher_rows = match find_watchers_with_flags(pool, player_name).await {
+        Ok(rows) => rows,
         Err(e) => {
             tracing::error!(
                 player_name,
                 event_id,
                 event_name = contact_event_name(event_id),
-                "ContactList presence fanout: find_watchers failed: {e}"
+                "ContactList presence fanout: find_watchers_with_flags failed: {e}"
             );
             return;
         }
     };
 
-    if watcher_ids.is_empty() {
-        return;
-    }
-
     // Build a HashSet for O(1) membership tests during the connected scan below.
-    let watcher_set: HashSet<i32> = watcher_ids.iter().copied().collect();
+    // An empty set falls through: no entity matches, and the summary still logs.
+    let (watcher_set, ignoring_watchers) = watcher_summary(&watcher_rows);
 
     let args = build_on_contact_list_event(player_name, event_id, data_value);
 
@@ -128,9 +141,11 @@ pub async fn fanout_contact_event(
         collect_watcher_entity_ids(&clients, &watcher_set)
     };
 
+    let online_watchers = watcher_entity_ids.len();
+    let mut sent = 0usize;
     for entity_id in watcher_entity_ids {
         let args_clone = args.clone();
-        send_to_witness_reliable(
+        let outcome = send_to_witness_reliable(
             transport,
             connected,
             entity_to_addr,
@@ -148,14 +163,21 @@ pub async fn fanout_contact_event(
             },
         )
         .await;
+        if matches!(outcome, WitnessSendOutcome::Sent { .. }) {
+            sent += 1;
+        }
     }
 
     tracing::debug!(
+        event = "contacts.presence_fanout",
         player_name,
         event_id,
         event_name = contact_event_name(event_id),
         data_value,
-        watcher_count = watcher_ids.len(),
+        watchers = watcher_set.len(),
+        ignoring_watchers,
+        online_watchers,
+        sent,
         "ContactList: presence fanout complete"
     );
 }

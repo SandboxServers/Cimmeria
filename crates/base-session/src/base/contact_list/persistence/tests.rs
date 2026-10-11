@@ -1,4 +1,5 @@
 use super::*;
+use crate::base::contact_list::handlers::presence_fanout;
 use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for contact-list persistence tests.
@@ -217,15 +218,18 @@ async fn live_db_find_watchers_returns_correct_player_ids() {
         .await
         .unwrap();
 
-    let watchers = find_watchers(&pool, "WatchedPlayer")
+    let watchers: Vec<i32> = find_watchers_with_flags(&pool, "WatchedPlayer")
         .await
-        .expect("find_watchers");
+        .expect("find_watchers_with_flags")
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
 
     // player_id should appear exactly once despite appearing in two lists.
     assert_eq!(
         watchers.iter().filter(|&&id| id == player_id).count(),
         1,
-        "find_watchers must return distinct player_ids (DISTINCT clause regression guard)"
+        "find_watchers_with_flags must return distinct rows (DISTINCT clause regression guard)"
     );
 
     // Not-watched player should not appear.
@@ -235,6 +239,59 @@ async fn live_db_find_watchers_returns_correct_player_ids() {
     );
 
     cleanup(&pool, account_id, player_id).await;
+}
+
+/// A subject on one Friends list and one Ignore list: the fanout summary
+/// counts two watchers and `ignoring_watchers = 1`.
+#[tokio::test]
+async fn live_db_presence_fanout_counts_ignoring_watcher() {
+    let pool = require_db_or_skip!();
+    let friend_account = TEST_BASE + 70;
+    let friend_player = TEST_BASE + 71;
+    let ignorer_account = TEST_BASE + 72;
+    let ignorer_player = TEST_BASE + 73;
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
+    insert_minimal_player(&pool, friend_account, friend_player).await;
+    insert_minimal_player(&pool, ignorer_account, ignorer_player).await;
+
+    let friends = create_list(&pool, friend_player, "Friends", 300)
+        .await
+        .unwrap();
+    let ignore = create_list(&pool, ignorer_player, "Ignore", 301)
+        .await
+        .unwrap();
+    add_members(
+        &pool,
+        friend_player,
+        friends,
+        &["FanoutSubject".to_string()],
+    )
+    .await
+    .unwrap();
+    add_members(
+        &pool,
+        ignorer_player,
+        ignore,
+        &["FanoutSubject".to_string()],
+    )
+    .await
+    .unwrap();
+
+    let rows = find_watchers_with_flags(&pool, "FanoutSubject")
+        .await
+        .expect("find_watchers_with_flags");
+    let (watchers, ignoring) = presence_fanout::watcher_summary(&rows);
+    assert!(watchers.contains(&friend_player));
+    assert!(watchers.contains(&ignorer_player));
+    assert_eq!(watchers.len(), 2);
+    assert_eq!(
+        ignoring, 1,
+        "only the Ignore-list watcher counts as ignoring"
+    );
+
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
 }
 
 /// Character delete cascades: after deleting the owning `sgw_player` row,
