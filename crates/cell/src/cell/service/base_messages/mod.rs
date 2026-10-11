@@ -365,7 +365,7 @@ pub(super) async fn handle_base_message(
             method_index,
             args,
         } => {
-            crate::cell::abilities::send_entity_method_to_witnesses(
+            let witness_count = crate::cell::abilities::send_entity_method_to_witnesses(
                 entity_id,
                 method_index,
                 args,
@@ -373,6 +373,22 @@ pub(super) async fn handle_base_message(
                 space_mgr,
             )
             .await;
+            // TG-AOI-02: the base-built appearance (equip, holster) reached
+            // `witness_count` observers. Zero means nobody saw the change.
+            let who = space_mgr.player_identity(entity_id);
+            tracing::info!(
+                target: "aoi.appearance",
+                event = "appearance_rebroadcast",
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                method_index,
+                witness_count,
+                "BroadcastToWitnesses: entity method rebroadcast to witnesses"
+            );
         }
 
         BaseToCellMsg::LabConsoleExec {
