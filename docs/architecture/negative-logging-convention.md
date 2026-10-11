@@ -603,6 +603,23 @@ missing container with the out-of-range feedback line.
 
 The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
 
+## Loot roll outcome (TG-ITM-02)
+
+Target `abilities`, in `cell/abilities/loot_drop.rs` (`generate_loot_on_death`). A
+silent return on the on-death roll used to hide why an NPC dropped nothing. The
+no-table case is the normal path, so it is DEBUG. Every roll ends with a DEBUG
+`loot_rolled` row (`entries`, `dropped`, `loot_table_id` + `loot_table_name`); a
+zero `dropped` is a real result, not a miss. The two misses are WARN.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_skipped` | DEBUG | `no_loot_table` | `target_eid` |
+| `loot_table_empty` | WARN | `table_has_no_rows` | `target_eid`, `loot_table_id`, `loot_table_name` |
+| `loot_skipped` | WARN | `entity_missing` | `target_eid`, `loot_table_id` |
+
+The guards are `abilities/loot_drop.rs`, `unknown_loot_table_warns_table_has_no_rows`
+and `probability_zero_logs_loot_rolled_with_no_drops`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
@@ -846,6 +863,16 @@ Target `inventory`-side `move_/after_commit.rs` in `cimmeria-base-methods`. A mo
 | DEBUG | `Inventory move persisted`, plus `source_container_id`, `target_container_id`, `swapped_item_id` (when a swap), `source_deleted` | Each committed move |
 
 Guard: `live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields` in `move_/after_commit.rs` drops the cell receiver, asserts the WARN and its fields, and asserts the move row's new fields.
+
+## Inert effect WARN (TG-CMB-03)
+
+An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `abilities.effect`, `event = "effect_inert"`, Rule 5 identity, `entity_id`, `entity_name` (the caster), `caster_kind` (`player` or `npc`), `ability_id`, `ability_name`, `effect_id`, `effect_name`, `target_id`, `target_name`, `target_player_id`, `target_player_name`, `suppressed` | An effect with no script and no NVP damage landed on a target (once per pair per 60 s) |
+
+Guards: `one_no_script_plan_warns_once`, `burst_writes_one_row_then_reports_suppressed` and `another_effect_id_is_not_swallowed` in `cell/abilities/effect_plan.rs` (`cimmeria-cell-combat`).
 
 ## Stale combat state (TG-CMB-02)
 

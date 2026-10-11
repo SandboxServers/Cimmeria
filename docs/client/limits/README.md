@@ -37,7 +37,7 @@ Safe level and Break level are filled only on the chaos-driven rows (the ones a 
 | [network.md](network.md) | Datagrams, windows, resend, fragments, bundles, the #1341 residue |
 | [aoi.md](aoi.md) | AoI radius, entity count, create bursts, the deferred buffer, the first-login hold |
 | [process.md](process.md) | Address space, working sets, cache archives |
-| [engine.md](engine.md) | Frame time, texture pool, smoothing, background throttle, display loss |
+| [engine.md](engine.md) | Frame time, texture streaming keys, smoothing, background throttle, display loss, ini chain |
 | [timing.md](timing.md) | Server tick, interpolation, world entry, teleport to AoI |
 | [lab.md](lab.md) | Clients per daemon, bridge start, window size |
 
@@ -47,11 +47,13 @@ One row per bound. The area file holds the grade, the source and the notes.
 
 | Bound | Value | Area file |
 |---|---|---|
-| Largest datagram the client receives | 1472 B | [network.md](network.md) |
+| Largest datagram the client receives | 1472 B (largest seen 1440 B, no oversize) | [network.md](network.md) |
+| Datagrams the server split because they were oversize | 0 in 30 days | [network.md](network.md) |
+| Reliable-hole stalls (`tx_hole_stall`) | none since 2026-09-29 | [network.md](network.md) |
 | Server datagram maximum | 1472 B | [network.md](network.md) |
 | Server fragment body | 1300 B | [network.md](network.md) |
 | Server data plaintext before piggybacked ACKs | 1411 B | [network.md](network.md) |
-| Fragments per bundle, client | no cap | [network.md](network.md) |
+| Fragments per bundle, client | no cap (largest seen 16, 20,411 B) | [network.md](network.md) |
 | Fragments per bundle, server | 64 | [network.md](network.md) |
 | Open fragment groups per channel | 1 | [network.md](network.md) |
 | Client reorder window | 512 packets | [network.md](network.md) |
@@ -59,13 +61,21 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Server resend timeout | 700 ms | [network.md](network.md) |
 | Server resend tries | 20 | [network.md](network.md) |
 | Server resends per tick | 5 | [network.md](network.md) |
-| Client resend timing for its own reliable sends | not measured | [network.md](network.md) |
-| Client socket receive buffer | not measured | [network.md](network.md) |
-| Packets the client processes per tick | not measured | [network.md](network.md) |
+| Client resend timeout for its own reliable sends | max(2.5 x smoothed RTT, 50 ms); first RTO 2.5 s | [network.md](network.md) |
+| Client resend retry cap | none | [network.md](network.md) |
+| Client resends per pass per channel | 6 | [network.md](network.md) |
+| Client idle keepalive | empty bundle after 1.5 s without a send | [network.md](network.md) |
+| Client socket receive buffer | OS default (client sets none); size not measured | [network.md](network.md) |
+| Datagrams the network thread reads per pass | 64 per socket | [network.md](network.md) |
+| Network thread idle wait | about 10 to 15.6 ms | [network.md](network.md) |
+| Packets the client processes per tick | whole queue per frame, no budget | [network.md](network.md) |
+| Largest message body the bundle loop can copy | no fixed cap | [network.md](network.md) |
+| Packets in a chain between processPacket and processOrderedPacket | no cap | [network.md](network.md) |
 | Client idle send rate | about 6 packets/s; `perfStats` every 15.0 s | [network.md](network.md) |
 | Client tolerance of server silence | 15 s | [network.md](network.md) |
 | Next-request offset residue (#1341) | multiples of 8, 128 to 848 B, sticky per process | [network.md](network.md) |
 | Residue exposure | first packet of a chain only | [network.md](network.md) |
+| First-login phase-1 packet (`create_base`) | 1,036 B, one packet; up to 28 NPCs | [network.md](network.md) |
 | Server-side added latency and jitter the session survives | not measured | [network.md](network.md) |
 | Server-side loss rate the session survives | not measured | [network.md](network.md) |
 | Flush delay after the hold before the client times anything out | not measured | [network.md](network.md) |
@@ -73,28 +83,36 @@ One row per bound. The area file holds the grade, the source and the notes.
 | NPC default AoI radius | 100 m | [aoi.md](aoi.md) |
 | AoI leave margin | 25 m | [aoi.md](aoi.md) |
 | Entities the client holds at once | no fixed limit | [aoi.md](aoi.md) |
-| Creates in one flush the client absorbs | not measured | [aoi.md](aoi.md) |
+| Creates in one flush the client absorbs | not measured (28 NPCs seen, all absorbed) | [aoi.md](aoi.md) |
 | Deferred buffer | 512 messages, then drop with a WARN | [aoi.md](aoi.md) |
 | First-login hold | 16 s | [aoi.md](aoi.md) |
 | Entities per `requestEntityUpdate` | 64 | [aoi.md](aoi.md) |
-| Address space | 4 GB on 64-bit Windows (Large Address Aware set in the stock exe) | [process.md](process.md) |
-| Working-set peak per world | not measured | [process.md](process.md) |
+| Address space | 4 GB for a Large Address Aware 32-bit process on 64-bit Windows (flag set in the stock exe) | [process.md](process.md) |
+| Working-set peak per world | 1.2 to 2.0 GB typical (per-world table) | [process.md](process.md) |
+| Address space seen at runtime | 4096 MB in every sample | [process.md](process.md) |
 | Free address space warning | below 256 MB | [process.md](process.md) |
-| Lowest free address space seen | not measured | [process.md](process.md) |
+| Lowest free address space seen | 135.5 MB, Ihpet_Crater_Light | [process.md](process.md) |
+| Largest committed (private) memory seen | 3540.4 MB, Ihpet_Crater_Light | [process.md](process.md) |
 | Cache archives held open | 22 `Cache.en-US` paks, open for writing with read-only sharing | [process.md](process.md) |
 | Hitch threshold | 200 ms | [engine.md](engine.md) |
-| Frame time (p50, p95, max per 30 s window) | not measured | [engine.md](engine.md) |
+| Frame time (p50, p95, max per 30 s window) | not measured (fields added by CL-06) | [engine.md](engine.md) |
+| Hitches per world | per-world table | [engine.md](engine.md) |
 | Busy cores at which frame time passes the hitch threshold | not measured | [engine.md](engine.md) |
-| Texture streaming pool | not measured | [engine.md](engine.md) |
-| Frame smoothing | not measured | [engine.md](engine.md) |
-| Background throttle | below-normal priority, 5 ms sleep per `FEngineLoop::Tick` | [engine.md](engine.md) |
+| Texture pool size (`PoolSize`) | inert, not read by the client | [engine.md](engine.md) |
+| Texture streaming margins | `HysteresisLimit` 30, `DropMipLevelsLimit` 24, `StopIncreasingLimit` 18, `StopStreamingLimit` 12 | [engine.md](engine.md) |
+| Texture streaming fudge and mip rules | five keys, defaults in `BaseEngine.ini` | [engine.md](engine.md) |
+| Frame smoothing | 22 to 62 fps clamp, `bSmoothFrameRate` on | [engine.md](engine.md) |
+| Minimum desired frame rate | 35.0 | [engine.md](engine.md) |
+| Background throttle | none in the player client (editor-only block) | [engine.md](engine.md) |
 | Idle display loss | about 10 min, then `D3DERR_NOTAVAILABLE` | [engine.md](engine.md) |
 | Server tick | 10 Hz (100 ms) | [timing.md](timing.md) |
 | Server position-update spacing | 100 ms | [timing.md](timing.md) |
 | Client render delay of remote entities (BigWorld filter class) | target 0.1 to 1.0 s, 8-frame ring | [timing.md](timing.md) |
 | Client teleport snap (SGW filter class) | 2500 position units/s | [timing.md](timing.md) |
-| World entry, Castle_CellBlock | about 2.4 s | [timing.md](timing.md) |
+| World entry (`playCharacter` to `onClientReady`) | p50 4.5 s, p95 24.6 s | [timing.md](timing.md) |
 | Teleport to AoI refresh | not measured | [timing.md](timing.md) |
+| Hold as observed | not measured | [timing.md](timing.md) |
+| Largest gap between two server-to-client records | 15.7 s | [timing.md](timing.md) |
 | Clients per daemon | 5 | [lab.md](lab.md) |
 | Bridge up with other clients running | about 25 s | [lab.md](lab.md) |
 | Watchdog grace before a first bridge answer | 90 s | [lab.md](lab.md) |

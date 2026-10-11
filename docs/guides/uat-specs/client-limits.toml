@@ -1,0 +1,149 @@
+# Unified UAT, section "Client limits" (measurement, not a campaign run).
+# Guide: docs/client/limits/README.md
+#
+# What each row measures: the lab character stands in one world for 90 s,
+# and the client's telemetry DLL reports client.engine.memory every 30 s
+# (working sets, free address space, and since CL-06 the frame-time
+# percentiles over each window: frames, frame_p50_ms, frame_p95_ms,
+# frame_max_ms). The row passes when at least three samples arrived in its
+# window. Its expect clause records the count and the first five samples'
+# fields, so the numbers are in the row's bundle.
+#
+# Where the numbers go (CL-08): per world, the peak working set, the minimum
+# free address space and the p95 frame time go to docs/client/limits/process.md
+# (memory) and docs/client/limits/engine.md (frame time), graded `measured`.
+#
+# Rows, in order: CL-W1 Castle_CellBlock (the start world, instanced per
+# login), CL-W2 Castle, CL-W3 Harset, CL-W4 Agnos, CL-W5 Ihpet_Crater_Light,
+# CL-W6 Dakara_E1, CL-W7 Tollana. Each travels with `.gotolocation <world>`
+# (no coordinates; the world's entry point, see
+# crates/cell-console/src/cell/console/travel/world_entry_point.rs), so the
+# world names are the spaces.xml spellings.
+#
+# CL-M5, five lab clients in Castle for 90 s at once, is not a row of its
+# own: run CL-W2 on five instances together, each with its own lease,
+#   lab uat client-limits -Rows CL-W2 -Leases 5
+# and read machine_load_percent and the frame fields from all five sessions.
+# The single-client run is
+#   lab uat client-limits -Leases 1 -RunsPerLease 3
+#
+# Samples are counted with a client_event clause on
+# event = "client.engine.memory" (the ring stores it as engine.memory). The
+# window opens at each row's anchor.
+
+schema = 1
+
+[section]
+id = "client-limits"
+system = "Client limits measurement (per-world memory and frame time)"
+guide = "docs/client/limits/README.md"
+ledger = "docs/guides/automated-uat.md#spec-coverage"
+account = "gm"
+character = "lab"
+
+# ================================================================ Worlds
+
+[[row]]
+id = "CL-W1"
+title = "Castle_CellBlock: three memory samples in 90 s"
+expected = "The client stays in Castle_CellBlock for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Castle_CellBlock", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W2"
+title = "Castle: three memory samples in 90 s"
+expected = "The client stays in Castle for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Castle", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W3"
+title = "Harset: three memory samples in 90 s"
+expected = "The client stays in Harset for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Harset", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W4"
+title = "Agnos: three memory samples in 90 s"
+expected = "The client stays in Agnos for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Agnos", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W5"
+title = "Ihpet_Crater_Light: three memory samples in 90 s"
+expected = "The client stays in Ihpet_Crater_Light for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Ihpet_Crater_Light", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W6"
+title = "Dakara_E1: three memory samples in 90 s"
+expected = "The client stays in Dakara_E1 for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Dakara_E1", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
+
+[[row]]
+id = "CL-W7"
+title = "Tollana: three memory samples in 90 s"
+expected = "The client stays in Tollana for 90 s and reports at least three client.engine.memory samples, 30 s apart."
+step = [
+  { chat = ".gotolocation Tollana", label = "go" },
+  { wait_ms = 90000, label = "window" },
+]
+[[row.expect]]
+id = "memory-samples"
+text = "at least three client.engine.memory samples arrived in the row's window"
+source = "client_event"
+event = "client.engine.memory"
+min_rows = 3
