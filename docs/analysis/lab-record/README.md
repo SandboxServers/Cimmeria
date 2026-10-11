@@ -6,11 +6,15 @@
 > Packet specs: [work-packets.md](work-packets.md) (contract, LR-01 to LR-05)
 > and [work-packets-2.md](work-packets-2.md) (LR-06 to LR-17).
 >
-> **Campaign status (2026-10-11): building.** The owner decided every
-> decision on 2026-10-11 (D-LR12 (a), D-LR13 (a), D-LR15: ask the user
-> before each live packet; the rest as proposed). Every sibling dependency
-> has merged (SV-03, SV-04, GD-02, GD-03, GD-08, FX-01, FX-08, LW-02). The
-> live packets LR-13 and LR-16 are left for a later UAT session.
+> **Campaign status (2026-10-11, evening): the transform is code-complete.**
+> The owner decided every decision on 2026-10-11 (D-LR12 (a), D-LR13 (a),
+> D-LR15: ask the user before each live packet; the rest as proposed).
+> Every sibling dependency has merged (SV-03, SV-04, GD-02, GD-03, GD-08,
+> FX-01, FX-08, LW-02). LR-01 to LR-04, LR-06 and LR-10 are on `main`.
+> LR-05 and this ledger update are local commits on
+> `lab-record/lr05-emit`, the campaign's single branch, while the owner's
+> PR freeze lasts. Next: LR-07, then LR-08 and LR-09; the live packets
+> LR-13 and LR-16 are left for a later UAT session.
 
 ## Purpose
 
@@ -82,13 +86,13 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| LR-01 | Record log types, JSONL reader and the FS-P3 log fixture | packet-coder | S | 1 | none | Integrated |
-| LR-02 | Inbound decoder and row segmenter | packet-coder | M | 2 | LR-01, GD-02 | BlockedDependency |
-| LR-03 | Pose and camera derivation | packet-coder | S | 1 | LR-01 (types and the `pose.rs` stub), SV-03 | BlockedDependency |
-| LR-04 | Clauses from snapshot diffs, packet clauses, timeouts | packet-coder | M | 2 | LR-01, LR-02, SV-03 | BlockedDependency |
-| LR-05 | TOML emitter, TODO blocks, caps, the drafts guard | packet-coder | M | 3 | LR-02, LR-03, LR-04, SV-04 | BlockedDependency |
-| LR-06 | Recorder sampler and the daemon's read-only probes | rust-gameserver-dev | L | 2 | LR-01 | BlockedDependency |
-| LR-07 | MCP tools `lab_record_start`, `lab_record_status`, `lab_record_stop` | packet-coder | M | 4 | LR-05, LR-06 | BlockedDependency |
+| LR-01 | Record log types, JSONL reader and the FS-P3 log fixture | packet-coder | S | 1 | none | Integrated (#1527) |
+| LR-02 | Inbound decoder and row segmenter | rust-gameserver-dev (Haiku ran out of context) | M | 2 | LR-01, GD-02 | Integrated (#1627) |
+| LR-03 | Pose and camera derivation | packet-coder | S | 1 | LR-01 (types and the `pose.rs` stub), SV-03 | Integrated (#1626) |
+| LR-04 | Clauses from snapshot diffs, packet clauses, timeouts | rust-gameserver-dev | M | 2 | LR-01, LR-02, SV-03 | Integrated (#1637) |
+| LR-05 | TOML emitter, TODO blocks, caps, the drafts guard | rust-gameserver-dev | M | 3 | LR-02, LR-03, LR-04, SV-04 | Review done; local on `lab-record/lr05-emit` (PR freeze) |
+| LR-06 | Recorder sampler and the daemon's read-only probes | rust-gameserver-dev | L | 2 | LR-01 | Integrated (#1634) |
+| LR-07 | MCP tools `lab_record_start`, `lab_record_status`, `lab_record_stop` | packet-coder | M | 4 | LR-05, LR-06 | Ready (after LR-05 lands; read the LR-06 outcome below first) |
 | LR-08 | `lab record` command and `test-record.ps1` | packet-coder | S | 5 | LR-07, LW-02 | BlockedDependency |
 | LR-09 | Optional `[row.fixture]` emission | packet-coder | S | 4 | LR-05, FX-01 | BlockedDependency |
 | LR-10 | Lab Lua ring for CEGUI window clicks | rust-gameserver-dev | M | 1 | none | Integrated (#1521) |
@@ -176,3 +180,61 @@ code is then the reference, not the spec.
   drops an unparsable last line when no `stop` came before it (a crash
   mid-write). LR-03 runs after LR-01, not beside it: it fills the
   `pose.rs` stub and reads LR-01's types.
+- **LR-02 (#1627).** `sendPlayerCommunication` (base `0xC2`) has no 4-byte
+  entity prefix: chat is read from offset 0
+  (`crates/base/src/base/dispatch/chat.rs:118`). Base methods are numbered
+  `msg_id - 0xC0` by the tap (`wire_log/tap.rs:249-254`), so no base call
+  is read through the cell table (`chatJoin` would decode as
+  `setTargetID`). A chat line the tap cut at 256 bytes still decodes as
+  `Chat` from the whole UTF-16 units present. A region that does not anchor
+  is dropped, never kept in `calls`. Target 0 is `anchor.target = None` for
+  `interact`, `useItem` and `useAbility`. The spec's record numbers (19,
+  33, region 8) are positions in the Praxis capture, not the fixture; the
+  fixture's region call is a leave (`entering = 0`). **Known limitation:**
+  an anchor's lagging DB effect (F5) can make a region entered right after
+  it look like an anchor.
+- **LR-03 (#1626).** A stand height outside ±3 m is
+  `PoseError::DyOutOfRange` (the row is commented), not a silent clamp; a
+  tag the validator rejects is `NoTag`; a non-finite camera is `NoCamera`;
+  pitch, yaw and zoom carry `to_inline_toml`'s clamps, so the struct equals
+  the written line (a round-trip test pins it).
+- **LR-04 (#1637).** `dialog_timeout_ms(1)` is 2250, by D-LR7's round-up
+  rule (the packet text is corrected). The carried-bag filter (containers 1
+  to 14) runs in `diff_snapshots`; player diffs need the player row on both
+  sides; `INV_*` and `is_carried()` are public for LR-05. Timing math
+  saturates on hostile `host_ms`.
+- **LR-05.** `expected` joins LR-04's clause texts. Item names come from the
+  row's snapshot diff (the call carries an instance id): use = the one
+  carried stack that fell, equip = the stack that grew in bag 3 to 14,
+  unequip = the equipment stack that shrank; otherwise a TODO. **Accept:**
+  `dialogButtonChoice`'s button is the cooked ButtonID at the clicked
+  position, not an index into the UI read's fixed widget order
+  (`docs/reverse-engineering/findings/dialog-controller-wire-flow.md`), so
+  `@finish_dialog { accept = true }` is written only when the dialog in the
+  tick before showed exactly `[Accept]`; any other choice is a TODO naming
+  the buttons. A row is written commented-out (not runnable) for a pose
+  error, an interact with no target, an unsampled target, no player
+  position, only-TODO steps or no clause, because the validator rejects a
+  row with no steps or no expect. An untagged `useAbility` target is a TODO
+  line in place of `@target`, not a blocked row. The `cinematic-hold`
+  `wait_server` adds `witness_id = "${player_entity_id}"`. The golden
+  `fixtures/*.toml` are pinned `eol=lf` in `.gitattributes`.
+  `lab uat -SpecsDir <drafts>` skips the seed-tag check
+  (`SeedTags::beside_specs` resolves outside the repo from there); the
+  committed `the_drafts_guard_fails_on_a_bad_draft` / drafts guard test is
+  what catches an unseeded tag.
+- **LR-06 (#1634).** The player is resolved by `player_id` (looked up by
+  exact name, then matched in `server_sessions`), never by a word match.
+  **What LR-07 must do:** call `RecordSlot::reserve()` before spawning, then
+  `RecordReservation::arm(handle)` (there is no `RecordSlot::arm`); build a
+  `TapStopGuard::new(server)` inside the task before `Sampler::begin` and
+  pass its `cell()` as begin's fourth argument. `ClientProbe` has a third
+  method, `pump()`, run first on every tick. `KNOWN_SERVER_EVENTS` lives in
+  `sampler.rs`. The recording id is `yyyyMMdd-HHmmss-<instance>` (local
+  time) and the instance must be `[A-Za-z0-9_-]+`. **Carried to LR-07:**
+  run the sampler task inside a `Permit::Lease` scope for the recorder's
+  own lease (so a forced takeover stops it with `lease_lost`); add a
+  wall-clock limit beside `max_ticks`; cache `LiveWorld` across ticks
+  (`camera_read` rescans actors every 500 ms); switch `named_target` to
+  LR-02's `decode_call`. D-LR2's "only reads" holds for the database and
+  input, but the pump installs LR-10's observer hooks in the client UI Lua.
