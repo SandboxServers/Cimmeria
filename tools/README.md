@@ -8,7 +8,6 @@ Editor applications and reverse-engineering utilities.
 |---|---|---|
 | **ContentEditor** | `ContentEditor/` | GUI editor for game content (missions, dialogs, effects) |
 | **SceneEditor** | `SceneEditor/` | Visual scene/zone editor |
-| **SGWLauncher** | `SGWLauncher/` | Player-facing game launcher — downloads, patches, and launches the client |
 
 These are standalone Tauri 2 apps (Rust + WebView2). They are part of the workspace but excluded from the default `cargo build --workspace` to avoid unnecessary builds.
 

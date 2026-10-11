@@ -9,7 +9,7 @@
       Step 2: Dependencies     - PostgreSQL binaries (or Docker container), 7-Zip sidecar
       Step 3: Build Server     - cargo build for the game server workspace
       Step 4: Build Admin      - [optional] Tauri admin panel (Node.js + Rust)
-      Step 5: Build Launcher   - [optional] SGW game launcher (Tauri)
+      Step 5: Build Launcher   - [optional] SGW game launcher (egui)
       Step 6: Database         - PostgreSQL init, schema load, seed data
       Step 7: RE Toolchain     - [optional] Ghidra + GhidraMCP + x64dbg + MCP venvs
       Step 8: Launch           - Start the cimmeria-server binary
@@ -134,9 +134,9 @@
     chain editor. Requires Node.js 22+ and npm.
 
 .PARAMETER WithLauncher
-    Build the SGW game launcher (sgw-launcher). This is a Tauri desktop app that
+    Build the SGW game launcher (sgw-launcher). This is an egui desktop app that
     downloads, patches, and launches the Stargate Worlds game client. Does not
-    require Node.js (uses plain HTML/CSS/JS for the UI).
+    require Node.js.
 
 .PARAMETER NoLaunch
     Complete all setup steps but do not start the server at the end.

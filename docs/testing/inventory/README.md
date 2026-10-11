@@ -60,22 +60,19 @@ above. Live per-crate counts are in [Live counts by crate](#live-counts-by-crate
 | `common` | 31 | [common.md](common.md) |
 | `commands` | 29 | [commands.md](commands.md) |
 | `wireclient` | 30 | [wireclient.md](wireclient.md) — catalogued 2026-07-25 |
-| `tools/SGWLauncher` | 22 | [tools-sgwlauncher.md](tools-sgwlauncher.md) |
 | `tools/ContentEditor` | 12 | [tools-contenteditor.md](tools-contenteditor.md) |
 | `upk-objects` | 11 | [upk-objects.md](upk-objects.md) |
 | `tauri-app` | 6 | [tauri-app.md](tauri-app.md) |
 | `defs` | 5 | [defs.md](defs.md) |
 | `server` | 2 | [server.md](server.md) |
-| **Total** | **1535** | |
+| **Total** | **1513** | |
 
 > **Double-count fixed, 2026-07-25.** `launcher.md` used to carry 22 rows that
-> were a verbatim duplicate of `tools-sgwlauncher.md` — all 22 describe tests in
-> `tools/SGWLauncher/src-tauri/`, filed under `crates/launcher/src/…` paths that
-> never contained them. The old total of 1,351 counted those 22 twice. The two
-> launchers are genuinely separate crates (`crates/launcher` is the **egui**
-> launcher, `sgw-launcher`; `tools/SGWLauncher` is the **Tauri** one), and
-> `crates/launcher`'s real 176-test suite was catalogued nowhere. It is now in
-> [launcher.md](launcher.md).
+> were a verbatim duplicate of a separate Tauri launcher's catalogue, all filed
+> under `crates/launcher/src/…` paths that never contained them. The old total
+> of 1,351 counted those 22 twice. `crates/launcher`'s real 176-test suite is
+> now in [launcher.md](launcher.md). The Tauri tree (`tools/SGWLauncher`) and
+> its 22 tests were removed in LX-19 (2026-10-10), so the total dropped to 1,513.
 
 ### Live counts by crate
 

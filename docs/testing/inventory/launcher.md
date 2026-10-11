@@ -11,13 +11,6 @@
 It installs and patches the game client, and it hosts the entire dev-session
 telemetry pipeline (log tailing, event queueing, chunk upload, bundle upload).
 
-> **Not to be confused with [tools-sgwlauncher.md](tools-sgwlauncher.md)**, which
-> catalogues the separate **Tauri** launcher at `tools/SGWLauncher/src-tauri/`.
-> Until 2026-07-25 this file was a verbatim duplicate of that one — all 22 rows
-> described Tauri-launcher tests filed under `crates/launcher` paths that never
-> contained them. The two crates are independent; this file now catalogues the
-> real thing.
-
 All tests live in `crates/launcher/src/**`. There is no `tests/` integration
 directory and no benches. 157 are synchronous `#[test]`; 19 are
 `#[tokio::test]`, and every one of those drives a local

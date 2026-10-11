@@ -15,7 +15,7 @@ Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-
 
 ## How to regenerate
 
-The generator is [`tools/extract_tests.py`](../../../tools/extract_tests.py) — stock Python 3, no dependencies, runs from a bare checkout. It reads the `members` list out of the root `Cargo.toml` (so `exclude`d paths like `fuzz/` and `tools/SGWLauncher/src-tauri` are never visited), finds every `#[test]` / `#[tokio::test]` / `#[tokio::test(flavor = …)]` function, and records the crate, file, function name, the line the `fn` is actually on, and whether the body invokes `require_db_or_skip!()`.
+The generator is [`tools/extract_tests.py`](../../../tools/extract_tests.py) — stock Python 3, no dependencies, runs from a bare checkout. It reads the `members` list out of the root `Cargo.toml` (so `exclude`d paths like `fuzz/` are never visited), finds every `#[test]` / `#[tokio::test]` / `#[tokio::test(flavor = …)]` function, and records the crate, file, function name, the line the `fn` is actually on, and whether the body invokes `require_db_or_skip!()`.
 
 ```bash
 python tools/extract_tests.py                 # totals only — writes nothing
@@ -47,7 +47,7 @@ The `Last updated` line is likewise never rewritten — stamping it on every run
 
 `--check` is the strict gate: it regenerates in memory and fails if anything differs. It is the right end state, but it fails loudly today because the catalogue is missing more than half the suite — adopt it only after a backfill sweep.
 
-`--verify-links` is the incrementally adoptable one. It ignores catalogue membership entirely and asks only whether each existing `#L` anchor still resolves to its own test's `fn` line. Verified 2026-07-25: **1,121 links, 0 stale anchors** — the anchor repair holds. The 44 dangling rows it reports are all in `launcher.md` and `tools-sgwlauncher.md`, which still point at `tools/SGWLauncher/src-tauri/` (a workspace `exclude`, and duplicated by `crates/launcher`); resolving those two files is a prerequisite for turning this gate on.
+`--verify-links` is the incrementally adoptable one. It ignores catalogue membership entirely and asks only whether each existing `#L` anchor still resolves to its own test's `fn` line. Verified 2026-07-25: **1,121 links, 0 stale anchors** — the anchor repair holds. The 44 dangling rows it reported were all in `launcher.md` and `tools-sgwlauncher.md`, which pointed at the `tools/SGWLauncher/src-tauri/` tree; LX-19 later removed that tree and its inventory page.
 
 ### Reconciling the live-DB count
 
