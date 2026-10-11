@@ -26,7 +26,8 @@
 //!
 //! - **401 from server** — token rejected. Treated like any other
 //!   non-2xx: the batch is retained for retry on the next cadence
-//!   and the failure is silently discarded by the caller. Phase 3
+//!   and the failure is counted (`upload_failures_total` and
+//!   `last_upload_status` on the health row, TG-PIPE-13). Phase 3
 //!   will re-read `current-session.json` to pick up a refreshed
 //!   token (the launcher rotates at 75% TTL).
 //! - **5xx from server** — overload / outage. Same path as 401:
@@ -44,7 +45,8 @@
 //! overflows the ring (see [`crate::queue`]) — those are accounted
 //! for separately and never reach the uploader. Both counts, the ring's
 //! and the discarded-after-failed-POST count above, are reported by the
-//! governor's `client.telemetry.health` event (see [`crate::governor`]).
+//! governor's `client.telemetry.health` event (see [`crate::governor`]),
+//! next to the failed-POST count.
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -176,7 +178,15 @@ pub fn run_uploader(
             drain_into(&consumer, &mut batch, cfg.max_batch);
             consumer.governor_finish(upload_dropped, &mut batch);
             if !batch.is_empty() {
-                let _ = post_batch_within(&client, &cfg, &batch, Some(FINAL_POST_TIMEOUT));
+                let result = post_batch_within(&client, &cfg, &batch, Some(FINAL_POST_TIMEOUT));
+                // No health row follows this one, so the local log is the
+                // only place a failed final POST can show.
+                if let Err(e) = record(&consumer, result) {
+                    crate::log::line(format_args!(
+                        "final POST of {} events failed: {e}",
+                        batch.len()
+                    ));
+                }
             }
             return UploaderExit::Stopped;
         }
@@ -204,7 +214,7 @@ pub fn run_uploader(
             Err(RecvTimeoutError::Timeout) => { /* fall through to flush */ }
             Err(RecvTimeoutError::Disconnected) => {
                 if !batch.is_empty() {
-                    let _ = post_batch(&client, &cfg, &batch);
+                    let _ = record(&consumer, post_batch(&client, &cfg, &batch));
                 }
                 return UploaderExit::Disconnected;
             }
@@ -222,12 +232,14 @@ pub fn run_uploader(
         let should_flush = !batch.is_empty()
             && (batch.len() >= cfg.max_batch || last_flush.elapsed() >= cfg.flush_interval);
         if should_flush {
-            match post_batch(&client, &cfg, &batch) {
+            match record(&consumer, post_batch(&client, &cfg, &batch)) {
                 Ok(()) => {
                     batch.clear();
                 }
                 Err(_) => {
-                    // Network/HTTP failure — retain the batch for
+                    // Network/HTTP failure, counted by `record` for the
+                    // health row's `upload_failures_total` and
+                    // `last_upload_status` (TG-PIPE-13). Retain the batch for
                     // retry on the next cadence rather than dropping
                     // it. Bound memory: if the retained batch is
                     // already at `max_batch`, drop the oldest half
@@ -274,7 +286,8 @@ fn drain_into(consumer: &Consumer, batch: &mut Vec<ClientNativeEvent>, max_batch
 /// spans several launches, so the server needs the pid to tell them apart.
 const CLIENT_PID_HEADER: &str = "X-Cimmeria-Client-Pid";
 
-/// Serialize as NDJSON, gzip, POST with the Bearer token.
+/// Serialize as NDJSON, gzip, POST with the Bearer token. Returns the HTTP
+/// status on a 2xx answer.
 ///
 /// Returns `Err` on any network or non-2xx HTTP response. The
 /// caller (the uploader loop) retains the batch in memory on
@@ -282,15 +295,32 @@ const CLIENT_PID_HEADER: &str = "X-Cimmeria-Client-Pid";
 /// delivery shape is at-least-once *with possible duplicates* if
 /// the server actually processed the batch before its response
 /// failed (since we cannot distinguish that case from a true POST
-/// failure). The server's `/api/telemetry/upload-chunk` handler is
-/// designed to be idempotent on the `(install_id, session_id,
-/// seq)` tuple to absorb those duplicates.
+/// failure). The server does **not** absorb those duplicates:
+/// `/api/telemetry/upload-chunk` replays every row it parses and keeps
+/// no `(session_id, seq)` set (see `admin-api` `routes/telemetry/mod.rs`),
+/// so a retried batch the server had already taken shows up twice in
+/// SigNoz, with the same `seq`.
 fn post_batch(
     client: &ureq::Agent,
     cfg: &UploaderConfig,
     batch: &[ClientNativeEvent],
-) -> Result<(), PostError> {
+) -> Result<u16, PostError> {
     post_batch_within(client, cfg, batch, None)
+}
+
+/// Count a POST's outcome on the consumer (TG-PIPE-13): a failure bumps
+/// `upload_failures_total`, and every answer sets `last_upload_status`.
+fn record(consumer: &Consumer, result: Result<u16, PostError>) -> Result<(), PostError> {
+    match result {
+        Ok(status) => {
+            consumer.record_upload_ok(status);
+            Ok(())
+        }
+        Err(e) => {
+            consumer.record_upload_failure(e.status());
+            Err(e)
+        }
+    }
 }
 
 /// [`post_batch`] with an optional whole-request time limit (the final
@@ -300,7 +330,7 @@ fn post_batch_within(
     cfg: &UploaderConfig,
     batch: &[ClientNativeEvent],
     limit: Option<Duration>,
-) -> Result<(), PostError> {
+) -> Result<u16, PostError> {
     let body = encode_batch(batch)?;
     let mut req = client
         .post(&cfg.upload_endpoint)
@@ -311,9 +341,19 @@ fn post_batch_within(
     if let Some(limit) = limit {
         req = req.timeout(limit);
     }
-    let resp = req
-        .send_bytes(&body)
-        .map_err(|e| PostError::Network(e.to_string()))?;
+    // ureq 2 reports a 4xx/5xx answer as `Error::Status`, not as a
+    // response; keep its status so the health row can say what the
+    // server answered.
+    let resp = match req.send_bytes(&body) {
+        Ok(resp) => resp,
+        Err(ureq::Error::Status(status, resp)) => {
+            return Err(PostError::Http {
+                status,
+                body: resp.into_string().unwrap_or_default(),
+            })
+        }
+        Err(e) => return Err(PostError::Network(e.to_string())),
+    };
     let status = resp.status();
     if !(200..300).contains(&status) {
         return Err(PostError::Http {
@@ -321,7 +361,7 @@ fn post_batch_within(
             body: resp.into_string().unwrap_or_default(),
         });
     }
-    Ok(())
+    Ok(status)
 }
 
 /// NDJSON encode → gzip. Each event becomes one
@@ -351,6 +391,16 @@ enum PostError {
     Io(#[source] std::io::Error),
 }
 
+impl PostError {
+    /// The server's HTTP status, when it answered at all.
+    fn status(&self) -> Option<u16> {
+        match self {
+            PostError::Http { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+}
+
 // Helper used by the uploader loop only — distinguishes Timeout
 // from Disconnected, which the public `Consumer::recv_timeout`
 // collapses to `None`. Uses the crate-internal `raw()` accessor.
@@ -370,296 +420,5 @@ mod endpoint_tests;
 mod final_flush_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::queue::channel;
-    use std::io::Read;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-    use std::sync::Arc;
-    use std::thread;
-
-    /// `encode_batch` produces a gzipped stream that decodes to
-    /// one JSON object per event, in the order pushed. Pins the
-    /// wire shape against the server's gzip + NDJSON parser.
-    #[test]
-    fn encode_batch_round_trip() {
-        let events = vec![
-            ClientNativeEvent {
-                ts_ms: 100,
-                seq: 0,
-                target: "client.a".into(),
-                level: "info".into(),
-                fields: Default::default(),
-            },
-            ClientNativeEvent {
-                ts_ms: 200,
-                seq: 1,
-                target: "client.b".into(),
-                level: "debug".into(),
-                fields: Default::default(),
-            },
-        ];
-        let gz = encode_batch(&events).unwrap();
-        let mut dec = flate2::read::GzDecoder::new(&gz[..]);
-        let mut decoded = String::new();
-        dec.read_to_string(&mut decoded).unwrap();
-        let lines: Vec<&str> = decoded.lines().collect();
-        assert_eq!(lines.len(), 2);
-        // First line corresponds to event 0; type tag must be
-        // `client_native` so the server's `enum TelemetryEvent`
-        // dispatches to the right variant.
-        assert!(lines[0].contains(r#""type":"client_native""#));
-        assert!(lines[0].contains(r#""target":"client.a""#));
-        assert!(lines[1].contains(r#""target":"client.b""#));
-    }
-
-    /// Value of the first request header named `name`, or `""` if absent.
-    fn header_value(headers: &[tiny_http::Header], name: &'static str) -> String {
-        headers
-            .iter()
-            .find(|h| h.field.equiv(name))
-            .map(|h| h.value.as_str().to_string())
-            .unwrap_or_default()
-    }
-
-    /// **Uploader end-to-end with a real local HTTP server.**
-    /// Spawns `tiny_http` on a 127.0.0.1 port, runs the uploader
-    /// against it, pushes 3 events, asserts the server saw all 3
-    /// in one POST with the right gzip body + bearer header.
-    #[test]
-    fn uploader_ships_batch_to_local_server() {
-        // Bind to an ephemeral port and let the OS pick.
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
-        let addr = server.server_addr().to_ip().unwrap();
-        let url = format!(
-            "http://{}:{}/api/telemetry/upload-chunk",
-            addr.ip(),
-            addr.port()
-        );
-
-        let received: Arc<std::sync::Mutex<Vec<(String, String, String)>>> =
-            Arc::new(Default::default());
-        let received_clone = received.clone();
-        let server_handle = thread::spawn(move || {
-            // Handle one request then drop the server.
-            if let Ok(mut req) = server.recv() {
-                let auth = header_value(req.headers(), "Authorization");
-                let pid = header_value(req.headers(), "X-Cimmeria-Client-Pid");
-                let mut body = Vec::new();
-                req.as_reader().read_to_end(&mut body).unwrap();
-                // Decode gzip → NDJSON
-                let mut dec = flate2::read::GzDecoder::new(&body[..]);
-                let mut decoded = String::new();
-                dec.read_to_string(&mut decoded).unwrap();
-                received_clone.lock().unwrap().push((auth, pid, decoded));
-                req.respond(tiny_http::Response::from_string("ok")).ok();
-            }
-        });
-
-        let (p, c) = channel();
-        for i in 0..3 {
-            p.try_emit(
-                ClientNativeEvent::builder("client.test", "info").field("i", serde_json::json!(i)),
-            );
-        }
-        // Drop the producer so the uploader's recv eventually
-        // returns Disconnected and the loop exits.
-        drop(p);
-
-        let cfg = UploaderConfig {
-            upload_endpoint: url,
-            token: "test-token-XYZ".into(),
-            flush_interval: Duration::from_millis(100),
-            max_batch: 10,
-        };
-        let exit = run_uploader(c, cfg, || false);
-        server_handle.join().unwrap();
-
-        assert_eq!(exit, UploaderExit::Disconnected);
-        let got = received.lock().unwrap();
-        assert_eq!(got.len(), 1, "exactly one POST with all 3 events batched");
-        let (auth, pid, body) = &got[0];
-        assert_eq!(auth, "Bearer test-token-XYZ");
-        // The header is this test process's id, so a revert of the
-        // header (or a wrong value) fails here.
-        assert_eq!(pid, &std::process::id().to_string());
-        let lines: Vec<&str> = body.lines().collect();
-        assert_eq!(lines.len(), 3);
-        for (i, line) in lines.iter().enumerate() {
-            assert!(
-                line.contains(&format!(r#""i":{}"#, i)),
-                "line {i} missing i={i}: {line}"
-            );
-        }
-    }
-
-    /// **Stop-callback drains and exits.** The DLL doesn't use
-    /// this in production (parks until process exit), but the test
-    /// path needs a way to tell the loop to stop without dropping
-    /// the producer side.
-    #[test]
-    fn stop_callback_exits_cleanly() {
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
-        let addr = server.server_addr().to_ip().unwrap();
-        let url = format!("http://{}:{}/x", addr.ip(), addr.port());
-        let server_done = Arc::new(AtomicBool::new(false));
-        let server_done2 = server_done.clone();
-        let server_handle = thread::spawn(move || {
-            // Drain whatever requests come; mark done when we exit.
-            while !server_done2.load(Ordering::Relaxed) {
-                if let Ok(Some(req)) = server.recv_timeout(Duration::from_millis(100)) {
-                    req.respond(tiny_http::Response::from_string("ok")).ok();
-                }
-            }
-        });
-
-        let (p, c) = channel();
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop2 = stop.clone();
-        let upload = thread::spawn(move || {
-            let cfg = UploaderConfig {
-                upload_endpoint: url,
-                token: "t".into(),
-                flush_interval: Duration::from_millis(50),
-                max_batch: 100,
-            };
-            run_uploader(c, cfg, move || stop2.load(Ordering::Relaxed))
-        });
-        p.try_emit(ClientNativeEvent::builder("client.t", "info"));
-        thread::sleep(Duration::from_millis(150));
-        stop.store(true, Ordering::Relaxed);
-        let exit = upload.join().unwrap();
-        server_done.store(true, Ordering::Relaxed);
-        server_handle.join().unwrap();
-        assert_eq!(exit, UploaderExit::Stopped);
-    }
-
-    /// **Retains batch across a failed POST.** Server returns 503
-    /// once, then 200. The uploader must retry the same events on
-    /// the next cadence rather than dropping them after the 503.
-    ///
-    /// Regression guard for the bug where `batch.clear()` ran
-    /// unconditionally inside the `if should_flush` arm — that
-    /// silently dropped any telemetry whose POST failed. Reverting
-    /// the fix flips this test to "0 events received" on the
-    /// retry POST.
-    #[test]
-    fn retains_batch_after_failed_post() {
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
-        let addr = server.server_addr().to_ip().unwrap();
-        let url = format!("http://{}:{}/x", addr.ip(), addr.port());
-
-        // Server returns 503 for the first request, 200 thereafter.
-        // Capture the body of every request so the assertion can
-        // verify the retry carries the original events.
-        let bodies: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(Default::default());
-        let bodies2 = bodies.clone();
-        let server_handle = thread::spawn(move || {
-            let mut request_n = 0;
-            while let Ok(Some(mut req)) = server.recv_timeout(Duration::from_secs(2)) {
-                let mut buf = Vec::new();
-                req.as_reader().read_to_end(&mut buf).unwrap();
-                let mut dec = flate2::read::GzDecoder::new(&buf[..]);
-                let mut decoded = String::new();
-                dec.read_to_string(&mut decoded).unwrap();
-                bodies2.lock().unwrap().push(decoded);
-                let resp = if request_n == 0 {
-                    tiny_http::Response::from_string("oops")
-                        .with_status_code(503)
-                        .boxed()
-                } else {
-                    tiny_http::Response::from_string("ok").boxed()
-                };
-                req.respond(resp).ok();
-                request_n += 1;
-            }
-        });
-
-        let (p, c) = channel();
-        // 2 events; tight flush interval so we get multiple cadences.
-        p.try_emit(
-            ClientNativeEvent::builder("client.retry", "info").field("i", serde_json::json!(0)),
-        );
-        p.try_emit(
-            ClientNativeEvent::builder("client.retry", "info").field("i", serde_json::json!(1)),
-        );
-
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop2 = stop.clone();
-        let upload = thread::spawn(move || {
-            let cfg = UploaderConfig {
-                upload_endpoint: url,
-                token: "t".into(),
-                flush_interval: Duration::from_millis(50),
-                max_batch: 100,
-            };
-            run_uploader(c, cfg, move || stop2.load(Ordering::Relaxed))
-        });
-
-        // Give the uploader enough time to attempt the 503 POST and
-        // then the 200 retry on the next cadence.
-        thread::sleep(Duration::from_millis(400));
-        stop.store(true, Ordering::Relaxed);
-        drop(p);
-        upload.join().unwrap();
-        server_handle.join().unwrap();
-
-        let got = bodies.lock().unwrap();
-        assert!(
-            got.len() >= 2,
-            "expected at least 2 POSTs (503 + retry), got {}",
-            got.len()
-        );
-        // First POST was 503 — but should still have carried both
-        // events. Second POST is the retry — must also carry both
-        // events (we retained the batch).
-        for (idx, body) in got.iter().enumerate().take(2) {
-            let lines: Vec<&str> = body.lines().collect();
-            assert_eq!(
-                lines.len(),
-                2,
-                "POST #{idx} expected 2 events, got {}: {body}",
-                lines.len()
-            );
-            assert!(lines[0].contains(r#""i":0"#), "POST #{idx} missing i=0");
-            assert!(lines[1].contains(r#""i":1"#), "POST #{idx} missing i=1");
-        }
-    }
-
-    /// **Batch caps at max_batch.** Stuff the queue with more
-    /// than `max_batch` events; the uploader ships them in
-    /// multiple POSTs of size ≤ max_batch.
-    #[test]
-    fn batch_caps_at_max_batch() {
-        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
-        let addr = server.server_addr().to_ip().unwrap();
-        let url = format!("http://{}:{}/x", addr.ip(), addr.port());
-        let request_count = Arc::new(AtomicUsize::new(0));
-        let request_count2 = request_count.clone();
-        let server_handle = thread::spawn(move || {
-            while let Ok(Some(mut req)) = server.recv_timeout(Duration::from_secs(2)) {
-                let mut buf = Vec::new();
-                req.as_reader().read_to_end(&mut buf).unwrap();
-                request_count2.fetch_add(1, Ordering::Relaxed);
-                req.respond(tiny_http::Response::from_string("ok")).ok();
-            }
-        });
-
-        let (p, c) = channel();
-        // 25 events with max_batch=10 → at least 3 POSTs (10 + 10 + 5).
-        for i in 0..25 {
-            p.try_emit(ClientNativeEvent::builder("t", "info").field("i", serde_json::json!(i)));
-        }
-        drop(p);
-        let cfg = UploaderConfig {
-            upload_endpoint: url,
-            token: "t".into(),
-            flush_interval: Duration::from_millis(50),
-            max_batch: 10,
-        };
-        run_uploader(c, cfg, || false);
-        server_handle.join().unwrap();
-        let count = request_count.load(Ordering::Relaxed);
-        assert!(count >= 3, "expected at least 3 batched POSTs, got {count}");
-    }
-}
+#[path = "uploader_tests.rs"]
+mod tests;

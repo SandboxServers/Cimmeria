@@ -166,6 +166,12 @@ pub struct ExternalDrops {
     pub ring_dropped: u64,
     /// Events the uploader discarded after failed POSTs.
     pub upload_dropped: u64,
+    /// POSTs that failed: a network error or a non-2xx answer (TG-PIPE-13).
+    pub upload_failures: u64,
+    /// HTTP status of the most recent POST that got an answer. `None`
+    /// before the first answer, and when the last POST got none (a network
+    /// error), so the health row never reports a made-up 0.
+    pub last_status: Option<u16>,
 }
 
 /// The governor state. One per process, behind a mutex (see
@@ -402,7 +408,8 @@ impl Governor {
         // A drop since the last report is a non-happy outcome: warn, so the
         // report itself can never be summarized away and stands out.
         let new_drops = drops.ring_dropped > self.last_drops.ring_dropped
-            || drops.upload_dropped > self.last_drops.upload_dropped;
+            || drops.upload_dropped > self.last_drops.upload_dropped
+            || drops.upload_failures > self.last_drops.upload_failures;
         self.last_drops = drops;
         self.last_health_ms = Some(now_ms);
         let s = &self.stats;
@@ -423,6 +430,10 @@ impl Governor {
         );
         f.insert("ring_dropped_total".into(), json!(drops.ring_dropped));
         f.insert("upload_dropped_total".into(), json!(drops.upload_dropped));
+        f.insert("upload_failures_total".into(), json!(drops.upload_failures));
+        if let Some(status) = drops.last_status {
+            f.insert("last_upload_status".into(), json!(status));
+        }
         f.insert("final".into(), json!(is_final));
         let level = if new_drops { "warn" } else { "info" };
         self.push_generated(event(HEALTH_TARGET, level, now_ms, f), out);
