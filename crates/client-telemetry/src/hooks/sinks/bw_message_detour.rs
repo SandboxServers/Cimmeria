@@ -44,11 +44,33 @@ fn emit_unknown(fields: super::emit::Fields) {
 /// message.
 fn unknown_entity_id(fmt: usize, va: usize) -> Option<u32> {
     let read = &mem::process_reader;
-    let head = mem::read_ansi_z(read, fmt, UNKNOWN_ENTITY_FORMAT.len())?;
-    if !is_unknown_entity_format(&head.units) {
-        return None;
+    // The format may carry a prefix (`ServerConnection::svidFollow: ` in the
+    // client log, possibly as a `%s: `), so read past it and skip one 4-byte
+    // vararg per conversion before the entity id's `%d`.
+    let head = mem::read_ansi_z(read, fmt, 128)?;
+    let at = head
+        .units
+        .windows(UNKNOWN_ENTITY_FORMAT.len())
+        .position(|w| w == UNKNOWN_ENTITY_FORMAT)?;
+    let skipped = conversions_before(&head.units[..at]);
+    u32::try_from(mem::read_i32(read, va + 4 * skipped)?).ok()
+}
+
+/// The number of printf conversions in `prefix` (`%%` is a literal).
+fn conversions_before(prefix: &[u8]) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i < prefix.len() {
+        if prefix[i] == b'%' {
+            if prefix.get(i + 1) == Some(&b'%') {
+                i += 2;
+                continue;
+            }
+            n += 1;
+        }
+        i += 1;
     }
-    u32::try_from(mem::read_i32(read, va)?).ok()
+    n
 }
 
 /// The implementation object last seen, so the forced threshold is
@@ -316,6 +338,26 @@ mod tests {
             unknown_entity_id(other.as_ptr() as usize, va.as_ptr() as usize),
             None
         );
+    }
+
+    /// A prefixed format (the client log reads `ServerConnection::svidFollow:
+    /// Viewport for entity ...`) still matches, literally or as a `%s: `
+    /// whose argument comes before the entity id.
+    #[test]
+    fn a_prefixed_format_still_yields_the_entity_id() {
+        let literal = c"ServerConnection::svidFollow: Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown";
+        let va: [i32; 3] = [42, 7, 7];
+        assert_eq!(
+            unknown_entity_id(literal.as_ptr() as usize, va.as_ptr() as usize),
+            Some(42)
+        );
+        let with_arg = c"%s: Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown";
+        let va2: [i32; 4] = [0, 99, 7, 7];
+        assert_eq!(
+            unknown_entity_id(with_arg.as_ptr() as usize, va2.as_ptr() as usize),
+            Some(99)
+        );
+        assert_eq!(conversions_before(b"100%% %s: "), 1);
     }
 
     /// The formatter reads a real x86 `va_list` the way the client's

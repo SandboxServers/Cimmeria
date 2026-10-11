@@ -153,7 +153,11 @@ pub const UNKNOWN_ROLLUP_MS: u64 = 10_000;
 /// Whether `format` (the start of a message's format string) is the failed
 /// viewport lookup.
 pub fn is_unknown_entity_format(format: &[u8]) -> bool {
-    format.starts_with(UNKNOWN_ENTITY_FORMAT)
+    // The client log line reads `ServerConnection::svidFollow: Viewport for
+    // entity ...`, so the format may carry that prefix: match anywhere.
+    format
+        .windows(UNKNOWN_ENTITY_FORMAT.len())
+        .any(|w| w == UNKNOWN_ENTITY_FORMAT)
 }
 
 /// The fields of one `client.viewport.unknown_entity` row.
@@ -344,6 +348,9 @@ mod tests {
     fn a_failed_viewport_lookup_is_recognised_by_its_format() {
         assert!(is_unknown_entity_format(
             b"Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown"
+        ));
+        assert!(is_unknown_entity_format(
+            b"ServerConnection::svidFollow: Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown"
         ));
         assert!(!is_unknown_entity_format(b"Entity %s has %d items"));
     }
