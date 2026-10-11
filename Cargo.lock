@@ -1371,6 +1371,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-entity",
  "cimmeria-names",
+ "cimmeria-test-support",
  "cimmeria-workspace-hack",
  "serde",
  "serde_json",
