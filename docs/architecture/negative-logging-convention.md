@@ -603,6 +603,23 @@ missing container with the out-of-range feedback line.
 
 The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
 
+## Loot roll outcome (TG-ITM-02)
+
+Target `abilities`, in `cell/abilities/loot_drop.rs` (`generate_loot_on_death`). A
+silent return on the on-death roll used to hide why an NPC dropped nothing. The
+no-table case is the normal path, so it is DEBUG. Every roll ends with a DEBUG
+`loot_rolled` row (`entries`, `dropped`, `loot_table_id` + `loot_table_name`); a
+zero `dropped` is a real result, not a miss. The two misses are WARN.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_skipped` | DEBUG | `no_loot_table` | `target_eid` |
+| `loot_table_empty` | WARN | `table_has_no_rows` | `target_eid`, `loot_table_id`, `loot_table_name` |
+| `loot_skipped` | WARN | `entity_missing` | `target_eid`, `loot_table_id` |
+
+The guards are `abilities/loot_drop.rs`, `unknown_loot_table_warns_table_has_no_rows`
+and `probability_zero_logs_loot_rolled_with_no_drops`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
@@ -844,6 +861,19 @@ An attack tick whose `handle_use_ability` call returns false (cooldown race, no 
 | WARN | target `npc_ai`, `event = "attack_not_fired"`, `reason = "handle_use_ability_returned_false"`, `npc_id` + `npc_name`, `template_id` + `template_name`, `world`, `space_id`, `target` + `target_name`, `suppressed` | An attack tick fired nothing; at most one row per NPC per 15 s |
 
 Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
+
+## Stale combat state (TG-CMB-02)
+
+A player stuck "in combat" never regenerates and never holsters, and nothing checked for it. The vitals sample tick (`cell/service/ticks/vitals.rs`) now runs `log_combat_state_stale` (`cell-combat`, `combat/vitals.rs`) for every living player: WARN `target: "threat"`, `event = "combat_state_stale"`, identity, with `reason`:
+
+| `reason` | Meaning |
+|---|---|
+| `mob_gone` | A threat entry names an entity that no longer exists |
+| `mob_dead` | A threat entry names a dead entity |
+| `bit_without_threat` | `BSF_InCombat` is set but the threat table is empty |
+| `threat_without_bit` | The threat table has entries but `BSF_InCombat` is clear |
+
+Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the throttle is forgotten when the entity is destroyed. Guards: the seven `log_combat_state_stale` tests in `combat/vitals.rs` (one per reason, a consistent-state silence case, a burst and an independence test).
 
 ## Minigame result and start seam (TG-MG-01)
 

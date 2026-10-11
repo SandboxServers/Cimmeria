@@ -20,6 +20,7 @@
     "uat:client-patches": "esbuild src/client-patches-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-patches-view.mjs && node client-patches-uat.mjs",
     "uat:log-upload": "esbuild src/log-upload-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/log-upload-view.mjs && node log-upload-uat.mjs",
     "uat:client-maintenance": "esbuild src/client-maintenance-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-maintenance-view.mjs && node client-maintenance-uat.mjs",
+    "uat:about": "esbuild src/view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/view.mjs && node about-uat.mjs",
     "uat:client-changes": "esbuild src/client-changes-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-changes-view.mjs && node client-changes-uat.mjs",
     "uat:physx": "esbuild src/physx-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/physx-view.mjs && node physx-uat.mjs"
   },

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {mountPhysx} from './.test-build/physx-view.mjs';
 const page=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
-const snapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,
+const snapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
  preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
 
 function machine() {

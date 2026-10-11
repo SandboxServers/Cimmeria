@@ -23,6 +23,8 @@ export const NativeSnapshot = Schema.Struct({
   requires_reopen: Schema.Boolean,
   // An adopted copy plays with the list its adoption reviewed, whatever is saved above.
   adopted_login_servers: Schema.NullOr(Schema.Array(LoginServer)),
+  // The running build (engine `LauncherBuild`); `tag` is null for a development build.
+  launcher: Schema.Struct({version: Schema.String, tag: Schema.NullOr(Schema.String)}),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
