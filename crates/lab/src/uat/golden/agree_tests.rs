@@ -6,6 +6,7 @@ use super::*;
 use crate::uat::evidence::{RowResult, RunDir};
 use crate::uat::golden::build::{fingerprint_run, fingerprint_run_with};
 use crate::uat::golden::diff::{diff_run, diff_run_dir, golden_variances, Part};
+use crate::uat::golden::event::RowFingerprint;
 use crate::uat::golden::testkit::{
     fs_p3_entities, fs_p3_tap, fs_p3_windows, row_evidence, tap_messages, write_run,
 };
@@ -117,7 +118,6 @@ fn a_changed_dialog_answer_is_one_line() {
 
     let (report, meta) = diff_run_dir(&golden, &run).unwrap();
     let line = report.first.as_ref().unwrap().line();
-    println!("{line}");
     assert_eq!(line, DIALOG_LINE);
     assert!(!line.contains('\n'));
     assert_eq!(report.rows[0], ("FS-P1".to_string(), None));
@@ -143,9 +143,134 @@ fn a_changed_dialog_answer_is_one_line() {
 #[test]
 fn five_identical_runs_agree_and_four_do_not() {
     let dir = tempfile::tempdir().unwrap();
-    let fps = five_runs(dir.path());
+    let mut fps = five_runs(dir.path());
     assert_eq!(agree(&fps[..4], true), Err(AgreeError::TooFew { have: 4 }));
-    assert_eq!(agree(&fps, true), Ok(fps[0].clone()));
+    // Rows pair by id, so runs 2-5 with their rows reversed still agree;
+    // the order agree does not compare shows which fingerprint came back.
+    for fp in &mut fps[1..] {
+        fp.rows.reverse();
+    }
+    let golden = agree(&fps, true).unwrap();
+    assert_eq!(golden, fps[0]);
+    assert_ne!(golden, fps[1]);
+}
+
+#[test]
+fn a_run_with_no_rows_cannot_be_golden() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut fps = five_runs(dir.path());
+    for fp in &mut fps {
+        fp.rows.clear();
+    }
+    assert_eq!(agree(&fps, false), Err(AgreeError::NoRows));
+    assert_eq!(
+        AgreeError::NoRows.to_string(),
+        "run 1 has no rows; a golden needs at least one"
+    );
+}
+
+#[test]
+fn a_different_section_or_schema_disagrees() {
+    let dir = tempfile::tempdir().unwrap();
+    let fps = five_runs(dir.path());
+
+    let mut section = fps.clone();
+    section[2].section = "other".to_string();
+    let err = agree(&section, true).unwrap_err();
+    assert_eq!(
+        err,
+        AgreeError::Mismatch {
+            run: 3,
+            field: "section",
+            expected: SECTION.to_string(),
+            got: "other".to_string()
+        }
+    );
+    assert_eq!(
+        err.to_string(),
+        "run 3 has section `other`, run 1 has `first-session`; the runs are not comparable"
+    );
+
+    let mut schema = fps;
+    schema[4].schema = 2;
+    assert!(matches!(
+        agree(&schema, true),
+        Err(AgreeError::Mismatch {
+            run: 5,
+            field: "schema",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn mixed_results_disagree_without_pass_rule() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut fps = five_runs(dir.path());
+    fps[4].rows[1].result = "FAIL".to_string();
+    let Err(AgreeError::Disagree(d)) = agree(&fps, false) else {
+        panic!("not a disagreement")
+    };
+    assert_eq!((d.run, d.divergence.part), (5, Part::Result));
+}
+
+/// Every part diff_row compares, changed in run 4 alone, blocks agreement
+/// and is named as that part.
+#[test]
+fn each_part_difference_blocks_agreement() {
+    let dir = tempfile::tempdir().unwrap();
+    let fps = five_runs(dir.path());
+    let cases: [(Part, fn(&mut RowFingerprint)); 7] = [
+        (Part::Tap, |r| r.tap = "late:play".to_string()),
+        (Part::Clause, |r| r.clauses.push("extra=pass".to_string())),
+        (Part::Transition, |r| {
+            r.transitions.push("mission 1 -> 0".to_string())
+        }),
+        (Part::WindowsOpened, |r| {
+            r.windows_opened.push("ExtraWin".to_string())
+        }),
+        (Part::WindowsClosed, |r| {
+            r.windows_closed.push("ExtraWin".to_string())
+        }),
+        (Part::Unordered, |r| {
+            r.unordered.push("s2c extra".to_string())
+        }),
+        (Part::Event, |r| r.events.push("s2c extra".to_string())),
+    ];
+    for (part, edit) in cases {
+        let mut runs = fps.clone();
+        edit(&mut runs[3].rows[1]);
+        let Err(AgreeError::Disagree(d)) = agree(&runs, true) else {
+            panic!("{part:?}: not a disagreement")
+        };
+        assert_eq!((d.run, d.divergence.part), (4, part));
+    }
+}
+
+#[test]
+fn any_non_pass_result_blocks_golden() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut fps = five_runs(dir.path());
+    fps[1].rows[0].result = "BLOCKED".to_string();
+    assert_eq!(
+        agree(&fps, true),
+        Err(AgreeError::NotPassing {
+            run: 2,
+            row: "FS-P1".to_string(),
+            result: "BLOCKED".to_string()
+        })
+    );
+}
+
+#[test]
+fn a_missing_row_in_a_later_run_disagrees() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut fps = five_runs(dir.path());
+    fps[3].rows.remove(0);
+    assert_eq!(
+        agree(&fps, true).unwrap_err().to_string(),
+        "run 4 of 5 disagrees with run 1: row FS-P1: in the golden, not in this run"
+    );
 }
 
 #[test]
@@ -184,7 +309,7 @@ fn a_failing_row_cannot_be_golden_when_pass_is_required() {
     for fp in &mut fps {
         fp.rows[1].result = "FAIL".to_string();
     }
-    assert!(agree(&fps, false).is_ok());
+    assert_eq!(agree(&fps, false), Ok(fps[0].clone()));
     assert!(matches!(
         agree(&fps, true),
         Err(AgreeError::NotPassing { run: 1, .. })
@@ -289,10 +414,26 @@ fn check_runs_rejects_mixed_builds_and_repeated_runs() {
         Err("sgw_sha256 is missing in run r2".to_string())
     );
 
-    let mut first_missing = good;
+    let mut first_missing = good.clone();
     first_missing[0].spec_sha256 = None;
     assert_eq!(
         check_runs(&first_missing),
         Err("spec_sha256 is missing in run r1".to_string())
+    );
+
+    // An empty value is missing, even when every run recorded it empty.
+    let mut empty_build = good.clone();
+    for m in &mut empty_build {
+        m.server_build = Some(String::new());
+    }
+    assert_eq!(
+        check_runs(&empty_build),
+        Err("server_build is missing in run r1".to_string())
+    );
+    let mut empty_hash = good;
+    empty_hash[3].sgw_sha256 = Some(String::new());
+    assert_eq!(
+        check_runs(&empty_hash),
+        Err("sgw_sha256 is missing in run r4".to_string())
     );
 }

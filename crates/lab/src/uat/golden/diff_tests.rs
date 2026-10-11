@@ -151,9 +151,9 @@ fn parts_are_compared_in_order() {
         Part::Result,
         Part::Clause,
         Part::Transition,
+        Part::Event,
         Part::WindowsOpened,
         Part::WindowsClosed,
-        Part::Event,
         Part::Unordered,
     ];
     for part in order {
@@ -174,6 +174,23 @@ fn parts_are_compared_in_order() {
         }
     }
     assert_eq!(diff_row(&golden, &run), None);
+}
+
+/// A changed server answer that also opened another window is reported as
+/// the answer: events come before the window sets.
+#[test]
+fn a_window_and_event_change_reports_the_event() {
+    let golden = row("FS-P3");
+    let mut run = golden.clone();
+    run.events[1] = "s2c onDialogDisplay@self dialog_id=3996".into();
+    run.windows_opened.push("ShopWin".into());
+    let d = diff_row(&golden, &run).unwrap();
+    assert_eq!(d.part, Part::Event);
+    assert_eq!(
+        d.line(),
+        "row FS-P3: expected `s2c onDialogDisplay@self dialog_id=3995` after \
+         `c2s interact target=self`, got `s2c onDialogDisplay@self dialog_id=3996`"
+    );
 }
 
 /// The first row with a divergence is `first`, even when a later row's
@@ -204,7 +221,8 @@ fn line_caps_hold_for_long_events() {
     let line = diff_row(&golden, &run).unwrap().line();
     assert_eq!(line.chars().count(), 300);
     assert!(!line.contains('\n'));
-    assert!(line.ends_with("..."), "{line}");
+    // `after` gave way, so got survives with its own 120-character cut.
+    assert!(line.ends_with("...`"), "{line}");
 
     // Each quoted value is cut to 120 characters, backticks aside.
     let golden = row("FS-P3");
@@ -217,4 +235,43 @@ fn line_caps_hold_for_long_events() {
     let got = line.rsplit('`').nth(1).unwrap();
     assert_eq!(got.chars().count(), 120);
     assert!(got.ends_with("...") && long.starts_with(&got[..117]));
+}
+
+/// Three 120-character values fit under the line cap whole except for
+/// `after`, which is cut so the line still ends with got's closing quote.
+#[test]
+fn a_long_after_gives_way_to_expected_and_got() {
+    let value = |c: char| c.to_string().repeat(120);
+    let mut golden = row("FS-P3");
+    golden.events = vec![value('a'), value('e')];
+    let mut run = golden.clone();
+    run.events[1] = value('g');
+    let line = diff_row(&golden, &run).unwrap().line();
+    assert!(line.chars().count() <= 300, "{line}");
+    assert!(line.ends_with(&format!(", got `{}`", value('g'))), "{line}");
+    assert!(line.contains(&format!("expected `{}` after `a", value('e'))));
+    assert!(line.contains("a...`, got"), "{line}");
+
+    // A short `after` is never cut.
+    let mut golden = row("FS-P3");
+    golden.events = vec!["s2c a".into(), value('e')];
+    let mut run = golden.clone();
+    run.events[1] = value('g');
+    let line = diff_row(&golden, &run).unwrap().line();
+    assert!(line.contains("after `s2c a`, got"), "{line}");
+}
+
+/// Tab, ESC and U+2028 would break the one-line promise or a terminal, so
+/// each becomes a space.
+#[test]
+fn control_characters_become_spaces() {
+    let golden = row("FS-P4");
+    let mut run = golden.clone();
+    run.result = "FA\tIL\u{1b}[31m\u{2028}x\u{2029}y\u{0}".into();
+    let line = diff_row(&golden, &run).unwrap().line();
+    assert_eq!(
+        line,
+        "row FS-P4: expected result `PASS`, got `FA IL [31m x y `"
+    );
+    assert!(!line.chars().any(|c| c.is_control()));
 }

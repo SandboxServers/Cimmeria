@@ -8,6 +8,8 @@ use super::build::RunMeta;
 use super::diff::{diff_run, Divergence};
 use super::event::RunFingerprint;
 
+/// How many runs must agree before their fingerprint becomes a golden: the
+/// owner's five-run rule (README D-GD6). A single run can pass by luck.
 pub const MIN_AGREEING_RUNS: usize = 5;
 
 /// Run `run` (1-based) of `of` differs from run 1.
@@ -19,6 +21,7 @@ pub struct Disagreement {
 }
 
 impl Disagreement {
+    /// One line: `run 4 of 5 disagrees with run 1: <divergence line>`.
     pub fn line(&self) -> String {
         format!(
             "run {} of {} disagrees with run 1: {}",
@@ -33,8 +36,19 @@ impl Disagreement {
 /// the fingerprints were given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgreeError {
-    TooFew {
-        have: usize,
+    /// Fewer than [`MIN_AGREEING_RUNS`] fingerprints were given.
+    TooFew { have: usize },
+    /// Run 1 fingerprinted no rows. A golden with no rows would accept any
+    /// run, so it is refused rather than recorded.
+    NoRows,
+    /// Run `run` was fingerprinted for a different section, or under a
+    /// different fingerprint schema, than run 1, so its rows are not
+    /// comparable. `field` is `section` or `schema`.
+    Mismatch {
+        run: usize,
+        field: &'static str,
+        expected: String,
+        got: String,
     },
     /// A tap that dropped, was replaced, did not stop, could not be read,
     /// or had no lab-mcp to bind to: its fingerprint looks deterministic but
@@ -44,17 +58,17 @@ pub enum AgreeError {
         row: String,
         reason: String,
     },
+    /// With the pass rule on, run `run` row `row` ended `result`, not PASS
+    /// (README D-GD6 option a).
     NotPassing {
         run: usize,
         row: String,
         result: String,
     },
+    /// A later run's fingerprint differs from run 1's.
     Disagree(Disagreement),
     /// Run `run` fingerprinted a row that run 1 did not reach.
-    ExtraRow {
-        run: usize,
-        row: String,
-    },
+    ExtraRow { run: usize, row: String },
 }
 
 impl fmt::Display for AgreeError {
@@ -63,6 +77,16 @@ impl fmt::Display for AgreeError {
             AgreeError::TooFew { have } => write!(
                 f,
                 "{have} runs; a golden needs {MIN_AGREEING_RUNS} that agree"
+            ),
+            AgreeError::NoRows => f.write_str("run 1 has no rows; a golden needs at least one"),
+            AgreeError::Mismatch {
+                run,
+                field,
+                expected,
+                got,
+            } => write!(
+                f,
+                "run {run} has {field} `{got}`, run 1 has `{expected}`; the runs are not comparable"
             ),
             AgreeError::TapUnreliable { run, row, reason } => write!(
                 f,
@@ -85,6 +109,25 @@ impl fmt::Display for AgreeError {
 pub fn agree(fps: &[RunFingerprint], require_pass: bool) -> Result<RunFingerprint, AgreeError> {
     if fps.len() < MIN_AGREEING_RUNS {
         return Err(AgreeError::TooFew { have: fps.len() });
+    }
+    if fps[0].rows.is_empty() {
+        return Err(AgreeError::NoRows);
+    }
+    for (k, fp) in fps.iter().enumerate().skip(1) {
+        let fields = [
+            ("section", fps[0].section.clone(), fp.section.clone()),
+            ("schema", fps[0].schema.to_string(), fp.schema.to_string()),
+        ];
+        for (field, expected, got) in fields {
+            if expected != got {
+                return Err(AgreeError::Mismatch {
+                    run: k + 1,
+                    field,
+                    expected,
+                    got,
+                });
+            }
+        }
     }
     for (k, fp) in fps.iter().enumerate() {
         for row in &fp.rows {
@@ -135,6 +178,8 @@ pub fn agree(fps: &[RunFingerprint], require_pass: bool) -> Result<RunFingerprin
 }
 
 /// The runs are distinct and drove the same spec, server build and SGW.exe.
+/// An empty value counts as missing: it identifies nothing, so two runs
+/// that both recorded `""` prove nothing about agreeing.
 pub fn check_runs(metas: &[RunMeta]) -> Result<(), String> {
     for (i, a) in metas.iter().enumerate() {
         if let Some(b) = metas[i + 1..].iter().find(|b| b.run_id == a.run_id) {
@@ -147,10 +192,10 @@ pub fn check_runs(metas: &[RunMeta]) -> Result<(), String> {
     let Some(first) = metas.first() else {
         return Ok(());
     };
-    let fields: [(&str, fn(&RunMeta) -> &Option<String>); 3] = [
-        ("spec_sha256", |m| &m.spec_sha256),
-        ("server_build", |m| &m.server_build),
-        ("sgw_sha256", |m| &m.sgw_sha256),
+    let fields: [(&str, fn(&RunMeta) -> Option<&str>); 3] = [
+        ("spec_sha256", |m| present(&m.spec_sha256)),
+        ("server_build", |m| present(&m.server_build)),
+        ("sgw_sha256", |m| present(&m.sgw_sha256)),
     ];
     for (name, get) in fields {
         let Some(want) = get(first) else {
@@ -170,6 +215,11 @@ pub fn check_runs(metas: &[RunMeta]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The value, unless it is absent or empty.
+fn present(v: &Option<String>) -> Option<&str> {
+    v.as_deref().filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]

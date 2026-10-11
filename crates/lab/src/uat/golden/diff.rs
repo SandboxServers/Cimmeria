@@ -11,10 +11,15 @@ use crate::uat::evidence::RunDir;
 /// A quoted value longer than this is cut, so one huge event cannot push
 /// the rest of the line out.
 const MAX_VALUE_CHARS: usize = 120;
+/// The `after` value, shorter than the others: it is context, and the
+/// line's 300-character cap must not cut off `expected` or `got` after it.
+const MAX_AFTER_CHARS: usize = 60;
 /// The whole line, so it fits a tool reply or a PR comment as one line.
 const MAX_LINE_CHARS: usize = 300;
 
-/// Which part of a row diverged, in the order [`diff_row`] compares them.
+/// Which part of a row diverged. [`diff_row`] compares them in the order
+/// the variants are listed here, apart from `Missing`, which [`diff_run`]
+/// reports for a row the run lacks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     /// The golden has the row; the run does not.
@@ -22,26 +27,42 @@ pub enum Part {
     /// The run was fingerprinted under a different variance than the
     /// golden's, so nothing else in it can be compared (README D-GD5).
     Variance,
+    /// The tap coverage differs (`full`, `late:<after>`, `none`,
+    /// `unavailable`).
     Tap,
+    /// The run's tap reported faults, so its events may be incomplete.
     TapFault,
+    /// The row's result (PASS, FAIL, ...) differs.
     Result,
+    /// A required clause's verdict, compared in spec order.
     Clause,
+    /// A mission, step or objective transition, compared in order.
     Transition,
-    WindowsOpened,
-    WindowsClosed,
+    /// An ordered wire event, compared in order.
     Event,
+    /// The set of windows the row opened.
+    WindowsOpened,
+    /// The set of windows the row closed.
+    WindowsClosed,
+    /// An event whose order the variance ignores, compared sorted.
     Unordered,
 }
 
-/// The first difference in one row. `None` in `expected` or `got` is the
-/// end of the row; `after` is the golden's element before the difference,
-/// `None` when the difference is at the start.
+/// The first difference in one row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Divergence {
+    /// The row id, from the golden.
     pub row: String,
+    /// Which part of the row differs.
     pub part: Part,
+    /// The golden's value; `None` is the end of the row (or nothing to
+    /// show, for `Missing`, `Variance` and `TapFault`).
     pub expected: Option<String>,
+    /// The run's value; `None` is the end of the row (or nothing to show,
+    /// for `Missing` and `Variance`).
     pub got: Option<String>,
+    /// For a sequence, the golden's element before the difference; `None`
+    /// when the difference is at the start or the part is not a sequence.
     pub after: Option<String>,
 }
 
@@ -50,6 +71,8 @@ pub struct Divergence {
 pub struct DiffReport {
     /// The first divergence of the first row that has one.
     pub first: Option<Divergence>,
+    /// Each golden row's id with its first divergence, `None` when the run
+    /// matches it, in golden order.
     pub rows: Vec<(String, Option<Divergence>)>,
     /// Rows the run fingerprinted that the golden does not hold.
     pub not_in_golden: Vec<String>,
@@ -80,9 +103,13 @@ pub fn diff_row(golden: &RowFingerprint, run: &RowFingerprint) -> Option<Diverge
     if golden.result != run.result {
         return at(Part::Result, Some(&golden.result), Some(&run.result), None);
     }
+    // The packet's order: the three sequences, then the window sets, then
+    // the unordered events. Events before windows, so a changed server
+    // answer that also opened another window is reported as the answer.
     let sequences = [
         (Part::Clause, &golden.clauses, &run.clauses),
         (Part::Transition, &golden.transitions, &run.transitions),
+        (Part::Event, &golden.events, &run.events),
     ];
     for (part, g, r) in sequences {
         if let Some(d) = first_difference(&golden.row, part, g, r) {
@@ -106,14 +133,12 @@ pub fn diff_row(golden: &RowFingerprint, run: &RowFingerprint) -> Option<Diverge
             return at(part, Some(&g.join(", ")), Some(&r.join(", ")), None);
         }
     }
-    first_difference(&golden.row, Part::Event, &golden.events, &run.events).or_else(|| {
-        first_difference(
-            &golden.row,
-            Part::Unordered,
-            &golden.unordered,
-            &run.unordered,
-        )
-    })
+    first_difference(
+        &golden.row,
+        Part::Unordered,
+        &golden.unordered,
+        &run.unordered,
+    )
 }
 
 /// The first index where two sequences differ; a shorter one has its end
@@ -179,9 +204,12 @@ pub fn golden_variances(golden: &RunFingerprint) -> Vec<(String, Variance)> {
 
 /// Fingerprints `run` under the golden's stored variance and diffs it. A
 /// golden row with no row JSON in the run is left out of the fingerprint so
-/// it reports as [`Part::Missing`] rather than failing the whole diff. Rows
-/// the golden does not hold are not fingerprinted, so `not_in_golden` is
-/// empty here.
+/// it reports as [`Part::Missing`] rather than failing the whole diff.
+///
+/// `not_in_golden` is always empty here, by design: only the golden's rows
+/// are fingerprinted, because a row the golden does not hold has no stored
+/// variance to fingerprint it under. A run's extra rows are caught when
+/// the golden is made, by `agree`'s `ExtraRow`, not by this diff.
 pub fn diff_run_dir(
     golden: &RunFingerprint,
     run: &RunDir,
@@ -199,7 +227,10 @@ impl Divergence {
     /// ``row FS-P3: expected `E` after `A`, got `G` ``.
     pub fn line(&self) -> String {
         let row = &self.row;
-        let (expected, got) = (quote(self.expected.as_deref()), quote(self.got.as_deref()));
+        let (expected, got) = (
+            quote(self.expected.as_deref(), MAX_VALUE_CHARS),
+            quote(self.got.as_deref(), MAX_VALUE_CHARS),
+        );
         let line = match self.part {
             Part::Missing => format!("row {row}: in the golden, not in this run"),
             Part::Variance => format!(
@@ -228,22 +259,49 @@ impl Divergence {
                     Part::Unordered => "unordered ",
                     _ => "",
                 };
-                let position = match &self.after {
-                    Some(a) => format!("after {}", quote(Some(a))),
-                    None => "first".to_string(),
+                let shape = |after_max: usize| {
+                    let position = match &self.after {
+                        Some(a) => format!("after {}", quote(Some(a), after_max)),
+                        None => "first".to_string(),
+                    };
+                    format!("row {row}: expected {kind}{expected} {position}, got {got}")
                 };
-                format!("row {row}: expected {kind}{expected} {position}, got {got}")
+                let line = shape(MAX_AFTER_CHARS);
+                // `after` is only context: when the line is over its cap it
+                // gives way first, so `expected` and `got` (each at most 120)
+                // survive whole and the line still ends with got's quote.
+                let over = line.chars().count().saturating_sub(MAX_LINE_CHARS);
+                match &self.after {
+                    Some(a) if over > 0 => {
+                        let shown = a.chars().count().min(MAX_AFTER_CHARS);
+                        shape(shown.saturating_sub(over).max(3))
+                    }
+                    _ => line,
+                }
             }
         };
         cut(&line, MAX_LINE_CHARS)
     }
 }
 
-/// `` `v` ``, cut to fit; the end of a sequence reads as words. Newlines
-/// would break the one-line promise, so they become spaces.
-fn quote(v: Option<&str>) -> String {
+/// `` `v` ``, cut to `max` characters; the end of a sequence reads as
+/// words. Control characters and the Unicode line and paragraph separators
+/// would break the one-line promise (or a terminal), so they become spaces.
+fn quote(v: Option<&str>, max: usize) -> String {
     match v {
-        Some(v) => format!("`{}`", cut(&v.replace(['\r', '\n'], " "), MAX_VALUE_CHARS)),
+        Some(v) => {
+            let flat: String = v
+                .chars()
+                .map(|c| {
+                    if c.is_control() || c == '\u{2028}' || c == '\u{2029}' {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            format!("`{}`", cut(&flat, max))
+        }
         None => "the end of the row".to_string(),
     }
 }
@@ -252,7 +310,7 @@ fn quote(v: Option<&str>) -> String {
 fn window_set(v: Option<&str>) -> String {
     match v {
         Some("") => "nothing".to_string(),
-        other => quote(other),
+        other => quote(other, MAX_VALUE_CHARS),
     }
 }
 
