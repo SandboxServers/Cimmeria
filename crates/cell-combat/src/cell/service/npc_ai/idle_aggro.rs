@@ -171,6 +171,24 @@ pub(super) async fn npc_ai_idle_auto_aggro(
         )
         .is_some()
         {
+            // `Some` means the player just entered combat, but only the
+            // appearance is refreshed here: the in-combat state field is not
+            // sent, so the client gets no combat flag for this entry.
+            let who = space_mgr.player_identity(target_id);
+            tracing::info!(
+                target: "threat",
+                event = "enter_combat_unannounced",
+                reason = "proximity_carveout",
+                entity_id = target_id,
+                entity_name = space_mgr.entity_label(target_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                mob_id = npc_id,
+                mob_name = space_mgr.entity_label(npc_id),
+                "proximity aggro entered combat without announcing the combat flag"
+            );
             crate::cell::abilities::request_appearance_refresh(target_id, tx, space_mgr).await;
         }
     } else {
@@ -232,4 +250,57 @@ pub(super) fn npc_scan_candidates(space_mgr: &SpaceManager, npc_id: u32) -> Vec<
     let mut candidates = space_mgr.npc_ids_near(npc_id, radius);
     candidates.sort_unstable();
     candidates
+}
+
+#[cfg(test)]
+mod tests {
+    use cimmeria_entity::cell_entity::{AiState, MobAggression};
+    use tracing::Level;
+
+    use super::npc_ai_idle_auto_aggro;
+    use crate::test_fixtures::npc_detectors::{
+        add_npc, add_threat_player, castle_mgr, NPC, PLAYER,
+    };
+    use crate::test_support::LogCapture;
+
+    /// Proximity aggro on a hostile player in range gives one INFO
+    /// `enter_combat_unannounced` row with the reason, the player's identity
+    /// and the mob pair. Fails if the row is removed from the proximity
+    /// branch of `npc_ai_idle_auto_aggro`.
+    #[tokio::test]
+    async fn proximity_aggro_on_a_player_logs_unannounced_combat_once() {
+        let mut mgr = castle_mgr();
+        add_npc(&mut mgr, "Castle", [10.0, 0.0, 10.0], None, AiState::Idle);
+        let npc = mgr.get_entity_mut(NPC).unwrap();
+        npc.aggro.override_level = Some(MobAggression::Hostile);
+        // The player fixture is faction 0: a different faction keeps the
+        // NPC from ignoring it as an ally (`SameFaction`).
+        npc.faction = 1;
+        add_threat_player(&mut mgr, "Castle", [13.0, 0.0, 14.0]);
+        mgr.get_entity_mut(PLAYER).unwrap().account_id = Some(77);
+        let logs = LogCapture::install();
+        tracing::callsite::rebuild_interest_cache();
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+
+        let engaged = npc_ai_idle_auto_aggro(NPC, &tx, &mut mgr).await;
+
+        assert!(engaged, "the hostile player in range must engage the NPC");
+        let rows: Vec<_> = logs
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "threat" && c.has_field("event", "enter_combat_unannounced"))
+            .collect();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        let row = &rows[0];
+        assert_eq!(row.level, Level::INFO);
+        for (k, v) in [
+            ("reason", "proximity_carveout"),
+            ("entity_id", "101"),
+            ("account_id", "77"),
+            ("player_id", "101"),
+            ("mob_id", "200"),
+        ] {
+            assert!(row.has_field(k, v), "field {k}={v} missing: {row:?}");
+        }
+    }
 }
