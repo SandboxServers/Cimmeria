@@ -1186,6 +1186,12 @@ Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dis
 
 Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
 
+## Datagrams from unknown addresses (TG-NET-12)
+
+`connect_loop/mod.rs` in `cimmeria-base`. A datagram from an address with no session used to be a TRACE row. Internet scanners hit that path, and it was invisible at the exported level. It now logs INFO `event = "unknown_peer_datagram"` with `addr`, `flags` (the first byte) and `suppressed`, under the constant message "Datagram from unknown address". The rate is Pattern D, per address: the first datagram logs at once, then at most one row per 60 s with the swallowed count in `suppressed`. At most 256 addresses are tracked; past that, the one whose window opened longest ago is evicted.
+
+Guards: `unknown_peer_burst_writes_one_row_per_window` and `unknown_peer_addresses_are_throttled_independently`.
+
 ## MinigamePlayer stub rows (TG-MG-02)
 
 `cell_methods/minigame.rs` in `cimmeria-cell-methods`. Every MinigamePlayer stub logs each call once at INFO, with the entity pair and `args_len`, whatever the payload. Each arm reads only the INT32s that `entities/defs/interfaces/MinigamePlayer.def` declares for it; a field whose bytes are missing is left out, never `0`. `endCurrentMinigame` declares no arguments, so `winner_*` and `loser_*` are gone. Key changes: `winner_id`, `winner_name`, `loser_id`, `loser_name`, `host_entity_id`, `host_entity_name`, `target_entity_id`, `target_entity_name`, `game_def_id`, `help_level` are removed; `target_player_id` and `target_player_name` (spectate), `calling_player_id` and `calling_player_name` (accept, decline) and `contact_id` and `contact_name` (contact request) are new. The stubs still do nothing: minigame behaviour is #1303's.
