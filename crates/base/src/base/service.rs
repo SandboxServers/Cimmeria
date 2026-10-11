@@ -238,6 +238,11 @@ impl BaseService {
             tracing::info!(addr = %socket.local_addr().unwrap(), "Base service UDP socket bound");
             Arc::new(UdpTransport::new(socket))
         };
+        // The lab chaos net shim (CH-06): a no-op unless the server installed
+        // the registry (DEVELOPER_MODE), so a lab-chaos build without it runs
+        // on the bare transport.
+        #[cfg(feature = "lab-chaos")]
+        let bidi_transport = super::lab_chaos_transport::wrap_if_installed(bidi_transport);
 
         let pending_logins = Arc::clone(&self.pending_logins);
         let db_pool = self.db_pool.clone();
@@ -253,7 +258,15 @@ impl BaseService {
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {
             Ok(cache) => Some(Arc::new(cache)),
             Err(e) => {
-                tracing::warn!("Failed to load resource cache: {e}");
+                // Same row the cell's `startup_report::cache_failed` writes;
+                // base does not depend on the cell crate.
+                tracing::warn!(
+                    event = "cache_load_failed",
+                    cache = "resource_cache",
+                    error = %e,
+                    consequence = "the base runs without the resource cache",
+                    "startup cache failed to load"
+                );
                 None
             }
         };

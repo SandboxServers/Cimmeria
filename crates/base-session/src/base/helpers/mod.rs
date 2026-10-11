@@ -631,6 +631,8 @@ mod witness_broadcast;
 pub use witness_broadcast::broadcast_to_witnesses;
 
 mod session_teardown;
+#[cfg(feature = "lab-chaos")]
+pub use session_teardown::clear_lab_chaos_on_character_select;
 pub use session_teardown::{
     destroy_client_entities, destroy_owned_client_entities, log_channel_leaves, log_session_end,
     session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,

@@ -42,13 +42,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rand::{RngExt, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
 use crate::transport::{BidirectionalTransport, Transport};
+
+pub mod filter;
+
+use filter::SendShaper;
 
 /// Pre-baked latency / loss profiles for common deployment shapes.
 #[derive(Debug, Clone, Copy)]
@@ -193,16 +197,9 @@ pub struct LossyTransport {
     recv_config: LossyConfig,
     send_rng: Mutex<ChaCha20Rng>,
     recv_rng: Arc<Mutex<ChaCha20Rng>>,
-    /// Send-side reorder buffer, keyed by destination address: each
-    /// destination accumulates its own held packets independently and
-    /// flushes (reversed) once *its own* bucket reaches
-    /// `send_config.reorder_buffer_size`. Per-destination bucketing
-    /// matters on a transport that multiplexes several peers through one
-    /// socket (the real `BaseService` case) -- a single shared buffer
-    /// would hold up one client's handshake reply behind an unrelated
-    /// client's traffic (or vice versa), which isn't what network
-    /// reordering does on a real wire (each flow reorders independently).
-    reorder_buffer: Mutex<std::collections::HashMap<SocketAddr, Vec<Vec<u8>>>>,
+    /// The per-destination reorder buckets and delay lines that put the
+    /// surviving sends on the wire (shared with the lab-chaos net shim).
+    shaper: SendShaper,
     /// Deterministic burst-drop counter, decremented on every send
     /// attempt regardless of the probabilistic `drop_per_thousand` roll.
     /// See [`Self::drop_next_sends`].
@@ -214,11 +211,6 @@ pub struct LossyTransport {
     /// whatever real traffic the test is targeting), pass through
     /// untouched. See [`Self::drop_next_sends_to`].
     send_drop_next_to: Mutex<Option<(SocketAddr, u32, usize)>>,
-    /// One FIFO delay line per destination. A delayed send is queued here
-    /// with its due time and `send_to` returns at once; the line's task
-    /// puts it on the wire when it is due. Latency is a pipeline delay,
-    /// not a cap on how fast the caller can send (#1371).
-    send_lines: Mutex<HashMap<SocketAddr, mpsc::UnboundedSender<Delayed>>>,
     /// Receive side of the delayed-recv pump, started on the first
     /// `recv_from` when the recv config has latency or jitter.
     recv_line: tokio::sync::Mutex<Option<mpsc::UnboundedReceiver<RecvItem>>>,
@@ -228,40 +220,9 @@ pub struct LossyTransport {
     sends_per_dest: Mutex<HashMap<SocketAddr, u32>>,
 }
 
-/// One datagram waiting on a destination's delay line.
-#[derive(Debug)]
-struct Delayed {
-    bytes: Vec<u8>,
-    due: Instant,
-}
-
 /// What the recv pump hands `recv_from`: a datagram, its source and the
 /// time it is due, or an error to return.
 type RecvItem = io::Result<(Vec<u8>, SocketAddr, Instant)>;
-
-/// Start the delay line for `addr`: a task that sends each queued datagram
-/// once it is due, in queue order. A datagram due before the one ahead of it
-/// goes right after it, so a destination never sees its packets reordered.
-fn spawn_send_line(
-    inner: Arc<dyn BidirectionalTransport>,
-    addr: SocketAddr,
-) -> mpsc::UnboundedSender<Delayed> {
-    let (tx, mut rx) = mpsc::unbounded_channel::<Delayed>();
-    tokio::spawn(async move {
-        while let Some(delayed) = rx.recv().await {
-            tokio::time::sleep_until(delayed.due).await;
-            if let Err(e) = inner.send_to(&delayed.bytes, addr).await {
-                tracing::debug!(
-                    target: "mercury.lossy_transport",
-                    %addr,
-                    error = %e,
-                    "LossyTransport delayed send failed"
-                );
-            }
-        }
-    });
-    tx
-}
 
 /// The error `recv_from` returns after [`MAX_RECV_DROP_LOOPS`] drops in a row.
 fn recv_drop_cap_error(drop_per_thousand: u32) -> io::Error {
@@ -292,15 +253,14 @@ impl LossyTransport {
         let send_rng = Mutex::new(ChaCha20Rng::seed_from_u64(send.rng_seed));
         let recv_rng = Arc::new(Mutex::new(ChaCha20Rng::seed_from_u64(recv.rng_seed)));
         Self {
+            shaper: SendShaper::new(inner.clone()),
             inner,
             send_config: send,
             recv_config: recv,
             send_rng,
             recv_rng,
-            reorder_buffer: Mutex::new(std::collections::HashMap::new()),
             send_drop_next: AtomicU32::new(0),
             send_drop_next_to: Mutex::new(None),
-            send_lines: Mutex::new(HashMap::new()),
             recv_line: tokio::sync::Mutex::new(None),
             recv_pump: Mutex::new(None),
             sends_per_dest: Mutex::new(HashMap::new()),
@@ -351,70 +311,7 @@ impl LossyTransport {
     /// partially-full buffer doesn't silently swallow held packets —
     /// mirrors `test_harness::LoopbackPeer::flush_reorder_buffer`.
     pub async fn flush_reorder_buffer(&self) -> io::Result<()> {
-        let drained: std::collections::HashMap<SocketAddr, Vec<Vec<u8>>> = {
-            let mut buf = self.reorder_buffer.lock().expect("reorder_buffer poisoned");
-            std::mem::take(&mut *buf)
-        };
-        for (addr, mut held) in drained {
-            held.reverse();
-            for bytes in held {
-                self.inner.send_to(&bytes, addr).await?;
-            }
-        }
-        Ok(())
-    }
-
-    fn should_drop(config: &LossyConfig, rng: &mut ChaCha20Rng) -> bool {
-        if config.drop_per_thousand == 0 {
-            return false;
-        }
-        rng.random_range(0..1000u32) < config.drop_per_thousand
-    }
-
-    fn should_duplicate(config: &LossyConfig, rng: &mut ChaCha20Rng) -> bool {
-        if config.duplicate_per_thousand == 0 {
-            return false;
-        }
-        rng.random_range(0..1000u32) < config.duplicate_per_thousand
-    }
-
-    /// `latency + [0, jitter]`, redrawing the jitter component from `rng`
-    /// each call. Zero jitter returns exactly `latency` with no RNG draw.
-    fn effective_latency(config: &LossyConfig, rng: &mut ChaCha20Rng) -> Duration {
-        if config.jitter.is_zero() {
-            return config.latency;
-        }
-        let jitter_nanos = config.jitter.as_nanos().min(u64::MAX as u128) as u64;
-        let extra = if jitter_nanos == 0 {
-            0
-        } else {
-            rng.random_range(0..=jitter_nanos)
-        };
-        config.latency + Duration::from_nanos(extra)
-    }
-
-    /// Put `bytes` on the wire now (`due` is `None`), or queue them on
-    /// `addr`'s delay line until `due`. A queued send reports the full
-    /// length, the kernel's view, like the drop path.
-    async fn emit(
-        &self,
-        bytes: &[u8],
-        addr: SocketAddr,
-        due: Option<Instant>,
-    ) -> io::Result<usize> {
-        let Some(due) = due else {
-            return self.inner.send_to(bytes, addr).await;
-        };
-        let mut lines = self.send_lines.lock().expect("send_lines poisoned");
-        let line = lines
-            .entry(addr)
-            .or_insert_with(|| spawn_send_line(self.inner.clone(), addr));
-        line.send(Delayed {
-            bytes: bytes.to_vec(),
-            due,
-        })
-        .map_err(|_| io::Error::other("LossyTransport delay line closed"))?;
-        Ok(bytes.len())
+        self.shaper.flush_reorder_buffer().await
     }
 
     /// Start the delayed-recv pump: it reads the inner transport as fast as
@@ -435,8 +332,8 @@ impl LossyTransport {
                         let (drop_this, latency) = {
                             let mut rng = rng.lock().expect("recv_rng poisoned");
                             (
-                                Self::should_drop(&config, &mut rng),
-                                Self::effective_latency(&config, &mut rng),
+                                filter::roll_drop(&config, &mut rng),
+                                filter::roll_latency(&config, &mut rng),
                             )
                         };
                         if drop_this {
@@ -529,25 +426,9 @@ impl Transport for LossyTransport {
             // The grace only overrides the outcome: every roll is drawn
             // exactly as without it, so the RNG sequence after the grace
             // window is unchanged (a spared send draws no duplicate roll).
-            let rolled_drop = Self::should_drop(&self.send_config, &mut rng);
-            let duplicate = if !rolled_drop {
-                Self::should_duplicate(&self.send_config, &mut rng)
-            } else {
-                false
-            };
-            let latency = Self::effective_latency(&self.send_config, &mut rng);
-            (rolled_drop && !in_grace, duplicate, latency)
+            let roll = filter::roll_send(&self.send_config, &mut rng);
+            (roll.drop && !in_grace, roll.duplicate, roll.latency)
         };
-
-        // Never sleep here: the caller may be a loop that serves every
-        // client (the base's cell-message dispatcher is one task), and a
-        // sleep per send turns 80 ms of latency into a cap of about 12
-        // sends a second for the whole server (#1371). The delay line
-        // delivers the datagram when it is due instead. Any configured
-        // delay goes through the line, even a zero draw, so a packet never
-        // overtakes one still queued for the same destination.
-        let delayed = !self.send_config.latency.is_zero() || !self.send_config.jitter.is_zero();
-        let due = delayed.then(|| Instant::now() + latency);
 
         if drop_this {
             tracing::debug!(
@@ -563,43 +444,9 @@ impl Transport for LossyTransport {
             return Ok(bytes.len());
         }
 
-        if self.send_config.reorder_buffer_size > 0 {
-            // Bucketed by destination: only `addr`'s own held packets
-            // count toward `addr`'s flush threshold, and only `addr`'s
-            // bucket is drained. See the field doc on `reorder_buffer` for
-            // why this matters on a multiplexed (multi-client) transport.
-            let to_flush: Option<Vec<Vec<u8>>> = {
-                let mut buckets = self.reorder_buffer.lock().expect("reorder_buffer poisoned");
-                let bucket = buckets.entry(addr).or_default();
-                bucket.push(bytes.to_vec());
-                if bucket.len() as u32 >= self.send_config.reorder_buffer_size {
-                    Some(std::mem::take(bucket))
-                } else {
-                    None
-                }
-            };
-            if let Some(mut held) = to_flush {
-                // Reverse arrival order, matching NetworkPolicy's
-                // multi-packet reorder contract.
-                held.reverse();
-                for held_bytes in &held {
-                    self.emit(held_bytes, addr, due).await?;
-                }
-            }
-            // The caller's own bytes were queued (and possibly already
-            // flushed) above -- report success as if the OS accepted the
-            // write, matching the drop-path's "kernel's view" convention.
-            return Ok(bytes.len());
-        }
-
-        let n = self.emit(bytes, addr, due).await?;
-        if duplicate {
-            // Best-effort dup; ignore the secondary I/O result so a
-            // duplicate failure doesn't propagate as the primary
-            // send's outcome.
-            let _ = self.emit(bytes, addr, due).await;
-        }
-        Ok(n)
+        self.shaper
+            .deliver(bytes, addr, &self.send_config, duplicate, latency)
+            .await
     }
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
@@ -654,7 +501,7 @@ impl BidirectionalTransport for LossyTransport {
             let (n, addr) = self.inner.recv_from(buf).await?;
             let drop_this = {
                 let mut rng = self.recv_rng.lock().expect("recv_rng poisoned");
-                Self::should_drop(&self.recv_config, &mut rng)
+                filter::roll_drop(&self.recv_config, &mut rng)
             };
             if drop_this {
                 continue;

@@ -48,6 +48,9 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 # through its [dev-dependencies] for the gate round trips that also drive the
 # cell's dial handler; a production build never sees it.
 test-support = []
+# Forwards the lab chaos registry (cimmeria-base-session's `lab-chaos`).
+# Command line only, never from a dependency entry.
+lab-chaos = ["cimmeria-base-session/lab-chaos"]
 
 [dev-dependencies]
 # Generic test helpers: the live-DB gate (`require_db_or_skip!`), `LogCapture`

@@ -161,7 +161,11 @@ pub(super) async fn handle_teleport_player(
             base_seq,
             packets,
             client_class,
-            streaming_hint = "method_116",
+            // D-TG17 option A: method 116 still rides in the bundle, but the
+            // stock client binds `onPlayerTeleport` for no class and drops it
+            // (docs/reverse-engineering/findings/method-116-on-teleport.md),
+            // so the row must not claim a streaming hint the client uses.
+            streaming_hint = "method_116_unbound",
             reason = "teleport_player",
             "wire.out: FORCED_POSITION sent to the owning client"
         ),
@@ -505,7 +509,8 @@ mod tests {
 
     /// TG-MOV-01: the forced-position row says the bundle was sent, to which
     /// class of client, and which streaming hint rode with it. A GM-class
-    /// client must read as `SGWGmPlayer`, not as an unknown class.
+    /// client must read as `SGWGmPlayer`, not as an unknown class, and the
+    /// hint must say 116 is unbound on the client (D-TG17 option A).
     #[tokio::test]
     async fn teleport_forced_position_row_reports_sent_and_gm_class() {
         let capture = crate::test_support::LogCapture::install();
@@ -537,7 +542,9 @@ mod tests {
         for (key, want) in [
             ("send", "sent"),
             ("client_class", "SGWGmPlayer"),
-            ("streaming_hint", "method_116"),
+            // D-TG17: the hint is labelled unbound; reverting to the bare
+            // `method_116` fails here.
+            ("streaming_hint", "method_116_unbound"),
             ("player_name", "Carter"),
             ("packets", "1"),
         ] {

@@ -17,6 +17,9 @@ data/spaces/*.occ binary
 *.sh text eol=lf
 .github/actions/**/*.yml text eol=lf
 
+# Lab record golden (LR-05): the transform's exact output, compared byte for byte.
+crates/lab/src/uat/record/fixtures/*.toml text eol=lf
+
 # Append-only lists: PRs add rows and rarely edit one in place, so two PRs that both
 # append conflict only because they touch the same end of the file. `union` keeps
 # both sides' lines instead of conflicting. It applies to local merges and rebases

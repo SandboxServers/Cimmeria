@@ -295,6 +295,11 @@ use crate::otel;
 /// `sqlx::query`, which is `info` (TG-DB-11, D-TG8): that WARN and the
 /// `sqlx::pool::acquire` WARN export, the per-statement DEBUG rows do not.
 ///
+/// `lab.chaos` (lab-chaos campaign) is lab chaos, compiled only with the
+/// `lab-chaos` feature: WARN `lab_chaos_set`, INFO clears and expiries, the
+/// flush modes' rows, and DEBUG rows when the net shim starts or stops
+/// shaping a session. `debug` so a chaos run is readable from SigNoz alone.
+///
 /// `aoi.cinematic_hold` (TG-AOI-06) is the first-login cinematic AoI hold:
 /// INFO `hold_started`, `hold_released` and `hold_abandoned`, and DEBUG
 /// `hold_release_skipped` for a release that found no hold to end (the
@@ -403,6 +408,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
                 db.pool=debug,\
+                lab.chaos=debug,\
                 sqlx::query=info,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";

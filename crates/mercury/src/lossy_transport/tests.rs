@@ -471,7 +471,7 @@ async fn jitter_widens_delivery_latency_within_bounds() {
     // lower bound load cannot break, and it fails if jitter is ignored.
     let mut rng = ChaCha20Rng::seed_from_u64(7);
     let expected: Vec<Duration> = (0..8)
-        .map(|_| LossyTransport::effective_latency(&cfg_for_replay(base, jitter), &mut rng))
+        .map(|_| filter::roll_latency(&cfg_for_replay(base, jitter), &mut rng))
         .collect();
     assert!(
         expected.iter().any(|d| *d > base),
@@ -665,4 +665,23 @@ async fn recv_100pct_drop_with_latency_returns_err() {
         msg.contains("dropped") && msg.contains("consecutive"),
         "error must explain the cause; got: {msg}"
     );
+}
+
+/// A [`filter::FlowFilter`]'s send pattern is its seed's alone: rolling
+/// receives in between does not shift it, so a replayed run drops the same
+/// sends however much the peer sent. Fails if both directions share one RNG.
+#[test]
+fn flow_filter_send_rolls_ignore_recv_rolls() {
+    let config = LossyConfig::new(Duration::ZERO, 400, 0, 11);
+    let mut quiet = filter::FlowFilter::new(config.clone());
+    let mut chatty = filter::FlowFilter::new(config);
+    let plain: Vec<bool> = (0..64).map(|_| quiet.roll_send().drop).collect();
+    let mixed: Vec<bool> = (0..64)
+        .map(|_| {
+            chatty.roll_recv_drop();
+            chatty.roll_send().drop
+        })
+        .collect();
+    assert_eq!(plain, mixed);
+    assert!(plain.contains(&true) && plain.contains(&false));
 }

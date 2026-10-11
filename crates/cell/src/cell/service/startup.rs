@@ -13,6 +13,7 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::super::{spawner, CellError};
 use super::start_profile_audit::audit_start_profiles;
+use super::startup_report::{cache_failed, startup_summary};
 use super::CellService;
 
 impl CellService {
@@ -25,6 +26,8 @@ impl CellService {
 
         // Load space definitions from XML
         let mut space_mgr = SpaceManager::new(1); // cell_id = 1
+                                                  // Names of the caches that failed to load, for the boot summary.
+        let mut failed_caches: Vec<&'static str> = Vec::new();
 
         // Feature plugins (#962). The orchestrator refuses to start with an
         // incomplete table; a bare `CellService` (a test harness) starts
@@ -82,9 +85,11 @@ impl CellService {
                 );
             }
             Err(e) => {
-                tracing::warn!(
-                    "Failed to load space definitions: {e} — continuing with empty space set"
-                );
+                failed_caches.push(cache_failed(
+                    "space_definitions",
+                    e,
+                    "continuing with an empty space set",
+                ));
             }
         }
 
@@ -96,7 +101,11 @@ impl CellService {
                     records
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load spawn records: {e} — using hardcoded fallback");
+                    failed_caches.push(cache_failed(
+                        "spawn_records",
+                        e,
+                        "using the hardcoded fallback",
+                    ));
                     vec![]
                 }
             }
@@ -120,6 +129,7 @@ impl CellService {
                         error = %e,
                         "Failed to load spawn sets; every spawnlist row spawns at startup"
                     );
+                    failed_caches.push("spawn_sets");
                 }
             }
         }
@@ -133,7 +143,11 @@ impl CellService {
                     space_mgr.ability_defs = defs;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load ability defs: {e}");
+                    failed_caches.push(cache_failed(
+                        "ability_defs",
+                        e,
+                        "startup NPCs get no ability event sets",
+                    ));
                 }
             }
         }
@@ -155,11 +169,12 @@ impl CellService {
                     space_mgr.stamp_world_rows(&rows);
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to load world rows: {e} — content-engine `world` \
-                         conditions will fail closed everywhere and every world's \
-                         navmesh stays a containment gate"
-                    );
+                    failed_caches.push(cache_failed(
+                        "world_rows",
+                        e,
+                        "content-engine `world` conditions fail closed everywhere and \
+                         every world's navmesh stays a containment gate",
+                    ));
                 }
             }
         }
@@ -178,7 +193,11 @@ impl CellService {
                     space_mgr.dialog_set_maps = maps;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load dialog_set_maps: {e}");
+                    failed_caches.push(cache_failed(
+                        "dialog_set_maps",
+                        e,
+                        "per-player dialog interaction has no dialog maps",
+                    ));
                 }
             }
         }
@@ -195,6 +214,7 @@ impl CellService {
                 }
                 Err(e) => {
                     tracing::error!("Failed to load monologue dialog ids: {e}");
+                    failed_caches.push("monologue_dialog_ids");
                 }
             }
         }
@@ -208,7 +228,11 @@ impl CellService {
                     space_mgr.tutorial_dialog_ids = ids;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load tutorial dialog ids: {e}");
+                    failed_caches.push(cache_failed(
+                        "tutorial_dialog_ids",
+                        e,
+                        "a client-opened tutorial close is logged as a forged dialog choice",
+                    ));
                 }
             }
         }
@@ -224,7 +248,11 @@ impl CellService {
                     space_mgr.dialog_screen_text = text;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load dialog screen text: {e}");
+                    failed_caches.push(cache_failed(
+                        "dialog_screen_text",
+                        e,
+                        "every npc_bark content action warns and sends nothing",
+                    ));
                 }
             }
         }
@@ -236,7 +264,11 @@ impl CellService {
                     space_mgr.mission_defs = defs;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load mission_defs: {e}");
+                    failed_caches.push(cache_failed(
+                        "mission_defs",
+                        e,
+                        "AcceptMission content actions fail",
+                    ));
                 }
             }
         }
@@ -248,7 +280,11 @@ impl CellService {
                     space_mgr.step_objectives = objs;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load step_objectives: {e}");
+                    failed_caches.push(cache_failed(
+                        "step_objectives",
+                        e,
+                        "AdvanceStep content actions fail",
+                    ));
                 }
             }
         }
@@ -261,7 +297,11 @@ impl CellService {
                     space_mgr.step_missions = steps;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load step_missions: {e}");
+                    failed_caches.push(cache_failed(
+                        "step_missions",
+                        e,
+                        "every GM mission advance is refused",
+                    ));
                 }
             }
         }
@@ -273,7 +313,11 @@ impl CellService {
                     space_mgr.stargates = gates;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load stargates: {e}");
+                    failed_caches.push(cache_failed(
+                        "stargates",
+                        e,
+                        "gate travel has no destinations",
+                    ));
                 }
             }
         }
@@ -306,7 +350,11 @@ impl CellService {
                     );
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load generic regions: {e}");
+                    failed_caches.push(cache_failed(
+                        "generic_regions",
+                        e,
+                        "no generic regions are registered",
+                    ));
                 }
             }
         }
@@ -318,7 +366,11 @@ impl CellService {
                     space_mgr.respawners = defs;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load respawners: {e}");
+                    failed_caches.push(cache_failed(
+                        "respawners",
+                        e,
+                        "death and respawn have no respawner definitions",
+                    ));
                 }
             }
         }
@@ -333,9 +385,11 @@ impl CellService {
                     space_mgr.body_set_eye_heights = map;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to load body-set eye heights (every being uses the 1.5 m default): {e}"
-                    );
+                    failed_caches.push(cache_failed(
+                        "body_set_eye_heights",
+                        e,
+                        "every being uses the 1.5 m default eye height",
+                    ));
                 }
             }
             match spawner::load_effect_defs(pool).await {
@@ -385,7 +439,11 @@ impl CellService {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load effect defs: {e}");
+                    failed_caches.push(cache_failed(
+                        "effect_defs",
+                        e,
+                        "effects have no definitions",
+                    ));
                 }
             }
             match spawner::load_event_set_sequences(pool).await {
@@ -393,7 +451,11 @@ impl CellService {
                     space_mgr.sequence_map = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load event_set sequences: {e}");
+                    failed_caches.push(cache_failed(
+                        "event_set_sequences",
+                        e,
+                        "event-set sequences are not loaded",
+                    ));
                 }
             }
             // Cover-system data. Builds the per-world spatial index from
@@ -406,6 +468,7 @@ impl CellService {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!("Failed to load cover sets: {e}");
+                    failed_caches.push("cover_sets");
                     Vec::new()
                 }
             };
@@ -413,6 +476,7 @@ impl CellService {
                 Ok(n) => n,
                 Err(e) => {
                     tracing::error!("Failed to load cover nodes: {e}");
+                    failed_caches.push("cover_nodes");
                     Vec::new()
                 }
             };
@@ -433,7 +497,11 @@ impl CellService {
                     space_mgr.item_containers = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load item containers: {e}");
+                    failed_caches.push(cache_failed(
+                        "item_containers",
+                        e,
+                        "item containers are not loaded",
+                    ));
                 }
             }
             match spawner::load_item_event_set_abilities(pool).await {
@@ -441,7 +509,11 @@ impl CellService {
                     space_mgr.item_event_set_abilities = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load items_event_sets abilities: {e}");
+                    failed_caches.push(cache_failed(
+                        "item_event_set_abilities",
+                        e,
+                        "item event-set abilities are not loaded",
+                    ));
                 }
             }
             // The shared snapshot: the base's `onAbilityTreeInfo` reads the
@@ -451,7 +523,11 @@ impl CellService {
                     space_mgr.ability_tree_catalog = (*catalog).clone();
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load archetype ability trees: {e}");
+                    failed_caches.push(cache_failed(
+                        "archetype_ability_trees",
+                        e,
+                        "archetype ability trees are not loaded",
+                    ));
                 }
             }
             // The crafting catalog, loaded once for the whole process: the
@@ -464,13 +540,18 @@ impl CellService {
                     error = %e,
                     "Failed to load the crafting catalog"
                 );
+                failed_caches.push("crafting_catalog");
             }
             match spawner::load_trainer_abilities(pool).await {
                 Ok(map) => {
                     space_mgr.trainer_abilities = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load trainer abilities: {e}");
+                    failed_caches.push(cache_failed(
+                        "trainer_abilities",
+                        e,
+                        "trainers offer no abilities",
+                    ));
                 }
             }
             match spawner::load_template_trainer_lists(pool).await {
@@ -478,7 +559,11 @@ impl CellService {
                     space_mgr.template_trainer_lists = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load template trainer lists: {e}");
+                    failed_caches.push(cache_failed(
+                        "template_trainer_lists",
+                        e,
+                        "template trainers offer no lists",
+                    ));
                 }
             }
             match spawner::load_item_defs(pool).await {
@@ -486,7 +571,11 @@ impl CellService {
                     space_mgr.item_defs = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load item defs: {e}");
+                    failed_caches.push(cache_failed(
+                        "item_defs",
+                        e,
+                        "item lookups find no definitions",
+                    ));
                 }
             }
             match spawner::load_weapon_ranges(pool).await {
@@ -494,7 +583,11 @@ impl CellService {
                     space_mgr.weapon_ranges = map;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load weapon ranges: {e}");
+                    failed_caches.push(cache_failed(
+                        "weapon_ranges",
+                        e,
+                        "weapon range checks find no table",
+                    ));
                 }
             }
             // The player weapon requirement (OD-CS11) reads these. Left
@@ -514,6 +607,7 @@ impl CellService {
                          with a weapon requirement (item_monikers) will be refused with \
                          WrongWeaponType until the cell restarts with a readable resources.items"
                     );
+                    failed_caches.push("item_monikers");
                 }
             }
             match spawner::load_loot_tables(pool).await {
@@ -521,7 +615,7 @@ impl CellService {
                     space_mgr.loot_tables = tables;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load loot tables: {e}");
+                    failed_caches.push(cache_failed("loot_tables", e, "no loot tables are loaded"));
                 }
             }
             // Prototype records for the content engine's `spawn_entity`
@@ -545,6 +639,7 @@ impl CellService {
                         "Failed to load entity templates: {e} -- every content \
                          spawn_entity action will refuse for this process lifetime"
                     );
+                    failed_caches.push("spawn_templates");
                 }
             }
             // NPC ability sets for `gmSetMobAbilitySet`. Not fatal: the GM
@@ -554,9 +649,11 @@ impl CellService {
                     space_mgr.ability_sets = sets;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to load NPC ability sets: {e} -- gmSetMobAbilitySet                          refuses for this process lifetime"
-                    );
+                    failed_caches.push(cache_failed(
+                        "ability_sets",
+                        e,
+                        "gmSetMobAbilitySet refuses for this process lifetime",
+                    ));
                 }
             }
             // Summon ability → pet template. Not fatal: with no catalog every
@@ -570,6 +667,7 @@ impl CellService {
                         "Failed to load pet summons: {e} -- no summon ability \
                          will spawn a pet for this process lifetime"
                     );
+                    failed_caches.push("pet_summons");
                 }
             }
             // Deployable ability → template and effects. Not fatal: with no
@@ -584,6 +682,7 @@ impl CellService {
                         "Failed to load deployables: {e} -- no deployable ability \
                          will place an object for this process lifetime"
                     );
+                    failed_caches.push("deployables");
                 }
             }
             // Ambient chatter (Debug Area DA-09): the NPC groups that talk
@@ -602,6 +701,7 @@ impl CellService {
                         "Failed to load ambient chatter -- no NPC group will \
                          talk among itself for this process lifetime"
                     );
+                    failed_caches.push("ambient_chatter");
                 }
             }
             // Special ammo catalog (ammo campaign AM-F). Not fatal: with no
@@ -618,6 +718,7 @@ impl CellService {
                         error = %e,
                         "Failed to load the ammo catalog -- special ammo has no \n                         modifiers or reserve items for this process lifetime"
                     );
+                    failed_caches.push("ammo_catalog");
                 }
             }
             match super::super::ring_transport::load_ring_regions(pool).await {
@@ -656,10 +757,17 @@ impl CellService {
                     );
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load ring transport regions: {e}");
+                    failed_caches.push(cache_failed(
+                        "ring_transport_regions",
+                        e,
+                        "ring transporters are not loaded",
+                    ));
                 }
             }
         }
+
+        // One summary row per boot, after every cache load above.
+        startup_summary(&failed_caches);
 
         // Send SpaceData for all startup spaces to BaseApp
         if let Some(ref tx) = self.cell_to_base_tx {

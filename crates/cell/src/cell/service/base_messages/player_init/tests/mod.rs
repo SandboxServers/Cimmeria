@@ -9,6 +9,8 @@ mod debug_area_hub_grant;
 #[cfg(test)]
 mod mission_state_lock_order;
 #[cfg(test)]
+mod missions_restored;
+#[cfg(test)]
 mod reload_on_activate;
 #[cfg(test)]
 mod relog_mission_resurrection;

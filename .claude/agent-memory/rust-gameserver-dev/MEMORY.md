@@ -48,6 +48,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
 - [powershell-git-commit-stdin-trap](powershell-git-commit-stdin-trap.md) — `git commit -F - @'..'@` takes the text as a pathspec; use `-F <file>` or `-m @'..'@`.
 - [powershell-strict-mode-empty-index](powershell-strict-mode-empty-index.md) — lab CLI strict mode: `@(..)[0]` on empty throws, use Select-Object -First 1; test git repos eat fixture files.
+- [powershell-like-backtick-and-injected-call-tests](powershell-like-backtick-and-injected-call-tests.md) — `-like` treats a backtick as escape; test lab CLI commands with the MCP call injected as a scriptblock.
 - [powershell-ctrl-c-test-pipeline-stopped](powershell-ctrl-c-test-pipeline-stopped.md) — Ctrl+C = PipelineStoppedException: no catch sees it, only finally; test it from a stub in a child pwsh.
 - [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 
@@ -77,6 +78,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-chaos-net-shim-generation-and-teardown](lab-chaos-net-shim-generation-and-teardown.md) — net shim keys on per-set generation; teardown discards held/delayed sends; bounded line; paused-clock tests.
 - [client-lua-cegui-global-subscribe](client-lua-cegui-global-subscribe.md) — client Lua `window:subscribeGlobal(ns, ev, 'Fn')`; no unsubscribe, so once per Lua state; args (this, eventWindow, ...).
 - [lab-cli-child-test-daemon-isolation](lab-cli-child-test-daemon-isolation.md) — command tests in a child pwsh reach the real daemon (User-scope token): use -StatusFile + closed-port labd.pid.
 - [lab-native-cegui-input-and-levels](lab-native-cegui-input-and-levels.md) — cursor/drag via native CEGUI injectors; `cegui_fake.rs` test seam; new native-level words need a `from_reported` row.
@@ -89,6 +91,9 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
 - [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
+- [lab-chaos-net-shim](lab-chaos-net-shim.md) — CH-06: shared `lossy_transport::filter`, ChaosTransport in base, recv drop-only, has_net guard, fake-wire tests.
+- [lab-mcp-feature-gated-tool-router](lab-mcp-feature-gated-tool-router.md) — feature-gated lab-mcp tools: second `#[tool_router(router, vis)]` block in the submodule, `+` merge in new().
+- [lab-record-tap-fixture-and-recorder-seams](lab-record-tap-fixture-and-recorder-seams.md) — tap fixtures need a cell msg_id + method_index for decode_call; Recorder test seams.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -104,6 +109,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — Tailer refresh() retain drops other roots' files (egui tail ships nothing once sessions/ exists); tick order is HashMap order; opt-out discard counter.
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — one refresh per tick; NTFS coarse creation times vs baseline; same-tick ties; shared queue across sessions; undo must not bump discards.
 - [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`; macOS job layout and bash 3.2 trap.
+- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — refresh() drops other roots' files; one refresh per tick; NTFS coarse times; shared queue; undo must not bump discards.
 
 ## Injected client DLLs
 
@@ -123,6 +129,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Base sessions
 
+- [session-scoped-side-tables-and-teardown](session-scoped-side-tables-and-teardown.md) — clear per-address state in teardown after the owner check (covers relaunch takeover); logOff keeps the address.
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
 - [trade-results-client-ignores-space-cash.md](trade-results-client-ignores-space-cash.md) — client trade window acts only on results 1/2; space/cash codes 3-6 show nothing, so send a feedback line.
@@ -158,6 +165,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Testing patterns
 
+- [lab-chaos-flush-seams](lab-chaos-flush-seams.md) — tests can't install lab_chaos: lend a registry via a cfg(test) thread-local; phase-1 record 37 B, cursor = offset + 1.
 - [test-support-dev-dep-means-live-db-listing](test-support-dev-dep-means-live-db-listing.md) — a test-support dev-dep forces a test-live-db listing; log-capture-only crates use a local layer.
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
 - [tracing-capture-single-dispatcher-trap](tracing-capture-single-dispatcher-trap.md) — scoped tracing capture records nothing under `cargo test` unless a 2nd Dispatch lives; static async locks couple tests.

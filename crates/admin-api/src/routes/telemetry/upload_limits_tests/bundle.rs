@@ -306,6 +306,33 @@ fn bundle_replay_skips_key_dumps() {
     );
 }
 
+/// **A bundle line carries the log4cxx level it names.** The ERROR line
+/// replays with `level="ERROR"`, still at INFO severity; a continuation
+/// line with no level token carries no `level` field at all.
+#[test]
+fn a_bundle_line_carries_its_log4cxx_level() {
+    let zip = zip_of(&[(
+        "sessions/x/session.log",
+        b"2026-10-10 12:00:00,123 ERROR common - boom\ncontinued text\n",
+    )]);
+    let mut counts = None;
+    let rows = capture(|| {
+        counts = Some(
+            unpack_and_replay(&claims("sess-zip-level"), &zip, &UploadLimits::default()).unwrap(),
+        );
+    });
+    assert_eq!(counts.unwrap().lines, 2);
+    let row = |text: &str| {
+        rows.iter()
+            .find(|r| r.fields.get("message").is_some_and(|m| m == text))
+            .unwrap_or_else(|| panic!("no row for {text:?}: {rows:#?}"))
+    };
+    let error = row("2026-10-10 12:00:00,123 ERROR common - boom");
+    assert_eq!(error.fields.get("level").map(String::as_str), Some("ERROR"));
+    assert_eq!(error.level, tracing::Level::INFO);
+    assert!(!row("continued text").fields.contains_key("level"));
+}
+
 /// A bundle within every budget is accepted through the handler.
 #[test]
 fn a_small_bundle_is_accepted() {

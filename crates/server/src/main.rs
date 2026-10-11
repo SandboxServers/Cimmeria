@@ -23,7 +23,7 @@
 //! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) is served here and on `LOGON_PORT`; remote launchers use `LOGON_PORT`, so this bind can stay narrow. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string. When set, the server refuses to start (exit 1, `reason=database_connect_failed`) if it cannot connect within 30 s or the credentials are rejected. Empty runs the server with no database, for development only: logins are then refused unless `DEVELOPER_MODE` is on. `cimmeria-server --check-db` connects with it, runs `SELECT 1` and exits 0, or prints a sanitised reason and exits 1, within `PGCONNECT_TIMEOUT` seconds (default 5); the container uses it before start and as its healthcheck. |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
-//! | `DEVELOPER_MODE` | `false` | `1`/`true`/`yes` turns it on. Skips the Phase 1 protocol-digest check. Only when `DB_URL` is also empty does it accept any well-formed login unchecked as account 1, access level 99, with a WARN (`reason=dev_mode_no_db_login`) at startup and on each login. |
+//! | `DEVELOPER_MODE` | `false` | `1`/`true`/`yes` turns it on. Skips the Phase 1 protocol-digest check. Only when `DB_URL` is also empty does it accept any well-formed login unchecked as account 1, access level 99, with a WARN (`reason=dev_mode_no_db_login`) at startup and on each login. In a binary built with `--features lab-chaos` it also installs the lab chaos registry at startup (one WARN, `event=lab_chaos_enabled`); without it that build logs one INFO (`event=lab_chaos_off`) and stays chaos-free. |
 //! | `MERCURY_ENCRYPTION_VERSION` | `1` | Mercury wire-encryption version applied to every session. `1` = legacy (only version unpatched clients understand), `2` = modernized. Server-wide; no per-client negotiation yet. Unknown values fall back to `1`. |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the dev-session token mint at `/api/auth/dev-session` (launchers and lab supervisors) and the upload endpoints at `/api/telemetry/upload-{chunk,bundle}`, whose client-side rows land in SigNoz as `service.name = cimmeria-client`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset or shorter than 32 bytes ⇒ every mint and upload returns 500, logged as `dev_session_secret_unusable` at startup (WARN) and per request (ERROR). On the colo it comes from `/opt/cimmeria/.env` through `docker/compose.yml`. |
@@ -169,6 +169,24 @@ async fn main() {
         developer_mode = config.developer_mode,
         "Configuration loaded"
     );
+
+    // Lab chaos (lab-chaos campaign): compiled in only with `--features
+    // lab-chaos`, and live only with DEVELOPER_MODE. Installed before any
+    // service starts so the base's transport sees it at bind time.
+    #[cfg(feature = "lab-chaos")]
+    match cimmeria_services::base::lab_chaos::install(config.developer_mode) {
+        Ok(_) => tracing::warn!(
+            target: "lab.chaos",
+            event = "lab_chaos_enabled",
+            "lab chaos is ENABLED: the lab endpoint can degrade any session"
+        ),
+        Err(refused) => tracing::info!(
+            target: "lab.chaos",
+            event = "lab_chaos_off",
+            reason = %refused,
+            "lab chaos is compiled in but off"
+        ),
+    }
 
     tracing::info!(
         auth_port = config.auth_port,
@@ -477,4 +495,22 @@ fn config_from_env() -> ServerConfig {
     }
 
     cfg
+}
+
+#[cfg(test)]
+mod tests {
+    /// The regression guard for the lab-chaos feature rule: no crate may turn
+    /// `lab-chaos` on through a dependency entry, because feature unification
+    /// would then compile the chaos registry into every server build.
+    #[cfg(not(feature = "lab-chaos"))]
+    #[test]
+    fn default_build_has_no_lab_chaos() {
+        // black_box keeps clippy's assertions_on_constants off a check whose
+        // whole point is the value of a constant.
+        let compiled = std::hint::black_box(cimmeria_services::base::lab_chaos::COMPILED);
+        assert!(
+            !compiled,
+            "lab-chaos is compiled into a build that did not ask for it"
+        );
+    }
 }

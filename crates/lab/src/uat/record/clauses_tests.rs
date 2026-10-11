@@ -262,11 +262,51 @@ fn an_item_count_change_is_one_clause_per_container() {
     assert_eq!(field(&clauses[2], "value"), &Inline::Int(0));
     assert_eq!(
         field(&clauses[1], "args").render(),
-        "{ sql = \"SELECT count(*)::int AS n FROM sgw_inventory i JOIN sgw_player p ON p.player_id = i.character_id WHERE p.player_name = 'Px${run_id}' AND i.type_id = 55 AND i.container_id = 3\" }"
+        "{ sql = \"SELECT coalesce(sum(coalesce(i.stack_size,1)),0)::int AS n FROM sgw_inventory i JOIN sgw_player p ON p.player_id = i.character_id WHERE p.player_name = 'Px${run_id}' AND i.type_id = 55 AND i.container_id = 3\" }"
     );
     assert_eq!(
         field(&clauses[1], "pointer"),
         &Inline::Str("/rows/0/n".into())
+    );
+}
+
+/// Counts are units: one of a stack of 5 used is 5 to 4 in the same one
+/// row, a diff and a clause graded on the summed `stack_size` (a row count
+/// would read 1 both times and see nothing).
+#[test]
+fn one_unit_used_from_a_stack_of_5_is_an_item_diff_and_clause() {
+    let before = DbSnapshot {
+        items: vec![item(66, 1, 5, Some("Med Kit"))],
+        ..DbSnapshot::default()
+    };
+    let after = DbSnapshot {
+        items: vec![item(66, 1, 4, Some("Med Kit"))],
+        ..DbSnapshot::default()
+    };
+    assert_eq!(
+        diff_snapshots(&before, &after),
+        [Diff::ItemCount {
+            type_id: 66,
+            container: 1,
+            from: 5,
+            to: 4,
+            name: Some("Med Kit".into()),
+        }]
+    );
+    let (log, row) = one_row(before, after, Vec::new());
+    let clauses = row_clauses(&log, &row, "${character}");
+    assert_eq!(ids(&clauses), ["item-66-1"]);
+    assert_eq!(clauses[0].text, "carried Med Kit (66) in bag 1: 4");
+    assert_eq!(field(&clauses[0], "value"), &Inline::Int(4));
+    let Inline::Table(args) = field(&clauses[0], "args") else {
+        panic!("args is not a table");
+    };
+    let Inline::Str(sql) = &args[0].1 else {
+        panic!("sql is not a string");
+    };
+    assert!(
+        sql.starts_with("SELECT coalesce(sum(coalesce(i.stack_size,1)),0)::int AS n "),
+        "{sql}"
     );
 }
 

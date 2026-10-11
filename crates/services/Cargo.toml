@@ -117,6 +117,9 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 # See docs/architecture/network-chaos-testing.md and
 # `BaseService::set_transport_override`.
 chaos-testing = ["cimmeria-base/chaos-testing"]
+# Forwards the lab chaos registry, re-exported as `base::lab_chaos`.
+# Command line only, never from a dependency entry.
+lab-chaos = ["cimmeria-base/lab-chaos", "cimmeria-base-session/lab-chaos"]
 
 [dev-dependencies]
 # Mercury with the `test-support` feature, so the cross-track tests can use
