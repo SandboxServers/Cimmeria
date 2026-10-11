@@ -150,6 +150,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Testing patterns
 
+- [test-support-dev-dep-means-live-db-listing](test-support-dev-dep-means-live-db-listing.md) — a test-support dev-dep forces a test-live-db listing; log-capture-only crates use a local layer.
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
 - [tracing-capture-single-dispatcher-trap](tracing-capture-single-dispatcher-trap.md) — scoped tracing capture records nothing under `cargo test` unless a 2nd Dispatch lives; static async locks couple tests.
 - [cap-guard-sized-from-the-constant](cap-guard-sized-from-the-constant.md) — a cap guard sized `CAP + 1` passes when the cap is loosened; use a literal size.
