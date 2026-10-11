@@ -30,7 +30,8 @@ concurrency:
 jobs:
   nudge:
     name: nudge if crates/ touched without docs/spec/
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux-quick (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',nudge,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     permissions:
       pull-requests: write   # post the nudge comment
       contents: read         # read the PR diff

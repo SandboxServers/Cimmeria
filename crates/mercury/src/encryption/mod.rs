@@ -338,13 +338,6 @@ impl MercuryEncryption {
         output.extend_from_slice(&ciphertext);
         output.extend_from_slice(&tag);
 
-        tracing::trace!(
-            version = 1,
-            plaintext_len = plaintext.len(),
-            ciphertext_len = output.len(),
-            "encrypt"
-        );
-
         Ok(output)
     }
 
@@ -380,7 +373,11 @@ impl MercuryEncryption {
             .map_err(|e| CimmeriaError::Encryption(format!("HMAC init failed: {e}")))?;
         mac.update(ciphertext);
         mac.verify_slice(received_tag).map_err(|_| {
-            tracing::warn!(input_len = data.len(), "HMAC-MD5 verification failed");
+            tracing::warn!(
+                input_len = data.len(),
+                reason = "hmac_mismatch",
+                "HMAC-MD5 verification failed"
+            );
             CimmeriaError::Encryption("HMAC-MD5 verification failed".into())
         })?;
 
@@ -394,13 +391,6 @@ impl MercuryEncryption {
 
         // Strip PKCS7 padding.
         let plaintext = pkcs7_unpad(&buf)?;
-
-        tracing::trace!(
-            version = 1,
-            input_len = data.len(),
-            plaintext_len = plaintext.len(),
-            "decrypt"
-        );
 
         Ok(plaintext.to_vec())
     }
@@ -441,13 +431,6 @@ impl MercuryEncryption {
         output.extend_from_slice(&iv);
         output.extend_from_slice(&ciphertext);
         output.extend_from_slice(tag);
-
-        tracing::trace!(
-            version = 2,
-            plaintext_len = plaintext.len(),
-            ciphertext_len = output.len(),
-            "encrypt"
-        );
 
         Ok(output)
     }
@@ -512,7 +495,11 @@ impl MercuryEncryption {
         mac.update(&iv);
         mac.update(ciphertext);
         mac.verify_truncated_left(received_tag).map_err(|_| {
-            tracing::warn!(input_len = data.len(), "HMAC-SHA256 verification failed");
+            tracing::warn!(
+                input_len = data.len(),
+                reason = "hmac_mismatch",
+                "HMAC-SHA256 verification failed"
+            );
             CimmeriaError::Encryption("HMAC-SHA256 verification failed".into())
         })?;
 
@@ -526,13 +513,6 @@ impl MercuryEncryption {
 
         // Strip PKCS7 padding.
         let plaintext = pkcs7_unpad(&buf)?;
-
-        tracing::trace!(
-            version = 2,
-            input_len = data.len(),
-            plaintext_len = plaintext.len(),
-            "decrypt"
-        );
 
         Ok(plaintext.to_vec())
     }

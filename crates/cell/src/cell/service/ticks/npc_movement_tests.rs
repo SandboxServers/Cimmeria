@@ -451,3 +451,186 @@ fn leg_step_restarts_only_when_a_new_path_is_installed() {
     assert_eq!(leg_step_index(npc, 4), 1, "longer path = new leg");
     assert_eq!(leg_step_index(npc + 1, 1), 1, "per NPC");
 }
+
+/// Adds an NPC with one 80-unit leg at `move_speed = 5.0`. The leg outlasts
+/// every step test, so no test reaches its end.
+fn add_leg_npc(mgr: &mut SpaceManager, npc_id: u32) {
+    mgr.create_entity(npc_id, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(npc_id) {
+        npc.is_player = false;
+        npc.class_id = 0x04;
+        npc.move_speed = 5.0;
+        npc.nav_path
+            .push_back(cimmeria_common::Vector3::new(80.0, 0.0, 0.0));
+    }
+}
+
+/// Connects a player (`npc_id + 1`) that stands on `npc_id`, so the AoI
+/// gives the NPC a witness.
+fn add_witness(mgr: &mut SpaceManager, npc_id: u32) {
+    let player = npc_id + 1;
+    mgr.create_entity(player, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(player) {
+        p.is_player = true;
+        p.player_id = Some(player as i32);
+    }
+    mgr.connect_entity(player);
+    let _ = mgr.compute_aoi_changes();
+    assert_eq!(
+        mgr.get_witnesses_of(npc_id),
+        vec![player],
+        "fixture: the player sees the NPC"
+    );
+}
+
+/// A space holding one [`add_leg_npc`] NPC. When `witnessed`, it also has
+/// a witness from [`add_witness`].
+fn step_fixture(npc_id: u32, witnessed: bool) -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    add_leg_npc(&mut mgr, npc_id);
+    if witnessed {
+        add_witness(&mut mgr, npc_id);
+    }
+    mgr
+}
+
+/// Runs `ticks` movement ticks over every NPC in `mgr`.
+fn tick_n(mgr: &mut SpaceManager, ticks: usize) {
+    for _ in 0..ticks {
+        npc_movement_tick(mgr);
+    }
+}
+
+/// One entry per `event=step` row written for `npc_id` so far in `logs`:
+/// the row's `suppressed` field, or `None` when the row has none.
+fn step_suppressed(
+    logs: &crate::test_support::LogCaptureGuard,
+    npc_id: u32,
+) -> Vec<Option<String>> {
+    logs.all()
+        .iter()
+        .filter(|c| {
+            c.target == "movement.npc"
+                && c.message_contains("NPC movement step")
+                && c.has_field("npc_id", &npc_id.to_string())
+        })
+        .map(|c| c.fields.get("suppressed").cloned())
+        .collect()
+}
+
+/// NA-style volume fix: ten steps of an unwitnessed NPC write exactly one
+/// `event=step` row (the first, with `suppressed = 0`; the other nine fall
+/// inside the 60 s window), while a witnessed NPC keeps its leg-head rows
+/// and those rows carry no `suppressed`. Reverting the witness gate gives
+/// one row per head step, so the unwitnessed count is 5 and the test fails.
+#[test]
+fn unwitnessed_npc_steps_are_sampled() {
+    let logs = crate::test_support::LogCapture::install();
+    let mut quiet = step_fixture(4_200_010, false);
+    tick_n(&mut quiet, 10);
+    assert_eq!(
+        step_suppressed(&logs, 4_200_010),
+        vec![Some("0".to_string())],
+        "exactly one row: the first step, nothing skipped yet"
+    );
+
+    let mut seen = step_fixture(4_200_020, true);
+    tick_n(&mut seen, 10);
+    let witnessed = step_suppressed(&logs, 4_200_020);
+    assert!(
+        witnessed.len() >= NPC_LEG_HEAD_STEPS as usize,
+        "a witnessed NPC keeps its head steps, got {}",
+        witnessed.len()
+    );
+    assert!(
+        witnessed.iter().all(Option::is_none),
+        "witnessed rows must not carry suppressed, got {witnessed:?}"
+    );
+}
+
+/// The rate limit is per NPC: a second unwitnessed NPC's first row is
+/// admitted while the first NPC is still suppressed.
+#[test]
+fn unwitnessed_sampling_is_independent_per_npc() {
+    let logs = crate::test_support::LogCapture::install();
+    let first = 4_200_030;
+    let second = 4_200_040;
+    let mut mgr = step_fixture(first, false);
+    tick_n(&mut mgr, 3);
+    assert_eq!(step_suppressed(&logs, first).len(), 1, "first NPC: one row");
+
+    add_leg_npc(&mut mgr, second);
+    tick_n(&mut mgr, 1);
+    assert_eq!(
+        step_suppressed(&logs, second),
+        vec![Some("0".to_string())],
+        "the second NPC's first row is admitted"
+    );
+    assert_eq!(
+        step_suppressed(&logs, first).len(),
+        1,
+        "the first NPC stays suppressed on the same tick"
+    );
+}
+
+/// Forces the 60 s window through `admit_sample`'s explicit instant: the
+/// admitted row after a burst reports how many steps it skipped.
+#[test]
+fn unwitnessed_burst_reports_the_skipped_count_on_the_next_row() {
+    let npc = 4_200_050;
+    let mut mgr = step_fixture(npc, false);
+    let detectors = &mut mgr.npc_detectors;
+    let window = NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL;
+    let kind = "unwitnessed_step";
+    let t0 = std::time::Instant::now();
+    let at = |secs: u64| t0 + std::time::Duration::from_secs(secs);
+
+    assert_eq!(
+        detectors.admit_sample(npc, kind, t0, window),
+        Some(0),
+        "the first step is admitted"
+    );
+    for secs in [1, 2, 3] {
+        assert_eq!(
+            detectors.admit_sample(npc, kind, at(secs), window),
+            None,
+            "step at +{secs}s is inside the window"
+        );
+    }
+    assert_eq!(
+        detectors.admit_sample(npc, kind, at(61), window),
+        Some(3),
+        "the next row reports the three skipped steps"
+    );
+    assert_eq!(
+        detectors.admit_sample(npc, kind, at(62), window),
+        None,
+        "the window restarts at the admitted row"
+    );
+}
+
+/// A witness arriving resumes full rows at once: the NPC is still in its
+/// leg head, so the witnessed rule writes the very next step, with no
+/// `suppressed` field.
+#[test]
+fn witness_arrival_resumes_full_rows_immediately() {
+    let logs = crate::test_support::LogCapture::install();
+    let npc = 4_200_070;
+    let mut mgr = step_fixture(npc, false);
+    tick_n(&mut mgr, 3);
+    assert_eq!(step_suppressed(&logs, npc).len(), 1, "unwitnessed: one row");
+
+    add_witness(&mut mgr, npc);
+    tick_n(&mut mgr, 1);
+    let rows = step_suppressed(&logs, npc);
+    assert_eq!(rows.len(), 2, "the next step is written at once");
+    assert_eq!(rows[1], None, "the witnessed row carries no suppressed");
+}

@@ -35,7 +35,8 @@ permissions:
 jobs:
   fmt:
     name: cargo fmt --check (client-patches)
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux-quick (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',fmt,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     steps:
       - uses: actions/checkout@v7
         with:

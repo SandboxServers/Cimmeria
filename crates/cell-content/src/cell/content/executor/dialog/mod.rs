@@ -188,6 +188,27 @@ pub(super) async fn add_dialog_set(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let entry = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned();
+    let mut interactions_count = None;
+    if let Some(entry) = &entry {
+        if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+            player
+                .available_interactions
+                .entry(slot)
+                .or_default()
+                .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
+            interactions_count = player.available_interactions.get(&slot).map(Vec::len);
+        }
+    }
+
+    // One INFO per action: the resolved entry and the stored count ride
+    // on the same row. Fields the cache miss leaves unknown are omitted.
+    let dialog_name = entry.as_ref().and_then(|e| dialog_name_of(e.dialog_id));
+    let flags_names = entry.as_ref().map(|e| {
+        cimmeria_entity::interaction_flags::INTERACTION_FLAGS
+            .render(e.interaction_flags)
+            .to_string()
+    });
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -197,45 +218,16 @@ pub(super) async fn add_dialog_set(
         template_name = cimmeria_names::book().template(slot),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
+        dialog_id = entry.as_ref().and_then(|e| e.dialog_id),
+        dialog_name = dialog_name.as_deref(),
+        interaction_only = entry.as_ref().map(|e| e.dialog_id.is_none()),
+        interaction_flags = entry.as_ref().map(|e| e.interaction_flags),
+        interaction_flags_names = flags_names.as_deref(),
+        interactions_count,
         "Content: adding dialog set"
     );
 
-    if let Some(entry) = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned() {
-        tracing::info!(
-            entity_id,
-            entity_name = space_mgr.entity_names(entity_id).entity_name,
-            dialog_set_map_id = dialog_set_id,
-            dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-            template_id = slot,
-            template_name = cimmeria_names::book().template(slot),
-            dialog_id = entry.dialog_id,
-            dialog_name = dialog_name_of(entry.dialog_id).as_deref(),
-            interaction_only = entry.dialog_id.is_none(),
-            interaction_flags = entry.interaction_flags,
-            interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(entry.interaction_flags),
-            "add_dialog_set: resolved dialog_set_map entry"
-        );
-
-        if let Some(player) = space_mgr.get_entity_mut(entity_id) {
-            player
-                .available_interactions
-                .entry(slot)
-                .or_default()
-                .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
-
-            tracing::info!(
-                entity_id,
-                entity_name = crate::cell::space_manager::EntityNames::of(player).entity_name,
-                template_id = slot,
-                template_name = cimmeria_names::book().template(slot),
-                interactions_count = player
-                    .available_interactions
-                    .get(&slot)
-                    .map_or(0, |v| v.len()),
-                "add_dialog_set: stored in available_interactions"
-            );
-        }
-
+    if let Some(entry) = entry {
         send_interaction_update_if_visible(
             entity_id,
             slot,

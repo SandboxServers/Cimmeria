@@ -55,7 +55,7 @@ pub enum TimerRoute {
 ///
 /// A player gets it on their own client. Any other entity (NPC, pet) has no
 /// client that can dispatch it, so nothing is sent and the skip is logged
-/// at DEBUG with `reason = "not_player"`. That
+/// at TRACE with `reason = "not_player"`. That
 /// skip is the normal path for every NPC ability, so it is not a warning.
 ///
 /// Every `onTimerUpdate` in the cell goes through here. The witness-fanout
@@ -92,7 +92,7 @@ pub async fn send_timer_update_ctx(
 ) -> TimerRoute {
     let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     if !is_player {
-        tracing::debug!(
+        tracing::trace!(
             target: "abilities.wire",
             event = "timer_update_not_sent",
             entity_id,
