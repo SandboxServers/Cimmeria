@@ -110,6 +110,56 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(parsed["description"], 'Drives the client; says "hi".')
         self.assertTrue(parsed["developer_instructions"].startswith("Rules with a back\\slash"))
 
+    def write_agent(self, name, frontmatter):
+        agents = self.repo / ".claude/agents"
+        agents.mkdir(parents=True, exist_ok=True)
+        (agents / f"{name}.md").write_text(
+            f"---\nname: {name}\ndescription: The {name} agent.\n{frontmatter}---\n\nDo {name} things.\n",
+            encoding="utf-8",
+        )
+
+    def test_every_agent_gets_a_codex_twin_with_mapped_effort(self):
+        self.write_agent("coder", "model: haiku\neffort: medium\n")  # effort wins over model
+        self.write_agent("advisor", "model: opus\nmemory: project\n")
+        self.write_agent("reviewer", "model: sonnet\n")
+        self.write_agent("deep", "effort: max\n")
+        self.write_agent("plain", "")
+        self.run_sync()
+        out = self.repo / ".codex/agents"
+        self.assertEqual(sorted(p.name for p in out.iterdir()),
+                         ["advisor.toml", "coder.toml", "deep.toml", "plain.toml", "reviewer.toml"])
+        import tomllib
+
+        parsed = {p.stem: tomllib.loads(p.read_text(encoding="utf-8")) for p in out.iterdir()}
+        effort = {name: doc.get("model_reasoning_effort") for name, doc in parsed.items()}
+        self.assertEqual(effort, {"coder": "medium", "advisor": "high", "reviewer": "medium",
+                                  "deep": "high", "plain": None})
+        self.assertEqual(parsed["advisor"]["developer_instructions"], "Do advisor things.\n")
+        self.assertNotIn("model", parsed["advisor"])
+        self.assertEqual(self.run_sync("--check"), 0)
+
+    def test_removed_agent_is_deleted_but_hand_written_toml_kept(self):
+        self.write_agent("keep", "")
+        self.write_agent("gone", "")
+        self.run_sync()
+        hand = self.repo / ".codex/agents/hand.toml"
+        hand.write_text('name = "hand"\n', encoding="utf-8")
+        (self.repo / ".claude/agents/gone.md").unlink()
+        self.assertEqual(self.run_sync("--check"), 1)  # the orphan is drift
+        self.run_sync()
+        self.assertFalse((self.repo / ".codex/agents/gone.toml").exists())
+        self.assertTrue((self.repo / ".codex/agents/keep.toml").is_file())
+        self.assertTrue(hand.is_file())
+        self.assertEqual(self.run_sync("--check"), 0)
+
+    def test_check_flags_an_edited_agent(self):
+        self.write_agent("coder", "")
+        self.run_sync()
+        self.write_agent("coder", "effort: high\n")
+        self.assertEqual(self.run_sync("--check"), 1)
+        self.run_sync()
+        self.assertEqual(self.run_sync("--check"), 0)
+
     def test_crlf_source_keeps_crlf(self):
         (self.repo / ".claude/skills/demo/SKILL.md").write_bytes(SKILL.replace("\n", "\r\n").encode())
         self.run_sync()

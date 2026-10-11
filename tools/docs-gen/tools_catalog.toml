@@ -10,6 +10,7 @@ exclude = [
     "*/test_*.py",
     # tests sit beside what they test; tools/test-live-db.ps1 is a runner, not a test
     "tools/*/test-*.ps1",
+    "tools/*/test-*.sh",
     "*/__init__.py",
     "*-lib.ps1",
     "tools/lab/cli/common.ps1",
