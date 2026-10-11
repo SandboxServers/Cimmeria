@@ -26,6 +26,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use super::super::player_load::core::query_player_load_data;
+use crate::base::session_identity::{identity_for_addr, identity_for_entity};
 use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -45,48 +46,57 @@ pub async fn refresh_player_appearance(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    let (account_id, holstered) = {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-            Some(a) => a,
-            None => {
-                let player_label = known_names::player_name(player_id);
-                tracing::debug!(
-                    entity_id,
-                    entity_name = player_label,
-                    player_id,
-                    player_name = player_label,
-                    "refresh_player_appearance: entity has no transport addr (disconnected?), skipping"
-                );
-                return;
-            }
-        };
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
-            Some(c) => (c.account_id, c.weapon_holstered),
-            None => {
-                let player_label = known_names::player_name(player_id);
-                tracing::debug!(
-                    entity_id,
-                    entity_name = player_label,
-                    player_id,
-                    player_name = player_label,
-                    "refresh_player_appearance: client state missing for addr, skipping"
-                );
-                return;
-            }
-        }
+    // Each lock is taken in its own statement so the guard is released
+    // before `log_skip` (which takes the same locks) runs.
+    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+    let Some(addr) = addr else {
+        log_skip(
+            connected,
+            entity_to_addr,
+            entity_id,
+            player_id,
+            "entity_to_addr_miss",
+        );
+        return;
+    };
+    let client = connected
+        .lock()
+        .unwrap()
+        .get(&addr)
+        .map(|c| (c.account_id, c.weapon_holstered));
+    let Some((account_id, holstered)) = client else {
+        log_skip(
+            connected,
+            entity_to_addr,
+            entity_id,
+            player_id,
+            "client_state_missing",
+        );
+        return;
     };
 
     let player_data = query_player_load_data(db_pool, account_id, player_id).await;
+    if player_data.player_id != player_id {
+        let identity = identity_for_addr(connected, addr);
+        tracing::error!(
+            event = "appearance_refresh_degraded",
+            cause = "player_load_failed",
+            entity_id,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name = known_names::player_name(player_id),
+            "refresh_player_appearance: player load failed, sending default appearance"
+        );
+    }
     // Honors the live `weapon_holstered` mirror from `ConnectedClientState`,
     // which is set in lockstep with `CellEntity::weapon_holstered` on the
     // cell side. Inventory moves don't change holster state — they re-emit
     // appearance with whatever holster the player currently has, so a
     // mid-combat equip doesn't accidentally re-holster the weapon.
-    let appearance_args = world_entry_appearance::build_appearance_args(
-        &player_data.bodyset,
-        &player_data.appearance_components(holstered),
-    );
+    let components = player_data.appearance_components(holstered);
+    let appearance_args =
+        world_entry_appearance::build_appearance_args(&player_data.bodyset, &components);
 
     // Cache the freshly-built args so any subsequent witness-join (entering
     // AoI, world_entry replay) ships the same appearance the existing
@@ -94,9 +104,16 @@ pub async fn refresh_player_appearance(
     // behind the broadcast and a player who fires a new witness ends up
     // seeing the pre-refresh weapon visible on the model.
     {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-            Some(a) => a,
-            None => return,
+        let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+        let Some(addr) = addr else {
+            log_skip(
+                connected,
+                entity_to_addr,
+                entity_id,
+                player_id,
+                "entity_missing",
+            );
+            return;
         };
         let mut clients = connected.lock().unwrap();
         if let Some(c) = clients.get_mut(&addr) {
@@ -134,6 +151,59 @@ pub async fn refresh_player_appearance(
         appearance_args,
     )
     .await;
+
+    tracing::debug!(
+        event = "appearance_refreshed",
+        entity_id,
+        account_id,
+        account_name = known_names::account_name(account_id),
+        player_id,
+        player_name = known_names::player_name(player_id),
+        holstered,
+        component_count = components.len(),
+        bodyset = player_data.bodyset.as_str(),
+        "refresh_player_appearance: appearance refreshed"
+    );
+}
+
+/// Log an appearance refresh that stopped before the broadcast. An entity
+/// whose witness session ended moments ago is a normal race (DEBUG); any
+/// other miss is an expectation failure (WARN). Takes the `connected` and
+/// `entity_to_addr` locks, so the caller must hold neither.
+fn log_skip(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    entity_id: u32,
+    player_id: i32,
+    reason: &'static str,
+) {
+    let identity = identity_for_entity(connected, entity_to_addr, entity_id);
+    let player_name = known_names::player_name(player_id);
+    if helpers::witness_recently_departed(entity_id) {
+        tracing::debug!(
+            event = "appearance_refresh_skipped",
+            reason = "witness_session_ended",
+            entity_id,
+            entity_name = identity.player_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name,
+            "refresh_player_appearance: skipped"
+        );
+    } else {
+        tracing::warn!(
+            event = "appearance_refresh_skipped",
+            reason,
+            entity_id,
+            entity_name = identity.player_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name,
+            "refresh_player_appearance: skipped"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -338,6 +408,107 @@ mod tests {
         assert!(
             connected.lock().unwrap().is_empty(),
             "no-addr path must not synthesize a client state entry",
+        );
+    }
+
+    /// TG-ITM-01: a refresh that gives up says why. A failed player load is
+    /// an ERROR; an entity with no session is a WARN; the same miss after
+    /// its session was torn down is only a DEBUG.
+    #[tokio::test]
+    async fn appearance_refresh_logs_degraded_and_skips() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+        let transport = make_transport();
+        let addr: SocketAddr = "127.0.0.1:55702".parse().unwrap();
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(42u32, addr)])));
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            make_connected_state(0x1234),
+        )])));
+
+        // db_pool = None: the load returns the default payload (player_id 0),
+        // which is not the requested player, so the ERROR fires.
+        refresh_player_appearance(
+            42,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(
+            capture
+                .find_message(Level::ERROR, "player load failed")
+                .is_some(),
+            "a failed player load must log appearance_refresh_degraded at ERROR. Captured: {:#?}",
+            capture.all()
+        );
+
+        // An entity with no transport addr and no departure record is a WARN.
+        let unmapped: u32 = 0x7A10_0001;
+        refresh_player_appearance(
+            unmapped,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "refresh_player_appearance: skipped",
+                    "entity_to_addr_miss"
+                )
+                .is_some(),
+            "an unmapped entity must log the skip at WARN. Captured: {:#?}",
+            capture.all()
+        );
+
+        // After its session ended, the same miss is a DEBUG and no new WARN.
+        let departed: u32 = 0x7A10_0002;
+        helpers::note_witness_departed(departed);
+        let warns_before = capture
+            .all()
+            .iter()
+            .filter(|c| c.level == Level::WARN)
+            .count();
+        refresh_player_appearance(
+            departed,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(
+            capture
+                .find_event(
+                    Level::DEBUG,
+                    "refresh_player_appearance: skipped",
+                    "witness_session_ended"
+                )
+                .is_some(),
+            "a departed witness must log the skip at DEBUG. Captured: {:#?}",
+            capture.all()
+        );
+        let warns_after = capture
+            .all()
+            .iter()
+            .filter(|c| c.level == Level::WARN)
+            .count();
+        assert_eq!(
+            warns_before, warns_after,
+            "a departed witness must not add a WARN"
         );
     }
 }
