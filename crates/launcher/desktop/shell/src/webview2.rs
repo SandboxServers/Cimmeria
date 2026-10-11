@@ -19,66 +19,77 @@ pub fn version_is_present(pv: &str) -> bool {
     !pv.is_empty() && pv != "0.0.0.0"
 }
 
-/// Whether the runtime is present, with the registry read supplied by the caller.
+/// Whether the runtime is present given the `pv` read at each registry
+/// location. Any one present version is enough: a `0.0.0.0` left in one key
+/// after an uninstall must not hide a runtime installed under another.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub fn runtime_present_with(read: impl Fn() -> Option<String>) -> bool {
-    read().is_some_and(|pv| version_is_present(&pv))
+pub fn runtime_present_in(reads: &[Option<String>]) -> bool {
+    reads.iter().flatten().any(|pv| version_is_present(pv))
 }
 
 /// Exits the launcher with code 1 when the WebView2 runtime is missing, after
 /// offering the download page. Returns when the runtime is present.
 #[cfg(windows)]
 pub fn ensure_runtime_or_exit() {
-    if runtime_present_with(read_pv) {
+    let reads: Vec<Option<String>> = registry_locations()
+        .into_iter()
+        .map(|(root, path)| read_pv(root, path))
+        .collect();
+    if runtime_present_in(&reads) {
         return;
     }
-    if confirm_download() {
-        open_download_page();
+    // Release builds have no console, but a support run from a terminal or a
+    // redirected stderr shows what each location held.
+    eprintln!("WebView2 runtime not found; pv reads (HKLM wow, HKLM, HKCU wow, HKCU): {reads:?}");
+    if confirm_download() && !open_download_page() {
+        show_download_url();
     }
     std::process::exit(1);
 }
 
-/// Reads the `pv` value from HKLM, then HKCU, each with and without WOW6432Node.
+/// HKLM, then HKCU, each with and without WOW6432Node.
 #[cfg(windows)]
-fn read_pv() -> Option<String> {
-    use windows_sys::Win32::System::Registry::{
-        RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
-    };
-
-    let keys = [
+fn registry_locations() -> [(windows_sys::Win32::System::Registry::HKEY, &'static str); 4] {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    [
         (HKEY_LOCAL_MACHINE, WOW_CLIENT_KEY),
         (HKEY_LOCAL_MACHINE, CLIENT_KEY),
         (HKEY_CURRENT_USER, WOW_CLIENT_KEY),
         (HKEY_CURRENT_USER, CLIENT_KEY),
-    ];
-    keys.into_iter().find_map(|(root, path)| {
-        let subkey = wide(path);
-        let value = wide("pv");
-        let mut buffer = [0u16; 128];
-        let mut bytes = std::mem::size_of_val(&buffer) as u32;
-        // SAFETY: the key and value names are NUL-terminated, and the buffer
-        // outlives the call with `bytes` set to its size in bytes.
-        let status = unsafe {
-            RegGetValueW(
-                root,
-                subkey.as_ptr(),
-                value.as_ptr(),
-                RRF_RT_REG_SZ,
-                std::ptr::null_mut(),
-                buffer.as_mut_ptr().cast(),
-                &mut bytes,
-            )
-        };
-        if status != 0 {
-            return None;
-        }
-        let units = (bytes as usize / 2).min(buffer.len());
-        Some(
-            String::from_utf16_lossy(&buffer[..units])
-                .trim_end_matches('\0')
-                .to_string(),
+    ]
+}
+
+/// Reads the `pv` string value under one key, or `None` when it is absent.
+#[cfg(windows)]
+fn read_pv(root: windows_sys::Win32::System::Registry::HKEY, path: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, RRF_RT_REG_SZ};
+
+    let subkey = wide(path);
+    let value = wide("pv");
+    let mut buffer = [0u16; 128];
+    let mut bytes = std::mem::size_of_val(&buffer) as u32;
+    // SAFETY: the key and value names are NUL-terminated, and the buffer
+    // outlives the call with `bytes` set to its size in bytes.
+    let status = unsafe {
+        RegGetValueW(
+            root,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut bytes,
         )
-    })
+    };
+    if status != 0 {
+        return None;
+    }
+    let units = (bytes as usize / 2).min(buffer.len());
+    Some(
+        String::from_utf16_lossy(&buffer[..units])
+            .trim_end_matches('\0')
+            .to_string(),
+    )
 }
 
 /// Asks whether to open the download page. Yes means open it.
@@ -102,16 +113,17 @@ fn confirm_download() -> bool {
     answer == IDYES
 }
 
-/// Opens the WebView2 runtime download page in the default browser.
+/// Opens the WebView2 runtime download page in the default browser. False
+/// when the shell could not open it (no browser, or a policy block).
 #[cfg(windows)]
-fn open_download_page() {
+fn open_download_page() -> bool {
     use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
 
     let verb = wide("open");
     let url = wide(DOWNLOAD_URL);
     // SAFETY: every string is NUL-terminated and lives for the call; the
     // optional arguments are null, which the API accepts.
-    unsafe {
+    let result = unsafe {
         ShellExecuteW(
             std::ptr::null_mut(),
             verb.as_ptr(),
@@ -119,6 +131,28 @@ fn open_download_page() {
             std::ptr::null(),
             std::ptr::null(),
             SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecuteW reports failure as a value of 32 or less.
+    result as usize > 32
+}
+
+/// Shows the download address when the browser could not be opened.
+#[cfg(windows)]
+fn show_download_url() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+
+    let text = wide(&format!(
+        "The download page could not be opened. Download the Microsoft Edge WebView2 Runtime from:\n\n{DOWNLOAD_URL}"
+    ));
+    let caption = wide("Stargate Worlds Launcher");
+    // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONERROR,
         );
     }
 }
@@ -146,9 +180,23 @@ mod tests {
     }
 
     #[test]
-    fn missing_registry_value_is_not_present() {
-        assert!(!runtime_present_with(|| None));
-        assert!(!runtime_present_with(|| Some("0.0.0.0".to_string())));
-        assert!(runtime_present_with(|| Some("128.0.2739.42".to_string())));
+    fn no_location_with_a_version_is_missing() {
+        assert!(!runtime_present_in(&[None, None, None, None]));
+        assert!(!runtime_present_in(&[
+            Some("0.0.0.0".to_string()),
+            None,
+            Some(String::new()),
+            None,
+        ]));
+    }
+
+    #[test]
+    fn a_stale_zero_version_does_not_hide_a_later_runtime() {
+        assert!(runtime_present_in(&[
+            Some("0.0.0.0".to_string()),
+            None,
+            Some("128.0.2739.42".to_string()),
+            None,
+        ]));
     }
 }
