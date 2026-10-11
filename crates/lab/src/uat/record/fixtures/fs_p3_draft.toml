@@ -57,3 +57,10 @@ pointer = "/rows/0/status"
 op = "eq"
 value = 1
 timeout_ms = 3500
+# fixture (pass -Profile to enable):
+# [row.fixture]
+# character = "<profile>"
+# missions = [
+#   { id = 622, step = 2113 },
+#   { id = 1360, state = "not_active" },
+# ]

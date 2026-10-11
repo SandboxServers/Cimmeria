@@ -8,6 +8,7 @@
 use crate::uat::spec::{self, PoseSpec, SectionMeta};
 
 use super::clauses::{ClauseOut, Inline};
+use super::fixture;
 use super::log::{RecordLog, RecordStart};
 use super::segment::segment;
 
@@ -35,8 +36,9 @@ pub struct TransformOptions {
     /// Replaces the recorded character in SQL (`Px${run_id}`); default
     /// `${character}`. Pasted between SQL quotes as it is.
     pub character_expr: Option<String>,
-    /// The fixture profile (LR-09).
-    #[allow(dead_code)] // LR-09 reads it.
+    /// The fixture profile (LR-09): a `[section.profiles]` key of `base`.
+    /// Set, each row gets a `[row.fixture]` and the draft copies the
+    /// profile; None writes the fixture as comments.
     pub profile: Option<String>,
     /// At most this many actions across all rows (LR-15).
     #[allow(dead_code)] // LR-15 reads it.
@@ -77,7 +79,8 @@ pub struct Draft {
     pub rows: usize,
     /// Setup and step actions in the runnable rows.
     pub actions: usize,
-    /// `# TODO` lines: header faults, row lines, and one per commented row.
+    /// `# TODO` lines: header faults, row and fixture lines, and one per
+    /// commented row.
     pub todos: usize,
     /// Rows left out by `from_tick`.
     pub dropped_rows: usize,
@@ -89,6 +92,7 @@ pub fn transform(log: &RecordLog, opts: &TransformOptions) -> Result<Draft, Stri
     let character_sql = opts.character_expr.as_deref().unwrap_or("${character}");
     let mut text = header(log);
     text.push_str(&section(log, opts));
+    text.push_str(&profile_table(opts)?);
 
     let mut todos = 0;
     for fault in faults(log) {
@@ -107,14 +111,20 @@ pub fn transform(log: &RecordLog, opts: &TransformOptions) -> Result<Draft, Stri
     for (n, recorded_row) in kept.into_iter().enumerate() {
         let id = format!("REC-{:02}", n + 1);
         let d = draft_row(log, recorded_row, &id, character_sql);
-        let body = render_row(&d);
+        let mut body = render_row(&d);
+        let (fixture, fixture_todos) =
+            fixture::row_block(log, recorded_row, opts.profile.as_deref());
+        for line in fixture {
+            body.push_str(&line);
+            body.push('\n');
+        }
         text.push('\n');
         match &d.blocked {
             None => {
                 text.push_str(&body);
                 rows += 1;
                 actions += d.actions();
-                todos += d.todos();
+                todos += d.todos() + fixture_todos;
             }
             Some(reason) => {
                 text.push_str(&format!("# TODO {id} not runnable: {}\n", one_line(reason)));
@@ -302,6 +312,31 @@ fn section(log: &RecordLog, opts: &TransformOptions) -> String {
         out.push_str(&format!("{k} = {}\n", Inline::Str(v.to_string()).render()));
     }
     out
+}
+
+/// `[section.profiles.<profile>]` copied from the named section, so the
+/// rows' `[row.fixture]` names a profile the validator finds; empty with no
+/// profile. A profile the named section does not define is an error: the
+/// draft would not load.
+fn profile_table(opts: &TransformOptions) -> Result<String, String> {
+    let Some(name) = &opts.profile else {
+        return Ok(String::new());
+    };
+    let Some(p) = opts.base.as_ref().and_then(|b| b.profiles.get(name)) else {
+        return Err(format!(
+            "profile {name:?} is not a [section.profiles] key of the named section"
+        ));
+    };
+    let mut out = format!("\n[section.profiles.{name}]\n");
+    for (k, v) in [
+        ("alignment", &p.alignment),
+        ("archetype", &p.archetype),
+        ("gender", &p.gender),
+        ("first", &p.first),
+    ] {
+        out.push_str(&format!("{k} = {}\n", Inline::Str(v.clone()).render()));
+    }
+    Ok(out)
 }
 
 /// What went wrong while recording, for the header's TODO lines.

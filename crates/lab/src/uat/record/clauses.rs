@@ -13,8 +13,6 @@ use super::segment::RecordedRow;
 /// The main bag.
 pub const INV_MAIN: i32 = 1;
 /// The mission-item bag.
-// Inside the carried range (1 to 14); only the tests name it.
-#[cfg_attr(not(test), allow(dead_code))]
 pub const INV_MISSION: i32 = 2;
 /// The first equipment bag (the bandolier).
 pub const INV_BANDOLIER: i32 = 3;
@@ -442,7 +440,7 @@ pub enum Inline {
     /// An inline table; its pairs are written in this order.
     Table(Vec<(String, Inline)>),
     /// An array, in this order.
-    // No clause writes one yet; LR-09's fixture lists will.
+    // No emitter writes one: the fixture's lists go one entry per line.
     #[cfg_attr(not(test), allow(dead_code))]
     Array(Vec<Inline>),
 }
