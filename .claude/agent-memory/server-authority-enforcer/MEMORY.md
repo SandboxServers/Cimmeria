@@ -82,3 +82,4 @@
 - [reference_ability_grant_provenance.md](reference_ability_grant_provenance.md) — CS-01a grant provenance: credit hydration filters, cleared gm promotion, trained-then-granted + archetype gaps
 - [project_lab_fixture_fx02_review.md](project_lab_fixture_fx02_review.md) — FX-02 lab fixture: no client stage path; take-before-owner-check lets any account burn fixtures
 - [project_lab_fixture_fx03_review.md](project_lab_fixture_fx03_review.md) — FX-03 fixture item write cleared: player-keyed, bags 1-15, rolled-back dry run, shared lock order
+- [project_lab_fixture_fx02_review.md](project_lab_fixture_fx02_review.md) — FX-02/FX-04 lab fixture: account-scoped take; FX-04 stage tool cleared; any-GM-account scope residual
