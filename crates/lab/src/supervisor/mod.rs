@@ -378,8 +378,13 @@ impl Supervisor {
 
     /// Launch (or relaunch) the client: mint a token, write the session
     /// file, launch+inject, and re-point the bridge. Shared by `start`
-    /// and the watchdog's recovery path.
-    async fn launch_client(&self, server_override: Option<String>) -> Result<u32, String> {
+    /// and the watchdog's recovery path. `cause` ends up on the `launched`
+    /// row: `start`, `restart` or `watchdog_relaunch`.
+    async fn launch_client(
+        &self,
+        server_override: Option<String>,
+        cause: &'static str,
+    ) -> Result<u32, String> {
         // A client launched without a usable display dies on an error box
         // (and the watchdog relaunches it); refuse with the reason instead.
         tokio::task::spawn_blocking(display::ensure_display_for_launch)
@@ -464,8 +469,14 @@ impl Supervisor {
         let addr = format!("{}:{}", self.config.connect_host(), self.config.port);
         self.bridge.reconfigure(addr, token.clone()).await;
 
+        let grant = if telemetry.unavailable.is_some() {
+            "unavailable"
+        } else {
+            "minted"
+        };
         {
             let mut st = self.state.lock().await;
+            lifecycle::warn_if_pid_overwritten(st.pid, pid);
             st.pid = Some(pid);
             st.started_at = Some(Instant::now());
             st.token = Some(token);
@@ -473,6 +484,16 @@ impl Supervisor {
             st.login = LoginState::NotStarted;
             st.watchdog = HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER);
         }
+        tracing::info!(
+            target: "lab.client",
+            event = "launched",
+            instance = inst.unwrap_or("default"),
+            pid,
+            cause,
+            telemetry_session_id = %telemetry.session_id,
+            grant,
+            "client launched"
+        );
         Ok(pid)
     }
 
