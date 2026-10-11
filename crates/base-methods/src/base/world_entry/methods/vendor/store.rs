@@ -50,6 +50,7 @@ pub async fn handle_open_vendor_store(
         player_id,
         Some(vendor_entity_id),
         vendor_template_id,
+        transport,
         connected,
         entity_to_addr,
     );
@@ -64,7 +65,8 @@ pub async fn handle_open_vendor_store(
             entity_to_addr,
         )
         .await;
-        tel.failed("no_database", VendorItem::default(), &"no database pool");
+        tel.failed("no_database", VendorItem::default(), &"no database pool")
+            .await;
         return;
     };
 
@@ -79,7 +81,8 @@ pub async fn handle_open_vendor_store(
             entity_to_addr,
         )
         .await;
-        tel.refused("no_vendor_template", VendorItem::default());
+        tel.refused("no_vendor_template", VendorItem::default())
+            .await;
         return;
     };
 
@@ -97,7 +100,8 @@ pub async fn handle_open_vendor_store(
                 "template_not_found",
                 VendorItem::default(),
                 &"no resources.entity_templates row",
-            );
+            )
+            .await;
             VendorTemplateLists {
                 buy_item_list: None,
                 sell_item_list: None,
@@ -106,7 +110,8 @@ pub async fn handle_open_vendor_store(
             }
         }
         Err(e) => {
-            tel.failed("template_query_failed", VendorItem::default(), &e);
+            tel.failed("template_query_failed", VendorItem::default(), &e)
+                .await;
             VendorTemplateLists {
                 buy_item_list: None,
                 sell_item_list: None,

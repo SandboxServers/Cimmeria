@@ -384,20 +384,24 @@ pub enum CellToBaseMsg {
         repair_ratio: f32,
     },
 
-    /// Fully repair owned inventory item instances.
+    /// Fully repair owned inventory item instances at the open vendor, for
+    /// payment. `vendor_template_id` is the server's (the player's vendor
+    /// session); there is no free repair (CAT-E-01).
     RepairInventoryItems {
         entity_id: u32,
         player_id: i32,
         item_ids: Vec<i32>,
-        vendor_template_id: Option<i32>,
+        vendor_template_id: i32,
     },
 
-    /// Fully recharge owned inventory item instances.
+    /// Fully recharge owned inventory item instances at the open vendor,
+    /// for payment. `vendor_template_id` is the server's; there is no free
+    /// recharge (CAT-E-01).
     RechargeInventoryItems {
         entity_id: u32,
         player_id: i32,
         item_ids: Vec<i32>,
-        vendor_template_id: Option<i32>,
+        vendor_template_id: i32,
     },
 
     /// Persist the player's last known world + position when the session

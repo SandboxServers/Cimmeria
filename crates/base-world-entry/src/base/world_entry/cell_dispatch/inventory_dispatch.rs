@@ -455,15 +455,13 @@ pub(super) async fn repair_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Route through the wrapper so the `None` (free repair) path is
-    // reachable. The wrapper dispatches to handle_paid_repair when a
-    // template id is supplied and to the free-repair UPDATE otherwise.
+    // Always paid: the cell supplies the open vendor's template (CAT-E-01).
     handle_repair_inventory_items(
         entity_id,
         player_id,
@@ -482,15 +480,13 @@ pub(super) async fn recharge_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Route through the wrapper so the `None` (free recharge) path is
-    // reachable. The wrapper dispatches to handle_paid_recharge when a
-    // template id is supplied and to the free-recharge UPDATE otherwise.
+    // Always paid: the cell supplies the open vendor's template (CAT-E-01).
     handle_recharge_inventory_items(
         entity_id,
         player_id,

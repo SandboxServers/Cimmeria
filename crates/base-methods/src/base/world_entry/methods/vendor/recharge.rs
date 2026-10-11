@@ -1,4 +1,3 @@
-use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -7,200 +6,38 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::super::super::super::ConnectedClientState;
-use super::super::inventory::core::send_full_inventory_update;
-use super::super::inventory::grant::normalize_item_ids;
-
-/// Containers that can be operated on by the vendor stack — main bag, bandolier,
-/// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
-use super::VENDOR_FILTER_BAGS;
-
-#[tracing::instrument(
-    name = "vendor.recharge",
-    level = "info",
-    skip_all,
-    fields(entity_id, player_id, ?vendor_template_id, item_count = item_ids.len()),
-)]
+/// `rechargeItems` (cell method 82): recharge the items at the vendor the
+/// player has open, for payment.
+///
+/// `vendor_template_id` is always the server's (the cell takes it from the
+/// player's vendor session). There is no free path: until 2026-10-10 a
+/// request without a template set `charges` to full with no price, no debit
+/// and no vendor check (security audit CAT-E-01).
 pub async fn handle_recharge_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    if let Some(vendor_template_id) = vendor_template_id {
-        super::paid_recharge::handle_paid_recharge_inventory_items(
-            entity_id,
-            player_id,
-            item_ids,
-            vendor_template_id,
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-        return;
-    }
-
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::debug!(
-                player_id,
-                player_name = known_names::player_name(player_id),
-                "RechargeInventoryItems: no DB pool"
-            );
-            return;
-        }
-    };
-
-    let item_ids = normalize_item_ids(item_ids);
-    if item_ids.is_empty() {
-        tracing::debug!(
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            "RechargeInventoryItems: empty item list"
-        );
-        return;
-    }
-
-    // Wrap in a transaction so the matching rows can be locked before the
-    // UPDATE — matches the explicit FOR UPDATE used by the paid recharge path
-    // and prevents racing with concurrent sell/move operations on the same
-    // items.
-    let mut tx = match pool.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            let player_label = known_names::player_name(player_id);
-            tracing::error!(
-                entity_id,
-                entity_name = player_label,
-                player_id,
-                player_name = player_label,
-                "RechargeInventoryItems: begin tx failed: {e}"
-            );
-            return;
-        }
-    };
-
-    // Lock candidate rows up-front so the UPDATE below sees a stable snapshot.
-    if let Err(e) = sqlx::query(
-        "SELECT 1 FROM sgw_inventory inv \
-         JOIN resources.items ri ON ri.item_id = inv.type_id \
-         WHERE inv.character_id = $1 \
-           AND inv.item_id = ANY($2) \
-           AND inv.container_id = ANY($3) \
-           AND inv.stack_size = 1 \
-           AND ri.charges > 0 \
-           AND inv.charges < ri.charges \
-         FOR UPDATE OF inv",
+    super::paid_recharge::handle_paid_recharge_inventory_items(
+        entity_id,
+        player_id,
+        item_ids,
+        vendor_template_id,
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
     )
-    .bind(player_id)
-    .bind(&item_ids)
-    .bind(VENDOR_FILTER_BAGS.as_slice())
-    .execute(&mut *tx)
-    .await
-    {
-        let _ = tx.rollback().await;
-        let player_label = known_names::player_name(player_id);
-        tracing::error!(
-            entity_id,
-            entity_name = player_label,
-            player_id,
-            player_name = player_label,
-            "RechargeInventoryItems: lock query failed: {e}"
-        );
-        return;
-    }
-
-    let result = sqlx::query(
-        "UPDATE sgw_inventory inv \
-         SET charges = ri.charges \
-         FROM resources.items ri \
-         WHERE inv.character_id = $1 \
-           AND inv.item_id = ANY($2) \
-           AND inv.type_id = ri.item_id \
-           AND inv.container_id = ANY($3) \
-           AND inv.stack_size = 1 \
-           AND ri.charges > 0 \
-           AND inv.charges < ri.charges",
-    )
-    .bind(player_id)
-    .bind(&item_ids)
-    .bind(VENDOR_FILTER_BAGS.as_slice())
-    .execute(&mut *tx)
     .await;
-
-    let recharged = match result {
-        Ok(r) => r.rows_affected(),
-        Err(e) => {
-            let _ = tx.rollback().await;
-            let player_label = known_names::player_name(player_id);
-            tracing::error!(
-                entity_id,
-                entity_name = player_label,
-                player_id,
-                player_name = player_label,
-                item_count = item_ids.len(),
-                "RechargeInventoryItems: update failed: {e}"
-            );
-            return;
-        }
-    };
-
-    if let Err(e) = tx.commit().await {
-        let player_label = known_names::player_name(player_id);
-        tracing::error!(
-            entity_id,
-            entity_name = player_label,
-            player_id,
-            player_name = player_label,
-            "RechargeInventoryItems: commit failed: {e}"
-        );
-        return;
-    }
-
-    if recharged > 0 {
-        let total_items = send_full_inventory_update(
-            entity_id,
-            player_id,
-            pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-        tracing::debug!(
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            item_count = item_ids.len(),
-            recharged,
-            total_items,
-            "Inventory items recharged"
-        );
-    } else {
-        tracing::debug!(
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            item_count = item_ids.len(),
-            "RechargeInventoryItems: no rechargeable items changed"
-        );
-    }
 }
-
 #[cfg(test)]
-mod free_recharge_tests {
-    //! Live-DB integration tests for the free-recharge branch
-    //! (`vendor_template_id = None`) of handle_recharge_inventory_items.
+mod refusal_tests {
+    //! Live-DB guard that `rechargeItems` has no free branch (CAT-E-01).
     //!
     //! Skip cleanly when DATABASE_URL is unset.
     //!
@@ -348,19 +185,39 @@ mod free_recharge_tests {
         (transport, entity_to_addr, connected)
     }
 
-    /// Free-recharge happy path: a depleted item (charges=0) of a
-    /// design with `ri.charges > 0` gets restored to `ri.charges`.
-    /// The synthetic resources.items row is what makes this branch
-    /// reachable at all — the seeded set has nothing rechargeable.
+    async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
+        sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(pool)
+            .await
+            .expect("naquadah_of")
+    }
+
+    /// A recharge the vendor cannot price (a vendor with no recharge list)
+    /// leaves charges and cash alone. Not the CAT-E-01 guard (it passes a
+    /// template, so the old code took the paid path too); see the note on
+    /// `repair::tests::live_db_repair_at_a_vendor_without_a_repair_list_is_refused`.
     #[tokio::test]
-    async fn live_db_free_recharge_restores_charges_to_full() {
+    async fn live_db_recharge_at_a_vendor_without_a_recharge_list_is_refused() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
         cleanup(&pool, account_id, player_id).await;
         insert_synthetic_rechargeable_design(&pool).await;
         insert_account_and_player(&pool, account_id, player_id).await;
+        sqlx::query("UPDATE sgw_player SET naquadah = 1000 WHERE player_id = $1")
+            .bind(player_id)
+            .execute(&pool)
+            .await
+            .expect("fund player");
         let item = insert_inventory_row(&pool, player_id, SYNTH_RECHARGEABLE_TYPE_ID, 0, 0).await;
+        let template: i32 = sqlx::query_scalar(
+            "SELECT template_id FROM resources.entity_templates \
+             WHERE recharge_item_list IS NULL ORDER BY template_id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("a template without a recharge list");
 
         let (transport, e2a, conn) = make_state(0x7000_1301);
         let db_pool = Some(Arc::new(pool.clone()));
@@ -369,7 +226,7 @@ mod free_recharge_tests {
             0x7000_1301,
             player_id,
             vec![item],
-            None, // free-recharge branch
+            template,
             &db_pool,
             &transport,
             &conn,
@@ -379,57 +236,10 @@ mod free_recharge_tests {
 
         assert_eq!(
             charges_of(&pool, item).await,
-            SYNTH_BASE_CHARGES,
-            "free recharge must restore charges to ri.charges",
-        );
-
-        cleanup(&pool, account_id, player_id).await;
-    }
-
-    /// Already-full items (`inv.charges = ri.charges`) are excluded
-    /// by the `inv.charges < ri.charges` predicate. The function must
-    /// NOT emit `ON_UPDATE_ITEM` for them — the `if recharged > 0`
-    /// short-circuit at the bottom of the handler depends on the
-    /// UPDATE returning `rows_affected = 0`.
-    #[tokio::test]
-    async fn live_db_free_recharge_skips_already_full_items() {
-        let pool = require_db_or_skip!();
-        let account_id = TEST_BASE + 100;
-        let player_id = TEST_BASE + 101;
-        cleanup(&pool, account_id, player_id).await;
-        insert_synthetic_rechargeable_design(&pool).await;
-        insert_account_and_player(&pool, account_id, player_id).await;
-        // Insert at the synthetic design's full charge value — must
-        // be excluded by `inv.charges < ri.charges`.
-        let item = insert_inventory_row(
-            &pool,
-            player_id,
-            SYNTH_RECHARGEABLE_TYPE_ID,
             0,
-            SYNTH_BASE_CHARGES,
-        )
-        .await;
-
-        let (transport, e2a, conn) = make_state(0x7000_1311);
-        let db_pool = Some(Arc::new(pool.clone()));
-
-        handle_recharge_inventory_items(
-            0x7000_1311,
-            player_id,
-            vec![item],
-            None,
-            &db_pool,
-            &transport,
-            &conn,
-            &e2a,
-        )
-        .await;
-
-        assert_eq!(
-            charges_of(&pool, item).await,
-            SYNTH_BASE_CHARGES,
-            "already-full item must not be touched (UPDATE excluded by < ri.charges)",
+            "a recharge no vendor priced must not restore charges"
         );
+        assert_eq!(naquadah_of(&pool, player_id).await, 1000, "no debit");
 
         cleanup(&pool, account_id, player_id).await;
     }
