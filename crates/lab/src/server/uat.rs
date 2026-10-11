@@ -229,7 +229,7 @@ fn install_dir() -> Option<PathBuf> {
 
 /// The lab-account file of instance `inst` (the routed supervisor's):
 /// (username, character).
-fn lab_account(inst: Option<&str>) -> (Option<String>, Option<String>) {
+pub(super) fn lab_account(inst: Option<&str>) -> (Option<String>, Option<String>) {
     let Some(dir) = install_dir() else {
         return (None, None);
     };

@@ -10,6 +10,8 @@ use crate::supervisor::now_ms;
 pub const UAT_RUN_OWNER: &str = "lab_uat_run";
 /// The same for `lab_uat_calibrate` (lab-spec-vocab SV-10).
 pub const CALIBRATE_OWNER: &str = "lab_uat_calibrate";
+/// The same for `lab_record_start` (lab-record D-LR2): held until the stop.
+pub const RECORD_OWNER: &str = "lab_record";
 
 /// The lease a `lab_uat_run` drives under. The runner calls tools in-process
 /// (around the `call_tool` gate), so it touches this lease before every
@@ -142,5 +144,34 @@ impl Drop for RunLease {
         if self.own {
             let _ = self.book.release(&self.id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// lab-record LR-07: a recording's lease names the recorder, so a
+    /// refused session sees who holds the lab and why.
+    #[test]
+    fn an_own_lease_as_reports_its_owner() {
+        let book = Arc::new(LeaseBook::default());
+        let l = RunLease::acquire_own_as(
+            book.clone(),
+            RECORD_OWNER,
+            "recording a human: first-session".into(),
+        )
+        .unwrap();
+        let st = book.status();
+        assert_eq!(st["lease"]["owner"], "lab_record", "{st}");
+        assert_eq!(
+            st["lease"]["purpose"], "recording a human: first-session",
+            "{st}"
+        );
+        drop(l);
+        assert!(!book.is_held(), "an own lease is released on drop");
+        // acquire_own keeps its owner.
+        let _l = RunLease::acquire_own(book.clone(), "run".into()).unwrap();
+        assert_eq!(book.status()["lease"]["owner"], UAT_RUN_OWNER);
     }
 }

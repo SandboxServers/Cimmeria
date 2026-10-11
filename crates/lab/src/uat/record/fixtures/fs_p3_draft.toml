@@ -1,0 +1,66 @@
+# Recorded draft: UNCONFIRMED until `lab golden record` agrees on it 5 times
+# (docs/analysis/lab-record/README.md, D-LR12).
+# recording 20261012-143000-p2 on p2, 2026-10-12, 42 ticks, transform 1
+schema = 1
+
+[section]
+id = "rec-first-session-20261012-1430"
+system = "First session smoke (boot to first quest, Praxis and SGU)"
+guide = "docs/guides/unified-uat.md#first-session-smoke"
+ledger = "docs/guides/automated-uat.md#spec-coverage"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "REC-01"
+title = "Interact with ArmYourself_FrostBody"
+expected = "onDialogDisplay 3995 to the player; sgw_mission: 622 on step 80623; sgw_mission: 1360 status 1."
+state = "any"
+notes = "recorded 2026-10-12, ticks 32-41"
+pose = [
+  { id = "armyourself-frostbody", tag = "ArmYourself_FrostBody", radius_m = 4.16, bearing_deg = 322.5, dy_m = 0.13, pitch_deg = -28.8, yaw_offset_deg = 25.3, zoom = 250.0, calibrated = "recorded 2026-10-12" },
+]
+setup = [
+  { tool = "@stand", args = { pose = "armyourself-frostbody" }, label = "stand" },
+]
+step = [
+  { tool = "@camera", args = { pose = "armyourself-frostbody" }, label = "aim" },
+  { tool = "@world_click", args = { pose = "armyourself-frostbody", button = "right", expect = "window" }, label = "interact" },
+  { tool = "@wait_for", args = { lua_condition = "DialogWin ~= nil and DialogWin:isVisible()", timeout_ms = 2000 } },
+  { tool = "@finish_dialog", args = {}, label = "close" },
+]
+[[row.expect]]
+id = "dialog-3995"
+text = "onDialogDisplay 3995 to the player"
+source = "packet"
+message = "onDialogDisplay"
+direction = "to_client"
+match_fields = { dialog_id = 3995 }
+min_rows = 1
+[[row.expect]]
+id = "mission-622-step"
+text = "sgw_mission: 622 on step 80623"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name = '${character}' AND m.mission_id = 622" }
+pointer = "/rows/0/current_step_id"
+op = "eq"
+value = 80623
+timeout_ms = 3500
+[[row.expect]]
+id = "mission-1360-status"
+text = "sgw_mission: 1360 status 1"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name = '${character}' AND m.mission_id = 1360" }
+pointer = "/rows/0/status"
+op = "eq"
+value = 1
+timeout_ms = 3500
+# fixture (pass -Profile to enable):
+# [row.fixture]
+# character = "<profile>"
+# missions = [
+#   { id = 622, step = 2113 },
+#   { id = 1360, state = "not_active" },
+# ]

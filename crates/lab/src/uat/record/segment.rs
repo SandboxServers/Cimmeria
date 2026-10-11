@@ -160,6 +160,19 @@ fn events(log: &RecordLog) -> Vec<(u32, Event)> {
     out
 }
 
+/// The anchors among one tick's tap rows, as `lab_record_status` counts
+/// them while recording: every inbound call that opens a row whatever
+/// follows. A region entry is not counted, because it anchors only when a
+/// later snapshot changes, which the live count cannot know yet.
+pub fn count_anchors(rows: &[Value]) -> u32 {
+    let n = rows
+        .iter()
+        .filter_map(decode_call)
+        .filter(|c| anchor_kind(c).is_some_and(|k| k != AnchorKind::Region))
+        .count();
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
 /// The anchor kind a call would open, if it can open one at all.
 fn anchor_kind(call: &Call) -> Option<AnchorKind> {
     Some(match call {

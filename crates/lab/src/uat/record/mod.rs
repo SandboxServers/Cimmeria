@@ -6,10 +6,6 @@
 //! it five times. Campaign ledger and decisions:
 //! `docs/analysis/lab-record/README.md`.
 
-// cimmeria-lab is a binary crate, so these items are dead until LR-07 wires
-// the record tools in.
-#![cfg_attr(not(test), allow(dead_code))]
-
 pub mod bug_spec;
 pub mod clauses;
 pub mod decode;
@@ -20,7 +16,3 @@ pub mod pose;
 pub mod rolling;
 pub mod sampler;
 pub mod segment;
-
-// Unused until LR-07 (and in the test build, where nothing reads the re-export).
-#[allow(unused_imports)]
-pub use log::*;

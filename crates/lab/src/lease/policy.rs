@@ -41,7 +41,9 @@ pub enum Gate {
 }
 
 /// Tools that take a lease of their own when the caller passes none.
-pub const OWN_LEASE: &[&str] = &["lab_uat_run", "lab_uat_calibrate"];
+/// `lab_record_start` always takes its own (owner `lab_record`) and holds
+/// it until the stop, so no agent drives the client a person is playing.
+pub const OWN_LEASE: &[&str] = &["lab_uat_run", "lab_uat_calibrate", "lab_record_start"];
 
 /// Tools that do not drive the client. Most only look; `lab_golden_record`
 /// writes a golden file but touches no client. Everything else needs the
@@ -57,6 +59,12 @@ pub const OPEN: &[&str] = &[
     "lab_crash_report",
     "lab_timeline",
     "lab_uat_report",
+    // Recording: status only reads the slot, and the stop is gated by the
+    // recording id instead (it ends the recorder's own lease).
+    "lab_record_status",
+    "lab_record_stop",
+    // Re-transforms a recording folder on disk: no client.
+    "lab_record_transform",
     // Golden runs: read bundles, write only the golden file (no client).
     "lab_golden_record",
     "lab_golden_diff",
@@ -191,5 +199,23 @@ mod tests {
         assert_eq!(gate("lab_uat_run"), Gate::OwnLease);
         // lab-spec-vocab (SV-10): the calibration sweep leases like a run.
         assert_eq!(gate("lab_uat_calibrate"), Gate::OwnLease);
+    }
+
+    /// lab-record (LR-07, D-LR2): start leases like a run; a person who
+    /// cannot pass the recorder's lease id must still read and stop it.
+    #[test]
+    fn record_start_takes_its_own_lease_and_stop_is_open() {
+        assert_eq!(gate("lab_record_start"), Gate::OwnLease);
+        assert_eq!(gate("lab_record_status"), Gate::Open);
+        assert_eq!(gate("lab_record_stop"), Gate::Open);
+        assert!(!LEASED.contains(&"lab_record_stop"));
+    }
+
+    /// lab-record (LR-08): the transform reads a folder on disk and touches
+    /// no client, so `lab record transform` needs no lease.
+    #[test]
+    fn record_transform_is_open() {
+        assert_eq!(gate("lab_record_transform"), Gate::Open);
+        assert!(!LEASED.contains(&"lab_record_transform"));
     }
 }
