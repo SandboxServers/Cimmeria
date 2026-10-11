@@ -170,6 +170,13 @@ async fn lab_query_filters_by_tag() {
         e.class_id = 0x04;
         e.tag = Some("B_Body".to_string());
     }
+    // An untagged entity must never match a tag filter.
+    mgr.create_entity(302, "Agnos", [8.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(302) {
+        e.class_id = 0x04;
+        e.tag = None;
+    }
 
     let reply = query(
         &mut mgr,

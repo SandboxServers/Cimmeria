@@ -232,7 +232,7 @@ impl LabTools {
         )
     }
 
-    /// Query live cell entities, filtered by space / template / class / radius.
+    /// Query live cell entities, filtered by space / template / class / tag / radius.
     #[tool(
         description = "Query live cell entities filtered by space_id, template_id, class_id (2=player, 4=NPC), tag (spawn tag, exact), and/or a radius around an entity or point. Capped at 256 snapshots; reports total_matched and capped."
     )]
