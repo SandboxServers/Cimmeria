@@ -365,6 +365,11 @@ async fn choose_legacy_source(
 /// restarted one must not register as a second instance, or it would exit at once
 /// and the update would never come back up. It waits for the state lock instead
 /// (`NativeHost::store` retries `InUse` for this argument).
+///
+/// Known limit: the restarted launcher stays unguarded for its whole session, so the
+/// first manual launch after an update reaches the state lock and reports it in use
+/// instead of focusing this window. LX-13 removes it: the restart will carry the old
+/// process id, and this process waits for it to exit and then registers the guard.
 fn is_updater_restart(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
     args.into_iter()
         .any(|arg| arg == "--launcher-update-restart")

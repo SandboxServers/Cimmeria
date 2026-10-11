@@ -239,7 +239,7 @@ Each panel mounts as `mount<Name>(document, invoke, context)`. `context` is the 
 
 - **Agent:** rust-gameserver-dev, reviewed by `testing-validation-engineer`.
 - **Files:** `engine/src/storage/updater/apply/` (new `zip_swap.rs`), `engine/src/storage/updater/` feed and key configuration.
-- **Do (D-LX3):** on Windows the package is the release zip, not an installer. After the existing Minisign and version checks: extract to `<exe dir>\.update-<version>\`; rename every file the zip replaces to `<name>.old` (a running exe can be renamed on Windows); move the new files in; relaunch; the new process acknowledges startup as the updater already requires; on the next start delete `*.old` and the staging folder. If any move fails, rename the `.old` files back and report Failed. Compile the feed URL and public key from the release names in the contract; with neither set, the status stays Disabled as today.
+- **Do (D-LX3):** on Windows the package is the release zip, not an installer. After the existing Minisign and version checks: extract to `<exe dir>\.update-<version>\`; rename every file the zip replaces to `<name>.old` (a running exe can be renamed on Windows); move the new files in; relaunch; the new process acknowledges startup as the updater already requires; on the next start delete `*.old` and the staging folder. If any move fails, rename the `.old` files back and report Failed. The relaunch passes `--launcher-update-restart <old pid>`; the new process waits (bounded, about 30 s) for that pid to exit and then registers the single-instance guard as a normal start would. Until then LX-09 skips the guard for a restarted launcher, so the first manual launch after an update reports the state lock in use (LX-09 review). The NSIS `.exe` hand-off, which never passed the restart argument, goes away with the installer path. Compile the feed URL and public key from the release names in the contract; with neither set, the status stays Disabled as today.
 - **Tests:** temp-dir fixtures: a full swap leaves only new files; a failure injected on the third move restores the originals byte for byte (fails if rollback is removed); a startup with `.old` files cleans them.
 - **Checks:** D1-D3, F1, `npm run uat:updater-apply`.
 - **Docs:** `crates/launcher/desktop/docs/updater.md` Windows section.
@@ -370,7 +370,7 @@ Owner-run, on a Windows machine with no launcher state, from the `launcher-curre
 7. Reset cache; reset all with confirm (LX-06).
 8. Upload logs twice; the second says nothing new (LX-05).
 9. Telemetry opted in: a session shows in SigNoz with tailed log lines and exit code (LX-08).
-10. Second launch focuses the first (LX-09).
+10. Second launch focuses the first (LX-09). Repeat after step 11's self-update: a second launch focuses the restarted launcher (LX-13).
 11. Self-update from release N-1 to N, disconnecting the network once during the download (it resumes or restarts and still verifies). After the relaunch the patch-notes view refreshes. Then a forced failed update rolls back (LX-13).
 12. Repair, game Update and Uninstall on Windows, each on a fresh install and on the step 4 adopted folder. Uninstalling the adopted folder leaves a user file the release does not list (desktop ledger gates moved by LX-25).
 13. On a Mac that has never run the app: download the macOS zip from `launcher-current`, use Open Anyway once, install and reach character select (LX-28).
