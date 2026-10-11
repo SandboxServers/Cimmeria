@@ -1,6 +1,6 @@
 ---
 name: launcher-self-update-handoff-traps
-description: sgw-launcher self-update handoff — egui Close waits for a frame, lock lives in instance_lock, relaunch fallback kill, sleeper-child test trick
+description: RETIRED egui launcher (sgw-launcher, deleted 2026-10-11) self-update handoff — egui Close waits for a frame, lock lives in instance_lock, relaunch fallback kill; only the Windows lazy-unlock fact still applies
 metadata:
   type: project
 ---
@@ -16,3 +16,5 @@ Self-update handoff facts (2026-09-29, fix after the 676f314 -> 4fcae33 "another
 
 **Why:** the handoff bug only shows on idle windows; unit tests with injected hooks (`HandoffHooks`) + a real fs4 lock catch it.
 **How to apply:** any future "exit after X" path in the launcher must not go through a viewport command alone.
+
+**Retired 2026-10-11 (LX-18).** The egui launcher and its `self_update/`, `instance_lock.rs` and eframe viewport code are deleted, so the egui-specific bullets no longer apply. The desktop launcher's update handoff is the zip swap in `crates/launcher/desktop/engine/src/storage/updater/` (contract: `crates/launcher/desktop/docs/updater.md`, `--launcher-update-restart <old pid>`). Still true anywhere: unlock a Windows file lock explicitly before closing the handle, because Windows frees a closed handle's locks lazily.

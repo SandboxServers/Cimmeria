@@ -98,10 +98,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Launcher
 
-- [launcher-state-key-and-egui-wake.md](launcher-state-key-and-egui-wake.md) — sgw_game patches are recorded as `<id>@sgw_game`; worker events must wake egui via EventSender.
+- [launcher-state-key-and-egui-wake.md](launcher-state-key-and-egui-wake.md) — sgw_game patches are recorded as `<id>@sgw_game` (core `state.rs`); the egui wake trap retired 2026-10-11.
 - [launcher-extracted-mtimes-and-ue3-ini-version.md](launcher-extracted-mtimes-and-ue3-ini-version.md) — extracted files must keep archive DOS times or UE3 flags Default*.ini outdated; zip 1980 placeholder; MakeCAB fixture.
 - [desktop-settings-panel-ipc-traps](desktop-settings-panel-ipc-traps.md) — a panel that invokes on mount breaks view.test.ts call pins and sync-throwing fakes; inspect on first snapshot.
-- [launcher-self-update-handoff-traps.md](launcher-self-update-handoff-traps.md) — viewport Close waits for a frame; handoff releases instance_lock + process::exit; relaunch kills stuck old exe only.
+- [launcher-self-update-handoff-traps.md](launcher-self-update-handoff-traps.md) — retired egui launcher's handoff (2026-10-11); only "unlock before close on Windows" still applies.
 - [launcher-preferences-schema-change-fanout](launcher-preferences-schema-change-fanout.md) — desktop Preferences change: strict TS decode breaks ~10 fixtures; migrate in serde try_from; adoption Plan digest goes through `digest_form`.
 - [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
 - [desktop-repair-update-terminal-hooks](desktop-repair-update-terminal-hooks.md) — Repair/Update `finish_failure` runs after every commit (dropped handoff); run-end hooks must check the op was open.
@@ -183,7 +183,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Dependency bumps
 
-- [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — the egui-only dependabot PR is a no-op; the eframe PR carries the breakage.
 - [training-points-cache-absolute-write.md](training-points-cache-absolute-write.md) — `handle_grant_xp` writes training_points absolutely from the session cache.
 - [loot-seed-pins-and-grant-stack-cap.md](loot-seed-pins-and-grant-stack-cap.md) — new loot rows break exact pins on tables 3/7/8/9 (filter by NOT EXISTS); GrantItem does not cap at max stack.
 - [admin-api-ingest-test-seams.md](admin-api-ingest-test-seams.md) — admin-api has no dev-deps: test ingest through injected `*_inner` fns and a local capture layer; statics and env are shared under `cargo test`.

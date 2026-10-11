@@ -17,3 +17,5 @@ Facts found while doing LX-15 (2026-10-11):
 
 **Why:** a release zip or feed the launcher refuses fails silently for players (they just never update).
 **How to apply:** touching `launcher-release.yml`, `build-desktop.sh` or the updater policy, rerun the local `release_feed` sign+verify proof.
+
+**2026-10-11:** LX-18 deleted the egui launcher and removed the `egui-macos-wine` job, so no release publishes any `sgw-launcher-*.exe`. The egui self-update bullet above now only explains why installed egui copies never update (D-LX2, announce only).

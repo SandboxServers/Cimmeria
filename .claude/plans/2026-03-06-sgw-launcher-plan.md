@@ -1,5 +1,13 @@
 # SGW Game Launcher Implementation Plan
 
+> **Historical, retired 2026-10-11.** Both launchers this plan led to are
+> gone: the Tauri prototype in `tools/SGWLauncher/` (deleted in LX-19) and the
+> egui launcher that replaced it, `sgw-launcher` (deleted in LX-18). The
+> launcher is now the desktop launcher in `crates/launcher/desktop/`
+> (see its README) with shared code in `crates/launcher-core/`; the
+> decisions are in `docs/analysis/launcher-consolidation/README.md`. Kept
+> for history only.
+>
 > **⚠️ SUPERSEDED 2026-05-20.** This plan was the task-by-task companion
 > to the Tauri-based design that has been replaced. The live launcher
 > lives at [`crates/launcher/`](../../crates/launcher/) and follows

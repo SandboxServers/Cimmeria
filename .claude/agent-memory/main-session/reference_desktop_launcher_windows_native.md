@@ -40,3 +40,5 @@ from `launcher/desktop-client-telemetry`, on a host with no prior toolchain.
 Proven that day: fresh Install from the published release, Play, login, character select
 and cooked-cache streaming. Not exercised: Repair, uninstall, game Update, launcher
 self-update, adoption of an existing copy, and a packaged (bundled, signed) build.
+
+**2026-10-11:** "the Windows launcher" above is the egui launcher, deleted in LX-18; the verbatim-path strip it relied on is still in `crates/client-launch/src/launch.rs`, which the desktop launch worker uses.

@@ -27,3 +27,5 @@ launcher previously left install time on every file.
 - Patch-set (bsdiff) outputs keep write time by design.
 - Launcher is a bin crate: `cargo test -p sgw-launcher --bin sgw-launcher`
   (`--lib` fails with "no library targets").
+
+**2026-10-11:** the egui crate was retired in LX-18. `dos_time.rs` lives at `crates/launcher-core/src/unpack/dos_time.rs` (moved in LX-01). `cimmeria-launcher-core` has a library target, so test it with `cargo nextest run -p cimmeria-launcher-core` through the lane; the `--bin sgw-launcher` command above is obsolete.

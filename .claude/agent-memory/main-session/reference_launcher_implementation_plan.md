@@ -498,3 +498,5 @@ crates/launcher/desktop/docs/repair.md.
 Delegation mechanics verified 2026-10-04: mk-worktree.sh assumes Windows/main;
 ship.sh creates against main. Feature-base worktrees and worker ownership:
 docs/analysis/playtests/2026-10-03-macos-wine/launcher-delegation-plan.md.
+
+**2026-10-11:** the "egui adapter" and "Windows launcher" mentioned above are the egui launcher, deleted in LX-18. The shared install, unpack and client-setup code is now the crate `cimmeria-launcher-core` (`crates/launcher-core/`, LX-01), which the desktop engine depends on.

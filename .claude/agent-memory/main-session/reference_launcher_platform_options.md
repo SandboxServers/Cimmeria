@@ -24,3 +24,5 @@ supersedes the earlier no-build status for that experiment only, not production
 platform policy. All compiling Cargo calls remain lane-wrapped. Consult the
 runbook evidence ledger rather than inferring offline/visual success from a
 build. Windows-native proof requires a Windows host and remains a separate check.
+
+**Outcome 2026-10-11:** Tauri won. The launcher consolidation (`docs/analysis/launcher-consolidation/README.md`) made the Tauri desktop launcher in `crates/launcher/desktop/` the only launcher: the egui launcher was deleted in LX-18 and both prototypes, including the packaging proof linked above, in LX-19.
