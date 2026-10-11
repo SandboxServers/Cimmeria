@@ -13,10 +13,13 @@
 //! - [`evidence`] — the bundle layout; [`ledger`] — the paste-ready text.
 //! - [`golden`] — run fingerprints, golden agreement and diffs.
 //! - [`attest`] — SigNoz rows, human answers and the build, after the run.
+//! - [`calibrate`] — calibration candidates, hover scoring and pose-line spec
+//!   edits (lab-spec-vocab SV-09); the sweep that drives them is SV-10.
 //!
 //! How to run it: `docs/guides/automated-uat.md`.
 
 pub mod attest;
+pub mod calibrate;
 pub mod clause;
 pub mod evidence;
 pub mod golden;
