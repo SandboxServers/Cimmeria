@@ -3,7 +3,7 @@
 > Type: explanation and design record. Audience: the launcher-consolidation coordinator, the LX-28 implementer and maintainers.
 > Updated: 2026-10-11. Companions: [campaign README](../README.md) (D-LX10, D-LX14), [work packets](../work-packets.md) (LX-13, LX-15, LX-28), [Wine validation](../../../../crates/launcher/desktop/docs/wine-validation.md), [native game launch contract](../../../../crates/launcher/desktop/docs/launch.md), [Mac runtime provisioning evidence](../../playtests/2026-10-03-macos-wine/runtime-provisioning.md), [signed launcher updates](../../../../crates/launcher/desktop/docs/updater.md).
 
-This is the "check first" step of LX-28. It lists every third-party binary the macOS desktop launcher bundles or fetches, records each one's licence and whether a public zip may carry it, checks what ad-hoc signing gets a player on current macOS, and designs the `desktop-macos` release job. No workflow is changed here; the job lands after LX-15.
+This is the "check first" step of LX-28. It lists every third-party binary the macOS desktop launcher bundles or fetches, records each one's licence and whether a public zip may carry it, checks what ad-hoc signing gets a player on current macOS, and designs the `desktop-macos` release job. The job landed in the LX-28 implementation PR; its deviations from this design are in [Implementation and deviations](#implementation-and-deviations-from-this-design).
 
 Licence findings are an engineering reading of upstream licence files, not legal advice. Anything not checked against a source is marked **unverified**.
 
@@ -167,6 +167,19 @@ A `darwin-aarch64` feed entry can work. It needs:
 6. A native Mac UAT of a real packaged update N-1 to N, like acceptance step 11. Nobody has run the Mac apply on a packaged app.
 
 Recommendation: LX-28 publishes the Mac zip with updates **manual**, and `crates/launcher/desktop/docs/release.md` and the guide say so. Items 1 to 6 go in a follow-up packet ("LX-28b: macOS self-update"), so the first Mac release does not wait on a Mac update UAT.
+
+## Implementation and deviations from this design
+
+The implementation PR follows the design above, with the stages in `tools/launcher-release/build-desktop-macos.sh` and the two Windows-side stages (`mac-helpers`, `mac-pieces`) in `build-desktop.sh`. It deviates in six places:
+
+1. **Publishing moved to its own job.** The design's Upload step ran `gh release upload` in `desktop-macos`. That job runs npm and a cargo-installed Tauri CLI, and LX-15 keeps every job that runs build code on a read-only token. So `desktop-macos` uploads an artifact only, and a `publish-macos` job (ubuntu, `contents: write`, no build, no third-party action) checks the zip against `desktop-macos`' digest output and attaches it.
+2. **One digest for the pieces.** `desktop-windows` outputs the SHA-256 of `mac-pieces.sha256`, not the list itself. The Mac job checks the list against that one value, then each piece against the list through `stage-helper.py`. Same trust chain, one output.
+3. **The Mac steps in `desktop-windows` are `continue-on-error`.** A failure there fails `desktop-macos` (empty output), never the Windows release. The PR dry run has no `continue-on-error`, so a broken Mac stage still fails the PR.
+4. **`launcher-current` gets the Mac zip only when `publish` refreshed it** (a signed, first-of-the-day release), the same rule as the Windows zip, so both stable links name the same release. When the Mac build fails, `launcher-current` keeps the previous Mac zip.
+5. **`publish-macos` waits for `egui-macos-wine`**, whatever its result: both rewrite the dated release's notes, and parallel read-modify-write edits could drop a paragraph.
+6. **The Info.plist version check accepts the base version for a same-day build.** The executable must carry the full `YYYY.M.D-N`; Info.plist's `CFBundleShortVersionString` may be that or `YYYY.M.D`, because whether the bundler keeps a SemVer prerelease there was not checked. The dry run stamps a plain `YYYY.M.D`, so it proves the exact match only for that form.
+
+What only a real release proves: the Tauri CLI 2.12.1 build on `macos-15` with the production manifest key; that the D9VK raw URL still serves the pinned bytes (the dry run checks this on every PR); the `publish-macos` uploads and notes edit; and everything in acceptance step 13.
 
 ## Docs the LX-28 implementation PR touches
 

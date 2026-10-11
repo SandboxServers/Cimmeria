@@ -1,7 +1,7 @@
 # Launcher Consolidation
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and maintainers.
-> Updated: 2026-10-10. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
+> Updated: 2026-10-11. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -56,7 +56,7 @@ Behaviour that differs and stays different: a desktop game update rebuilds the w
 | D-LX6 | **APPROVED** (user, 2026-10-10) | Port the remaining parity items too: client-patches toggle (LX-04), cache reset (LX-06), "Changes to your client" (LX-07), single instance (LX-09). | They are small, and players rely on cache reset to recover from bad cooked data. |
 | D-LX7 | **APPROVED** (user, 2026-10-10) | **Stable download link.** Every launcher release also refreshes a rolling `launcher-current` release (the same pattern as `content-current`) holding `StargateWorlds-Launcher-windows-x64.zip`, its `.sha256`, `.zip.sig` (Minisign) and the updater feed `latest.json`. Docs link to `https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip`. Dated `launcher-YYYYMMDD-<sha7>` releases stay as history. | `releases/latest/download/...` follows GitHub's single "latest" release, which other release types can take. A rolling tag never moves away. |
 | D-LX8 | **APPROVED** (user, 2026-10-10) | **Version.** The compiled launcher version is SemVer `YYYY.M.D` from the release date (for example `2026.10.10`), with a same-day rebuild as `YYYY.M.D-N` refused by the stable channel. The tag keeps its current form. | The updater compares stable SemVer (`docs/updater.md`). |
-| D-LX9 | **BlockedDecision** (owner action) | A Minisign updater key pair is generated once. The private key and its password go in Key Vault `cimmeria-kv` and the GitHub secrets `LAUNCHER_UPDATER_MINISIGN_KEY` / `_PASSWORD`; the public key is compiled in from `LAUNCHER_UPDATER_PUBKEY`. | Needs someone with vault and secrets access. LX-15 is dry-run-only until this is done. |
+| D-LX9 | **DONE** (2026-10-11) | A Minisign updater key pair is generated once. The private key and its password go in Key Vault `cimmeria-kv` and the GitHub secrets `LAUNCHER_UPDATER_MINISIGN_KEY` / `_PASSWORD`; the public key is compiled in from `LAUNCHER_UPDATER_PUBKEY`. | The coordinator generated the key on 2026-10-11. Key Vault `cimmeria-kv` holds `launcher-updater-minisign-key`, `launcher-updater-minisign-password` and `launcher-updater-pubkey`; the two Minisign values are secrets of the `launcher-release` environment and `LAUNCHER_UPDATER_PUBKEY` is a repository variable. Releases now sign and refresh `launcher-current`. |
 | D-LX10 | **APPROVED** (deferred) | No code signing in this campaign. The player guide documents the SmartScreen and Defender prompts. | No certificate exists. |
 | D-LX11 | **APPROVED** (user, 2026-10-10) | Log upload reuses the `LAUNCHER_LOG_SAS_URL` secret and the blob naming `logs/<host>-<utc>-<digest>.zip`. | Same container and retention as today. |
 | D-LX12 | **APPROVED** (user, 2026-10-10) | **Windows adoption of an egui install.** Adopt **in place**. The launcher verifies the folder against the signed release (stock files plus applied patches, read from `launcher-installed.json`), writes its owner marker, and from then on treats the folder as owned for Play, Repair and Update. Uninstall of an adopted folder removes only what the release lists. The macOS path stays a verified copy. | With D-LX2, every current player points the new launcher at an existing multi-gigabyte install. A copy doubles disk use; a reinstall re-downloads the client. |
@@ -70,34 +70,34 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | Packet | Wave | Title | Agent | Depends on | Status |
 |---|---|---|---|---|---|
 | LX-01 | 0 | Shared `cimmeria-launcher-core` crate | rust-gameserver-dev | | Done ([#1361](https://github.com/SandboxServers/Cimmeria/pull/1361)) |
-| LX-02 | 0 | Scaffold every new command, preference and view (the contract) | rust-gameserver-dev | LX-01 | Review |
-| LX-03 | 1 | Server list editor | packet-coder | LX-02 | BlockedDependency |
-| LX-04 | 1 | Client-patches toggle | packet-coder | LX-02 | BlockedDependency |
-| LX-05 | 1 | Debug log upload | packet-coder | LX-02 | BlockedDependency |
-| LX-06 | 1 | Reset client cache and client state | packet-coder | LX-02 | BlockedDependency |
-| LX-07 | 1 | "Changes to your client" panel | packet-coder | LX-02 | BlockedDependency |
-| LX-08a | 1 | Telemetry transport: token refresh, queue, chunk upload | rust-gameserver-dev | LX-02 | BlockedDependency |
-| LX-08b | 2 | Telemetry session: log tailing, exit code, end-of-session bundle | rust-gameserver-dev | LX-08a | BlockedDependency |
-| LX-08c | 2 | Telemetry events: install result, patch verdict, BM counts | packet-coder | LX-08a | BlockedDependency |
-| LX-09 | 1 | Single instance | packet-coder | LX-02 | BlockedDependency |
-| LX-10 | 1 | Windows in-place adoption | rust-gameserver-dev | LX-02 | BlockedDependency |
+| LX-02 | 0 | Scaffold every new command, preference and view (the contract) | rust-gameserver-dev | LX-01 | Integrated ([#1386](https://github.com/SandboxServers/Cimmeria/pull/1386)) |
+| LX-03 | 1 | Server list editor | packet-coder | LX-02 | Integrated ([#1409](https://github.com/SandboxServers/Cimmeria/pull/1409)) |
+| LX-04 | 1 | Client-patches toggle | packet-coder | LX-02 | Integrated ([#1442](https://github.com/SandboxServers/Cimmeria/pull/1442)) |
+| LX-05 | 1 | Debug log upload | packet-coder | LX-02 | Integrated ([#1416](https://github.com/SandboxServers/Cimmeria/pull/1416)) |
+| LX-06 | 1 | Reset client cache and client state | packet-coder | LX-02 | Integrated ([#1418](https://github.com/SandboxServers/Cimmeria/pull/1418)) |
+| LX-07 | 1 | "Changes to your client" panel | packet-coder | LX-02 | Integrated ([#1414](https://github.com/SandboxServers/Cimmeria/pull/1414)) |
+| LX-08a | 1 | Telemetry transport: token refresh, queue, chunk upload | rust-gameserver-dev | LX-02 | Integrated ([#1425](https://github.com/SandboxServers/Cimmeria/pull/1425)) |
+| LX-08b | 2 | Telemetry session: log tailing, exit code, end-of-session bundle | rust-gameserver-dev | LX-08a | Review ([#1535](https://github.com/SandboxServers/Cimmeria/pull/1535)) |
+| LX-08c | 2 | Telemetry events: install result, patch verdict, BM counts | packet-coder | LX-08a | Integrated ([#1482](https://github.com/SandboxServers/Cimmeria/pull/1482)) |
+| LX-09 | 1 | Single instance | packet-coder | LX-02 | Integrated ([#1405](https://github.com/SandboxServers/Cimmeria/pull/1405)) |
+| LX-10 | 1 | Windows in-place adoption | rust-gameserver-dev | LX-02 | Integrated ([#1446](https://github.com/SandboxServers/Cimmeria/pull/1446)) |
 | LX-11 | 1 | WebView2 runtime check | packet-coder | | UATPending ([#1356](https://github.com/SandboxServers/Cimmeria/pull/1356); LX-26 step 1) |
-| LX-12 | 1 | Windows PhysX setup | rust-gameserver-dev | LX-02 | BlockedDependency |
-| LX-13 | 1 | Zip self-update apply on Windows | rust-gameserver-dev | LX-02 | BlockedDependency |
-| LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-launcher-core` | packet-coder | LX-01 | Writing |
-| LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | BlockedDependency |
+| LX-12 | 1 | Windows PhysX setup | rust-gameserver-dev | LX-02 | Integrated ([#1431](https://github.com/SandboxServers/Cimmeria/pull/1431)) |
+| LX-13 | 1 | Zip self-update apply on Windows | rust-gameserver-dev | LX-02 | Integrated ([#1438](https://github.com/SandboxServers/Cimmeria/pull/1438)) |
+| LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-launcher-core` | packet-coder | LX-01 | Integrated ([#1379](https://github.com/SandboxServers/Cimmeria/pull/1379)) |
+| LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | Integrated ([#1534](https://github.com/SandboxServers/Cimmeria/pull/1534)) |
 | LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | BlockedDependency |
-| LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | BlockedDependency |
+| LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | Integrated ([#1443](https://github.com/SandboxServers/Cimmeria/pull/1443)) |
 | LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | BlockedDecision |
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | BlockedDependency |
 | LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | BlockedDependency |
-| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | BlockedDependency |
+| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Ready |
 | LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
 | LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |
 | LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Done ([#1357](https://github.com/SandboxServers/Cimmeria/pull/1357)) |
-| LX-28 | 2 | macOS release: ad-hoc signed app from a macOS CI job | rust-gameserver-dev | LX-15; redistribution check | BlockedDependency |
-| LX-29 | 1 | Native Windows test proofs (G-13) | coordinator | | Done (this PR) |
+| LX-28 | 2 | macOS release: ad-hoc signed app from a macOS CI job | rust-gameserver-dev | LX-15; redistribution check | Review (this PR; [worknote](worknotes/lx-28-redistribution.md); LX-26 step 13) |
+| LX-29 | 1 | Native Windows test proofs (G-13) | coordinator | | Done ([#1374](https://github.com/SandboxServers/Cimmeria/pull/1374)) |
 | LX-26 | 5 | Windows UAT of the released zip | owner (+ lab-uat for Play) | Waves 1-4 | BlockedDependency |
 | LX-27 | 5 | Close-out | coordinator | LX-26 | BlockedDependency |
 

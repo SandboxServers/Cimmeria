@@ -14,6 +14,7 @@ on:
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
       - 'tools/launcher-release/build-desktop.sh'
+      - 'tools/launcher-release/build-desktop-macos.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
@@ -33,6 +34,7 @@ on:
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
       - 'tools/launcher-release/build-desktop.sh'
+      - 'tools/launcher-release/build-desktop-macos.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
@@ -124,7 +126,8 @@ jobs:
   # DLLs, staging them as bundled resources, the 64-bit launcher pinned to
   # them, the artifact checks, the zip, and the zip's signature and feed with a
   # throwaway key. No manifest key, no tag and no updater key: it is a
-  # development build, as every PR build is.
+  # development build, as every PR build is. It also builds the five Windows
+  # pieces the macOS app carries, for release-dry-run-macos.
   release-dry-run:
     name: desktop release build dry run (Windows)
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
@@ -132,6 +135,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -161,6 +166,24 @@ jobs:
         run: tools/launcher-release/build-desktop.sh verify
       - name: package
         run: tools/launcher-release/build-desktop.sh package
+      # The five Windows pieces the macOS app carries, for the macOS dry run
+      # below, as the release's desktop-windows job hands them to desktop-macos.
+      - name: build the Windows pieces only the macOS app carries
+        run: tools/launcher-release/build-desktop.sh mac-helpers
+      - name: collect the macOS app's Windows pieces
+        id: macpieces
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh mac-pieces
+          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: upload the macOS app's Windows pieces
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-mac-pieces-dry-run
+          path: artifacts/mac-pieces/
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
       # The release's sign and feed steps with a throwaway Minisign key made in
       # the job: sign the zip with the `version:` trusted comment, write
       # latest.json, then run the launcher engine's own feed, signature and
@@ -178,5 +201,62 @@ jobs:
           path: |
             artifacts/StargateWorlds-Launcher-windows-x64.zip*
             artifacts/latest.json
+          retention-days: 7
+
+  # launcher-release.yml's desktop-macos job, minus publishing: the Windows
+  # dry run's five pieces checked and staged, the pinned D9VK, the release
+  # profile .app, the ad-hoc signature and every check and the zip the release
+  # makes. No tag, no manifest key and no upload to a release. It stamps a
+  # version, so the Info.plist and embedded-version checks run here too.
+  release-dry-run-macos:
+    name: desktop release build dry run (macOS)
+    needs: release-dry-run
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      MAC_PIECES_SHA256: ${{ needs.release-dry-run.outputs.mac_pieces_sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-release-desktop-macos-dry-run
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: install the Tauri CLI
+        run: cargo install tauri-cli --version 2.12.1 --locked
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: desktop-mac-pieces-dry-run
+          path: mac-pieces
+      - name: stage the Windows pieces, checked against the Windows job's digest
+        run: tools/launcher-release/build-desktop-macos.sh pieces mac-pieces "${MAC_PIECES_SHA256}"
+      - name: fetch the pinned D9VK d3d9.dll
+        run: tools/launcher-release/build-desktop-macos.sh d3d9
+      # Once, so the build and the check agree across midnight UTC.
+      - name: stamp a dry-run version
+        run: echo "CIMMERIA_LAUNCHER_VERSION=$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)" >> "$GITHUB_ENV"
+      - name: build the app, pinned to them
+        run: tools/launcher-release/build-desktop-macos.sh app
+      - name: sign the app ad hoc
+        run: tools/launcher-release/build-desktop-macos.sh sign
+      - name: verify the app
+        run: tools/launcher-release/build-desktop-macos.sh verify
+      - name: package
+        run: tools/launcher-release/build-desktop-macos.sh package
+      - name: Retain the package for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-launcher-macos-dry-run
+          path: artifacts/StargateWorlds-Launcher-macos-arm64.zip*
           retention-days: 7
 

@@ -14,10 +14,12 @@ name: launcher-release
 # moment; the triggering PR is just the cut-point marker, mirroring the policy
 # of `release-container.yml`.
 #
-# Four jobs, so the updater signing key never shares a job with the build's
-# third-party code (crates/launcher/desktop/docs/release.md, "Jobs"):
+# Six jobs, so the updater signing key never shares a job with the build's
+# third-party code, and no job that runs that code can write to the repository
+# (crates/launcher/desktop/docs/release.md, "Jobs"):
 #   - `desktop-windows` stamps the tag and version, builds, checks and zips the
-#     launcher. It never sees the Minisign secrets.
+#     launcher. It also builds the five Windows pieces the macOS app carries.
+#     It never sees the Minisign secrets.
 #   - `sign` runs in the `launcher-release` environment, whose secrets are the
 #     Minisign key and password. It downloads only the zip, checks its digest
 #     against the build job's output, builds the release_feed tool with cargo
@@ -26,16 +28,29 @@ name: launcher-release
 #   - `publish` creates or updates the dated release `launcher-YYYYMMDD-<sha7>`
 #     and, when signed, refreshes the rolling `launcher-current` (D-LX7):
 #     the zip, `.sha256`, `.zip.sig`, then `latest.json` last.
-#   - `egui-macos-wine`: until the macOS desktop build ships (LX-28, D-LX14),
-#     the original egui launcher as `sgw-launcher-macos-wine-<tag>.exe` for
-#     Mac players who run it under Wine. It is no longer published as
+#   - `desktop-macos` (LX-28, D-LX14) builds the macOS app on an arm64 runner
+#     from those pieces, signs it ad hoc and zips it as
+#     `StargateWorlds-Launcher-macos-arm64.zip`. Read-only, like the Windows
+#     build.
+#   - `egui-macos-wine`: the original egui launcher as
+#     `sgw-launcher-macos-wine-<tag>.exe` for Mac players who still run it
+#     under Wine, until LX-18 retires it. It is no longer published as
 #     `sgw-launcher-<tag>.exe`, the exact name the egui launcher updates itself
 #     from, so Windows players of the egui launcher stop being offered updates
 #     and move to the zip (D-LX2).
+#   - `publish-macos` attaches the macOS zip to the dated release and, when
+#     `publish` refreshed `launcher-current`, to that too. A failed macOS build
+#     leaves the Windows release as it is.
 #
-# Releases ship unsigned: code signing is deferred by the owner (D-LX10). The
-# launch worker injects DLLs into the game, which is what Defender and
-# SmartScreen react to.
+# Releases ship unsigned on Windows: code signing is deferred by the owner
+# (D-LX10). The launch worker injects DLLs into the game, which is what
+# Defender and SmartScreen react to. The macOS app is signed ad hoc only.
+# Out of scope by D-LX14: a Developer ID signature, notarization and the
+# hardened runtime. A player opens the app once with System Settings > Privacy
+# & Security > Open Anyway. macOS updates are manual: the updater feed offers
+# `windows-x86_64` only, and the shell keeps the updater Disabled on macOS
+# (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md,
+# "Self-update on macOS").
 #
 # Every third-party action is pinned to a full commit SHA, with its version in
 # a comment, per GitHub's secure-use guide.
@@ -55,6 +70,7 @@ concurrency:
 
 env:
   ZIP_NAME: StargateWorlds-Launcher-windows-x64.zip
+  MAC_ZIP_NAME: StargateWorlds-Launcher-macos-arm64.zip
 
 jobs:
   # The zip holds cimmeria-launcher-desktop.exe at its root with a windows/
@@ -77,6 +93,9 @@ jobs:
       same_day: ${{ steps.stamp.outputs.same_day }}
       zip_sha256: ${{ steps.digest.outputs.sha256 }}
       has_overlay: ${{ steps.overlay.outputs.has_overlay }}
+      # SHA-256 of mac-pieces.sha256, which lists the five Windows pieces the
+      # macOS app carries. Empty when they failed to build.
+      mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
@@ -265,6 +284,41 @@ jobs:
             artifacts/StargateWorlds-Launcher-windows-x64.zip.sha256
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
+
+      # The macOS app carries five Windows pieces: the three above and, for
+      # Install under Wine, the archive and prerequisite workers. They are
+      # built here, on Windows, and handed to desktop-macos. A failure in these
+      # three steps fails only the macOS build (continue-on-error), never the
+      # Windows release.
+      - name: build the Windows pieces only the macOS app carries
+        id: machelpers
+        continue-on-error: true
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh mac-helpers
+
+      # mac-pieces.sha256's own digest travels as a job output, a channel
+      # separate from the artifact store; desktop-macos checks the list
+      # against it, then each piece against the list.
+      - name: collect the macOS app's Windows pieces
+        id: macpieces
+        if: steps.machelpers.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh mac-pieces
+          echo "sha256=$(sha256sum artifacts/mac-pieces/mac-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: upload the macOS app's Windows pieces
+        if: steps.macpieces.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-mac-pieces-${{ steps.stamp.outputs.tag }}
+          path: artifacts/mac-pieces/
+          if-no-files-found: error
+          retention-days: 1
           overwrite: true
 
       - name: upload the overlay patch
@@ -527,7 +581,9 @@ jobs:
         run: |
           set -euo pipefail
           CURRENT=launcher-current
-          NOTES="The newest Stargate Worlds launcher, currently ${TAG}. Download ${ZIP_NAME}. The desktop launcher's updater reads latest.json from here."
+          # publish-macos replaces the macOS zip after this; when the macOS
+          # build fails, the macOS zip here stays the previous release's.
+          NOTES="The newest Stargate Worlds launcher, currently ${TAG}. Windows: download ${ZIP_NAME}. macOS (Apple silicon): download ${MAC_ZIP_NAME}. The desktop launcher's updater reads latest.json from here."
           if gh release view "${CURRENT}" >/dev/null 2>&1; then
             gh release edit "${CURRENT}" --latest=false --notes "${NOTES}"
           else
@@ -551,12 +607,11 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # D-LX14: Mac players run the original egui launcher under Wine until the
-  # macOS desktop build ships (LX-28), so it is still built, under a name the
-  # egui self-update does not look for (D-LX2; see the top of this file). It
-  # runs after the dated release exists and only adds an asset, so a failure
-  # here leaves the release as it is. LX-18 deletes this job with the egui
-  # launcher, after LX-28.
+  # D-LX14: Mac players who run the original egui launcher under Wine keep
+  # getting it until LX-18 retires it, under a name the egui self-update does
+  # not look for (D-LX2; see the top of this file). It runs after the dated
+  # release exists and only adds an asset, so a failure here leaves the release
+  # as it is. LX-18 deletes this job with the egui launcher.
   egui-macos-wine:
     name: original launcher for macOS under Wine -> same release
     needs: [desktop-windows, publish]
@@ -621,6 +676,196 @@ jobs:
           if ! grep -qF '**macOS (under Wine):**' <<<"${BODY}"; then
             BODY="${BODY}
 
-          **macOS (under Wine):** \`${EXE}\` is the original launcher, for Mac players who run it under Wine (docs/guides/macos.md) until the macOS desktop launcher is released. It does not update itself to later releases; download the newest from the releases page."
+          **macOS (under Wine):** \`${EXE}\` is the original launcher, for Mac players who still run it under Wine (docs/guides/macos.md). The macOS desktop launcher, \`${MAC_ZIP_NAME}\`, replaces it. It does not update itself to later releases; download the newest from the releases page."
             gh release edit "${TAG}" --notes "${BODY}"
           fi
+
+  # LX-28 (D-LX14): the macOS app, Apple silicon only, signed ad hoc. On
+  # macos-15: macos-latest moves to a new macOS without notice, and GitHub has
+  # deprecated the macos-14 images. It builds the commit desktop-windows built
+  # and takes that job's Windows pieces, so the macOS app and the Windows zip
+  # carry the same launch worker and DLLs. Its token is read-only, like the
+  # Windows build's: it runs npm and a cargo-installed Tauri CLI, so
+  # publish-macos, which runs neither, attaches the zip. No Apple account,
+  # certificate or keychain, and no updater key: macOS updates are manual.
+  desktop-macos:
+    name: desktop launcher (macOS) -> zip
+    needs: desktop-windows
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      zip_sha256: ${{ steps.digest.outputs.sha256 }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
+      MAC_PIECES_SHA256: ${{ needs.desktop-windows.outputs.mac_pieces_sha256 }}
+    steps:
+      - name: check the Windows job built the pieces
+        run: |
+          if [ -z "${MAC_PIECES_SHA256}" ]; then
+            echo "::error::desktop-windows did not build the macOS app's Windows pieces; see its 'build the Windows pieces only the macOS app carries' and 'collect' steps"
+            exit 1
+          fi
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # aarch64-apple-darwin is the runner's host target.
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: launcher-release-desktop-macos
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+        with:
+          node-version: '24'
+
+      # Pinned to the version of the tauri crate in crates/launcher/desktop/
+      # Cargo.lock (docs/updater.md requires a pinned CLI). The cache keeps
+      # ~/.cargo/bin, so a cached CLI of this version is not rebuilt.
+      - name: install the Tauri CLI
+        run: cargo install tauri-cli --version 2.12.1 --locked
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: launcher-mac-pieces-${{ needs.desktop-windows.outputs.tag }}
+          path: mac-pieces
+
+      - name: stage the Windows pieces, checked against the Windows job's digest
+        run: tools/launcher-release/build-desktop-macos.sh pieces mac-pieces "${MAC_PIECES_SHA256}"
+
+      - name: fetch the pinned D9VK d3d9.dll
+        run: tools/launcher-release/build-desktop-macos.sh d3d9
+
+      # The release stamps are on this step only, as on Windows.
+      - name: build the app, pinned to them
+        env:
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ needs.desktop-windows.outputs.version }}
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ needs.desktop-windows.outputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: main
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+        run: tools/launcher-release/build-desktop-macos.sh app
+
+      - name: sign the app ad hoc
+        run: tools/launcher-release/build-desktop-macos.sh sign
+
+      - name: verify the app
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ needs.desktop-windows.outputs.version }}
+        run: tools/launcher-release/build-desktop-macos.sh verify
+
+      # StargateWorlds-Launcher-macos-arm64.zip (ditto, which keeps the seal)
+      # and its .sha256, in the Windows zip's format.
+      - name: package
+        run: tools/launcher-release/build-desktop-macos.sh package
+
+      - name: record the zip digest
+        id: digest
+        run: |
+          set -euo pipefail
+          SHA="$(shasum -a 256 "${MAC_ZIP}" | cut -d' ' -f1)"
+          [ "${SHA}" = "$(cut -d' ' -f1 "${MAC_ZIP}.sha256")" ] || { echo "::error::${MAC_ZIP}.sha256 does not match the zip"; exit 1; }
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: upload the zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-macos-zip-${{ needs.desktop-windows.outputs.tag }}
+          path: |
+            artifacts/StargateWorlds-Launcher-macos-arm64.zip
+            artifacts/StargateWorlds-Launcher-macos-arm64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  # Attaches the macOS zip to the dated release and, when publish refreshed
+  # launcher-current (a signed, first-of-the-day release), to launcher-current
+  # as well, so both platforms' stable links name the same release. No
+  # third-party action and no build, so the write token never meets build
+  # code. It waits for egui-macos-wine, whatever that job's result, because
+  # both rewrite the dated release's notes. Safe to re-run: uploads replace
+  # this run's own assets and the notes paragraph is added once.
+  publish-macos:
+    name: macOS zip -> same release + launcher-current
+    needs: [desktop-windows, sign, publish, desktop-macos, egui-macos-wine]
+    if: >-
+      always() && github.ref == 'refs/heads/main'
+      && needs.publish.result == 'success'
+      && needs.desktop-macos.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    env:
+      MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
+      TAG: ${{ needs.desktop-windows.outputs.tag }}
+      MAC_ZIP_SHA256: ${{ needs.desktop-macos.outputs.zip_sha256 }}
+      SIGNED: ${{ needs.sign.outputs.signed == 'true' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: launcher-macos-zip-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+
+      - name: check the zip is the one the macOS job made
+        run: |
+          set -euo pipefail
+          GOT="$(sha256sum "${MAC_ZIP}" | cut -d' ' -f1)"
+          [ -n "${MAC_ZIP_SHA256}" ] && [ "${GOT}" = "${MAC_ZIP_SHA256}" ] \
+            || { echo "::error::the downloaded zip is ${GOT}, the macOS job made ${MAC_ZIP_SHA256}"; exit 1; }
+          [ "$(cut -d' ' -f1 "${MAC_ZIP}.sha256")" = "${MAC_ZIP_SHA256}" ] \
+            || { echo "::error::${MAC_ZIP}.sha256 does not name the macOS job's digest"; exit 1; }
+
+      - name: attach to the dated release
+        run: |
+          set -euo pipefail
+          gh release upload "${TAG}" --clobber "${MAC_ZIP}" "${MAC_ZIP}.sha256"
+          STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/launcher-current/${MAC_ZIP_NAME}"
+          BODY="$(gh release view "${TAG}" --json body --jq .body)"
+          if ! grep -qF '**macOS (Apple silicon):**' <<<"${BODY}"; then
+            BODY="${BODY}
+
+          **macOS (Apple silicon):** download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Stargate Worlds Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}."
+            gh release edit "${TAG}" --notes "${BODY}"
+          fi
+
+      # The same rule as the Windows zip: only a release that refreshed
+      # launcher-current replaces the macOS zip there.
+      - name: refresh the macOS zip on launcher-current
+        if: env.SIGNED == 'true'
+        run: |
+          set -euo pipefail
+          for file in "${MAC_ZIP}" "${MAC_ZIP}.sha256"; do
+            gh release upload launcher-current "${file}" --clobber
+          done
+
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "## macOS ${TAG}"
+            echo
+            if [ "${SIGNED}" = true ]; then
+              echo "\`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`. It is not in \`latest.json\`: macOS updates are manual."
+            else
+              echo "\`${MAC_ZIP_NAME}\` is on the dated release only; \`launcher-current\` was not changed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

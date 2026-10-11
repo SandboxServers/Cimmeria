@@ -26,6 +26,14 @@
 #                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
 #                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
+#   mac-helpers      build the two Windows pieces only the macOS app carries,
+#                    for Install under Wine: the 64-bit
+#                    cimmeria-archive-worker.exe and the 32-bit
+#                    cimmeria-prerequisite-worker.exe
+#   mac-pieces       after stage and mac-helpers: copy the five Windows pieces
+#                    the macOS app carries into artifacts/mac-pieces/ with a
+#                    mac-pieces.sha256 listing them, for
+#                    build-desktop-macos.sh pieces on the macOS runner
 #   feed-tool        build the release_feed example (always the release
 #                    profile) that sign and verify-feed run; never with the
 #                    signing key in the environment
@@ -77,6 +85,11 @@ LAUNCHER="$OUT/cimmeria-launcher-desktop.exe"
 ZIP_NAME="StargateWorlds-Launcher-windows-x64.zip"
 ZIP="artifacts/$ZIP_NAME"
 FEED="artifacts/latest.json"
+# The macOS app's Install pieces: the archive worker for the host (x86-64)
+# and the prerequisite worker for i686, both of the desktop workspace.
+ARCHIVE_WORKER="$OUT/cimmeria-archive-worker.exe"
+PREREQUISITE_WORKER="$DESKTOP_DIR/$I686/$PROFILE_DIR/cimmeria-prerequisite-worker.exe"
+MAC_PIECES="artifacts/mac-pieces"
 
 # The staged file name of each piece and the build variable that pins it.
 PIECES=(
@@ -240,6 +253,43 @@ PY
   cat "$ZIP.sha256"
 }
 
+stage_mac_helpers() {
+  cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+    --bin cimmeria-archive-worker "${PROFILE_FLAG[@]}" --target-dir "$DESKTOP_DIR"
+  cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-runtime-probe \
+    --bin cimmeria-prerequisite-worker "${PROFILE_FLAG[@]}" --target "$I686" --target-dir "$DESKTOP_DIR"
+  need "$ARCHIVE_WORKER"; need "$PREREQUISITE_WORKER"
+  [ "$(pe_machine "$ARCHIVE_WORKER")" = 0x8664 ] || die "$ARCHIVE_WORKER is not 64-bit"
+  [ "$(pe_machine "$PREREQUISITE_WORKER")" = 0x14c ] || die "$PREREQUISITE_WORKER is not 32-bit"
+}
+
+# The three Play pieces are the staged files the Windows launcher was pinned
+# to, so both platforms ship the same bytes from one build. The manifest is
+# written with printf, not sha256sum, whose MSYS build marks names with `*`.
+stage_mac_pieces() {
+  need "$ARCHIVE_WORKER"; need "$PREREQUISITE_WORKER"
+  local name var
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    need "$STAGED/$name"
+  done
+  rm -rf "$MAC_PIECES"
+  mkdir -p "$MAC_PIECES"
+  cp "$ARCHIVE_WORKER" "$PREREQUISITE_WORKER" "$MAC_PIECES/"
+  for pair in "${PIECES[@]}"; do
+    read -r name var <<<"$pair"
+    cp "$STAGED/$name" "$MAC_PIECES/"
+  done
+  local file
+  for name in cimmeria-archive-worker.exe cimmeria-prerequisite-worker.exe \
+    cimmeria-launch-worker.exe cimmeria_client_patches.dll cimmeria_client_telemetry.dll; do
+    file="$MAC_PIECES/$name"
+    need "$file"
+    printf '%s  %s\n' "$(sha "$file")" "$name"
+  done > "$MAC_PIECES/mac-pieces.sha256"
+  cat "$MAC_PIECES/mac-pieces.sha256"
+}
+
 # The release-profile example that signs and checks the feed with the
 # launcher engine's own code (engine/examples/release_feed.rs). It is always a
 # release build, whatever PROFILE says.
@@ -299,10 +349,12 @@ case "${1:-}" in
   launcher) stage_launcher ;;
   verify) stage_verify ;;
   package) stage_package ;;
+  mac-helpers) stage_mac_helpers ;;
+  mac-pieces) stage_mac_pieces ;;
   feed-tool) stage_feed_tool ;;
   sign) shift; stage_sign "$@" ;;
   verify-feed) shift; stage_verify_feed "$@" ;;
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
-  *) sed -n '2,43p' "$0" >&2; exit 2 ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
+  *) sed -n '2,51p' "$0" >&2; exit 2 ;;
 esac
