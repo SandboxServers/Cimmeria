@@ -120,9 +120,7 @@ pub(super) async fn stop(slot: &RecordSlot, req: StopReq) -> Result<Value, Failu
 /// only count it).
 fn collect(h: &RecordHandle, req: &StopReq, ended: Option<&str>) -> Result<Value, Failure> {
     let raw = &h.dir;
-    let text = std::fs::read_to_string(raw.join(RECORD_FILE))
-        .map_err(|e| failed_at(raw, format!("{RECORD_FILE}: {e}")))?;
-    let log = read_log(&text).map_err(|e| failed_at(raw, format!("{RECORD_FILE}: {e}")))?;
+    let log = read_raw(raw)?;
     let mut out = if req.no_draft {
         json!({
             "ok": true,
@@ -132,20 +130,47 @@ fn collect(h: &RecordHandle, req: &StopReq, ended: Option<&str>) -> Result<Value
         })
     } else {
         let specs = h.specs_dir.clone().or_else(|| req.specs_dir.clone());
-        let opts = TransformOptions {
-            base: specs
-                .as_deref()
-                .and_then(|d| section_meta(d, &log.start.section)),
+        let opts = DraftOpts {
+            specs: specs.as_deref(),
             character_expr: req.character_expr.clone(),
             profile: req.profile.clone(),
-            ..Default::default()
+            transform: req.transform,
         };
-        draft_outcome(raw, specs.as_deref(), (req.transform)(&log, &opts))?
+        write_draft(raw, &log, opts)?
     };
     if let Some(e) = ended {
         out["ended"] = json!(cut(e, ENDED_CAP));
     }
     Ok(out)
+}
+
+/// Read and parse `<raw>/record.jsonl`; a failure leads with the folder.
+pub(super) fn read_raw(raw: &Path) -> Result<RecordLog, Failure> {
+    let text = std::fs::read_to_string(raw.join(RECORD_FILE))
+        .map_err(|e| failed_at(raw, format!("{RECORD_FILE}: {e}")))?;
+    read_log(&text).map_err(|e| failed_at(raw, format!("{RECORD_FILE}: {e}")))
+}
+
+/// How a log becomes a draft: the stop's and `lab_record_transform`'s
+/// shared options.
+pub(super) struct DraftOpts<'a> {
+    /// Where `drafts/` goes, and where the base section is looked up.
+    pub specs: Option<&'a Path>,
+    pub character_expr: Option<String>,
+    pub profile: Option<String>,
+    pub transform: TransformFn,
+}
+
+/// Transform `log` with its section's meta as the base (when the spec
+/// directory holds it) and write the draft beside the others.
+pub(super) fn write_draft(raw: &Path, log: &RecordLog, o: DraftOpts<'_>) -> Result<Value, Failure> {
+    let opts = TransformOptions {
+        base: o.specs.and_then(|d| section_meta(d, &log.start.section)),
+        character_expr: o.character_expr,
+        profile: o.profile,
+        ..Default::default()
+    };
+    draft_outcome(raw, o.specs, (o.transform)(log, &opts))
 }
 
 /// The named section's meta from `specs`, when it loads and holds it.

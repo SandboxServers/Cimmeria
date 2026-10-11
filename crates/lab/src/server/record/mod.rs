@@ -1,5 +1,5 @@
-//! The record tools (lab-record LR-07): `lab_record_start`,
-//! `lab_record_status` and `lab_record_stop`.
+//! The record tools (lab-record LR-07, LR-08): `lab_record_start`,
+//! `lab_record_status`, `lab_record_stop` and `lab_record_transform`.
 //!
 //! A person plays one lab instance by hand while the recorder samples it
 //! (D-LR1, D-LR2); stop turns the raw log into a draft spec. Each tool runs
@@ -13,6 +13,7 @@
 mod checks;
 mod run;
 mod stop;
+mod transform;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -73,6 +74,29 @@ pub struct RecordStopArgs {
     /// Stop and keep the raw log, but write no draft.
     #[serde(default)]
     pub no_draft: bool,
+}
+
+/// Args for `lab_record_transform`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct RecordTransformArgs {
+    /// The recording: its id (`20261012-143000-p2`) or its folder, which
+    /// must be directly under `<uat root>/records/`.
+    pub dir: String,
+    /// Draft it as this section instead of the recorded one
+    /// (`^[a-z0-9][a-z0-9-]{0,47}$`).
+    #[serde(default)]
+    pub section: Option<String>,
+    /// As in `lab_record_stop`.
+    #[serde(default)]
+    pub character_expr: Option<String>,
+    /// The fixture profile (LR-09).
+    #[serde(default)]
+    pub profile: Option<String>,
+    /// Spec directory the draft goes under (`drafts/`): an existing local
+    /// directory (default: CIMMERIA_LAB_UAT_SPECS, else the repo's
+    /// docs/guides/uat-specs).
+    #[serde(default)]
+    pub specs_dir: Option<String>,
 }
 
 /// The answer: compact JSON, a tool error for a failure.
@@ -162,6 +186,30 @@ impl LabServer {
             transform: crate::uat::record::emit::transform,
         };
         Ok(answer(stop::stop(self.supervisor.record_slot(), req).await))
+    }
+
+    #[tool(
+        description = "Transform a recording already on disk into a draft spec again, with other options: no client, no lease. dir is the recording id or its folder, directly under <uat root>/records/ (anything else is refused). section drafts it as another section. Writes <specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml, never over an existing file. Returns lab_record_stop's answer {ok, draft (file name), rows, steps, todo, dropped, raw (recording id)}; a failure is {ok:false, exit, error}."
+    )]
+    async fn lab_record_transform(
+        &self,
+        Parameters(a): Parameters<RecordTransformArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let req = transform::TransformReq {
+            dir: a.dir,
+            section: a.section,
+            character_expr: a.character_expr,
+            profile: a.profile,
+            specs_dir: a.specs_dir.map(PathBuf::from),
+            default_specs: specs_dir(),
+            transform: crate::uat::record::emit::transform,
+        };
+        let records = default_root().join("records");
+        // File reads and a transform: off the async workers.
+        let out = tokio::task::spawn_blocking(move || transform::transform_dir(&records, req))
+            .await
+            .unwrap_or_else(|e| Err(run::failed(format!("transform task: {e}"))));
+        Ok(answer(out))
     }
 }
 

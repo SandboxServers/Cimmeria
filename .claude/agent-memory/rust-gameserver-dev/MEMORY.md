@@ -48,6 +48,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
 - [powershell-git-commit-stdin-trap](powershell-git-commit-stdin-trap.md) — `git commit -F - @'..'@` takes the text as a pathspec; use `-F <file>` or `-m @'..'@`.
 - [powershell-strict-mode-empty-index](powershell-strict-mode-empty-index.md) — lab CLI strict mode: `@(..)[0]` on empty throws, use Select-Object -First 1; test git repos eat fixture files.
+- [powershell-like-backtick-and-injected-call-tests](powershell-like-backtick-and-injected-call-tests.md) — `-like` treats a backtick as escape; test lab CLI commands with the MCP call injected as a scriptblock.
 - [powershell-ctrl-c-test-pipeline-stopped](powershell-ctrl-c-test-pipeline-stopped.md) — Ctrl+C = PipelineStoppedException: no catch sees it, only finally; test it from a stub in a child pwsh.
 - [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 

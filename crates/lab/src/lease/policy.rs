@@ -63,6 +63,8 @@ pub const OPEN: &[&str] = &[
     // recording id instead (it ends the recorder's own lease).
     "lab_record_status",
     "lab_record_stop",
+    // Re-transforms a recording folder on disk: no client.
+    "lab_record_transform",
     // Golden runs: read bundles, write only the golden file (no client).
     "lab_golden_record",
     "lab_golden_diff",
@@ -207,5 +209,13 @@ mod tests {
         assert_eq!(gate("lab_record_status"), Gate::Open);
         assert_eq!(gate("lab_record_stop"), Gate::Open);
         assert!(!LEASED.contains(&"lab_record_stop"));
+    }
+
+    /// lab-record (LR-08): the transform reads a folder on disk and touches
+    /// no client, so `lab record transform` needs no lease.
+    #[test]
+    fn record_transform_is_open() {
+        assert_eq!(gate("lab_record_transform"), Gate::Open);
+        assert!(!LEASED.contains(&"lab_record_transform"));
     }
 }
