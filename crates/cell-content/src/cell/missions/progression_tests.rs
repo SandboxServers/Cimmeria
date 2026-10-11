@@ -225,3 +225,85 @@ async fn advance_step_warns_when_objective_update_send_fails() {
         capture.all()
     );
 }
+/// TG-MIS-01: advance, objective and both completion paths carry `event`,
+/// the numeric `player_id`, the world and bare step ids. A reverted
+/// `?old_step_id` ships `"Some(200)"` and fails the step assertion.
+#[tokio::test]
+async fn progression_rows_carry_event_and_player_identity() {
+    use crate::cell::spawner::MissionObjectiveDef;
+    use crate::test_support::LogCapture;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(1).unwrap().player_id = Some(7102);
+    mgr.step_objectives.insert(
+        201,
+        vec![MissionObjectiveDef {
+            objective_id: 310,
+            is_hidden: false,
+            is_optional: false,
+        }],
+    );
+    let (tx, _rx) = mpsc::channel(64);
+
+    assert!(accept_mission(1, 100, 200, make_objectives(), &tx, &mut mgr).await);
+    assert!(advance_step(1, 100, 201, &tx, &mut mgr).await);
+    assert!(complete_objective(1, 100, 310, &tx, &mut mgr).await);
+    assert!(accept_mission(1, 101, 200, make_objectives(), &tx, &mut mgr).await);
+    super::complete_mission_direct(1, 101, &tx, &mut mgr).await;
+
+    let rows = capture.all();
+    let row = |event: &str, path: Option<&str>| {
+        rows.iter()
+            .find(|c| c.has_field("event", event) && path.is_none_or(|p| c.has_field("path", p)))
+            .unwrap_or_else(|| panic!("no `{event}` {path:?} row; captured: {rows:#?}"))
+            .clone()
+    };
+
+    let advanced = row("mission_step_advanced", None);
+    assert!(advanced.has_field("old_step_id", "200"), "{advanced:#?}");
+    assert!(advanced.has_field("player_id", "7102"), "{advanced:#?}");
+    assert!(advanced.has_field("world", "Agnos"), "{advanced:#?}");
+
+    let objective = row("objective_completed", None);
+    assert!(objective.has_field("player_id", "7102"), "{objective:#?}");
+
+    for path in ["auto", "direct"] {
+        let done = row("mission_completed", Some(path));
+        assert!(done.has_field("player_id", "7102"), "{done:#?}");
+        assert!(done.has_field("world", "Agnos"), "{done:#?}");
+    }
+}
+
+/// TG-MIS-01: `advance_step` and `complete_mission_direct` used to return
+/// silently for an entity the cell no longer holds.
+#[tokio::test]
+async fn missing_entity_progression_warns_entity_missing() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let (tx, _rx) = mpsc::channel(16);
+
+    assert!(!advance_step(999, 100, 201, &tx, &mut mgr).await);
+    super::complete_mission_direct(999, 100, &tx, &mut mgr).await;
+
+    for message in [
+        "advance_step: entity not found",
+        "complete_mission_direct: entity not found",
+    ] {
+        assert!(
+            capture
+                .find_event(Level::WARN, message, "entity_missing")
+                .is_some(),
+            "no `{message}` WARN; captured: {:#?}",
+            capture.all()
+        );
+    }
+}

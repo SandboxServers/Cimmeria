@@ -8,7 +8,7 @@ import {mountClientPatches} from './client-patches-view';
 const html=readFileSync('ui/index.html','utf8');
 const servers=[{name:'Home',url:'http://home.example:8081'},{name:'Lab',url:'https://lab.example'}];
 const snapshot=(revision:number,client_patches_enabled=true):NativeSnapshot=>({
- schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,
+ schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
  preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers:servers,client_patches_enabled},
 });
 function mounted(respond:(request:any)=>Promise<unknown>=async()=>null,refresh:()=>Promise<unknown>=async()=>{},first:NativeSnapshot|null=snapshot(3)) {

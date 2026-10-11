@@ -459,3 +459,48 @@ fn a_retry_after_turning_client_patches_off_mid_play_returns_the_admitted_plan()
         IntentError::Operation(ContractError::IdentityConflict)
     );
 }
+
+/// Play queues the client-patches events once a game it started has ended,
+/// and nothing for a game that never started.
+#[tokio::test]
+async fn a_finished_play_queues_its_patch_events_and_an_unstarted_one_does_not() {
+    use crate::game_telemetry::transport::TelemetryEvent;
+    use cimmeria_launcher_core::telemetry::queue::DiskQueue;
+    use std::sync::Mutex;
+    use tokio_util::sync::CancellationToken;
+    let exited = Observation::ProcessExited {
+        host_pid: 1,
+        guest_pid: 2,
+        code: 0,
+        early: false,
+    };
+    for (outcome, queued) in [
+        (exited, 1),
+        (Observation::Unknown, 1),
+        (Observation::NotStarted, 0),
+        (Observation::Cancelled, 0),
+    ] {
+        let (_root, mut state, plan) = fixture();
+        state.set_game_telemetry(true).unwrap();
+        let queue = DiskQueue::new(state.state_root());
+        let state = Arc::new(Mutex::new(state));
+        let binaries = tempfile::tempdir().unwrap();
+        let result = worker::run_game(
+            &state,
+            &plan,
+            binaries.path(),
+            &CancellationToken::new(),
+            std::future::ready(outcome),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result, outcome);
+        let events: Vec<TelemetryEvent> = queue.drain().unwrap();
+        assert_eq!(events.len(), queued, "{outcome:?}: {events:?}");
+        if let Some(TelemetryEvent::ClientNative(boot)) = events.first() {
+            assert_eq!(boot.target, "client.patches.boot");
+            // The fixture plan has no DLL and the preference wants one.
+            assert_eq!(boot.fields["injection"], "unavailable");
+        }
+    }
+}

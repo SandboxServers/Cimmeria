@@ -3,6 +3,7 @@
 //! Nothing here carries a path, a URL, a name or an error text.
 use super::{InstallCommand, JobError, LaunchCommand, NativeHost};
 use cimmeria_launcher_engine::{
+    launcher_compatibility,
     launcher_summary::{self, SummaryConfig, SummaryErrorCode, SummaryOperation, SummaryPhase},
     DesktopState,
 };
@@ -16,7 +17,8 @@ pub(super) fn start(state: &Arc<Mutex<DesktopState>>) {
 
 fn config() -> SummaryConfig {
     SummaryConfig {
-        launcher_version: version(env!("CARGO_PKG_VERSION")),
+        // The D-LX8 release version About shows, not the package's.
+        launcher_version: version(launcher_compatibility::compiled_version()),
         // No endpoint is configured in this build, so nothing is tracked,
         // recorded or sent, whatever the consent preference says.
         endpoint: None,
@@ -142,11 +144,14 @@ mod tests {
         assert_eq!(version("1.2.3+build.9"), (1, 2, 3));
         assert_eq!(version("1.2"), (1, 2, 0));
         assert_eq!(version(""), (0, 0, 0));
-        // The crate's own version is a plain three-part one.
-        let (major, minor, patch) = version(env!("CARGO_PKG_VERSION"));
-        assert_eq!(
-            format!("{major}.{minor}.{patch}"),
-            env!("CARGO_PKG_VERSION")
+        // D-LX8 release versions fit, a same-day rebuild suffix dropped.
+        assert_eq!(version("2026.10.11"), (2026, 10, 11));
+        assert_eq!(version("2026.10.11-2"), (2026, 10, 11));
+        let compiled = launcher_compatibility::compiled_version();
+        let (major, minor, patch) = version(compiled);
+        assert!(
+            compiled.starts_with(&format!("{major}.{minor}.{patch}")),
+            "{compiled}"
         );
     }
 
@@ -326,7 +331,7 @@ mod tests {
         assert!(config().endpoint.is_none());
         assert_eq!(
             config().launcher_version,
-            version(env!("CARGO_PKG_VERSION"))
+            version(launcher_compatibility::compiled_version())
         );
     }
 

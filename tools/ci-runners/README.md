@@ -336,11 +336,13 @@ pool is idle. The runner updates itself between jobs.
 - **Jobs are not admin.** Unlike the Linux pool, a job does not get the host. It runs
   as `gha-runner`, which can write only to its runner directories (its `.env` and the
   hooks are read-only to it).
-- **But it is a local user on someone else's host.** Like any local user it can read
-  what the host's ACLs give the Users group. On node3 that includes `F:\VHDs` and
-  `F:\VMs`, so a job could read a VM disk that no running VM holds open. This setup does
-  not change those ACLs; the host's owner should restrict them, or deny `gha-runner`
-  there.
+- **It is denied the VMs' storage.** Like any local user it would get what the host's
+  ACLs give the Users group, which on node3 includes read access to the VM folders.
+  `setup.ps1` adds an inherited deny (read and list) for `gha-runner` on every Hyper-V
+  storage folder it finds (the host defaults, and each VM's configuration, checkpoint,
+  smart-paging and disk folders; on 2026-10-11 `D:\VHDs`, `E:\VMs`, `F:\VHDs`, `F:\VMs`
+  and `G:\VHDs`). It changes no other entry and never touches the VMs. A check run as
+  `gha-runner` listed its own runner directory and was refused every VM folder and a VHD.
 - **Runner state persists**, as on Linux: the work tree, the toolchain, the cargo
   registry and its `bin\`, so a bad job can leave something behind for later jobs on that
   runner. The cache password is readable by every job, as on Linux.

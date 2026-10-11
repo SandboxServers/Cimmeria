@@ -352,3 +352,48 @@ async fn reconstruction_and_commit_keep_current_release_separate_from_original_o
         b"damaged"
     );
 }
+
+/// Every install-result event a finished Repair left queued, once the
+/// dropped commit handoff's observer (which reaches `finish_failure` after
+/// every commit) has run.
+async fn queued_after(state: Arc<Mutex<DesktopState>>) -> Vec<serde_json::Value> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while Arc::strong_count(&state) != 1 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let root = state.lock().unwrap().state_root().to_path_buf();
+    let queue = cimmeria_launcher_core::telemetry::queue::DiskQueue::new(&root);
+    queue
+        .drain::<crate::game_telemetry::transport::TelemetryEvent>()
+        .unwrap()
+        .into_iter()
+        .map(|event| serde_json::to_value(event).unwrap())
+        .collect()
+}
+#[tokio::test]
+async fn a_committed_or_cancelled_repair_queues_exactly_one_install_result() {
+    for cancel in [false, true] {
+        let (_root, state, prepared) = fixture(false).await;
+        let id = prepared.plan.id;
+        {
+            let mut owner = state.lock().unwrap();
+            // Opting in empties the queue: the install's own result is gone.
+            owner.set_game_telemetry(true).unwrap();
+            if cancel {
+                owner.operations_mut().unwrap().request_cancel(id).unwrap();
+            }
+        }
+        let result = start(state.clone(), prepared).unwrap().await.unwrap();
+        assert_eq!(result.is_ok(), !cancel);
+        let queued = queued_after(state).await;
+        assert_eq!(queued.len(), 1, "cancel={cancel}: {queued:?}");
+        let fields = &queued[0]["fields"];
+        assert_eq!(queued[0]["target"], "client.launcher.install_result");
+        assert_eq!(fields["result"], if cancel { "cancelled" } else { "ok" });
+        // Preparation's install_all report reached the commit's event.
+        assert_eq!(fields["seed_applied"], true);
+    }
+}
