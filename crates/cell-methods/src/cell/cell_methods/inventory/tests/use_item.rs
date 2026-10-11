@@ -6,6 +6,7 @@ use cimmeria_wire::cell::vault::VaultAccess;
 use super::super::dispatch::dispatch;
 use super::super::USE_ITEM;
 use super::make_test_space_mgr;
+use crate::test_support::LogCapture;
 
 /// Dispatch one `useItem(item 7001, target 0)` from player entity 1 and drain
 /// every message the cell sent.
@@ -68,6 +69,20 @@ async fn use_item_is_refused_with_not_living_feedback_while_dead() {
         vec![&vec![0u8, 0, 0, 0, 0, 14, 0]],
         "exactly one onErrorCode(0, 0, NotLiving) so the press is not silent"
     );
+}
+
+/// The `useItem` INFO row names the caller: `event = "use_item"` with the
+/// `player_id` of the character that pressed the key (Rule 5). Reverting the
+/// identity fields or the event drops the field and fails the asserts.
+#[tokio::test]
+async fn use_item_info_row_carries_player_identity() {
+    let capture = LogCapture::install();
+    let _ = use_item(false).await;
+    let row = capture
+        .find_message(tracing::Level::INFO, "useItem")
+        .unwrap_or_else(|| panic!("useItem must log at INFO: {:#?}", capture.all()));
+    assert!(row.has_field("event", "use_item"), "{row:#?}");
+    assert!(row.has_field("player_id", "100"), "{row:#?}");
 }
 
 /// The living path is unchanged: the use goes to base and nothing else.
