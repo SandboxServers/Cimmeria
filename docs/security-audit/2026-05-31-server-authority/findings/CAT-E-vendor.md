@@ -9,7 +9,7 @@ for repair, scales by current `durability`), (c) wraps the mutation +
 cash-balance update in a Postgres transaction with `FOR UPDATE` locks, and (d)
 balances are read with `FOR UPDATE` before the debit. The known holes:
 
-- **CAT-E-01** (High) — The cell dispatcher routes `REPAIR_ITEMS` and
+- **CAT-E-01** (High, **fixed 2026-10-10**, see the finding) — The cell dispatcher routes `REPAIR_ITEMS` and
   `RECHARGE_ITEMS` to a "free" code path whenever the trailing
   `vendor_template_id` is absent from the client payload. The free path
   performs durability=100 / charges=full UPDATEs with **no payment, no vendor
@@ -44,6 +44,7 @@ that lets a client edit `flags` via a different mutation path.
 **Class**: Wire-shape inversion / missing-field bypass — server-authority bypass that grants a free service
 **Wire surface**: `Event_NetOut_RepairItems`, `Event_NetOut_RechargeItems`
 **Demonstrable / Likely-theoretical**: Likely-exploitable theoretical (needs live debugger to confirm at triage time)
+**Status**: **FIXED 2026-10-10** (branch `fix/vendor-wire-stock-layout`, commit `fix(vendor): close the free repair and recharge path`). The free branches in `vendor/repair.rs` and `vendor/recharge.rs` are deleted and `RepairInventoryItems` / `RechargeInventoryItems` carry a plain `i32` template, so every repair and recharge is priced, debited and checked against the vendor's list. The premise below was also wrong about the wire: the static RE in [inventory-wire-formats.md](../../../reverse-engineering/findings/inventory-wire-formats.md) (Store Operations) shows the stock client sends **no** template id on any of the five methods, and repair/recharge send only `ARRAY<INT32> ItemIds`. So the old parser could not read a stock repair at all, and only a forged packet reached the free path. The cell now reads the stock layouts and takes the template from the player's vendor session; with no session it refuses with a feedback line (`vendor/store_ops.rs`). Guards: `store_ops_tests::repair_without_vendor_session_is_refused`, `repair::tests::live_db_repair_at_a_vendor_without_a_repair_list_is_refused`, `recharge::refusal_tests::live_db_recharge_at_a_vendor_without_a_recharge_list_is_refused`. CAT-E-02 (no proximity check, `vendor_entity` never cleared) is still open.
 
 **Trust violation**
 The wire payload for cell methods 78–82 (PURCHASE_ITEMS … RECHARGE_ITEMS) is:

@@ -183,7 +183,7 @@ async fn stock_repair_of_one_item_is_priced_by_the_open_vendor() {
         }] => {
             assert_eq!(*player_id, PLAYER);
             assert_eq!(item_ids, &vec![42]);
-            assert_eq!(*vendor_template_id, Some(TEMPLATE));
+            assert_eq!(*vendor_template_id, TEMPLATE);
         }
         other => panic!("expected RepairInventoryItems, got {other:?}"),
     }
@@ -216,16 +216,18 @@ async fn stock_recharge_is_priced_by_the_open_vendor() {
             ..
         }] => {
             assert_eq!(item_ids, &vec![77]);
-            assert_eq!(*vendor_template_id, Some(TEMPLATE));
+            assert_eq!(*vendor_template_id, TEMPLATE);
         }
         other => panic!("expected RechargeInventoryItems, got {other:?}"),
     }
 }
 
-/// No vendor open: the request never reaches the base (so no free repair),
-/// the player gets a feedback line, and the refusal is one WARN.
+/// CAT-E-01 regression guard. No vendor open: the request never reaches the
+/// base (the old cell forwarded a template-less repair, which the base
+/// performed for free), the player gets a feedback line, and the refusal is
+/// one WARN.
 #[tokio::test]
-async fn repair_without_a_vendor_session_is_refused_with_feedback() {
+async fn repair_without_vendor_session_is_refused() {
     let (mut mgr, _) = player(false, true);
     let capture = LogCapture::install();
     let msgs = send(&mut mgr, REPAIR_ITEMS, &array(&[42])).await;

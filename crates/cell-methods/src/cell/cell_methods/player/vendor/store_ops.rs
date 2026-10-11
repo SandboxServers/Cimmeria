@@ -160,13 +160,13 @@ pub(super) async fn handle_store_op(
             entity_id,
             player_id,
             item_ids,
-            vendor_template_id: Some(vendor_template_id),
+            vendor_template_id,
         },
         (RECHARGE_ITEMS, Lines::Ids(item_ids)) => CellToBaseMsg::RechargeInventoryItems {
             entity_id,
             player_id,
             item_ids,
-            vendor_template_id: Some(vendor_template_id),
+            vendor_template_id,
         },
         // `decoded` picks the shape from the same method index.
         _ => unreachable!("store op shape follows the method index"),
