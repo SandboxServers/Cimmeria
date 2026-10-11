@@ -579,6 +579,23 @@ cell's `interactions/loot/restore_tests.rs`. `grant_outcome_unknown`,
 exact step, which nothing can inject; the commit classification itself is
 unit-tested (`persist::tests`).
 
+## Silent loot drops (TG-ITM-09)
+
+Target `interactions`. The cell takes a loot item off a corpse before it hands
+it to the base, so three losses on the cell side were silent: the corpse gone
+after its item left the list, a cash grant that never reached the base, and an
+`onLootDisplay` send that failed. Each is a WARN now. A container that vanished
+before its roll is a `loot.container_refused` INFO row with `reason =
+`container_gone` (the content executor, `open_loot`).
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_item_lost` | WARN | `entity_missing` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `item_id` + `item_name`, `quantity` |
+| `loot_cash_lost` | WARN | `base_channel_closed` | `account_id`, `player_id`, `entity_id`, `target_eid`, `index`, `amount` |
+| `loot_display_lost` | WARN | `base_channel_closed` | `entity_id`, `entity_name`, `npc_entity_id`, `npc_entity_name` |
+
+The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
