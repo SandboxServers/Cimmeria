@@ -5,7 +5,12 @@
 //! - **Queue.** Events go to the drop-oldest disk queue
 //!   `telemetry-queue.jsonl` in the launcher state directory (100 MiB cap,
 //!   dropped lines counted in `telemetry-queue.dropped`). It survives a
-//!   launcher restart and is replayed by the next session's first flush.
+//!   launcher restart and is replayed by the next session's first flush,
+//!   under that session's token: the events are not re-stamped, and the
+//!   server attributes them to the new session and counts them against its
+//!   upload limits. Delivery is at-least-once and the server does not
+//!   dedupe, so a crash after a 2xx and before the queue records it sends
+//!   that chunk twice.
 //!   A flush moves it to `telemetry-queue.inflight.jsonl` and deletes each
 //!   chunk only once the server has answered for it, so closing the
 //!   launcher mid-flush loses nothing (at worst one chunk goes twice).
@@ -20,8 +25,11 @@
 //!   expired token, or a chain past its session cap) mints a new session
 //!   with the same identity, bounded like Play's mint (4 s connect, 8 s
 //!   total). Replies past 16 KiB are refused unread. When renewing fails,
-//!   or the refresh answers 429/503, flushes hold off for 60 s, doubling on
-//!   each further failure up to 30 minutes.
+//!   or the refresh answers 429/503, or the upload refuses a token it was
+//!   just renewed to, flushes hold off for 60 s, doubling on each further
+//!   failure up to 30 minutes. Only an upload the server takes (a flush
+//!   that sent events, a bundle) starts the doubling again; a renewal
+//!   alone does not.
 //! - **Addresses.** https anywhere; plain http only to this machine or the
 //!   host and port of a login server
 //!   ([`EndpointPolicy`](crate::telemetry_endpoint::EndpointPolicy)),
@@ -44,7 +52,7 @@
 //! | [`Transport::enqueue`]`(event)` | stamp `seq` (and `ts_ms` if 0) and queue |
 //! | [`Transport::flush`]`()` | on the [`Transport::flush_interval`] cadence; returns events sent |
 //! | [`Transport::upload_bundle`]`(event_count)` | at game exit, the end-of-session log bundle |
-//! | [`Transport::shutdown`]`()` | final flush; whatever is left stays queued on disk |
+//! | [`Transport::shutdown`]`()` | final flush of the whole backlog; whatever is left stays queued on disk |
 //!
 //! Core's queue locks its files for each short operation, never across a
 //! POST, so an enqueue never waits on a flush; flushes and bundle uploads
@@ -66,7 +74,9 @@ use cimmeria_launcher_core::telemetry::auth::{AuthError, DevSessionResponse};
 use cimmeria_launcher_core::telemetry::bundle::BundleError;
 use cimmeria_launcher_core::telemetry::chunk::ChunkError;
 use cimmeria_launcher_core::telemetry::queue::DiskQueue;
-use cimmeria_launcher_core::telemetry::{SessionContext, Telemetry, TelemetryError};
+use cimmeria_launcher_core::telemetry::{
+    SessionContext, Telemetry, TelemetryError, MAX_CHUNKS_PER_FLUSH,
+};
 use queue::flush_turn;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -214,25 +224,49 @@ impl Transport {
     /// is dropped part-way (the launcher closing), the unsent events stay
     /// queued on disk.
     pub async fn flush(&self) -> Result<u64, TransportError> {
+        self.flush_chunks(MAX_CHUNKS_PER_FLUSH).await
+    }
+
+    async fn flush_chunks(&self, max_chunks: usize) -> Result<u64, TransportError> {
         let turn = flush_turn(&self.queue_dir);
         let _turn = turn.lock().await;
         if self.auth_held() {
             return Ok(0);
         }
         self.refresh_if_due().await?;
-        let result = match self.telemetry.flush(&self.upload).await {
+        let result = match self.telemetry.flush(&self.upload, max_chunks).await {
             Err(TelemetryError::Chunk(ChunkError::TokenRejected)) => {
                 tracing::info!("telemetry token refused by the upload endpoint; renewing");
                 self.renew().await?;
-                self.telemetry.flush(&self.upload).await
+                let retried = self.telemetry.flush(&self.upload, max_chunks).await;
+                if matches!(
+                    retried,
+                    Err(TelemetryError::Chunk(ChunkError::TokenRejected))
+                ) {
+                    // Renewing again on every tick would only hammer the
+                    // auth routes.
+                    self.hold_after_refused_renewal();
+                }
+                retried
             }
             other => other,
         };
-        result.map_err(|e| {
-            let code = TransportError::of(&e);
-            tracing::warn!(?code, "telemetry flush failed; events stay queued");
-            code
-        })
+        match result {
+            Ok(sent) => {
+                // Events the server took prove the token works: the next
+                // failure starts the back-off from its first step. (An
+                // `Ok(0)` proves nothing; the queue may just be empty.)
+                if sent > 0 {
+                    self.release_auth_hold();
+                }
+                Ok(sent)
+            }
+            Err(e) => {
+                let code = TransportError::of(&e);
+                tracing::warn!(?code, "telemetry flush failed; events stay queued");
+                Err(code)
+            }
+        }
     }
 
     /// Zip this session's client logs and post them with the session's
@@ -260,9 +294,16 @@ impl Transport {
                 .telemetry
                 .upload_bundle(&self.upload, event_count, dropped)
                 .await;
+            if matches!(
+                result,
+                Err(TelemetryError::Bundle(BundleError::TokenRejected))
+            ) {
+                self.hold_after_refused_renewal();
+            }
         }
         match result {
             Ok(outcome) => {
+                self.release_auth_hold();
                 if queue.dropped_counter_reset().is_err() {
                     tracing::warn!("telemetry dropped-lines counter not reset");
                 }
@@ -273,10 +314,12 @@ impl Transport {
         }
     }
 
-    /// The last flush. Anything it cannot send stays queued for the next
-    /// session.
+    /// The last flush: the whole backlog, not the cadence's eight chunks.
+    /// Anything it cannot send stays queued for the next session. A caller
+    /// closing the launcher may bound it with a timeout: dropping the
+    /// future part-way loses nothing.
     pub async fn shutdown(self) -> Result<u64, TransportError> {
-        self.flush().await
+        self.flush_chunks(usize::MAX).await
     }
 
     /// The proactive refresh. A failure that only means the server could
@@ -286,19 +329,12 @@ impl Transport {
     /// and ends this flush.
     async fn refresh_if_due(&self) -> Result<(), TransportError> {
         let code = match self.telemetry.refresh_if_due(&self.auth).await {
-            Ok(true) => {
-                self.release_auth_hold();
-                return Ok(());
-            }
-            Ok(false) => return Ok(()),
+            Ok(_) => return Ok(()),
             Err(e) => TransportError::of(&e),
         };
         match code {
             TransportError::TokenRejected => match self.remint().await {
-                Ok(()) => {
-                    self.release_auth_hold();
-                    Ok(())
-                }
+                Ok(()) => Ok(()),
                 Err(code) => {
                     tracing::warn!(?code, "telemetry re-mint failed; holding flushes off");
                     self.hold_auth();
@@ -318,7 +354,10 @@ impl Transport {
     }
 
     /// After a 401: refresh, or mint a new session when the refresh is
-    /// refused too. Any failure starts the token back-off.
+    /// refused too. Any failure starts the token back-off. A success leaves
+    /// the back-off's next step alone: only an upload the server takes
+    /// proves the new token works (a server that renews tokens and then
+    /// refuses them must still see the waits double).
     async fn renew(&self) -> Result<(), TransportError> {
         let result = match self.telemetry.refresh_now(&self.auth).await {
             Ok(()) => Ok(()),
@@ -327,17 +366,16 @@ impl Transport {
                 code => Err(code),
             },
         };
-        match result {
-            Ok(()) => {
-                self.release_auth_hold();
-                Ok(())
-            }
-            Err(code) => {
-                tracing::warn!(?code, "telemetry token not renewed; holding flushes off");
-                self.hold_auth();
-                Err(code)
-            }
-        }
+        result.inspect_err(|code| {
+            tracing::warn!(?code, "telemetry token not renewed; holding flushes off");
+            self.hold_auth();
+        })
+    }
+
+    /// The upload endpoint refused the token it was just renewed to.
+    fn hold_after_refused_renewal(&self) {
+        tracing::warn!("telemetry token refused straight after renewal; holding flushes off");
+        self.hold_auth();
     }
 
     fn auth_held(&self) -> bool {

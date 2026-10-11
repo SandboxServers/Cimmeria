@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 use auth::{DevSessionRequest, DevSessionResponse};
 use chunk::ChunkError;
 use events::TelemetryEvent;
+pub use flush::MAX_CHUNKS_PER_FLUSH;
 use flush::{flush_queue, FlushTarget};
 use queue::DiskQueue;
 
@@ -208,11 +209,16 @@ impl Telemetry {
     /// - A 429 or 503 also holds off further flushes for its
     ///   `Retry-After` (an hour at most); the queue stays on disk meanwhile.
     /// - A chunk leaves the disk only once the server has answered for it,
-    ///   so dropping this future (the launcher closing) loses nothing, and
-    ///   one call sends at most eight chunks. Enqueues are not held up
-    ///   while a chunk is on the wire; overlapping flushes of one handle
-    ///   take turns.
-    pub async fn flush(&self, http: &reqwest::Client) -> Result<u64, TelemetryError> {
+    ///   so dropping this future (the launcher closing) loses nothing.
+    /// - One call sends at most `max_chunks` chunks:
+    ///   [`MAX_CHUNKS_PER_FLUSH`] on the flush cadence, `usize::MAX` for the
+    ///   final flush at game exit. Enqueues are not held up while a chunk
+    ///   is on the wire; overlapping flushes of one handle take turns.
+    pub async fn flush(
+        &self,
+        http: &reqwest::Client,
+        max_chunks: usize,
+    ) -> Result<u64, TelemetryError> {
         let _turn = self.flush_turn.lock().await;
         let (endpoint, token, max_bytes) = {
             let s = self.session.read().await;
@@ -227,7 +233,14 @@ impl Telemetry {
             token: &token,
             max_bytes,
         };
-        flush_queue(http, &self.queue, &target, &self.retry_not_before_ms).await
+        flush_queue(
+            http,
+            &self.queue,
+            &target,
+            &self.retry_not_before_ms,
+            max_chunks,
+        )
+        .await
     }
 
     /// Build + POST the end-of-session bundle. Caller-set counters
@@ -360,7 +373,9 @@ fn map_chunk_err(e: ChunkError) -> TelemetryError {
 /// Nothing is moved or rewritten, so a crash here loses nothing either;
 /// only a line torn by a crash mid-append is ended, so the next append
 /// does not join it. `queue_dir` is the directory
-/// [`Telemetry::start_session`] was given.
+/// [`Telemetry::start_session`] was given. The recovered events keep their
+/// old `seq` and go out under the next session's token, so the server
+/// attributes them to that session and counts them against its limits.
 pub fn recover_pending_on_startup(queue_dir: &Path) -> u64 {
     let q = DiskQueue::new(queue_dir);
     recover_pending_at(&q)
@@ -388,123 +403,12 @@ fn recover_pending_at(q: &DiskQueue) -> u64 {
 }
 
 #[cfg(test)]
+mod recovery_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::events::{ClientLogEvent, TelemetryEvent};
-
-    #[test]
-    fn recover_pending_returns_zero_on_empty_queue() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        assert_eq!(recover_pending_at(&q), 0);
-    }
-
-    #[test]
-    fn recover_pending_drains_and_reenqueues() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..3 {
-            q.enqueue(&TelemetryEvent::ClientLog(ClientLogEvent {
-                ts_ms: i,
-                seq: i as u64,
-                source_file: "x.log".into(),
-                level: "info".into(),
-                category: "raw".into(),
-                packet_no: None,
-                message: format!("e-{i}"),
-            }))
-            .unwrap();
-        }
-        let n = recover_pending_at(&q);
-        assert_eq!(n, 3);
-        let drained: Vec<TelemetryEvent> = q.drain().unwrap();
-        assert_eq!(drained.len(), 3);
-    }
-
-    /// A line that is not UTF-8 neither hides the queue from recovery nor
-    /// costs the events around it.
-    #[test]
-    fn recover_pending_counts_past_a_non_utf8_line() {
-        use std::io::Write;
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        let ev = |i: i64| {
-            TelemetryEvent::ClientLog(ClientLogEvent {
-                ts_ms: i,
-                seq: i as u64,
-                source_file: "x.log".into(),
-                level: "info".into(),
-                category: "raw".into(),
-                packet_no: None,
-                message: format!("e-{i}"),
-            })
-        };
-        q.enqueue(&ev(0)).unwrap();
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(dir.path().join("telemetry-queue.jsonl"))
-            .unwrap();
-        f.write_all(b"\x80\x81 torn\n").unwrap();
-        drop(f);
-        q.enqueue(&ev(1)).unwrap();
-        assert_eq!(recover_pending_at(&q), 2);
-        assert_eq!(q.drain::<TelemetryEvent>().unwrap().len(), 2);
-    }
-
-    // stamp_seq rewrites the seq field on every variant and fills in
-    // ts_ms when zero. Pinned because the orchestrator's monotonic
-    // ordering guarantee depends on it.
-    #[test]
-    fn stamp_seq_writes_seq_on_every_variant() {
-        let cases = vec![
-            TelemetryEvent::ClientLog(ClientLogEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                level: "i".into(),
-                category: "c".into(),
-                packet_no: None,
-                message: "m".into(),
-            }),
-            TelemetryEvent::DebugLog(events::DebugLogEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                level: "i".into(),
-                message: "m".into(),
-            }),
-            TelemetryEvent::KeyDump(events::KeyDumpEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                key_b64: "k".into(),
-            }),
-            TelemetryEvent::SessionMeta(events::SessionMetaEvent {
-                ts_ms: 0,
-                seq: 0,
-                kind: events::SessionMetaKind::Started,
-                fields: serde_json::Map::new(),
-            }),
-            TelemetryEvent::ClientNative(events::ClientNativeEvent {
-                ts_ms: 0,
-                seq: 0,
-                target: "client.frame_tick".into(),
-                level: "info".into(),
-                fields: serde_json::Map::new(),
-            }),
-        ];
-        for mut ev in cases {
-            stamp_seq(&mut ev, 42);
-            let seq_after = match &ev {
-                TelemetryEvent::ClientLog(e) => e.seq,
-                TelemetryEvent::DebugLog(e) => e.seq,
-                TelemetryEvent::KeyDump(e) => e.seq,
-                TelemetryEvent::SessionMeta(e) => e.seq,
-                TelemetryEvent::ClientNative(e) => e.seq,
-            };
-            assert_eq!(seq_after, 42);
-        }
-    }
+    use crate::telemetry::events::TelemetryEvent;
 
     // start_session writes current-session.json + returns a Telemetry
     // whose enqueue / flush round-trip through the disk queue and the
@@ -566,7 +470,7 @@ mod tests {
         }))
         .await
         .unwrap();
-        let flushed = tel.flush(&http).await.unwrap();
+        let flushed = tel.flush(&http, MAX_CHUNKS_PER_FLUSH).await.unwrap();
         assert_eq!(flushed, 1);
     }
 

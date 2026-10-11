@@ -2,8 +2,10 @@
 //!
 //! `<upload_endpoint>/upload-chunk` — one POST carries N events
 //! (newline-delimited JSON), gzipped, with the bearer token from
-//! the dev-session auth. Idempotent by `(session_id, seq_first, seq_last)`
-//! on the server side so a retried POST is a no-op.
+//! the dev-session auth. Delivery is at-least-once: the server does not
+//! dedupe, so a retried POST the server had already taken (a 2xx lost to a
+//! timeout or a crash before the queue recorded it) shows up as duplicate
+//! rows.
 
 use std::io::Write;
 

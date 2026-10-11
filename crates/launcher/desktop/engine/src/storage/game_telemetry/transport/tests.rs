@@ -469,6 +469,111 @@ async fn a_failed_renewal_holds_flushes_off() {
     assert_eq!(hold.next, AUTH_HOLD_FIRST * 2);
 }
 
+/// **A server that renews tokens and then refuses them is not hammered
+/// either.** The upload refuses the token it was just renewed to: flushes
+/// hold off rather than refreshing on every tick, and the waits keep
+/// doubling across rounds.
+#[tokio::test]
+async fn a_token_refused_after_renewal_holds_flushes_off() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(reply(&server, "tok-2"))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let refreshes = |requests: Vec<Request>| {
+        requests
+            .iter()
+            .filter(|r| r.url.path() == "/api/auth/dev-session/refresh")
+            .count()
+    };
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    transport.enqueue(event("kept")).await.unwrap();
+    assert_eq!(transport.flush().await, Err(TransportError::TokenRejected));
+    assert_eq!(
+        transport.auth_hold.lock().unwrap().next,
+        AUTH_HOLD_FIRST * 2
+    );
+    for _ in 0..3 {
+        assert_eq!(transport.flush().await, Ok(0));
+    }
+    assert_eq!(refreshes(server.received_requests().await.unwrap()), 1);
+
+    // The hold runs out: one more round, and the next wait is longer.
+    transport.auth_hold.lock().unwrap().until = None;
+    assert_eq!(transport.flush().await, Err(TransportError::TokenRejected));
+    assert_eq!(
+        transport.auth_hold.lock().unwrap().next,
+        AUTH_HOLD_FIRST * 4
+    );
+    server.verify().await;
+}
+
+/// Once the server takes events again the back-off starts from its first
+/// step; a flush with nothing to send proves nothing and leaves it.
+#[tokio::test]
+async fn an_accepted_flush_resets_the_token_back_off() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    // A long-running back-off whose current wait has passed.
+    transport.auth_hold.lock().unwrap().next = AUTH_HOLD_FIRST * 8;
+    assert_eq!(transport.flush().await, Ok(0));
+    assert_eq!(
+        transport.auth_hold.lock().unwrap().next,
+        AUTH_HOLD_FIRST * 8
+    );
+    transport.enqueue(event("sent")).await.unwrap();
+    assert_eq!(transport.flush().await, Ok(1));
+    assert_eq!(transport.auth_hold.lock().unwrap().next, AUTH_HOLD_FIRST);
+    server.verify().await;
+}
+
+/// **Shutdown sends the whole backlog**, not the cadence's eight chunks.
+#[tokio::test]
+async fn shutdown_sends_more_than_eight_chunks() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(MAX_CHUNKS_PER_FLUSH as u64 + 1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    let total = MAX_CHUNKS_PER_FLUSH as u64 * 1_000 + 1;
+    for i in 0..total {
+        transport.enqueue(event(&i.to_string())).await.unwrap();
+    }
+    assert_eq!(transport.shutdown().await, Ok(total));
+    server.verify().await;
+}
+
 /// The doubling stops at the cap.
 #[test]
 fn the_token_back_off_doubles_up_to_its_cap() {

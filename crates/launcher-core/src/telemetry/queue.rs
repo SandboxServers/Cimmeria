@@ -15,9 +15,20 @@
 //!   a fresh queue), and `telemetry-queue.inflight.offset`, the bytes of it
 //!   the server has already taken. Both go only when the last chunk of it
 //!   is acknowledged, so a launcher closed or killed mid-flush loses
-//!   nothing: the next flush resumes at the offset (at worst one chunk is
-//!   sent twice; the server keys chunks by `seq`). The 100 MiB cap applies
-//!   to each file, so the two together can briefly hold twice that.
+//!   nothing: the next flush resumes at the offset. Delivery is
+//!   at-least-once and the server does not dedupe: a crash after a 2xx and
+//!   before the offset write sends that one chunk again, as duplicate rows.
+//!   An offset file that does not parse, or does not point at a line start
+//!   inside the in-flight file, is ignored and the whole file resent, never
+//!   skipped. The 100 MiB cap applies to each file, so the two together can
+//!   briefly hold twice that.
+//! - `telemetry-queue.jsonl.tmp` and `telemetry-queue.inflight.offset.tmp`
+//!   — the write-then-rename halves of a compaction and an offset update; a
+//!   crash can leave either behind, and [`DiskQueue::discard`] deletes them.
+//!
+//! Events left from an earlier launcher run go out under whichever session
+//! is flushing: they are not re-stamped, and the server attributes them to
+//! that session and counts them against its upload limits.
 //!
 //! Every file operation takes one process-wide lock, so an append can
 //! never land between a flush's read and its rename, and no lock is held
@@ -181,8 +192,9 @@ impl DiskQueue {
     pub fn pending_count<T: DeserializeOwned>(&self) -> Result<u64, QueueError> {
         let _files = file_lock();
         let mut n = 0u64;
-        for (path, start) in [(&self.inflight_path, self.offset()), (&self.path, 0)] {
+        for (path, inflight) in [(&self.inflight_path, true), (&self.path, false)] {
             if path.exists() {
+                let start = if inflight { self.offset() } else { 0 };
                 let mut events: Vec<T> = Vec::new();
                 read_events(path, start, u64::MAX, usize::MAX, &mut events)?;
                 n = n.saturating_add(events.len() as u64);
@@ -219,8 +231,10 @@ impl DiskQueue {
     }
 
     /// Delete every queue file unsent: the queue, the in-flight file and
-    /// its offset, and the dropped-lines counter. Returns whether anything
-    /// was there. For a player who opted out.
+    /// its offset, the dropped-lines counter, and the temporary files a
+    /// crash mid-compaction or mid-offset-write leaves (a compaction's holds
+    /// up to 80 MiB of events). Returns whether anything was there. For a
+    /// player who opted out.
     pub fn discard(&self) -> Result<bool, QueueError> {
         let _files = file_lock();
         let mut removed = false;
@@ -229,19 +243,43 @@ impl DiskQueue {
             &self.inflight_path,
             &self.offset_path,
             &self.dropped_path,
+            &self.queue_tmp_path(),
+            &self.offset_tmp_path(),
         ] {
             removed |= remove_if_present(path)?;
         }
         Ok(removed)
     }
 
-    /// Bytes of the in-flight file already acknowledged; 0 when unknown (a
-    /// torn write resends rather than skips).
+    fn queue_tmp_path(&self) -> PathBuf {
+        self.path.with_extension("jsonl.tmp")
+    }
+
+    fn offset_tmp_path(&self) -> PathBuf {
+        self.offset_path.with_extension("offset.tmp")
+    }
+
+    /// Bytes of the in-flight file already acknowledged. 0 when there is no
+    /// offset file, and 0 with a warning when it does not parse or does not
+    /// point just past a line inside the in-flight file: a commit never
+    /// writes such an offset, and trusting one would delete events that
+    /// were never sent, so the whole file is resent instead.
     fn offset(&self) -> u64 {
-        std::fs::read_to_string(&self.offset_path)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
+        let Ok(text) = std::fs::read_to_string(&self.offset_path) else {
+            return 0;
+        };
+        let Ok(offset) = text.trim().parse::<u64>() else {
+            tracing::warn!("telemetry in-flight offset unreadable; resending the in-flight file");
+            return 0;
+        };
+        if offset == 0 || ends_a_line_inside(&self.inflight_path, offset) {
+            return offset;
+        }
+        tracing::warn!(
+            offset,
+            "telemetry in-flight offset is not a line start inside the file; resending it"
+        );
+        0
     }
 
     fn commit_locked(&self, end: u64) -> Result<(), QueueError> {
@@ -253,7 +291,7 @@ impl DiskQueue {
         if end >= len {
             return self.finish_inflight();
         }
-        let tmp = self.offset_path.with_extension("offset.tmp");
+        let tmp = self.offset_tmp_path();
         std::fs::write(&tmp, end.to_string().as_bytes())?;
         std::fs::rename(&tmp, &self.offset_path)?;
         Ok(())
@@ -313,7 +351,7 @@ impl DiskQueue {
             None => original.len(),
         };
         let dropped_lines = count_lines_in(&original[..keep_from]);
-        let tmp = self.path.with_extension("jsonl.tmp");
+        let tmp = self.queue_tmp_path();
         std::fs::write(&tmp, &original[keep_from..])?;
         std::fs::rename(&tmp, &self.path)?;
         self.add_dropped_locked(dropped_lines)?;
@@ -323,6 +361,23 @@ impl DiskQueue {
 
 fn count_lines_in(bytes: &[u8]) -> u64 {
     bytes.iter().filter(|&&b| b == b'\n').count() as u64
+}
+
+/// Whether `offset` lies inside `path` (before its end) with the byte
+/// before it a newline: where a commit leaves the offset. Any IO error
+/// counts as no.
+fn ends_a_line_inside(path: &Path, offset: u64) -> bool {
+    let check = || -> std::io::Result<bool> {
+        let mut f = std::fs::File::open(path)?;
+        if offset >= f.metadata()?.len() {
+            return Ok(false);
+        }
+        f.seek(SeekFrom::Start(offset - 1))?;
+        let mut before = [0u8; 1];
+        std::io::Read::read_exact(&mut f, &mut before)?;
+        Ok(before[0] == b'\n')
+    };
+    check().unwrap_or(false)
 }
 
 /// Whether `path` was there to remove.
@@ -386,241 +441,5 @@ fn read_events<T: DeserializeOwned>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde::Deserialize;
-
-    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-    struct Sample {
-        seq: u64,
-        msg: String,
-    }
-
-    fn sample(i: u64) -> Sample {
-        Sample {
-            seq: i,
-            msg: format!("event-{i}"),
-        }
-    }
-
-    fn queue_file(dir: &tempfile::TempDir) -> std::path::PathBuf {
-        dir.path().join("telemetry-queue.jsonl")
-    }
-
-    #[test]
-    fn enqueue_then_drain_returns_events_in_order() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..5 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        let drained: Vec<Sample> = q.drain().unwrap();
-        assert_eq!(drained.len(), 5);
-        assert_eq!(drained[0].seq, 0);
-        assert_eq!(drained[4].seq, 4);
-        assert!(!queue_file(&dir).exists(), "drain removes the queue file");
-    }
-
-    // Empty queue → empty Vec without an error so first-launch and
-    // post-drain calls don't have to special-case missing-file.
-    #[test]
-    fn drain_on_missing_file_returns_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        let drained: Vec<Sample> = q.drain().unwrap();
-        assert!(drained.is_empty());
-    }
-
-    // A partial-write at the tail (mid-line crash) should not strand
-    // the whole queue — drain skips the unparseable suffix and returns
-    // the rest.
-    #[test]
-    fn drain_skips_unparseable_lines() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        q.enqueue(&sample(0)).unwrap();
-        // Append a partial line directly.
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(queue_file(&dir))
-            .unwrap();
-        writeln!(f, "{{not valid json").unwrap();
-        q.enqueue(&sample(1)).unwrap();
-        let drained: Vec<Sample> = q.drain().unwrap();
-        assert_eq!(drained.len(), 2);
-        assert_eq!(drained[0].seq, 0);
-        assert_eq!(drained[1].seq, 1);
-    }
-
-    // Compaction: with caps low enough to trigger, oldest entries are
-    // dropped and the dropped counter increments. Retained tail must
-    // still parse cleanly.
-    #[test]
-    fn enqueue_compacts_on_overflow_dropping_oldest() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::with_caps(dir.path(), 200, 100);
-        for i in 0..100 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        assert!(
-            q.dropped_count() > 0,
-            "compaction should have happened; dropped={}",
-            q.dropped_count()
-        );
-        let drained: Vec<Sample> = q.drain().unwrap();
-        assert!(!drained.is_empty());
-        // Retained tail is the most-recent events — last seq is the
-        // freshest one.
-        let last = drained.last().unwrap();
-        assert_eq!(last.seq, 99);
-    }
-
-    // Compaction must not produce a file with a partial leading line
-    // — the retained slice starts at the byte AFTER a newline so the
-    // first line is always complete.
-    #[test]
-    fn compaction_starts_at_line_boundary() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::with_caps(dir.path(), 200, 100);
-        for i in 0..50 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        // Verify by inspecting the file content before drain — drain
-        // itself tolerates unparseable lines, so we need the raw bytes
-        // to prove compaction left a clean line boundary.
-        let raw = std::fs::read(queue_file(&dir)).unwrap();
-        if let Some(first_newline) = raw.iter().position(|&b| b == b'\n') {
-            let first_line = &raw[..first_newline];
-            assert!(
-                serde_json::from_slice::<Sample>(first_line).is_ok(),
-                "first line after compaction must parse: {:?}",
-                std::str::from_utf8(first_line)
-            );
-        }
-    }
-
-    #[test]
-    fn dropped_counter_persists_across_compactions() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::with_caps(dir.path(), 200, 100);
-        for i in 0..200 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        let dropped_after_first_compactions = q.dropped_count();
-        for i in 200..300 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        assert!(
-            q.dropped_count() >= dropped_after_first_compactions,
-            "dropped counter is cumulative across compactions"
-        );
-    }
-
-    /// **A line that is not UTF-8 does not block the queue.** A torn write
-    /// can leave any bytes; the events either side of it still go.
-    #[test]
-    fn a_non_utf8_line_is_skipped_not_fatal() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        q.enqueue(&sample(0)).unwrap();
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(queue_file(&dir))
-            .unwrap();
-        f.write_all(b"\xff\xfe{\"seq\":\xc3\n").unwrap();
-        drop(f);
-        q.enqueue(&sample(1)).unwrap();
-        assert_eq!(q.pending_count::<Sample>().unwrap(), 2);
-        let batch = q.take_batch::<Sample>(u64::MAX, 1_000).unwrap().unwrap();
-        assert_eq!(batch.events, [sample(0), sample(1)]);
-        q.commit_batch(&batch).unwrap();
-        assert!(q.take_batch::<Sample>(u64::MAX, 1_000).unwrap().is_none());
-    }
-
-    /// **Nothing leaves the disk before the server has it.** A batch taken
-    /// and never committed (the launcher closed mid-POST) is taken again,
-    /// whole, by the next flush, ahead of anything queued since; a
-    /// committed one is not.
-    #[test]
-    fn an_uncommitted_batch_is_taken_again_after_a_restart() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..5 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        let first = q.take_batch::<Sample>(u64::MAX, 2).unwrap().unwrap();
-        assert_eq!(first.events, [sample(0), sample(1)]);
-        q.commit_batch(&first).unwrap();
-        let lost = q.take_batch::<Sample>(u64::MAX, 2).unwrap().unwrap();
-        assert_eq!(lost.events, [sample(2), sample(3)]);
-        drop(lost);
-        q.enqueue(&sample(5)).unwrap();
-
-        // A new process: only the files remain.
-        let q = DiskQueue::new(dir.path());
-        assert_eq!(q.pending_count::<Sample>().unwrap(), 4);
-        let mut seen = Vec::new();
-        while let Some(batch) = q.take_batch::<Sample>(u64::MAX, 2).unwrap() {
-            seen.extend(batch.events.iter().map(|s| s.seq));
-            q.commit_batch(&batch).unwrap();
-        }
-        assert_eq!(seen, [2, 3, 4, 5]);
-        assert!(!dir.path().join("telemetry-queue.inflight.jsonl").exists());
-        assert!(!dir.path().join("telemetry-queue.inflight.offset").exists());
-    }
-
-    /// A batch stops before the line that would cross `max_bytes`, but the
-    /// first line always goes, however big.
-    #[test]
-    fn a_batch_respects_max_bytes() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..4 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        let line = serde_json::to_vec(&sample(0)).unwrap().len() as u64 + 1;
-        let batch = q.take_batch::<Sample>(line * 2, 1_000).unwrap().unwrap();
-        assert_eq!(batch.events.len(), 2);
-        q.commit_batch(&batch).unwrap();
-        let tiny = q.take_batch::<Sample>(1, 1_000).unwrap().unwrap();
-        assert_eq!(tiny.events, [sample(2)]);
-    }
-
-    /// A crash mid-append leaves a line with no newline; startup repair
-    /// ends it so the next event is not glued onto it.
-    #[test]
-    fn repair_keeps_the_next_event_off_a_torn_line() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        q.enqueue(&sample(0)).unwrap();
-        let mut f = std::fs::OpenOptions::new()
-            .append(true)
-            .open(queue_file(&dir))
-            .unwrap();
-        f.write_all(b"{\"seq\":1,\"ms").unwrap();
-        drop(f);
-        q.repair_torn_tail().unwrap();
-        q.enqueue(&sample(2)).unwrap();
-        let drained: Vec<Sample> = q.drain().unwrap();
-        assert_eq!(drained, [sample(0), sample(2)]);
-    }
-
-    #[test]
-    fn discard_removes_every_queue_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..3 {
-            q.enqueue(&sample(i)).unwrap();
-        }
-        let batch = q.take_batch::<Sample>(u64::MAX, 1).unwrap().unwrap();
-        q.commit_batch(&batch).unwrap();
-        q.enqueue(&sample(3)).unwrap();
-        q.add_dropped(2).unwrap();
-        assert!(q.discard().unwrap());
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-        assert!(!q.discard().unwrap());
-        // A commit for a batch taken before the discard writes nothing.
-        q.commit_batch(&batch).unwrap();
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-    }
-}
+#[path = "queue_tests.rs"]
+mod tests;
