@@ -269,6 +269,8 @@ pub struct Supervisor {
     leases: Arc<crate::lease::LeaseBook>,
     /// This instance's lab account name (see [`Supervisor::account_name`]).
     account: Arc<std::sync::Mutex<account::AccountCache>>,
+    /// This instance's running `lab_uat_run`, for `/status`.
+    uat_progress: crate::uat::progress::ProgressCell,
 }
 
 impl Supervisor {
@@ -281,6 +283,7 @@ impl Supervisor {
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
+            uat_progress: Default::default(),
         }
     }
 
@@ -294,6 +297,11 @@ impl Supervisor {
     /// The lease book this supervisor's watchdog consults.
     pub fn leases(&self) -> &Arc<crate::lease::LeaseBook> {
         &self.leases
+    }
+
+    /// This instance's running `lab_uat_run`, shared with its runner.
+    pub fn uat_progress(&self) -> &crate::uat::progress::ProgressCell {
+        &self.uat_progress
     }
 
     /// The named lab instance this supervisor drives, or `None` for the default.

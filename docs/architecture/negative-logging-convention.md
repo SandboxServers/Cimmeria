@@ -839,6 +839,19 @@ Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst o
 
 Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.
 
+## Minigame result and start seam (TG-MG-01)
+
+`cell_dispatch/minigame.rs` in `cimmeria-base-world-entry`. A minigame result is forwarded to the cell for its victory chains; when that hand-off cannot happen the chains never run, so it is logged. The identity is the entity pair (`entity_id`, `entity_name`) and the result is named by `result_code` and `result`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| ERROR | `cell_channel_closed` | `MinigameResult` reached the base, but the cell's receiver was dropped; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count`, `error` |
+| WARN | `no_cell_channel` | No cell channel is configured; the victory chains are lost | entity pair, `result_code`, `result`, `chain_count` |
+| WARN | `minigame_server_disabled` | `StartMinigame` with no minigame registry; the player is never sent `onStartMinigame` | entity pair, `game_name` |
+| WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
+
+Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

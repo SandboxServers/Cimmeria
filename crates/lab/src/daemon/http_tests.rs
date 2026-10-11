@@ -235,6 +235,47 @@ async fn status_lists_instances_without_lease_ids() {
         !recent.is_empty(),
         "the released lease is in recent: {body}"
     );
+    assert!(rows[0]["uat"].is_null(), "{body}");
+}
+
+/// GET `/status` through the daemon; the body text.
+async fn get_status(url: &str) -> String {
+    let r = reqwest::Client::new()
+        .get(url)
+        .headers(headers(Some(TOKEN)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), reqwest::StatusCode::OK);
+    r.text().await.unwrap()
+}
+
+/// `/status` shows the routed instance's running UAT row while the run holds
+/// its cell, and null once the guard clears it. Fails if the handler passes
+/// `Value::Null` or reads another instance's cell.
+#[tokio::test]
+async fn status_reports_the_current_uat_row() {
+    let server = test_server();
+    let sup = server.instances().first().supervisor.clone();
+    let g = sup
+        .uat_progress()
+        .begin("cfzzhprq", "C:\\runs\\x", 7, 1_000);
+    sup.uat_progress()
+        .row_started("first-session", "FS-P3", 2_000);
+    let url = spawn_daemon(server).await.replace("/mcp", "/status");
+
+    let text = get_status(&url).await;
+    let body: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        body["instances"][0]["uat"]["current_row"], "FS-P3",
+        "{body}"
+    );
+    assert_eq!(body["instances"][0]["uat"]["rows_total"], 7, "{body}");
+    assert!(!text.contains("lease-"), "lease id leaked: {text}");
+
+    drop(g);
+    let body: Value = serde_json::from_str(&get_status(&url).await).unwrap();
+    assert!(body["instances"][0]["uat"].is_null(), "{body}");
 }
 
 /// Regression guard (DNS rebinding): a valid token from a page that resolved

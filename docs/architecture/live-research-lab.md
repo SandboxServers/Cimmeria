@@ -301,7 +301,10 @@ that nothing enforced.
   MCP service and don't cover `/status`; a DNS-rebinding page can't supply
   the bearer token, so the token is the guard there. A plain GET replaced
   the alternative, an MCP streamable-HTTP client written in PowerShell
-  (initialize, session id, SSE parsing).
+  (initialize, session id, SSE parsing). Each instance row also carries
+  `uat`: its running `lab_uat_run` (run id, run directory, rows done and
+  total, the current row and when it started), or `null`, for `lab watch`
+  (D-LW1 of the [lab watch ledger](../analysis/lab-watch/README.md)).
 
 Implementation: `crates/lab/src/daemon/` (transport, auth, single
 instance, log rotation, `status.rs`), `crates/lab/src/lease/` (book, policy, run lease),

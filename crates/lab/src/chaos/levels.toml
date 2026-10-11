@@ -1,0 +1,48 @@
+# The chaos levels: one named knob set per profile and level. Each level's
+# source names the docs/client/limits/ row or bound it was taken from.
+# Every value is "provisional" until CH-10 measures it on the lab client;
+# CH-10 changes the numbers, not the level names.
+
+[cpu.safe]
+cores = "max-2"       # logical cores minus 2
+duty = "100"
+source = "provisional; engine.md busy cores"
+
+[cpu.break]
+cores = "max"         # every logical core
+duty = "100"
+source = "provisional; engine.md busy cores"
+
+[net.safe]
+latency = "60"
+jitter = "10"
+loss = "0.5"
+dup = "0"
+reorder = "0"
+source = "provisional; network.md latency and loss rows"
+
+[net.break]
+latency = "250"
+jitter = "80"
+loss = "5.0"
+dup = "0"
+reorder = "0"
+source = "provisional; network.md latency and loss rows"
+
+[flush.safe]
+mode = "delay"
+delay_ms = "2000"
+source = "provisional; aoi.md creates in one flush"
+
+[flush.break]
+mode = "pack"
+records = "24"
+source = "provisional; aoi.md creates in one flush"
+
+[burst.safe]
+count = "50"
+source = "provisional; aoi.md entities held"
+
+[burst.break]
+count = "250"
+source = "provisional; aoi.md entities held"
