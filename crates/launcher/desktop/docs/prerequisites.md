@@ -494,3 +494,84 @@ This remains a synthetic durable-write boundary, not actual power-loss proof.
 37 frontend tests, the frontend build and JS logic UAT passed; UAT verified the
 explicit action, operation/revision binding, no setup replay and unchanged
 consent through controlled IPC. No native visual or game UAT is claimed.
+
+## Native Windows PhysX System Software (LX-12)
+
+On native Windows the game runs directly, not in a Wine prefix, so the
+compatibility operation above does not apply. The 32-bit `PhysXLoader.dll`
+next to `SGW.exe` loads the 2.x core from the folder that PhysX System Software
+registers; without it `NxCreatePhysicsSDK` fails ([#1121](https://github.com/SandboxServers/Cimmeria/issues/1121)).
+Decision D-LX13 has the launcher install the system software rather than write
+the `enableLocalPhysXCore` value, which is tied to a network adapter's MAC
+address. The code is `engine/src/storage/runtime_setup/windows_physx/`, the
+`physx_command` Tauri command (`shell/src/host/physx.rs`) and the Settings panel
+`frontend/src/physx-view.ts`.
+
+**Detection.** PhysX counts as installed only when both of these hold:
+
+- `PhysXLoader.dll` is a file in the 32-bit system directory:
+  `GetSystemWow64DirectoryW` (`SysWOW64`) on 64-bit Windows, or
+  `GetSystemDirectoryW` on 32-bit Windows. The game is 32-bit, so this is the
+  copy its DLL search reaches; the 64-bit `System32` copy is not. The launcher
+  checks the file and does not load it: a 32-bit DLL cannot load into the 64-bit
+  launcher, and loading would run its entry point.
+- REG_SZ `PhysXCore Path` under `HKLM\SOFTWARE\AGEIA Technologies`, read in the
+  32-bit registry view (`RRF_SUBKEY_WOW6432KEY`, so `WOW6432Node` on 64-bit
+  Windows), is non-empty and names a folder that exists. This is the value the
+  game's loader reads to find the core, so it is the direct evidence. The
+  installer's entry under `...\CurrentVersion\Uninstall` is keyed by a product
+  code that differs between PhysX releases, and NVIDIA's later system software
+  still writes the AGEIA value, so the uninstall entry is not used.
+
+Either one alone, such as a stale registry value after an uninstall, reads as
+missing. The Settings panel shows the state, and when PhysX is missing a
+warning appears beside Play. The warning does not disable Play.
+
+**Install.** "Install PhysX" uses the installer that install extraction keeps at
+`game/.cimmeria-prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe`, the same
+file the Wine path uses. The press takes the mutation admission
+(`ensure_no_active_operation`), so it is refused while the updater, an install,
+Play, Repair or any other operation is unfinished, and only one PhysX install runs
+at a time. Native code then reads the file under deny-write sharing and calls
+`prerequisites::physx_msi`, which checks the exact size and SHA-256 above and the
+carved MSI's own SHA-256. A mismatch refuses with `package_mismatch` and starts
+no process. The MSI is written to `physx-setup/` under the launcher state root,
+reopened read-only and compared byte for byte, and held under deny-write/delete
+sharing while it runs.
+
+The launcher starts `%SystemRoot%\System32\msiexec.exe /i "<msi>" /norestart`
+through `ShellExecuteExW` with the `runas` verb, which shows the UAC prompt, then
+waits for the process and reads its exit code. The installer runs with its full
+interactive UI, not `/passive` or `/qn`, so the player reads and accepts the
+vendor license themselves; the launcher never accepts it for them. `/norestart`
+leaves any restart to the player. Afterwards detection runs again, and the MSI is
+deleted. Results, shown as the panel's result line:
+
+| Result | Cause |
+|---|---|
+| `installed` | Exit code 0 or 3010, and detection now finds PhysX. 3010 adds "Restart Windows before you play." |
+| `cancelled_at_uac` | `ShellExecuteExW` failed with `ERROR_CANCELLED` (1223): the prompt was declined. Nothing ran. |
+| `cancelled_in_installer` | Exit code 1602: the player cancelled the installer's wizard. |
+| `failed` | Any other exit code, shown in the line. |
+| `not_detected` | Exit code 0 or 3010, but detection still finds nothing. |
+| `start_failed` | `ShellExecuteExW` failed with another Win32 error. |
+
+The host keeps the last result, so Inspect shows it again if the reply to the
+press was lost. Every refusal and failure is logged through `tracing` in the
+engine (the busy refusal in the shell goes to stderr).
+
+**Tests.** Engine `windows_physx::tests` inject the registry and DLL probes
+(present, missing value, missing DLL), refuse a same-size package with the wrong
+hash and a wrong-size package without starting the injected installer or writing
+an MSI, and map a declined UAC prompt to `cancelled_at_uac`. Shell
+`host::physx::tests` check that an active operation and a running install both
+refuse with `busy`. `physx-view.test.ts` and `npm run uat:physx` cover the
+first-press busy state, each result line and the Play warning. Each guard was
+checked by reverting it. None of these run msiexec, show a UAC prompt or read
+the real registry; that needs a native Windows UAT on a machine without PhysX.
+
+Known limit: the admission is checked when Install is pressed, but the installer
+does not hold an operation, so Play or an install can start while msiexec is
+still open. The MSI is in the launcher state folder, not the game folder, so an
+install does not touch it. The UAC prompt has no owner window, so it can open
+behind the launcher.
