@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use serde_json::Value;
 
 use super::caps::{self, Outcome};
+use crate::hooks::iat_hooks::{module_of, owner_fields};
 use crate::queue::Producer;
 
 /// One imported function: its IAT slot in `SGW.exe` and what it imports.
@@ -136,16 +137,14 @@ pub(in crate::hooks) unsafe fn iat(
     let Some(original) = expected.filter(|e| Some(*e) == current) else {
         let show =
             |v: Option<usize>| Value::String(v.map_or("none".into(), |v| format!("0x{v:08x}")));
-        crate::hooks::emit_warn(
-            producer,
-            "client.hooks.iat.slot_mismatch",
-            [
-                ("hook", Value::String(name.into())),
-                ("address", addr_value(import.slot)),
-                ("expected", show(expected)),
-                ("actual", show(current)),
-            ],
-        );
+        let mut fields = vec![
+            ("hook", Value::String(name.into())),
+            ("address", addr_value(import.slot)),
+            ("expected", show(expected)),
+            ("actual", show(current)),
+        ];
+        fields.extend(owner_fields(current, module_of));
+        crate::hooks::emit_warn(producer, "client.hooks.iat.slot_mismatch", fields);
         // A module that is not loaded at all is a skip, not a fault.
         caps::record(
             name,
