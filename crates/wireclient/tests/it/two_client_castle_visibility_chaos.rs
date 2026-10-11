@@ -19,9 +19,7 @@
 //!
 //! Run locally (same DB setup as the lossless variant):
 //! ```text
-//! /c/Users/Steve/AppData/Local/Temp/cimmeria-castle/reload-db.sh
-//! DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/<db> \
-//!   cargo test -p cimmeria-wireclient --test it two_client_castle_visibility_chaos -- --test-threads=1
+//! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_castle_visibility_chaos
 //! ```
 //! Requires the `chaos-testing` feature on the `cimmeria-services`
 //! dev-dependency (already enabled in `Cargo.toml`) for
@@ -35,9 +33,9 @@ use cimmeria_mercury::transport::BidirectionalTransport;
 use cimmeria_wireclient::bundle::S2CMessage;
 
 use crate::support::{
-    bind_base_socket, credentials_for, enter_castle_with_timeout, insert_castle_character,
-    insert_sentinel_account, live_db_pool_or_skip, start_server_with_base_transport, wait_for,
-    wait_for_recording, CASTLE_BASE_POS,
+    self, bind_base_socket, credentials_for, enter_castle_with_timeout, insert_castle_character,
+    insert_sentinel_account, start_server_with_base_transport, wait_for, wait_for_recording,
+    CASTLE_BASE_POS,
 };
 
 /// Generous per-step recv timeout for scenarios running under injected
@@ -81,10 +79,7 @@ async fn lossy_network_both_directions_still_converge() {
         )
         .with_test_writer()
         .try_init();
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
 
     let (raw_transport, base_port) = bind_base_socket().await;
     // Send (server->client): ~7% loss, 5ms base latency + 30ms jitter.
@@ -98,7 +93,7 @@ async fn lossy_network_both_directions_still_converge() {
         recv_cfg,
     ));
     let server = start_server_with_base_transport(
-        &std::env::var("DATABASE_URL").unwrap(),
+        &support::db_url(),
         base_port,
         lossy.clone() as Arc<dyn BidirectionalTransport>,
     )
@@ -238,10 +233,7 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
         )
         .with_test_writer()
         .try_init();
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
 
     let (raw_transport, base_port) = bind_base_socket().await;
     // Lossless baseline -- the ONLY loss in this scenario is the
@@ -252,7 +244,7 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
         LossyConfig::new(Duration::ZERO, 0, 0, 0),
     ));
     let server = start_server_with_base_transport(
-        &std::env::var("DATABASE_URL").unwrap(),
+        &support::db_url(),
         base_port,
         lossy.clone() as Arc<dyn BidirectionalTransport>,
     )
@@ -394,17 +386,14 @@ async fn burst_drop_of_peer_create_entity_recovers_via_retransmit() {
 /// needs to assert asymmetric behavior specifically.
 #[tokio::test]
 async fn high_latency_clients_still_converge() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
 
     let (raw_transport, base_port) = bind_base_socket().await;
     let cfg = LossyConfig::new(Duration::from_millis(80), 0, 0, 0x4A7E_0003)
         .with_jitter(Duration::from_millis(40));
     let lossy = Arc::new(LossyTransport::new_symmetric(raw_transport, cfg));
     let server = start_server_with_base_transport(
-        &std::env::var("DATABASE_URL").unwrap(),
+        &support::db_url(),
         base_port,
         lossy.clone() as Arc<dyn BidirectionalTransport>,
     )

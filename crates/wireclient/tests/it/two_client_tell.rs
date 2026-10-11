@@ -16,15 +16,14 @@
 //! here it is live-DB only and is not run in CI (audit A-60):
 //!
 //! ```text
-//! bash tools/build-lane/reload-db.sh    # prints DATABASE_URL
-//! DATABASE_URL=... cargo test -p cimmeria-wireclient --test it two_client_tell -- --test-threads=1
+//! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_tell
 //! ```
 
 use std::time::Duration;
 
 use crate::support::{
-    credentials_for, enter_castle, insert_castle_character, insert_sentinel_account,
-    live_db_pool_or_skip, start_server, wait_for, CASTLE_BASE_POS,
+    self, credentials_for, enter_castle, insert_castle_character, insert_sentinel_account,
+    start_server, wait_for, CASTLE_BASE_POS,
 };
 
 use cimmeria_wireclient::bundle::S2CMessage;
@@ -87,11 +86,8 @@ async fn tell(from: &GameSession, target: &str, text: &str) {
 
 #[tokio::test]
 async fn two_clients_exchange_a_tell() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
 
     const ACCOUNT_A: i32 = 900_311;
     const ACCOUNT_B: i32 = 900_312;

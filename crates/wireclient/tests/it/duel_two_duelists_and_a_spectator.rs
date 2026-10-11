@@ -20,16 +20,14 @@
 //! Like the other modules here it needs a live database and does not run in
 //! CI (audit A-60), so it backs, and never replaces, the in-process guards in
 //! `crates/cell-world/src/cell/duel/tests/engage.rs`. Run it with
-//! `bash tools/build-lane/live-db-test.sh` for the database, then
-//! `cargo test -p cimmeria-wireclient --test it duel_two_duelists -- --test-threads=1`
-//! with that `DATABASE_URL`.
+//! `pwsh tools/build-lane/live-db-test.ps1 --wireclient duel_two_duelists`.
 
 use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::support::{
     self, assert_never, credentials_for, insert_castle_character, insert_sentinel_account,
-    live_db_pool_or_skip, start_server, wait_for, CASTLE_BASE_POS,
+    start_server, wait_for, CASTLE_BASE_POS,
 };
 
 use cimmeria_wireclient::session::GameSession;
@@ -63,11 +61,8 @@ fn extended_args(payload: &[u8]) -> &[u8] {
 
 #[tokio::test]
 async fn duel_engages_for_two_duelists_and_flags_both_for_a_spectator() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
     for i in 0..3 {
         insert_sentinel_account(&pool, ACCOUNTS[i], LOGINS[i]).await;
         let pos = [

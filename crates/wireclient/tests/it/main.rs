@@ -7,14 +7,15 @@
 //! test as a module in this directory, never as a new file directly
 //! under `tests/`; checked-in fixtures stay in `tests/fixtures/`.
 //!
-//! Run one module with
-//! `cargo test -p cimmeria-wireclient --test it <module>`, e.g.
-//! `--test it two_client_castle_visibility_chaos`. The live-DB modules
-//! still need `-- --test-threads=1` under `cargo test`; see `support`.
+//! Run the live-DB modules with
+//! `pwsh tools/build-lane/live-db-test.ps1 --wireclient <module>`, which
+//! gives each running test its own database clone (`wireclient-e2e`
+//! profile). The no-DB modules run under a plain `cargo nextest run`.
 
 mod auth_smoke;
 mod client_calls;
 mod duel_two_duelists_and_a_spectator;
+mod isolation;
 mod login_probe;
 mod sparbot_duel;
 mod support;
