@@ -197,6 +197,13 @@ impl LabServer {
     async fn lab_logout(&self) -> Result<CallToolResult, McpError> {
         flow_result(self.supervisor.logout_flow().await)
     }
+
+    #[tool(
+        description = "Log out to the login screen: at character select, click Back (the client sends the account logOff and shows the login screen), and wait for the login screen. Already at the login screen is not an error."
+    )]
+    async fn lab_disconnect(&self) -> Result<CallToolResult, McpError> {
+        flow_result(self.supervisor.disconnect_flow().await)
+    }
 }
 
 /// A flow's JSON as text content, or its failure as an MCP error whose
@@ -249,6 +256,7 @@ mod tests {
             "lab_play_character",
             "lab_finish_dialog",
             "lab_logout",
+            "lab_disconnect",
             "client_ui_state",
             "client_wait_for",
             "client_entity_table",

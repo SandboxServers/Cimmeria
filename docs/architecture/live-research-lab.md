@@ -117,7 +117,7 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |
 | `lab_client_status` | PID, uptime, bridge heartbeat age, login state, crash count. |
-| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, ...) are listed in the operating guide. |
+| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, `lab_disconnect` (Back at character select, to the login screen), ...) are listed in the operating guide. |
 | `lab_screenshot` | Capture of the window's client area; over MCP it comes back as a saved file path unless the call passes `image: true`. |
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |
