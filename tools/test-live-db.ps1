@@ -49,6 +49,7 @@ $LiveDbCrates = @(
     'cimmeria-cell-org'
     'cimmeria-cell-effect-scripts'
     'cimmeria-cell'
+    'cimmeria-lab-mcp'
     'cimmeria-wireclient'
 )
 

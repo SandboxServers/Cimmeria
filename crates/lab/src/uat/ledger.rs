@@ -307,6 +307,7 @@ mod tests {
             vars: json!({}),
             attestations: vec![],
             blocked: vec![],
+            fixture_parity: None,
         }
     }
 

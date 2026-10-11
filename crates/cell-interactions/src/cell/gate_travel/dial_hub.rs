@@ -269,8 +269,9 @@ async fn top_up(
     // Audit line, shaped like gmDHD's `gm_address_grant`: a GM was handed
     // addresses they did not earn. One row per pass that runs (world entry,
     // DHD open) with the whole list, so a SigNoz query on `reason` answers
-    // "who could dial what, when".
-    tracing::warn!(
+    // "who could dial what, when". INFO: the grant is the intended behaviour
+    // of the DA-07 hub, not an expectation failure.
+    tracing::info!(
         entity_id,
         entity_name,
         player_id,
