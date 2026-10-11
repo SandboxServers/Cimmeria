@@ -506,34 +506,62 @@ impl PoseSpec {
     /// pitch_deg (1 dp), yaw_offset_deg (1 dp), zoom (1 dp), aim (only
     /// when "point"), aim_dy_m (2 dp), calibrated.
     /// Shape: `{ id = "frost", tag = "...", radius_m = 4.16, ... }`.
+    /// Values are rounded first and kept inside the validation ranges, so a
+    /// line it writes always loads (359.96 deg writes as 0.0, a pitch of
+    /// -78.75 as -78.7); control characters in `calibrated` become spaces,
+    /// so the pose stays one line (D-SV2).
     pub fn to_inline_toml(&self) -> String {
+        let bearing = match round_to(self.bearing_deg, 1) {
+            b if b >= 360.0 => 0.0,
+            b => b,
+        };
         let mut keys = vec![
             format!("id = {}", toml_string(&self.id)),
             format!("tag = {}", toml_string(&self.tag)),
-            format!("radius_m = {:.2}", self.radius_m),
-            format!("bearing_deg = {:.1}", self.bearing_deg),
-            format!("dy_m = {:.2}", self.dy_m),
+            format!(
+                "radius_m = {:.2}",
+                round_to(self.radius_m, 2).clamp(1.0, 8.0)
+            ),
+            format!("bearing_deg = {bearing:.1}"),
+            format!("dy_m = {:.2}", round_to(self.dy_m, 2).clamp(-3.0, 3.0)),
         ];
         if let Some(p) = self.pitch_deg {
-            keys.push(format!("pitch_deg = {p:.1}"));
+            keys.push(format!(
+                "pitch_deg = {:.1}",
+                round_to(p, 1).clamp(-78.7, 78.7)
+            ));
         }
         if let Some(y) = self.yaw_offset_deg {
-            keys.push(format!("yaw_offset_deg = {y:.1}"));
+            keys.push(format!(
+                "yaw_offset_deg = {:.1}",
+                round_to(y, 1).clamp(-180.0, 180.0)
+            ));
         }
         if let Some(z) = self.zoom {
-            keys.push(format!("zoom = {z:.1}"));
+            keys.push(format!("zoom = {:.1}", round_to(z, 1).clamp(100.0, 775.0)));
         }
         if self.aim == AimMode::Point {
             keys.push("aim = \"point\"".into());
         }
         if let Some(d) = self.aim_dy_m {
-            keys.push(format!("aim_dy_m = {d:.2}"));
+            keys.push(format!("aim_dy_m = {:.2}", round_to(d, 2)));
         }
         if let Some(c) = &self.calibrated {
-            keys.push(format!("calibrated = {}", toml_string(c)));
+            let one_line: String = c
+                .chars()
+                .map(|ch| if ch.is_control() { ' ' } else { ch })
+                .collect();
+            keys.push(format!("calibrated = {}", toml_string(&one_line)));
         }
         format!("{{ {} }}", keys.join(", "))
     }
+}
+
+/// `v` rounded to `places` decimals, the value a `{:.N}` pose field holds.
+#[cfg_attr(not(test), allow(dead_code))]
+fn round_to(v: f64, places: i32) -> f64 {
+    let k = 10f64.powi(places);
+    (v * k).round() / k
 }
 
 /// A string as TOML writes it, escapes included.

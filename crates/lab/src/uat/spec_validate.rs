@@ -222,6 +222,12 @@ fn check_poses(row: &RowSpec, errs: &mut Vec<String>) {
                 bad(format!("{name} {v} is outside {lo}..={hi}"));
             }
         }
+        if p.calibrated
+            .as_deref()
+            .is_some_and(|c| c.chars().any(char::is_control))
+        {
+            bad("calibrated must be one line, with no control characters".into());
+        }
         match (p.aim, p.aim_dy_m) {
             (AimMode::Point, None) => bad("aim = \"point\" needs aim_dy_m".into()),
             (AimMode::Entity, Some(_)) => bad("aim = \"entity\" forbids aim_dy_m".into()),

@@ -135,7 +135,7 @@ impl Fake {
         self.calls.lock().unwrap().clone()
     }
 
-    fn without(mut self, tool: &str) -> Self {
+    pub(super) fn without(mut self, tool: &str) -> Self {
         self.tools.remove(tool);
         self
     }

@@ -314,11 +314,17 @@ pose = [
   { id = "near", tag = "C", radius_m = 0.5, bearing_deg = 10.0, dy_m = 0.1 },
   { id = "wide", tag = "D", radius_m = 4.0, bearing_deg = 360, dy_m = 0.1 },
   { id = "pt", tag = "E", radius_m = 4.0, bearing_deg = 10.0, dy_m = 0.1, aim = "point" },
+  { id = "Up", tag = "F G", radius_m = 4.0, bearing_deg = 10.0, dy_m = 4.0, pitch_deg = -80.0, yaw_offset_deg = 181.0, zoom = 50.0, aim_dy_m = 0.2, calibrated = "a\nb" },
 ]
 step = [
   { tool = "@camera", args = { pose = "nope" }, label = "aim" },
   { tool = "@world_click", args = { tag = "X", name = "Y" }, label = "click" },
   { tool = "client_world_click", args = { face_tag = "Z" }, label = "face" },
+  { tool = "@chat_send", args = { pose = "dup" }, label = "chat", fallback = [
+    { tool = "@camera", args = { pose = "gone" }, label = "fb" },
+  ] },
+  { tool = "@chat_send", args = { tag = "X" }, label = "chat2" },
+  { tool = "@world_click", args = { tag = "X", pose = "dup" }, label = "both" },
 ]
 [[row.expect]]
 id = "c"
@@ -329,15 +335,42 @@ contains = "x"
     let err = parse(&format!("{MINI}{bad}")).unwrap_err();
     for want in [
         "FS-X: duplicate pose id \"dup\"",
-        "radius_m 0.5 is outside 1.0..=8.0",
-        "bearing_deg 360 is outside 0.0..360.0",
-        "aim = \"point\" needs aim_dy_m",
-        "pose \"nope\" is not a pose of this row",
-        "tag with name: give one",
-        "face_tag applies to client_camera only",
+        "FS-X: pose \"near\": radius_m 0.5 is outside 1.0..=8.0",
+        "FS-X: pose \"wide\": bearing_deg 360 is outside 0.0..360.0",
+        "FS-X: pose \"pt\": aim = \"point\" needs aim_dy_m",
+        "FS-X: pose \"Up\": id is not [a-z0-9-]+",
+        "FS-X: pose \"Up\": tag \"F G\" is not [A-Za-z0-9_.]+",
+        "FS-X: pose \"Up\": dy_m 4 is outside -3.0..=3.0",
+        "FS-X: pose \"Up\": pitch_deg -80 is outside -78.75..=78.75",
+        "FS-X: pose \"Up\": yaw_offset_deg 181 is outside -180..=180",
+        "FS-X: pose \"Up\": zoom 50 is outside 100..=775",
+        "FS-X: pose \"Up\": aim = \"entity\" forbids aim_dy_m",
+        "FS-X: pose \"Up\": calibrated must be one line",
+        "FS-X/aim: pose \"nope\" is not a pose of this row",
+        "FS-X/click: tag with name: give one",
+        "FS-X/face: face_tag applies to client_camera only",
+        "FS-X/chat: pose applies to camera",
+        "FS-X/fb: pose \"gone\" is not a pose of this row",
+        "FS-X/chat2: tag applies to world click",
+        "FS-X/both: tag with pose: give one",
     ] {
         assert!(err.contains(want), "missing {want:?} in {err}");
     }
+}
+
+#[test]
+fn a_written_pose_always_loads_again() {
+    // Values in range that round out of it, and a multi-line note.
+    let mut pose = one_pose(GUARD_LINE);
+    pose.bearing_deg = 359.96;
+    pose.pitch_deg = Some(-78.75);
+    pose.calibrated = Some("line one\nline two".into());
+    let line = pose.to_inline_toml();
+    assert!(!line.contains('\n'), "{line}");
+    let back = one_pose(&line);
+    assert_eq!(back.bearing_deg, 0.0);
+    assert_eq!(back.pitch_deg, Some(-78.7));
+    assert_eq!(back.calibrated.as_deref(), Some("line one line two"));
 }
 
 /// A one-row section whose step list is the TOML array `steps`.
