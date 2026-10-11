@@ -1,4 +1,5 @@
 use super::*;
+use crate::game_telemetry::patch_events;
 use futures_util::FutureExt;
 use std::{panic::AssertUnwindSafe, sync::Mutex};
 use tokio::sync::watch;
@@ -161,7 +162,28 @@ async fn execute(
             },
         );
     }
-    {
+    let binaries = spec.directory.clone();
+    // Lazy: nothing is spawned until `run_game` awaits it, after Running.
+    let supervised = supervisor::run(spec, request, cancel.clone(), |observation| {
+        state
+            .lock()
+            .map_err(|_| StorageError::Io)?
+            .record_launch(plan, observation)?;
+        updates.send_replace(observation);
+        Ok(())
+    });
+    run_game(&state, plan, &binaries, &cancel, supervised).await
+}
+/// Commits Running, awaits the supervised game, then reports the
+/// client-patches events. `binaries` holds `SGW.exe` and the DLL's log.
+pub(super) async fn run_game(
+    state: &Arc<Mutex<DesktopState>>,
+    plan: &Plan,
+    binaries: &Path,
+    cancel: &CancellationToken,
+    supervised: impl std::future::Future<Output = Observation>,
+) -> Result<Observation, IntentError> {
+    let injection = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         if cancel.is_cancelled() {
             return Ok(Observation::Cancelled);
@@ -169,16 +191,25 @@ async fn execute(
         owner
             .operations_mut()?
             .observe(plan.id, OperationState::Running)?;
+        // The plan's resources are what Play resolved, so they say whether
+        // the DLL went in; the policy says why it did not.
+        owner.patch_injection(plan.resources.client_patches.is_some())
+    };
+    // TODO(LX-08b): poll these from the session loop; until then the boot
+    // verdict and the final counts are queued once the game exits.
+    let mut patches = patch_events::PatchEvents::new(binaries, injection);
+    let outcome = supervised.await;
+    // A game that never started has no client-patches log to report on.
+    if matches!(
+        outcome,
+        Observation::ProcessExited { .. } | Observation::Unknown
+    ) {
+        // The log read and the queue append are file I/O: off the runtime.
+        let state = state.clone();
+        let _ =
+            tokio::task::spawn_blocking(move || patch_events::queue_at_exit(&state, &mut patches))
+                .await;
     }
-    let outcome = supervisor::run(spec, request, cancel, |observation| {
-        state
-            .lock()
-            .map_err(|_| StorageError::Io)?
-            .record_launch(plan, observation)?;
-        updates.send_replace(observation);
-        Ok(())
-    })
-    .await;
     Ok(outcome)
 }
 /// The login servers this Play writes, resolved before a telemetry session is

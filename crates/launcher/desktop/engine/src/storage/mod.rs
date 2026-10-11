@@ -218,6 +218,7 @@ pub struct DesktopState {
     directory: Arc<Directory>,
     preferences_uncertain: bool,
     summaries: launcher_summary::Shared,
+    install_telemetry: game_telemetry::install_event::Pending,
 }
 
 impl DesktopState {
@@ -281,6 +282,7 @@ impl DesktopState {
             directory,
             preferences_uncertain: false,
             summaries,
+            install_telemetry: Default::default(),
         };
         state.recover_legacy_import()?;
         state.recover_launcher_update()?;

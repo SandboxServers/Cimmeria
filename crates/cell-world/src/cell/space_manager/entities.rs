@@ -277,6 +277,8 @@ impl SpaceManager {
         self.zero_health_npc_log.forget(entity_id);
         // CS-07: a recycled id's first weapon refusal must be written.
         self.ability_refusal_log.forget(entity_id);
+        // TG-CMB-02: a recycled id's first stale-combat WARN must be written.
+        self.combat_state_stale_log.forget(entity_id);
         // AB-N1 combat debug: a recycled id must not inherit a predecessor's
         // toggles, budget or mob-debug entries.
         self.combat_debug.forget_entity(entity_id);
