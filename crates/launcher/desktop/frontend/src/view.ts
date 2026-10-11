@@ -7,6 +7,7 @@ import { mountClientPatches } from "./client-patches-view";
 import { mountLogUpload } from "./log-upload-view";
 import { mountClientMaintenance } from "./client-maintenance-view";
 import { mountClientChanges } from "./client-changes-view";
+import { mountPhysx } from "./physx-view";
 import { makePanelContext } from "./panel-context";
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -49,6 +50,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     mountLogUpload(document, invoke, panelFeed.context),
     mountClientMaintenance(document, invoke, panelFeed.context),
     mountClientChanges(document, invoke, panelFeed.context),
+    mountPhysx(document, invoke, panelFeed.context),
   ];
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');

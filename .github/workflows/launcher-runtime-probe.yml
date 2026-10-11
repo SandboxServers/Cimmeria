@@ -43,9 +43,12 @@ concurrency:
   group: launcher-runtime-probe-${{ github.ref }}
   cancel-in-progress: false
 
+# Both jobs run on the self-hosted `cimmeria-windows` pool (node3,
+# tools/ci-runners/README.md "Windows pool"). Fork and Dependabot PRs, and every run
+# while the repository variable CI_WINDOWS_RUNNER is `hosted`, use windows-latest.
 jobs:
   runtime-probe:
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     timeout-minutes: 30
     defaults:
       run:
@@ -87,7 +90,7 @@ jobs:
 
   local-lab-tools:
     # Development UAT only: these never enter the player launcher bundle.
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     timeout-minutes: 30
     defaults:
       run:

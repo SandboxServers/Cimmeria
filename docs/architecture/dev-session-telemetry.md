@@ -425,7 +425,11 @@ refuses once the session passes `CIMMERIA_TELEMETRY_MAX_SESSION_SECS`
 rather than overshooting it. Without this, each refresh granted a
 fresh full TTL and one leaked token could be walked forward forever.
 At the cap the launcher sees a 401 on refresh and mints a fresh
-session, the same path it already takes for an expired token.
+session, the same path it already takes for an expired token. Every
+refused refresh logs its `reason` (`dev_session_lifetime_exceeded` with
+`elapsed` and `cap` at INFO, `dev_session_expired` with `exp` and `now`,
+`dev_session_bad_token`, and `dev_session_kill_switch` at WARN), so a
+stream that ends after a refresh has a row naming the refusal.
 
 ## Backpressure + queue overflow
 

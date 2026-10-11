@@ -117,13 +117,15 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |
 | `lab_client_status` | PID, uptime, bridge heartbeat age, login state, crash count. |
-| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, ...) are listed in the operating guide. |
+| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, `lab_disconnect` (Back at character select, to the login screen), ...) are listed in the operating guide. |
 | `lab_screenshot` | Capture of the window's client area; over MCP it comes back as a saved file path unless the call passes `image: true`. |
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |
 | `lab_ensure_in_world`, `client_batch`, `client_ui_sequence` | Composites (2026-10-10): one call for a sequence an agent used to spend a turn per step on, built on the same flows and input paths. |
 
 Results an MCP client receives are compacted in `call_tool` (one-line JSON, defaults left out, lists capped, no per-step trail; `verbose` / `fields` per call), and `tools/list` strips schema noise. The in-process UAT runner bypasses both and grades full results. The reason is cost: a lab-driving agent re-sends its whole context, schemas included, on every turn. Details: the operating guide, "Fewer calls".
+
+**Lifecycle rows (TG-PIPE-05).** Each launch, stop and pid overwrite writes one row on target `lab.client` to `labd.log`. `launched` (INFO) carries `instance`, `pid`, `cause` (`start`, `restart` or `watchdog_relaunch`), `telemetry_session_id` and `grant`, which is `minted` or `unavailable` (whether a cached grant is reused is decided elsewhere and not reported here). `stopped` (INFO) carries `pid`, `exited` and `cause` (`stop` or `restart`). `pid_overwritten` (WARN) fires when a launch replaces a pid that is still recorded and alive, and carries `previous_pid`, `previous_alive` and `pid`.
 
 **Golden fingerprints (2026-10-11, [lab-golden](../analysis/lab-golden/README.md)).** A UAT run can be compared with known-good runs without a model reading it. In fingerprint mode the runner only captures raw data into the evidence bundle: a packet tap on every in-world row, entity snapshots and window samples. The fingerprint itself is computed offline from the bundle by pure code in `crates/lab/src/uat/golden/` (D-GD1), so it is unit-tested from fixture bundles, needs no lab, and can be recomputed from an old bundle when the rules change. Its event names and arguments come from the server packet tap (the `cimmeria-wire-log` names and `decoded` fields), through a fixed key-argument allowlist, not from the wireclient's decoders (D-GD2): the tap is the only data a lab run has, and a run-to-run diff puts both sides through the same decoder, so sharing it hides nothing. A golden is written only when five fresh runs, every row passing, agree exactly, and a later run's first divergence is reported in one line. Two open tools, `lab_golden_record` and `lab_golden_diff`, never drive the client, so "open" in the lease policy now means "never drives the client" rather than read-only. Operating detail: [automated-uat.md, Golden runs](../guides/automated-uat.md#golden-runs).
 
@@ -277,6 +279,14 @@ that nothing enforced.
   screenshots, the UI readers, `lab_timeline` and SigNoz.
 - Every lease change is one `lab.lease` event in `labd.log`, so who drove
   the lab and when is reconstructable after the fact.
+- **SigNoz export** (TG-PIPE-17, D-TG2). With `CIMMERIA_LAB_OTLP_ENDPOINT`
+  in `labd.env` (and `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf` for an HTTP
+  collector), the daemon also ships its log to SigNoz as
+  `service.name = cimmeria-lab`, local paths reduced to the instance name,
+  the user and machine names to `<user>`/`<host>`, and the lease's
+  owner/purpose text left off; unset, nothing is exported. Restart the
+  daemon (`daemon.ps1 restart`) to pick it up. Details:
+  [observability.md § The lab daemon](observability.md#the-lab-daemon-cimmeria-lab).
 - The same lease book covers the in-process second-player supervisor:
   the lease is for the lab, not for one client.
 - **`GET /status`** (added 2026-10-10, D-LC2 of the

@@ -149,7 +149,7 @@ impl Supervisor {
     }
 
     async fn relaunch(&self) {
-        match self.launch_client(None).await {
+        match self.launch_client(None, "watchdog_relaunch").await {
             Ok(new_pid) => {
                 tracing::info!(new_pid, "relaunched after crash; logging back in");
                 self.spawn_watchdog(new_pid);

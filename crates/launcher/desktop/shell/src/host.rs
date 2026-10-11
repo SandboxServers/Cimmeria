@@ -21,6 +21,7 @@ pub use updater::UpdaterCommand;
 mod launch;
 mod log_upload;
 mod migration;
+mod physx;
 pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
@@ -56,6 +57,10 @@ pub struct NativeHost {
     firesky_fixture: Option<PathBuf>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
+    /// One PhysX installer at a time; its last result outlives a lost reply.
+    physx_installing: std::sync::atomic::AtomicBool,
+    physx_last:
+        Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     repair_worker: Mutex<Option<repair::Worker>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -87,6 +92,8 @@ impl NativeHost {
             firesky_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
+            physx_installing: std::sync::atomic::AtomicBool::new(false),
+            physx_last: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
         }
@@ -131,7 +138,8 @@ impl NativeHost {
     fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            let restart = std::env::args_os().any(|arg| arg == "--launcher-update-restart");
+            let restart = std::env::args_os()
+                .any(|arg| arg == cimmeria_launcher_engine::updater::RESTART_ARG);
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
             let mut state = loop {
                 match DesktopState::open(&self.root) {
@@ -144,7 +152,7 @@ impl NativeHost {
             if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
                 // Only the running binary's compiled version acknowledges a handoff.
                 // Failure leaves the updater owner visible and excludes game work.
-                let _ = state.reconcile_launcher_update(&target, env!("CARGO_PKG_VERSION"));
+                let _ = state.reconcile_launcher_update(&target, updater::compiled_version());
             }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()

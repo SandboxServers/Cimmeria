@@ -124,6 +124,7 @@ async fn init_player_state_triggers_reload_on_activate_when_clip_partial() {
         items,
         sys_opts,
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -209,6 +210,7 @@ async fn init_player_state_triggers_reload_on_activate_when_holstered() {
         items,
         sys_opts,
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -259,6 +261,7 @@ async fn init_player_state_does_not_reload_when_option_off() {
         items,
         sys_opts,
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -302,6 +305,7 @@ async fn init_player_state_does_not_reload_when_clip_full() {
         items,
         sys_opts,
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,

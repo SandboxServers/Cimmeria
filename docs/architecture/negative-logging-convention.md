@@ -356,7 +356,9 @@ Its rows:
 
 | `reason` | Level | Meaning | Fields |
 |---|---|---|---|
-| `relaunch_takeover` | `warn!` | The fresh ticket is for the live session's account: the old session is evicted and the new login accepted. One row per takeover; the old session's `session.end` row carries `disconnect_reason = relaunch_takeover`. | `addr`, `account_id`, `account_name`, `player_id`, `player_name`, `old_session_secs` |
+| `relaunch_takeover` | `info!` if `old_idle_ms >= 15000`, else `warn!` | The fresh ticket is for the live session's account: the old session is evicted and the new login accepted. One row per takeover; the old session's `session.end` row carries `disconnect_reason = relaunch_takeover`. INFO means the old session had gone silent (a crash and relaunch); WARN means it was still receiving packets. | `addr`, `account_id`, `account_name`, `player_id`, `player_name`, `old_session_secs`, `old_idle_ms`, `old_in_world` |
+| `duplicate_login` | `info!` if `old_idle_ms >= 15000`, else `warn!` | A fresh login for an account whose live session sits on another address evicts it, after a `LOGGED_OFF` to that address. The same INFO/WARN split as `relaunch_takeover`: INFO for a crashed client that relaunched on a new port, WARN for a real concurrent login. | `account_id`, `account_name`, `player_id`, `player_name` (the old session), `old_addr`, `addr`, `old_session_secs`, `old_idle_ms`, `old_in_world` |
+| `send_failed` (on `LOGGED_OFF`) | `debug!` | The `LOGGED_OFF` sent to a displaced session on another address failed. The eviction goes ahead regardless. | `old_addr`, `error` |
 | `relaunch_account_mismatch` | `warn!` | The fresh ticket is for another account and may not displace the live session. Refused, the ticket burned, the live session kept. A spoofed source address looks like this. Also `error!`, with only the ticket fields, when the session lock is poisoned. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the live session), `ticket_account_id`, `ticket_account_name`, `ticket_ip_matches` |
 | `address_reclaimed` | `warn!` | The session on the address is another account's that registered with a ticket issued to a different IP, and this login's ticket was issued to this address's IP: a squatter on a spoofed address. It is evicted (its teardown carries `disconnect_reason = address_reclaimed`) and the login accepted. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the squatter), `ticket_account_id`, `ticket_account_name` |
 | `ticket_expired` | `warn!` | Any Phase 3 login whose ticket is older than `TICKET_TTL` (30 s). The ticket is burned and nothing registered. | `addr`, `account_id`, `account_name`, `ticket_age_ms` |
@@ -811,6 +813,17 @@ World entry no longer falls back to "no saved missions" (that let a re-accept ov
 | DEBUG | `event = "mission_state_recovery_ignored"`, `reason = "not_locked"` | A duplicate recovery; nothing changed |
 
 Guards: the live-DB test `live_db_unreadable_missions_block_reaccept` (`crates/services/src/mission_state_lock_tests.rs`) makes the read fail, re-accepts a completed mission and asserts the refusal, the feedback line, both WARNs and the unchanged row. `missions::state_lock::tests` (base) pins the retry count, the final ERROR, the persist WARN and the recovery unlock; `cell::missions::state_lock_tests` pins the cell refusal, the whole-chain drop and the recovery unlock.
+
+## Boot effect-script registration (TG-CMB-04)
+
+The cell's boot check of effect `script_name`s (`cell/service/startup.rs`) names only real missing registrations. `EffectScripts::unregistered` (`cell/effects/registry.rs` in `cimmeria-cell-world`) skips a blank `script_name` and the `NATIVE_EFFECT_NAMES` entries: `Reload` (effect 658) runs through the reload pipeline. Those rows are logged once at INFO, not WARN. The shipped seed has no unregistered script left, so a normal boot writes no WARN.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "effect_script_unregistered"`, `reason = "no_registered_script"`, `count`, `scripts` | An effect row names a script no registered script answers (once per boot) |
+| INFO | `event = "effect_script_native"`, `reason = "native_or_blank"`, `count`, `scripts` (script name to effect ids) | Effect rows name a blank or native script, which needs no registered script (once per boot) |
+
+Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `cimmeria-cell-world`) pins the skip; `every_seeded_script_name_is_registered` (`cell/effects/registry.rs` in `cimmeria-cell-effect-scripts`) pins an empty missing list on the seed.
 
 ## UDP connection-reset throttle (TG-MER-10)
 

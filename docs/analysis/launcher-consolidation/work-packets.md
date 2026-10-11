@@ -363,7 +363,7 @@ Owner-run, on a Windows machine with no launcher state, from the `launcher-curre
 
 1. Download and unzip from the stable link. First run with WebView2 present; close it, disconnect the network and open it again (it opens and says it is offline). Once more on a machine or VM without WebView2 (LX-11).
 2. Fresh install from the archive.org RAR. Cancel it once part-way and start it again. Open the patch-notes view. Play reaches character select and enters the world.
-3. PhysX missing: setup offers and installs it (LX-12).
+3. PhysX missing: setup offers and installs it; also with `PhysXCore Path` set but no `v2.6.3\PhysXCore.dll` beneath it (reads as missing), and on an adopted folder without the retained installer (the panel points to Repair or a manual install) (LX-12).
 4. Adopt an existing egui install in place; Play works without a reinstall (LX-10).
 5. Import egui settings; the server list carries over (LX-03).
 6. Server list edit, client-patches toggle off and on, both visible in "Changes to your client" (LX-03, LX-04, LX-07). Go through every new Settings view with the keyboard only (Tab, Shift+Tab, Enter, Space; focus always visible). Make `preferences.json` read-only, save once, see the error, undo the read-only flag, then restart the launcher and see the last good settings.

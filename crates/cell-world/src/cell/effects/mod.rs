@@ -152,8 +152,13 @@ pub trait EffectScript: Send + Sync {
 
 /// Dispatch an effect by name. Returns `true` when a registered script
 /// ran, `false` when no script was registered for the name (caller
-/// should fall through to legacy NVP path). Unknown names log at warn.
+/// should fall through to legacy NVP path). Unknown names log at warn,
+/// except a blank or native name ([`registry::needs_no_script`]): it needs
+/// no script, so it returns `false` quietly.
 pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
+    if registry::needs_no_script(name) {
+        return false;
+    }
     match ctx.space_mgr.effect_scripts().lookup(name) {
         Some(script) => {
             tracing::debug!(
@@ -275,5 +280,34 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
             );
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    /// TG-CMB-04: a blank name and the native `Reload` need no script, so a
+    /// cast-time dispatch returns `false` without the `effect_script_unknown`
+    /// WARN.
+    #[test]
+    fn blank_and_native_names_dispatch_without_a_warn() {
+        let logs = LogCapture::install();
+        let mut mgr = SpaceManager::new(1);
+        let effect = EffectDef::default();
+        let mut ctx = EffectContext {
+            source_id: 0,
+            target_id: 0,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        assert!(!dispatch_by_name("", &mut ctx));
+        assert!(!dispatch_by_name("Reload", &mut ctx));
+        assert!(
+            logs.all().iter().all(|c| c.level != Level::WARN),
+            "no WARN for a native or blank script_name"
+        );
     }
 }

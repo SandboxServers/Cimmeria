@@ -94,6 +94,63 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
     );
 }
 
+/// TG-NET-15: the `InitPlayerState` entry cause, as the cell would see it,
+/// for one `onClientReady` on a session whose character is (or is not)
+/// already listed online.
+async fn entry_cause_for(listed_online: bool) -> WorldEntryCause {
+    use crate::test_support::{test_default_connected_client_state, TestTransport};
+
+    let addr: SocketAddr = "127.0.0.1:55601".parse().unwrap();
+    let entity_id: u32 = 8889;
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(entity_id);
+    state.player_name = Some("Tester".to_string());
+    state.listed_online = listed_online;
+    state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
+        entity_id,
+        player_id: 42,
+        world_name: "Agnos".to_string(),
+        appearance_args: vec![0xAB],
+        tint_args: vec![0xCD],
+        first_login: 0,
+    });
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+    let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(64);
+    let _ = handle_on_client_ready(
+        addr,
+        [0u8; 32],
+        &connected,
+        &Some(tx),
+        &transport,
+        &entity_to_addr,
+        &None,
+    )
+    .await;
+    assert!(
+        connected.lock().unwrap()[&addr].listed_online,
+        "world entry lists the character"
+    );
+    while let Ok(msg) = rx.try_recv() {
+        if let BaseToCellMsg::InitPlayerState { entry_cause, .. } = msg {
+            return entry_cause;
+        }
+    }
+    panic!("no InitPlayerState sent");
+}
+
+/// TG-NET-15: the first world entry of a character session is a login; a
+/// later one, with the character still listed online from the first (gate
+/// travel, space transfer, cross-world ring), is a travel. `session.start`
+/// carries this as `start_cause`, so it must come from the flag's value
+/// before this entry sets it.
+#[tokio::test]
+async fn on_client_ready_marks_relisted_entries_as_travel() {
+    assert_eq!(entry_cause_for(false).await, WorldEntryCause::Login);
+    assert_eq!(entry_cause_for(true).await, WorldEntryCause::Travel);
+}
+
 /// Live-DB regression guard for the `first_login` UPDATE's
 /// `rows_affected == 0` branch. Stages `pending.first_login = 1`
 /// with `pending.player_id` pointing at a `sgw_player` row that

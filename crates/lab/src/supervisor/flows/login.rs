@@ -22,6 +22,10 @@ const REACH_LOGIN_TIMEOUT: Duration = Duration::from_secs(90);
 const WINDOW_TIMEOUT: Duration = Duration::from_secs(90);
 /// Login and server-select round trips.
 const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
+/// The character-select Back button. Named after its siblings
+/// (`CharSelect_PlayButton`); the stock Lua is not in this repo, so the name
+/// is not yet checked on the live client.
+const CHAR_SELECT_BACK: &str = "CharSelect_BackButton";
 
 /// `lab_login` arguments; each falls back to `lab-account.json`.
 #[derive(Debug, Clone, Default)]
@@ -372,6 +376,32 @@ impl Supervisor {
         let characters = self.read_characters(&mut run).await?;
         Ok(run.finish(json!({ "at": "character_select", "characters": characters })))
     }
+
+    /// `lab_disconnect` — at character select, click Back. The client sends
+    /// Account `logOff` (0xC2) and shows the login screen again. Already at
+    /// the login screen is not an error.
+    pub async fn disconnect_flow(&self) -> Result<Value, FlowError> {
+        let mut run = FlowRun::new(self, "lab_disconnect");
+        if run.visible("check", LOGIN_WIN).await? {
+            return Ok(run.finish(json!({ "at": "login", "already": true })));
+        }
+        if !run.visible("check", CHAR_SELECT_WIN).await? {
+            return Err(run.fail(
+                "check",
+                "not at character select or the login screen; lab_disconnect clicks Back there",
+            ));
+        }
+        run.click("click_back", CHAR_SELECT_BACK).await?;
+        run.wait(
+            "login_screen",
+            &widgets::visible(LOGIN_WIN),
+            Some(PROMPT_TEXT),
+            SERVER_TIMEOUT,
+        )
+        .await?;
+        settle(1000).await;
+        Ok(run.finish(json!({ "at": "login" })))
+    }
 }
 
 /// How many times the login types the account and password.
@@ -379,7 +409,10 @@ const CREDENTIAL_TRIES: u32 = 2;
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use crate::supervisor::events::fake_bridge;
 
     fn file() -> LabAccount {
         LabAccount {
@@ -449,6 +482,30 @@ mod tests {
         );
         assert_eq!(classify_start(&s(&["false"; 4])), StartScreen::Other);
         assert_eq!(classify_start(&[]), StartScreen::Other);
+    }
+
+    /// Fake client: the login window is hidden and character select is up,
+    /// so the flow reaches the Back click. The Back widget has no rect, so
+    /// the click fails at its first step, and the error names that widget.
+    #[tokio::test]
+    async fn disconnect_flow_clicks_back() {
+        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
+            if method != "lua_eval" {
+                return Err(format!("no native path in the fake: {method}"));
+            }
+            let chunk = p["chunk"].as_str().unwrap_or_default();
+            if chunk.contains(CHAR_SELECT_BACK) {
+                return Err("no window".into());
+            }
+            if chunk.contains(LOGIN_WIN) {
+                return Ok(fake_bridge::lua_ok(&["false"]));
+            }
+            Ok(fake_bridge::lua_ok(&["true"]))
+        }))
+        .await;
+        let e = sup.disconnect_flow().await.unwrap_err();
+        assert_eq!(e.step, "click_back");
+        assert!(e.message.contains(CHAR_SELECT_BACK), "{}", e.message);
     }
 
     #[test]

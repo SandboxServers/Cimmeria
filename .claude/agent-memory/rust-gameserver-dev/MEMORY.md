@@ -91,8 +91,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [launcher-state-key-and-egui-wake.md](launcher-state-key-and-egui-wake.md) — sgw_game patches are recorded as `<id>@sgw_game`; worker events must wake egui via EventSender.
 - [launcher-extracted-mtimes-and-ue3-ini-version.md](launcher-extracted-mtimes-and-ue3-ini-version.md) — extracted files must keep archive DOS times or UE3 flags Default*.ini outdated; zip 1980 placeholder; MakeCAB fixture.
+- [desktop-settings-panel-ipc-traps](desktop-settings-panel-ipc-traps.md) — a panel that invokes on mount breaks view.test.ts call pins and sync-throwing fakes; inspect on first snapshot.
 - [launcher-self-update-handoff-traps.md](launcher-self-update-handoff-traps.md) — viewport Close waits for a frame; handoff releases instance_lock + process::exit; relaunch kills stuck old exe only.
 - [launcher-preferences-schema-change-fanout](launcher-preferences-schema-change-fanout.md) — desktop Preferences change: strict TS decode breaks ~10 fixtures; migrate in serde try_from; adoption Plan digest goes through `digest_form`.
+- [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
 
 ## Injected client DLLs
 
@@ -142,6 +144,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [client-telemetry-governor-classify-table](client-telemetry-governor-classify-table.md) — every DLL event passes the governor; new targets default to Budgeted; must-keep rows need a server priority prefix too.
 - [telemetry-ingest-naming-traps](telemetry-ingest-naming-traps.md) — replay: 32-field event cap, no router state (global cell sender), docs/ not in the image, lane log-dir race.
 
+- [otel-log-redaction-wrap-provider](otel-log-redaction-wrap-provider.md) — redact OTLP log fields by wrapping the bridge's LoggerProvider (LogProcessor can't edit attrs); event names hold registry paths.
 - [rule6-name-pairing-patterns](rule6-name-pairing-patterns.md) — tracing field exprs are lazy (inline names are free); book() guard in closures fails E0515.
 
 ## Testing patterns

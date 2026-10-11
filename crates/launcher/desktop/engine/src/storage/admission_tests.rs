@@ -1,7 +1,7 @@
 //! Mutation admission for the LX-02 commands: what each refuses with `Busy`,
 //! and that a refusal writes nothing.
 use super::client_maintenance::{ClientMaintenanceCommand, ClientMaintenanceError};
-use super::log_upload::{LogUploadCommand, LogUploadError};
+use super::log_upload::{LogStore, LogUploadCommand, LogUploadError};
 use super::*;
 use crate::OperationKind;
 use std::collections::BTreeMap;
@@ -99,8 +99,13 @@ fn resets_and_upload_are_busy_while_any_operation_or_the_updater_runs() {
             assert!(marker.exists(), "{request:?} during {blocker:?}");
         }
         assert_eq!(
-            state.log_upload(LogUploadCommand::Upload { schema_version: 1 }),
-            Err(LogUploadError::Storage(StorageError::Busy)),
+            state
+                .begin_log_upload(
+                    LogUploadCommand::Upload { schema_version: 1 },
+                    LogStore::new("https://example.invalid/c?sig=x").as_ref(),
+                )
+                .err(),
+            Some(LogUploadError::Storage(StorageError::Busy)),
             "upload during {blocker:?}"
         );
         assert_eq!(files(root.path()), before, "{blocker:?}");

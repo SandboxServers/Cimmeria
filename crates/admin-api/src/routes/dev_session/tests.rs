@@ -1,14 +1,19 @@
 //! Handler-level tests for mint/refresh: quota enforcement, the
 //! bounded refresh chain, and the kill switch.
 
+use std::collections::BTreeMap;
 use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::response::IntoResponse;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 use super::handlers::{
-    kill_switch_active, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy, Tables,
-    TOKEN_TTL_SECONDS,
+    kill_switch_active, log_refusal, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy,
+    Tables, TOKEN_TTL_SECONDS,
 };
 use super::token::{decode_token, encode_token, env_lock, AuthError, TokenClaims};
 use super::SCOPE_TELEMETRY_WRITE;
@@ -501,4 +506,99 @@ fn exhausted_refresh_quota_leaves_mint_available() {
     assert!(refresh_inner(&t, &p, peer, &token, now, NOW_UNIX).is_err());
     mint_inner(&t, &p, peer, request("recovering"), now, NOW_UNIX)
         .expect("the launcher's mint-a-fresh-session fallback must stay open");
+}
+
+type Row = (Level, BTreeMap<String, String>);
+
+#[derive(Clone, Default)]
+struct Rows(Arc<Mutex<Vec<Row>>>);
+
+struct FieldText<'a>(&'a mut BTreeMap<String, String>);
+
+impl Visit for FieldText<'_> {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.0
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.0.insert(field.name().to_string(), value.to_string());
+    }
+}
+
+impl<S: Subscriber> Layer<S> for Rows {
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+        let mut fields = BTreeMap::new();
+        event.record(&mut FieldText(&mut fields));
+        self.0
+            .lock()
+            .unwrap()
+            .push((*event.metadata().level(), fields));
+    }
+}
+
+/// Runs one refresh and logs its refusal the way the `refresh` handler
+/// does, returning the refusal and the rows that were emitted.
+fn refused_refresh(
+    t: &Tables,
+    p: &QuotaPolicy,
+    token: &str,
+    now_unix: i64,
+) -> (AuthError, Vec<Row>) {
+    let peer = ip("203.0.113.5");
+    let rows = Rows::default();
+    let sub = tracing_subscriber::registry().with(rows.clone());
+    let err = tracing::subscriber::with_default(sub, || {
+        let err = refresh_inner(t, p, peer, token, Instant::now(), now_unix).unwrap_err();
+        log_refusal("refresh", peer, &err);
+        err
+    });
+    let captured = rows.0.lock().unwrap().clone();
+    (err, captured)
+}
+
+// Each refused refresh leaves one row whose `reason` names the cause, so
+// a launcher whose telemetry stream stopped has a line explaining why.
+#[test]
+fn refresh_refusals_log_their_reason() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = policy(10, 10, 10);
+
+    // Kill switch: WARN, since the operator paused ingest on purpose.
+    let live = token_minted_at(NOW_UNIX, NOW_UNIX + TOKEN_TTL_SECONDS);
+    std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "1");
+    let (err, rows) = refused_refresh(&t, &p, &live, NOW_UNIX);
+    std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH");
+    assert!(matches!(err, AuthError::KillSwitchActive));
+    assert_eq!(rows.len(), 1, "kill switch: {rows:?}");
+    assert_eq!(rows[0].0, Level::WARN);
+    assert_eq!(rows[0].1["reason"], "dev_session_kill_switch");
+
+    // Past the session cap: INFO with the elapsed time and the cap.
+    let cap = p.max_session_secs;
+    let old = token_minted_at(NOW_UNIX, NOW_UNIX + cap + 8 * 3_600);
+    let (err, rows) = refused_refresh(&t, &p, &old, NOW_UNIX + cap + 3_600);
+    assert!(matches!(err, AuthError::SessionLifetimeExceeded { .. }));
+    assert_eq!(rows.len(), 1, "lifetime: {rows:?}");
+    assert_eq!(rows[0].0, Level::INFO);
+    assert_eq!(rows[0].1["reason"], "dev_session_lifetime_exceeded");
+    assert_eq!(rows[0].1["elapsed"], (cap + 3_600).to_string());
+    assert_eq!(rows[0].1["cap"], cap.to_string());
+
+    // Already expired: INFO with the expiry and the clock it failed.
+    let spent = token_minted_at(NOW_UNIX, NOW_UNIX + 10);
+    let (err, rows) = refused_refresh(&t, &p, &spent, NOW_UNIX + 11);
+    assert!(matches!(err, AuthError::Expired { .. }));
+    assert_eq!(rows.len(), 1, "expired: {rows:?}");
+    assert_eq!(rows[0].0, Level::INFO);
+    assert_eq!(rows[0].1["reason"], "dev_session_expired");
+    assert_eq!(rows[0].1["exp"], (NOW_UNIX + 10).to_string());
+    assert_eq!(rows[0].1["now"], (NOW_UNIX + 11).to_string());
+
+    // A token that does not decode: INFO, bounded by the bad-token quota.
+    let (err, rows) = refused_refresh(&t, &p, "x", NOW_UNIX);
+    assert!(matches!(err, AuthError::BadPayload(_)), "got {err:?}");
+    assert_eq!(rows.len(), 1, "bad token: {rows:?}");
+    assert_eq!(rows[0].0, Level::INFO);
+    assert_eq!(rows[0].1["reason"], "dev_session_bad_token");
 }

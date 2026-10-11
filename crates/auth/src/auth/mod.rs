@@ -14,6 +14,7 @@ mod credentials;
 mod handlers;
 mod password_hash;
 mod service;
+mod session_kind;
 mod soap_request;
 mod soap_response;
 mod tls;
@@ -31,6 +32,7 @@ mod login_smoke;
 mod tls_smoke;
 
 pub use service::AuthService;
+pub use session_kind::{session_kind, SESSION_KIND_LAB, SESSION_KIND_PLAYER};
 pub use tls::{TlsCertStore, TlsError, TlsListener};
 
 use std::collections::HashMap;
@@ -126,6 +128,10 @@ pub struct PendingLogin {
     pub account_name: String,
     /// Account privilege level (0 = normal, 2+ = admin/GM).
     pub access_level: u32,
+    /// The account's `test_account` flag (TG-NET-16), threaded from the
+    /// Phase-1 credential check. Phase 3 turns it into the session's
+    /// `session_kind` with [`session_kind`].
+    pub test_account: bool,
     /// 20-char uppercase hex ticket ID.
     pub ticket: String,
     /// 64-char uppercase hex session key (32-byte AES-256 key).
@@ -152,6 +158,7 @@ struct LoginReq {
 struct SessionRecord {
     account_id: u32,
     access_level: u32,
+    test_account: bool,
     account_name: String,
     /// Source IP the Phase-1 login came from. Cross-checked at Phase 2: a
     /// SID consumed from a different IP is logged as a possible

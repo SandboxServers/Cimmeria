@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::dispatch::admit_leg_row;
 use super::record_decision_outcome;
 
 /// NPC wander behavior: pick a random point within `wander_radius` of
@@ -123,14 +124,17 @@ pub(super) async fn npc_ai_wander(
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.wander_next_at = Some(now + std::time::Duration::from_secs_f32(dwell_secs));
             }
-            tracing::debug!(
-                target: "npc_ai",
-                event = "wander_arrived",
-                npc_id,
-                npc_name = space_mgr.entity_label(npc_id),
-                dwell_secs,
-                "NPC AI: wander → arrived, dwelling"
-            );
+            if let Some(suppressed) = admit_leg_row(space_mgr, npc_id, "wander_arrived") {
+                tracing::debug!(
+                    target: "npc_ai",
+                    event = "wander_arrived",
+                    npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
+                    dwell_secs,
+                    suppressed,
+                    "NPC AI: wander → arrived, dwelling"
+                );
+            }
             return;
         }
         Some(_) => {
@@ -236,14 +240,17 @@ pub(super) async fn npc_ai_wander(
     // observes `nav_empty = false` and records wander_dwell while the
     // movement plays out.
     record_decision_outcome("wander_pick");
-    tracing::debug!(
-        target: "npc_ai",
-        event = "wander_waypoint_set",
-        npc_id,
-        npc_name = space_mgr.entity_label(npc_id),
-        target_x = target.x,
-        target_z = target.z,
-        radius,
-        "NPC AI: wander → fresh waypoint queued"
-    );
+    if let Some(suppressed) = admit_leg_row(space_mgr, npc_id, "wander_waypoint_set") {
+        tracing::debug!(
+            target: "npc_ai",
+            event = "wander_waypoint_set",
+            npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
+            target_x = target.x,
+            target_z = target.z,
+            radius,
+            suppressed,
+            "NPC AI: wander → fresh waypoint queued"
+        );
+    }
 }

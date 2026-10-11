@@ -146,16 +146,17 @@ in reconciliation and is never replayed automatically.
 Signed RAR and RAR/CAB fixtures passed through the real Windows helper under Wine,
 source comparison and copy publication in isolated prefixes. That helper predates
 the new shared archive preflight. Full published multi-cabinet validation with a
-rebuilt helper, game Update of an adopted copy and native Windows adoption remain
-required.
+rebuilt helper and game Update of an adopted copy remain required. Windows
+adopts in place instead of copying (see below).
 See the [preparation handoff](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/published-adoption-preparation.md).
 
 ## Verified-copy adoption in Settings
 
 On macOS, Settings offers adoption after a legacy import. The copy is extracted
 by the build-pinned Windows helper under Wine, so the adopted installation
-records the Wine backend that prerequisite setup and Play require. Windows has
-no adoption backend yet, and the UI says so.
+records the Wine backend that prerequisite setup and Play require. Windows
+adopts the imported folder in place instead; see
+[In-place adoption on Windows](#in-place-adoption-on-windows).
 
 1. **Choose a location.** The launcher creates a new `Stargate Worlds` folder
    inside the chosen folder. An existing folder of that name is refused.
@@ -200,6 +201,110 @@ Wine and asserts that the reopened copy is offered prerequisites. The same three
 variables enable the ignored Wine host tests, including the adoption-to-Play
 journeys in `shell/src/host/adoption/play_tests.rs`. Every archive in these
 checks is a small inert fixture; no game is started.
+
+## In-place adoption on Windows
+
+Decision D-LX12: on every host other than macOS the launcher adopts the old
+launcher's game folder itself, so an existing multi-gigabyte install is neither
+copied nor downloaded again as a second client. Settings offers **Verify and
+adopt this folder** after a legacy import; there is no location to choose.
+
+1. **Preflight.** The old launcher's `launcher-installed.json` must record the
+   signed release's seed and every one of its patches, by their state keys. A
+   folder it left out of date is refused before anything is downloaded
+   (`outdated_install`). The folder must not hold the old launcher's own
+   folder. It must be in the full layout the installer and a fresh install
+   write, with `SGW.exe` in `Working\Binaries`. The old launcher also manages
+   folders that point straight at `Working` or `Binaries`. Their release files
+   all sit at another path than the release keeps them, so such a folder is
+   refused once, before anything is downloaded (`unsupported_layout`), rather
+   than listing every file as blocked. A `game` folder,
+   `.cimmeria-install.json` or `content-ready.json` already in the folder is
+   refused (`leftover_launcher_files`). The exception is what an admission
+   leaves when it dies before its operation begins, or when Abandon could not
+   remove `game`. Those leftovers are an owner marker that no journal
+   operation or begun plan names, and an empty `game`. The launcher removes
+   them, logs a warning and continues.
+2. **Verification.** The signed seed and patches are fetched and reconstructed
+   into a private reference, the same preparation the verified copy uses. Every
+   release file in the folder is compared by size and SHA-256. The review names
+   each one that is modified, missing or at another path (`blocked_files`), and
+   confirmation is refused (`verification_failed`). Nothing in the player's
+   folder is ever rewritten from the reference. The only accepted difference is
+   the old launcher's own setup change, which the launcher re-applies.
+3. **Admission.** Confirmation first opens `Working\Binaries\SGW.exe`
+   exclusively. A sharing violation means the game is running, and confirmation
+   is refused with nothing admitted (`game_running`). It then writes the owner marker `.cimmeria-install.json`
+   into the folder, creates an empty `game` folder, and saves the plan and a
+   checkpoint before the Adopt operation begins. If admission fails before the
+   operation exists, the marker and the empty folder are taken back.
+4. **Moves.** Each verified release file is renamed into `game` at the same
+   relative path, then the launcher's setup and a synthesized ledger are
+   written and the tree is checked against the signed reference digest. Every
+   file that is not part of the release stays exactly where it was, outside
+   `game`. That includes the old launcher's `launcher-installed.json`, which is
+   left in place. Folders the moves emptied are removed. Admitted moves are not
+   cancelled part-way.
+5. **Publication.** The receipt, installed-content index (with adoption
+   provenance) and preferences are written as for a verified copy. From then on
+   Play, Repair and Update treat the folder as owned: its `game` tree is managed
+   exactly like a fresh install's.
+
+The review warns about the consequences before Confirm. `SGW.exe` and every
+release file move into the `game` folder, so desktop shortcuts and the old
+launcher stop working; start the game from this launcher afterwards. Don't run
+the old launcher on this folder again, because it may download the game a
+second time. Files you added inside the game folders, such as PAKs placed by
+hand in `SourceCache.en-us`, stay where they are and the game no longer uses
+them. Your settings and the client cache live in Documents and are not
+affected.
+
+An interruption after admission leaves the operation in reconciliation. Recover
+finishes the remaining moves and publication. A file in neither place is
+refused. The old launcher or a running game can recreate a file at its old path
+after the review, so a file in both places is settled by content. Admission
+saves each release file's reviewed hash (`adoption-reviewed-<work>.json`). If
+the copy in `game` matches, the other copy stays where it is as a file the
+release does not list. If only the old-path copy matches, it replaces the copy
+in `game`, which is kept beside the old path as
+`<name>.adopt-conflict-<owner>`. If neither matches, recovery stops and names
+the file in the log (`duplicate_release_file`). Nothing is deleted in any case.
+
+Abandon moves every release file back to where the review found it and removes
+the marker. A file in both places keeps the folder's copy, and `game` keeps the
+other. Abandon is offered only while nothing but renames has happened: once
+every file is in `game` the checkpoint advances before the launcher's setup
+rewrites `LoginInternal.lua` and the ledger. Putting the files back after that
+would leave the launcher's setup in them, so only Recover is offered. A crash during verification leaves only
+the private reference. The folder has no marker yet, and the reference is
+removed with the existing preparation removal.
+
+**Uninstall** of an adopted folder never detaches or deletes the folder. It
+removes only the entries the launcher manages there: `game`, its Repair and
+Update work and backups, `content-ready.json`, and the owner marker last. Files
+the release does not list stay, so the folder itself is removed only when
+nothing else is left in it. Files the client writes inside `game` after
+adoption, such as `SGWDebugLog.log`, go with it, as on a fresh install.
+
+Engine tests in `engine/src/storage/adoption/in_place_tests.rs` cover the
+rename-not-copy adoption, a modified release file named and refused, an
+out-of-date ledger refused before download, uninstall that keeps unlisted files,
+recovery and abandonment after a crash mid-move, and a crash between
+verification and the marker. `in_place_recovery_tests.rs` covers a release file
+recreated at its old path after a crash (recovered both ways, refused when
+neither copy verifies, and abandoned), recovery-only after setup, a running game
+held open, a folder outside the full layout, and admission leftovers taken back
+or refused. `shell/src/host/adoption/in_place_tests.rs` drives
+the same flow through the production host. On Windows, `npm run uat:adoption`
+runs `adoption-in-place-uat.mjs` against the
+`host::adoption::uat_bridge_in_place` bridge, again with the shell test binary
+in `ADOPTION_UAT_BINARY`.
+
+Known limits: verification needs the signed seed once, because the signed
+release carries blob hashes and no per-file index. A publisher-signed file
+index would let in-place adoption skip that download. Native Windows power-loss
+behavior and the adopted-folder Play, Repair, Update and Uninstall views are
+checked by the LX-26 Windows UAT (G-06, G-10).
 
 ## Permanent owner and current release
 

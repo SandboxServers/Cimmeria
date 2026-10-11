@@ -8,24 +8,28 @@ pub(super) enum Point {
     Plan,
     Staged,
     BeforePromotion,
+    /// In place only: one more release file is now inside the owned tree.
+    Moved,
     AfterPromotion,
+    /// In place only: the launcher's setup and ledger are written in `game`.
+    SetUp,
     Receipt,
     Preferences,
     Published,
     Terminal,
 }
-fn name(id: Uuid) -> String {
+pub(super) fn name(id: Uuid) -> String {
     format!("adoption-{id}.json")
 }
-fn plan_name(id: Uuid) -> String {
+pub(super) fn plan_name(id: Uuid) -> String {
     format!("adoption-plan-{id}.json")
 }
-fn write_large(root: &Path, name: &str, value: &impl Serialize) -> Result<(), Error> {
+pub(super) fn write_large(root: &Path, name: &str, value: &impl Serialize) -> Result<(), Error> {
     let bytes = serde_json::to_vec(value).map_err(|_| StorageError::Corrupt)?;
     atomic::write_bytes(root, name, &bytes, LIMIT)?;
     Ok(())
 }
-fn read_large<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
+pub(super) fn read_large<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
     let mut bytes = Vec::new();
     inventory::open(path)?
         .take(LIMIT as u64 + 1)
@@ -57,7 +61,11 @@ pub(super) fn confirm(
     progress: &crate::install_progress::ProgressSink,
     hook: impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<Provenance, Error> {
-    let result = copy_and_publish(&preview, id, handle, choices, &cancel, progress, hook);
+    let result = if preview.report.in_place() {
+        super::in_place::publish(&preview, id, handle, choices, &cancel, progress, hook)
+    } else {
+        copy_and_publish(&preview, id, handle, choices, &cancel, progress, hook)
+    };
     // Staging no longer needs the reference, and recovery finishes from the stage
     // alone. No state guard is held here, so settle its owner deterministically.
     preview.preparation.release();
@@ -434,10 +442,14 @@ pub fn interrupted(state: &DesktopState, id: Uuid) -> Result<Interrupted, Error>
     }
     Ok(Interrupted {
         recoverable: inspect(state, id).is_ok(),
-        abandonable: matches!(
-            std::fs::symlink_metadata(plan.installation.destination.join("game")),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound
-        ),
+        abandonable: if plan.report.in_place() {
+            super::in_place::abandonable(state, &plan)
+        } else {
+            matches!(
+                std::fs::symlink_metadata(plan.installation.destination.join("game")),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound
+            )
+        },
         directory: plan.installation.destination,
     })
 }
@@ -473,7 +485,11 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     if saved != record.plan.installation {
         return Err(StorageError::Corrupt.into());
     }
-    let result = finish(state, &record.plan, &mut |_| Ok(()));
+    let result = if record.plan.report.in_place() {
+        super::in_place::finish(state, &record.plan, &mut |_| Ok(()))
+    } else {
+        finish(state, &record.plan, &mut |_| Ok(()))
+    };
     if result.is_err() {
         let _ = state.operations_mut().and_then(|op| {
             op.mark_uncertain(id)
@@ -500,10 +516,14 @@ pub fn abandon(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     if op.id != id || op.kind != OperationKind::Adopt || op.intent_digest != plan.digest()? {
         return Err(StorageError::Corrupt.into());
     }
-    if std::fs::symlink_metadata(plan.installation.destination.join("game")).is_ok() {
+    if op.state != OperationState::ReconciliationRequired {
         return Err(ContractError::InvalidTransition.into());
     }
-    if op.state != OperationState::ReconciliationRequired {
+    // In place, abandonment moves the release files back where they were.
+    if plan.report.in_place() {
+        return super::in_place::abandon(state, &plan);
+    }
+    if std::fs::symlink_metadata(plan.installation.destination.join("game")).is_ok() {
         return Err(ContractError::InvalidTransition.into());
     }
     state

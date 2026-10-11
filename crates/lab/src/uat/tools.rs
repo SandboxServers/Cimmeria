@@ -63,6 +63,7 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("login", "lab_login", Tier::N1),
     drive("play", "lab_play_character", Tier::N1),
     drive("logout", "lab_logout", Tier::N1),
+    drive("disconnect", "lab_disconnect", Tier::N1),
     drive("finish_dialog", "lab_finish_dialog", Tier::N1),
     // World (L4, L5, L15, L17): on main since #1099. Each reports its own
     // `native_level`, which the runner applies over the floor here.

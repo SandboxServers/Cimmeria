@@ -49,14 +49,6 @@ pub(super) async fn handle_entity_move(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // Fields are evaluated only when trace is enabled, so the 10 Hz path
-    // pays nothing for the name.
-    tracing::trace!(
-        entity_id,
-        entity_name = space_mgr.entity_label(entity_id),
-        ?position,
-        "EntityMove"
-    );
     // Server↔client space divergence. The write below is
     // server-authoritative (it uses the cell's own `entity_space`
     // binding, never `claimed_space_id`), so a mismatch cannot
@@ -284,6 +276,31 @@ async fn send_snap_back(
             reason = "snap_back_send_failed",
             "movement.snap_back_send_failed: snap-back TeleportPlayer send to \
              base failed — client will continue desynced"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+
+    /// TG-MOV-11: the 10 Hz path emits no per-packet `EntityMove` row. The
+    /// sampled `movement.player` row and `movement.position_sample` cover it.
+    /// Restoring the trace fails this test.
+    #[tokio::test]
+    async fn entity_move_emits_no_per_packet_row() {
+        let capture = LogCapture::install();
+        let mut mgr = crate::test_support::make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let (tx, _rx) = mpsc::channel(8);
+        handle_entity_move(1, 1, [1.0; 3], [0; 3], [0.0; 3], &tx, &mut mgr).await;
+        let rows = capture.all();
+        assert!(
+            !rows
+                .iter()
+                .any(|c| c.message.as_deref() == Some("EntityMove")),
+            "{rows:#?}"
         );
     }
 }

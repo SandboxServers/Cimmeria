@@ -55,6 +55,80 @@ fn updater_apply_native_uat_bridge() {
     }
 }
 
+/// Windows twin of the bridge above: a real zip swap in a temporary install
+/// folder. The relaunch is recorded instead of spawned, so the UAT never
+/// starts a launcher process.
+#[test]
+#[cfg(windows)]
+#[ignore = "Driven by updater-apply-native-uat.mjs over stdin/stdout"]
+fn updater_apply_native_uat_bridge() {
+    use super::windows_zip::{tree, windows_fixture};
+    use std::io::{BufRead, Write};
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let f = windows_fixture(&root);
+    let mut state = Some(DesktopState::open(&root.join("state")).unwrap());
+    ready(
+        state.as_mut().unwrap(),
+        &f.config,
+        f.offer.clone(),
+        &f.bytes,
+    );
+    for line in std::io::stdin().lock().lines() {
+        let value: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        let result: Result<Snapshot, Error> = (|| {
+            if value["command"] == "reopen" || value["command"] == "acknowledge" {
+                drop(state.take());
+                state = Some(DesktopState::open(&root.join("state")).unwrap());
+                state.as_mut().unwrap().reconcile_launcher_update(
+                    &f.target,
+                    if value["command"] == "acknowledge" {
+                        "1.1.0"
+                    } else {
+                        "1.0.0"
+                    },
+                )?;
+                if value["command"] == "acknowledge" {
+                    // Startup cleanup: only the new files remain.
+                    let left = tree(&f.install);
+                    assert!(left
+                        .keys()
+                        .all(|k| !k.ends_with(".old") && !k.starts_with(".update-")));
+                }
+            }
+            let state = state.as_mut().unwrap();
+            if value["command"] == "apply" {
+                let mut relaunched = None;
+                state.apply_update_with(
+                    Some(&f.config),
+                    &f.target,
+                    serde_json::from_value(value["offer_id"].clone()).unwrap(),
+                    value["revision"].as_u64().unwrap(),
+                    value["operation_revision"].as_u64().unwrap(),
+                    |path, args| {
+                        relaunched = Some((path.to_path_buf(), args.to_vec()));
+                        Ok(())
+                    },
+                )?;
+                let (path, args) = relaunched.expect("relaunch requested");
+                assert_eq!(fs::read(path).unwrap(), b"new exe");
+                assert_eq!(args[0], RESTART_ARG);
+                assert_eq!(args[1], std::process::id().to_string());
+            }
+            if value["command"] == "try_game_mutation" {
+                state.operations_mut()?;
+            }
+            state.launcher_update_snapshot(Some(&f.config))
+        })();
+        let result = match result {
+            Ok(snapshot) => serde_json::json!({"ok":snapshot}),
+            Err(error) => serde_json::json!({"error":error}),
+        };
+        println!("UPDATER_APPLY_UAT {result}");
+        std::io::stdout().flush().unwrap();
+    }
+}
+
 #[test]
 #[cfg(target_os = "macos")]
 fn interrupted_atomic_swap_keeps_visible_app_and_new_startup_can_acknowledge() {
@@ -77,6 +151,7 @@ fn interrupted_atomic_swap_keeps_visible_app_and_new_startup_can_acknowledge() {
         replacement: Some(bundle::fingerprint(&extracted).unwrap()),
         staged_bundle: Some("Launcher.app".into()),
         handoff: false,
+        swap: None,
     });
     state.save_update(record).unwrap();
     exchange(&installed, &extracted).unwrap();
