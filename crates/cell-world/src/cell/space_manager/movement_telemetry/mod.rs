@@ -132,6 +132,15 @@ pub(crate) const REJECT_LOG_MIN_INTERVAL: Duration = Duration::from_secs(1);
 /// in between.
 pub(crate) const ADVISORY_OFF_MESH_LOG_INTERVAL: Duration = Duration::from_millis(500);
 
+/// Minimum gap between two `navmesh_gm_bypass` rows for the same GM.
+///
+/// The row is an audit line for a GM standing off the walkable mesh. A GM
+/// who parks there sends a position packet at the client's 10 Hz rate, so
+/// an unthrottled row would be one per packet. Five seconds keeps one line
+/// per stretch of off-mesh movement, and `suppressed` counts the packets
+/// in between. The `navmesh_gm_bypass` counter still counts every packet.
+pub(crate) const GM_BYPASS_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
 /// Minimum gap between accepted-position samples for one player.
 ///
 /// 5 s is ~720 rows/hour/player, against the ~2,000 rows/hour/player the
@@ -289,6 +298,9 @@ pub struct MovementTelemetry {
     /// Gates `movement.navmesh` `advisory_off_mesh_accepted` — see
     /// [`ADVISORY_OFF_MESH_LOG_INTERVAL`].
     pub(crate) advisory_off_mesh_log: LogThrottle,
+    /// Gates the GM `navmesh_gm_bypass` row — see
+    /// [`GM_BYPASS_LOG_INTERVAL`].
+    pub(crate) gm_bypass_log: LogThrottle,
     /// Last accepted-position sample per player.
     position_samples: HashMap<u32, PositionSample>,
 }
@@ -310,6 +322,7 @@ impl MovementTelemetry {
         self.reject_log.forget(entity_id);
         self.npc_path_fail_log.forget(entity_id);
         self.advisory_off_mesh_log.forget(entity_id);
+        self.gm_bypass_log.forget(entity_id);
         self.position_samples.remove(&entity_id);
     }
 
@@ -320,6 +333,7 @@ impl MovementTelemetry {
         self.reject_log.tracked()
             + self.npc_path_fail_log.tracked()
             + self.advisory_off_mesh_log.tracked()
+            + self.gm_bypass_log.tracked()
             + self.position_samples.len()
     }
 }
