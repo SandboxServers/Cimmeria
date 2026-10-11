@@ -28,6 +28,9 @@ pub use cimmeria_resources::base::{
 // last user here, the template parity guard, moved to `cimmeria-base-session`
 // in wave F.
 pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
+// The staged lab fixture store, for the lab endpoint (lab-fixtures FX-04),
+// which reaches the base only through this crate.
+pub use cimmeria_base_session::base::world_entry::lab_fixture;
 #[cfg(test)]
 pub(crate) use cimmeria_base_session::base::{ConnectedClientState, PendingClientReadyInfo};
 

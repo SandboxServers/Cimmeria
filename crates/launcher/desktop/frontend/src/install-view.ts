@@ -16,7 +16,8 @@ const errors:Record<InstallFailure['code'],string>={
   signing_key_unavailable:'This build is missing its release verification key.',
 };
 /** Application lifetime owns observation. Navigating tabs never disposes it. */
-export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID()) {
+/** `onFinished` runs each time an install, repair, uninstall or cleanup stops running. */
+export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{}) {
   const runtime=ManagedRuntime.make(Layer.effect(Installation,makeInstallWorkflow).pipe(
     Layer.provide(installBridgeLayer(request=>invoke('install_command',{request}))),
   ));
@@ -100,8 +101,17 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     primary.setAttribute('aria-busy',String(pending||active));
   };
   const repairs=repairControls(document,uuid,action=>run(action));
+  // The operation that last stopped running; undefined until the first status,
+  // so one already finished at startup is not reported as just finished.
+  let stopped:string|null|undefined;
+  const noticeStopped=(status:InstallStatus|null)=>{
+    if(!status)return;const op=status.native.operation.operation;
+    const key=op&&!operationActive(status)?`${op.id}:${op.state}`:null;
+    if(stopped!==undefined&&key!==null&&key!==stopped&&!disposed)onFinished();
+    stopped=key;
+  };
   const watcher=runtime.runFork(Effect.flatMap(Installation,service=>Stream.runForEach(service.changes,
-    value=>Effect.sync(()=>{current=value;render();}))));
+    value=>Effect.sync(()=>{current=value;noticeStopped(value.status);render();}))));
   const advance=(status:InstallStatus)=>{
     const op=status.native.operation.operation;
     if(disposed||pending||!journeyInstallId||op?.id!==journeyInstallId||op.kind!=='install'||op.state!=='succeeded'||!status.runtime_setup)return false;

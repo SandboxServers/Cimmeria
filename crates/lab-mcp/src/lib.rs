@@ -114,3 +114,8 @@ fn build_router(state: LabState, token: &str, allowed_hosts: &[String]) -> axum:
             auth::require_bearer,
         ))
 }
+
+#[cfg(test)]
+mod test_support {
+    pub(crate) use cimmeria_test_support::*;
+}

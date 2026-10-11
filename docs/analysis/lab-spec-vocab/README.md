@@ -8,9 +8,10 @@
 > calibration contract) and [work-packets-3.md](work-packets-3.md) (SV-13
 > to SV-16).
 >
-> **Campaign status (2026-10-10): wave 1 dispatched.** Every decision is
-> DECIDED (owner, 2026-10-10). SV-01, SV-02, SV-03 and SV-05 are in Writing.
-> SV-12 also waits on `lab-watch` LW-02.
+> **Campaign status (2026-10-11): waves 1 and 2 integrated; wave 3 in
+> Writing.** SV-01 to SV-09 are on `main`. SV-10, SV-11 and SV-13 are in
+> Writing. `lab-watch` LW-02, which SV-12 also needs, merged as #1395.
+> Every decision is DECIDED (owner, 2026-10-10).
 
 ## Purpose
 
@@ -88,24 +89,28 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| SV-01 | Server entity query by tag | packet-coder | S | 1 | none | Writing |
-| SV-02 | `server_log_tail` filters: target, contains, since_ms | packet-coder | S | 1 | none | Writing |
-| SV-03 | Spec schema: poses, `wait_server`, tag arguments, capability rows | packet-coder | M | 1 | none | Writing |
-| SV-04 | Seed tag index and spec tag validation | packet-coder | S | 2 | SV-03 | BlockedDependency |
-| SV-05 | Absolute camera in `client_camera` | packet-coder | M | 1 | none | Writing |
-| SV-06 | `client_hover_probe`: hover without a click | packet-coder | M | 2 | SV-05 (sim readout) | BlockedDependency |
-| SV-07 | Runner target resolution and `@stand` | rust-gameserver-dev | M | 2 | SV-03 (SV-01 live) | BlockedDependency |
-| SV-08 | Server-event waits and polling clauses | packet-coder | M | 2 | SV-02, SV-03 | BlockedDependency |
-| SV-09 | Calibration core: candidates, score, spec edit and diff | packet-coder | M | 2 | SV-03 | BlockedDependency |
-| SV-10 | `lab_uat_calibrate`: the sweep on a live client | rust-gameserver-dev | L | 3 | SV-05, SV-06, SV-07, SV-09, D-SV7 | BlockedDependency |
-| SV-11 | Heal hint on a row summary | packet-coder | S | 3 | SV-07 | BlockedDependency |
-| SV-12 | `lab calibrate` and `lab uat -Heal` | packet-coder | M | 4 | SV-10, SV-11, LW-02, D-SV8 | BlockedDependency |
-| SV-13 | Migrate `first-session.toml` to the new vocabulary | packet-coder | S | 3 | SV-03, SV-04, SV-07, SV-08 | BlockedDependency |
+| SV-01 | Server entity query by tag | packet-coder | S | 1 | none | Integrated (#1392) |
+| SV-02 | `server_log_tail` filters: target, contains, since_ms | packet-coder | S | 1 | none | Integrated (#1393) |
+| SV-03 | Spec schema: poses, `wait_server`, tag arguments, capability rows | packet-coder | M | 1 | none | Integrated (#1396) |
+| SV-04 | Seed tag index and spec tag validation | packet-coder | S | 2 | SV-03 | Integrated (#1415) |
+| SV-05 | Absolute camera in `client_camera` | packet-coder | M | 1 | none | Integrated (#1391) |
+| SV-06 | `client_hover_probe`: hover without a click | rust-gameserver-dev | M | 2 | SV-05 (sim readout) | Integrated (#1422) |
+| SV-07 | Runner target resolution and `@stand` | rust-gameserver-dev | M | 2 | SV-03 (SV-01 live) | Integrated (#1423) |
+| SV-08 | Server-event waits and polling clauses | rust-gameserver-dev | M | 2 | SV-02, SV-03 | Integrated (#1449) |
+| SV-09 | Calibration core: candidates, score, spec edit and diff | packet-coder | M | 2 | SV-03 | Integrated (#1417) |
+| SV-10 | `lab_uat_calibrate`: the sweep on a live client | rust-gameserver-dev | L | 3 | SV-05, SV-06, SV-07, SV-09, D-SV7 | Writing |
+| SV-11 | Heal hint on a row summary | packet-coder | S | 3 | SV-07 | Writing |
+| SV-12 | `lab calibrate` and `lab uat -Heal` | rust-gameserver-dev | M | 4 | SV-10, SV-11, LW-02, D-SV8 | BlockedDependency |
+| SV-13 | Migrate `first-session.toml` to the new vocabulary | rust-gameserver-dev | S | 3 | SV-03, SV-04, SV-07, SV-08 | Writing |
 | SV-14 | Docs: authoring guide, lab guide, lab-driver brief, tool rows | documentation-writer | M | 4 | SV-12, SV-13 | BlockedDependency |
 | SV-15 | Acceptance: recalibrate the Praxis rows, calibrate the SGU rows, 5 clean runs | coordinator (live UAT) | M | 5 | SV-12, SV-13, D-SV9 | BlockedDependency |
 | SV-16 | Close-out | documentation-writer | S | 6 | all | BlockedDependency |
 
-Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
+Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k. In waves 1 and 2 the
+Haiku `packet-coder` finished only S packets (SV-01, SV-04); every M packet
+it started ran out of context (SV-03, SV-05, SV-06, SV-09) and was finished
+by a fresh worker or the coordinator. M and L packets now go to
+`rust-gameserver-dev` (the Implementer column shows who ran them).
 
 Waves (packets in one wave touch disjoint files and run in parallel):
 
@@ -177,5 +182,38 @@ Waves (packets in one wave touch disjoint files and run in parallel):
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
-the code is then the reference, not the spec.
+Where merged code differs from the packet specs, it is recorded here and
+in the packet's worknote under [worknotes/](worknotes/); the code is then
+the reference, not the spec.
+
+Every packet had a Sonnet `packet-reviewer` pass (SV-07 also a
+`testing-validation-engineer` audit); every finding marked required was
+fixed before merge. The deviations that change the contract:
+
+- **SV-03.** `PoseSpec::to_inline_toml` rounds, then clamps into the
+  validation ranges, so a written pose always reloads (359.96 deg writes as
+  0.0; a pitch of -78.75 as -78.7). `calibrated` must be one line.
+  `aim_dy_m` is range-checked (-3.0..=3.0).
+- **SV-04.** The seed scan is comment- and string-aware; the seed is pinned
+  at 632 rows and 608 distinct tags (counted independently).
+- **SV-05.** `yaw_offset_deg` is camera world yaw in -180..=180 (signed
+  `yaw_gain`), so a spec value means the same view on an inverted camera.
+  `abs_pitch` learns the real gain from each look.
+- **SV-06.** The probe reads the cursor first and restores it on every
+  path; HUD rects are read once per probe and descend into full-screen
+  containers. The live HUD layout check is SV-15's.
+- **SV-07.** A `pose` together with `name`, `entity_id` or `point` (or a
+  `face_*` on the camera) is a validation error, "give one" (coordinator
+  decision, replacing the worker's "pose wins"). Up-front blocks follow the
+  action `exec` would choose, fallbacks included. `@stand` polls the player
+  by id with a hard 5 s deadline.
+- **SV-08.** The watermark read takes the wait's own `contains`/`target`
+  (not `{limit: 1}`), setup actions take marks too, polls read the whole
+  ring from `mark - 2`, field compare is text first, and every call is
+  bounded by the deadline. Clause polling sleeps 250 ms even under
+  `no_settle` (a zero sleep stalls the paused test clock).
+- **SV-09.** `check_rewrite` holds the re-parse checks; the pose search is
+  scoped to the row's `pose = [...]` array; diff paths use `/`.
+
+Leftovers carried forward: `runner/tests.rs` is about 890 lines (over the
+cap since before this campaign) and needs a split; see SV-03's worknote.

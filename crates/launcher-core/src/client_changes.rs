@@ -60,6 +60,8 @@ pub enum ChangeStatus {
     Off,
     /// Happens during play, driven by the server.
     DuringPlay,
+    /// The setting asks for a DLL this launcher build does not carry.
+    Missing,
 }
 
 impl ChangeStatus {
@@ -72,6 +74,7 @@ impl ChangeStatus {
             Self::OnLaunch => "on",
             Self::Off => "off",
             Self::DuringPlay => "during play",
+            Self::Missing => "missing from this build",
         }
     }
 }
@@ -94,6 +97,28 @@ pub struct ChangeInputs<'a> {
     pub installed: &'a InstalledState,
     pub client_patches_enabled: bool,
     pub telemetry_opted_in: bool,
+    pub launch: LaunchFacts,
+}
+
+/// What decides the two launch rows besides the player's settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LaunchFacts {
+    /// The copy was adopted from the old launcher: its patch setting came from
+    /// that launcher's import, and the telemetry module is never loaded into it.
+    pub adopted: bool,
+    /// This launcher build carries a verified client-patches DLL.
+    pub patches_dll_present: bool,
+    /// This launcher build carries a verified telemetry DLL.
+    pub telemetry_dll_present: bool,
+}
+
+impl LaunchFacts {
+    /// The rows follow the two settings alone, as the egui launcher shows them.
+    pub const SETTINGS_ONLY: Self = Self {
+        adopted: false,
+        patches_dll_present: true,
+        telemetry_dll_present: true,
+    };
 }
 
 /// Every change, grouped in [`ChangeGroup`] order.
@@ -201,49 +226,84 @@ fn patch_change(patch: &PatchEntry, installed: &InstalledState) -> ClientChange 
 pub const TELEMETRY_DLL_FILE_NAME: &str = "cimmeria-client-telemetry.dll";
 
 fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
-    let patches_description = if inputs.client_patches_enabled {
-        "Adds cimmeria-client-patches.dll to SGW.exe when it starts. It finishes client \
-         features the 2009 build shipped half-built: today, the Black Market window. It \
-         checks it is hooking the exact SGW.exe build it was made for and does nothing \
-         otherwise, sends nothing to the server beyond the game's own messages, and writes \
-         its log next to SGW.exe. Turn it off with \"Load client patches\"."
-    } else {
-        "Off: you turned off \"Load client patches\", so SGW.exe starts without \
-         cimmeria-client-patches.dll and the Black Market window stays unavailable."
+    let facts = inputs.launch;
+    let (patches_status, patches_description) = match (inputs.client_patches_enabled, facts) {
+        (
+            true,
+            LaunchFacts {
+                patches_dll_present: true,
+                ..
+            },
+        ) => (
+            ChangeStatus::OnLaunch,
+            "Adds cimmeria-client-patches.dll to SGW.exe when it starts. It finishes client \
+             features the 2009 build shipped half-built: today, the Black Market window. It \
+             checks it is hooking the exact SGW.exe build it was made for and does nothing \
+             otherwise, sends nothing to the server beyond the game's own messages, and \
+             writes its log next to SGW.exe. Turn it off with \"Load client patches\".",
+        ),
+        // Play refuses to start a copy that loads the DLL without it.
+        (true, _) => (
+            ChangeStatus::Missing,
+            "This copy loads cimmeria-client-patches.dll, but this launcher build does not \
+             carry a verified one, so Play cannot start the game. Reinstall the launcher to \
+             restore it.",
+        ),
+        (false, LaunchFacts { adopted: true, .. }) => (
+            ChangeStatus::Off,
+            "Off: this copy was adopted from the old launcher with \"Load client patches\" \
+             turned off, so SGW.exe starts without cimmeria-client-patches.dll and the Black \
+             Market window stays unavailable.",
+        ),
+        (false, _) => (
+            ChangeStatus::Off,
+            "Off: you turned off \"Load client patches\", so SGW.exe starts without \
+             cimmeria-client-patches.dll and the Black Market window stays unavailable.",
+        ),
     };
-    let telemetry_description = if inputs.telemetry_opted_in {
-        "On, because you opted in. Before the game starts, the launcher writes \
-         Working\\Binaries\\sessions\\current-session.json with an upload token, then \
-         loads cimmeria-client-telemetry.dll into SGW.exe after the client patches. The \
-         module records in-game events (the game messages the client handles, interface \
-         errors, its own status); it changes nothing in the game. While the game runs, \
-         the launcher also reads the client's log files. Both go, with this install's \
-         random id, to the Cimmeria server so crashes and bugs can be traced."
+    let (telemetry_status, telemetry_description) = if facts.adopted {
+        (
+            ChangeStatus::Off,
+            "Off. The launcher never loads the telemetry module into a copy it adopted, so \
+             it reads and sends nothing from the game.",
+        )
+    } else if !inputs.telemetry_opted_in {
+        (
+            ChangeStatus::Off,
+            "Off. Telemetry is opt-in: the launcher reads and sends nothing, and loads no \
+             telemetry module into SGW.exe, unless you turn it on.",
+        )
+    } else if !facts.telemetry_dll_present {
+        (
+            ChangeStatus::Missing,
+            "On, but this launcher build does not carry the telemetry module, so Play loads \
+             no telemetry module into SGW.exe and nothing is sent.",
+        )
     } else {
-        "Off. Telemetry is opt-in: the launcher reads and sends nothing, and loads no \
-         telemetry module into SGW.exe, unless you turn it on."
+        (
+            ChangeStatus::OnLaunch,
+            "On, because you opted in. Before the game starts, the launcher writes \
+             Working\\Binaries\\sessions\\current-session.json with an upload token, then \
+             loads cimmeria-client-telemetry.dll into SGW.exe after the client patches. The \
+             module records in-game events (the game messages the client handles, interface \
+             errors, its own status); it changes nothing in the game. While the game runs, \
+             the launcher also reads the client's log files. Both go, with this install's \
+             random id, to the Cimmeria server so crashes and bugs can be traced.",
+        )
     };
     vec![
         ClientChange {
             group: ChangeGroup::Launch,
             title: "Client patches DLL".into(),
             description: patches_description.into(),
-            status: if inputs.client_patches_enabled {
-                ChangeStatus::OnLaunch
-            } else {
-                ChangeStatus::Off
-            },
+            status: patches_status,
             patch_id: None,
         },
         ClientChange {
             group: ChangeGroup::Launch,
             title: "Telemetry".into(),
             description: telemetry_description.into(),
-            status: if inputs.telemetry_opted_in {
-                ChangeStatus::OnLaunch
-            } else {
-                ChangeStatus::Off
-            },
+            status: telemetry_status,
             patch_id: None,
         },
     ]
@@ -391,6 +451,7 @@ mod tests {
             installed,
             client_patches_enabled: dll,
             telemetry_opted_in: telemetry,
+            launch: LaunchFacts::SETTINGS_ONLY,
         }
     }
 
@@ -513,6 +574,46 @@ mod tests {
         assert!(!on.contains("no code"), "{on}");
         let off = describe(&list(&inputs(&[], &state, true, false)));
         assert!(off.contains("loads no telemetry module"), "{off}");
+    }
+
+    /// A DLL the build lacks, and an adopted copy, are said as such rather than
+    /// as the player's own choice.
+    #[test]
+    fn launch_rows_follow_the_bundle_and_adoption() {
+        let state = InstalledState::default();
+        let rows = |dll: bool, telemetry: bool, launch: LaunchFacts| {
+            let rows = list(&ChangeInputs {
+                launch,
+                ..inputs(&[], &state, dll, telemetry)
+            });
+            let find = |title: &str| {
+                let row = rows.iter().find(|r| r.title == title).unwrap();
+                (row.status, row.description.clone())
+            };
+            (find("Client patches DLL"), find("Telemetry"))
+        };
+        let bare = LaunchFacts {
+            adopted: false,
+            patches_dll_present: false,
+            telemetry_dll_present: false,
+        };
+        let ((patches, text), (telemetry, _)) = rows(true, true, bare);
+        assert_eq!(patches, ChangeStatus::Missing);
+        assert!(text.contains("Play cannot start"), "{text}");
+        assert_eq!(telemetry, ChangeStatus::Missing);
+        let adopted = LaunchFacts {
+            adopted: true,
+            ..LaunchFacts::SETTINGS_ONLY
+        };
+        let ((patches, text), (telemetry, telemetry_text)) = rows(false, true, adopted);
+        assert_eq!(patches, ChangeStatus::Off);
+        assert!(
+            text.contains("adopted") && !text.contains("you turned"),
+            "{text}"
+        );
+        assert_eq!(telemetry, ChangeStatus::Off);
+        assert!(telemetry_text.contains("adopted"), "{telemetry_text}");
+        assert!(!telemetry_text.contains("unless you turn it on"));
     }
 
     /// The launcher's own changes are listed before the manifest is

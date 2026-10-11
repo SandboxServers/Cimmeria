@@ -17,6 +17,7 @@ use super::NativeLevel;
 use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
 use crate::supervisor::flows::ui_state::lua_results_of;
+use crate::supervisor::ui::lua_json;
 use crate::supervisor::{process, Supervisor};
 
 /// How long a projection may take to come back (a few frames).
@@ -73,6 +74,13 @@ pub trait WorldIo {
     async fn button(&mut self, button: usize, down: bool) -> Result<(), String>;
     /// Visible top-level UI windows.
     async fn visible_windows(&mut self) -> Result<Vec<String>, String>;
+    /// Visible top-level windows' rects (`left, top, right, bottom`, UI
+    /// pixels), leaving out the root and full-screen backdrops.
+    async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
+        Ok(vec![])
+    }
+    /// The UI cursor (UI pixels), so a probe can put it back.
+    async fn cursor(&mut self) -> Result<(i32, i32), String>;
     /// The stock `targetUnit(slot)` (N3).
     async fn target_unit(&mut self, slot: i32) -> Result<(), String>;
     /// Make sure the game reads the lab's input (virtual focus).
@@ -428,6 +436,17 @@ impl WorldIo for LiveWorld<'_> {
         Ok(lua::parse_window_list(
             &self.lua(lua::VISIBLE_WINDOWS_CHUNK).await?,
         ))
+    }
+
+    async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
+        let r = self
+            .lua(&lua_json::chunk(&lua::window_rects_chunk()))
+            .await?;
+        lua::parse_window_rects(&lua_json::decode(&r)?)
+    }
+
+    async fn cursor(&mut self) -> Result<(i32, i32), String> {
+        self.sup.cursor().await
     }
 
     async fn target_unit(&mut self, slot: i32) -> Result<(), String> {
