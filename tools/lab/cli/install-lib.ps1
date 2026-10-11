@@ -108,6 +108,7 @@ function Resolve-SetupRoot([string]$From, [string]$ScriptRoot) {
 # the checkout are removed, so lab help never lists a stale command. Writes
 # cli\cli\VERSION with the checkout's short commit, last, so a copy that fails part
 # way leaves no VERSION. Refuses a root that has no tools\lab\lab.ps1.
+# When <LabHome>\bin\lab.exe exists it also deletes bin\lab.cmd (the shim is not needed).
 function Install-LabCli([string]$Root) {
     $Root = (Resolve-Path -LiteralPath $Root).Path
     $src = Join-Path $Root 'tools\lab'
@@ -131,4 +132,61 @@ function Install-LabCli([string]$Root) {
         Copy-Item -LiteralPath (Join-Path $src $name) -Destination $dest -Force
     }
     Set-Content -LiteralPath (Join-Path $destCli 'VERSION') -Value $sha -Encoding ascii
+    Remove-LabShimWhenExe (Get-InstallLabHome)
+}
+
+# True when <LabHome>\bin\lab.exe exists, the Rust lab CLI that replaces the lab.cmd shim.
+function Test-LabExeInstalled([string]$LabHome) {
+    return [bool](Test-Path -LiteralPath (Join-Path $LabHome 'bin\lab.exe') -PathType Leaf)
+}
+
+# Once bin\lab.exe exists, deletes bin\lab.cmd (when there is one) and says so. Does nothing
+# when lab.exe is absent, so a machine without it keeps its shim.
+function Remove-LabShimWhenExe([string]$LabHome) {
+    if (-not (Test-LabExeInstalled $LabHome)) { return }
+    $shim = Join-Path $LabHome 'bin\lab.cmd'
+    if (Test-Path -LiteralPath $shim) { Remove-Item -LiteralPath $shim -Force }
+    Write-Host 'lab.exe installed; the lab.cmd shim is no longer needed'
+}
+
+# Writes <LabHome>\bin\lab.cmd, the PowerShell shim, and returns its path. The real path,
+# not %LOCALAPPDATA%, so the shim follows a CIMMERIA_LAB_HOME override. OEM encoding is
+# what cmd.exe reads a .cmd file as.
+function Write-LabShim([string]$LabHome) {
+    $bin = Join-Path $LabHome 'bin'
+    New-Item -ItemType Directory -Force -Path $bin | Out-Null
+    $shim = Join-Path $bin 'lab.cmd'
+    Set-Content -LiteralPath $shim -Encoding oem -Value @(
+        '@echo off',
+        "pwsh -NoProfile -File `"$(Join-Path $LabHome 'cli\lab.ps1')`" %*")
+    return $shim
+}
+
+# Installs one built file: skips it when the destination has the same hash; otherwise keeps
+# the old destination as <name>.<yyyymmdd>.old (<name>.<yyyymmdd-HHmmss>.old when that exists),
+# then copies. Rename, then copy: a rename works on a running cimmeria-lab.exe, an overwrite
+# does not. -DryRun prints the plan and changes nothing. The destination's folder must exist.
+# Used by tools/lab/install.ps1 for every binary, lab.exe included.
+function Install-LabFile([string]$From, [string]$To, [switch]$DryRun) {
+    $stamp = Get-Date -Format 'yyyyMMdd'
+    $built = if (Test-Path -LiteralPath $From) { (Get-Item -LiteralPath $From).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } else { 'not built' }
+    if ((Test-Path -LiteralPath $To) -and (Test-Path -LiteralPath $From) -and
+        (Get-FileHash -LiteralPath $From).Hash -eq (Get-FileHash -LiteralPath $To).Hash) {
+        Write-Host "[lab-install] same:    $To"
+        return
+    }
+    $backup = $null
+    if (Test-Path -LiteralPath $To) {
+        $backup = "$To.$stamp.old"
+        if (Test-Path -LiteralPath $backup) { $backup = "$To.$(Get-Date -Format 'yyyyMMdd-HHmmss').old" }
+    }
+    if (-not $DryRun -and -not (Test-Path -LiteralPath $From)) { throw "Install-LabFile: $From does not exist; $To left as it is" }
+    if ($DryRun) {
+        if ($backup) { Write-Host "[lab-install] would back up: $To -> $(Split-Path $backup -Leaf)" }
+        Write-Host "[lab-install] would copy: $From ($built) -> $To"
+        return
+    }
+    if ($backup) { Move-Item -LiteralPath $To -Destination $backup; Write-Host "[lab-install] backup:  $backup" }
+    Copy-Item -LiteralPath $From -Destination $To
+    Write-Host "[lab-install] install: $To ($built)"
 }
