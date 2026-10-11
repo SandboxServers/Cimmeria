@@ -18,8 +18,8 @@ merge: kind=docs (every changed file is *.md or under .claude/agent-memory/) mer
 with --admin, the owner's rule for Markdown and memory-only PRs. kind=code rebases with
 rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for the gating checks
 (fmt, clippy, build + nextest; `skipping` passes), plus any path-filtered lab or build-lane
-check the PR's changes made run (CONDITIONAL), and merges with --squash. Coverage and
-live-DB jobs are not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
+check the PR's changes made run (CONDITIONAL), and merges with --squash. The build +
+nextest gate includes the live-DB tier (same job since 2026-10-11); coverage is not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
 pwsh on Windows, the .sh under bash elsewhere).
 
 Output: one line, `status=... key=value ...`; a value with spaces is double-quoted. The full
@@ -48,7 +48,10 @@ HERE = Path(__file__).resolve().parent
 GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
 RM_WORKTREE = str(HERE / ("rm-worktree.ps1" if os.name == "nt" else "rm-worktree.sh"))
-GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace, no DB)")
+GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace + live DB)")
+# A renamed gating job's old check name, counted as the new one: a PR whose last CI
+# ran before the rename still reports the old name until it is pushed again.
+RENAMED = {"cargo build + nextest (workspace, no DB)": "cargo build + nextest (workspace + live DB)"}
 # Path-filtered jobs (lab.yml, build-lane-scripts.yml) that gate only when the
 # PR's changes made them run: present means required, absent means not run.
 CONDITIONAL = (
@@ -306,7 +309,7 @@ def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
             checks = []   # "no checks reported" yet
         buckets = {}
         for c in checks:
-            buckets.setdefault(c["name"], []).append(c["bucket"])
+            buckets.setdefault(RENAMED.get(c["name"], c["name"]), []).append(c["bucket"])
         gating = always + [g for g in conditional if g in buckets and g not in always]
         failed = [g for g in gating if any(b in ("fail", "cancel") for b in buckets.get(g, []))]
         if failed:
