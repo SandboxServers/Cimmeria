@@ -114,6 +114,15 @@ function ConvertTo-UatRowIds([string[]]$Rows) {
     return $ids
 }
 
+# -Chaos values as the run's header: one chaos=<spec> per value, joined with
+# "; ". Null when there was no chaos (no key in -Json, no line in the summary).
+# Values are not split on commas: a multi-knob spec is one value.
+function Format-UatChaosHeader([string[]]$Chaos) {
+    $specs = @($Chaos | Where-Object { $_ })
+    if (-not $specs.Count) { return $null }
+    return (@($specs | ForEach-Object { "chaos=$_" }) -join '; ')
+}
+
 # Lease ids (lease-<hex>) replaced in text that leaves the command.
 function Hide-LeaseIds([string]$Text) {
     return ($Text -replace 'lease-[0-9a-fA-F]{8,}', 'lease-<redacted>')
@@ -482,6 +491,9 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
         })
         if ($heal.Count -gt $MaxHeal) { $out.more_heal = $heal.Count - $MaxHeal }
     }
+    # D-CH7: the chaos header, only when the run had chaos.
+    $chaos = Get-UatField $Summary 'chaos'
+    if ($chaos) { $out.chaos = [string]$chaos }
     $out.batch = $BatchDir
     return $out | ConvertTo-Json -Depth 6 -Compress
 }
@@ -489,6 +501,8 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
 # The summary as Markdown for people (summary.md and the terminal).
 function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
     $sb = [System.Text.StringBuilder]::new()
+    $chaos = Get-UatField $Summary 'chaos'
+    if ($chaos) { [void]$sb.AppendLine([string]$chaos) }
     $verdict = if ($Summary.ok) { 'PASS' } else { 'FAIL' }
     [void]$sb.AppendLine("# ${Title}: $verdict ($($Summary.passed)/$($Summary.runs) runs passed)")
     if ($Summary.failed) {
