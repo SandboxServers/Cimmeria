@@ -109,12 +109,33 @@ try {
     (Get-Item $png).LastWriteTimeUtc = $nowUtc.AddSeconds(-5)
     Check ((Get-LabWatchShotAge $runDir $Now) -eq 5) 'the newest screenshot is 5 s old'
     Check ($null -eq (Get-LabWatchShotAge $tmp $Now)) 'a run dir without rows has no screenshot age'
+    # SHOT reads /status uat's run_dir ahead of the lane's last record's RunDir.
+    $shotStatus = Get-Content -Raw (Join-Path $tmp 'status-two-lanes.json') | ConvertFrom-Json
+    @($shotStatus.instances | Where-Object { $_.instance -eq 'default' })[0].uat.run_dir = $runDir
+    $shotSnap = Get-LabWatchSnapshot -Status $shotStatus -BatchDir $newDir -Now $Now -IsAlive $alive
+    Check (@($shotSnap.instances | Where-Object { $_.instance -eq 'default' })[0].shot_s -eq 5) 'SHOT ages the screenshot under /status uat''s run_dir'
+    Check ((ConvertTo-LabWatchJson $shotSnap | ConvertFrom-Json).lanes.default -eq '3/3 FS-P3 42s shot 5s') 'the JSON lane string carries the shot age'
+
+    # --- a lane death (Index 0) ---
+    $deathRec = [ordered]@{ Lane = 2; Instance = 'p2'; Index = 0; Ok = $false; Rows = @(); Verdict = $null; RunDir = $null
+                            Error = 'lane: bridge never came up'; Seconds = 1; Braked = $true }
+    $deathDir = Join-Path $tmp 'batch-death'
+    New-Item -ItemType Directory -Path $deathDir | Out-Null
+    Copy-Item (Join-Path $newDir 'plan.json') $deathDir
+    [IO.File]::WriteAllText((Join-Path $deathDir 'batch.jsonl'), $braked + ($deathRec | ConvertTo-Json -Compress -Depth 6) + "`n", [Text.UTF8Encoding]::new($false))
+    $dPanel = Get-LabWatchBatchPanel (Read-LabWatchBatch $deathDir $alive)
+    Check ($dPanel.runs -eq 3 -and $dPanel.failed -eq 2) "a lane death is not a run (runs $($dPanel.runs), failed $($dPanel.failed))"
+    Check ($dPanel.last_failure.run -eq 'p2#0') "a lane death can be the last failure ($($dPanel.last_failure.run))"
+    $dSnap = Get-LabWatchSnapshot -Status $twoLanes -BatchDir $deathDir -Now $Now -IsAlive $alive
+    Check (@($dSnap.instances | Where-Object { $_.instance -eq 'p2' })[0].run -eq '1/3 braked') 'a lane death brakes its lane'
 
     # --- labd.log counts ---
     $counts = Get-LabWatchLogCounts $logLines '2026-10-11T01:39:06.0000000Z'
     Check ($counts.relaunches['p2'] -eq 1 -and $counts.relaunches.Count -eq 1) 'one relaunch on p2 since the plan started (the earlier one excluded)'
     Check ($counts.login_retries -eq 1) 'one login retry'
     Check ($snap.logs.relaunches['p2'] -eq 1 -and $snap.logs.login_retries -eq 1) 'the snapshot counts the log since the plan start'
+    $oneInstance = Get-LabWatchLogCounts @('2026-10-11T01:40:00.000000Z  INFO lab_watchdog{pid=1}: relaunched after crash; logging back in new_pid=2') ''
+    Check ($oneInstance.relaunches['default'] -eq 1) 'a relaunch line without an instance span counts for default'
 
     # --- JSON ---
     $parsed = $json | ConvertFrom-Json
@@ -154,6 +175,9 @@ try {
     Check (@($text | Where-Object { $_ -like '*orphan SGW.exe: 63904 (#1342?)*' }).Count -eq 1) 'the orphan footer'
     Check ($text[0] -eq 'batch-20261011-013906  first-session  live  runs 3/6  passed 1  failed 2 (2 known)') "the header line ($($text[0]))"
     Check (@($text | Where-Object { $_ -like '*FS-P3 42s*' }).Count -eq 1) 'the default row shows FS-P3 42s'
+    $pIdx = [array]::FindIndex([string[]]$text, [Predicate[string]] { param($l) $l -match '^p2\s' })
+    Check ($pIdx -ge 0 -and $text[$pIdx + 1] -like '    `[p2 1/3`] FAIL FS-P2: clause movie-over failed*') "LAST is whole on its own line under its row ($($text[$pIdx + 1]))"
+    Check (@($text | Where-Object { $_ -match '^(default|p2)\s.*\[(default|p2) ' }).Count -eq 0) 'no instance row also carries LAST'
     Write-Host ($text -join "`n")
 
     # --- the pre-LW-02 batch's real records ---
@@ -162,6 +186,8 @@ try {
         $oj = ConvertTo-LabWatchJson $oldSnapshot
         $null = Format-LabWatchText $oldSnapshot 120
         Check ($oldSnapshot.batch.passed -eq 2 -and $oldSnapshot.batch.State -eq 'unknown' -and ($oj | ConvertFrom-Json).runs -eq '2') "the pre-LW-02 records aggregate under strict mode ($oj)"
+        $oldLasts = @($oldSnapshot.instances | Where-Object { $_.last } | ForEach-Object { $_.last })
+        Check ($oldLasts.Count -gt 0 -and @($oldLasts | Where-Object { $_ -notmatch '^\[\S+ \d+/\?\] ' }).Count -eq 0) "without a plan LAST reads <i>/? ($($oldLasts -join ' | '))"
     } catch {
         Check $false "the pre-LW-02 records aggregate under strict mode: $_"
     }

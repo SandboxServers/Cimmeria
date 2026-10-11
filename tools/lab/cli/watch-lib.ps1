@@ -64,10 +64,17 @@ function Read-LabWatchRecords([string]$Path) {
     return @($out)
 }
 
+# The default $IsAlive: the pid runs a pwsh, as lab uat does. A pid reused by
+# another program after an interrupted batch would otherwise read live.
+function Test-LabWatchPidAlive([int]$ProcessId) {
+    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    return [bool]($proc -and $proc.ProcessName -match '^pwsh')
+}
+
 # A batch folder: @{ Dir; Name; Plan; Records; State }. State (D-LW5): done when
 # batch.json exists, unknown without a plan.json (a pre-LW-02 batch), live when
 # the plan's pid is alive, else interrupted. $IsAlive takes a pid, returns a bool.
-function Read-LabWatchBatch([string]$Dir, [scriptblock]$IsAlive = { param($p) [bool](Get-Process -Id $p -ErrorAction SilentlyContinue) }) {
+function Read-LabWatchBatch([string]$Dir, [scriptblock]$IsAlive = { param($p) Test-LabWatchPidAlive $p }) {
     $plan = Read-UatPlan (Join-Path $Dir 'plan.json')
     $records = @(Read-LabWatchRecords (Join-Path $Dir 'batch.jsonl'))
     $state = if (Test-Path -LiteralPath (Join-Path $Dir 'batch.json')) { 'done' }
@@ -113,7 +120,10 @@ function Format-LabWatchLast($Record, [int]$Total) {
     if ($null -ne $v) { foreach ($p in $v.PSObject.Properties) { $verdict[$p.Name] = $p.Value } }
     $verdict['Issue'] = Get-LabWatchIssue $Record
     $copy['Verdict'] = $verdict
-    return Hide-LeaseIds (Format-UatProgressLine $copy $Total)
+    $line = Format-UatProgressLine $copy $Total
+    # Without a plan the runs per lease are unknown: say so rather than guess.
+    if ($Total -le 0) { $line = $line -replace '^\[(\S+) (\d+)/0\]', '[$1 $2/?]' }
+    return Hide-LeaseIds $line
 }
 
 # The batch's counts and lanes. Index 0 records are lane deaths, not runs: they
@@ -211,7 +221,7 @@ function New-LabWatchInstance([string]$Name, $Row, [bool]$HasRow, $Batch, $Panel
         elseif ($Batch.State -eq 'live' -and $lane['count'] -lt $total) { $run = "$($lane['count'] + 1)/$total" }
         else { $run = "$($lane['count'])/$total" }
         if ($null -ne $lane.last) {
-            $last = Format-LabWatchLast $lane.last $(if ($null -ne $total) { $total } else { $lane['count'] })
+            $last = Format-LabWatchLast $lane.last $(if ($null -ne $total) { $total } else { 0 })
             $runDir = [string](Get-UatField $lane.last 'RunDir')
         }
     }
@@ -241,8 +251,9 @@ function New-LabWatchInstance([string]$Name, $Row, [bool]$HasRow, $Batch, $Panel
 # The whole watch model (see the LW-03 packet). -Status is the /status object
 # or $null (daemon down); -Now is UTC; -IsAlive decides a live batch's pid.
 function Get-LabWatchSnapshot {
-    param($Status, [string]$BatchDir, [string[]]$LogLines = @(), [int[]]$SgwPids = @(), [datetime]$Now,
-          [scriptblock]$IsAlive = { param($p) [bool](Get-Process -Id $p -ErrorAction SilentlyContinue) })
+    param($Status, [string]$BatchDir, [string[]]$LogLines = @(), [int[]]$SgwPids = @(),
+          [Parameter(Mandatory)][datetime]$Now,
+          [scriptblock]$IsAlive = { param($p) Test-LabWatchPidAlive $p })
     $nowUtc = ConvertTo-LabWatchUtc $Now
     $batch = $null; $panel = $null; $raw = $null
     if ($BatchDir) {
@@ -309,17 +320,20 @@ function Format-LabWatchText($Snapshot, [int]$Width = 120) {
     }
     $lines.Add('')
 
-    $cols = @('INSTANCE', 'CLIENT', 'LEASE', 'RUN', 'ROW', 'SHOT', 'LAST')
-    $cells = @(, $cols) + @(foreach ($i in $Snapshot.instances) {
+    # LAST is a whole progress line, too long to share a 120-column row with the
+    # lease, so it goes on its own indented line under its instance's row.
+    $cols = @('INSTANCE', 'CLIENT', 'LEASE', 'RUN', 'ROW', 'SHOT')
+    $cells = @(, ($cols + 'LAST')) + @(foreach ($i in $Snapshot.instances) {
         , @($i.instance, $(if ($null -ne $i.client_pid) { "$($i.client_pid)" } else { '-' }), $(if ($i.lease) { $i.lease } else { '-' }),
             $i.run, (Format-LabWatchRowCell $i), $(if ($null -ne $i.shot_s) { "$($i.shot_s)s" } else { '-' }),
-            $(if ($i.last) { $i.last } else { '-' }))
+            $(if ($i.last) { "    $($i.last)" } else { '' }))
     })
     $widths = foreach ($c in 0..($cols.Count - 2)) { ($cells | ForEach-Object { "$($_[$c])".Length } | Measure-Object -Maximum).Maximum + 2 }
     foreach ($row in $cells) {
         $text = ''
         for ($c = 0; $c -lt $cols.Count - 1; $c++) { $text += "$($row[$c])".PadRight($widths[$c]) }
-        $lines.Add($text + $row[-1])
+        $lines.Add($text + $row[$cols.Count - 1])
+        if ($row[-1] -and $row[-1] -ne 'LAST') { $lines.Add($row[-1]) }
     }
 
     $foot = @()
