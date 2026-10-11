@@ -49,16 +49,19 @@ cross-campaign dependencies, for example CH-09 on GD-04 and GD-09.
 ## Files more than one campaign edits
 
 These are the collision points. The second packet to merge rebases onto the
-first; none of them needs a design change.
+first; none of them needs a design change. Where a packet's own text
+disagrees with this table (for example, it says to add tests to
+`runner/tests.rs`), this table wins, and the coordinator says so in the brief.
 
 | File | Campaigns | Rule |
 |---|---|---|
 | `crates/lab/src/uat/spec.rs` | SV-03, FX-01, GD-01 | Each adds its fields in one marked block (`// lab-spec-vocab (SV-03)`, `// ── Row fixtures (lab-fixtures FX-01) ──`, the GD-01 `GoldenSpec` block). The structs use `deny_unknown_fields`, so a spec that uses a new field fails to load until that block has merged. |
-| `crates/lab/src/uat/runner/mod.rs` | SV-, FX-06, GD-06, LW-01, CH-08 | Order inside a row: fixture establish (FX-06), then the tap starts (GD-06), then the steps. LW-01 only adds progress fields to `Runner`. |
+| `crates/lab/src/uat/runner/mod.rs` (546 lines on `main`) | SV-07, SV-08, SV-11, FX-05, FX-06, FX-10, GD-06, LW-01, CH-08 | Order inside a row: fixture establish (FX-06), then the tap starts (GD-06), then the steps. LW-01 only adds progress fields to `Runner`. **Split rule:** a packet whose change would take the file past 650 lines first moves the per-row execution into `runner/row.rs` (re-exported, no behaviour change) as its own commit; the coordinator adds that step to the brief. |
+| `crates/lab/src/uat/runner/tests.rs` (823 lines, already over the cap) | SV-03, SV-13, FX-06, GD-06, CH-08 | No packet adds to it. New fake-server helpers go in a new `runner/test_server.rs`, and new tests in a sibling file named for what they test (`chaos_tests.rs`, `fixture_tests.rs`). Splitting the existing file is a follow-up issue, not any packet's job. |
 | `crates/lab/src/supervisor/mod.rs` (the `Supervisor` struct) | LW-01, LR-06 | Each adds one field. |
-| `docs/guides/uat-specs/first-session.toml` | SV-15, FX-08, GD-10 | SV- recalibrates first; FX-08 then adds fixtures and drops its own camera prelude if SV-'s absolute camera has landed; GD-10 records the golden last. |
+| `docs/guides/uat-specs/first-session.toml` | SV-13, SV-15, FX-08, GD-10 | SV-13 migrates it to the new vocabulary and SV-15 recalibrates first; FX-08 has a post-SV-13 variant (keep `@stand`, no fixture `position`); FX-08 then adds fixtures and drops its own camera prelude if SV-'s absolute camera has landed; GD-10 records the golden last. |
 | `uat-runs\batch-*\batch.jsonl` and `plan.json` | LW-02 (owner), GD-, CH-, LR- | LW-02 owns the record shape. Others add fields; nobody rewrites it. |
-| `tools/lab/cli/uat-lib.ps1` | LW-02, GD-08, SV-, CH- | Shared helpers move here once (GD-08 moves `Get-LabMcpUrl`, `Get-DefaultSpecsDir`, `Get-UatRoot`); later packets reuse them. |
+| `tools/lab/cli/uat-lib.ps1` | LW-02, GD-08, GD-09, SV-12, LR-08, FX-11, CH-02 | LW-02 (wave 1) moves `Get-LabMcpUrl`, `Get-DefaultSpecsDir` and `Get-UatRoot` here once; every new command depends on LW-02 and reuses them. Exit codes in `Get-UatExitCode`: 5 is a golden divergence (GD-09), 8 a heal proposal (SV-12), and 8 wins when both apply. |
 
 ## Cross-campaign decisions made while planning
 
@@ -70,6 +73,14 @@ first; none of them needs a design change.
 | **Chaos never records or re-blesses a golden** (D-CH7); a chaos-only divergence is `chaos_divergence`, not a row failure. | Keeps goldens clean. |
 | **Recorded drafts are unconfirmed** until `lab golden record` agrees five times; a recorded pose carries `calibrated = "recorded <date>"`. | The owner's five-run rule applies to drafts as well. |
 | **The mission bag is container 2** (`INV_MISSION`, `crates/entity/src/inventory.rs:14`), in FX-01 and every snapshot. | The first draft of FX-01 said 0. |
+
+## Packets too big for one Haiku worker
+
+The PR #1365 review flagged FX-06 and LR-06 (both size L, many sub-steps and
+a new test file) as the weakest fits for the Haiku `packet-coder`, and
+CH-07 and SV-10 as borderline. Give FX-06 and LR-06 to `rust-gameserver-dev`,
+or split each into two packets at dispatch; send CH-07 and SV-10 to Haiku
+only if the worktree's diff stays small.
 
 ## Decisions waiting on the owner or the user
 

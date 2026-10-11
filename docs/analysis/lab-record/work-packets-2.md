@@ -124,8 +124,12 @@ Files:
    with three tools.
    - `lab_record_start { section: String, character: Option<String>, specs_dir: Option<String>, max_minutes: Option<u32> }`:
      refuse when the instance's `RecordSlot` is busy. Take an own lease
-     exactly as `lab_uat_run` does (`server/uat.rs:345-358`), owner
-     `lab_record`, purpose `recording a human: <section>`; keep it alive
+     as `lab_uat_run` does (`server/uat.rs:345-358`), owner
+     `lab_record`. `RunLease::acquire_own` (`crates/lab/src/lease/run.rs:36`)
+     hard-codes `UAT_RUN_OWNER`, so this packet adds `crates/lab/src/lease/run.rs`
+     to its files: `acquire_own_as(book, owner: &str, purpose)`, with
+     `acquire_own` calling it with `UAT_RUN_OWNER` (callers unchanged), and a
+     unit test that the acquired lease reports owner `lab_record`; purpose `recording a human: <section>`; keep it alive
      (`RunLease::keep_alive`). The character defaults to the instance's lab
      character (`lab_account`, `server/uat.rs:198`). Create
      `<default_root()>\records\<recording id>\`, run `Sampler::begin`, write the
@@ -169,7 +173,7 @@ tool table).
 
 ## LR-08 lab record command
 
-**Implementer:** packet-coder. **Size:** S. **Wave:** 5. **Depends on:** LR-07.
+**Implementer:** packet-coder. **Size:** S. **Wave:** 5. **Depends on:** LR-07, LW-02 (`Get-LabMcpUrl` in `uat-lib.ps1`).
 **Branch:** `lab-record/lr08-cli`. **Worktree:** `lr08`.
 **Subject:** `feat(lab): LR-08 lab record start, status, stop and transform`
 
@@ -208,7 +212,10 @@ For `transform`, LR-07 adds no tool; this packet adds
 `lab_record_transform { dir, section, character_expr, profile }` (open, reads
 a recording folder under `<default_root()>\records\`, writes the draft) in
 `server/record.rs`, with a unit test that a `dir` outside the records root is
-refused.
+refused. Add `lab_record_transform` to `OPEN` in
+`crates/lab/src/lease/policy.rs:45` (it touches no client), or
+`every_routed_tool_is_classified` (`server/lease_tests.rs:269`) fails; add a
+`policy` test that it is open.
 
 Lane: the Rust part through the lane as above; the PowerShell tests with
 `pwsh -NoProfile -File tools/lab/cli/test-record.ps1`.
@@ -249,9 +256,8 @@ Files:
    `fixture_toml`; when it is not, write the same lines prefixed `# ` under
    `# fixture (pass -Profile to enable):`.
 
-Reconcile before coding: FX-01's contract maps `mission` to container 0,
-but `crates/entity/src/inventory.rs:14` has `INV_MISSION = 2`. Ask the
-coordinator which FX-01 shipped; write the container name, never a number.
+Write the container name (`main` or `mission`), never a number. FX-01
+maps `mission` to container 2 (`INV_MISSION`, `crates/entity/src/inventory.rs:14`).
 
 Tests (unit):
 

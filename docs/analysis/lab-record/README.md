@@ -87,7 +87,7 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | LR-05 | TOML emitter, TODO blocks, caps, the drafts guard | packet-coder | M | 3 | LR-02, LR-03, LR-04, SV-04 | BlockedDependency |
 | LR-06 | Recorder sampler and the daemon's read-only probes | rust-gameserver-dev | L | 2 | LR-01 | BlockedDependency |
 | LR-07 | MCP tools `lab_record_start`, `lab_record_status`, `lab_record_stop` | packet-coder | M | 4 | LR-05, LR-06 | BlockedDependency |
-| LR-08 | `lab record` command and `test-record.ps1` | packet-coder | S | 5 | LR-07 | BlockedDependency |
+| LR-08 | `lab record` command and `test-record.ps1` | packet-coder | S | 5 | LR-07, LW-02 | BlockedDependency |
 | LR-09 | Optional `[row.fixture]` emission | packet-coder | S | 4 | LR-05, FX-01 | BlockedDependency |
 | LR-10 | Lab Lua ring for CEGUI window clicks | rust-gameserver-dev | M | 1 | none | Ready |
 | LR-11 | Sampler and transform: window clicks become `@window_click` | packet-coder | S | 4 | LR-05, LR-06, LR-10 | BlockedDependency |

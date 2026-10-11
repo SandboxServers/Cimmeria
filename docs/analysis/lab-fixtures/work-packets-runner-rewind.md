@@ -171,7 +171,14 @@ Edits to `docs/guides/uat-specs/first-session.toml`:
    position = [-325.0, 73.6, -212.8]
    ```
 
-   Remove its `/gmgotoxyz` setup line (the fixture positions). Keep
+   **If SV-13 has landed** (lab-spec-vocab migrated `first-session.toml`), the
+   row's setup positions with `@stand { pose = "..." }`, not `/gmgotoxyz`. Then
+   keep the `@stand` and leave `position` out of this row's fixture (and of
+   FS-P4's below): the pose is the calibrated stand-off, and a second
+   teleport would only be overwritten. The fixture still sets the world,
+   missions and items, and still relogs.
+
+   Otherwise, remove its `/gmgotoxyz` setup line (the fixture positions). Keep
    `/gmsetgodmode 1`. Make the `@finish_dialog` setup action
    `optional = true` (README F12).
 3. FS-P4: fixture with `missions = [{ id = 622, step = 80623 }, { id = 1360, step = 4037 }]`,
@@ -305,7 +312,7 @@ Checks: the three lane commands, `-p cimmeria-lab`.
 
 ## FX-11 lab rewind
 
-**Implementer:** packet-coder. **Size:** M. **Wave:** 7. **Depends on:** FX-10.
+**Implementer:** packet-coder. **Size:** M. **Wave:** 7. **Depends on:** FX-10, LW-02 (`Get-LabMcpUrl` in `uat-lib.ps1`).
 **Branch:** `lab-fixtures/fx11-rewind`. **Worktree:** `fx11`.
 **Subject:** `feat(lab): FX-11 lab rewind reruns one row from its snapshot`
 

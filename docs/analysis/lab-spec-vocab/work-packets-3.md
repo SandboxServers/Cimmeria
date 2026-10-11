@@ -115,7 +115,7 @@ Files:
      and scores (D-SV6, hover only, never a click), `-Prepare`, `-Apply`,
      the run folder (`calibrate.jsonl`, the copy, the diff), reviewing and
      committing the diff by hand.
-   - **Run without an agent: `lab uat`:** `-Heal` and exit code 5.
+   - **Run without an agent: `lab uat`:** `-Heal` and exit code 8.
    - **Troubleshooting:** "no entity with tag" (wrong space, not yet
      introduced, or a typo the seed check missed), "stand: still n m"
      (the teleport was refused or the point is inside geometry), a

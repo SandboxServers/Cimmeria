@@ -6,7 +6,7 @@
 
 ## GD-08 lab golden record
 
-**Implementer:** packet-coder. **Size:** M. **Wave:** 5. **Depends on:** GD-07.
+**Implementer:** packet-coder. **Size:** M. **Wave:** 5. **Depends on:** GD-07, LW-02 (the shared helpers).
 **Branch:** `lab-golden/gd08-record-cli`. **Worktree:** `gd08`.
 **Subject:** `feat(lab): GD-08 lab golden record and show`
 
@@ -14,8 +14,9 @@ Why: the owner's five-run rule as one command. README D-GD6, F16, F17.
 
 Files:
 
-1. `tools/lab/cli/uat-lib.ps1`: move `Get-LabMcpUrl`, `Get-DefaultSpecsDir`
-   and `Get-UatRoot` here from `uat.ps1` unchanged (golden.ps1 needs them).
+1. `tools/lab/cli/uat-lib.ps1`: nothing to move. LW-02 has already moved
+   `Get-LabMcpUrl`, `Get-DefaultSpecsDir` and `Get-UatRoot` there from
+   `uat.ps1`; `golden.ps1` dot-sources `uat-lib.ps1` and calls them.
 2. `tools/lab/cli/uat.ps1`: a `-Fingerprint` switch (not in the usage line;
    doc: "used by lab golden") that sets `$baseArgs.fingerprint = $true`.
 3. New `tools/lab/cli/golden-lib.ps1` (pure, dot-sourced):

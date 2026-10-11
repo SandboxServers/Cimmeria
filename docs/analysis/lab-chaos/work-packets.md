@@ -493,7 +493,12 @@ CH-03, CH-05.
    `server_chaos_clear` after its teardown; `burst` the spawn after setup and
    the despawn after teardown. On any error or cancel, everything is undone
    (a `Drop` that clears and despawns).
-3. `crates/lab/src/uat/runner/mod.rs`: build the `ChaosSession` from the
+3. `crates/lab/src/server/uat.rs`: add `chaos: Option<Vec<String>>` to`
+   `UatRunArgs` (`server/uat.rs:33`; it ignores unknown fields, so CH-02's
+   pass-through is dropped until this lands) and `chaos: Vec<ChaosSpec>` to
+   `RunRequest`, parsed with `chaos::parse`; a parse error refuses the run.
+   Write `"chaos": "<header(spec)>"` into each run's `run.json` when set.
+4. `crates/lab/src/uat/runner/mod.rs`: build the `ChaosSession` from the
    request's `chaos` field (parsed with `chaos::parse`) and hold it for the
    run. Keep the change to a few lines; `mod.rs` is near the 500-line soft
    cap.
@@ -507,6 +512,7 @@ CH-03, CH-05.
   are still sent.
 - `burst_despawns_exactly_what_it_spawned`.
 - `no_chaos_sends_no_chaos_calls`.
+- `uat_run_args_parse_chaos_and_refuse_a_bad_profile` (server args test).
 
 Each fails if its cleanup path is removed.
 
@@ -516,23 +522,32 @@ Each fails if its cleanup path is removed.
 
 ## CH-09 Chaos report against the golden
 
-**Implementer:** packet-coder. **Size:** S. **Wave:** 5. Depends on CH-08
-GD-04 (`diff_run` and `Divergence::line`, see
-[lab-golden contract](../lab-golden/contract.md)) and GD-09 (`lab uat -DiffGolden`).
+**Implementer:** packet-coder. **Size:** S. **Wave:** 5. Depends on CH-08,
+GD-03 to GD-06 (fingerprint, diff, golden file, runner capture), GD-07 (the
+`lab_golden_record` tool) and GD-09 (`lab uat -DiffGolden`). Names:
+[lab-golden contract](../lab-golden/contract.md).
 
 **Branch:** `lab-chaos/ch09-report`. **Worktree:** `ch09`.
 
-**Change:** when a run has chaos, the runner diffs each row against the
-golden with lab-golden's API, and the row's result gains
-`chaos_divergence: "<first divergence line>"` when the row passed its own
-expects but diverged, so a chaos-only change is not a row failure (D-CH7).
-The run summary leads with `header(spec)`. A chaos run refuses
-`lab golden record`. Use lab-golden's types as they are; do not add a
-second diff.
+**Change:** chaos runs are diffed by lab-golden's own route, `lab uat -DiffGolden`;
+this packet adds no diff code (D-CH7).
 
-**Tests** (unit, type 1): a row that passes and diverges reports one
-`chaos_divergence` line and status pass; a row that matches has no key;
-`golden record` with chaos is refused. `-Json` size for a 6-row chaos run
+1. `tools/lab/cli/uat.ps1`: `-Chaos` implies `-Fingerprint` and `-DiffGolden`, so
+   every row is tapped (GD-06) and diffed (GD-09). It refuses `-Chaos` when no
+   golden file exists for the section (exit 2).
+2. `tools/lab/cli/uat-lib.ps1`: when the batch had chaos, `Merge-UatResults`
+   and `ConvertTo-UatCompactJson` report the `golden` divergence lines under
+   `chaos_divergence` instead, prefixed by the chaos header, and a run that
+   passed its own expects but diverged keeps status pass. `Get-UatExitCode`
+   does not return 5 for a chaos-only divergence.
+3. `crates/lab/src/server/golden.rs` (GD-07's tool): `lab_golden_record`
+   refuses any run bundle whose `run.json` carries `chaos` (CH-08 writes it),
+   with code `cannot_record` and the message "chaos runs never become golden".
+
+**Tests:** in `test-uat.ps1`, a chaos batch fixture whose row passes and
+diverges reports one `chaos_divergence` line and status pass, and a matching
+row has no key; in the golden tool's unit tests (type 1), a bundle with
+`chaos` in `run.json` is refused with `cannot_record`. `-Json` size for a 6-row chaos run
 stays under 600 characters (assert it).
 
 **Lane:** fmt, clippy, nextest, each `-p cimmeria-lab`; then

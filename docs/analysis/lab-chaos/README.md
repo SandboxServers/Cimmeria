@@ -10,7 +10,7 @@
 >
 > **Campaign status (2026-10-10): planned, nothing built.** CH-01 and CH-03
 > can start now. Three decisions (D-CH1, D-CH2, D-CH3) gate every server-side
-> packet. CH-09 waits for lab-golden's diff (GD-04, GD-09); CH-10 and CH-11 are live and
+> packet. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
 > need the user's OK.
 
 ## Purpose
@@ -97,7 +97,7 @@ the report so a run can be replayed exactly.
 | CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDecision |
 | CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | BlockedDependency |
 | CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | BlockedDependency |
-| CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-04, GD-09 | BlockedDependency |
+| CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
 | CH-12 | Close-out | documentation-writer | S | 7 | all | BlockedDependency |

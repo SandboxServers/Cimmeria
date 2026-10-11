@@ -312,8 +312,9 @@ only past 200 ms.
 
 - Section `client-limits`, a GM lab character, `players = 1`.
 - One row per world in this order: Castle_CellBlock, Castle, Harset,
-  Agnos, Ihpet_Crater_Light (world 1300), Dakara_E1, Tollana. Each row:
-  `chat = ".gotospace <world>"`, `wait_ms = 90000` (three memory samples),
+  Agnos, Ihpet_Crater_Light, Dakara_E1, Tollana. Each row:
+  `chat = ".gotolocation <world>"` (`.gotospace` takes a loaded space id,
+  not a name: `crates/cell-console/src/cell/console/travel/mod.rs:217`), `wait_ms = 90000` (three memory samples),
   then an `expect` clause that at least three `client.engine.memory` events
   arrived in the row's window, and `evidence` that captures them.
 - A final row `CL-M5` with `players = 5` that stands all five clients in

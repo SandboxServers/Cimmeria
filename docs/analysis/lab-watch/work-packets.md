@@ -364,6 +364,11 @@ Files:
 3. `tools/lab/cli/uat-lib.ps1`:
    - move `Get-UatRoot` here from `uat.ps1:81-89`, unchanged. Its comment
      gains "Needs common.ps1".
+   - move `Get-LabMcpUrl` and `Get-DefaultSpecsDir` here from
+     `uat.ps1:66-79`, unchanged. lab-golden (GD-08), lab-spec-vocab (SV-12),
+     lab-record (LR-08) and lab-fixtures (FX-11) all call them from new
+     commands and depend on this packet; `uat.ps1` already dot-sources
+     `uat-lib.ps1`, so its callers keep working.
    - add the #1343 entry to `$script:UatKnownIssues`, after #1341:
      `@{ Issue = '#1343'; Rows = '.'; Reason = 'Login_PasswordEdit holds 0 characters'; Note = 'login password box read back empty on a slow-booting client' }`.
    - `Get-UatKnownIssue([string]$Row, [string]$Reason)` (contract), and

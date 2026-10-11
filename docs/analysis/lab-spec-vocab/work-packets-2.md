@@ -541,13 +541,13 @@ Docs owed: none here (SV-14).
 
 ## SV-12 lab calibrate and lab uat -Heal
 
-**Implementer:** packet-coder. **Size:** M. **Wave:** 4. **Depends on:** SV-10, SV-11, D-SV8.
+**Implementer:** packet-coder. **Size:** M. **Wave:** 4. **Depends on:** SV-10, SV-11, LW-02 (`Get-LabMcpUrl` in `uat-lib.ps1`), D-SV8.
 **Branch:** `lab-spec-vocab/sv12-calibrate-cli`. **Worktree:** `sv12`.
 **Subject:** `feat(lab): SV-12 lab calibrate and lab uat -Heal propose spec diffs`
 
 Why: the handoff's two commands. D-SV8, D-SV12. Written for D-SV8 (a); for
 (b), `-Heal` only prints `lab calibrate <section> <row> -Pose <pose>` per
-hint and exits 5, and the calibrate call below is dropped.
+hint and exits 8, and the calibrate call below is dropped.
 
 Files:
 
@@ -584,8 +584,9 @@ Files:
      `heal-<row>-<pose>.diff` in the batch folder, and print it.
    - The summary (`batch.json`, `summary.md`, the `-Json` object) gains
      `heal: [{row, pose, diff}]` only when a proposal was written.
-   - Exit 5 when a proposal was written, else the batch's own code. Add 5
-     to the help's exit-code list.
+   - Exit 8 when a proposal was written, else the batch's own code. Add 8
+     to the help's exit-code list. (5 is lab-golden's divergence code, GD-09;
+     when both apply, 8 wins, because a heal proposal needs action first.)
 
 Tests (PowerShell check scripts; `lab.yml` runs every `test-*.ps1`):
 

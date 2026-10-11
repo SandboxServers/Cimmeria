@@ -105,7 +105,7 @@ Against `main` @ `6996c9403`.
 | FX-08 | `first-session.toml`: fixtures for FS-P3, FS-P4, FS-P5 | packet-coder | S | 5 | FX-04, FX-07 | BlockedDependency |
 | FX-09 | Docs: authoring guide, commands, console channel, lab guide | documentation-writer | S | 5 | FX-04, FX-07 | BlockedDependency |
 | FX-10 | Row-boundary snapshots and `snapshot_to_fixture` | packet-coder | M | 6 | FX-07 | BlockedDependency |
-| FX-11 | `lab rewind` and `lab_uat_run { rewind }` | packet-coder | M | 7 | FX-10 | BlockedDependency |
+| FX-11 | `lab rewind` and `lab_uat_run { rewind }` | packet-coder | M | 7 | FX-10, LW-02 | BlockedDependency |
 | FX-12 | Live UAT acceptance (needs the user's OK) | coordinator | S | 6 | FX-08 | BlockedDependency |
 | FX-13 | Close-out | documentation-writer | S | 8 | all | BlockedDependency |
 

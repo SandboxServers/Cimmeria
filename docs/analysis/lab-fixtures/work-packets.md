@@ -112,7 +112,7 @@ impl FixtureMission {
     pub fn resolved_state(&self) -> Result<FixtureMissionState, String>;
 }
 impl FixtureItem {
-    /// 1 for `main`/unset, 0 for `mission`, Err otherwise.
+    /// 1 for `main`/unset, 2 for `mission` (`INV_MISSION`), Err otherwise.
     pub fn container_id(&self) -> Result<i32, String>;
 }
 impl FixtureSpec {
@@ -374,7 +374,7 @@ Files:
    1. Resolve the owning account from the session (`identity_for_entity`,
       as `shown_tutorials.rs` does) and refuse when `player_id` is not that
       account's character (warn, nothing written).
-   2. Refuse `count` outside 0..=10 and `container_id` other than 0 or 1.
+   2. Refuse `count` outside 0..=10 and `container_id` other than 1 or 2.
    3. Remove every instance of `type_id` in the player's carried containers
       through the same removal path `RemoveInventoryItem` uses (so the
       client gets `onRemoveItem` and a bandolier item clears its slot).
