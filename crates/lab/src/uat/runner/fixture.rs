@@ -283,7 +283,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .await
             .map_err(|e| format!("player entity: {e}"))?;
         ctx.vars.insert(ENTITY_VAR.into(), json!(entity));
-        // FX-07: verify_fixture here
+        self.verify_fixture(f, ctx).await?;
         Ok(())
     }
 

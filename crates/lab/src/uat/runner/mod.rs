@@ -18,6 +18,7 @@ mod clauses;
 mod client_events;
 mod fingerprint;
 mod fixture;
+mod fixture_verify;
 mod lab_commands;
 mod packet;
 mod players;
@@ -667,6 +668,8 @@ mod fingerprint_tests;
 mod fixture_session_tests;
 #[cfg(test)]
 mod fixture_tests;
+#[cfg(test)]
+mod fixture_verify_tests;
 #[cfg(test)]
 mod packet_tests;
 #[cfg(test)]
