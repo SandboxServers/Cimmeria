@@ -78,8 +78,14 @@ pub(super) struct Endpoint<'f> {
     pub(super) omit_in_world: bool,
     /// The world every session is listed in (`FIXTURE_ROW`'s world).
     pub(super) world: String,
+    /// Sessions listed ahead of the in-world one, as given.
+    pub(super) others: Vec<Value>,
     /// The player's position `server_entity_get` reports.
     pub(super) position: [f64; 3],
+    /// `server_entity_get` answers `{"entity": null}`.
+    pub(super) no_entity: bool,
+    /// `server_db_query` fails with this message.
+    pub(super) db_error: Option<String>,
     /// Scripted `server_db_query` replies per SQL substring, popped in
     /// order (the last repeats); see `db_replies`.
     db: Mutex<Vec<(String, VecDeque<Value>)>>,
@@ -111,7 +117,10 @@ impl<'f> Endpoint<'f> {
             stuck: None,
             omit_in_world: false,
             world: "Castle_CellBlock".into(),
+            others: vec![],
             position: [-319.0, 73.6, -212.5],
+            no_entity: false,
+            db_error: None,
             db: Mutex::new(vec![]),
         }
     }
@@ -139,6 +148,9 @@ impl<'f> Endpoint<'f> {
     }
 
     fn db_query(&self, sql: &str) -> ToolOutcome {
+        if let Some(e) = &self.db_error {
+            return ToolOutcome::err(e.clone());
+        }
         let mut scripted = self.db.lock().unwrap();
         let json = match scripted.iter_mut().find(|(n, _)| sql.contains(n.as_str())) {
             Some((_, replies)) if replies.len() > 1 => replies.pop_front().unwrap_or_default(),
@@ -164,7 +176,7 @@ impl<'f> Endpoint<'f> {
     }
 
     fn sessions(&self) -> Value {
-        let mut list = vec![];
+        let mut list = self.others.clone();
         let played = self.played();
         if *self.client.login.lock().unwrap() == "in_world" && !self.omit_in_world {
             let (name, id) = match played.last() {
@@ -230,8 +242,12 @@ impl ServerInvoker for Endpoint<'_> {
             "server_db_query" => self.db_query(args["sql"].as_str().unwrap_or_default()),
             "server_entity_get" => ToolOutcome {
                 ok: true,
-                json: json!({ "entity": { "entity_id": args["entity_id"],
-                                          "position": self.position } }),
+                json: if self.no_entity {
+                    json!({ "entity": null })
+                } else {
+                    json!({ "entity": { "entity_id": args["entity_id"],
+                                        "position": self.position } })
+                },
                 ..Default::default()
             },
             _ => ToolOutcome::err(format!("unknown tool {name}")),

@@ -276,6 +276,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
         self.in_world_as = Some(name.clone());
         self.setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
+        // First thing after Play: content may rewrite the staged rows once
+        // the character is in world (FX-07, see `verify_staged`).
+        self.verify_staged(f, ctx).await?;
         // A caller's `player_entity_id` names some other session.
         ctx.vars.remove(ENTITY_VAR);
         let entity = self
@@ -283,8 +286,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .await
             .map_err(|e| format!("player entity: {e}"))?;
         ctx.vars.insert(ENTITY_VAR.into(), json!(entity));
-        self.verify_fixture(f, ctx).await?;
-        Ok(())
+        self.verify_position(f, entity, ctx).await
     }
 
     /// Create the fixture character and give it its one first-login

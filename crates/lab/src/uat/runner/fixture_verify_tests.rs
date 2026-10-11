@@ -5,7 +5,7 @@
 
 use serde_json::json;
 
-use super::fixture_tests::{client, fx_listed, ran, run, Endpoint, FIXTURE_ROW};
+use super::fixture_tests::{client, fx_listed, ran, run, tools, Endpoint, FIXTURE_ROW};
 use super::fixture_verify::{REASON_CAP, VERIFY_POLL_MS, VERIFY_TIMEOUT_MS};
 use super::FixtureMode;
 use crate::uat::evidence::{RowEvidence, RowResult};
@@ -13,7 +13,7 @@ use crate::uat::evidence::{RowEvidence, RowResult};
 const PREFIX: &str = "fixture not established: ";
 
 /// The row's one `fixture not established` reason.
-fn blocked_reason(row: &RowEvidence) -> &str {
+pub(super) fn blocked_reason(row: &RowEvidence) -> &str {
     assert_eq!(row.result, RowResult::Blocked, "{:?}", row.reasons);
     row.reasons
         .iter()
@@ -22,7 +22,7 @@ fn blocked_reason(row: &RowEvidence) -> &str {
 }
 
 /// Mission 622's verify reply with `step` and status active.
-fn on_step(step: i64) -> serde_json::Value {
+pub(super) fn on_step(step: i64) -> serde_json::Value {
     json!({ "row_count": 1, "rows": [{ "n_rows": 1, "status": 1, "step": step }] })
 }
 
@@ -106,7 +106,7 @@ async fn a_wrong_world_blocks() {
 }
 
 /// `FIXTURE_ROW` with a `position` in its fixture.
-fn positioned_row() -> String {
+pub(super) fn positioned_row() -> String {
     FIXTURE_ROW.replace(
         "world = \"Castle_CellBlock\"\n",
         "world = \"Castle_CellBlock\"\nposition = [-319.0, 73.6, -212.5]\n",
@@ -142,7 +142,47 @@ async fn a_position_inside_tolerance_passes() {
     server.position = [-317.5, 73.6, -212.5];
     let rows = run(&fake, Some(&server), &positioned_row(), FixtureMode::Auto).await;
     assert_eq!(rows[0].result, RowResult::Pass, "{:?}", rows[0].reasons);
-    assert!(server.count("server_entity_get") >= 1);
+    // One attempt holds: no retry.
+    assert_eq!(server.count("server_entity_get"), 1);
+}
+
+/// Without the pause, a check that never holds is still tried a bounded
+/// number of times: `VERIFY_TIMEOUT_MS / VERIFY_POLL_MS` attempts, for each
+/// half of the verify step on its own.
+#[tokio::test]
+async fn verify_attempts_are_bounded_without_the_pause() {
+    let fake = client(fx_listed());
+    let mut server = Endpoint::new(&fake);
+    server.position = [-316.5, 73.6, -212.5];
+    let rows = run(&fake, Some(&server), &positioned_row(), FixtureMode::Auto).await;
+    blocked_reason(&rows[0]);
+    let attempts = (VERIFY_TIMEOUT_MS / VERIFY_POLL_MS) as usize;
+    assert_eq!(server.count("server_entity_get"), attempts);
+    // The staged half held on its first attempt (two 622 checks) and was
+    // not repeated while the position was retried.
+    assert_eq!(server.count("server_db_query"), 2, "{:?}", server.names());
+}
+
+/// The staged state is read right after Play returns, before the player
+/// entity is resolved: content can rewrite those rows once in world.
+#[tokio::test]
+async fn the_staged_state_is_checked_right_after_play() {
+    let fake = client(fx_listed());
+    let server = Endpoint::new(&fake);
+    server.db_replies("m.mission_id = 622", vec![on_step(2113)]);
+    let rows = run(&fake, Some(&server), &positioned_row(), FixtureMode::Auto).await;
+    let row = &rows[0];
+    blocked_reason(row);
+    let seen = tools(row);
+    let play = seen
+        .iter()
+        .position(|t| *t == "lab_play_character")
+        .expect("played");
+    assert_eq!(seen.get(play + 1), Some(&"server_db_query"), "{seen:?}");
+    // A failing staged check BLOCKs before the entity is resolved or its
+    // position read.
+    assert!(row.vars.get("player_entity_id").is_none(), "{:?}", row.vars);
+    assert_eq!(server.count("server_entity_get"), 0);
 }
 
 #[tokio::test]

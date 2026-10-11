@@ -669,6 +669,8 @@ mod fixture_session_tests;
 #[cfg(test)]
 mod fixture_tests;
 #[cfg(test)]
+mod fixture_verify_check_tests;
+#[cfg(test)]
 mod fixture_verify_tests;
 #[cfg(test)]
 mod packet_tests;
