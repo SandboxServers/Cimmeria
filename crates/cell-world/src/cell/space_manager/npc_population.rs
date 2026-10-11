@@ -184,16 +184,17 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
     // ability can animate (`event_set_ids` 0 = no fire animation).
     let ability_ids = super::npc_identity::sorted_ability_ids(e);
     let event_set_ids = super::npc_identity::ability_event_set_ids(space_mgr, &ability_ids);
-    let world = space_mgr.get_entity_world_name(npc_id).unwrap_or_default();
+    // Optional fields go in bare: a missing value leaves the key out, never `""` or `0`.
+    let world = space_mgr.get_entity_world_name(npc_id);
     let names = super::EntityNames::of(e);
     tracing::debug!(
         target: "spawner.npc_behaviour",
         npc_id,
-        world = %world,
-        space_id = space_mgr.get_entity_space_id(npc_id).unwrap_or(0),
+        world = world.as_deref(),
+        space_id = space_mgr.get_entity_space_id(npc_id),
         npc_name = names.entity_name,
         tag = e.tag.as_deref(),
-        template_id = e.template_id.unwrap_or(0),
+        template_id = e.template_id,
         template_name = names.template_name,
         spawn_id = e.spawn_id, // nt:id-only spawnlist row id, the row has no name column
         x = e.position.x,
@@ -208,13 +209,13 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         // Effective level toward players (1 = hostile, NA13), whether it is
         // an override, and the radius the Idle scan uses.
         aggression = crate::cell::combat::aggression_toward_players(e).level(),
-        aggression_override = ?e.aggro.override_level.map(|l| l.level()),
+        aggression_override = e.aggro.override_level.map(|l| l.level()),
         aggro_radius = crate::cell::combat::aggro_radius(e),
         assist_radius = crate::cell::combat::assist_radius(e),
         use_cover = e.use_cover,
         is_stationary = e.is_stationary,
         move_speed = e.move_speed,
-        respawn_secs = ?e.respawn_secs,
+        respawn_secs = e.respawn_secs,
         follow_min_distance = e.follow_min_distance,
         follow_max_distance = e.follow_max_distance,
         patrol_len = e.patrol_path.len(),
@@ -227,4 +228,71 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         weapon_visual = %super::npc_identity::weapon_visual(e),
         "NPC spawned -- resolved behaviour"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing::Level;
+
+    use super::log_spawn_behaviour;
+    use crate::cell::space_manager::SpaceManager;
+    use crate::test_support::LogCapture;
+
+    /// A manager with one startup space, `Agnos`, and a bare NPC (no template)
+    /// at its origin.
+    fn agnos_with_npc(npc_id: u32) -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.spawn_npc(npc_id, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr
+    }
+
+    /// Revert proof: with `respawn_secs = ?e.respawn_secs` the row carries
+    /// the string `"Some(60)"`, so this assertion fails.
+    #[test]
+    fn npc_behaviour_row_logs_respawn_secs_as_a_number() {
+        let mut mgr = agnos_with_npc(500);
+        mgr.get_entity_mut(500).unwrap().respawn_secs = Some(60);
+        let logs = LogCapture::install();
+
+        log_spawn_behaviour(&mut mgr, 500);
+
+        let row = logs
+            .find_message(Level::DEBUG, "resolved behaviour")
+            .expect("spawner.npc_behaviour row");
+        assert_eq!(row.target, "spawner.npc_behaviour");
+        assert!(row.has_field("respawn_secs", "60"), "{:?}", row.fields);
+        assert!(row.has_field("world", "Agnos"), "{:?}", row.fields);
+    }
+
+    /// Revert proof: with `template_id = e.template_id.unwrap_or(0)` the row
+    /// carries `template_id = 0` for this NPC, so the absence check fails.
+    /// `space_id` is the bare id, not `"Some(..)"` or `0`.
+    #[test]
+    fn npc_behaviour_row_leaves_out_an_unknown_template_id() {
+        let mut mgr = agnos_with_npc(500);
+        let logs = LogCapture::install();
+
+        log_spawn_behaviour(&mut mgr, 500);
+
+        let row = logs
+            .find_message(Level::DEBUG, "resolved behaviour")
+            .expect("spawner.npc_behaviour row");
+        assert!(
+            !row.fields.contains_key("template_id"),
+            "an NPC with no template leaves the key out: {:?}",
+            row.fields
+        );
+        let space_id = mgr.get_entity_space_id(500).unwrap();
+        assert!(
+            row.has_field("space_id", &space_id.to_string()),
+            "{:?}",
+            row.fields
+        );
+    }
 }
