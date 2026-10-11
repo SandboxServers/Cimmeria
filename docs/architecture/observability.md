@@ -327,6 +327,48 @@ events of two crates. `EnvFilter` matches by string prefix, so a bare
 crates' own rows would then go unnoticed; the base, cell and wire rows name
 their crates' modules for that reason.
 
+### The lab daemon (`cimmeria-lab`)
+
+A fifth service, outside the server: the lab daemon (`cimmeria-lab --http`)
+ships its own log as `service.name = cimmeria-lab` (TG-PIPE-17, owner
+decision D-TG2 of the [telemetry-gaps campaign](../analysis/telemetry-gaps/README.md)),
+so a watchdog relaunch, a lease expiry or an orphaned `SGW.exe` sits next to
+the server's rows for the same session. The exporter is
+`crates/lab/src/otlp/`, built on the same OpenTelemetry crates as the
+server's `otel.rs`, logs only.
+
+- **Off by default.** It runs only when `CIMMERIA_LAB_OTLP_ENDPOINT` is set
+  in `%LOCALAPPDATA%\cimmeria-lab\labd.env` (protocol `grpc`, or
+  `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf`). It deliberately ignores the
+  standard `OTEL_EXPORTER_OTLP_*` variables, which other tools set
+  user-wide. `labd.log` is written either way.
+- **Never blocks the daemon.** A batch processor on its own thread with a
+  bounded queue; an unreachable collector drops rows, and shutdown waits at
+  most 2 s.
+- **Filter:** `OTLP_FILTER`: `lab.*` targets and `cimmeria_lab::*` module
+  rows at INFO, dependencies at WARN, the exporter's own stack off
+  (`tower_http` stays at WARN, since `tower=off` would cover it by prefix).
+- **Rows are redacted.** Every string field and the message pass through
+  `otlp::Redactor` before the SDK stores them: a local path becomes the
+  instance it belongs to (`...\instances\p2\profile` is `p2`) or `<path>`
+  (a profile folder with a space, `C:\Users\Jane Doe`, is taken whole), the
+  Windows user name becomes `<user>`, `COMPUTERNAME` becomes `<host>`, and
+  the lab's bearer tokens become `<secret>`. The lease's free text
+  (`owner`, `purpose`, `prev_*`, a `lab.lease` `reason`) and
+  credential-named fields are not exported. An event name holding a
+  dependency's absolute source path is left off. Pinned by `otlp::tests`.
+- **Nothing from `OTEL_*`.** The resource is built empty, so
+  `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME` are ignored; headers
+  from `OTEL_EXPORTER_OTLP_HEADERS` / `..._LOGS_HEADERS`, which the SDK
+  merges in unconditionally, are stripped before sending (a gRPC
+  interceptor, a wrapping HTTP client). Pinned by
+  `otlp::tests::init_pipeline_redacts_and_sends_nothing_from_otel_env`.
+- **Resource:** `service.name = cimmeria-lab`, `service.version` = the
+  crate version, `cimmeria.lab.instance` (the hosted instance labels, or
+  `default`), `deployment.environment` and `cimmeria.deploy_env` (from
+  `CIMMERIA_DEPLOY_ENV`, default `dev`), `cimmeria.source = lab`. No
+  `host.name`: on a dev box it is often the owner's name.
+
 ### Stable target catalog
 
 Every event with a stable `target:` is a queryable surface in SigNoz. The catalog, one row per target with its level, where it is emitted and the question it answers, is in [observability-target-catalog.md](observability-target-catalog.md), together with the rule that a new target must also be named in `OTEL_FILTER`, the saved SigNoz views for reading a playtest, and the `npc_ai.decision_outcome` enum. It moved out of this ADR on 2026-10-03 because it had grown to most of the file.
