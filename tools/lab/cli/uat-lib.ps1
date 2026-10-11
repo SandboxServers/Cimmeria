@@ -337,6 +337,33 @@ function Get-UatGoldenValue($Reply, [string]$CallError) {
     return $v
 }
 
+# The Golden value -DiffGolden gives one finished run, or $null for none: no
+# -DiffGolden ($DiffArgs is $null) or a run that did not pass (only passing
+# runs are compared). $DiffArgs are lab_golden_diff's arguments less run_dir;
+# $Invoke is the call itself, { param($Arguments) <reply> }, so the lane loop
+# passes the MCP call and the tests pass a stub.
+function Get-UatRunGolden($Rec, $DiffArgs, [scriptblock]$Invoke) {
+    if ($null -eq $DiffArgs -or -not [bool](Get-UatField $Rec 'Ok')) { return $null }
+    $runDir = [string](Get-UatField $Rec 'RunDir')
+    if (-not $runDir) { return 'error: the run named no run folder' }
+    $a = $DiffArgs.Clone(); $a.run_dir = $runDir
+    $reply = $null; $callError = $null
+    try { $reply = & $Invoke $a } catch { $callError = ($_.Exception.Message -split "`n")[0] }
+    return Get-UatGoldenValue $reply $callError
+}
+
+# Why a committed golden file cannot be used, or $null when it reads as JSON
+# with schema, section and fingerprint. -DiffGolden checks it before driving
+# anything, so a broken golden never costs a batch.
+function Test-UatGoldenFile([string]$Path) {
+    try { $g = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+    catch { return ($_.Exception.Message -split "`n")[0] }
+    if ($null -eq $g -or $g -isnot [pscustomobject]) { return 'it is not a JSON object' }
+    $missing = @('schema', 'section', 'fingerprint' | Where-Object { $null -eq (Get-UatField $g $_) })
+    if ($missing) { return "it has no $($missing -join ', ')" }
+    return $null
+}
+
 # The golden comparison of the runs that carry a Golden field: match and
 # diverged counts, errors (a diff that could not be made), and every
 # non-match line grouped with its count and up to 5 run refs, most common
@@ -376,6 +403,12 @@ function Get-UatExitCode($Summary) {
     return 1
 }
 
+# Text cut to $Max characters, ending '...' when cut.
+function Limit-UatText([string]$Text, [int]$Max) {
+    if ($Text.Length -le $Max) { return $Text }
+    return $Text.Substring(0, $Max - 3) + '...'
+}
+
 # The summary as compact JSON for an agent: no nulls, failures capped at
 # $MaxFailures groups (with a count of the rest), rows as "pass/total".
 function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures = 8) {
@@ -406,12 +439,14 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     if ($g) {
         $go = [ordered]@{ match = $g.match; diverged = $g.diverged }
         if ($g.errors) { $go.errors = $g.errors }
-        $top = @($g.groups) | Select-Object -First 1
-        if ($top) {
-            $first = [string]$top.line
-            if ($first.Length -gt 200) { $first = $first.Substring(0, 197) + '...' }
-            $go.first = $first
-        }
+        # first: the most common divergence, never an error line; error: the
+        # most common error, only when no run diverged. Both short enough
+        # that a batch with divergences stays a few hundred characters.
+        $lines = @(@($g.groups) | ForEach-Object { [string]$_.line })
+        $div = @($lines | Where-Object { -not $_.StartsWith('error: ') }) | Select-Object -First 1
+        $err = @($lines | Where-Object { $_.StartsWith('error: ') }) | Select-Object -First 1
+        if ($div) { $go.first = Limit-UatText $div 120 }
+        elseif ($err) { $go.error = Limit-UatText $err 120 }
         $out.golden = $go
     }
     $out.batch = $BatchDir

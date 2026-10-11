@@ -277,15 +277,24 @@ then the reference, not the spec.
   `-ProgressToStderr` next to FX's `-Fixtures`.
 - **GD-09.** `lab uat -DiffGolden` refuses a missing golden (exit 2) right
   after the argument checks, before the daemon is asked, and also refuses
-  when no spec folder is found (no `-SpecsDir`, no checkout). A run's
+  when no spec folder is found (no `-SpecsDir`, no checkout) or the golden
+  is not JSON with `schema`, `section` and `fingerprint` ("golden for
+  <section> cannot be read: ..."). Only passing runs are diffed: a failed
+  run gets no `Golden` (review fix). A passing run's
   `Golden` is `match`, the `first` line, or `error: <code>: <error>` for a
   refusal (`no_golden`, `cannot_diff`), `error: <message>` for a call that
   threw, or `error: ...` for a reply with no verdict; a passing run with no
-  run folder gets an error too. The summary's `golden` adds `errors` (runs
+  run folder gets an error too. The per-run diff is the pure
+  `Get-UatRunGolden` (the MCP call passed in as a scriptblock), tested on
+  every branch and inside a `ForEach-Object -Parallel` runspace. The
+  summary's `golden` adds `errors` (runs
   not compared) next to `match` and `diverged`, and **exit 5 also covers
   errors**: a diff that could not be made is never read as a match. The
-  compact JSON shows `errors` only when non-zero and caps `first` at 200
-  characters, like a failure's `why`. `Get-UatExitCode` already returns 8
+  compact JSON shows `errors` only when non-zero; `first` is the most common
+  divergence, never an error line, and `error` (the most common error)
+  appears only when no run diverged. Both are capped at 120 characters, so
+  a 5-run batch with two 200-character divergences stays under 500
+  (review fix; it was 200, which broke that bound). `Get-UatExitCode` already returns 8
   when the summary carries a non-empty `heal` list (SV-12's field, not on
   `main` yet), and 8 wins over every other code, as SV-12's packet says;
   `test-uat.ps1` pins 8 over 5 and over 1. The diff runs after the run's

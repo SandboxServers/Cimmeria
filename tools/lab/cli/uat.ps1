@@ -35,17 +35,19 @@
     (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
     continues a passing chain and starts from its fixture otherwise).
 
-    -DiffGolden compares every finished run with the section's committed
+    -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
-    runs are fingerprinted, lab_golden_diff is called for each run folder,
-    and each run gets a `golden` value: match, the first divergence as one
-    line, or error: <why>. Rows' verdicts do not change. Without a golden it
+    runs are fingerprinted, lab_golden_diff is called for each passing run's
+    folder, and each gets a `golden` value: match, the first divergence as
+    one line, or error: <why>. A failed run is not compared. Rows' verdicts
+    do not change. Without a golden, or with one that cannot be read, it
     stops before anything is driven (exit 2).
 
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
     5 every run passed but -DiffGolden did not match on one (a divergence, or
-    a run it could not compare).
+    a run it could not compare); 8 a heal proposal was written (SV-12),
+    which wins over every other code, 5 included.
 
 .EXAMPLE
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5
@@ -109,9 +111,12 @@ function Invoke-LabUat {
     # A diff needs a golden: without one, stop before anything is driven.
     if ($DiffGolden) {
         if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
-        if (-not (Test-Path -LiteralPath (Get-GoldenPath $specs $Section))) {
+        $goldenPath = Get-GoldenPath $specs $Section
+        if (-not (Test-Path -LiteralPath $goldenPath)) {
             return Stop-Uat 2 "no golden for $Section; record one with lab golden record"
         }
+        $unreadable = Test-UatGoldenFile $goldenPath
+        if ($unreadable) { return Stop-Uat 2 "golden for $Section cannot be read: $unreadable" }
     }
     $requested = @(ConvertTo-UatRowIds $Rows)
     $progress = Get-UatProgressMode $Json $Quiet $ProgressToStderr
@@ -223,22 +228,15 @@ function Invoke-LabUat {
                         $rec.Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = $rec.Error; Issue = $null }
                     }
                     $rec.Seconds = [int]((Get-Date) - $t0).TotalSeconds
-                    # -DiffGolden: compare the run's folder with the golden.
-                    # The run's verdict stays as it is (README D-GD7).
-                    if ($using:diffArgs) {
-                        if ($rec.RunDir) {
-                            $gReply = $null; $gErr = $null
-                            try {
-                                $gs = New-McpSession $using:url $using:token
-                                $ga = ($using:diffArgs).Clone(); $ga.run_dir = $rec.RunDir
-                                try { $gReply = Invoke-McpTool $gs 'lab_golden_diff' $ga 120 }
-                                finally { Close-McpSession $gs }
-                            } catch { $gErr = ($_.Exception.Message -split "`n")[0] }
-                            $rec.Golden = Get-UatGoldenValue $gReply $gErr
-                        } elseif ($rec.Ok) {
-                            $rec.Golden = 'error: the run named no run folder'
-                        }
+                    # -DiffGolden: compare a passing run's folder with the
+                    # golden. The run's verdict stays as it is (README D-GD7).
+                    $urlL = $using:url; $tokenL = $using:token
+                    $golden = Get-UatRunGolden $rec $using:diffArgs {
+                        param($ga)
+                        $gs = New-McpSession $urlL $tokenL
+                        try { Invoke-McpTool $gs 'lab_golden_diff' $ga 120 } finally { Close-McpSession $gs }
                     }
+                    if ($null -ne $golden) { $rec.Golden = $golden }
                     $outcomes += $rec.Ok
                     # A run cut short here may still hold its lease on the
                     # daemon: wait for it, or the next run collides with it.

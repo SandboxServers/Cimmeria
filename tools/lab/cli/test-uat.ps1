@@ -246,10 +246,74 @@ $fiveRuns = foreach ($i in 1..5) {
 $fiveJson = ConvertTo-UatCompactJson (Merge-UatResults $fiveRuns @($lanes[0]) @()) 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261010-183832'
 $fiveObj = $fiveJson | ConvertFrom-Json
 Check ($fiveJson.Length -lt 500 -and $fiveJson -notmatch 'null') "compact_json_with_golden_stays_under_500_chars ($($fiveJson.Length))"
-Check ($fiveObj.golden.match -eq 3 -and $fiveObj.golden.diverged -eq 2 -and $fiveObj.golden.first -ceq $divA -and
+Check ($fiveObj.golden.match -eq 3 -and $fiveObj.golden.diverged -eq 2 -and $fiveObj.golden.first -ceq (Limit-UatText $divA 120) -and
        -not ($fiveObj.golden.PSObject.Properties.Name -contains 'errors')) 'compact golden is {match, diverged, first}, errors only when there are some'
 $longDiv = Merge-UatResults @((GRec 'default' 1 $true ('row FS-P3: ' + ('z' * 290)))) @($lanes[0]) @()
-Check (((ConvertTo-UatCompactJson $longDiv 'C:\b' | ConvertFrom-Json).golden.first).Length -le 200) 'the compact first line is capped at 200 characters'
+Check (((ConvertTo-UatCompactJson $longDiv 'C:\b' | ConvertFrom-Json).golden.first).Length -le 120) 'the compact first line is capped at 120 characters'
+# compact_first_is_a_divergence_not_an_error: 3 errors outnumber 2 identical divergences.
+$cannot = 'error: cannot_diff: run d: no fingerprint.json'
+$mixed = Merge-UatResults @((GRec 'default' 1 $true $cannot), (GRec 'default' 2 $true $cannot), (GRec 'default' 3 $true $cannot),
+                            (GRec 'default' 4 $true $divA), (GRec 'default' 5 $true $divA)) @($lanes[0]) @()
+$mixedObj = ConvertTo-UatCompactJson $mixed 'C:\b' | ConvertFrom-Json
+Check ($mixed.golden.groups[0].line -ceq $cannot -and $mixedObj.golden.first -ceq (Limit-UatText $divA 120) -and $mixedObj.golden.errors -eq 3 -and
+       -not ($mixedObj.golden.PSObject.Properties.Name -contains 'error')) 'compact_first_is_a_divergence_not_an_error'
+$onlyErr = ConvertTo-UatCompactJson (Merge-UatResults @((GRec 'default' 1 $true 'match'), (GRec 'default' 2 $true $cannot)) @($lanes[0]) @()) 'C:\b' | ConvertFrom-Json
+Check ($onlyErr.golden.error -ceq $cannot -and -not ($onlyErr.golden.PSObject.Properties.Name -contains 'first')) 'with no divergence the compact golden names the first error, not a first line'
+$longErr = ConvertTo-UatCompactJson (Merge-UatResults @((GRec 'default' 1 $true ('error: ' + ('e' * 300)))) @($lanes[0]) @()) 'C:\b' | ConvertFrom-Json
+Check ($longErr.golden.error.Length -le 120) 'the compact error line is capped at 120 characters'
+# compact_json_with_200_char_divergences_stays_under_500_chars
+$long200 = 'row FS-P3: ' + ('w' * 189)
+$long200b = 'row FS-P5: ' + ('v' * 189)
+$longRuns = foreach ($i in 1..5) {
+    $r = Rec 'default' $i $true @($praxis | ForEach-Object { Row $_ 'PASS' '' })
+    $r.Golden = @('match', $long200, 'match', $long200b, 'match')[$i - 1]; $r
+}
+$longJson = ConvertTo-UatCompactJson (Merge-UatResults $longRuns @($lanes[0]) @()) 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261010-183832'
+Check ($long200.Length -eq 200 -and $longJson.Length -lt 500) "compact_json_with_200_char_divergences_stays_under_500_chars ($($longJson.Length))"
+
+# --- the per-run diff in the lane loop (Get-UatRunGolden) ---
+$diffArgs = @{ section = 'first-session'; specs_dir = 'C:\specs' }
+$script:seen = $null
+$replyMatch = { param($a) $script:seen = $a; [pscustomobject]@{ ok = $true; match = $true } }
+$passRec = [ordered]@{ Instance = 'default'; Index = 1; Ok = $true; RunDir = 'C:\runs\r1' }
+Check ((Get-UatRunGolden $passRec $diffArgs $replyMatch) -ceq 'match') 'run_golden: a passing run that matches is match'
+Check ($script:seen.run_dir -ceq 'C:\runs\r1' -and $script:seen.section -ceq 'first-session' -and -not $diffArgs.Contains('run_dir')) 'run_golden: the call gets the run folder; the shared arguments are not changed'
+$replyDiv = { param($a) [pscustomobject]@{ ok = $true; match = $false; first = $divA } }
+Check ((Get-UatRunGolden $passRec $diffArgs $replyDiv) -ceq $divA) 'run_golden: a divergence is its first line'
+$replyThrow = { param($a) throw "lab_golden_diff failed: connection refused`nmore" }
+Check ((Get-UatRunGolden $passRec $diffArgs $replyThrow) -ceq 'error: lab_golden_diff failed: connection refused') 'run_golden: a call that throws is an error'
+$script:calls = 0
+$counting = { param($a) $script:calls++; [pscustomobject]@{ ok = $true; match = $true } }
+$noDir = [ordered]@{ Instance = 'default'; Index = 2; Ok = $true; RunDir = $null }
+Check ((Get-UatRunGolden $noDir $diffArgs $counting) -ceq 'error: the run named no run folder' -and $script:calls -eq 0) 'run_golden: a passing run with no folder is an error, with no call'
+$failRec = [ordered]@{ Instance = 'default'; Index = 3; Ok = $false; RunDir = 'C:\runs\r3' }
+Check ($null -eq (Get-UatRunGolden $failRec $diffArgs $counting) -and $script:calls -eq 0) 'run_golden: a failed run is not compared and gets no golden'
+Check ($null -eq (Get-UatRunGolden $passRec $null $counting) -and $script:calls -eq 0) 'run_golden: without -DiffGolden there is no golden and no call'
+# As the lane loop calls it: in a ForEach-Object -Parallel runspace that
+# dot-sources the lib, with a call block that reads the lane's own variables.
+$libPath = Join-Path $PSScriptRoot 'uat-lib.ps1'
+$par = @(1 | ForEach-Object -Parallel {
+    . $using:libPath
+    $urlL = 'http://lane'
+    $rec = [ordered]@{ Ok = $true; RunDir = 'C:\runs\p1' }
+    Get-UatRunGolden $rec ($using:diffArgs) { param($ga) [pscustomobject]@{ ok = $true; match = $false; first = "row X: $urlL $($ga.run_dir)" } }
+})
+Check ($par.Count -eq 1 -and $par[0] -ceq 'row X: http://lane C:\runs\p1') "run_golden: works in a parallel lane runspace ($($par -join '|'))"
+
+# --- the golden file checked up front (Test-UatGoldenFile) ---
+$gDir = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-golden-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $gDir | Out-Null
+try {
+    $gf = Join-Path $gDir 'g.json'
+    Set-Content -LiteralPath $gf -Value '{"schema":1,"section":"s","fingerprint":{"rows":[]}}'
+    Check ($null -eq (Test-UatGoldenFile $gf)) 'golden_file: schema, section and fingerprint read fine'
+    Set-Content -LiteralPath $gf -Value '{"schema":1,"section":"s"}'
+    Check ((Test-UatGoldenFile $gf) -ceq 'it has no fingerprint') 'golden_file: a missing fingerprint is named'
+    Set-Content -LiteralPath $gf -Value '{ not json'
+    Check ([bool](Test-UatGoldenFile $gf)) 'golden_file: a file that is not JSON cannot be read'
+    Set-Content -LiteralPath $gf -Value '[1,2]'
+    Check ([bool](Test-UatGoldenFile $gf)) 'golden_file: a JSON array cannot be read'
+} finally { Remove-Item -LiteralPath $gDir -Recurse -ErrorAction SilentlyContinue }
 $matchJson = ConvertTo-UatCompactJson $allMatch 'C:\b' | ConvertFrom-Json
 Check ($matchJson.golden.match -eq 5 -and -not ($matchJson.golden.PSObject.Properties.Name -contains 'first')) 'an all-match batch has no first line'
 # A batch without Golden fields is unchanged.
@@ -277,6 +341,13 @@ try {
     $code = $LASTEXITCODE
     $obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
     Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -ceq 'no golden for no-such-section; record one with lab golden record') "-DiffGolden without a golden exits 2 up front ($code)"
+    # A golden that exists but cannot be read stops the same way, before the daemon is asked.
+    New-Item -ItemType Directory -Path (Join-Path $emptySpecs 'golden') | Out-Null
+    Set-Content -LiteralPath (Join-Path $emptySpecs 'golden\broken-section.json') -Value '{"schema":1,"section":"broken-section"}'
+    $out = @(& $pwshExe -NoProfile -File $uat 'broken-section' -DiffGolden -SpecsDir $emptySpecs -Json 2>$null)
+    $code = $LASTEXITCODE
+    $obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
+    Check ($code -eq 2 -and $obj.exit -eq 2 -and $obj.error -ceq 'golden for broken-section cannot be read: it has no fingerprint') "-DiffGolden with an unreadable golden exits 2 up front ($code)"
 } finally { Remove-Item -LiteralPath $emptySpecs -Recurse -ErrorAction SilentlyContinue }
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
