@@ -855,14 +855,15 @@ Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `ci
 
 ## Instance population summary and unknown-world skips (TG-NPC-06)
 
-`spawn_npcs_from_records` (`space_manager/npc_population.rs` in `cimmeria-cell-world`) used to skip a record whose `world_name` has no startup space without a word. It now WARNs once per such world, with the count of records it skipped. `spawn_instance_npcs_from_records` writes one INFO summary per instanced space.
+`spawn_npcs_from_records` (`space_manager/npc_population.rs` in `cimmeria-cell-world`) used to skip a record whose `world_name` has no startup space without a word. It now WARNs once per world whose name is absent from spaces.xml (`space_mgr.worlds`), with the count of records it skipped. A record for a known instanced world (such as Castle_CellBlock) is skipped by design and does not WARN; those skips are counted in one DEBUG row per call. `spawn_instance_npcs_from_records` writes one INFO summary per instanced space, with `record_count` counting only that instance's world.
 
 | Level | Row | When |
 |---|---|---|
-| WARN | target `spawner`, `event = "spawn_world_unknown"`, `world`, `records` | A DB spawn record names a world with no startup space; the records are skipped (once per world per boot) |
+| WARN | target `spawner`, `event = "spawn_world_unknown"`, `world`, `records` | A DB spawn record names a world absent from spaces.xml; the records are skipped (once per world per boot) |
+| DEBUG | target `spawner`, `event = "spawn_instanced_skipped"`, `records` | DB spawn records name a known instanced world, which spawns per instance; the records are skipped (once per call, only when nonzero) |
 | INFO | target `spawner`, `event = "instance_populated"`, `world`, `space_id`, `record_count`, `spawned`, `failed` | Once per instanced space after its NPCs spawn |
 
-Guards: `spawn_unknown_world_warns_once_per_world` and `spawn_instance_summary_row_counts_spawned_and_failed` (`spawner_tests/spawn_records.rs` in `cimmeria-cell-world`) pin the WARN and the summary fields.
+Guards: `spawn_unknown_world_warns_once_per_world`, `spawn_instanced_world_skips_without_warn`, `spawn_instance_summary_row_counts_spawned_and_failed` and `spawn_instance_summary_row_counts_failed_spawn` (`spawner_tests/spawn_records.rs` in `cimmeria-cell-world`) pin the WARN, the instanced skip and the summary fields.
 
 ## UDP connection-reset throttle (TG-MER-10)
 

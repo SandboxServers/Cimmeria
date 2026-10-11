@@ -234,12 +234,54 @@ fn spawn_instance_summary_row_counts_spawned_and_failed() {
     assert!(summary.has_field("event", "instance_populated"));
     assert!(summary.has_field("world", "Castle_CellBlock"));
     assert!(summary.has_field("space_id", &space_id.to_string()));
-    assert!(summary.has_field("record_count", "3"));
+    // Only the two Castle_CellBlock rows count; the Agnos row is another world.
+    assert!(summary.has_field("record_count", "2"));
     assert!(summary.has_field("spawned", "2"));
     assert!(summary.has_field("failed", "0"));
 }
 
-/// Records naming a world with no startup space are skipped, and that world
+/// A matching record whose spawn errors is counted under `failed`, not
+/// `spawned`. The spawn errors because the target `space_id` is not a live
+/// space (`spawn_npc_from_record_into` reports "Space N disappeared").
+#[test]
+fn spawn_instance_summary_row_counts_failed_spawn() {
+    let logs = crate::test_support::LogCapture::install();
+    let mut mgr = make_manager_with_worlds();
+    let records = vec![make_test_record("Castle_CellBlock", Some("Tag1"), "being")];
+
+    let count = spawn_instance_npcs_from_records(&records, "Castle_CellBlock", 999_999, &mut mgr);
+    assert_eq!(count, 0);
+
+    let summary = logs
+        .find_message(tracing::Level::INFO, "instance NPC population summary")
+        .expect("the instance summary row must be logged");
+    assert!(summary.has_field("record_count", "1"));
+    assert!(summary.has_field("spawned", "0"));
+    assert!(summary.has_field("failed", "1"));
+}
+
+/// A record for a known instanced world (Castle_CellBlock is in spaces.xml but
+/// has no startup space) is skipped by design and must not WARN.
+#[test]
+fn spawn_instanced_world_skips_without_warn() {
+    let logs = crate::test_support::LogCapture::install();
+    let mut mgr = make_manager_with_worlds();
+    let records = vec![make_test_record("Castle_CellBlock", Some("Tag1"), "being")];
+
+    assert_eq!(spawn_npcs_from_records(&records, &mut mgr), 0);
+
+    let warns: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.level == tracing::Level::WARN && c.has_field("event", "spawn_world_unknown"))
+        .collect();
+    assert!(
+        warns.is_empty(),
+        "instanced world must not WARN: {warns:#?}"
+    );
+}
+
+/// Records naming a world absent from spaces.xml are skipped, and that world
 /// WARNs once with the number of records it swallowed, not once per record.
 #[test]
 fn spawn_unknown_world_warns_once_per_world() {
