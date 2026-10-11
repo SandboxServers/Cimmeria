@@ -37,9 +37,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ssh host alias and where the compose project lives (on the node's large volume).
+# Jobs: CARGO_BUILD_JOBS for that node's runners (absent = the node's core count).
+# node1 runs 8 as an experiment (2026-10-11): five jobs x 16 compiles on 16 cores
+# spent ~19% of node1's CPU in the kernel; compare its job times with the others'.
 $targets = @{
     node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g'; Cache = '12gb'; BuildkitMb = 50000 }
-    node1 = @{ Ssh = 'cimmeria-node1'; Dir = '/var/lib/gha-runners'; Mem = '16g'; Cache = '16gb'; BuildkitMb = 80000 }
+    node1 = @{ Ssh = 'cimmeria-node1'; Dir = '/var/lib/gha-runners'; Mem = '16g'; Cache = '16gb'; BuildkitMb = 80000; Jobs = 8 }
     node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g'; Cache = '24gb'; BuildkitMb = 80000 }
 }
 foreach ($n in $Nodes) { if (-not $targets.ContainsKey($n)) { throw "unknown node '$n' (known: $($targets.Keys -join ', '))" } }
@@ -99,7 +102,9 @@ foreach ($node in $Nodes) {
     if ($CacheHost -and $node -eq $CacheHost) { $publish = '0.0.0.0:6379' }
     elseif ($CacheHost) { $endpoint = $cacheEndpoint }
 
-    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_PASSWORD=$cachePassword`nCACHE_MAXMEMORY=$($t.Cache)`nCACHE_ENDPOINT=$endpoint`nCACHE_PUBLISH=$publish`nBUILDKIT_MAX_MB=$($t.BuildkitMb)`n"
+    $jobs = if ($t.ContainsKey('Jobs')) { $t.Jobs } else { ((ssh $ssh nproc) -join '').Trim() }
+    if ($jobs -notmatch '^\d+$') { throw "${node}: could not work out CARGO_BUILD_JOBS (got '$jobs')" }
+    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_PASSWORD=$cachePassword`nCACHE_MAXMEMORY=$($t.Cache)`nCACHE_ENDPOINT=$endpoint`nCACHE_PUBLISH=$publish`nBUILDKIT_MAX_MB=$($t.BuildkitMb)`nCARGO_BUILD_JOBS=$jobs`n"
     $envFile | ssh $ssh "umask 077 && cat > $dir/.env && sed -i 's/\r$//' $dir/entrypoint.sh $dir/hooks/*.sh && chmod 0755 $dir/hooks/*.sh"
     if ($LASTEXITCODE -ne 0) { throw "${node}: writing .env failed" }
 

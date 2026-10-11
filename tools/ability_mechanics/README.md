@@ -35,7 +35,7 @@ Exit codes: 0 success, 1 drift (`--check`), 2 input failure (an unparseable seed
 
 `reports/damage.txt`, `reports/shield.txt` and `reports/cleanse.txt` are the committed reports of their families. Each holds the generated effects with their notes, and every unparsed effect with its reason. A unit test fails when one no longer matches its parser, so a grammar change ships with the reviewed list. Regenerate them with the command above once the seed is current.
 
-CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` (heal), `stat_buff/seed_live_db_tests.rs` (stat) and `cleanse/seed_live_db_tests.rs` (shield and cleanse) load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
+CI runs `--check` and the unit tests in the `build-and-test` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` (heal), `stat_buff/seed_live_db_tests.rs` (stat) and `cleanse/seed_live_db_tests.rs` (shield and cleanse) load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
 
 ## Ownership rules
 
