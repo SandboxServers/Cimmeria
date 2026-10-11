@@ -418,8 +418,13 @@ async fn fingerprint_mode_leaves_player_entity_id_unset() {
         }
         assert!(row.vars.get("player_entity_id").is_none(), "{:?}", row.vars);
         let c = row.clauses.iter().find(|c| c.id == "entity").unwrap();
+        // The run id comes from the clock, so two runs can differ in it.
+        let mut vars = row.vars.clone();
+        if let Some(v) = vars.as_object_mut() {
+            v.remove("run_id");
+        }
         runs.push((
-            row.vars.clone(),
+            vars,
             c.expected.clone(),
             c.observed.clone(),
             c.detail.clone(),
