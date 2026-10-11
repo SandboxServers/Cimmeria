@@ -246,7 +246,8 @@ fn with_watch<R>(entity_id: u32, f: impl FnOnce(&mut PlayerWatch) -> R) -> R {
     f(guard.entry(entity_id).or_default())
 }
 
-/// The name and session kind `player_tick` last recorded for `entity_id`,
+/// The name and session kind last recorded for `entity_id` (by
+/// [`note_session`] at world entry or [`player_tick`] since),
 /// without creating a watch for an entity that has none.
 fn watched_context(entity_id: u32) -> RowContext {
     WATCHES
@@ -399,6 +400,23 @@ pub(crate) fn regions_client_should_hint(
         })
         .map(|r| (r.runtime_id, r.tag.clone()))
         .collect()
+}
+
+/// Caches the player's log name and session kind at world entry
+/// (`InitPlayerState`). [`player_tick`] refreshes both, but it first runs on
+/// movement, at most every [`WATCH_EVAL_INTERVAL`]; a `dialog_displaced` or
+/// `objective_never_completed` row a content chain fires right after entry
+/// would otherwise carry no `cimmeria.session_kind` (TG-NET-17). Re-called on
+/// every `InitPlayerState`, so a travel re-entry refreshes the cache.
+pub fn note_session(
+    entity_id: u32,
+    entity_name: Option<&'static str>,
+    session_kind: Option<&'static str>,
+) {
+    with_watch(entity_id, |w| {
+        w.entity_name = entity_name;
+        w.session_kind = session_kind;
+    });
 }
 
 /// The client reported a region edge (`triggerClientHintedGenericRegion`).

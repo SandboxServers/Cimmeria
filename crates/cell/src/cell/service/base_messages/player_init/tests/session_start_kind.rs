@@ -23,17 +23,15 @@ fn manager() -> SpaceManager {
     mgr
 }
 
-/// The cell's entity stamp and the `session.start` field, for one world
-/// entry whose `InitPlayerState` carries `session_kind`.
-async fn enter_with(session_kind: Option<&'static str>) -> (Option<&'static str>, Option<String>) {
-    let capture = LogCapture::install();
-    let mut mgr = manager();
+/// One world entry for `entity_id`: `CreateEntity`, then an
+/// `InitPlayerState` carrying `session_kind`.
+async fn enter(mgr: &mut SpaceManager, entity_id: u32, session_kind: Option<&'static str>) {
     let engine = ChainEngine::new();
     let (tx, _rx) = mpsc::channel(256);
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     handle_base_message(
         BaseToCellMsg::CreateEntity {
-            entity_id: ENTITY,
+            entity_id,
             world_name: WORLD.into(),
             position: [0.0; 3],
             rotation: [0.0; 3],
@@ -45,7 +43,7 @@ async fn enter_with(session_kind: Option<&'static str>) -> (Option<&'static str>
             reply_tx,
         },
         &tx,
-        &mut mgr,
+        mgr,
         &engine,
         &[],
     )
@@ -53,7 +51,7 @@ async fn enter_with(session_kind: Option<&'static str>) -> (Option<&'static str>
     reply_rx.await.expect("cell must ack the create");
     handle_base_message(
         BaseToCellMsg::InitPlayerState {
-            entity_id: ENTITY,
+            entity_id,
             player_id: PLAYER_ID,
             account_id: 6,
             world_name: WORLD.into(),
@@ -75,11 +73,19 @@ async fn enter_with(session_kind: Option<&'static str>) -> (Option<&'static str>
             session_kind,
         },
         &tx,
-        &mut mgr,
+        mgr,
         &engine,
         &[],
     )
     .await;
+}
+
+/// The cell's entity stamp and the `session.start` field, for one world
+/// entry whose `InitPlayerState` carries `session_kind`.
+async fn enter_with(session_kind: Option<&'static str>) -> (Option<&'static str>, Option<String>) {
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    enter(&mut mgr, ENTITY, session_kind).await;
     let stamped = mgr.get_entity(ENTITY).and_then(|e| e.session_kind);
     let starts: Vec<_> = capture
         .all()
@@ -105,4 +111,54 @@ async fn session_start_carries_session_kind() {
     );
     // Unresolved: the field is left out, never "" or "unknown".
     assert_eq!(enter_with(None).await, (None, None));
+}
+
+/// A friction row a content chain fires right after world entry, before the
+/// first movement packet runs `player_tick`, still carries the session kind
+/// and the player's name: `InitPlayerState` fills the friction watch's row
+/// context. Without that call the watch is empty here and both
+/// `dialog_displaced` and `objective_never_completed` lose the field.
+#[tokio::test]
+async fn friction_rows_before_first_tick_carry_session_kind() {
+    use crate::cell::playtest_friction;
+
+    // Its own id: the friction watch table is process-global.
+    const FRESH: u32 = 7017;
+    playtest_friction::forget(FRESH);
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    enter(&mut mgr, FRESH, Some("lab")).await;
+
+    // No `player_tick` (no movement yet). Two dialogs back to back displace
+    // the first; a chain completes a mission with an objective still open.
+    playtest_friction::dialog_shown(FRESH, 2517);
+    playtest_friction::dialog_shown(FRESH, 2518);
+    playtest_friction::objectives_never_completed(FRESH, 706, &[(9001, false)]);
+    playtest_friction::forget(FRESH);
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| {
+            c.level == Level::WARN
+                && c.target == "playtest.friction"
+                && c.fields.get("entity_id").map(String::as_str) == Some("7017")
+        })
+        .collect();
+    for signal in ["dialog_displaced", "objective_never_completed"] {
+        let row = rows
+            .iter()
+            .find(|c| c.fields.get("signal").map(String::as_str) == Some(signal))
+            .unwrap_or_else(|| panic!("no {signal} row: {rows:#?}"));
+        assert_eq!(
+            row.fields.get("cimmeria.session_kind").map(String::as_str),
+            Some("lab"),
+            "{signal} row lacks the session kind: {row:#?}"
+        );
+        assert_eq!(
+            row.fields.get("entity_name").map(String::as_str),
+            Some("Daniel"),
+            "{signal} row lacks the player's name: {row:#?}"
+        );
+    }
 }

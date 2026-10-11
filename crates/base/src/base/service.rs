@@ -471,6 +471,8 @@ mod tests {
         player.player_name = Some("Lomiada".to_string());
         player.active_player_id = Some(71);
         player.account_id = 9;
+        // TG-NET-17: the shutdown row carries the lab/player flag too.
+        player.session_kind = Some("lab");
         let account_only = test_default_connected_client_state();
 
         let mut svc = BaseService::new(&ServerConfig::default());
@@ -496,6 +498,10 @@ mod tests {
         assert!(row.has_field("player_name", "Lomiada"));
         assert!(row.has_field("account_id", "9"));
         assert!(row.has_field("addr", "127.0.0.1:54810"));
+        assert!(
+            row.has_field("cimmeria.session_kind", "lab"),
+            "the shutdown row lacks the session kind: {row:#?}"
+        );
 
         let count = capture
             .find_message(

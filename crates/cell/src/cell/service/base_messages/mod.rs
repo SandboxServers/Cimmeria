@@ -272,6 +272,14 @@ pub(super) async fn handle_base_message(
                 // into the argument-capped handler. Assigned as sent: the
                 // account, and so the flag, is the same on a travel re-entry.
                 entity.session_kind = session_kind;
+                // Fill the friction watch's row context now: `player_tick`
+                // first runs on movement, so a chain-fired friction row right
+                // after entry would otherwise carry no session kind.
+                crate::cell::playtest_friction::note_session(
+                    entity_id,
+                    crate::cell::space_manager::EntityNames::of(entity).entity_name,
+                    entity.session_kind,
+                );
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
