@@ -100,6 +100,29 @@ fn server_log_targets_reach_an_otlp_index() {
     assert!(violations.is_empty(), "{}", violations.join("\n"));
 }
 
+/// TG-DB-11 (D-TG8): `sqlx::query` exports from INFO. sqlx's slow-statement
+/// WARN (TG-DB-06, 250 ms) and its slow-acquire WARN on `sqlx::pool::acquire`
+/// still reach `cimmeria-server`; the per-statement DEBUG rows reach no index.
+///
+/// Reverting `sqlx::query=info` to `debug` exports the DEBUG row and fails
+/// the last assertion; lowering it to `error` or `off` fails the first.
+#[test]
+fn sqlx_slow_statement_warn_still_exports() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let otlp = |target: &str, lvl: Level| -> Vec<String> {
+        sinks_for(&dispatch, &hits, target, lvl)
+            .into_iter()
+            .filter(|s| s.starts_with("otlp:"))
+            .collect()
+    };
+    assert_eq!(otlp("sqlx::query", Level::WARN), [OTLP_SERVER]);
+    assert_eq!(otlp("sqlx::pool::acquire", Level::WARN), [OTLP_SERVER]);
+    assert!(
+        otlp("sqlx::query", Level::DEBUG).is_empty(),
+        "per-statement sqlx DEBUG rows must not export"
+    );
+}
+
 /// The exclusion list stays honest: each entry really is `off` in
 /// `OTEL_FILTER`, and every `off` there is on the list.
 #[test]

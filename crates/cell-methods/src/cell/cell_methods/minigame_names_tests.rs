@@ -24,20 +24,18 @@ fn space_with_player() -> SpaceManager {
 }
 
 #[tokio::test]
-async fn end_current_minigame_row_names_the_caller_winner_and_loser() {
+async fn end_current_minigame_logs_with_wire_payload() {
     let capture = LogCapture::install();
     let mut mgr = space_with_player();
     let (tx, _rx) = mpsc::channel(4);
-    let mut args = Vec::new();
-    for v in [7i32, 1, 1] {
-        args.extend_from_slice(&v.to_le_bytes());
-    }
+    // A 4-byte `00000000` payload: `endCurrentMinigame` declares no arguments,
+    // so the row must still appear and carry only `args_len`.
+    let args = [0u8; 4];
     assert!(dispatch(1, END_CURRENT, &args, &tx, &mut mgr).await);
 
     let row = capture
         .find_message(Level::INFO, "UNIMPLEMENTED: endCurrentMinigame")
-        .expect("the stub logs its call");
-    for key in ["entity_name", "winner_name", "loser_name"] {
-        assert!(row.has_field(key, "Minigamer"), "{key} missing: {row:#?}");
-    }
+        .expect("the stub logs every call, whatever its payload");
+    assert!(row.has_field("entity_name", "Minigamer"), "{row:#?}");
+    assert!(row.has_field("args_len", "4"), "{row:#?}");
 }

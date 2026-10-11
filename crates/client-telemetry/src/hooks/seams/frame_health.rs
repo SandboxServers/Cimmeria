@@ -7,7 +7,9 @@
 //!
 //! - **`client.engine.hitch`**: the time between two consecutive tick
 //!   entries exceeded the threshold (200 ms; 100 ms under `firehose`), with
-//!   the frame number and the process's working set at that moment. The
+//!   the frame number, the process's working set at that moment, and the
+//!   main thread's last phase with its age (`phase`, `phase_age_ms`, from
+//!   [`phase`](super::phase), when a seam has set one). The
 //!   first tick after a long gap (a level load, an alt-tab) is a hitch by this
 //!   definition, which is the point: the gap is when the player saw a freeze.
 //!   Rate-limited to the default burst.
@@ -32,6 +34,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::json;
 
+use super::phase::Phase;
 use crate::hooks::sinks::emit::Fields;
 
 /// A tick-to-tick gap at or above this is a hitch.
@@ -87,14 +90,26 @@ pub struct MemorySnapshot {
     pub load_percent: u32,
 }
 
-/// The fields of a hitch.
-pub fn hitch_fields(gap_ms: f64, frame: u64, working_set: Option<u64>, suppressed: u64) -> Fields {
+/// The fields of a hitch. `last_phase` is the main thread's last phase and its
+/// age in milliseconds; when one was set, the row names it (`phase`,
+/// `phase_age_ms`).
+pub fn hitch_fields(
+    gap_ms: f64,
+    frame: u64,
+    working_set: Option<u64>,
+    suppressed: u64,
+    last_phase: Option<(Phase, u64)>,
+) -> Fields {
     let mut f: Fields = vec![("gap_ms", json!(gap_ms.round())), ("frame", json!(frame))];
     if let Some(ws) = working_set {
         f.push(("working_set_mb", json!(mb(ws))));
     }
     if suppressed > 0 {
         f.push(("suppressed", json!(suppressed)));
+    }
+    if let Some((phase, age_ms)) = last_phase {
+        f.push(("phase", json!(phase.name())));
+        f.push(("phase_age_ms", json!(age_ms)));
     }
     f
 }
@@ -337,6 +352,7 @@ mod os {
 /// Called at the top of every `FEngineLoop::Tick`, on the main thread.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(in crate::hooks) fn on_tick() {
+    use super::phase;
     use crate::hooks::name_throttle::Decision;
     use crate::hooks::sinks::emit::emit;
     use crate::hooks::sinks::throttle::{now_ms, SinkThrottle};
@@ -357,7 +373,7 @@ pub(in crate::hooks) fn on_tick() {
                     HITCH_TARGET,
                     "warn",
                     "engine.hitch",
-                    hitch_fields(gap, frame, ws, suppressed),
+                    hitch_fields(gap, frame, ws, suppressed, phase::last(now)),
                 );
             }
         }
@@ -376,6 +392,7 @@ pub(in crate::hooks) fn on_tick() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::seams::phase;
 
     #[test]
     fn a_gap_is_a_hitch_at_the_threshold_and_above() {
@@ -419,15 +436,29 @@ mod tests {
 
     #[test]
     fn a_hitch_carries_the_gap_frame_and_working_set() {
-        let f = hitch_fields(731.4, 9000, Some(1_500 * 1024 * 1024), 2);
+        let f = hitch_fields(731.4, 9000, Some(1_500 * 1024 * 1024), 2, None);
         let get = |k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
         assert_eq!(get("gap_ms"), Some(json!(731.0)));
         assert_eq!(get("frame"), Some(json!(9000)));
         assert_eq!(get("working_set_mb"), Some(json!(1500.0)));
         assert_eq!(get("suppressed"), Some(json!(2)));
-        assert!(!hitch_fields(300.0, 1, None, 0)
+        assert!(!hitch_fields(300.0, 1, None, 0, None)
             .iter()
             .any(|(k, _)| *k == "working_set_mb"));
+    }
+
+    /// A phase set 2 s before a hitch rides on the hitch row with its age;
+    /// with no phase set, the row has no phase fields.
+    #[test]
+    fn a_hitch_names_the_phase_the_main_thread_was_in() {
+        phase::set_at(Phase::LevelStreaming, 1_000);
+        let f = hitch_fields(450.0, 7, None, 0, phase::last(3_000));
+        let get = |k: &str| f.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("phase"), Some(json!("level_streaming")));
+        assert_eq!(get("phase_age_ms"), Some(json!(2_000)));
+        assert!(!hitch_fields(450.0, 7, None, 0, None)
+            .iter()
+            .any(|(k, _)| k.starts_with("phase")));
     }
 
     #[test]

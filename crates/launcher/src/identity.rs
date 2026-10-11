@@ -307,6 +307,27 @@ mod tests {
         assert_eq!(id.created_by_launcher_version, env!("CARGO_PKG_VERSION"));
     }
 
+    // TG-NET-18: the server joins a game session to its client telemetry
+    // on this id, and logs it at INFO, so it must be stable across launches
+    // and must never be (or contain) the raw MachineGuid. On Windows the
+    // live registry value is checked too.
+    #[test]
+    fn machine_id_is_stable_and_never_the_raw_guid() {
+        let guid = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
+        let id = hash_to_16_hex(guid.as_bytes());
+        assert_eq!(id, hash_to_16_hex(guid.as_bytes()), "stable");
+        assert_ne!(id, guid);
+        assert!(!guid.contains(&id), "{id} leaks part of the GUID");
+        assert_eq!(derive_machine_id(), derive_machine_id(), "stable");
+        #[cfg(windows)]
+        if let Ok(raw) = read_machine_guid_from_registry() {
+            let live = derive_machine_id();
+            assert_eq!(live, hash_to_16_hex(raw.as_bytes()));
+            assert_ne!(live, raw);
+            assert!(!raw.to_ascii_lowercase().contains(&live));
+        }
+    }
+
     // Windows-only: derive_machine_id reads MachineGuid and produces a
     // stable 16-hex-char output. On CI Windows runners the registry
     // value exists; on locked-down environments the fallback kicks in.

@@ -95,6 +95,14 @@ all external libraries/overlays, notices/corresponding-source obligations,
 Microsoft/NVIDIA terms and signing before public distribution. No upstream
 Swift implementation has been copied into the launcher by this research.
 
+**Distribution decision (2026-10-11, LX-28):** the
+[LX-28 redistribution worknote](../../launcher-consolidation/worknotes/lx-28-redistribution.md)
+records each piece's licence and how the public macOS zip handles it: our
+Windows pieces and D9VK ship in the app with `D9VK-LICENSE.txt`, the Wine
+runtime stays a pinned first-run download from WoWSilicon, and rosettax87 is
+left out. The zip is signed ad hoc from CI
+([release](../../../../crates/launcher/desktop/docs/release.md#what-the-macos-job-builds)).
+
 ## Process and extraction ownership
 
 Upstream monitors host processes and may fall back to broad process-name killing.

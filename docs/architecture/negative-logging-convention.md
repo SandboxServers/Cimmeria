@@ -108,7 +108,7 @@ A third, cheap: state is released on `destroy_entity`.
 | `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. Social sweep renames (NT-26): `type_id` on items is `item_type_id`, `item_def_id` is `item_type_id`, the chat `target` text is `chat_target`, and a Black Market `sequence_id` logged as an auction is `auction_id`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
 | `<key>_names` next to every bitflag word (`state_field_names`, `flags_names`, `interaction_flags_names`, `recipient_flags_names`, `from_mask_names`, …) | always, beside the raw word | The set bits' names joined `A\|B\|C` in the enum's order, from the flag set's one `FlagSet` table (`cimmeria_common::flag_names`): `STATE_FLAGS` (`cimmeria_wire::state_field`), `EFFECT_FLAGS` (cell-combat `cone_aoe`), `INTERACTION_FLAGS` (`cimmeria_entity::interaction_flags`), `MAIL_FLAGS` (`cimmeria_wire::cell::mail::codes::flags`), `ORG_PERMISSIONS` (`cimmeria_entity::organization`), `PACKET_FLAGS` (`cimmeria_mercury::packet`). Log it with `%`: `state_field, state_field_names = %STATE_FLAGS.render(state_field)`. Bits no token names render as one hex remainder (`BSF_Dead\|0x200`), and a zero word renders `0x0`. Each table is pinned to `entities/defs/enumerations.xml` by a test. A numeric enum code gets a name the same way: `error_code` pairs with `error_name` (`cimmeria_names::book().error_code`), and a code from another vocabulary logs its Rust enum with `?` under its domain's key (the Black Market's `bm_error = ?error`). Leave `_names` off rows exported per packet or per tick: the OTLP appender allocates a string per field per event. NT-31. |
 | `<domain>_arg` (`design_arg`, `mission_arg`, `template_arg`, `name_or_id_arg`), `target_raw` | GM console input that failed to parse | The raw text or out-of-range number a GM typed where an ID was expected. It is not an ID, so it has no name and never takes an `_id` key: a typed `DesignId` that isn't a number is logged as `mission_arg` / `template_arg` / `design_arg` (item), never `design_id`. A parsed one is logged under its domain key (`mission_id`, `template_id`, `item_type_id`) with its name (NT-27). |
-| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id` and keeps `user`: the name the client typed, which may name no account. Never a password, key or ticket (see [Credential fields](#credential-fields)). |
+| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id`; it still logs the name the client typed as `account_name`, which may name no account (TG-NET-04 retired the last `user` keys in `auth/handlers.rs`). Never a password, key or ticket (see [Credential fields](#credential-fields)). |
 | Names for closed enum IDs (`bag_name`, `stat_name`, `target_type_name`, `event_name`) | beside the ID | A small client enum logged as an ID is named from its `entities/defs/enumerations.xml` token, through one table each, pinned to the XML by a test: `cimmeria_entity::inventory::bag_name` (`EInventoryContainerId`, beside `bag_id`), `cimmeria_entity::stats::stat_name` (`EStats`, beside `stat_id`), `cimmeria_entity::abilities::target_type_name` (`ETargetType`, beside `target_type_id`) and `sequence_event_name` (`ESequenceEventType`, beside `event_id`). Content IDs that may be `None` resolve through `cimmeria_cell_world::cell::effects::content_names` (`ability_name`, `effect_name`, `template_name`, `item_name`). NT-20. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
@@ -131,7 +131,12 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `send_loot_display`, the vendor open rows, `send_dialog_display` | `player_id` (held the player's entity id) | `entity_id` + `entity_name` | NT-21 |
 | The `spawn_entity` executor rows and the DHD rows | `world_name` | `world` | NT-21 |
 | The spawn rows in `space_manager/npc_population.rs` | `name` (held the template name) | `template_name` | NT-25 |
+| `active_slot_change` (the auto-attack resolved row in `bandolier/active_slot.rs`) | `resolved_ranged_ability` (`?Some(..)`) | `resolved_ability_id` (a number) + `resolved_ability_name`; `item_id` is now a bare number | TG-CMB-05 |
 | `npc_respawn_recreate` (`npc_respawn` tick) and the stargate loader (`spawner/stargates.rs`); also the `npc_respawns_total` metric label | `world_name` | `world` | NT-25 |
+| The respawn tick's witness re-create WARN (`spawner.npc_respawn`) | `reason = "cell_to_base_closed"` | `reason = "base_channel_closed"` (the shared cell→base send reason) | TG-NPC-12 |
+| `npc_ai.aggro_scan event=candidate_rejected` | `player_id` + `player_name` (held the witness's entity id and label) | `witness_id` + `witness_name`; `player_id` now holds the sgw character id, beside `account_id`, `account_name`, `player_name` (left out for an NPC witness) | TG-NPC-07 |
+| `npc_ai.aggro_scan event=assist_rejected` | `player_id` + `player_name` (held the fight target's entity id and label) | `target_entity_id` + `target_entity_name`, plus `target_account_id`, `target_account_name`, `target_player_id`, `target_player_name` for a player target | TG-NPC-07 |
+| `npc_ai.leash event=player_combat_exit` | `player_id` + `player_name` (held the player's entity id and label) | `entity_id` + `entity_name`; `player_id` now holds the sgw character id, beside `account_id`, `account_name`, `player_name` | TG-NPC-07 |
 | The ability loader (`spawner/abilities.rs`) | `type_id` (an `abilities.type_id` enum label) | `ability_type` | NT-25 |
 | `Loaded player data for mapLoaded` (`player_load/core/player_data.rs`) | `name` (held the character name) | `player_name` | NT-28c |
 | `Added Cimmeria item definition` (`resources/apply_overrides.rs`, boot) | `name` (held the item name) | `item_name` | NT-50a |
@@ -278,6 +283,27 @@ Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
 
+## Login refusal reasons (TG-NET-04)
+
+The Phase 1 and Phase 2 refusals listed in the table below each log one row
+with a `reason`. None of the rows carries the password, the SID or a
+ticket. Each `reason` is pinned by a `LogCapture` test in `auth/handlers_tests.rs`.
+
+| Seam | Level | `reason` | Fields |
+|---|---|---|---|
+| Phase 1 `handle_user_auth`, SKU is not `SGW_BETA` | `info!` | `unknown_sku` | `peer_ip` |
+| Phase 1, plaintext over TLS outside 1 to 128 bytes | `info!` | `plaintext_length` | `peer_ip` |
+| Phase 1, valid login with no shards registered | `warn!` | `no_shards` | `account_id`, `account_name`, `peer_ip` |
+| Phase 2 `handle_server_selection`, no `SID` cookie | `info!` | `sid_missing` | `peer_ip` |
+| Phase 2, SID never issued or already consumed | `info!` | `sid_unknown` | `peer_ip` |
+| Phase 2, SID older than the 300 s session TTL | `info!` | `sid_expired` | `account_id`, `account_name`, `sid_age_secs`, `peer_ip` |
+| Phase 2, selected shard does not exist | `info!` | `unknown_shard` | `account_id`, `account_name`, `peer_ip` |
+
+Key change (TG-NET-04): the `user` field on the `auth/handlers.rs` rows
+(plaintext over HTTP, invalid credentials, disabled account, DB query
+failure, developer-mode fallback, no database) is now `account_name`.
+`peer_ip` is the new key for the client address on the refusal rows.
+
 ## Database startup and credential-check seams
 
 A configured database (`DB_URL` not empty) is required. The server
@@ -386,8 +412,18 @@ Its rows:
 | `relaunch_account_mismatch` | `warn!` | The fresh ticket is for another account and may not displace the live session. Refused, the ticket burned, the live session kept. A spoofed source address looks like this. Also `error!`, with only the ticket fields, when the session lock is poisoned. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the live session), `ticket_account_id`, `ticket_account_name`, `ticket_ip_matches` |
 | `address_reclaimed` | `warn!` | The session on the address is another account's that registered with a ticket issued to a different IP, and this login's ticket was issued to this address's IP: a squatter on a spoofed address. It is evicted (its teardown carries `disconnect_reason = address_reclaimed`) and the login accepted. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the squatter), `ticket_account_id`, `ticket_account_name` |
 | `ticket_expired` | `warn!` | Any Phase 3 login whose ticket is older than `TICKET_TTL` (30 s). The ticket is burned and nothing registered. | `addr`, `account_id`, `account_name`, `ticket_age_ms` |
+| `ticket_unknown` | `warn!` | A Phase 3 login whose ticket is not in the pending map: unknown or already consumed. Refused; nothing registered. | `addr`, `ticket_prefix` |
 | `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
 | `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
+
+## Unconsumed SIDs and tickets (TG-NET-05)
+
+The auth reaper (`auth/service.rs::reap_expired`) drops every Phase 1 SID past `SESSION_TTL` and every Phase 2 ticket past `TICKET_TTL` that no login consumed. Each drop is one row at `info!`; the DEBUG count summary stays.
+
+| `reason` | Level | Meaning | Fields |
+|---|---|---|---|
+| `ticket_unconsumed` | `info!` | A Phase 2 ticket outlived `TICKET_TTL` before BaseApp consumed it. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `ticket_prefix` |
+| `sid_unconsumed` | `info!` | A Phase 1 SID outlived `SESSION_TTL` before the Phase 2 selection consumed it. The prefix is `sid_prefix`, not `ticket_prefix`. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `sid_prefix` |
 
 ## Cross-space cast refusal (#906)
 
@@ -786,18 +822,27 @@ Every fallback in the player-load loaders logs `event = "player_load_degraded"` 
 
 Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss; at world entry it now locks the missions instead (see TG-DB-12 below). Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
-## Appearance refresh outcomes (TG-ITM-01)
+## Appearance refresh outcomes (TG-ITM-01, TG-ITM-14)
 
-`refresh_player_appearance` (`base-methods/.../inventory/appearance.rs`) says why it gave up. A load that returned a different player is an ERROR when a DB pool exists. With `db_pool = None` (offline mode) it is a DEBUG instead, because the loader already logged `no_db_pool` at DEBUG. Either way the refresh still sends what it built (the abort is TG-ITM-14). A skip is WARN, except when the witness's session ended within the departed-witness window: that is a normal race, so DEBUG.
+`refresh_player_appearance` (`base-methods/.../inventory/appearance.rs`) says why it gave up. When a DB pool exists and the load returns a different player (the loader's default "naked human male" payload), the refresh retries the load once after 200 ms (D-TG11), but only when the first attempt failed in under 1 s, and the retry itself is cut off after 2 s. The bandolier and equip callers await the refresh on the base's single cell-to-base loop, so a hung database must not hold every player's traffic for a second 30 s acquire timeout: a slow first failure aborts at once. If the load is not retried, or the retry fails or times out, the refresh aborts: nothing is cached in `cached_appearance_args` and nothing is sent to the player or the witnesses, so everyone keeps the last good appearance, and it logs `appearance_refresh_aborted` at WARN. The load error itself is on the loader's ERROR `player_load_degraded` row, one per attempt. With `db_pool = None` (offline mode) the default payload is the only appearance there is, so the refresh still sends it and logs `appearance_refresh_degraded` at DEBUG, because the loader already logged `no_db_pool` at DEBUG. A skip is WARN, except when the witness's session ended within the departed-witness window: that is a normal race, so DEBUG.
+
+TG-ITM-14 retired the live-pool ERROR `appearance_refresh_degraded` row: a failed load with a pool now logs `appearance_refresh_aborted` (WARN) and no `appearance_refreshed` row.
+
+Known gaps, not caught by the abort:
+
+- **Partial loads.** Only a failed base-row load comes back as the default payload. When the equipment-visuals or weapon-visual sub-query in `player_load/core/player_data.rs` fails, the loader logs `player_load_degraded` (`equipment_visuals_query_failed` or `weapon_visual_query_failed`) and returns the real `player_id` with those visuals stripped. The refresh cannot tell that from a good load, so the stripped appearance is still cached and sent.
+- **Holster drift.** `RefreshAppearance` (`base-world-entry/.../cell_dispatch/bandolier.rs`) sets the `weapon_holstered` mirror before it calls the refresh. After an abort the mirror can disagree with the holster state the clients show until the next successful refresh.
+- **The first attempt is not bounded.** Only the retry is capped; a first load against a hung pool still holds the cell-to-base loop for up to the 30 s acquire timeout.
 
 | Event | Level | `reason` | Fields |
 |---|---|---|---|
-| `appearance_refresh_degraded` | ERROR (DEBUG when `db_pool` is `None`) | `cause = "player_load_failed"` (a field) | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_aborted` | WARN | `cause = "player_load_failed"` (a field) | `attempts` (1 or 2), `elapsed_ms`, `retry` (`skipped_slow_failure`, `failed`, `timed_out`), `entity_id`, `entity_name`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_degraded` | DEBUG (offline mode only) | `cause = "player_load_failed"` (a field) | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name` |
 | `appearance_refresh_skipped` | WARN | `entity_to_addr_miss`, `client_state_missing`, `entity_missing` | `entity_id`, `entity_name`, `account_id`, `account_name`, `player_id`, `player_name` |
 | `appearance_refresh_skipped` | DEBUG | `witness_session_ended` | as above |
-| `appearance_refreshed` | DEBUG | none; a degraded refresh (default payload, including offline) is still logged with `degraded = true` | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name`, `holstered`, `component_count`, `bodyset`, `degraded` |
+| `appearance_refreshed` | DEBUG | none; an offline refresh (default payload) is still logged with `degraded = true` | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name`, `holstered`, `component_count`, `bodyset`, `degraded` |
 
-Guard: `appearance_refresh_logs_degraded_and_skips` in `inventory/appearance.rs` pins the offline DEBUG (no ERROR with `db_pool = None`), the live-pool ERROR, the `degraded = true` success row, the `client_state_missing` WARN and the DEBUG-after-departure (with no new WARN). The `entity_missing` skip is not pinned: it needs the mapping removed during the awaited load, which the test setup cannot do deterministically.
+Guards in `inventory/appearance_tests.rs`: `failed_load_does_not_cache_or_send_default_appearance` pins the abort against an unreachable pool (the previous cached args are kept, nothing goes to the client or the cell, the loader fails exactly twice, one WARN `appearance_refresh_aborted` with `attempts = 2` and `retry = "failed"`, no success row). Three paused-time tests drive `load_with_bounded_retry` with a fake loader: `bounded_retry_skips_the_retry_after_a_slow_failure` (one attempt, `skipped_slow_failure`), `bounded_retry_times_out_a_hung_retry` (`timed_out` within the 2 s cap) and `bounded_retry_retries_a_fast_failure_once`. `appearance_refresh_logs_degraded_and_skips` pins the offline DEBUG (no ERROR with `db_pool = None`), the `degraded = true` success row, the `client_state_missing` WARN and the DEBUG-after-departure (with no new WARN). The `entity_missing` skip is not pinned: it needs the mapping removed during the awaited load, which the test setup cannot do deterministically.
 
 ### Shutdown unsaved-state report (TG-DB-01)
 
@@ -856,6 +901,10 @@ The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guar
 
 A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
 
+## Dropped mission journal frames (TG-MIS-08)
+
+Mission client frames (`onMissionUpdate`, `onStepUpdate`, `onObjectiveUpdate`) go from the cell to the base over a bounded `mpsc` channel. A closed channel means the client never sees the journal change. `send_mission_frame` in `cell/missions/mod.rs` (`cimmeria-cell-content`) makes that send visible: one WARN per refused frame, `event = "mission_frame_dropped"`, `reason = "base_channel_closed"`, `frame` (the method name), Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `mission_id` with `mission_name`, `error`. Message: `Mission journal frame not queued: the base channel is closed`. Written from the accept, abandon, advance-step and objective-completion paths in `missions/lifecycle.rs` and `missions/progression.rs`. Guard: `accept_with_closed_base_channel_warns_frame_dropped` in `missions/lifecycle_tests.rs` asserts the WARN and `frame = onMissionUpdate`.
+
 ## Unreadable saved missions lock (TG-DB-12, D-TG18)
 
 World entry no longer falls back to "no saved missions" (that let a re-accept overwrite completed progress, #411). `missions/state_lock.rs` in `cimmeria-base-methods` retries the read after 200, 400 and 800 ms, each attempt cut off after 2 s (about 9.4 s at worst). If every attempt fails, the base locks the player, sends `MissionStateUnknown` to the cell before `InitPlayerState`, and re-reads every 30 s until it succeeds. The cell (`cell/missions/state_lock.rs` in `cimmeria-cell-content`) refuses every accept, abandon, step advance, objective completion and completion, drops any content chain that changes a mission whole, and saves nothing. Each player-facing refusal also sends the feedback line "Mission data unavailable, try again shortly." The base refuses any `sgw_mission` write for a locked player as a backstop. The cell also holds mission changes from `CreateEntity` until `InitPlayerState` (`reason = "saved_missions_pending"`). Refusal rows and feedback lines are throttled to one per entity per 5 s; each admitted row carries `suppressed`, the refusals swallowed since the last one (Pattern D).
@@ -911,6 +960,57 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 | DEBUG | message `UDP recv: WSAECONNRESET (10054) -- remote closed, continuing`, `reason = "icmp_port_unreachable"`, `suppressed` | A UDP recv returned WSAECONNRESET; at most one row per 10 s |
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
+
+## Deferred-AoI cap drops (TG-AOI-01)
+
+A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "deferred_dropped"`, `reason = "buffer_full"`, `kind`, `entity_id`, `witness_name` (when set), `buffered` | The witness's buffer is at the cap; the message is dropped |
+| DEBUG | `event = "deferred_dropped"`, `reason = "session_gone"`, `kind`, `entity_id` | An entered or left AoI message found no session to buffer it |
+
+Guard: `push_deferred_drops_at_cap` (`base-session`) captures the WARN and asserts `event`, `entity_id` and `kind`.
+
+## Base-to-cell send seam (TG-MER-05)
+
+Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/connect_loop/cell_send.rs`): the cell-method arms and the `EntityMove` relay.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_send_failed"`, `reason = "cell_channel_closed"`, `error`, `addr`, identity, `msg_kind`, `method_index` + `method_name` | The cell receiver was dropped: the player's call is lost |
+| WARN | `event = "cell_channel_backpressure"`, `waited_ms`, `queue_free`, `msg_kind`, `suppressed` | A send waited 50 ms or more on a full cell queue. Pattern D: one row per 5 s for the whole channel; `base_cell_channel_stalls_total` counts every stall |
+
+Guards: `dropped_receiver_logs_cell_channel_closed`, `stalled_send_logs_backpressure_row`, `second_stall_in_window_is_suppressed` in `cell_send.rs`.
+
+## Inbound bundle-walk drops (TG-MER-06)
+
+Every client message the inbound bundle walk drops (`encrypted/mod.rs`, `account_arms.rs`, `cell_arms.rs` under `crates/base/src/base/connect_loop/`) goes through `bundle_drop::log_drop`. The row is `event = "inbound_message_dropped"` with `addr`, identity, `msg_id` + `msg_name`, `method_index` + `method_name` when the walk decoded one, `entity_type`, `payload_len` and `suppressed`. Pattern D: one row per 5 s per session address and reason. The `reason` set is closed (`DropReason`):
+
+| Level | `reason` | When |
+|---|---|---|
+| WARN | `bundle_truncated` | A length prefix or fixed width runs past the bundle; carries `offset` and `body_len`. The rest of the bundle is lost |
+| WARN | `unhandled_msg_id` | A system message id with no arm |
+| WARN | `unhandled_account_method` | An Account base method with no handler at character select |
+| WARN | `malformed_args` | A cell method payload shorter than its 4-byte entityId prefix |
+| WARN | `subslot_missing_index` | A `0xBD` sub-slot cell method with no sub-index byte |
+| DEBUG | `no_player_entity` | A movement update (`0x03`) before the session has a player entity |
+| DEBUG | `before_world_entry` | A cell method before the session has a player entity |
+| DEBUG | `map_loaded_pending` | A cell method other than `mapLoaded` while world entry waits for it. Only that message is dropped; the walk goes on |
+
+`AUTHENTICATE received -- ignored` moved from DEBUG to TRACE: the client prepends one to every bundle.
+
+Guards: `bundle_walk_drops_have_reasons`, `bundle_truncated_row_carries_offset_and_body_len`, `map_loaded_pending_drops_only_its_message` in `encrypted/bundle_drop_tests.rs`; `drop_burst_writes_one_row_per_window`, `drop_throttle_keys_are_independent` in `bundle_drop.rs`.
+
+## NPC attack-not-fired throttle (TG-NPC-05)
+
+An attack tick whose `handle_use_ability` call returns false (cooldown race, no ammo, out of range) used to WARN on every retry, about twice a second per NPC. `warn_attack_not_fired()` in `service/npc_ai/fight.rs` in `cimmeria-cell-combat` throttles it (Pattern D, `admit_warn`, keyed by NPC). The first row in a 15 s window writes at once. The retries inside it are counted, and the next row carries them in `suppressed`. The retry itself is scheduled whether or not the row is written.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `npc_ai`, `event = "attack_not_fired"`, `reason = "handle_use_ability_returned_false"`, `npc_id` + `npc_name`, `template_id` + `template_name`, `world`, `space_id`, `target` + `target_name`, `suppressed` | An attack tick fired nothing; at most one row per NPC per 15 s |
+
+Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
 
 ## Trade cancel and refusal rows (TG-SOC-06)
 
@@ -999,6 +1099,17 @@ Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tes
 
 Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
 
+## Duplicate minigame session (TG-MG-04)
+
+`crates/minigame/src/minigame/session.rs`, `SessionRegistry::register`. A second register for an entity that already has a session is refused. The row says why: `existing_connected` separates a double interact on a launch still loading (INFO) from a refusal while a game is live, or a launch that has sat past the 2 s window (WARN). The identity is the entity pair (`entity_id`, `entity_name`); the games are `existing_game` and `requested_game`. The ticket is never logged.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| INFO | `duplicate_session` | A second register while the first session is unclaimed and under 2 s old | entity pair, `existing_connected = false`, `existing_age_ms`, `existing_game`, `requested_game` |
+| WARN | `duplicate_session` | A second register against a claimed session, or an unclaimed one older than 2 s (#1303) | entity pair, `existing_connected = true` or `false`, `existing_age_ms`, `existing_game`, `requested_game` |
+
+Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `duplicate_register_after_connect_logs_warn` (LogCapture: `reason`, `existing_connected`, `existing_game`, `requested_game`).
+
 ## Leave and invisible send failures (TG-AOI-08)
 
 `cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
@@ -1022,11 +1133,117 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 
 Guard: `live_db_header_ops_log_event_account_and_duplicate_reason` in `handlers/header_ops/tests.rs` asserts `event` and `account_id` on each op and `reason=duplicate_name` on the second create. `no_pool_rows_carry_event_and_account` guards the no-pool rows.
 
+## DoT kill with no credited player (TG-NPC-13)
+
+`effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
+
+Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
+
+## Contact-list short args (TG-SOC-09)
+
+`contact_list/mod.rs` in `cimmeria-cell-methods`. Five contact-list ops (delete, rename, flags update, add members, remove members) drop a call whose args are shorter than its layout. Each logs one WARN `event = "contacts.call_malformed"` with `reason = "malformed_args"`, `op`, `args_len`, `need`, `entity_id` + `entity_name`, and `account_id` + `account_name`. The `create` op keeps its own WARN and is not part of this row. A well-formed call logs nothing new.
+
+Guard: `short_args_log_a_malformed_row_per_op` in `contact_list/tests.rs`, which drives `dispatch` with two bytes per op and asserts `reason`, `op` and the entity and account fields on each row.
+
+## Chat malformed and relay refusals (TG-SOC-08)
+
+`crates/base/src/base/dispatch/chat_malformed.rs`, called from `dispatch/chat.rs`. Two WARN rows on `target: "chat"`. Both carry `player_id` + `player_name`, `account_id` + `account_name` and `reason`.
+
+- `event = "chat.malformed"`: a `sendPlayerCommunication` or `chatJoin` payload that does not decode, so no text reaches a handler. Adds `payload_len`.
+- `event = "chat.relay_failed"`: a line that passed every gate but was not delivered. Adds `channel`, and `entity_id` + `entity_name` when the speaker has an entity.
+
+| `reason` | Event | Meaning |
+|---|---|---|
+| `empty_payload` | `chat.malformed` | The `sendPlayerCommunication` payload is empty |
+| `bad_target` | `chat.malformed` | The target WSTRING does not decode |
+| `bad_text` | `chat.malformed` | The text WSTRING does not decode |
+| `bad_channel_name` | `chat.malformed` | The `chatJoin` channel name or password does not decode |
+| `cell_channel_closed` | `chat.relay_failed` | The base-to-cell send failed (receiver dropped) |
+| `no_cell_channel` | `chat.relay_failed` | The base holds no sender to the cell |
+| `entity_missing` | `chat.relay_failed` | The speaker has no entity to speak as |
+
+The player's feedback is unchanged. Guards: one `LogCapture` test per reason in `chat_malformed.rs`, from `empty_payload_is_logged_as_malformed` to `speaker_without_entity_is_logged_as_relay_failed`.
+
+## Character-create refusals (TG-DB-08)
+
+`character_create/refusal_log.rs` in `cimmeria-base`. Every refused `createCharacter` writes exactly one row, `event = "character_create_failed"`, message "character creation refused", before `onCharacterCreateFailed` goes to the client. Each row carries the account (`addr`, `account_id`, `account_name`), the code sent (`error_code` paired with its `ErrorStrings` moniker as `error_name`), and what was refused once it has been parsed: `player_name` (the requested name) and `char_def_id`. `reason` is the `Reason` enum, not a string, and `Reason::level` gives each reason its level, so a misspelt reason can't compile or fall through to a default level. The levels are the ones each site logged at before.
+
+The start-profile check (`start_profile.rs`, `resolve_start`) logs nothing itself: it returns its reason, error and profile to the handler, which writes the one row. Starter-kit helpers keep their own precise ERROR rows (`starter_abilities_load_failed`, `starter_item_failed`, `starter_grant_failed`); the refusal row is the client-facing summary, at WARN, with `reason = starter_kit_failed`, `cause` naming the helper's event and `kit_failure` its reason, so the database is not blamed for a kit that could not be placed.
+
+| Level | `reason` | When | Extra fields |
+|---|---|---|---|
+| WARN | `name_parse_failed` | The name or extra name is not a readable WSTRING | `error` |
+| INFO | `name_rejected` | The name breaks the format rules | `rule` |
+| INFO | `extra_name_rejected` | The extra name breaks the format rules | `rule`, `extra_name` |
+| WARN | `malformed_args` | The payload ends before the CharDef, the visual choices or the skin tint | |
+| INFO | `invalid_skin_tint` | The skin tint is outside 0..=15 | `skin_tint_color_id` |
+| WARN | `unknown_char_def` | No CharDef row | |
+| WARN | `no_db_pool` | No database is attached | |
+| ERROR | `query_failed` | The visual-group query failed | `error` |
+| ERROR | `start_profiles_load_failed` | The start profiles could not be read | `error` |
+| ERROR | `no_start_profile` | The CharDef has no start profile | |
+| ERROR | a `ProfileProblem` reason (`empty_world`, `origin_position`, `start_level_out_of_range`, `legacy_kit_on_canonical_profile`, ...) | The start profile has a problem | `profile_id`, `world`, `detail` (every problem) |
+| ERROR | `start_world_unknown` | The profile's world is not in `resources.worlds` | `profile_id`, `world` |
+| ERROR | `start_world_not_loaded` | The cell announced no space for the profile's world | `profile_id`, `world` |
+| ERROR | `db_error` | The profile's `world_id` lookup failed | `profile_id`, `world`, `error` |
+| WARN | `starter_kit_failed` | The starter kit could not be loaded, placed or recorded; the helper's ERROR row has the cause | `cause`, `kit_failure`, `player_id` after the insert |
+| WARN | `invalid_visual_group` | A choice names a visual group the CharDef lacks | `vg_id`, `choice_id` |
+| WARN | `forced_group_choice` | A choice targets a forced visual group | `vg_id`, `choice_id` |
+| WARN | `invalid_choice` | A choice is not in its visual group | `vg_id`, `choice_id` |
+| WARN | `missing_optional_choice` | An optional visual group has no choice | `vg_id` |
+| INFO | `name_taken` | The insert hit `sgw_player_player_name_key` | |
+| ERROR | `db_write_failed` | The transaction could not open, the insert failed, or the commit failed | `error`, `player_id` after the insert |
+
+`char_def_id`, `profile_id`, `vg_id`, `choice_id` and `skin_tint_color_id` are `nt:id-only`: their rows carry no name column. Guards: `fail_code_tests.rs` `unknown_char_def_is_invalid_character_type` (asserts `event`, `reason`, `account_id`, `char_def_id`, `error_code` and `error_name`) and `skin_tint_out_of_range_is_invalid_skin_color` (asserts `event`, `reason`, `account_id`, `skin_tint_color_id`, `char_def_id` and `player_name`); `refusal_log.rs` `every_reason_has_its_documented_spelling_and_level` (the table above as literals, every variant covered); and `profile_live_db_tests.rs` `a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db` (exactly one `character_create_failed` row, ERROR, `reason = start_world_not_loaded`, with `account_id`, `char_def_id`, `profile_id` and `world`).
+
 ## Spatial chat send failures (TG-SOC-07)
 
 `cell/console/chat/spatial.rs` in `cimmeria-cell-console`. A `say`, `emote` or `yell` line sent into a closed base channel was dropped by `let _`. Each failed send now logs WARN `target: CHAT_LOG_TARGET`, `event = "chat.spatial_send_failed"`, `reason = "base_channel_closed"`: one row per witness (`target_entity_id` + `target_entity_name`, and the `target_player_*` / `target_account_*` identity), and one for the speaker's echo (`entity_id` + `entity_name`, the speaker's identity). Both carry `channel`. The broadcast row is DEBUG `event = "chat.spatial_broadcast"` with the speaker's identity and `ignored`, the count of witnesses withheld by an Ignore list. A sent line logs nothing new.
 
 Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
+
+## Catch-all handler warnings (TG-MER-11)
+
+Two catch-alls carry the owning player's identity now. Both are WARN.
+
+| Row | Fields | When |
+|---|---|---|
+| WARN `Datagram handler error` in `base/connect_loop/mod.rs` | `reason = "handler_error"`, `error` (a field, not in the message), `addr`, and the identity from `identity_for_addr` | A datagram handler returned an error; the identity is empty for an address with no session |
+| WARN `Unhandled cell method call` in `cell/dispatch/router.rs` | `entity_id` + `entity_name`, `account_id` + `account_name`, `player_id` + `player_name` (from `SpaceManager::player_identity`), `method_index`, `method_name`, `args_len` | A cell method index has no registered handler |
+
+Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dispatch/router.rs` sets an account id on the test entity and asserts `account_id = 77` on the WARN row.
+
+## Death and revive rows (TG-CMB-06)
+
+`death/mod.rs` in `cimmeria-cell-combat` writes `target_killed` with the Rule 5 identity keys: `attacker_id` + `attacker_name`, `target_id` + `target_name`, and the player-side identity quartet (the attacker when it is a player, otherwise the target). `ability_id` is `Option<i32>` and is left out when unknown, never `-1`. `death/side_effects.rs` writes `player.death` with `killer_id`, `killer_name` (left out for an environment kill, never `""`), `world` as a bare name, and the identity quartet. `cell_methods/player/combat` gives `callForAid` and `player revived` the identity quartet and `world`.
+
+Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
+
+## Datagrams from unknown addresses (TG-NET-12)
+
+`connect_loop/mod.rs` in `cimmeria-base`. A datagram from an address with no session used to be a TRACE row. Internet scanners hit that path, and it was invisible at the exported level. It now logs INFO `event = "unknown_peer_datagram"` with `addr`, `flags` (the first byte) and `suppressed`, under the constant message "Datagram from unknown address". The rate is Pattern D, per address: the first datagram logs at once, then at most one row per 60 s with the swallowed count in `suppressed`. At most 256 addresses are tracked; past that, the one whose window opened longest ago is evicted.
+
+Guards: `unknown_peer_burst_writes_one_row_per_window` and `unknown_peer_addresses_are_throttled_independently`.
+
+## MinigamePlayer stub rows (TG-MG-02)
+
+`cell_methods/minigame.rs` in `cimmeria-cell-methods`. Every MinigamePlayer stub logs each call once at INFO, with the entity pair and `args_len`, whatever the payload. Each arm reads only the INT32s that `entities/defs/interfaces/MinigamePlayer.def` declares for it; a field whose bytes are missing is left out, never `0`. `endCurrentMinigame` declares no arguments, so `winner_*` and `loser_*` are gone. Key changes: `winner_id`, `winner_name`, `loser_id`, `loser_name`, `host_entity_id`, `host_entity_name`, `target_entity_id`, `target_entity_name`, `game_def_id`, `help_level` are removed; `target_player_id` and `target_player_name` (spectate), `calling_player_id` and `calling_player_name` (accept, decline) and `contact_id` and `contact_name` (contact request) are new. The stubs still do nothing: minigame behaviour is #1303's.
+
+| Level | Message | When | Fields |
+| --- | --- | --- | --- |
+| INFO | `UNIMPLEMENTED: <method>` | Every call to a MinigamePlayer stub | entity pair, `args_len`, the declared INT32s and their name pairs |
+
+Guard: `cell_methods/minigame_names_tests.rs` `end_current_minigame_logs_with_wire_payload`. A 4-byte `00000000` payload gives the INFO row with `args_len = 4`. The earlier `args.len() >= N` guard logged nothing for it, so reverting fails the test.
+
+## Cell-to-base dispatch slow WARN (TG-DB-05)
+
+The base's cell-to-base loop in `base/service.rs` times each `route_cell_message` call. A dispatch that takes 250 ms or more writes one WARN. `msg_kind` is the fixed snake_case name from `CellToBaseMsg::kind()` (`cell_to_base_kind.rs` in `cimmeria-wire`), never payload text. The rows are throttled per `msg_kind` (Pattern D): the first is written at once, then at most one per 10 s, carrying `suppressed`. `queue_depth` is the cell channel's backlog when the dispatch finished.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_dispatch_slow"`, `msg_kind`, `elapsed_ms`, `queue_depth`, `suppressed` | A cell-to-base dispatch took 250 ms or more; at most one row per kind per 10 s |
+
+Guard: `base/dispatch_timing.rs` tests. `slow_dispatch_burst_writes_one_row_per_window` captures the WARN and asserts `suppressed` is `0` and then `49` after a burst of 50. `slow_dispatch_throttle_is_per_kind` checks that a second kind's first row is not swallowed and that a fast dispatch writes nothing.
 
 ## Related
 

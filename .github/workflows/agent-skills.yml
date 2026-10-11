@@ -1,7 +1,8 @@
 # Agent skills and the shell guard hook.
 #
 # .claude/skills/ is the source; tools/agent-skills/sync.py mirrors it to
-# .agents/skills/ for Codex (Copilot reads both). This job fails when the mirror
+# .agents/skills/ for Codex (Copilot reads both), and writes the Codex agents in
+# .codex/agents/ from .claude/agents/. This job fails when the mirror
 # is stale, and runs the unit tests for the sync script and the PreToolUse
 # shell guard in .claude/hooks/shell_guard.py.
 name: agent-skills
@@ -11,6 +12,8 @@ on:
     paths:
       - ".claude/skills/**"
       - ".agents/skills/**"
+      - ".claude/agents/**"
+      - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
       - ".github/workflows/agent-skills.yml"
@@ -19,6 +22,8 @@ on:
     paths:
       - ".claude/skills/**"
       - ".agents/skills/**"
+      - ".claude/agents/**"
+      - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
 

@@ -26,6 +26,7 @@
 //! nothing. A tool that fell back reports the lowest level it used.
 
 pub mod camera;
+mod camera_read;
 pub mod click;
 pub mod find;
 pub mod geometry;

@@ -43,31 +43,34 @@ fn region_dwell_fires_once_and_a_hint_suppresses_it() {
 fn step_stalled_fires_once_per_step_and_resets_on_advance() {
     let t0 = Instant::now();
     let mut w = PlayerWatch::default();
-    assert!(w.evaluate(t0, [0.0; 3], &[(706, 2411)], &[]).is_empty());
+    assert!(w.evaluate(t0, [0.0; 3], &[(706, 2411, 2)], &[]).is_empty());
     assert!(w
-        .evaluate(secs(t0, 299), [0.0; 3], &[(706, 2411)], &[])
+        .evaluate(secs(t0, 299), [0.0; 3], &[(706, 2411, 2)], &[])
         .is_empty());
-    let fired = w.evaluate(secs(t0, 300), [0.0; 3], &[(706, 2411)], &[]);
+    let fired = w.evaluate(secs(t0, 300), [12.5, 3.0, -40.0], &[(706, 2411, 2)], &[]);
     assert_eq!(
         fired,
         vec![Friction::StepStalled {
             mission_id: 706,
             step_id: 2411,
-            age_secs: 300
+            age_secs: 300,
+            x: 12.5,
+            z: -40.0,
+            open_objectives: 2,
         }]
     );
     assert!(w
-        .evaluate(secs(t0, 900), [0.0; 3], &[(706, 2411)], &[])
+        .evaluate(secs(t0, 900), [0.0; 3], &[(706, 2411, 2)], &[])
         .is_empty());
     // Advancing restarts the clock for the new step.
     assert!(w
-        .evaluate(secs(t0, 901), [0.0; 3], &[(706, 2412)], &[])
+        .evaluate(secs(t0, 901), [0.0; 3], &[(706, 2412, 2)], &[])
         .is_empty());
     assert!(w
-        .evaluate(secs(t0, 1100), [0.0; 3], &[(706, 2412)], &[])
+        .evaluate(secs(t0, 1100), [0.0; 3], &[(706, 2412, 2)], &[])
         .is_empty());
     assert_eq!(
-        w.evaluate(secs(t0, 1201), [0.0; 3], &[(706, 2412)], &[])
+        w.evaluate(secs(t0, 1201), [0.0; 3], &[(706, 2412, 2)], &[])
             .len(),
         1
     );
@@ -245,4 +248,123 @@ fn point_in_polygon_handles_rotated_boxes() {
     assert!(region_contains_xz(&diamond, 0.4, 0.4));
     assert!(!region_contains_xz(&diamond, 0.9, 0.9));
     assert!(!region_contains_xz(&diamond[..2], 0.0, 0.0));
+}
+
+/// TG-NET-17: every friction row says whether the session is a lab run or a
+/// player. All 8 friction stalls in the triage were lab runs, which stop on
+/// purpose; without the field they read as player pain. Driven through
+/// `player_tick` (the step stall) and `dialog_shown` (a gameplay hook that
+/// only has the watch's cached copy), so dropping either the cache refresh
+/// or the field fails it. TG-MIS-02 adds identity and `world` to the same
+/// rows, and position and open objectives to `step_stalled`.
+#[test]
+fn friction_rows_carry_session_kind() {
+    use crate::cell::space_manager::SpaceManager;
+    use crate::test_support::LogCapture;
+    use cimmeria_entity::missions::{MissionInstance, MissionObjective};
+
+    // An id no other test uses: the watch table is process-global.
+    const ENTITY: u32 = 917_017;
+    const MISSION: i32 = 706;
+    const STEP: i32 = 2411;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(ENTITY, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    {
+        let e = mgr.get_entity_mut(ENTITY).unwrap();
+        e.is_player = true;
+        e.session_kind = Some("lab");
+        e.account_id = Some(917);
+        e.player_id = Some(917_018);
+        e.stamp_log_names(Some("Daniel"), Some("lab_login"));
+        // One objective open, one already done: only the open one counts.
+        let objective = |objective_id, status| MissionObjective {
+            objective_id,
+            status,
+            hidden: false,
+            optional: false,
+        };
+        e.missions.add_mission(MissionInstance::new(
+            MISSION,
+            STEP,
+            vec![
+                objective(9001, STATUS_ACTIVE),
+                objective(9002, cimmeria_entity::missions::STATUS_COMPLETED),
+            ],
+        ));
+    }
+    // The step has been current for longer than the stall threshold.
+    let first_seen = Instant::now()
+        .checked_sub(STEP_STALL_AFTER + Duration::from_secs(1))
+        .expect("monotonic clock is past the stall threshold");
+    forget(ENTITY);
+    with_watch(ENTITY, |w| {
+        w.steps.insert(MISSION, (STEP, first_seen, false));
+    });
+
+    player_tick(&mgr, ENTITY, [12.5, 0.0, -40.0]);
+    dialog_shown(ENTITY, 2517);
+    dialog_shown(ENTITY, 2518);
+    // An episode counter (`playtest_friction.rs`), which reads the entity.
+    for _ in 0..2 {
+        crate::cell::playtest_friction::item_use_no_chain(&mgr, ENTITY, 917_017);
+    }
+    forget(ENTITY);
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| {
+            c.level == tracing::Level::WARN
+                && c.target == "playtest.friction"
+                && c.fields.get("entity_id").map(String::as_str) == Some("917017")
+        })
+        .collect();
+    for signal in [
+        "step_stalled",
+        "dialog_displaced",
+        "repeat_item_use_no_chain",
+    ] {
+        let row = rows
+            .iter()
+            .find(|c| c.fields.get("signal").map(String::as_str) == Some(signal))
+            .unwrap_or_else(|| panic!("no {signal} row: {rows:#?}"));
+        assert_eq!(
+            row.fields.get("cimmeria.session_kind").map(String::as_str),
+            Some("lab"),
+            "{signal} row lacks the session kind: {row:#?}"
+        );
+        // TG-MIS-02: identity (Rule 5, Rule 6) and world on every row.
+        for (field, want) in [
+            ("account_id", "917"),
+            ("account_name", "lab_login"),
+            ("player_id", "917018"),
+            ("player_name", "Daniel"),
+            ("world", "Castle_CellBlock"),
+        ] {
+            assert_eq!(
+                row.fields.get(field).map(String::as_str),
+                Some(want),
+                "{signal} row lacks {field}: {row:#?}"
+            );
+        }
+    }
+    // TG-MIS-02: where the stalled player stands, and what is still open.
+    let stalled = rows
+        .iter()
+        .find(|c| c.fields.get("signal").map(String::as_str) == Some("step_stalled"))
+        .expect("step_stalled row");
+    for (field, want) in [("x", "12.5"), ("z", "-40.0"), ("open_objectives", "1")] {
+        assert_eq!(
+            stalled.fields.get(field).map(String::as_str),
+            Some(want),
+            "step_stalled lacks {field}: {stalled:#?}"
+        );
+    }
 }

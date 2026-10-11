@@ -46,7 +46,7 @@ Most of a driver's cost is fixed context resent on every turn, so cut **turns**,
 
 ## 4. Brief a lab-driver agent
 
-Game driving runs in a fresh [`lab-driver`](../../agents/lab-driver.md) agent (Haiku, the lab tools only, no CLAUDE.md). Its definition already carries the interaction, chat and window procedures below, so its brief needs only the lease, the standing autonomy, the steps and the report fields. Keep each run under ~100k tokens: one probe per agent, and start a new agent rather than resuming one. Interpret the results yourself. In a harness that can't load the agent, give a cheap general-purpose agent the lab MCP tools and paste this sheet into the brief:
+Game driving runs in a fresh [`lab-driver`](../../../.claude/agents/lab-driver.md) agent (Haiku, the lab tools only, no CLAUDE.md). Its definition already carries the interaction, chat and window procedures below, so its brief needs only the lease, the standing autonomy, the steps and the report fields. Keep each run under ~100k tokens: one probe per agent, and start a new agent rather than resuming one. Interpret the results yourself. In a harness that can't load the agent, give a cheap general-purpose agent the lab MCP tools and paste this sheet into the brief:
 
 ```text
 Lease: <lease_id>. Standing autonomy: Lua reads, GM teleports and following the game's

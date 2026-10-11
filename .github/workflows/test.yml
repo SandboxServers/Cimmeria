@@ -222,6 +222,11 @@ jobs:
           POSTGRES_USER: w-testing
           POSTGRES_PASSWORD: w-testing
           POSTGRES_DB: sgw
+          # A throwaway CI database needs no durability: skip initdb's sync and run the
+          # server without fsync. On a runner sharing a busy disk, initdb's sync and then
+          # the entrypoint's shutdown checkpoint outlasted the health check and pg_ctl's
+          # 60 s stop timeout (WC-16 worknote). initdb -c sets postgresql.conf (PG 16+).
+          POSTGRES_INITDB_ARGS: --no-sync -c fsync=off -c synchronous_commit=off -c full_page_writes=off
         ports:
           - 5432:5432
         options: >-
@@ -255,6 +260,8 @@ jobs:
         run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
       - name: token-profile contract and ingest tests
         run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
+      - name: CI runner egress proxy tests
+        run: python3 -m unittest discover -s tools/ci-runners -p "test_*.py"
       # AB-C7: every ability method is accounted for on each side it travels
       # (or excused in the script), and the committed matrix is current. Fix
       # with `python tools/telemetry-coverage/abilities.py`.
@@ -471,6 +478,11 @@ jobs:
           POSTGRES_USER: w-testing
           POSTGRES_PASSWORD: w-testing
           POSTGRES_DB: sgw
+          # A throwaway CI database needs no durability: skip initdb's sync and run the
+          # server without fsync. On a runner sharing a busy disk, initdb's sync and then
+          # the entrypoint's shutdown checkpoint outlasted the health check and pg_ctl's
+          # 60 s stop timeout (WC-16 worknote). initdb -c sets postgresql.conf (PG 16+).
+          POSTGRES_INITDB_ARGS: --no-sync -c fsync=off -c synchronous_commit=off -c full_page_writes=off
         ports:
           - 5432:5432
         options: >-

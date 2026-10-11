@@ -98,6 +98,7 @@ pub(in crate::hooks::inline_hooks) unsafe fn install_all(producer: &crate::queue
         super::super::install_one(producer, name, addr, detour, slot);
     }
     import_detours::install(producer);
+    super::write_detours::install(producer);
 }
 
 /// Run `f` as if under a version read, and return what it recorded.
@@ -114,12 +115,12 @@ pub(super) fn probed<R>(f: impl FnOnce() -> R) -> (R, ReadProbe) {
     (result, PROBE.with(Cell::get).unwrap_or_default())
 }
 
-fn word(addr: u32) -> Option<u32> {
+pub(super) fn word(addr: u32) -> Option<u32> {
     LiveMem.u32_at(addr)
 }
 
 /// The storage's first PAK name.
-fn pak_name(this: u32) -> Option<String> {
+pub(super) fn pak_name(this: u32) -> Option<String> {
     let begin = word(this.wrapping_add(layout::NAMES_BEGIN))?;
     let end = word(this.wrapping_add(layout::NAMES_END))?;
     if begin == 0 || end <= begin {
@@ -133,7 +134,7 @@ fn pak_name(this: u32) -> Option<String> {
     .map(|d| d.text)
 }
 
-fn remember(this: u32) {
+pub(super) fn remember(this: u32) {
     if let Ok(mut storages) = STORAGES.lock() {
         if !storages.contains(&this) && storages.len() < MAX_STORAGES {
             storages.push(this);

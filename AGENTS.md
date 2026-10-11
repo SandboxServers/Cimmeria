@@ -10,6 +10,8 @@ Whatever harness you run, read these before designing a change:
 4. [docs/agents/development-workflow.md](docs/agents/development-workflow.md) — the ticket-to-PR pipeline and the roster of domain advisors under `.claude/agents/`. If your harness has no subagents, read an advisor's definition and its `.claude/agent-memory/<agent>/MEMORY.md` as briefing material. Also read `.claude/agent-memory/main-session/MEMORY.md`, the shared project memory from earlier top-level sessions. Write what you learn back there and commit it with your change, following its "Project memory" rules. The repo is public, so no IPs, credentials or account names.
 5. [TESTING.md](TESTING.md) — pick the test type before writing the fix.
 
+Driving the game client (the Live Research Lab): set it up with [docs/guides/lab-contributor-setup.md](docs/guides/lab-contributor-setup.md), which has the Codex MCP recipe. Its [verified/unproven section](docs/guides/lab-contributor-setup.md#whats-verified-and-what-isnt-as-of-2026-10-11) says what has passed live and what hasn't; the Codex recipe is untested. **Ask the user, and wait for a yes, before you take the lab lease, start or restart the client, or change the server the lab points at** ([lab-uat skill](.claude/skills/lab-uat/SKILL.md)).
+
 Ticket and triage conventions for agent skills: [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) and [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
 ## Frontend UAT Rule

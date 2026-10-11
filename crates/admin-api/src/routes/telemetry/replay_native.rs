@@ -195,6 +195,8 @@ impl<'b> NativeNames<'b> {
 pub(super) struct ReplayNames<'a> {
     pub book: &'a NameBook,
     pub entity_label: &'a dyn Fn(u32) -> Option<&'static str>,
+    /// The uploading process's id, if its header carried one.
+    pub client_pid: Option<u32>,
 }
 
 /// Replay one injected-DLL event through `tracing`, with no entity names
@@ -204,7 +206,19 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
     replay_client_native_named(claims, e, &cimmeria_names::book(), |_| None);
 }
 
-/// Replay one injected-DLL event through `tracing`.
+/// [`replay_client_native_stamped`] without a client pid.
+#[cfg(test)]
+pub(super) fn replay_client_native_named(
+    claims: &TokenClaims,
+    e: ClientNativeEvent,
+    book: &NameBook,
+    entity_label: impl Fn(u32) -> Option<&'static str>,
+) {
+    replay_client_native_stamped(claims, e, book, entity_label, None);
+}
+
+/// Replay one injected-DLL event through `tracing`, stamped with the
+/// uploading process's `client_pid` when the upload's header carried one.
 ///
 /// - **Target is static** (`client.native`), which is what routes it to
 ///   `cimmeria-client`. The DLL's own event name (`client.lua.pcall`)
@@ -227,11 +241,12 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
 /// - **Names are client-claimed** (`names_source = "client_claimed"`): the
 ///   IDs, the space and the time come from the uploaded row, so a name is
 ///   what the row claims, never a server observation.
-pub(super) fn replay_client_native_named(
+pub(super) fn replay_client_native_stamped(
     claims: &TokenClaims,
     e: ClientNativeEvent,
     book: &NameBook,
     entity_label: impl Fn(u32) -> Option<&'static str>,
+    client_pid: Option<u32>,
 ) {
     let l = LiftedFields::from_fields(&e.fields);
     let n = NativeNames::resolve(&e.target, &l, book, entity_label);
@@ -253,6 +268,7 @@ pub(super) fn replay_client_native_named(
                 lab,
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = client_pid,
                 client_target = name,
                 client_level = %e.level,
                 names_source = NAMES_SOURCE,
@@ -292,6 +308,7 @@ pub(super) fn replay_client_native_named(
                 lab,
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = client_pid,
                 client_target = name,
                 client_level = %e.level,
                 names_source = NAMES_SOURCE,

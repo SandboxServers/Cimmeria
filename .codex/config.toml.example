@@ -1,0 +1,56 @@
+# Codex MCP configuration for Cimmeria: the Live Research Lab servers.
+#
+# Copy this file to .codex/config.toml in your checkout (gitignored; Codex
+# reads a project's .codex/config.toml once you trust the project), or merge
+# the [mcp_servers.*] tables into ~/.codex/config.toml. Then start Codex from
+# a terminal opened after the setup below, because Codex reads both tokens
+# from its own environment.
+#
+# Setup (runbook: docs/guides/live-research-lab.md):
+#   pwsh tools/lab/lab.ps1 local-setup   # CIMMERIA_LAB_MCP_TOKEN, the server's lab bind, ...
+#   pwsh tools/lab/install.ps1           # build and install the lab binaries
+#   pwsh tools/lab/daemon.ps1 install    # the shared daemon; generates CIMMERIA_LAB_DAEMON_TOKEN
+#
+# Key names assumed from Codex's MCP configuration (url, bearer_token_env_var,
+# startup_timeout_sec, tool_timeout_sec). Codex does not expand ${VAR} in a
+# url, so edit the lab-server url if CIMMERIA_LAB_MCP_URL is not the default.
+# Older Codex releases needed `experimental_use_rmcp_client = true` at the top
+# level for streamable HTTP servers like these two.
+#
+# The Codex lab-driver agent (.codex/agents/lab-driver.toml) drives the client
+# through cimmeria-lab.
+
+# The lab supervisor: one shared daemon (cimmeria-lab --http, loopback only)
+# for every session. lab_uat_run rows can run for many minutes, so the tool
+# timeout matches Claude Code's entry (1800 s); a short one cuts rows off.
+[mcp_servers.cimmeria-lab]
+url = "http://127.0.0.1:8779/mcp"
+bearer_token_env_var = "CIMMERIA_LAB_DAEMON_TOKEN"
+startup_timeout_sec = 30
+tool_timeout_sec = 1800
+
+# The server's own lab endpoint: live entities, witnesses, packet tap, the
+# dot-console. Present only when cimmeria-server runs with
+# CIMMERIA_LAB_MCP_BIND and CIMMERIA_LAB_MCP_TOKEN set (local default
+# 127.0.0.1:8451; 8444 is the dev supervisor's port).
+[mcp_servers.lab-server]
+url = "http://127.0.0.1:8451/mcp"
+bearer_token_env_var = "CIMMERIA_LAB_MCP_TOKEN"
+startup_timeout_sec = 30
+tool_timeout_sec = 300
+
+# Optional reverse-engineering servers (pwsh setup.ps1 -WithReToolchain
+# installs them). Replace <CIMMERIA_ROOT> with your checkout's path.
+#
+# [mcp_servers.ghidra]
+# command = '<CIMMERIA_ROOT>\.venvs\ghidra-mcp\Scripts\python.exe'
+# args = ['<CIMMERIA_ROOT>\external\ghidra-mcp\bridge_mcp_ghidra.py']
+#
+# [mcp_servers.ghidra.env]
+# GHIDRA_MCP_URL = "http://127.0.0.1:8100/"
+#
+# [mcp_servers.x64dbg]
+# command = '<CIMMERIA_ROOT>\.venvs\x64dbg-mcp\Scripts\x64dbg-automate-mcp.exe'
+#
+# [mcp_servers.x64dbg.env]
+# X64DBG_PATH = '<CIMMERIA_ROOT>\dbg\release\x96dbg.exe'

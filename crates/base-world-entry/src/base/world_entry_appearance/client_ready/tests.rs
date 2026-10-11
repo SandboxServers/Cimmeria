@@ -98,6 +98,16 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
 /// for one `onClientReady` on a session whose character is (or is not)
 /// already listed online.
 async fn entry_cause_for(listed_online: bool) -> WorldEntryCause {
+    init_fields_for(listed_online, None).await.0
+}
+
+/// The `(entry_cause, session_kind)` an `onClientReady` puts on its
+/// `InitPlayerState`, for a session with the given listing flag and the
+/// `session_kind` Phase 3 resolved.
+async fn init_fields_for(
+    listed_online: bool,
+    session_kind: Option<&'static str>,
+) -> (WorldEntryCause, Option<&'static str>) {
     use crate::test_support::{test_default_connected_client_state, TestTransport};
 
     let addr: SocketAddr = "127.0.0.1:55601".parse().unwrap();
@@ -106,6 +116,7 @@ async fn entry_cause_for(listed_online: bool) -> WorldEntryCause {
     state.player_entity_id = Some(entity_id);
     state.player_name = Some("Tester".to_string());
     state.listed_online = listed_online;
+    state.session_kind = session_kind;
     state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
         entity_id,
         player_id: 42,
@@ -133,11 +144,29 @@ async fn entry_cause_for(listed_online: bool) -> WorldEntryCause {
         "world entry lists the character"
     );
     while let Ok(msg) = rx.try_recv() {
-        if let BaseToCellMsg::InitPlayerState { entry_cause, .. } = msg {
-            return entry_cause;
+        if let BaseToCellMsg::InitPlayerState {
+            entry_cause,
+            session_kind,
+            ..
+        } = msg
+        {
+            return (entry_cause, session_kind);
         }
     }
     panic!("no InitPlayerState sent");
+}
+
+/// TG-NET-17: the session kind the base resolved from the account flag
+/// rides `InitPlayerState` to the cell, which stamps it on `session.start`
+/// and the friction rows. Dropping it from the message fails this.
+#[tokio::test]
+async fn on_client_ready_carries_session_kind_to_the_cell() {
+    assert_eq!(init_fields_for(false, Some("lab")).await.1, Some("lab"));
+    assert_eq!(
+        init_fields_for(false, Some("player")).await.1,
+        Some("player")
+    );
+    assert_eq!(init_fields_for(false, None).await.1, None);
 }
 
 /// TG-NET-15: the first world entry of a character session is a login; a

@@ -7,6 +7,7 @@ companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
   - automated-uat.md
+  - lab-contributor-setup.md
   - ../commands.md
   - ../analysis/ability-mechanics/lab-uat-and-telemetry.md
   - ../../tools/lab/install.ps1
@@ -271,6 +272,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
 | `lab_characters` / `lab_create_character` / `lab_delete_character` / `lab_ensure_character_slot` | Character select: list, create, delete by name, keep free slots under the 8-character cap. |
 | `lab_play_character` / `lab_finish_dialog` / `lab_logout` | Enter the world (cutscene skipped), finish the open dialog with the green checkmark, `/logout` back to character select. |
+| `lab_disconnect` | From character select, click Back: the client sends the account `logOff` and shows the login screen. Already at the login screen is not an error. Leased. |
 | `client_ui_state` | One read: visible top-level windows, open dialog (title, text, buttons), prompts, mission tracker, chat tail. |
 | `client_wait_for` | Poll a Lua boolean expression until it holds or times out (`met: false` on timeout). |
 | `client_wait_event` | Wait for a client event matching a predicate (kind, name, entity id, text, fields; globs) or a window becoming visible, through a named persistent cursor. `arm: true` marks now. A timeout is `met: false`. See [Abilities, combat and event waits](#abilities-combat-and-event-waits). |
@@ -933,9 +935,12 @@ Quirks to keep in mind:
 
 ## Setup
 
-The lab is wired into `.mcp.json` alongside Ghidra and x64dbg — see
-[re-toolchain-setup.md](re-toolchain-setup.md) for the entries and the env
-vars, and [reverse-engineering-with-claude.md](reverse-engineering-with-claude.md)
+Setting the lab up for the first time on your own machine, with a local
+server, Claude Code or Codex, and none of the colo: follow
+[lab-contributor-setup.md](lab-contributor-setup.md), which also lists
+every secret and where it lives. The lab is wired into `.mcp.json`
+alongside Ghidra and x64dbg — see
+[re-toolchain-setup.md](re-toolchain-setup.md) for the entries, and [reverse-engineering-with-claude.md](reverse-engineering-with-claude.md)
 for where the lab sits in the RE workflow (the "ask the running game"
 path). Lab-account credentials live in
 `<install>/Binaries/sessions/lab-account.json`, gitignored. `lab_login`
@@ -1071,7 +1076,7 @@ first line of each.
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
-| `-Chaos <profile[:level][:knobs]>` on `lab uat` | passed to the runner unchanged (`lab_uat_run` `chaos`); profiles land in later lab-chaos packets; quote a multi-knob spec, as its commas would split it elsewhere | no new codes |
+| `-Chaos <profile[:level][:knobs]>` on `lab uat` | passed to the runner unchanged (`lab_uat_run` `chaos`); profiles land in later lab-chaos packets; quote a multi-knob spec, as its commas would split it elsewhere. Until lab-chaos CH-08 wires the runner, a real run refuses `-Chaos` so no run is recorded as chaos-graded; `-PlanOnly` accepts it | 2 (`-Chaos` without `-PlanOnly`, until CH-08) |
 | `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
 | `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
 | `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
@@ -1244,14 +1249,17 @@ acts on.
 
 ## The shared daemon (`cimmeria-lab --http`)
 
-By default every Claude session starts its own stdio `cimmeria-lab`, and
-each one runs its own heartbeat watchdog against the same `SGW.exe`. Three
+The daemon is the default and the supported setup. It is one `cimmeria-lab`
+for the whole machine, so there is one supervisor, one watchdog and one
+owner of the client, and every session reaches it over MCP streamable
+HTTP. The older setup, a stdio `cimmeria-lab` per session, gave each
+session its own heartbeat watchdog against the same `SGW.exe`. Three
 sessions meant three watchdogs: one relaunched a client another session
 had just closed, and a new build reached a session only when it
-reconnected. The daemon is one `cimmeria-lab` for the whole machine, so
-there is one supervisor, one watchdog and one owner of the client. Every
-session reaches it over MCP streamable HTTP. Stdio stays the default, so
-existing `.mcp.json` entries keep working until you switch.
+reconnected. A stdio entry still works, but only for a machine with one
+session; [cut over](#cut-over-from-stdio-supervisors-to-the-daemon) when
+you have one. A first-time setup on your own machine is
+[lab-contributor-setup.md](lab-contributor-setup.md).
 
 What the daemon refuses:
 
@@ -1288,7 +1296,7 @@ desktop), and restarts after a crash. Its files are in
 | File | What it is |
 |---|---|
 | `labd\cimmeria-lab.exe` | the daemon's own copy of the exe, so a rebuild or `tools/lab/install.ps1` is never blocked by the running daemon |
-| `labd.env` | the supervisor's environment, `KEY=VALUE` per line, imported once from the `env` block of the stdio `cimmeria-lab` entry in `.mcp.json` (`install -Force` re-imports) |
+| `labd.env` | the supervisor's environment, `KEY=VALUE` per line ([the keys](#labdenv-keys)); edit it with `lab env set`. `install` writes it from its own parameters (`-InstallDir`, `-LabServerUrl`, `-Telemetry`), then the `env` block of a stdio `cimmeria-lab` entry in `.mcp.json` when one exists, then your environment and the defaults (`install -Force` rewrites it). Placeholders such as `<SGW_INSTALL_DIR>` are skipped, and no token is ever written to it: a legacy stdio entry's literal token is skipped with a warning, so keep the token in your user environment. `-Force` keeps keys added with `lab env set` |
 | `labd.log` | the daemon log; rotates at 10 MiB, five old files kept (`labd.1.log` ...) |
 | `labd-task.log` | the task wrapper's start and exit lines |
 | `labd.pid` | pid and address of the running daemon |
@@ -1315,8 +1323,35 @@ row that takes longer than a minute fails with "The operation timed out."
 while the row is still running (#1243). Calls running past two minutes
 move to a background task in Claude Code; the limit still applies. Source: Claude Code's MCP documentation, <https://code.claude.com/docs/en/mcp>.
 
-`.mcp.json.example` carries this entry as `cimmeria-lab-http`. To switch,
-rename it to `cimmeria-lab` and delete the stdio `cimmeria-lab` entry.
+`.mcp.json.example` carries this entry as `cimmeria-lab`, and the older stdio
+entry under `_alternatives` as `cimmeria-lab-stdio`. Codex reaches the same daemon through
+`bearer_token_env_var = "CIMMERIA_LAB_DAEMON_TOKEN"` in its TOML config;
+[lab-contributor-setup.md § Register the MCP servers](lab-contributor-setup.md#8-register-the-mcp-servers)
+has both recipes.
+
+#### `labd.env` keys
+
+The daemon reads `labd.env` once, at start, so a change needs
+`lab restart`. Every key is optional unless the row says otherwise.
+
+| Key | What it does |
+|---|---|
+| `CIMMERIA_LAB_INSTALL_DIR` | **Required.** The client install: the folder holding `Binaries\SGW.exe` |
+| `CIMMERIA_LAB_START32` | The i686 `sgw-start32.exe` injector; default beside `cimmeria-lab.exe` |
+| `CIMMERIA_LAB_DLL` | The bridge DLL to inject; default `<install>\Binaries\cimmeria-client-telemetry.dll` |
+| `CIMMERIA_LAB_PATCHES_DLL` | The client patches DLL, injected as the launcher does; unset, bridge only |
+| `CIMMERIA_LAB_SERVER_URL` | The server to mint the telemetry token from; default the login URL of the client's row in `LoginInternal.lua` ([Trust, audit, and the colo](#trust-audit-and-the-colo)) |
+| `CIMMERIA_LAB_UPLOAD_ENDPOINT` | Overrides the telemetry upload endpoint the server returns |
+| `CIMMERIA_LAB_TELEMETRY` | `optional` launches without uploads when the mint fails; default `required` |
+| `CIMMERIA_LAB_MCP_URL` | The server's lab endpoint, for `lab_timeline` and the UAT runner's server and packet clauses; `install` defaults it to `http://127.0.0.1:8451/mcp`, a local server. Its token, `CIMMERIA_LAB_MCP_TOKEN`, comes from your user environment, not from this file |
+| `CIMMERIA_LAB_UAT_SPECS` | The spec folder `lab_uat_run`, `lab_uat_calibrate` and `lab_golden_*` default to. The daemon runs from `%LOCALAPPDATA%\cimmeria-lab`, so it can't find a checkout's specs without this |
+| `CIMMERIA_LAB_UAT_DIR` | Where run evidence goes; default `%LOCALAPPDATA%\cimmeria-lab\uat-runs\` |
+| `CIMMERIA_LAB_OPERATOR` | The operator name a UAT or calibrate run's manifest records; default `lab agent` |
+| `CIMMERIA_LAB_INSTANCES`, `CIMMERIA_LAB_BRIDGE_PORT` | The hosted instances and the base bridge port ([Parallel clients](#parallel-clients-up-to-five)) |
+| `CIMMERIA_LAB_OTLP_ENDPOINT`, `CIMMERIA_LAB_OTLP_PROTOCOL` | Ship `labd.log` to an OTLP collector as `service.name = cimmeria-lab`, redacted; `http/protobuf` for an HTTP collector. Unset, nothing is exported. Not the standard `OTEL_*` variables, on purpose ([ADR](../architecture/live-research-lab.md)) |
+
+The daemon's own token, `CIMMERIA_LAB_DAEMON_TOKEN`, is a user environment
+variable, never a `labd.env` key.
 
 **A new build.** `restart` copies
 `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` (what
@@ -1432,16 +1467,17 @@ supervisor. Nothing here touches the server or the game install.
    `.mcp.json`, registers `CimmeriaLabDaemon` and starts it. Check
    `labd.env`: it is the daemon's whole environment
    (`CIMMERIA_LAB_INSTALL_DIR`, `CIMMERIA_LAB_START32`,
-   `CIMMERIA_LAB_PATCHES_DLL`, `CIMMERIA_LAB_SERVER_URL`,
-   `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN`), and paths into a
+   `CIMMERIA_LAB_PATCHES_DLL`, `CIMMERIA_LAB_SERVER_URL` and
+   `CIMMERIA_LAB_MCP_URL`; `CIMMERIA_LAB_MCP_TOKEN` stays in your user
+   environment), and paths into a
    target dir should point at `bin\` instead. Edit it, then
    `daemon.ps1 restart`.
 4. **Check it runs.** `pwsh tools/lab/daemon.ps1 status`: task `Running`,
    a live pid, the port listening, the token set, and a
    `lab daemon listening` line in the log tail.
 5. **Switch `.mcp.json`.** Replace the stdio `cimmeria-lab` entry with the
-   http one (`.mcp.json.example` has it as `cimmeria-lab-http`; rename it
-   to `cimmeria-lab` so tool names stay `mcp__cimmeria-lab__*`):
+   http one (`.mcp.json.example`'s `cimmeria-lab` entry; keep that name so tool
+   names stay `mcp__cimmeria-lab__*`):
 
    ```json
    "cimmeria-lab": {

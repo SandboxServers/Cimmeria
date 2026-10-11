@@ -21,7 +21,7 @@ param(
     [int]$Runners = 3,
     [int]$Jobs = 10,
     [string]$Repo = 'SandboxServers/Cimmeria',
-    # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty keeps
+    # host:port of the exit proxy for the unreachable Azure Storage ranges (README, "Colo egress"). Empty keeps
     # the value node3 already has.
     [string]$EgressExit = $env:CIMMERIA_EGRESS_EXIT,
     # ssh alias of the Linux node whose compose `cache` (Redis) is the shared sccache

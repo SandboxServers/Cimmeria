@@ -215,6 +215,12 @@ pub enum BaseToCellMsg {
         /// entry of the session (TG-NET-15). Stamped on `session.start` as
         /// `start_cause`.
         entry_cause: super::WorldEntryCause,
+        /// `"lab"` or `"player"`, from the account's `test_account` flag
+        /// (TG-NET-16, D-TG13: the server's flag alone, never a client
+        /// byte); `None` when Phase 3 did not resolve it. Log-only: stamped
+        /// as `cimmeria.session_kind` on `session.start` and the
+        /// `playtest.friction` rows (TG-NET-17).
+        session_kind: Option<&'static str>,
     },
 
     /// The saved missions could not be read at world entry (TG-DB-12,

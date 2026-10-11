@@ -264,7 +264,10 @@ that nothing enforced.
    `call_tool` handler before dispatch; a guarded call renews the lease.
    Read-only tools stay open. A tool not classified is guarded.
    `lab_uat_run` takes the caller's lease or one of its own for the run,
-   and touches it before every in-process step.
+   and touches it before every in-process step. It ends every run with
+   `lab_logout` and `lab_disconnect`, checked against the server's
+   session-end lines, as row `_session_end` (TG-PIPE-08), unless the lease
+   was lost first.
 3. **The watchdog relaunches only while leased.** With no lease held, a
    dead client stays down (`watchdog_idle_no_lease`): nobody is driving it,
    and a relaunch would fight whoever stopped it.

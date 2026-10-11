@@ -27,6 +27,7 @@ pub mod base;
 pub mod cell;
 pub mod database;
 pub mod database_check;
+mod db_pool_monitor;
 #[cfg(test)]
 mod fake_postgres;
 pub mod orchestrator;

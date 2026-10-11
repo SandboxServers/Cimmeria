@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::names;
 use sqlx::PgPool;
@@ -17,8 +18,11 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 
+use super::super::session_identity;
 use super::super::world_entry::{handle_cancel_movie, handle_map_loaded};
 use super::super::ConnectedClientState;
+use super::bundle_drop::{self, DropReason, DroppedMsg};
+use super::cell_send::send_to_cell;
 
 /// Dispatch a cell-method message in the `0x80..=0xBF` range. Returns
 /// [`ControlFlow::Break`] to signal the encrypted dispatcher to `continue`
@@ -29,6 +33,8 @@ use super::super::ConnectedClientState;
 pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],
+    // The session's clientIndex, for the drop rows' `entity_type`.
+    class_id: u8,
     packet_seq: Option<u32>,
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
@@ -68,34 +74,45 @@ pub(super) async fn dispatch_cell_method(
     // The character name rides the lock this read already takes (interned,
     // so a hash hit): the lines below must not lock `connected` again just
     // to name the player (Rule 6, hot-path rule).
-    let (player_eid, player_label) = {
+    let (player_eid, player_label, who) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).map_or((None, None), |c| {
-            (
-                c.player_entity_id,
-                cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
-            )
-        })
+        clients
+            .get(&addr)
+            .map_or((None, None, PlayerIdentity::UNKNOWN), |c| {
+                (
+                    c.player_entity_id,
+                    cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
+                    session_identity::session_identity(c),
+                )
+            })
     };
-    let Some(player_eid) = player_eid else {
-        tracing::trace!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            "Cell method before world entry -- ignored"
+    // Every drop below names the message the same way. The identity was
+    // resolved above, so the throttled row takes no second lock.
+    let log_dropped = |reason: DropReason| {
+        bundle_drop::log_drop(
+            reason,
+            addr,
+            DroppedMsg {
+                msg_id: id,
+                class_id,
+                payload,
+                method_index: cell_method_index(id, payload),
+                offset: None,
+                body_len: None,
+            },
+            || who,
         );
+    };
+
+    let Some(player_eid) = player_eid else {
+        log_dropped(DropReason::BeforeWorldEntry);
         return ControlFlow::Continue(());
     };
 
     if map_loaded_pending && id != 0x99 {
-        tracing::trace!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            "Ignoring cell method until mapLoaded arrives"
-        );
+        // Only this message is dropped: the walk goes on to the next one in
+        // the bundle (the caller's `continue`).
+        log_dropped(DropReason::MapLoadedPending);
         return ControlFlow::Break(());
     }
 
@@ -103,14 +120,7 @@ pub(super) async fn dispatch_cell_method(
     if payload.len() < 4 {
         // `method_name` is absent for the 0xBD sub-slot, whose index is in
         // the bytes this payload is too short for.
-        tracing::warn!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            payload_len = payload.len(),
-            "Cell method payload too short for entityId prefix"
-        );
+        log_dropped(DropReason::MalformedArgs);
         return ControlFlow::Break(());
     }
     let entity_id_from_client =
@@ -156,29 +166,57 @@ pub(super) async fn dispatch_cell_method(
             }
 
             if let Some(ref tx) = cell_tx {
-                let _ = tx
-                    .send(BaseToCellMsg::CellMethodCall {
+                send_to_cell(
+                    tx,
+                    BaseToCellMsg::CellMethodCall {
                         entity_id: player_eid,
                         method_index,
                         args,
                         packet_seq,
-                    })
-                    .await;
+                    },
+                    "cell_method_call",
+                    addr,
+                    who,
+                    Some(method_index),
+                )
+                .await;
             }
+        } else {
+            // The entityId prefix with no sub-index byte after it: the
+            // method cannot be named or forwarded.
+            log_dropped(DropReason::SubslotMissingIndex);
         }
     } else {
         let method_index = (id - 0x80) as u16;
         if let Some(ref tx) = cell_tx {
-            let _ = tx
-                .send(BaseToCellMsg::CellMethodCall {
+            send_to_cell(
+                tx,
+                BaseToCellMsg::CellMethodCall {
                     entity_id: player_eid,
                     method_index,
                     args: method_payload.to_vec(),
                     packet_seq,
-                })
-                .await;
+                },
+                "cell_method_call",
+                addr,
+                who,
+                Some(method_index),
+            )
+            .await;
         }
     }
 
     ControlFlow::Continue(())
+}
+
+/// The SGWPlayer cell method index a `0x80..=0xBF` message addresses:
+/// `id - 0x80` for the direct encoding, `61 + sub_index` for `0xBD` (the
+/// sub-index is the byte after the 4-byte entityId). `None` when a `0xBD`
+/// payload is too short to hold it.
+fn cell_method_index(id: u8, payload: &[u8]) -> Option<u16> {
+    if id == 0xBD {
+        payload.get(4).map(|&sub| u16::from(sub) + 61)
+    } else {
+        Some(u16::from(id - 0x80))
+    }
 }

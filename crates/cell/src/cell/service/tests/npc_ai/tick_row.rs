@@ -3,7 +3,8 @@
 //! and what it is fighting or following -- plus the handler's terminal outcome,
 //! including `fight.rs` outcomes that used to bypass the shared vocabulary.
 
-use super::make_ai_fixture;
+use super::{make_aggression_fixture, make_ai_fixture};
+use crate::cell::combat::HOSTILE_FACTION;
 use crate::test_support::LogCapture;
 use cimmeria_common::Vector3;
 use cimmeria_entity::stats::HEALTH;
@@ -49,6 +50,7 @@ async fn ai_tick_row_reports_state_target_facing_and_a_fight_outcome() {
         "got {:?}",
         row.fields.get("yaw_byte")
     );
+    assert!(row.has_field("world", "Castle"), "{row:?}");
     let outcome = row
         .fields
         .get("decision_outcome")
@@ -207,5 +209,38 @@ async fn unwitnessed_patrollers_sample_their_tick_row() {
         rows.len(),
         5,
         "a witnessed patroller writes every tick: {rows:?}"
+    );
+}
+
+/// TG-NPC-11: the tick on which a hostile Idle guard engages a player names
+/// the world, and its outcome is `aggro_acquired` (it used to read `""`).
+/// Reverting either change fails this test.
+#[tokio::test]
+async fn engaging_tick_row_names_the_world_and_the_aggro_outcome() {
+    const NPC: u32 = 200_001;
+    let mut mgr = make_aggression_fixture(NPC, HOSTILE_FACTION, 1, [5.0, 0.0, 0.0]);
+
+    let logs = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(8);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new()),
+    )
+    .await;
+
+    let row = logs
+        .all()
+        .into_iter()
+        .find(|c| {
+            c.target == "npc_ai.tick"
+                && c.message_contains("NPC AI tick")
+                && c.has_field("npc_id", "200001")
+        })
+        .expect("the engaging tick must write a tick row");
+    assert!(row.has_field("world", "Castle"), "{row:?}");
+    assert!(
+        row.has_field("decision_outcome", "aggro_acquired"),
+        "{row:?}"
     );
 }

@@ -21,7 +21,7 @@
 param(
     [string[]]$Nodes = @('node5', 'node2', 'node1'),
     [string]$Repo = 'SandboxServers/Cimmeria',
-    # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty
+    # host:port of the exit proxy for the unreachable Azure Storage ranges (README, "Colo egress"). Empty
     # keeps the value already in the node's .env.
     [string]$EgressExit = $env:CIMMERIA_EGRESS_EXIT,
     # The node whose compose `cache` serves every node's runners (a UniFi policy

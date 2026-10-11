@@ -199,6 +199,19 @@ pub async fn handle_map_loaded(
         .map(|p| p.len())
         .sum();
     let pkt_count = enter_packets.len() + map_packets.len();
+    // TG-NET-18 (D-TG14): whether this session's launcher minted a client
+    // telemetry stream. The launcher mints before the game logs in, so the
+    // join is its hashed machine id plus this session's address (an account
+    // the mint signed in wins when there is one). `present`, `ambiguous`
+    // (several machines behind one NAT), `absent`, or `unknown` (no launcher
+    // has minted since boot). The stream's `session_id` is the one on every
+    // replayed client row. Anyone can mint a token under any machine id or
+    // account name, so `present` and `client_telemetry_session_id` are a
+    // launcher's claim, not proof.
+    let client_telemetry = cimmeria_auth::auth::client_telemetry::client_telemetry_now(
+        who.account_name,
+        Some(addr.ip()),
+    );
     tracing::info!(
         %addr,
         account_id = who.account_id,
@@ -209,6 +222,10 @@ pub async fn handle_map_loaded(
         level = player_data.level,
         archetype = player_data.archetype,
         archetype_name = cimmeria_names::archetype_name(player_data.archetype),
+        client_telemetry = client_telemetry.as_str(),
+        client_telemetry_session_id = client_telemetry.session_id(), // nt:id-only telemetry session UUID; it names nothing
+        client_machine_id = client_telemetry.machine_id(), // nt:id-only hashed MachineGuid; it names nothing
+        client_telemetry_candidates = client_telemetry.candidates(),
         packets = pkt_count,
         "World entry complete ({} bytes across {} packets)",
         total_bytes,

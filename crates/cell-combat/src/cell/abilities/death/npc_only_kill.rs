@@ -13,7 +13,7 @@ use super::super::super::space_manager::SpaceManager;
 ///
 /// Credit is the killing blow's, as it has always been: a player who wounded
 /// a guard that a friendly NPC then finished gets no kill credit.
-pub(super) fn npc_only_kill(space_mgr: &SpaceManager, attacker_id: u32) -> bool {
+pub(crate) fn npc_only_kill(space_mgr: &SpaceManager, attacker_id: u32) -> bool {
     space_mgr.get_entity(attacker_id).is_some_and(|a| {
         !a.is_player
             && !a
