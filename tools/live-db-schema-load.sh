@@ -23,6 +23,18 @@ case "${1:-}" in
   start)
     : "${DATABASE_URL:?DATABASE_URL must name the template database}"
     rm -f "$LOG" "$RC"
+    # CI's Postgres is a throwaway service container, so drop durability: the seed is
+    # thousands of autocommit statements, and with a disk flush per commit the load
+    # took 157 s on GitHub-hosted runners and over 5 min on the self-hosted ones
+    # (whose disk the parallel builds share); without it, 7 s. Only under GitHub
+    # Actions, so a developer's database keeps its settings.
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      psql "$DATABASE_URL" -qAt -c "ALTER SYSTEM SET fsync = off" \
+        -c "ALTER SYSTEM SET synchronous_commit = off" \
+        -c "ALTER SYSTEM SET full_page_writes = off" \
+        -c "SELECT pg_reload_conf()" > /dev/null \
+        || echo "live-db-schema-load: could not turn off fsync; loading with it on" >&2
+    fi
     date +%s > "$STARTED"
     # setsid puts the load in its own session, out of the step's process group; Git
     # Bash has no setsid, so a local simulation runs it under nohup alone.

@@ -6,8 +6,10 @@
 #     (tools/ci-runners/status.ps1 summarizes it);
 #   - the job's target/ (the bulk: tens of GB) goes now, not at the next checkout;
 #   - RUNNER_TEMP and the runner's own /tmp files go;
-#   - the dind daemon drops stopped containers, unused networks and volumes, and
-#     images nobody used for a week (postgres:17.9 stays warm).
+#   - the dind daemon drops stopped containers, unused networks and volumes and dangling
+#     images; tagged images stay (postgres:17.9 stays warm). Unused tagged images go
+#     only when the daemon's store passes 20 GB. (`image prune --filter until=` goes by
+#     when an image was built, not last used, so it would delete postgres every job.)
 # sccache trims itself to SCCACHE_CACHE_SIZE; the cargo registry is small.
 set -u
 ws="${GITHUB_WORKSPACE:-}"
@@ -56,5 +58,9 @@ sudo find /tmp -mindepth 1 -maxdepth 1 -mmin +1 -exec rm -rf {} + 2> /dev/null
 docker container prune -f > /dev/null 2>&1
 docker network prune -f > /dev/null 2>&1
 docker volume prune -af > /dev/null 2>&1
-docker image prune -af --filter until=168h > /dev/null 2>&1
+docker image prune -f > /dev/null 2>&1
+images_bytes=$(docker system df --format '{{.Type}} {{.Size}}' 2> /dev/null | awk '$1=="Images"{print $2}' | numfmt --from=si --suffix=B 2> /dev/null | sed 's/B$//' || echo 0)
+if [ "${images_bytes:-0}" -gt 21474836480 ] 2> /dev/null; then
+    docker image prune -af > /dev/null 2>&1
+fi
 exit 0
