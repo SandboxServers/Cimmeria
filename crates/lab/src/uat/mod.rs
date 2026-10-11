@@ -13,6 +13,7 @@
 //!   names must be one of them.
 //! - [`clause`] / [`grade`] — pure evaluation and grading rules.
 //! - [`evidence`] — the bundle layout; [`ledger`] — the paste-ready text.
+//! - [`progress`] — the running row, for `GET /status`.
 //! - [`golden`] — run fingerprints, golden agreement and diffs.
 //! - [`attest`] — SigNoz rows, human answers and the build, after the run.
 //! - [`calibrate`] — calibration candidates, hover scoring and pose-line spec
@@ -31,6 +32,7 @@ pub mod grade;
 pub mod invoke;
 pub mod lab_commands;
 pub mod ledger;
+pub mod progress;
 pub mod runner;
 pub mod seed_tags;
 pub mod snapshot;

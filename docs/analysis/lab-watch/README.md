@@ -7,10 +7,11 @@
 > [lab-cli](../lab-cli/README.md) (`lab status`, `GET /status`) and
 > [lab-parallel-clients](../lab-parallel-clients/README.md) (lanes).
 >
-> **Campaign status (2026-10-11): waves 1 and 2 in progress.** LW-02 merged
-> (#1395, by the lab-golden coordinator). D-LW1 to D-LW6 decided; LW-01 and
-> LW-03 being written in parallel. The live acceptance (LW-05) waits on the
-> user (D-LW7), deferred until LW-01 to LW-04 merge.
+> **Campaign status (2026-10-11): code complete.** LW-01 (#1511), LW-02
+> (#1395), LW-03 (#1520) and LW-04 are integrated. Only the live acceptance
+> (LW-05, waiting on the user's OK and a free lab, D-LW7) and the close-out
+> (LW-06) remain. Resume note: run LW-05 as its section in
+> [work-packets.md](work-packets.md) says, from a `main` that has all four.
 
 ## Purpose
 
@@ -72,10 +73,10 @@ Against `main` @ `6996c9403`, plus one real batch on this workstation
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Writing |
+| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Integrated |
 | LW-02 | `lab uat`: `plan.json`, record times, shared progress line and known issues, two moves into libraries | packet-coder | S | 1 | D-LW4, D-LW5 | Integrated (#1395, run by the [lab-golden](../lab-golden/README.md) coordinator) |
-| LW-03 | `watch-lib.ps1`: snapshot model, text and JSON, recorded fixtures, `test-watch.ps1` | packet-coder | M | 2 | LW-02 (and LW-01's contract, not its code) | Writing |
-| LW-04 | `lab watch` command, live redraw, docs | packet-coder | S | 3 | LW-03 | BlockedDependency |
+| LW-03 | `watch-lib.ps1`: snapshot model, text and JSON, recorded fixtures, `test-watch.ps1` | packet-coder | M | 2 | LW-02 (and LW-01's contract, not its code) | Integrated |
+| LW-04 | `lab watch` command, live redraw, docs | packet-coder | S | 3 | LW-03 | Integrated |
 | LW-05 | Live acceptance: a `-Leases 2 -RunsPerLease 3` batch watched | coordinator | S | 4 | LW-01 to LW-04 merged, D-LW7 | BlockedDecision |
 | LW-06 | Close-out: ledger, UAT guide, memory, board | documentation-writer | S | 5 | LW-05 | BlockedDependency |
 
@@ -136,5 +137,47 @@ Waves (packets in one wave touch disjoint files):
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
-the code is then the reference, not the spec.
+- **LW-01** (the coordinator finished it after the Haiku worker hit its
+  context cap). The row filter is re-derived in `progress.rs`'s
+  `rows_to_run` rather than shared with `run_all`; a review-fix test,
+  `rows_total_counts_only_the_filtered_rows`, pins it. Noted, not fixed:
+  two `lab_uat_run` calls sharing one caller `lease_id` can run on one
+  instance at once, and the first to end clears the other's progress.
+- **LW-03** (re-run on `rust-gameserver-dev` after the Haiku worker hit its
+  context cap before writing anything). Where it differs from the spec:
+  - Index 0 lane-death records are not runs: they leave `runs`, `passed`,
+    `failed` and the lane count alone, but brake the lane and can be the
+    last failure (`p2#0`).
+  - Without a plan, RUN is the bare count and LAST's total reads `?`.
+  - A relaunch line with no `instance=` span counts for `default`.
+  - The text gains a `no batch` header, a `daemon down: showing the batch
+    files only` footer, and orphans beyond 3 as `+N`.
+  - Review fixes by the coordinator: LAST moved to its own indented line
+    under each instance (the contract's single row cannot fit 120
+    columns; the contract text is updated); the default `$IsAlive`
+    requires the pid to be a `pwsh`, so a recycled pid doesn't read
+    `live`; `-Now` is mandatory; tests added for lane deaths, a relaunch
+    line without an instance, SHOT from `/status` `uat.run_dir`, and the
+    `?` total.
+
+- **LW-04** (`rust-gameserver-dev`). Beyond the spec:
+  - Ctrl+C is read as a key (`TreatControlCAsInput`) so the view ends through
+    its `finally` and exits 0.
+  - The newest batch is looked up again every tick.
+  - A missing `-StatusFile` is usage (exit 2), and one without the daemon's
+    shape reads as the daemon down.
+  - Exit 1 under `-Json` prints the snapshot (`ok: true`), not an error
+    object.
+  - Review fixes by the coordinator:
+    - the terminal setup moved inside the `try`, and Ctrl+C mode is
+      restored before the escape write;
+    - error lines split on CRLF;
+    - a frame taller than the window is cut, with a count of what it hid;
+    - a one-snapshot read failure exits 3 with the error shape, which the
+      contract gained.
+  - Documented limits: with stdin redirected, Ctrl+C is not exit 0; Ctrl+Break
+    or closing the window skips the restore. The live loop itself is checked
+    only in LW-05.
+
+Where merged code differs from the packet specs, it is recorded here; the
+code is then the reference, not the spec.

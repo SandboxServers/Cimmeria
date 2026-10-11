@@ -139,6 +139,8 @@ In-process, started from `crates/server/src/main.rs` beside the admin API but on
 
 **Audit.** Every tool call emits one `info` event on target `lab.tool_call` with tool name, arguments, caller address, and outcome. That reaches SigNoz through the existing exporter, which is the whole audit trail per the owner's decision.
 
+**Labd call row.** The lab daemon (`cimmeria-lab`) writes one `info` row per `tools/call` on target `lab.call`: `tool`, `instance`, `lease_owner` (the lease holder when one is held, else absent), `outcome` (`ok`, `error`, or `refused` when the lease gate turned the call away), `duration_ms`, and `error` (capped at 200 characters, absent on success). Arguments are never logged, because they can carry Lua or chat text.
+
 **Getting at live state.** `SpaceManager` is owned by the cell loop task and `cell_tx` is fire-and-forget. The one existing precedent for a reply is `CreateEntity { reply_tx }`. The lab adds request/reply variants in the same style:
 
 - `BaseToCellMsg::LabQuery { query, reply_tx }` — read-only snapshots, answered between ticks.
@@ -301,7 +303,10 @@ that nothing enforced.
   MCP service and don't cover `/status`; a DNS-rebinding page can't supply
   the bearer token, so the token is the guard there. A plain GET replaced
   the alternative, an MCP streamable-HTTP client written in PowerShell
-  (initialize, session id, SSE parsing).
+  (initialize, session id, SSE parsing). Each instance row also carries
+  `uat`: its running `lab_uat_run` (run id, run directory, rows done and
+  total, the current row and when it started), or `null`, for `lab watch`
+  (D-LW1 of the [lab watch ledger](../analysis/lab-watch/README.md)).
 
 Implementation: `crates/lab/src/daemon/` (transport, auth, single
 instance, log rotation, `status.rs`), `crates/lab/src/lease/` (book, policy, run lease),

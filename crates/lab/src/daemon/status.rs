@@ -1,6 +1,7 @@
 //! `GET /status`: a read-only JSON summary of the daemon and every hosted
 //! lab instance, for the `lab` CLI (docs/analysis/lab-cli/). Behind the
-//! same bearer gate as `/mcp`; never carries a lease id.
+//! same bearer gate as `/mcp`; never carries a lease id. Each instance row
+//! also carries `uat`, its running `lab_uat_run` (or `null`), for `lab watch`.
 
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ pub fn instance_row(
     bridge_port: u16,
     client_pid: Option<u32>,
     lease: Value,
+    uat: Value,
 ) -> Value {
     json!({
         "instance": label,
@@ -31,6 +33,7 @@ pub fn instance_row(
         "bridge_port": bridge_port,
         "client_pid": client_pid,
         "lease": lease,
+        "uat": uat,
     })
 }
 
@@ -59,6 +62,7 @@ pub async fn handler(
             h.supervisor.port(),
             h.supervisor.client_pid().await,
             h.supervisor.leases().status(),
+            h.supervisor.uat_progress().to_json(),
         ));
     }
     axum::Json(body(&started, crate::supervisor::now_ms(), rows))
@@ -71,16 +75,39 @@ mod tests {
     #[test]
     fn instance_row_has_the_contract_shape() {
         let lease = json!({ "held": false });
-        let row = instance_row("p2", Some("lab2".into()), 8771, None, lease.clone());
+        let row = instance_row(
+            "p2",
+            Some("lab2".into()),
+            8771,
+            None,
+            lease.clone(),
+            Value::Null,
+        );
         assert_eq!(row["instance"], "p2");
         assert_eq!(row["account"], "lab2");
         assert_eq!(row["bridge_port"], 8771);
         assert!(row["client_pid"].is_null());
         assert_eq!(row["lease"], lease);
+        assert!(row["uat"].is_null());
 
-        let row = instance_row("default", None, 8770, Some(49448), lease);
+        let row = instance_row("default", None, 8770, Some(49448), lease, Value::Null);
         assert!(row["account"].is_null());
         assert_eq!(row["client_pid"], 49448);
+    }
+
+    #[test]
+    fn instance_row_carries_the_uat_progress() {
+        let uat = json!({ "current_row": "FS-P3" });
+        let row = instance_row(
+            "p2",
+            None,
+            8771,
+            None,
+            json!({ "held": false }),
+            uat.clone(),
+        );
+        assert_eq!(row["uat"], uat);
+        assert_eq!(row["uat"]["current_row"], "FS-P3");
     }
 
     #[test]
