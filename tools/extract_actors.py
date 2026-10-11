@@ -10,6 +10,11 @@ Extracts actor placement data from SGW .umap tiles and outputs:
 Usage:
   python extract_actors.py <zone_dir> [--format sql|json|csv|summary] [--filter class1,class2,...]
   python extract_actors.py --all-zones <maps_dir> [--format summary]
+
+Rust counterpart: `pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin extract_actors --
+<file.umap|zone_dir> [--json] [--summary]`. Kept because the
+Rust binary has only summary and JSON output: it has no SQL or CSV output, no
+--filter by class, and no --all-zones survey.
 """
 
 import sys
