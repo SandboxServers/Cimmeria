@@ -21,7 +21,7 @@ use crate::packet::Packet;
 use crate::unpacker::FragmentAssembler;
 
 use super::rto::{Rto, RtoConfig};
-use super::state::{AbandonedPacket, ChannelState, RxEntry, TxEntry, TxHole};
+use super::state::{AbandonedPacket, ChannelState, LogIdentity, RxEntry, TxEntry, TxHole};
 
 /// True if `a` is sequence-before-or-equal `b` in Mercury's 28-bit modular
 /// sequence space (`SEQUENCE_MASK = 0x0FFF_FFFF`).
@@ -147,6 +147,10 @@ pub struct Channel {
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
 
+    /// Who the peer is, for this channel's log rows. Empty until the
+    /// service syncs it; see [`Self::set_log_identity`].
+    pub(super) log_identity: LogIdentity,
+
     /// Wall-clock of the last outbound packet (send-side activity).
     /// Updated whenever we put bytes on the wire — `send_packet`,
     /// `check_timeouts` (when it returns retransmits the caller will
@@ -269,6 +273,7 @@ impl Channel {
             retransmits_total: 0,
             abandoned: Vec::new(),
             remote_addr,
+            log_identity: LogIdentity::default(),
             last_sent: now,
             last_received: now,
             fragment_assembler: FragmentAssembler::new(),
@@ -290,6 +295,19 @@ impl Channel {
     /// samples).
     pub(super) fn rto_mut(&mut self) -> &mut Rto {
         &mut self.rto
+    }
+
+    /// Record who the peer is, for the channel's own log rows. The service
+    /// calls this from its per-session tick (the identity changes at login
+    /// and at character select), so a row never names a stale player for
+    /// longer than one tick.
+    pub fn set_log_identity(&mut self, identity: LogIdentity) {
+        self.log_identity = identity;
+    }
+
+    /// The identity the channel's rows carry; see [`Self::set_log_identity`].
+    pub fn log_identity(&self) -> LogIdentity {
+        self.log_identity
     }
 
     /// Register a packet that the caller has already assigned a sequence
@@ -463,6 +481,10 @@ impl Channel {
             tracing::warn!(
                 target: "mercury.backpressure",
                 peer = %self.remote_addr,
+                account_id = self.log_identity.account_id,
+                account_name = self.log_identity.account_name,
+                player_id = self.log_identity.player_id,
+                player_name = self.log_identity.player_name,
                 unacked,
                 window_size = consts::TX_WINDOW_SIZE,
                 fill_pct = pct,

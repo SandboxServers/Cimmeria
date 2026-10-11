@@ -222,6 +222,9 @@ pub fn collect_pending_retransmits(
     let Ok(mut channel) = state.channel.lock() else {
         return Vec::new();
     };
+    // The channel's rows name the session (TG-MER-03); resynced each tick
+    // because login and character select change it.
+    channel.set_log_identity(crate::base::session_identity::channel_log_identity(state));
     // Receive-stall watchdog, on the same 100 ms tick as the retransmit
     // scan: a client reliable packet the client never resent is blocking
     // everything it sent after it (NA38). The WARN is logged inside.
