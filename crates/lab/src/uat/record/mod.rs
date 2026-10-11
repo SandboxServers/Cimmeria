@@ -1,8 +1,10 @@
 //! Lab record: a recording is the raw log of one person playing a section,
 //! written tick by tick from the client probes and the server packet tap.
-//! The log records what was seen and inferred nothing; the draft-spec
-//! transform (LR-05) is the only step that turns it into a spec, and it
-//! writes drafts for review. Ledger output is in [`super::ledger`].
+//! The draft-spec transform (LR-05) turns a log into a draft spec through a
+//! fixed table and infers nothing: a fact outside the table becomes a
+//! `# TODO` line. A draft is unconfirmed until `lab golden record` agrees on
+//! it five times. Campaign ledger and decisions:
+//! `docs/analysis/lab-record/README.md`.
 
 // cimmeria-lab is a binary crate, so these items are dead until LR-07 wires
 // the record tools in.

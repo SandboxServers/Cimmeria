@@ -15,8 +15,11 @@ pub const TICK_MS: i64 = 500;
 // the later packets build against.
 #[allow(clippy::large_enum_variant)]
 pub enum RecordLine {
+    /// The first line.
     Start(RecordStart),
+    /// One sample per [`TICK_MS`].
     Tick(Tick),
+    /// The last line; absent when the recording crashed.
     Stop(RecordStop),
 }
 
@@ -186,17 +189,34 @@ impl RecordLog {
 
 /// Parse a whole log. Errors name the 1-based line. The first line must be
 /// `start` with `schema == RECORD_SCHEMA`; a missing `stop` is allowed (a
-/// crashed recording) and reported by `has_stop`.
+/// crashed recording) and reported by `has_stop`. A crash can also leave
+/// the last line half-written: an unparsable last line with no `stop` before
+/// it is dropped, so the ticks before it still read. Blank lines and CRLF
+/// endings are tolerated; a second `start` or any line after `stop` is an
+/// error.
 pub fn read_log(text: &str) -> Result<RecordLog, String> {
     let mut start: Option<RecordStart> = None;
     let mut ticks = Vec::new();
     let mut stop = None;
-    for (i, raw) in text.lines().enumerate() {
-        if raw.trim().is_empty() {
-            continue;
-        }
+    let lines: Vec<(usize, &str)> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, raw)| !raw.trim().is_empty())
+        .collect();
+    let last = lines.len().saturating_sub(1);
+    for (k, &(i, raw)) in lines.iter().enumerate() {
         let n = i + 1;
-        let line: RecordLine = serde_json::from_str(raw).map_err(|e| format!("line {n}: {e}"))?;
+        let line: RecordLine = match serde_json::from_str(raw) {
+            Ok(line) => line,
+            Err(_) if k == last && k > 0 && stop.is_none() && start.is_some() => break,
+            // serde_json counts lines within the one line it saw, so its own
+            // "at line 1 column c" suffix is replaced by the log's line.
+            Err(e) => {
+                let msg = e.to_string();
+                let msg = msg.split(" at line ").next().unwrap_or(&msg);
+                return Err(format!("line {n}, column {}: {msg}", e.column()));
+            }
+        };
         if stop.is_some() {
             return Err(format!("line {n}: a line after stop"));
         }
@@ -309,5 +329,89 @@ mod tests {
         assert!(log.stop.is_none());
         assert!(!log.has_stop());
         assert_eq!(log.ticks.len(), 42);
+    }
+
+    /// LR-02 and LR-04 rely on where the fixture puts things: the close
+    /// (`dialogButtonChoice(3995, -1)`, record 33) in tick 36, the dialog open
+    /// in ticks 32 to 35, and the snapshot switching from the old mission
+    /// state to the new one at tick 33 (tick 32 still holds the old state).
+    #[test]
+    fn fs_p3_fixture_places_the_close_dialog_and_snapshots() {
+        let log = read_log(FIXTURE).unwrap();
+        let close: Vec<u32> = log
+            .ticks
+            .iter()
+            .filter(|t| t.tap.iter().any(|r| r["msg_name"] == "dialogButtonChoice"))
+            .map(|t| t.seq)
+            .collect();
+        assert_eq!(close, vec![36]);
+        let dialog: Vec<u32> = log
+            .ticks
+            .iter()
+            .filter(|t| t.dialog.is_some())
+            .map(|t| t.seq)
+            .collect();
+        assert_eq!(dialog, vec![32, 33, 34, 35]);
+        let step = |seq: usize| {
+            log.ticks[seq].snapshot.as_ref().map(|s| {
+                s.missions
+                    .iter()
+                    .find(|m| m.mission_id == 622)
+                    .and_then(|m| m.step)
+            })
+        };
+        assert_eq!(step(32), Some(Some(2113)));
+        assert_eq!(step(33), Some(Some(80623)));
+        assert_eq!(step(41), Some(Some(80623)));
+        assert_eq!(step(20), None);
+    }
+
+    /// A second `start`, or anything after `stop`, is an error naming the
+    /// line; blank lines are skipped without shifting the numbering.
+    #[test]
+    fn a_second_start_or_a_line_after_stop_is_an_error_naming_the_line() {
+        let s = write_line(&RecordLine::Start(start(RECORD_SCHEMA)));
+        let err = read_log(&format!("{s}\n{s}")).unwrap_err();
+        assert!(err.starts_with("line 3: a second start"), "{err}");
+
+        let stop = write_line(&RecordLine::Stop(RecordStop {
+            host_ms: 1,
+            ticks: 0,
+            reason: "stop".into(),
+        }));
+        let tick = write_line(&RecordLine::Tick(Tick::default()));
+        let err = read_log(&format!("{s}{stop}{tick}")).unwrap_err();
+        assert!(err.starts_with("line 3: a line after stop"), "{err}");
+    }
+
+    /// CRLF endings and blank lines read the same as LF, and a garbled
+    /// line names the log's line, not serde's "line 1".
+    #[test]
+    fn blank_lines_and_crlf_are_tolerated() {
+        let crlf = FIXTURE.replace("\r\n", "\n").replace('\n', "\r\n\r\n");
+        let log = read_log(&crlf).unwrap();
+        assert_eq!(log.ticks.len(), 42);
+        assert!(log.has_stop());
+
+        let s = write_line(&RecordLine::Start(start(RECORD_SCHEMA)));
+        let err = read_log(&format!("{s}\n{{\"kind\":\"tick\"}}\n{s}")).unwrap_err();
+        assert!(err.starts_with("line 3, column"), "{err}");
+        assert!(!err.contains("at line"), "{err}");
+    }
+
+    /// A crash can leave the last line half-written: with no stop line the
+    /// ticks before it still read. A torn line anywhere else is an error.
+    #[test]
+    fn a_torn_last_line_of_a_crashed_recording_is_dropped() {
+        let cut = FIXTURE.trim_end().rsplit_once('\n').unwrap().0;
+        let torn = format!("{cut}\n{{\"kind\":\"tick\",\"seq\":42,\"ho");
+        let log = read_log(&torn).unwrap();
+        assert_eq!(log.ticks.len(), 42);
+        assert!(!log.has_stop());
+
+        let s = write_line(&RecordLine::Start(start(RECORD_SCHEMA)));
+        let tick = write_line(&RecordLine::Tick(Tick::default()));
+        let err = read_log(&format!("{s}{{\"kind\":\"ti\n{tick}")).unwrap_err();
+        assert!(err.starts_with("line 2"), "{err}");
     }
 }
