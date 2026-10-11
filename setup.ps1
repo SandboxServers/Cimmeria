@@ -6,10 +6,10 @@
     Orchestrates the complete Cimmeria development environment setup:
 
       Step 1: Prerequisites    - Rust toolchain, MSVC build tools, optionally Node.js
-      Step 2: Dependencies     - PostgreSQL binaries (or Docker container), 7-Zip sidecar
+      Step 2: Dependencies     - PostgreSQL binaries (or Docker container)
       Step 3: Build Server     - cargo build for the game server workspace
       Step 4: Build Admin      - [optional] Tauri admin panel (Node.js + Rust)
-      Step 5: Build Launcher   - [optional] SGW game launcher (egui)
+      Step 5: Launcher         - [optional] released desktop launcher zip
       Step 6: Database         - PostgreSQL init, schema load, seed data
       Step 7: RE Toolchain     - [optional] Ghidra + GhidraMCP + x64dbg + MCP venvs
       Step 8: Launch           - Start the cimmeria-server binary
@@ -17,8 +17,8 @@
     Every step is idempotent. Safe to re-run -- completed work is detected and skipped.
     On failure the pipeline aborts with a clear error message.
 
-    By default only the game server is built. The admin panel and game launcher are
-    opt-in via -WithAdmin and -WithLauncher. PostgreSQL runs as a local managed
+    By default only the game server is built. The admin panel and the game launcher
+    download are opt-in via -WithAdmin and -WithLauncher. PostgreSQL runs as a local managed
     instance unless -UseDocker is specified.
 
     ----------------------------------------------
@@ -27,7 +27,7 @@
 
       pwsh setup.ps1                          # Build server, init DB, launch
       pwsh setup.ps1 -UseDocker               # Same but PostgreSQL runs in Docker
-      pwsh setup.ps1 -WithAdmin -WithLauncher # Build everything
+      pwsh setup.ps1 -WithAdmin -WithLauncher # Build everything, fetch the launcher
       pwsh setup.ps1 -WithReToolchain         # Add Ghidra/x64dbg/MCP toolchain
 
     ----------------------------------------------
@@ -37,7 +37,7 @@
       -SkipDownload       Skip downloading dependency archives (use cached files).
       -SkipBuild          Skip all build steps (useful for DB-only operations).
       -WithAdmin          Also build the Tauri admin panel. Requires Node.js 22+.
-      -WithLauncher       Also build the SGW game launcher.
+      -WithLauncher       Also download the released game launcher into launcher\.
       -WithReToolchain    Also install the reverse-engineering toolchain
                           (Ghidra, GhidraMCP plugin, x64dbg, x64dbg-automate
                           plugin, MCP Python venvs, and .mcp.json). Opt-in
@@ -111,9 +111,9 @@
       Import-Module ./bootstrap/CimmeriaBootstrap
 
       Build-CimmeriaServer                              # Just the server
-      Build-CimmeriaServer -WithAdmin -WithLauncher     # Server + optional apps
+      Build-CimmeriaServer -WithAdmin                   # Server + admin panel
       Build-CimmeriaApp                                 # Tauri admin panel only
-      Build-CimmeriaLauncher                            # SGW launcher only
+      Install-CimmeriaLauncher                          # Released launcher zip only
       Initialize-CimmeriaDatabase                       # DB init (idempotent)
       Initialize-CimmeriaDatabase -UseDocker            # DB via Docker
       Initialize-CimmeriaDatabase -ResetDatabase        # Nuke and rebuild
@@ -125,8 +125,8 @@
     Skip downloading dependency archives. Uses already-cached files in external/_downloads/.
 
 .PARAMETER SkipBuild
-    Skip all build steps (server, admin panel, launcher). Useful when you only want
-    to initialize or reset the database.
+    Skip all build steps (server, admin panel). Useful when you only want to
+    initialize or reset the database. -WithLauncher still downloads the launcher.
 
 .PARAMETER WithAdmin
     Build the Tauri admin panel (cimmeria-app). This is a desktop application for
@@ -134,9 +134,11 @@
     chain editor. Requires Node.js 22+ and npm.
 
 .PARAMETER WithLauncher
-    Build the SGW game launcher (sgw-launcher). This is an egui desktop app that
-    downloads, patches, and launches the Stargate Worlds game client. Does not
-    require Node.js.
+    Download the released desktop launcher (StargateWorlds-Launcher-windows-x64.zip
+    from the launcher-current release), check it against the .sha256 published
+    beside it, and unpack it into launcher\ beside the server. The launcher installs,
+    patches and launches the Stargate Worlds game client. Nothing is built; until a
+    release is published the step says so and setup continues.
 
 .PARAMETER NoLaunch
     Complete all setup steps but do not start the server at the end.
@@ -178,7 +180,7 @@
 .EXAMPLE
     pwsh setup.ps1 -WithAdmin -WithLauncher -Configuration Release
 
-    Full production build: server + admin panel + game launcher, all optimized.
+    Full production build: server + admin panel, optimized, plus the released launcher.
 
 .EXAMPLE
     pwsh setup.ps1 -UseDocker

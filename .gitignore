@@ -179,6 +179,9 @@ docs/~$content-engine-data-template.xlsx
 # Test inventory regeneration scratch (extractor + JSON output)
 docs/testing/.scratch/
 
+# The released launcher, unpacked by setup.ps1 -WithLauncher.
+/launcher/
+
 docs/design/*
 .mcp.json
 

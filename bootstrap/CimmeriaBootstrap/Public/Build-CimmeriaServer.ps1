@@ -1,14 +1,16 @@
 function Build-CimmeriaServer {
     <#
     .SYNOPSIS
-        Builds the Cimmeria server and optionally the admin app and launcher.
+        Builds the Cimmeria server and optionally the admin app.
 
     .DESCRIPTION
         Runs cargo builds in stages so that a failure in optional components does not
         block the required server build:
           1. cimmeria-server  (game server + libraries) — always built
           2. cimmeria-app     (Tauri admin panel)       — only with -WithAdmin
-          3. sgw-launcher     (egui game launcher)      — only with -WithLauncher
+
+        The game launcher is not built here: Install-CimmeriaLauncher downloads
+        the released desktop launcher.
 
     .PARAMETER Configuration
         Build configuration: "Debug" (default) or "Release".
@@ -16,22 +18,18 @@ function Build-CimmeriaServer {
     .PARAMETER WithAdmin
         Also build the cimmeria-app admin panel binary (requires Node.js + frontend deps).
 
-    .PARAMETER WithLauncher
-        Also build the sgw-launcher binary.
-
     .EXAMPLE
         Build-CimmeriaServer
 
     .EXAMPLE
-        Build-CimmeriaServer -WithAdmin -WithLauncher -Configuration Release
+        Build-CimmeriaServer -WithAdmin -Configuration Release
     #>
     [CmdletBinding()]
     param(
         [ValidateSet("Debug", "Release")]
         [string]$Configuration = "Debug",
 
-        [switch]$WithAdmin,
-        [switch]$WithLauncher
+        [switch]$WithAdmin
     )
 
     $paths = Get-ProjectPaths
@@ -42,7 +40,6 @@ function Build-CimmeriaServer {
     # Calculate step count
     $buildSteps = 1
     if ($WithAdmin) { $buildSteps++ }
-    if ($WithLauncher) { $buildSteps++ }
 
     Write-Step "BUILDING CIMMERIA WORKSPACE"
 
@@ -55,7 +52,7 @@ function Build-CimmeriaServer {
     Write-Status "" "White"
     Write-Status "[$currentStep/$buildSteps] Building cimmeria-server..." "Cyan"
 
-    $serverArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "sgw-launcher", "--exclude", "cimmeria-content-editor", "--exclude", "cimmeria-scene-editor") + $releaseFlag
+    $serverArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "cimmeria-content-editor", "--exclude", "cimmeria-scene-editor") + $releaseFlag
     Write-Status "  cargo $($serverArgs -join ' ')" "DarkGray"
 
     Invoke-CargoBuild $serverArgs
@@ -122,33 +119,6 @@ function Build-CimmeriaServer {
                 } else {
                     Write-Status "  OK: cimmeria-app (built)" "Green"
                 }
-            }
-        }
-    }
-
-    # ── 3. Launcher (optional) ──────────────────────────────────────────────
-    if ($WithLauncher) {
-        $currentStep++
-        Write-Status "" "White"
-        Write-Status "[$currentStep/$buildSteps] Building sgw-launcher..." "Cyan"
-
-        $launcherArgs = @("build", "-p", "sgw-launcher") + $releaseFlag
-        Write-Status "  cargo $($launcherArgs -join ' ')" "DarkGray"
-
-        Invoke-CargoBuild $launcherArgs
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-Status "  FAIL: sgw-launcher build failed (exit code $LASTEXITCODE)" "Red"
-            $failed += "sgw-launcher"
-        } else {
-            $launcherBin = Join-Path $paths.ProjectRoot "target/$profile/sgw-launcher$exeSuffix"
-            if (Test-Path $launcherBin) {
-                $dest = Join-Path $paths.ProjectRoot "sgw-launcher$exeSuffix"
-                Copy-Item $launcherBin $dest -Force
-                $size = Format-FileSize (Get-Item $dest).Length
-                Write-Status "  OK: sgw-launcher ($size) -> copied to project root" "Green"
-            } else {
-                Write-Status "  OK: sgw-launcher (built)" "Green"
             }
         }
     }

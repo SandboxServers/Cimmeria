@@ -36,7 +36,7 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 # Examples:
 Build-CimmeriaServer -Configuration Release  # Build release
 Build-CimmeriaApp -Configuration Release     # Build Tauri admin app
-Build-CimmeriaLauncher                       # Build the SGW game launcher
+Install-CimmeriaLauncher                     # Download the released game launcher
 Sync-CimmeriaGameData                        # Copy client PAK files into data/cache/
 Initialize-CimmeriaDatabase -Force           # Wipe and reload database
 Start-CimmeriaServer                         # Launch server

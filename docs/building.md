@@ -24,7 +24,7 @@ The active Cimmeria server is a Rust workspace under [`crates/`](../crates/). Th
 - **PowerShell 7+** (`pwsh`) — ships with Windows 11; install from [PowerShell/PowerShell](https://github.com/PowerShell/PowerShell) on other platforms.
 - **Windows, with the MSVC build tools.** Development builds run natively on Windows (PowerShell or Git Bash). CI builds on Linux, but there is no WSL or cross-compile path for development.
 - **Rust via rustup** — install from [rustup.rs](https://rustup.rs). You don't pick a version: [`rust-toolchain.toml`](../rust-toolchain.toml) pins Rust 1.98.1 with rustfmt and clippy, rustup picks it up automatically, and CI builds with the same version.
-- **Node.js 22+** — only required for the Tauri admin app (`-WithAdmin`) and the player-facing launcher (`-WithLauncher`).
+- **Node.js 22+** — only required for the Tauri admin app (`-WithAdmin`).
 - **PostgreSQL 17** — `setup.ps1` provisions a local managed instance on port 5433 automatically. Pass `-UseDocker` to run it in a container instead.
 - Disk space for build output. A cold debug build of the CI-gated workspace, all targets, plus two rebuilds left a 14.2 GB target dir in the September 2026 measurement ([`architecture/build-system.md`](architecture/build-system.md)), and every extra worktree has its own. [`tools/build-hygiene/sweep.ps1`](../tools/build-hygiene/sweep.ps1) trims stale artifacts.
 
@@ -43,7 +43,7 @@ The bootstrap pipeline is documented in detail in [`bootstrap/README.md`](../boo
 | Flag | Effect |
 |---|---|
 | `-WithAdmin` | Also build the Tauri admin panel (`tools/`). Needs Node.js. |
-| `-WithLauncher` | Also build the player-facing `sgw-launcher`. |
+| `-WithLauncher` | Also download the released desktop launcher (`launcher-current`), check it against its `.sha256` and unpack it into `launcher\` beside the server. Nothing is built. |
 | `-UseDocker` | Run PostgreSQL in a `postgres:17` container instead of locally. |
 | `-ForceDatabase` | Drop and recreate the `sgw` database, then reload the schema. |
 | `-ResetDatabase` | Nuclear option — stop Postgres, delete the entire `pgdata` directory, re-initialise from scratch. |

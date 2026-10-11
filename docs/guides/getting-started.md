@@ -71,10 +71,10 @@ This is the one-command path. The script runs eight steps:
 | Step | What happens | Caches result? |
 |---|---|---|
 | **1. Prerequisites** | Verifies Rust, MSVC, optionally Node.js. | n/a |
-| **2. Dependencies** | Downloads PostgreSQL 17 binaries (~50 MB) and 7-Zip sidecar. | yes |
+| **2. Dependencies** | Downloads PostgreSQL 17 binaries (~50 MB). | yes |
 | **3. Build Server** | `cargo build` the workspace. ~5–15 min first time, ~30 sec incremental. | yes |
 | **4. Build Admin** *(optional)* | Tauri admin panel — only with `-WithAdmin`. | yes |
-| **5. Build Launcher** *(optional)* | SGW game launcher — only with `-WithLauncher`. | yes |
+| **5. Launcher** *(optional)* | Downloads the released game launcher into `launcher\` — only with `-WithLauncher`. | no, fetched each run |
 | **6. Database** | Initialises PostgreSQL on port 5433, loads `db/database.sql`, inserts seed data including the `test` account and shard record. | yes |
 | **7. RE Toolchain** *(optional)* | Ghidra + GhidraMCP + x64dbg + MCP venvs — only with `-WithReToolchain`. | yes |
 | **8. Launch** | Starts `cimmeria-server.exe`. Skip with `-NoLaunch`. | n/a |
@@ -84,7 +84,7 @@ Every step is idempotent — safe to re-run. The script detects completed work a
 The flags you'll reach for most often:
 
 ```powershell
-# Build everything (server + admin panel + launcher)
+# Build everything (server + admin panel) and fetch the launcher
 pwsh setup.ps1 -WithAdmin -WithLauncher
 
 # Use Docker for PostgreSQL instead of local binaries

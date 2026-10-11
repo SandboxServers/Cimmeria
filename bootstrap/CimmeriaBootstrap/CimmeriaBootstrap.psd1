@@ -11,7 +11,7 @@
         'Install-CimmeriaReToolchain',
         'Build-CimmeriaServer',
         'Build-CimmeriaApp',
-        'Build-CimmeriaLauncher',
+        'Install-CimmeriaLauncher',
         'Initialize-CimmeriaDatabase',
         'Start-CimmeriaServer',
         'Stop-CimmeriaServer',

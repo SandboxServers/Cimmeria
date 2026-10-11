@@ -44,7 +44,8 @@ tools/container-smoke.sh
 .idea/
 *.swp
 
-# Built binaries at the repo root.
+# Built binaries at the repo root, and the launcher setup.ps1 unpacks there.
+launcher/
 *.dll
 *.pdb
 
