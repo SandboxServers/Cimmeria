@@ -15,9 +15,9 @@ use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::mercury::compose_forced_position_body;
+use crate::mercury::{compose_forced_position_body, SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
 
-use super::super::helpers::send_bundle_to_witness_reliable;
+use super::super::helpers::{send_bundle_to_witness_reliable, BundleSendOutcome};
 use super::super::session_identity;
 use super::super::ConnectedClientState;
 use super::space_registry::world_for_space;
@@ -52,7 +52,7 @@ pub(super) async fn handle_teleport_player(
 ) {
     // The cell owns authoritative `space_id` and passes it through. We only
     // need the connection state for account_id/active_player_id (DB persist).
-    let (account_id, active_player_id, id) = {
+    let (account_id, active_player_id, class_id, id) = {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
@@ -70,6 +70,7 @@ pub(super) async fn handle_teleport_player(
             Some(c) => (
                 c.account_id,
                 c.active_player_id,
+                c.player_class_id,
                 session_identity::session_identity(c),
             ),
             None => {
@@ -115,36 +116,70 @@ pub(super) async fn handle_teleport_player(
     // FRAGMENT_BODY_SIZE=1300). Pinned by
     // `teleport_bundles_forced_position_and_player_teleport_to_single_packet`.
     let bundle = build_teleport_bundle(entity_id, space_id, position, prev_pos);
-    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+    let outcome =
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle)
+            .await;
+    // The class is what tells a GM-class client from a player-class one when
+    // a snap is ignored; `unknown` means the session has no class yet.
+    let client_class = match class_id {
+        Some(SGWGMPLAYER_CLASS_ID) => "SGWGmPlayer",
+        Some(SGWPLAYER_CLASS_ID) => "SGWPlayer",
+        _ => "unknown",
+    };
     // Every FORCED_POSITION the server sends goes through here, and today
     // they are all player snaps: no NPC snap (the leash included) is sent as
     // a forced position — witnesses learn of it from the next AoI
     // `EntityMoved`. A row here for an NPC would mean that changed.
-    tracing::debug!(
-        target: "wire.out.forced_position",
-        entity_id,
-        entity_name = id.player_name,
-        account_id,
-        account_name = id.account_name,
-        space_id,
-        world,
-        x = position[0],
-        y = position[1],
-        z = position[2],
-        prev_x = prev_pos[0],
-        prev_y = prev_pos[1],
-        prev_z = prev_pos[2],
-        snap_dist = {
-            let d = [
-                position[0] - prev_pos[0],
-                position[1] - prev_pos[1],
-                position[2] - prev_pos[2],
-            ];
-            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
-        },
-        reason = "teleport_player",
-        "wire.out: FORCED_POSITION sent to the owning client"
-    );
+    match outcome {
+        BundleSendOutcome::Sent {
+            base_seq, packets, ..
+        } => tracing::debug!(
+            target: "wire.out.forced_position",
+            entity_id,
+            entity_name = id.player_name,
+            account_id,
+            account_name = id.account_name,
+            player_id = active_player_id,
+            player_name = id.player_name,
+            space_id,
+            world,
+            x = position[0],
+            y = position[1],
+            z = position[2],
+            prev_x = prev_pos[0],
+            prev_y = prev_pos[1],
+            prev_z = prev_pos[2],
+            snap_dist = {
+                let d = [
+                    position[0] - prev_pos[0],
+                    position[1] - prev_pos[1],
+                    position[2] - prev_pos[2],
+                ];
+                (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+            },
+            send = "sent",
+            base_seq,
+            packets,
+            client_class,
+            streaming_hint = "method_116",
+            reason = "teleport_player",
+            "wire.out: FORCED_POSITION sent to the owning client"
+        ),
+        other => tracing::warn!(
+            entity_id,
+            entity_name = id.player_name,
+            account_id,
+            account_name = id.account_name,
+            player_id = active_player_id,
+            player_name = id.player_name,
+            space_id,
+            world,
+            client_class,
+            outcome = ?other,
+            reason = "send_failed",
+            "TeleportPlayer: FORCED_POSITION not sent to the owning client"
+        ),
+    }
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {
@@ -466,5 +501,93 @@ mod tests {
                 "expected {key}={want}; got {ev:#?}"
             );
         }
+    }
+
+    /// TG-MOV-01: the forced-position row says the bundle was sent, to which
+    /// class of client, and which streaming hint rode with it. A GM-class
+    /// client must read as `SGWGmPlayer`, not as an unknown class.
+    #[tokio::test]
+    async fn teleport_forced_position_row_reports_sent_and_gm_class() {
+        let capture = crate::test_support::LogCapture::install();
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let entity_id = 0x3131u32;
+        let addr: SocketAddr = "127.0.0.1:40131".parse().unwrap();
+        let mut session = crate::test_support::test_default_connected_client_state();
+        session.active_player_id = Some(31);
+        session.player_name = Some("Carter".into());
+        session.player_class_id = Some(SGWGMPLAYER_CLASS_ID);
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, session)])));
+
+        handle_teleport_player(
+            entity_id,
+            5,
+            [10.0, 20.0, 30.0],
+            [1.0, 2.0, 3.0],
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        let ev = capture
+            .find_message(tracing::Level::DEBUG, "FORCED_POSITION sent")
+            .expect("a sent forced-position row must fire");
+        for (key, want) in [
+            ("send", "sent"),
+            ("client_class", "SGWGmPlayer"),
+            ("streaming_hint", "method_116"),
+            ("player_name", "Carter"),
+            ("packets", "1"),
+        ] {
+            assert!(
+                ev.has_field(key, want),
+                "expected {key}={want}; got {ev:#?}"
+            );
+        }
+    }
+
+    /// TG-MOV-01: a snap to a session that is gone logs the WARN and no
+    /// `sent` row, so a dropped snap cannot read as a delivered one.
+    #[tokio::test]
+    async fn teleport_gone_client_warns_and_emits_no_sent_row() {
+        let capture = crate::test_support::LogCapture::install();
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let entity_id = 0x3132u32;
+        let addr: SocketAddr = "127.0.0.1:40132".parse().unwrap();
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        handle_teleport_player(
+            entity_id,
+            5,
+            [10.0, 20.0, 30.0],
+            [1.0, 2.0, 3.0],
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_message(
+                    tracing::Level::WARN,
+                    "TeleportPlayer: client state not found"
+                )
+                .is_some(),
+            "a gone session must WARN"
+        );
+        assert!(
+            capture
+                .find_message(tracing::Level::DEBUG, "FORCED_POSITION sent")
+                .is_none(),
+            "no sent row for a snap that never left"
+        );
+        assert!(transport.is_empty(), "a gone session gets no UDP");
     }
 }

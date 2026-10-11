@@ -12,6 +12,9 @@
 //!   drain that bypasses the hit pipeline is still visible.
 //! - The regen tick's `regen_started` / `regen_stopped` rows reuse
 //!   [`Vitals`] for their pool fields.
+//! - [`log_combat_state_stale`]: a WARN (`threat`, `combat_state_stale`) when
+//!   a living player's `BSF_IN_COMBAT` bit and its threat set disagree, or
+//!   a threatened mob is gone or dead. Throttled per entity and reason.
 //!
 //! Every row is **DEBUG** (exported: `OTEL_FILTER` has `vitals=debug`) and
 //! players only: NPC pools are already on `npc_ai.tick`. Volume, per
@@ -20,9 +23,12 @@
 //! nothing. No metric, so no label cardinality: `player_id` and `entity_id`
 //! are log fields only.
 
+use std::time::{Duration, Instant};
+
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::stats::{StatList, FOCUS, HEALTH};
 
+use crate::cell::combat::{BSF_DEAD, BSF_IN_COMBAT};
 use crate::cell::space_manager::SpaceManager;
 
 /// Health and focus, current and max. `0/0` for a pool the entity lacks.
@@ -143,10 +149,113 @@ pub fn log_combat_sample(space_mgr: &SpaceManager, entity: &CellEntity) {
     );
 }
 
+/// Window for [`log_combat_state_stale`]: one row per entity and reason per
+/// minute.
+pub const COMBAT_STALE_LOG_INTERVAL: Duration = Duration::from_secs(60);
+
+/// One disagreement between a player's combat state and its threat set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stale {
+    reason: &'static str,
+    /// The threatened mob, for the two mob reasons; `None` for the bit
+    /// reasons, which are about the player alone.
+    mob: Option<u32>,
+}
+
+/// The first disagreement on `entity_id`, or `None` when its state is
+/// consistent. Threat references are checked first, lowest mob id first so
+/// the choice is stable; then the `BSF_IN_COMBAT` <-> `threatened_mobs`
+/// invariant.
+fn find_stale(space_mgr: &SpaceManager, entity_id: u32) -> Option<Stale> {
+    let e = space_mgr.get_entity(entity_id)?;
+    let mut mobs: Vec<u32> = e.threatened_mobs.iter().copied().collect();
+    mobs.sort_unstable();
+    for mob in mobs {
+        match space_mgr.get_entity(mob) {
+            None => {
+                return Some(Stale {
+                    reason: "mob_gone",
+                    mob: Some(mob),
+                })
+            }
+            Some(m) if m.state_field & BSF_DEAD != 0 => {
+                return Some(Stale {
+                    reason: "mob_dead",
+                    mob: Some(mob),
+                })
+            }
+            Some(_) => {}
+        }
+    }
+    let has_threat = !e.threatened_mobs.is_empty();
+    let in_combat = e.state_field & BSF_IN_COMBAT != 0;
+    match (has_threat, in_combat) {
+        (true, false) => Some(Stale {
+            reason: "threat_without_bit",
+            mob: None,
+        }),
+        (false, true) => Some(Stale {
+            reason: "bit_without_threat",
+            mob: None,
+        }),
+        _ => None,
+    }
+}
+
+/// WARN `target: "threat"`, `event = "combat_state_stale"` for a living
+/// player whose combat state contradicts its threat set (see [`Stale`]).
+///
+/// Pattern D: keyed by entity and reason through
+/// `SpaceManager::combat_state_stale_log`. The first row of a quiet window
+/// carries the rows it swallowed as `suppressed`. `now` is a parameter so
+/// the window can be tested without sleeping.
+pub fn log_combat_state_stale(space_mgr: &mut SpaceManager, entity_id: u32, now: Instant) {
+    let Some(stale) = find_stale(space_mgr, entity_id) else {
+        return;
+    };
+    let Some(suppressed) = space_mgr.combat_state_stale_log.admit(
+        entity_id,
+        stale.reason,
+        now,
+        COMBAT_STALE_LOG_INTERVAL,
+    ) else {
+        return;
+    };
+    let Some(e) = space_mgr.get_entity(entity_id) else {
+        return;
+    };
+    let id = e.identity();
+    let mob = stale
+        .mob
+        .map(|m| space_mgr.entity_names(m))
+        .unwrap_or_default();
+    tracing::warn!(
+        target: "threat",
+        event = "combat_state_stale",
+        reason = stale.reason,
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        entity_id,
+        entity_name = id.player_name,
+        mob_entity_id = stale.mob,
+        mob_entity_name = mob.entity_name,
+        mob_template_id = mob.template_id,
+        mob_template_name = mob.template_name,
+        space_id = e.space_id.0,
+        world = space_mgr.world_name_for_space(e.space_id.0 as u32),
+        state_field = e.state_field,
+        threat_count = e.threatened_mobs.len(),
+        suppressed,
+        "combat state is stale: threat set and BSF_IN_COMBAT disagree"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::LogCapture;
+    use crate::test_support::{LogCapture, LogCaptureGuard};
     use tracing::Level;
 
     fn mgr_with_player() -> SpaceManager {
@@ -243,5 +352,136 @@ mod tests {
         assert!(row.has_field("health", "100"));
         assert!(row.has_field("focus_max", "60"));
         assert!(row.has_field("threat_count", "1"));
+    }
+
+    /// Player 1 (in combat, threat set empty) plus a live mob 900.
+    fn stale_mgr() -> SpaceManager {
+        let mut mgr = mgr_with_player();
+        mgr.create_entity(900, "Castle", [0.0; 3], [0.0; 3])
+            .unwrap();
+        let e = mgr.get_entity_mut(1).unwrap();
+        e.state_field |= BSF_IN_COMBAT;
+        mgr
+    }
+
+    fn stale_rows(capture: &LogCaptureGuard) -> Vec<crate::test_support::Captured> {
+        capture
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "threat" && c.level == Level::WARN)
+            .collect()
+    }
+
+    /// A threat on a mob that no longer exists: `mob_gone`, with the mob's
+    /// id and no name (Rule 6: a name that does not resolve is left out).
+    #[test]
+    fn stale_row_mob_gone() {
+        let mut mgr = stale_mgr();
+        mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(901);
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, Instant::now());
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 1, "{rows:#?}");
+        assert!(rows[0].has_field("event", "combat_state_stale"));
+        assert!(rows[0].has_field("reason", "mob_gone"));
+        assert!(rows[0].has_field("mob_entity_id", "901"));
+        assert!(rows[0].has_field("player_id", "72"));
+        assert!(rows[0].has_field("account_id", "6"));
+        assert!(!rows[0].fields.contains_key("mob_entity_name"));
+    }
+
+    /// A threat on a live mob with `BSF_DEAD` set: `mob_dead`, named.
+    #[test]
+    fn stale_row_mob_dead() {
+        let mut mgr = stale_mgr();
+        mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(900);
+        mgr.get_entity_mut(900).unwrap().state_field |= BSF_DEAD;
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, Instant::now());
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 1, "{rows:#?}");
+        assert!(rows[0].has_field("reason", "mob_dead"));
+        assert!(rows[0].has_field("mob_entity_id", "900"));
+        assert!(rows[0].has_field("threat_count", "1"));
+    }
+
+    /// The bit is set but nothing is threatened: `bit_without_threat`.
+    #[test]
+    fn stale_row_bit_without_threat() {
+        let mut mgr = stale_mgr();
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, Instant::now());
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 1, "{rows:#?}");
+        assert!(rows[0].has_field("reason", "bit_without_threat"));
+        assert!(!rows[0].fields.contains_key("mob_entity_id"));
+    }
+
+    /// A live threat with the bit clear: `threat_without_bit`.
+    #[test]
+    fn stale_row_threat_without_bit() {
+        let mut mgr = stale_mgr();
+        let e = mgr.get_entity_mut(1).unwrap();
+        e.threatened_mobs.insert(900);
+        e.state_field &= !BSF_IN_COMBAT;
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, Instant::now());
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 1, "{rows:#?}");
+        assert!(rows[0].has_field("reason", "threat_without_bit"));
+        assert!(rows[0].has_field("state_field", "0"));
+    }
+
+    /// A consistent player (threat set and bit agree) logs nothing.
+    #[test]
+    fn consistent_combat_state_is_silent() {
+        let mut mgr = stale_mgr();
+        let e = mgr.get_entity_mut(1).unwrap();
+        e.threatened_mobs.insert(900);
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, Instant::now());
+        assert!(stale_rows(&capture).is_empty());
+    }
+
+    /// Three checks at one instant write one row; the next window's row says
+    /// `suppressed = 2`.
+    #[test]
+    fn stale_row_burst_is_throttled() {
+        let mut mgr = stale_mgr();
+        let t0 = Instant::now();
+        let capture = LogCapture::install();
+        for _ in 0..3 {
+            log_combat_state_stale(&mut mgr, 1, t0);
+        }
+        assert_eq!(stale_rows(&capture).len(), 1);
+        log_combat_state_stale(&mut mgr, 1, t0 + COMBAT_STALE_LOG_INTERVAL);
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 2, "{rows:#?}");
+        assert!(rows[0].has_field("suppressed", "0"));
+        assert!(rows[1].has_field("suppressed", "2"));
+    }
+
+    /// Throttle slots are independent per entity and per reason: a second
+    /// player's row and a first player's new reason both write at once.
+    #[test]
+    fn stale_row_throttle_is_independent_per_entity_and_reason() {
+        let mut mgr = stale_mgr();
+        mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        let p2 = mgr.get_entity_mut(2).unwrap();
+        p2.is_player = true;
+        p2.player_id = Some(73);
+        p2.state_field |= BSF_IN_COMBAT;
+        let t0 = Instant::now();
+        let capture = LogCapture::install();
+        log_combat_state_stale(&mut mgr, 1, t0);
+        log_combat_state_stale(&mut mgr, 2, t0);
+        let e = mgr.get_entity_mut(1).unwrap();
+        e.threatened_mobs.insert(901);
+        e.state_field &= !BSF_IN_COMBAT;
+        log_combat_state_stale(&mut mgr, 1, t0);
+        let rows = stale_rows(&capture);
+        assert_eq!(rows.len(), 3, "{rows:#?}");
+        assert!(rows[1].has_field("player_id", "73"));
+        assert!(rows[2].has_field("reason", "mob_gone"));
     }
 }
