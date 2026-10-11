@@ -502,6 +502,10 @@ CH-03, CH-05.
    request's `chaos` field (parsed with `chaos::parse`) and hold it for the
    run. Keep the change to a few lines; `mod.rs` is near the 500-line soft
    cap.
+5. `tools/lab/cli/uat.ps1`: remove the interim guard that refuses `-Chaos`
+   without `-PlanOnly` (marked "Remove with CH-08"), its check in
+   `test-uat.ps1`, and the matching sentence and exit-code note in
+   `docs/guides/live-research-lab.md`'s `-Chaos` row.
 
 **Tests** (unit, type 1, `crates/lab/src/uat/runner/tests.rs` or a new
 `chaos_tests.rs`, with the runner's existing fake MCP):
