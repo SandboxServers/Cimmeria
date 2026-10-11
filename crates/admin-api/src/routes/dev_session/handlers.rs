@@ -368,10 +368,11 @@ pub(super) fn refresh_inner(
     })
 }
 
-/// Quota and validation refusals are the operator's signal that a
-/// limit needs tuning (see docs/operations/telemetry.md), so they are
-/// logged; the rest of the error family already surfaces elsewhere.
-fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
+/// Every refusal the operator can act on leaves a row with its `reason`
+/// (see docs/operations/telemetry.md): quota limits need tuning, a paused
+/// ingest or an expired token explains a launcher's telemetry stream
+/// going quiet. Refusals a caller can't fix are logged at INFO or below.
+pub(super) fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
     match err {
         AuthError::QuotaExceeded(q) => tracing::warn!(
             route,
@@ -395,6 +396,34 @@ fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
             route,
             peer = %peer,
             reason = "dev_session_secret_unusable",
+            "dev-session request refused: {err}"
+        ),
+        AuthError::KillSwitchActive => tracing::warn!(
+            route,
+            peer = %peer,
+            reason = "dev_session_kill_switch",
+            "dev-session request refused: {err}"
+        ),
+        AuthError::SessionLifetimeExceeded { elapsed, cap } => tracing::info!(
+            route,
+            peer = %peer,
+            elapsed,
+            cap,
+            reason = "dev_session_lifetime_exceeded",
+            "dev-session request refused: {err}"
+        ),
+        AuthError::Expired { exp, now } => tracing::info!(
+            route,
+            peer = %peer,
+            exp,
+            now,
+            reason = "dev_session_expired",
+            "dev-session request refused: {err}"
+        ),
+        AuthError::BadPayload(_) | AuthError::BadSignature => tracing::info!(
+            route,
+            peer = %peer,
+            reason = "dev_session_bad_token",
             "dev-session request refused: {err}"
         ),
         _ => {}
