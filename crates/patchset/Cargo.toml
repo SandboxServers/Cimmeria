@@ -12,6 +12,8 @@ path = "src/lib.rs"
 [[bin]]
 name = "cimmeria-patchset"
 path = "src/bin/cimmeria-patchset.rs"
+# No tests in this binary; see the note in crates/upk/Cargo.toml.
+test = false
 
 [dependencies]
 # Rebuilds the uncompressed form of a stock .umap/.upk on the player's
