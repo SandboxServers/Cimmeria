@@ -16,6 +16,7 @@ use super::clause::grade_signoz;
 use super::evidence::{clip, RowEvidence, RunDir, RunManifest, Verdict};
 use super::grade::grade;
 use super::ledger;
+use super::snapshot::apply_parity;
 use super::spec::Source;
 
 /// One attestation.
@@ -61,12 +62,15 @@ pub fn attest(req: &AttestRequest) -> Result<Value, String> {
             .as_deref()
             .ok_or("attesting a row needs `clause`")?;
         apply(&mut row, clause_id, req)?;
-        let g = grade(
+        let mut g = grade(
             &row.blocked,
             &row.actions,
             &row.clauses,
             row.required_native,
         );
+        // A chained row's parity outlives the re-grade: an attestation that
+        // turns the row PASS must still meet a fixture mismatch (FX-10).
+        apply_parity(&mut g, row.fixture_parity.as_ref());
         row.result = g.result;
         row.reasons = g.reasons;
         row.flags = g.flags;

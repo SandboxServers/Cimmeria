@@ -325,6 +325,9 @@ step = [
   ] },
   { tool = "@chat_send", args = { tag = "X" }, label = "chat2" },
   { tool = "@world_click", args = { tag = "X", pose = "dup" }, label = "both" },
+  { tool = "@world_click", args = { pose = "dup", entity_id = 5 }, label = "pclick" },
+  { tool = "@camera", args = { pose = "dup", face_name = "Frost" }, label = "pcam" },
+  { tool = "@stand", args = { pose = "dup", point = { x = 1.0, y = 2.0, z = 3.0 } }, label = "pstand" },
 ]
 [[row.expect]]
 id = "c"
@@ -353,6 +356,9 @@ contains = "x"
         "FS-X/fb: pose \"gone\" is not a pose of this row",
         "FS-X/chat2: tag applies to world click",
         "FS-X/both: tag with pose: give one",
+        "FS-X/pclick: pose with entity_id: give one",
+        "FS-X/pcam: pose with face_name: give one",
+        "FS-X/pstand: pose with point: give one",
     ] {
         assert!(err.contains(want), "missing {want:?} in {err}");
     }

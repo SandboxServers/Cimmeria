@@ -5,11 +5,15 @@
 > [lab-roadmap handoff § 3](../lab-roadmap/handoff.md#3-golden-runs-and-run-diffing).
 > Packet specs: [work-packets.md](work-packets.md) (GD-01 to GD-07) and [work-packets-2.md](work-packets-2.md) (GD-08 to GD-11); shared names: [contract.md](contract.md).
 >
-> **Campaign status (2026-10-10): wave 1 running.** Every decision is made
-> (D-GD1 to D-GD10, by the user on 2026-10-10). GD-02 is being written; GD-01
-> waits for SV-03 to merge, because both edit `spec.rs` (lab-spec-vocab's
-> coordinator agreed the order). This campaign also runs lab-watch's LW-02,
-> which GD-08 needs. GD-10 still needs the user's OK for the lab.
+> **Campaign status (2026-10-11): code-complete; live acceptance pending.**
+> Every decision is made (D-GD1 to D-GD10, by the user on 2026-10-10).
+> GD-01 to GD-09 and lab-watch's LW-02 (which GD-08 needed) are merged, and
+> GD-11 closed out the docs. GD-10, the live acceptance, is
+> **BlockedDependency**: the user deferred it until lab-spec-vocab's SV-13
+> (migrating `first-session.toml`) and SV-15 (recalibrating it) have merged,
+> so the golden is not stale on arrival. It then needs the user's OK for the
+> lab, and becomes **UATPending**. No section has a committed golden until
+> it runs; [worknotes/GD-10.md](worknotes/GD-10.md) says what it must record.
 
 ## Purpose
 
@@ -89,17 +93,17 @@ new Praxis character on 2026-10-10.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Integrated |
-| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
-| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Integrated |
-| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | BlockedDependency |
-| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
-| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | BlockedDependency |
-| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
-| GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
-| GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
-| GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, the user's OK for the lab | BlockedDependency |
-| GD-11 | Close-out: guides, tools README, unified UAT, status docs | documentation-writer | S | 8 | all | BlockedDependency |
+| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Done |
+| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Done |
+| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Done |
+| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | Done |
+| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Done |
+| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Done |
+| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | rust-gameserver-dev | M | 4 | GD-04, GD-05, GD-06 | Done |
+| GD-08 | `lab golden record` command | general-purpose | M | 5 | GD-07, LW-02 | Done |
+| GD-09 | `lab uat -DiffGolden` | general-purpose | S | 6 | GD-08 | Done |
+| GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, SV-13 and SV-15 merged, the user's OK for the lab | BlockedDependency (then UATPending) |
+| GD-11 | Close-out: guides, unified UAT, ADR, ledger, memory | documentation-writer | S | 8 | all but GD-10 | Done |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
 
@@ -199,7 +203,9 @@ then the reference, not the spec.
   ran out of context reading the M-size spec and the merged code, so the
   remaining M packets (GD-04, GD-07) go to `rust-gameserver-dev` too. A core
   `normalise_tap` returns `Normalised { events, unordered, transitions }`;
-  `events_from_tap` keeps the contract signature as a wrapper. Tests live in
+  `events_from_tap` kept the contract signature as a wrapper until GD-07
+  removed it, with the `pub use event::{..}` re-export (nothing in lab-chaos
+  or lab-record uses either). Tests live in
   `normalise_tests.rs` and `build_tests.rs`. Run variables (`RUN_VARS`) are
   substituted in the JSON string leaves before `render_json`. Labelling is
   two-pass: ordered events number their unknown ids first, in tap order; the
@@ -212,3 +218,107 @@ then the reference, not the spec.
   Status field on a mission, step or objective update drops the transition
   with a `tracing::debug!`. A tap body with no `coverage` key reads as
   `full` (bundles from before fingerprint mode).
+- **GD-06.** To keep every grade unchanged, fingerprint mode's recorded
+  server calls (the tap start, `server_entity_get`, `server_entity_query`)
+  go to `actions[]` as `setup` only when the row ends, re-indexed, so the
+  step indices in the reasons do not move. A row with no packet clause is
+  tapped by the capture itself (a silent session lookup, then the recorded
+  start), not by `tap_start`, which would record a `server_sessions` call
+  before the steps. A row with a packet clause keeps `tap_start` and is
+  never late-bound, because its clauses grade the tap. The capture never
+  sets `${player_entity_id}`. A failed late start is recorded once and ends
+  the tries. Each snapshot also carries its own `space_id` (the top-level
+  one is the first found). `FpCapture::coverage` takes `bound`, not
+  `bound_at_start`. FX-06's fixture establish goes before the tap start in
+  `drive_row` (a comment marks the place). Review fixes: when the lease is
+  lost mid-row, `run_row` calls `tap_abandon`, which stops the server tap
+  (recorded as teardown), writes `packet-tap.json` with `read_ok: false`,
+  and still writes the fingerprint attachments. A window sample whose
+  `client_ui_state` reply carries a `windows:` error is `{after, error}`,
+  never an empty set.
+- **GD-04.** `diff_row` compares parts in the packet's order: Variance,
+  Tap, TapFault, Result, Clause, Transition, Event, WindowsOpened,
+  WindowsClosed, Unordered. `Part::Variance` comes first and refuses a run
+  fingerprinted under a variance other than the golden row's, which is how
+  D-GD5 holds inside `diff_run`'s fixed signature. **GD-07's diff calls
+  `diff_run_dir(golden, &RunDir)`**, which fingerprints the run under the
+  golden's stored variance and reports a missing golden row as `Missing`.
+  Its `not_in_golden` is always empty by design; a run's extra rows are caught
+  by `agree`'s `ExtraRow`, not by a diff. `AgreeError` adds `NoRows`,
+  `Mismatch` (section or schema), `TapUnreliable` (any tap fault or an
+  `unavailable` tap, even without the pass rule) and `ExtraRow`.
+  `check_runs` treats an empty build or hash as missing. In a divergence line
+  control characters become spaces, and the `after` value shrinks (cap 60,
+  then down to 3) so the line fits 300 characters with `expected` and `got`
+  whole.
+- **GD-07.** Implemented by `rust-gameserver-dev` in `server/golden.rs`.
+  Replies: record is `{ok, path, rows, events, bytes, runs}`, diff is
+  `{ok, match}` or `{ok, match: false, first, diverged?, rows?}`, and a
+  refusal is `{ok: false, code, error}` with `error` one line of at most 400
+  characters. Diff's `rows` leaves out the first diverged row (it is
+  `first`), lists at most four more, and `diverged` (the total) appears when
+  more than one row diverged. Record refuses runs whose spec hash is not the
+  spec file's current hash (`cannot_record`): the golden stores today's
+  variance under the runs' hash. Diff adds the code `cannot_diff` for a run
+  directory it cannot open or fingerprint; GD-08 and GD-09 must map it.
+  Rebless needs five fresh runs: a run id already in the old golden's
+  `evidence` is `cannot_record`, and so is a row set that drops a row the old
+  golden held (the error names the rows). `rows: []` means every row, like
+  omitting it. `lab_golden_record` is in `OPEN` although it writes the golden
+  file: `OPEN` now means "never drives the client", not read-only. Two
+  concurrent records of one section race; the last write wins.
+- **GD-08.** Implemented by a general-purpose (Opus) agent. `lab golden
+  record` exit codes: 0 recorded, 1 a run or row did not pass, 2 usage or a
+  golden exists without `-Rebless`, 3 the `lab uat` pre-flight or plan
+  failed, 6 the runs disagree, 7 cannot record (including `cannot_diff`, a
+  daemon failure after the runs, or `show` unable to read the golden). Every
+  failure after the runs names the `batch` folder. The child `lab uat` is
+  built by the pure `Get-GoldenBatchArgs` (`-Fingerprint`,
+  `-MaxConsecutiveFailures 1`, `-ProgressToStderr`), so its per-run progress
+  streams to the console while stdout stays one JSON line. `Get-GoldenPath`
+  maps a section id exactly as Rust's `path_safe` does (`v1.2` is
+  `golden/v1_2.json`). `uat.ps1` gained `-Fingerprint` and
+  `-ProgressToStderr` next to FX's `-Fixtures`.
+- **GD-09.** `lab uat -DiffGolden` refuses a missing golden (exit 2) right
+  after the argument checks, before the daemon is asked, and also refuses
+  when no spec folder is found (no `-SpecsDir`, no checkout) or the golden
+  is not JSON with `schema`, `section` and `fingerprint` ("golden for
+  <section> cannot be read: ..."). Only passing runs are diffed: a failed
+  run gets no `Golden` (review fix). A passing run's
+  `Golden` is `match`, the `first` line, or `error: <code>: <error>` for a
+  refusal (`no_golden`, `cannot_diff`), `error: <message>` for a call that
+  threw, or `error: ...` for a reply with no verdict; a passing run with no
+  run folder gets an error too. The per-run diff is the pure
+  `Get-UatRunGolden` (the MCP call passed in as a scriptblock), tested on
+  every branch and inside a `ForEach-Object -Parallel` runspace. The
+  summary's `golden` adds `errors` (runs
+  not compared) next to `match` and `diverged`, and **exit 5 also covers
+  errors**: a diff that could not be made is never read as a match. The
+  compact JSON shows `errors` only when non-zero; `first` is the most common
+  divergence, never an error line, and `error` (the most common error)
+  appears only when no run diverged. Both are capped at 120 characters, so
+  a 5-run batch with two 200-character divergences stays under 500
+  (review fix; it was 200, which broke that bound). `Get-UatExitCode` already returns 8
+  when the summary carries a non-empty `heal` list (SV-12's field, not on
+  `main` yet), and 8 wins over every other code, as SV-12's packet says;
+  `test-uat.ps1` pins 8 over 5 and over 1. The diff runs after the run's
+  `Seconds` are taken, so run times exclude it.
+- **GD-11.** The architecture paragraph sits in §3.4 of the ADR (the
+  supervisor), because the ADR has no UAT consequences section.
+  `docs/project-status.md` and `docs/gap-analysis*` are unchanged: their lab
+  rows describe the bridge, supervisor and server endpoint, not UAT
+  automation, and no earlier lab campaign added it there.
+
+## Lessons
+
+- **M-size Rust packets exceeded the Haiku `packet-coder`'s context.** It
+  ran out reading GD-03's spec plus the merged code it built on, so GD-03,
+  GD-04 and GD-07 went to `rust-gameserver-dev`, and GD-08 and GD-09 (the
+  PowerShell commands) to a general-purpose agent. Next campaign: give
+  `packet-coder` S packets only, or split an M packet before dispatch.
+- **Every packet's adversarial review found real bugs**, not style notes:
+  for example GD-06's tap left running on a lost lease and its failed
+  window sample read as "no windows", and GD-09 diffing failed runs and
+  breaking its own 500-character summary bound (the review outcomes above
+  mark each fix). Keep a fresh reviewer on every packet, and route the
+  fixes to a fresh worker.
