@@ -237,6 +237,9 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) p2_in_world_as: Option<String>,
     /// The lease-loss signal that stops the run ([`revocation`]).
     pub(crate) revoked: Option<revocation::Revocation>,
+    /// The instance's cell for `/status`, when the run shows its progress
+    /// ([`crate::uat::progress`]).
+    pub(crate) progress: Option<crate::uat::progress::ProgressCell>,
     /// The row this run finished last.
     pub(crate) last_row: Option<LastRow>,
     /// A character an `end_session` could not drain; the next one drains
@@ -298,6 +301,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             p2: Err(players::NO_P2.into()),
             p2_in_world_as: None,
             revoked: None,
+            progress: None,
             last_row: None,
             pending_drain: None,
         };
@@ -319,6 +323,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
     pub async fn run_all(mut self) -> Result<RunOutcome, String> {
         let mut done = Vec::new();
         let sections = self.req.sections.clone();
+        // Cleared when run_all returns, on every path (D-LW1).
+        let _progress = self.begin_progress();
         for loaded in &sections {
             for row in &loaded.spec.rows {
                 if let Some(only) = &self.req.rows {
@@ -326,6 +332,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                         continue;
                     }
                 }
+                self.progress_row_started(&loaded.spec.section.id, &row.id);
                 let ev = self.run_row(&loaded.spec, row).await;
                 self.last_row = Some(LastRow {
                     section: ev.section.clone(),
@@ -333,6 +340,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     passed: ev.result == super::evidence::RowResult::Pass,
                 });
                 self.finish_row(&ev)?;
+                self.progress_row_finished(&ev);
                 done.push(ev);
             }
         }
@@ -533,6 +541,8 @@ mod packet_tests;
 mod players_tests;
 #[cfg(test)]
 mod polled_clause_tests;
+#[cfg(test)]
+mod progress_tests;
 #[cfg(test)]
 mod revocation_tests;
 #[cfg(test)]

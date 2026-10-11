@@ -72,7 +72,7 @@ Against `main` @ `6996c9403`, plus one real batch on this workstation
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Writing |
+| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Integrated |
 | LW-02 | `lab uat`: `plan.json`, record times, shared progress line and known issues, two moves into libraries | packet-coder | S | 1 | D-LW4, D-LW5 | Integrated (#1395, run by the [lab-golden](../lab-golden/README.md) coordinator) |
 | LW-03 | `watch-lib.ps1`: snapshot model, text and JSON, recorded fixtures, `test-watch.ps1` | packet-coder | M | 2 | LW-02 (and LW-01's contract, not its code) | Writing |
 | LW-04 | `lab watch` command, live redraw, docs | packet-coder | S | 3 | LW-03 | BlockedDependency |
@@ -135,6 +135,13 @@ Waves (packets in one wave touch disjoint files):
   screenshot names would let the panel age agent-driven captures too.
 
 ## Review outcomes
+
+- **LW-01** (the coordinator finished it after the Haiku worker hit its
+  context cap). The row filter is re-derived in `progress.rs`'s
+  `rows_to_run` rather than shared with `run_all`; a review-fix test,
+  `rows_total_counts_only_the_filtered_rows`, pins it. Noted, not fixed:
+  two `lab_uat_run` calls sharing one caller `lease_id` can run on one
+  instance at once, and the first to end clears the other's progress.
 
 None yet. Where merged code differs from the packet specs, record it here;
 the code is then the reference, not the spec.
