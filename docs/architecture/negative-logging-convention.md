@@ -852,6 +852,16 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Inert effect WARN (TG-CMB-03)
+
+An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `abilities.effect`, `event = "effect_inert"`, Rule 5 identity, `entity_id`, `entity_name` (the caster), `caster_kind` (`player` or `npc`), `ability_id`, `ability_name`, `effect_id`, `effect_name`, `target_id`, `target_name`, `target_player_id`, `target_player_name`, `suppressed` | An effect with no script and no NVP damage landed on a target (once per pair per 60 s) |
+
+Guards: `one_no_script_plan_warns_once`, `burst_writes_one_row_then_reports_suppressed` and `another_effect_id_is_not_swallowed` in `cell/abilities/effect_plan.rs` (`cimmeria-cell-combat`).
+
 ## Stale combat state (TG-CMB-02)
 
 A player stuck "in combat" never regenerates and never holsters, and nothing checked for it. The vitals sample tick (`cell/service/ticks/vitals.rs`) now runs `log_combat_state_stale` (`cell-combat`, `combat/vitals.rs`) for every living player: WARN `target: "threat"`, `event = "combat_state_stale"`, identity, with `reason`:
