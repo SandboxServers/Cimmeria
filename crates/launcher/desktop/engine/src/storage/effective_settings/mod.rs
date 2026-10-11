@@ -13,6 +13,14 @@ pub struct LaunchBinding {
     pub client_patches_enabled: bool,
 }
 
+/// What [`DesktopState::injection_policy`] decides. A DLL the policy wants is
+/// still loaded only when the native bundle carries it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InjectionPolicy {
+    pub client_patches: bool,
+    pub client_telemetry: bool,
+}
+
 /// The reviewed settings of a published adoption. The plan alone is not trusted:
 /// the installed index names the import digest, and the retained import record
 /// re-derives the same settings and digest from the exact legacy JSON.
@@ -69,6 +77,24 @@ impl DesktopState {
         }
     }
 
+    /// Which DLLs Play puts into `SGW.exe`, before the bundle is consulted.
+    /// Play and the "Changes to your client" list both read this, so the list
+    /// cannot name a DLL Play would not load, or leave one out.
+    pub fn injection_policy(&self) -> Result<InjectionPolicy, StorageError> {
+        let binding = self.effective_launch_binding()?;
+        Ok(InjectionPolicy {
+            client_patches: binding
+                .as_ref()
+                .is_none_or(|binding| binding.client_patches_enabled),
+            // The telemetry DLL goes only to an installation this launcher made,
+            // for a player who opted in here. An adopted copy's imported
+            // telemetry choice is still not honoured (see `adoption`), and an
+            // unreadable choice means no telemetry rather than no Play.
+            client_telemetry: binding.is_none()
+                && self.game_telemetry().is_ok_and(|choice| choice.opted_in),
+        })
+    }
+
     /// The resources this installation may launch with, from the native bundle.
     /// Ok(None) means the policy injects patches and the bundle has no verified
     /// patch artifact. A copy adopted with patches off never needs that artifact.
@@ -76,20 +102,12 @@ impl DesktopState {
         &self,
         bundled: launch::Resources,
     ) -> Result<Option<launch::Resources>, StorageError> {
-        let binding = self.effective_launch_binding()?;
-        let enabled = binding
-            .as_ref()
-            .is_none_or(|binding| binding.client_patches_enabled);
-        // The telemetry DLL goes only to an installation this launcher made, for
-        // a player who opted in here. An adopted copy's imported telemetry
-        // choice is still not honoured (see `adoption`), and an unreadable
-        // choice means no telemetry rather than no Play.
-        let telemetry =
-            binding.is_none() && self.game_telemetry().is_ok_and(|choice| choice.opted_in);
+        let policy = self.injection_policy()?;
         let bundled = launch::Resources {
-            client_telemetry: bundled.client_telemetry.filter(|_| telemetry),
+            client_telemetry: bundled.client_telemetry.filter(|_| policy.client_telemetry),
             ..bundled
         };
+        let enabled = policy.client_patches;
         Ok(match (enabled, bundled.client_patches.is_some()) {
             (true, true) => Some(bundled),
             (true, false) => None,

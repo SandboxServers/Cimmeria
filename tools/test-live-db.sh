@@ -56,6 +56,7 @@ LIVE_DB_CRATES=(
   cimmeria-cell-org
   cimmeria-cell-effect-scripts
   cimmeria-cell
+  cimmeria-lab-mcp
   cimmeria-wireclient
 )
 

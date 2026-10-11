@@ -226,8 +226,10 @@ Edits to `docs/guides/uat-specs/first-session.toml`:
 4. FS-P5: fixture with `world = "Castle_CellBlock"`,
    `missions = [{ id = 622, step = 80622 }]`, `items = [{ id = 55, count = 1 }]`.
 5. Every SQL clause in FS-P3, FS-P4 and FS-P5: replace `%px${run_id}%`
-   with `%${fixture_character}%` (the clauses use `ILIKE`; in chain mode
-   the runner sets the var to the chain's character).
+   with `% ${fixture_character}` (end-anchored: the clauses use `ILIKE`,
+   and a substring match lets instance `p1`'s character match `p10`'s,
+   README Review outcomes FX-05; in chain mode the runner sets the var to
+   the chain's character).
 6. The header: replace "How the rows are built" bullet 1 and the whole
    "Resuming a run that stopped part-way" block with: FS-01, FS-02, FS-P1
    and FS-P2 are a chain (FS-P2 is the fresh-login row); FS-P3, FS-P4 and
