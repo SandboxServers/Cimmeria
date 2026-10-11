@@ -26,3 +26,11 @@ cimmeria-admin-api = { workspace = true }
 # (named telemetry Rule 6, NT-41).
 cimmeria-names = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate (`require_db_or_skip!`) for `server_stage_fixture`'s
+# guards (FX-04), re-exported from the `#[cfg(test)] mod test_support` shim
+# in lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }

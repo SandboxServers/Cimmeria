@@ -1464,6 +1464,7 @@ dependencies = [
  "cimmeria-admin-api",
  "cimmeria-names",
  "cimmeria-services",
+ "cimmeria-test-support",
  "cimmeria-workspace-hack",
  "rmcp",
  "serde",
