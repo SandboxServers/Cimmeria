@@ -276,6 +276,7 @@ fn one_row(before: DbSnapshot, after: DbSnapshot) -> (RecordLog, RecordedRow) {
         calls: Vec::new(),
         setup_chat: Vec::new(),
         server: Vec::new(),
+        clicks: Vec::new(),
     };
     (log, row)
 }

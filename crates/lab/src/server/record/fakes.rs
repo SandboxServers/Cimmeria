@@ -157,6 +157,10 @@ impl ClientProbe for FakeClient {
     fn pump(&self) -> BoxedJson<'_> {
         self.read("pump", json!({}))
     }
+
+    fn clicks(&self) -> BoxedJson<'_> {
+        self.read("clicks", json!({ "clicks": [] }))
+    }
 }
 
 /// One test's instance: its slot, lease book, fakes, clock and folders.

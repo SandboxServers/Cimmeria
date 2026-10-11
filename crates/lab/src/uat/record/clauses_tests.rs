@@ -74,6 +74,7 @@ pub(super) fn one_row(
         calls: Vec::new(),
         setup_chat: Vec::new(),
         server,
+        clicks: Vec::new(),
     };
     (log, row)
 }

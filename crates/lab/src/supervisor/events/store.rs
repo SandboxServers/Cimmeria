@@ -158,6 +158,20 @@ impl StoreInner {
         self.cursors.insert(name.to_string(), seq);
     }
 
+    /// The events of `kind` past the named cursor, oldest first, and whether
+    /// any event past it was evicted unread; the cursor moves to the head,
+    /// so each event is returned once. An unset cursor reads from the start.
+    pub fn take_kind(&mut self, cursor: &str, kind: &str) -> (Vec<StoredEvent>, bool) {
+        let slice = self.since(self.cursor(cursor).unwrap_or(0), self.cap);
+        self.set_cursor(cursor, slice.head);
+        let events = slice
+            .events
+            .into_iter()
+            .filter(|e| e.kind == kind)
+            .collect();
+        (events, slice.gap)
+    }
+
     /// Every cursor, for status reads.
     pub fn cursors(&self) -> Value {
         let mut names: Vec<_> = self.cursors.iter().collect();
@@ -261,6 +275,30 @@ mod tests {
         s.set_cursor("combat", 9);
         assert_eq!(s.cursor("wait"), Some(2));
         assert_eq!(s.cursors()[0]["name"], "combat");
+    }
+
+    /// LR-11's click read: only its kind, each event once, other cursors
+    /// untouched, and an eviction past the cursor reported.
+    #[test]
+    fn take_kind_returns_each_event_of_its_kind_once() {
+        let mut s = store(4);
+        s.push("ui.click", 1, json!({ "button": "a" }));
+        s.push("chat.line", 2, json!({}));
+        s.push("ui.click", 3, json!({ "button": "b" }));
+        let (got, gap) = s.take_kind("record", "ui.click");
+        let buttons: Vec<&Value> = got.iter().map(|e| &e.fields["button"]).collect();
+        assert_eq!(buttons, [&json!("a"), &json!("b")]);
+        assert!(!gap);
+        assert!(s.take_kind("record", "ui.click").0.is_empty(), "read once");
+        assert_eq!(s.cursor("wait"), None);
+
+        // Five more into a store of four: the first of them is lost.
+        for i in 0..5 {
+            s.push("ui.click", 10 + i, json!({ "button": i }));
+        }
+        let (got, gap) = s.take_kind("record", "ui.click");
+        assert_eq!(got.len(), 4);
+        assert!(gap);
     }
 
     #[test]

@@ -47,6 +47,52 @@ async fn known_server_events_are_polled_every_second_tick() {
     assert_eq!(polls[3]["since_ms"], 1200);
 }
 
+/// LR-11: each tick takes the clicks the probe reports since the last read;
+/// the ones already stored at begin are not the recording's.
+#[tokio::test]
+async fn the_sampler_fills_clicks_once_per_event() {
+    let server = FakeServer::default();
+    let client = FakeClient::default();
+    let click = |button: &str, mouse: Value| json!({ "window": "TutorialWin", "button": button, "mouse": mouse, "ring_seq": 4 });
+    client.clicks.lock().unwrap().extend([
+        // Stored before the recording: begin skips it.
+        json!({ "clicks": [click("Stale", json!("left"))] }),
+        json!({ "clicks": [] }),
+        json!({ "clicks": [
+            click("TutorialWin__auto_closebutton__", json!("left")),
+            click("TutorialWin_Next", json!(3)),
+        ]}),
+        json!({ "clicks": [], "gap": true }),
+    ]);
+    let (mut s, _, t0) = begin(&server, &client).await;
+    assert!(t0.clicks.is_empty(), "{:?}", t0.clicks);
+
+    let t1 = s.tick(1_500).await;
+    let got: Vec<(&str, Option<&str>)> = t1
+        .clicks
+        .iter()
+        .map(|c| (c.button.as_str(), c.mouse.as_deref()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("TutorialWin__auto_closebutton__", Some("left")),
+            ("TutorialWin_Next", Some("3")),
+        ]
+    );
+    assert_eq!(t1.clicks[0].window, "TutorialWin");
+    assert!(t1.errors.is_empty(), "{:?}", t1.errors);
+
+    let t2 = s.tick(2_000).await;
+    assert!(t2.clicks.is_empty(), "read once: {:?}", t2.clicks);
+    assert!(
+        t2.errors.iter().any(|e| e.contains("evicted")),
+        "{:?}",
+        t2.errors
+    );
+    assert!(s.tick(2_500).await.clicks.is_empty());
+}
+
 #[tokio::test]
 async fn the_caps_stop_a_recording() {
     let server = FakeServer::default();

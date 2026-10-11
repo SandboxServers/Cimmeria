@@ -156,11 +156,18 @@ pub struct SnapItem {
     pub name: Option<String>,
 }
 
-/// A UI button press (LR-10).
+/// A CEGUI window click (LR-10's `ui.click`, read by LR-11).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UiClick {
+    /// The top-level window holding the clicked widget (its ancestor below
+    /// `Root`), as `client_ui_state` lists it under `windows`.
     pub window: String,
+    /// The clicked widget's name (`TutorialWin__auto_closebutton__`).
     pub button: String,
+    /// `left`, `right`, `middle`, or the raw value; `None` when the record
+    /// had none (only a left click becomes a step).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mouse: Option<String>,
 }
 
 /// The last line: why the recording stopped.

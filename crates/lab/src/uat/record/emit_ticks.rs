@@ -8,7 +8,7 @@ use super::super::segment::{AnchorKind, RecordedRow};
 use super::one_line;
 
 /// The dialog window's CEGUI name.
-const DIALOG_WIN: &str = "DialogWin";
+pub(super) const DIALOG_WIN: &str = "DialogWin";
 
 /// What the row's window samples show.
 pub(super) struct WindowWalk {
@@ -21,8 +21,13 @@ pub(super) struct WindowWalk {
 /// Compare each tick's windows in the row with the last read before it.
 /// `DialogWin` opening is the interact's (or an `onDialogDisplay`'s) and
 /// closing a dialog choice's; any other change needs a click on that window
-/// in its tick or the one before, else it is a TODO (keys are never
-/// recorded, D-LR9).
+/// in its tick or a neighbour, else it is a TODO (keys are never recorded,
+/// D-LR9). The click explains the change whether it became a step, a TODO
+/// or was dropped for its call: each of those already accounts for it.
+///
+/// A neighbour on both sides because a tick pumps the clicks before it
+/// reads the UI: a click between the two shows its window change in this
+/// tick and the click itself in the next.
 pub(super) fn walk_windows(log: &RecordLog, row: &RecordedRow) -> WindowWalk {
     let mut walk = WindowWalk {
         dialog_opened: None,
@@ -41,7 +46,7 @@ pub(super) fn walk_windows(log: &RecordLog, row: &RecordedRow) -> WindowWalk {
     for t in in_row(log, row) {
         let Some(now) = &t.windows else { continue };
         let clicked = |w: &str| {
-            [t.seq.checked_sub(1), Some(t.seq)]
+            [t.seq.checked_sub(1), Some(t.seq), t.seq.checked_add(1)]
                 .into_iter()
                 .flatten()
                 .filter_map(|seq| tick(log, seq))

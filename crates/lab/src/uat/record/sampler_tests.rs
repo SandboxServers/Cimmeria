@@ -152,6 +152,8 @@ struct FakeClient {
     ui_fails: AtomicBool,
     pump_fails: AtomicBool,
     pump_lua_error: AtomicBool,
+    /// `clicks()` replies, in order; `{"clicks": []}` once used up.
+    clicks: Mutex<VecDeque<Value>>,
 }
 
 impl ClientProbe for FakeClient {
@@ -201,6 +203,11 @@ impl ClientProbe for FakeClient {
             Ok(json!({ "lua_error": null }))
         };
         Box::pin(async move { out })
+    }
+
+    fn clicks(&self) -> BoxedJson<'_> {
+        let next = self.clicks.lock().unwrap().pop_front();
+        Box::pin(async move { Ok(next.unwrap_or_else(|| json!({ "clicks": [] }))) })
     }
 }
 

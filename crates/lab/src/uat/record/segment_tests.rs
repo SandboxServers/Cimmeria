@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 
 use super::*;
-use crate::uat::record::log::{read_log, SnapMission, Tick};
+use crate::uat::record::log::{read_log, SnapMission, Tick, UiClick};
 
 const FIXTURE: &str = include_str!("fixtures/fs_p3_record.jsonl");
 
@@ -122,6 +122,43 @@ fn interact_zero_uses_the_last_set_target() {
     assert_eq!((rows[0].first_tick, rows[0].last_tick), (1, 2));
     assert!(rows[0].calls.is_empty(), "setTargetID is not a row call");
     assert_eq!(rows[1].anchor.target, Some(200));
+}
+
+/// LR-11: a click joins the row whose ticks hold it, the later row when two
+/// anchors share a tick; one before the first anchor goes nowhere.
+#[test]
+fn clicks_join_the_row_of_their_tick() {
+    let click = |seq: u32, button: &str| {
+        let mut t = tick(seq, vec![], None);
+        t.clicks.push(UiClick {
+            window: "W".into(),
+            button: button.into(),
+            mouse: Some("left".into()),
+        });
+        t
+    };
+    let mut log = log_of(vec![
+        click(0, "before"),
+        tick(1, vec![cell("interact", 74, &[7], &[])], None),
+        click(2, "first"),
+        click(3, "shared"),
+        tick(4, vec![], None),
+    ]);
+    log.ticks[3].tap = vec![
+        cell("interact", 74, &[8], &[]),
+        cell("interact", 74, &[9], &[]),
+    ];
+    let rows = segment(&log);
+    let buttons = |r: &RecordedRow| -> Vec<(u32, String)> {
+        r.clicks
+            .iter()
+            .map(|(t, c)| (*t, c.button.clone()))
+            .collect()
+    };
+    assert_eq!(rows.len(), 3, "{rows:#?}");
+    assert_eq!(buttons(&rows[0]), [(2, "first".to_string())]);
+    assert!(rows[1].clicks.is_empty(), "{rows:#?}");
+    assert_eq!(buttons(&rows[2]), [(3, "shared".to_string())]);
 }
 
 #[test]

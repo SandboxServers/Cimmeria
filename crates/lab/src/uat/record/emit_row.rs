@@ -17,6 +17,9 @@ use super::super::segment::{AnchorKind, RecordedRow};
 use super::ticks::{before, host_ms, in_row, tick, walk_windows};
 use super::{one_line, Line, RowDraft};
 
+#[path = "emit_clicks.rs"]
+mod clicks;
+
 /// Extra `wait_server` match fields per `KNOWN_SERVER_EVENTS` key: (key,
 /// field, value). The cinematic hold is released per witness, so without
 /// `witness_id` another player's release would satisfy the wait (as in
@@ -72,8 +75,10 @@ pub(super) fn draft_row(
     }
 
     // What happened after the anchor, in tick order (stable within a tick:
-    // calls, server events, clicks, windows).
-    let mut later: Vec<(u32, Line)> = Vec::new();
+    // clicks, calls, server events, windows). Clicks lead because a tick
+    // cannot order them against its calls and a click usually causes one
+    // (FS-P4: the tutorial's X, then the dialog's close).
+    let mut later = clicks::click_lines(log, row, &mut labels);
     for (tick, call) in &row.calls {
         later.push((*tick, call_line(log, *tick, call, &mut labels)));
     }
@@ -103,10 +108,6 @@ pub(super) fn draft_row(
                 None => Line::Todo(format!("server event {}", one_line(key))),
             };
             later.push((t.seq, line));
-        }
-        for c in &t.clicks {
-            let what = format!("ui click {}/{}", one_line(&c.window), one_line(&c.button));
-            later.push((t.seq, Line::Todo(what)));
         }
     }
     later.extend(walk.todos.into_iter().map(|(t, w)| (t, Line::Todo(w))));
