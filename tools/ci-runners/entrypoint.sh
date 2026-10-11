@@ -47,6 +47,10 @@ CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-}
 ACTIONS_RUNNER_HOOK_JOB_STARTED=/home/runner/hooks/job-started.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/home/runner/hooks/job-completed.sh
 EOF
+# The routing proxy (compose.yml `egress`), for the runner and every job step.
+for v in HTTPS_PROXY https_proxy NO_PROXY no_proxy; do
+    if [ -n "${!v:-}" ]; then echo "$v=${!v}" >> .env; fi
+done
 # An empty CARGO_BUILD_JOBS would be an error for cargo.
 sed -i '/^CARGO_BUILD_JOBS=$/d' .env
 

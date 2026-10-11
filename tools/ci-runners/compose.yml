@@ -36,6 +36,21 @@ x-runner: &runner
   # Hooks are read per job, so deploy.ps1 updates them without recreating a runner.
 
 services:
+  # Routing HTTPS proxy for the runners: CONNECTs to 57.0.0.0/8 (Azure Storage
+  # ranges the colo can't reach, README "Colo egress") go to the exit proxy in
+  # EGRESS_EXIT; everything else connects directly. Without EGRESS_EXIT it is a
+  # plain direct proxy.
+  egress:
+    build:
+      context: .
+      dockerfile: egress.Dockerfile
+    image: cimmeria-egress-proxy:latest
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    environment:
+      EGRESS_EXIT: ${EGRESS_EXIT:-}
+    entrypoint: ["sh", "-c", 'exec python -I -u /egress_proxy.py --listen 0.0.0.0:3128 $${EGRESS_EXIT:+--via $$EGRESS_EXIT --via-dst 57.0.0.0/8}']
   dind1:
     <<: *dind
     volumes:
@@ -45,7 +60,7 @@ services:
   runner1:
     <<: *runner
     network_mode: service:dind1
-    depends_on: [dind1]
+    depends_on: [egress, dind1]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r1
@@ -53,6 +68,10 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
     volumes:
       - work1:/home/runner/_work
       - state1:/home/runner/state
@@ -70,7 +89,7 @@ services:
   runner2:
     <<: *runner
     network_mode: service:dind2
-    depends_on: [dind2]
+    depends_on: [egress, dind2]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r2
@@ -78,6 +97,10 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
     volumes:
       - work2:/home/runner/_work
       - state2:/home/runner/state
@@ -95,7 +118,7 @@ services:
   runner3:
     <<: *runner
     network_mode: service:dind3
-    depends_on: [dind3]
+    depends_on: [egress, dind3]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r3
@@ -103,6 +126,10 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
     volumes:
       - work3:/home/runner/_work
       - state3:/home/runner/state
@@ -120,7 +147,7 @@ services:
   runner4:
     <<: *runner
     network_mode: service:dind4
-    depends_on: [dind4]
+    depends_on: [egress, dind4]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r4
@@ -128,6 +155,10 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
     volumes:
       - work4:/home/runner/_work
       - state4:/home/runner/state
@@ -145,7 +176,7 @@ services:
   runner5:
     <<: *runner
     network_mode: service:dind5
-    depends_on: [dind5]
+    depends_on: [egress, dind5]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r5
@@ -153,6 +184,10 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
     volumes:
       - work5:/home/runner/_work
       - state5:/home/runner/state

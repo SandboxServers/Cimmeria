@@ -14,6 +14,9 @@
 param(
     [string[]]$Nodes = @('node5', 'node2'),
     [string]$Repo = 'SandboxServers/Cimmeria',
+    # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty
+    # keeps the value already in the node's .env.
+    [string]$EgressExit = $env:CIMMERIA_EGRESS_EXIT,
     [switch]$Down
 )
 Set-StrictMode -Version Latest
@@ -40,11 +43,13 @@ foreach ($node in $Nodes) {
     Write-Host "== ${node}: copying files to $dir"
     ssh $ssh "sudo install -d -o `$(id -u) -g `$(id -g) $dir $dir/hooks"
     if ($LASTEXITCODE -ne 0) { throw "${node}: could not create $dir" }
-    scp -q "$src/Dockerfile" "$src/compose.yml" "$src/entrypoint.sh" "${ssh}:$dir/"
+    scp -q "$src/Dockerfile" "$src/compose.yml" "$src/entrypoint.sh" "$src/egress.Dockerfile" "$src/egress_proxy.py" "${ssh}:$dir/"
     scp -q "$src/hooks/job-started.sh" "$src/hooks/job-completed.sh" "${ssh}:$dir/hooks/"
     ssh $ssh "chmod 0755 $dir/hooks/*.sh"
     if ($LASTEXITCODE -ne 0) { throw "${node}: scp failed" }
-    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`n"
+    $exit = $EgressExit
+    if (-not $exit) { $exit = (ssh $ssh "sed -n 's/^EGRESS_EXIT=//p' $dir/.env 2>/dev/null") -join '' }
+    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`n"
     $envFile | ssh $ssh "cat > $dir/.env && sed -i 's/\r$//' $dir/entrypoint.sh $dir/hooks/*.sh"
 
     $token = gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token

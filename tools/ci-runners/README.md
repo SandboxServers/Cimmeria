@@ -9,20 +9,54 @@ Linux jobs, stay on GitHub-hosted runners.
 | File | What it is |
 | --- | --- |
 | `Dockerfile` | The runner image: Ubuntu 24.04 (as `ubuntu-latest`), the Actions runner, the pinned Rust toolchain, sccache, clang + mold, psql 17, lua5.1, gh, docker CLI |
-| `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps |
+| `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps, and the `egress` proxy |
 | `entrypoint.sh` | Registers on first start, restores the registration afterwards, writes the job environment, waits for dind |
 | `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report and cleanup |
+| `egress_proxy.py`, `egress.Dockerfile` | The HTTPS proxy for the colo egress detour, node and exit roles |
+| `start-exit.ps1` | Starts the exit proxy in Docker on the exit machine |
 | `status.ps1` | Cache and disk report from every runner's job log |
 | `deploy.ps1` | Copies the files to a node, mints a registration token with `gh`, builds and starts the stack |
 
-## Known blocker: colo egress to Azure 57.150.x
+## Colo egress
 
-As of 2026-10-11 jobs on these runners run every step and then hang: the runner uploads step logs to Azure blob storage at 57.150.x, which times out from both nodes and works from other networks. The repository variable `CI_LINUX_RUNNER` is set to `hosted` until that is fixed; remove it to turn the runners back on. Check with:
+The colo cannot open TCP connections to Microsoft's `57.150.0.0/15` (Azure Storage),
+which is where GitHub stores job logs, artifacts and test results. Outbound reaches
+Microsoft, but the replies are lost on the upstream's return path (a ticket is open
+with the colo provider). Without a workaround, every job finishes its steps and then
+hangs on the log upload.
+
+The workaround is a detour for that one block:
+
+- Each node runs an `egress` container (`egress_proxy.py`, node role). Runners and
+  their job steps get `HTTPS_PROXY=http://egress:3128` (with `NO_PROXY` for
+  localhost). It connects most destinations directly, and sends CONNECTs to
+  `57.0.0.0/8` to the exit proxy in the node's `.env` as `EGRESS_EXIT`
+  (`deploy.ps1 -EgressExit host:port`).
+- The exit proxy (`egress_proxy.py`, exit role, `start-exit.ps1`) runs in Docker on
+  the operator's workstation, published only on its colo-VPN address. It only
+  connects to `57.0.0.0/8`. A Windows firewall rule on the VPN adapter admits only the
+  colo runner subnet:
+
+  ```powershell
+  New-NetFirewallRule -DisplayName 'Cimmeria CI egress proxy (colo runners)' -Direction Inbound `
+      -Protocol TCP -LocalPort 3128 -LocalAddress <vpn-address> -RemoteAddress <runner-subnet> `
+      -InterfaceAlias '<vpn-adapter>' -Action Allow -Profile Any
+  ```
+
+  Windows adds *block* rules for a program the first time it listens on a Public
+  network, and they override this rule. That's why the exit runs in Docker, not as
+  a bare `pythonw` task.
+
+If the workstation is off, uploads fail and jobs hang again. Set the repository variable
+`CI_LINUX_RUNNER=hosted` to fall back to GitHub-hosted runners. When the upstream is
+fixed, redeploy with `-EgressExit ''` cleared in each node's `.env` and the egress proxy
+connects everything directly. Check the colo path with:
 
 ```bash
-ssh cimmeria-node2 'timeout 5 bash -c \"</dev/tcp/57.150.86.161/443\" && echo ok || echo blocked'
+ssh cimmeria-node2 'timeout 5 bash -c "</dev/tcp/57.150.86.161/443" && echo ok || echo blocked'
 ```
 
+Each node's `docker compose logs egress` shows every CONNECT and the route it took.
 ## Cache and disk report
 
 ```powershell
