@@ -21,7 +21,7 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 | 2 | `Install-CimmeriaDependencies` | Download PostgreSQL (Windows) or verify system PG |
 | 3 | `Build-CimmeriaServer` | `cargo build --workspace` excluding the GUI apps (see below) |
 | 4 | `Build-CimmeriaApp` | `npm install` + `cargo tauri build` (optional, `-WithAdmin`) |
-| 5 | `Build-CimmeriaLauncher` | Build the `sgw-launcher` Tauri app (optional, `-WithLauncher`) |
+| 5 | `Build-CimmeriaLauncher` | Build the `sgw-launcher` egui app (optional, `-WithLauncher`) |
 | 6 | `Sync-CimmeriaGameData` | Copy client PAK files into `data/cache/` |
 | 7 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
 | 8 | `Start-CimmeriaServer` | Launch cimmeria-server binary |
@@ -34,7 +34,7 @@ cargo build --workspace `
   --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
 ```
 
-The four GUI apps (Tauri admin panel, game launcher, and the two Tauri editors)
+The four GUI apps (Tauri admin panel, egui game launcher, and the two Tauri editors)
 are excluded from the default build and only built on demand via `-WithAdmin` /
 `-WithLauncher` or their dedicated functions.
 
@@ -46,7 +46,7 @@ are excluded from the default build and only built on demand via `-WithAdmin` /
 
 - **`Build-CimmeriaServer`** - Build the Rust server workspace via Cargo (excludes the GUI apps)
 - **`Build-CimmeriaApp`** - Build the Tauri admin app (SolidJS frontend + Rust backend)
-- **`Build-CimmeriaLauncher`** - Build the `sgw-launcher` Tauri game launcher
+- **`Build-CimmeriaLauncher`** - Build the `sgw-launcher` egui game launcher
 
 ### Setup & Database
 

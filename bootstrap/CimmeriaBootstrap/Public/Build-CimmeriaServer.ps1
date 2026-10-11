@@ -8,7 +8,7 @@ function Build-CimmeriaServer {
         block the required server build:
           1. cimmeria-server  (game server + libraries) — always built
           2. cimmeria-app     (Tauri admin panel)       — only with -WithAdmin
-          3. sgw-launcher     (Tauri game launcher)     — only with -WithLauncher
+          3. sgw-launcher     (egui game launcher)      — only with -WithLauncher
 
     .PARAMETER Configuration
         Build configuration: "Debug" (default) or "Release".

@@ -47,7 +47,7 @@ The `Last updated` line is likewise never rewritten — stamping it on every run
 
 `--check` is the strict gate: it regenerates in memory and fails if anything differs. It is the right end state, but it fails loudly today because the catalogue is missing more than half the suite — adopt it only after a backfill sweep.
 
-`--verify-links` is the incrementally adoptable one. It ignores catalogue membership entirely and asks only whether each existing `#L` anchor still resolves to its own test's `fn` line. Verified 2026-07-25: **1,121 links, 0 stale anchors** — the anchor repair holds. The 44 dangling rows it reported were all in `launcher.md` and `tools-sgwlauncher.md`, which pointed at the `tools/SGWLauncher/src-tauri/` tree; LX-19 removed that tree and its inventory page, so those rows are gone with it.
+`--verify-links` is the incrementally adoptable one. It ignores catalogue membership entirely and asks only whether each existing `#L` anchor still resolves to its own test's `fn` line. Verified 2026-07-25: **1,121 links, 0 stale anchors** — the anchor repair holds. The 44 dangling rows it reported were all in `launcher.md` and `tools-sgwlauncher.md`, which pointed at the `tools/SGWLauncher/src-tauri/` tree; LX-19 later removed that tree and its inventory page.
 
 ### Reconciling the live-DB count
 
