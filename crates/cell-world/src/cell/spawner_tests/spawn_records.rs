@@ -211,6 +211,59 @@ fn spawn_instance_npcs_filters_by_world() {
     assert_eq!(count, 2);
 }
 
+/// The instanced summary row: one INFO on target `spawner` carrying the
+/// world, the space, the record count and how many spawned or failed.
+#[test]
+fn spawn_instance_summary_row_counts_spawned_and_failed() {
+    let logs = crate::test_support::LogCapture::install();
+    let mut mgr = make_manager_with_worlds();
+    let space_id = mgr.find_or_create_space("Castle_CellBlock").unwrap();
+    let records = vec![
+        make_test_record("Castle_CellBlock", Some("Tag1"), "being"),
+        make_test_record("Castle_CellBlock", Some("Tag2"), "spawnable"),
+        make_test_record("Agnos", Some("Tag3"), "mob"),
+    ];
+
+    let count = spawn_instance_npcs_from_records(&records, "Castle_CellBlock", space_id, &mut mgr);
+    assert_eq!(count, 2);
+
+    let summary = logs
+        .find_message(tracing::Level::INFO, "instance NPC population summary")
+        .expect("the instance summary row must be logged");
+    assert_eq!(summary.target, "spawner");
+    assert!(summary.has_field("event", "instance_populated"));
+    assert!(summary.has_field("world", "Castle_CellBlock"));
+    assert!(summary.has_field("space_id", &space_id.to_string()));
+    assert!(summary.has_field("record_count", "3"));
+    assert!(summary.has_field("spawned", "2"));
+    assert!(summary.has_field("failed", "0"));
+}
+
+/// Records naming a world with no startup space are skipped, and that world
+/// WARNs once with the number of records it swallowed, not once per record.
+#[test]
+fn spawn_unknown_world_warns_once_per_world() {
+    let logs = crate::test_support::LogCapture::install();
+    let mut mgr = make_manager_with_worlds();
+    let records = vec![
+        make_test_record("NoSuchWorld", Some("Lost1"), "mob"),
+        make_test_record("NoSuchWorld", Some("Lost2"), "mob"),
+        make_test_record("Agnos", Some("Tag1"), "mob"),
+    ];
+
+    assert_eq!(spawn_npcs_from_records(&records, &mut mgr), 1);
+
+    let warns: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.level == tracing::Level::WARN && c.has_field("event", "spawn_world_unknown"))
+        .collect();
+    assert_eq!(warns.len(), 1, "one WARN per unknown world: {warns:#?}");
+    assert_eq!(warns[0].target, "spawner");
+    assert!(warns[0].has_field("world", "NoSuchWorld"));
+    assert!(warns[0].has_field("records", "2"));
+}
+
 #[test]
 fn find_entity_by_tag_works() {
     let mut mgr = make_manager_with_worlds();
