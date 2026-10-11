@@ -205,7 +205,7 @@ fn reply_value(out: &ToolOutcome, at: impl FnOnce(&Value) -> Value) -> Value {
 /// The world of the session whose character is `name`, or null when no
 /// session lists it. A fresh character is listed by its full name, so any
 /// whole word of the listing that is `name` matches.
-fn session_world(reply: &Value, name: &str) -> Value {
+pub(super) fn session_world(reply: &Value, name: &str) -> Value {
     reply["sessions"]
         .as_array()
         .and_then(|list| {
@@ -248,11 +248,7 @@ fn miss(what: &str, got: &Value, want: &Value) -> String {
 
 /// The joined errors, cut to [`REASON_CAP`] characters ending in `...`.
 fn capped(s: &str) -> String {
-    if s.chars().count() <= REASON_CAP {
-        return s.to_string();
-    }
-    let head: String = s.chars().take(REASON_CAP - 3).collect();
-    format!("{head}...")
+    crate::uat::snapshot::cap_chars(s, REASON_CAP)
 }
 
 #[cfg(test)]

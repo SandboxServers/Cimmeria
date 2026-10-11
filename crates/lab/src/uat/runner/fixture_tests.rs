@@ -62,6 +62,11 @@ pub(super) fn fixture_row_c() -> String {
     FIXTURE_ROW.replace("FS-B", "FS-C")
 }
 
+/// Substrings that tell the three snapshot statements apart (FX-10).
+pub(super) const SNAP_MISSIONS: &str = "m.mission_id AS id";
+pub(super) const SNAP_ITEMS: &str = "i.container_id AS container";
+pub(super) const SNAP_TUTORIALS: &str = "t.tutorial_id AS id";
+
 /// A pretend lab endpoint. `server_sessions` lists the character the fake
 /// client is in world as (the last `lab_play_character`, else the fake's
 /// own name: entity 41 for that one, 42 for a played one), and `stuck`
@@ -86,6 +91,8 @@ pub(super) struct Endpoint<'f> {
     pub(super) no_entity: bool,
     /// `server_db_query` fails with this message.
     pub(super) db_error: Option<String>,
+    /// `server_sessions` fails with this message.
+    pub(super) sessions_error: Option<String>,
     /// Scripted `server_db_query` replies per SQL substring, popped in
     /// order (the last repeats); see `db_replies`.
     db: Mutex<Vec<(String, VecDeque<Value>)>>,
@@ -97,9 +104,16 @@ fn contains_ci(hay: &str, needle: &str) -> bool {
 }
 
 /// The `server_db_query` answer for a fixture the server staged in full:
-/// mission 622 on its step and active, nothing else carried or unseen.
+/// mission 622 on its step and active, nothing else carried or unseen. The
+/// chain snapshot (FX-10) sees the same state, so a chained `FIXTURE_ROW`
+/// has parity.
 fn default_db_answer(sql: &str) -> Value {
-    if sql.contains("m.mission_id = 622") {
+    if sql.contains(SNAP_MISSIONS) {
+        json!({ "row_count": 1, "truncated": false, "row_cap": 500,
+                "rows": [{ "id": 622, "status": 1, "step": 80623 }] })
+    } else if sql.contains(SNAP_ITEMS) || sql.contains(SNAP_TUTORIALS) {
+        json!({ "row_count": 0, "truncated": false, "row_cap": 500, "rows": [] })
+    } else if sql.contains("m.mission_id = 622") {
         json!({ "rows": [{ "n_rows": 1, "status": 1, "step": 80623 }] })
     } else if sql.contains("sgw_mission") {
         json!({ "rows": [{ "n_rows": 0, "status": null, "step": null }] })
@@ -121,6 +135,7 @@ impl<'f> Endpoint<'f> {
             position: [-319.0, 73.6, -212.5],
             no_entity: false,
             db_error: None,
+            sessions_error: None,
             db: Mutex::new(vec![]),
         }
     }
@@ -233,6 +248,9 @@ impl ServerInvoker for Endpoint<'_> {
             .unwrap()
             .push((name.to_string(), args.clone()));
         let out = match name {
+            "server_sessions" if self.sessions_error.is_some() => {
+                ToolOutcome::err(self.sessions_error.clone().unwrap_or_default())
+            }
             "server_sessions" => ToolOutcome {
                 ok: true,
                 json: self.sessions(),
