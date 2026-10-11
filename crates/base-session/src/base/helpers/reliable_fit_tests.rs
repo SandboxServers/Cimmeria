@@ -12,17 +12,22 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::consts::PACKET_MAX_SIZE;
 use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{parse_incoming, FLAG_FRAGMENTED};
 use cimmeria_mercury::transport::Transport;
+use tracing::Level;
 
-use super::{send_to_witness_reliable, ConnectedClientState, WitnessSendOutcome};
+use super::{
+    send_bundle_to_witness_reliable, send_to_witness_reliable, ConnectedClientState,
+    WitnessSendOutcome,
+};
 use crate::cell::messages::NpcAoIData;
 use crate::mercury::{
     build_create_entity_cascade, compose_create_entity_cascade_body, SGWMOB_CLASS_ID,
 };
-use crate::test_support::TestTransport;
+use crate::test_support::{LogCapture, TestTransport};
 
 const WITNESS: u32 = 700;
 const NPC: u32 = 100_221;
@@ -391,4 +396,70 @@ async fn packet_growing_after_reserve_is_fragmented_on_the_same_seq() {
         .next_seq
         .load(std::sync::atomic::Ordering::Relaxed);
     assert_eq!(next, 2, "no seq burned");
+}
+
+/// A routine AoI flush: two messages that share one datagram. The flush row
+/// is DEBUG and no INFO row fires; reverting to a bare INFO makes this fail.
+#[tokio::test]
+async fn single_packet_aoi_bundle_logs_at_debug() {
+    let h = harness(EncryptionVersion::V1, 0..0);
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(5, IDBASE_SGW_PLAYER, WITNESS, &[1, 2, 3]);
+    bundle.append_entity_method(6, IDBASE_SGW_PLAYER, WITNESS, &[4, 5]);
+
+    let capture = LogCapture::install();
+    let outcome = send_bundle_to_witness_reliable(
+        &h.transport,
+        &h.connected,
+        &h.entity_to_addr,
+        WITNESS,
+        bundle,
+    )
+    .await;
+    assert!(outcome.is_sent(), "{outcome:?}");
+    assert_eq!(h.tt.filter_to(h.addr).len(), 1, "one datagram");
+
+    let row = capture
+        .find_message(Level::DEBUG, "AoI bundle: flushed")
+        .expect("single-packet flush must log at DEBUG");
+    assert!(row.has_field("packets", "1"), "{row:#?}");
+    assert!(row.has_field("fragmented", "false"), "{row:#?}");
+    assert!(
+        capture
+            .find_message(Level::INFO, "AoI bundle: flushed")
+            .is_none(),
+        "a single-packet flush must not log at INFO"
+    );
+}
+
+/// A bundle too big for one datagram flushes as several fragments; that flush
+/// keeps its INFO row.
+#[tokio::test]
+async fn multi_packet_aoi_bundle_logs_at_info() {
+    let h = harness(EncryptionVersion::V1, 0..0);
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(5, IDBASE_SGW_PLAYER, WITNESS, &vec![0x41u8; 1600]);
+
+    let capture = LogCapture::install();
+    let outcome = send_bundle_to_witness_reliable(
+        &h.transport,
+        &h.connected,
+        &h.entity_to_addr,
+        WITNESS,
+        bundle,
+    )
+    .await;
+    assert!(outcome.is_sent(), "{outcome:?}");
+    assert!(h.tt.filter_to(h.addr).len() >= 2, "fragmented");
+
+    let row = capture
+        .find_message(Level::INFO, "AoI bundle: flushed")
+        .expect("multi-packet flush must log at INFO");
+    assert!(row.has_field("fragmented", "true"), "{row:#?}");
+    assert!(
+        capture
+            .find_message(Level::DEBUG, "AoI bundle: flushed")
+            .is_none(),
+        "a multi-packet flush must not log at DEBUG"
+    );
 }

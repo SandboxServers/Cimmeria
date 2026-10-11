@@ -1,12 +1,16 @@
 # Codecov configuration. Reference: https://docs.codecov.com/docs/codecov-yaml
 #
-# Coverage is advisory in this repo — the build-and-test + test-live-db jobs are the
-# blocking gate. The Codecov status check exists to surface drift in PR
-# review, not to fail builds on small fluctuations.
+# Coverage is advisory in this repo — the build-and-test job (no-DB and live-DB tiers) is the
+# blocking gate. Coverage runs on pushes to main and on PRs labeled `coverage`
+# (test.yml); the Codecov status check surfaces drift, not fails builds on
+# small fluctuations.
 
 # test.yml uploads coverage from two jobs that run at the same time
 # (coverage-workspace and coverage-live-db). Wait for both before posting
 # statuses or the PR comment, so the first half never reports as the whole.
+# On PRs test.yml uploads no coverage unless the PR is labeled `coverage`, so a
+# launcher PR's single launcher-build.yml upload never reaches 2 and gets no
+# Codecov status or comment. Coverage is advisory; label the PR to get one.
 codecov:
   notify:
     after_n_builds: 2

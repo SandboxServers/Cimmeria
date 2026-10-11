@@ -2,7 +2,7 @@
 
 > Type: work packets. Audience: `packet-coder` workers (Haiku),
 > `rust-gameserver-dev` for WC-12, WC-14 and WC-15, and `packet-reviewer`
-> reviewers (Sonnet). Ledger, findings (F1 to F18) and decisions (D-WC1 to
+> reviewers (Sonnet). Ledger, findings (F1 to F19) and decisions (D-WC1 to
 > D-WC12): [README.md](README.md).
 >
 > PowerShell only. Every compiling command goes through the lane, in this
@@ -45,6 +45,7 @@
 - [WC-14 Praxis-start end-to-end test](#wc-14-praxis-start-end-to-end-test)
 - [WC-15 First-login flush-shape guard](#wc-15-first-login-flush-shape-guard)
 - [WC-16 Shakedown and gate](#wc-16-shakedown-and-gate)
+- [WC-18 Chaos tests vs a populated Castle (#1371)](#wc-18-chaos-tests-vs-a-populated-castle-1371)
 - [WC-17 Close-out](#wc-17-close-out)
 
 ## Contract
@@ -1320,6 +1321,466 @@ Files:
 
 Tests: `python -m unittest tools/build-lane/test_ship.py` (stock Python).
 The new test fails if the name is not in `CONDITIONAL`.
+
+## WC-18 Chaos tests vs a populated Castle (#1371)
+
+**Implementer:** packet-coder. **Size:** M. **Wave:** any (touches no other packet's files). **Depends on:** none.
+**Branch:** `wireclient-ci/wc18-chaos-fix`. **Worktree:** `wc18`.
+**Subject:** `fix(wireclient): WC-18 chaos tests survive a populated Castle (#1371)`
+
+Why: README F19. Three tests in `two_client_castle_visibility_chaos.rs` have
+failed since #1007 put 28 NPCs, some of them wandering, into the AoI of
+`CASTLE_BASE_POS`. The bisect lands on that seed-only commit, and both
+mechanisms are in the test harness. Neither one reaches a real player.
+Evidence from instrumented runs on `main` @ `6afc2a737` (a temporary probe
+in the base's cell-to-base loop logged each message kind, the queue depth
+and the time taken):
+
+1. **`LossyTransport` turns latency into a throughput cap.** `send_to` and
+   `recv_from` `sleep(latency)` inline. The base routes every
+   `CellToBaseMsg` from one task (`crates/base/src/base/service.rs`,
+   `while let Some(msg) = cell_rx.recv().await { route_cell_message(..).await }`),
+   and every packet send inside that task now waits out the latency. At
+   80 ms + 40 ms jitter the loop drained 9 to 10 messages a second. The
+   wandering NPCs' `EntityMoved` relays arrive far faster (about 180 a
+   second with zero latency), so the 256-slot channel was full (depth 255)
+   from A's entry onward. Of 430 messages it handled in 50 s, 375 were
+   `EntityMoved`. B's `EntityCreated` reached the base 45 s after B entered.
+   That is `high_latency_clients_still_converge`, with zero loss. In
+   `lossy_network_both_directions_still_converge` (5 + 30 ms) the loop
+   drained about 35 a second, and B's create to A went out 6.5 s after the
+   AoI enter. Production's `UdpTransport::send_to` does not wait for the
+   network, so this does not happen on a real server.
+2. **An idle `GameSession` never ACKs.** `LoopbackPeer` piggybacks ACKs only
+   on its own outbound packets, and a test session sends nothing after
+   world entry. A gets 56 reliable introduction packets, 2 per NPC, and acks
+   none of them, so:
+   - the server resends all of them on RTO. In
+     `burst_drop_of_peer_create_entity_recovers_via_retransmit` the targeted
+     drop (`drop_next_sends_to(1, a_addr, 50)`) fired on the RTO retransmit
+     of A's seq 20, a 688-byte NPC cascade (`mercury.retransmit` seq 20 and
+     `mercury.lossy_transport` len=688 in the same microsecond), not on B's
+     create. B's create then arrived normally, with no position relay
+     ahead of it, and the precondition assert fired.
+   - only the 32-entry TX window is retransmitted (`TX_WINDOW_SIZE`; past it
+     a packet sits in `unsent_packets` until an ACK frees a slot). In the
+     lossy test the server resent only A's seqs 10 to 41. A lost packet
+     past them was never resent: A's receive gate stayed at `expected=46`
+     with B's create and cascade (seq 76, 77) buffered behind it until the
+     timeout.
+   Before #1007, A got fewer than 32 reliable packets after entry, so every
+   loss was inside the window and nothing big was in flight to retransmit.
+   The real client sends about six packets a second while idle, each
+   carrying its ACKs (`sparbot.rs` module doc; TESTING.md type 10 "Ack as
+   promptly as the real client"), so neither happens to a player.
+
+Eliminated: aggro or combat from #1007's level 2-4 guards (the probe saw no
+combat or broadcast traffic, only `EnteredAoI`, `EntityMoved` and a few
+entry-time method calls); the Mercury fixes #1274 and #1297 (failing
+before them).
+
+The fix keeps the crowded Castle: the tests should cover a populated world.
+A prototype of exactly the changes below passed all three chaos tests
+(14 s) and the lossless twin's two tests on Windows.
+
+Files:
+
+1. `crates/mercury/src/lossy_transport.rs`: latency becomes a pipeline
+   delay on both sides.
+   - Imports: add `use std::collections::HashMap;`, `use tokio::sync::mpsc;`,
+     `use tokio::task::JoinHandle;`, `use tokio::time::Instant;`.
+   - `LossyTransport`: change `recv_rng: Mutex<ChaCha20Rng>` to
+     `recv_rng: Arc<Mutex<ChaCha20Rng>>` (and `Arc::new(..)` it in
+     `new_asymmetric`). Add three fields, initialised in `new_asymmetric`
+     with `Mutex::new(HashMap::new())`, `tokio::sync::Mutex::new(None)` and
+     `Mutex::new(None)`:
+
+     ```rust
+     /// One FIFO delay line per destination. A delayed send is queued here
+     /// with its due time and `send_to` returns at once; the line's task
+     /// puts it on the wire when it is due. Latency is a pipeline delay,
+     /// not a cap on how fast the caller can send (#1371).
+     send_lines: Mutex<HashMap<SocketAddr, mpsc::UnboundedSender<Delayed>>>,
+     /// Receive side of the delayed-recv pump, started on the first
+     /// `recv_from` when the recv config has latency or jitter.
+     recv_line: tokio::sync::Mutex<Option<mpsc::UnboundedReceiver<RecvItem>>>,
+     /// The pump task, aborted when the transport is dropped.
+     recv_pump: Mutex<Option<JoinHandle<()>>>,
+     ```
+
+   - After the struct, add:
+
+     ```rust
+     /// One datagram waiting on a destination's delay line.
+     #[derive(Debug)]
+     struct Delayed {
+         bytes: Vec<u8>,
+         due: Instant,
+     }
+
+     /// What the recv pump hands `recv_from`: a datagram, its source and the
+     /// time it is due, or an error to return.
+     type RecvItem = io::Result<(Vec<u8>, SocketAddr, Instant)>;
+
+     /// Start the delay line for `addr`: a task that sends each queued datagram
+     /// once it is due, in queue order. A datagram due before the one ahead of it
+     /// goes right after it, so a destination never sees its packets reordered.
+     fn spawn_send_line(
+         inner: Arc<dyn BidirectionalTransport>,
+         addr: SocketAddr,
+     ) -> mpsc::UnboundedSender<Delayed> {
+         let (tx, mut rx) = mpsc::unbounded_channel::<Delayed>();
+         tokio::spawn(async move {
+             while let Some(delayed) = rx.recv().await {
+                 tokio::time::sleep_until(delayed.due).await;
+                 if let Err(e) = inner.send_to(&delayed.bytes, addr).await {
+                     tracing::debug!(
+                         target: "mercury.lossy_transport",
+                         %addr,
+                         error = %e,
+                         "LossyTransport delayed send failed"
+                     );
+                 }
+             }
+         });
+         tx
+     }
+
+     /// The error `recv_from` returns after [`MAX_RECV_DROP_LOOPS`] drops in a row.
+     fn recv_drop_cap_error(drop_per_thousand: u32) -> io::Error {
+         io::Error::other(format!(
+             "LossyTransport::recv_from dropped {MAX_RECV_DROP_LOOPS} consecutive packets — \
+              recv-side drop_per_thousand may be misconfigured at or near 100%; \
+              current config: {drop_per_thousand}/{MAX_PER_THOUSAND}",
+         ))
+     }
+     ```
+
+   - In `impl LossyTransport`, after `effective_latency`, add `emit` and
+     `spawn_recv_pump`:
+
+     ```rust
+     /// Put `bytes` on the wire now (`due` is `None`), or queue them on
+     /// `addr`'s delay line until `due`. A queued send reports the full
+     /// length, the kernel's view, like the drop path.
+     async fn emit(
+         &self,
+         bytes: &[u8],
+         addr: SocketAddr,
+         due: Option<Instant>,
+     ) -> io::Result<usize> {
+         let Some(due) = due else {
+             return self.inner.send_to(bytes, addr).await;
+         };
+         let mut lines = self.send_lines.lock().expect("send_lines poisoned");
+         let line = lines
+             .entry(addr)
+             .or_insert_with(|| spawn_send_line(self.inner.clone(), addr));
+         line.send(Delayed {
+             bytes: bytes.to_vec(),
+             due,
+         })
+         .map_err(|_| io::Error::other("LossyTransport delay line closed"))?;
+         Ok(bytes.len())
+     }
+
+     /// Start the delayed-recv pump: it reads the inner transport as fast as
+     /// datagrams arrive, applies the recv drop roll and stamps each survivor
+     /// with its due time, so a slow reader never adds the latency once per
+     /// packet. The pump owns the recv RNG from here on.
+     fn spawn_recv_pump(&self) -> mpsc::UnboundedReceiver<RecvItem> {
+         let (tx, rx) = mpsc::unbounded_channel::<RecvItem>();
+         let inner = self.inner.clone();
+         let config = self.recv_config.clone();
+         let rng = self.recv_rng.clone();
+         let pump = tokio::spawn(async move {
+             let mut buf = vec![0u8; 65_536];
+             let mut dropped_in_a_row = 0u32;
+             loop {
+                 let item = match inner.recv_from(&mut buf).await {
+                     Ok((n, addr)) => {
+                         let (drop_this, latency) = {
+                             let mut rng = rng.lock().expect("recv_rng poisoned");
+                             (
+                                 Self::should_drop(&config, &mut rng),
+                                 Self::effective_latency(&config, &mut rng),
+                             )
+                         };
+                         if drop_this {
+                             dropped_in_a_row += 1;
+                             if dropped_in_a_row < MAX_RECV_DROP_LOOPS {
+                                 continue;
+                             }
+                             dropped_in_a_row = 0;
+                             Err(recv_drop_cap_error(config.drop_per_thousand))
+                         } else {
+                             dropped_in_a_row = 0;
+                             Ok((buf[..n].to_vec(), addr, Instant::now() + latency))
+                         }
+                     }
+                     Err(e) => Err(e),
+                 };
+                 if tx.send(item).is_err() {
+                     return;
+                 }
+             }
+         });
+         *self.recv_pump.lock().expect("recv_pump poisoned") = Some(pump);
+         rx
+     }
+     ```
+
+     and, after that `impl` block:
+
+     ```rust
+     impl Drop for LossyTransport {
+         fn drop(&mut self) {
+             if let Some(pump) = self.recv_pump.get_mut().ok().and_then(Option::take) {
+                 pump.abort();
+             }
+         }
+     }
+     ```
+
+   - `send_to`: replace `if !latency.is_zero() { tokio::time::sleep(latency).await; }`
+     with
+
+     ```rust
+     // Never sleep here: the caller may be a loop that serves every
+     // client (the base's cell-message dispatcher is one task), and a
+     // sleep per send turns 80 ms of latency into a cap of about 12
+     // sends a second for the whole server (#1371). The delay line
+     // delivers the datagram when it is due instead.
+     let due = (!latency.is_zero()).then(|| Instant::now() + latency);
+     ```
+
+     Then route the three remaining sends through `emit`: in the reorder
+     flush loop `self.emit(held_bytes, addr, due).await?;`, and at the end
+     `let n = self.emit(bytes, addr, due).await?;` and
+     `let _ = self.emit(bytes, addr, due).await;` for the duplicate.
+     `flush_reorder_buffer` keeps calling `self.inner.send_to` (teardown).
+   - `recv_from`: before the `for _ in 0..MAX_RECV_DROP_LOOPS` loop, add the
+     pump path; in the loop, drop the latency draw and the sleep; replace the
+     final `Err(io::Error::other(format!(..)))` with
+     `Err(recv_drop_cap_error(self.recv_config.drop_per_thousand))`:
+
+     ```rust
+     // With latency or jitter, a pump reads ahead and `recv_from` only
+     // waits for each datagram's due time. Sleeping here after every
+     // read would cap the server's whole receive loop at one datagram
+     // per latency (#1371).
+     if !self.recv_config.latency.is_zero() || !self.recv_config.jitter.is_zero() {
+         let mut line = self.recv_line.lock().await;
+         if line.is_none() {
+             *line = Some(self.spawn_recv_pump());
+         }
+         let Some(rx) = line.as_mut() else {
+             return Err(io::Error::other("LossyTransport recv pump missing"));
+         };
+         return match rx.recv().await {
+             Some(Ok((bytes, addr, due))) => {
+                 tokio::time::sleep_until(due).await;
+                 let n = bytes.len().min(buf.len());
+                 buf[..n].copy_from_slice(&bytes[..n]);
+                 Ok((n, addr))
+             }
+             Some(Err(e)) => Err(e),
+             None => Err(io::Error::other("LossyTransport recv pump stopped")),
+         };
+     }
+     for _ in 0..MAX_RECV_DROP_LOOPS {
+         let (n, addr) = self.inner.recv_from(buf).await?;
+         let drop_this = {
+             let mut rng = self.recv_rng.lock().expect("recv_rng poisoned");
+             Self::should_drop(&self.recv_config, &mut rng)
+         };
+         if drop_this {
+             continue;
+         }
+         return Ok((n, addr));
+     }
+     ```
+
+   - Doc text: the `LossyConfig::jitter` field doc says jitter "is what lets
+     sends complete ... out of their original order". Replace that sentence
+     with: "Delivery to one destination keeps its order (each destination
+     has a FIFO delay line); use `reorder_buffer_size` to reorder." In the
+     module doc's first bullet, after "drop / latency+jitter", add "(latency
+     delays delivery; it never blocks the caller)".
+2. `crates/wireclient/src/session.rs`, in `impl GameSession` before
+   `recv_bundles`:
+
+   ```rust
+   /// Send one unreliable `AUTHENTICATE`, as the SGW client does every
+   /// tick while idle. It carries the ACKs this session owes: `LoopbackPeer`
+   /// only piggybacks them on an outbound packet, so a session that sends
+   /// nothing leaves every reliable packet unacked and the server
+   /// retransmitting it (#1371).
+   pub async fn send_keepalive(&self) -> std::io::Result<()> {
+       self.peer.send_bundle(&Self::authenticate(), false).await
+   }
+
+   /// How many received reliable packets this session has not acked yet.
+   pub fn pending_acks_len(&self) -> usize {
+       self.peer.pending_acks_len()
+   }
+   ```
+
+3. `crates/wireclient/tests/it/support/mod.rs` (CRLF; keep it):
+   - `use cimmeria_wireclient::sparbot::HEARTBEAT_EVERY;` after the
+     `GameSession` import.
+   - Before `wait_for`, add:
+
+     ```rust
+     /// Keeps a waiting session's ACKs flowing, as the SGW client's idle
+     /// `AUTHENTICATE` does (sparbot's [`HEARTBEAT_EVERY`]). Without it a session
+     /// that only listens never acks, the server retransmits everything it sent,
+     /// and a loss past the 32-packet TX window is never resent (#1371).
+     #[derive(Default)]
+     struct KeepAlive {
+         last: Option<tokio::time::Instant>,
+     }
+
+     impl KeepAlive {
+         async fn send_if_due(&mut self, session: &GameSession) {
+             if self.last.is_some_and(|t| t.elapsed() < HEARTBEAT_EVERY) {
+                 return;
+             }
+             session
+                 .send_keepalive()
+                 .await
+                 .expect("send keep-alive AUTHENTICATE");
+             self.last = Some(tokio::time::Instant::now());
+         }
+     }
+
+     /// Keep `session` acking until the server has nothing reliable in flight to
+     /// it: two heartbeats in a row that end with no ACK owed. Bundles that arrive
+     /// meanwhile are discarded. Panics if that takes longer than `limit`.
+     pub async fn settle(session: &GameSession, limit: Duration) {
+         let start = tokio::time::Instant::now();
+         let mut quiet_beats = 0;
+         while quiet_beats < 2 {
+             assert!(
+                 start.elapsed() < limit,
+                 "session still owed {} ACKs after {limit:?}",
+                 session.pending_acks_len()
+             );
+             session
+                 .send_keepalive()
+                 .await
+                 .expect("send keep-alive AUTHENTICATE");
+             let _ = session.recv_bundles(usize::MAX, HEARTBEAT_EVERY).await;
+             quiet_beats = if session.pending_acks_len() == 0 {
+                 quiet_beats + 1
+             } else {
+                 0
+             };
+         }
+     }
+     ```
+
+   - In `wait_for` and in `wait_for_recording`: add
+     `let mut keepalive = KeepAlive::default();` before the `loop`; as the
+     first statement after the deadline check,
+     `keepalive.send_if_due(session).await;`; and change the slice to
+     `let slice = HEARTBEAT_EVERY.min(deadline - elapsed);` (was 300 ms).
+     `assert_never` calls `wait_for`, so it gets the keep-alive too.
+4. `crates/wireclient/tests/it/two_client_castle_visibility_chaos.rs`:
+   - In `burst_drop_of_peer_create_entity_recovers_via_retransmit`, replace
+     `tokio::time::sleep(Duration::from_millis(500)).await;` with
+     `support::settle(&a, Duration::from_secs(10)).await;`, and rewrite the
+     comment above `let a = enter_castle_with_timeout(..)` that justifies the
+     500 ms: A must have acked its own introductions (28 NPCs since #1007)
+     before the drop is armed, or the drop lands on an RTO retransmit of one
+     of them (#1371); `settle` waits for that instead of a fixed time.
+   - Module doc: after the paragraph on `LossyTransport`'s reorder buffer,
+     add one: the scenarios run in a populated Castle (#1007); every wait
+     sends the client's idle keep-alive, which carries the ACKs; latency in
+     `LossyTransport` is a pipeline delay (#1371).
+5. `docs/architecture/network-chaos-testing.md` (CRLF): after the NA37
+   round 2 paragraph, a paragraph "**#1371 (2026-10-11):**" saying latency
+   and jitter are now a per-destination FIFO delay line on send and a
+   read-ahead pump on recv, why (the serial cell-to-base loop drained one
+   message per latency; F19 in `docs/analysis/wireclient-ci/README.md`), and
+   that jitter no longer reorders one destination's packets. In
+   § Consequences / Negative, the `Transatlantic` "~30 seconds" bullet: the
+   latency no longer adds up per packet, so drop the 30 s claim and say the
+   test stays `#[ignore]`d only for its 500-packet volume.
+6. `crates/mercury/tests/it/chaos_lossy_transport_integration.rs`: the
+   `#[ignore = "..."]` reason and the doc comment on
+   `transatlantic_profile_loss_eventually_drops_a_packet` say 60 ms × 500 =
+   30 s. Change both to "slow: 500-packet statistical run; run with --ignored".
+7. New `docs/analysis/wireclient-ci/worknotes/WC-18.md`: for WC-17, the
+   TESTING.md type 10 bullet "L2 integration tests are slow ... 60ms-per-recv
+   latency" is no longer true (latency is pipelined), and type 10's "Ack as
+   promptly as the real client" now applies to the wireclient tests through
+   `support::KeepAlive`. Also record the lane durations of the check runs.
+
+Tests (`crates/mercury/src/lossy_transport.rs` `mod tests`, TESTING.md type
+1, unit tests on a real loopback socket):
+
+- `latency_is_a_pipeline_delay_not_a_send_cap`, the regression guard for
+  mechanism 1. Latency 200 ms, no jitter: send ten one-byte datagrams `[i]`
+  and time the ten `send_to` calls; assert they took under 100 ms ("a send
+  must not wait out the latency (#1371)"). Then receive ten with a 2 s
+  timeout each, assert they arrive in order `[0]..[9]`, that the first
+  arrives no sooner than 200 ms after the first send, and that all ten are
+  in within 1 s of it. With the old inline sleep the ten sends take 2 s and
+  the first assert fails.
+- `recv_latency_is_a_pipeline_delay_not_a_read_cap`, the guard for the
+  recv half. Wrap `make_inner(0)` with latency 200 ms; from a plain tokio
+  `UdpSocket` send ten one-byte datagrams to it; call `lossy.recv_from` ten
+  times (2 s timeout each), assert order, and that the whole read took at
+  least 200 ms and under 1 s. The old code takes 2 s.
+- `jitter_never_reorders_one_destination`: latency 1 ms, jitter 40 ms, seed
+  9, 30 sends `[i]`, receive 30 and assert order. This pins what the
+  phase-3 handshake needs (the reply and the time-sync are read
+  positionally). Both the old and the new code pass it; say so in its doc
+  comment.
+- `recv_100pct_drop_with_latency_returns_err`: a copy of
+  `recv_100pct_drop_returns_err_not_infinite_loop` with
+  `LossyConfig::new(Duration::from_millis(5), 1000, 0, 0)`, so the pump's
+  drop cap is covered.
+- Rewrite `jitter_widens_delivery_latency_within_bounds`. It measured how
+  long `send_to` blocked, which is the bug. Measure arrival instead: for each
+  of the 8 sends, take `start`, `send_to`, then `receiver.recv_from` with a
+  2 s timeout, and push `start.elapsed()`. Keep its three assertions.
+
+The end-to-end guard for mechanism 2 is the chaos file itself (TESTING.md
+type 10). Revert proof, to put in the PR body: with only the
+`KeepAlive` lines in `wait_for` and `wait_for_recording` reverted, run the
+lossy test and record the result, then restore. Do not commit the revert.
+
+Checks (in order, from the worktree root; read the lane summary and the
+failures file, do not rerun to see output):
+
+```powershell
+pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo fmt -p cimmeria-mercury -p cimmeria-wireclient
+pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo clippy -p cimmeria-mercury -p cimmeria-wireclient --all-targets --all-features -- -D warnings
+pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-mercury --features test-support,test-harness
+pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-wireclient
+pwsh -NoProfile -File tools/build-lane/live-db-test.ps1 --wireclient two_client_castle_visibility
+pwsh -NoProfile -File tools/build-lane/live-db-test.ps1 --wireclient
+```
+
+The fifth line runs both visibility files (five tests) and must pass three
+times in a row. The last (no filter) runs the whole wireclient end-to-end suite once,
+because every `wait_for` caller now sends keep-alives.
+
+Docs owed: files 5 to 7 above. TESTING.md is WC-17's (worknote). No
+`docs/protocol/` or bible change: no wire format changes.
+
+Reviewer focus (`packet-reviewer`, plus `testing-validation-engineer` for the
+two pipeline guards): `emit` holds the `send_lines` lock across no `.await`;
+the pump path keeps per-source order and the `MAX_RECV_DROP_LOOPS` error;
+zero-latency configs still send and receive inline (the burst test and every
+existing unit test use them); the keep-alive is unreliable, so it never moves
+the client's reliable sequence; `settle` waits on a condition, not a fixed
+sleep (D-WC9); nothing in production code changed (`LossyTransport` is
+`test-support` only). CI note: the Linux `wireclient e2e (live DB)` job runs
+the same tests; the prototype was verified on Windows only, so link the
+first green Linux run in the PR.
 
 ## WC-17 Close-out
 

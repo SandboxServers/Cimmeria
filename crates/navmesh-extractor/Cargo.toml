@@ -27,3 +27,10 @@ cimmeria-upk = { workspace = true }
 # tests under `tests/` — they link the lib target, and a feature can
 # only be switched on through a dependency edge.
 cimmeria-navmesh-extractor = { path = ".", features = ["test-support"] }
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "cover_extract"
+path = "src/bin/cover_extract.rs"
+test = false

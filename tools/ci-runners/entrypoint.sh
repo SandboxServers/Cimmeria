@@ -39,7 +39,7 @@ LANG=C.UTF-8
 PATH=$PATH
 CARGO_HOME=$CARGO_HOME
 RUSTUP_HOME=$RUSTUP_HOME
-DOCKER_HOST=$DOCKER_HOST
+DOCKER_HOST=${DOCKER_HOST:-}
 RUSTC_WRAPPER=sccache
 SCCACHE_DIR=/home/runner/sccache
 SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE:-20G}
@@ -63,10 +63,13 @@ done
 # An empty CARGO_BUILD_JOBS would be an error for cargo.
 sed -i '/^CARGO_BUILD_JOBS=$/d' .env
 
-for _ in $(seq 1 60); do
-    docker info > /dev/null 2>&1 && break
-    sleep 2
-done
-docker info > /dev/null 2>&1 || { echo "entrypoint: dind at $DOCKER_HOST never came up" >&2; exit 69; }
+# Quick runners (compose.yml `quick*`) have no dind and leave DOCKER_HOST empty.
+if [ -n "${DOCKER_HOST:-}" ]; then
+    for _ in $(seq 1 60); do
+        docker info > /dev/null 2>&1 && break
+        sleep 2
+    done
+    docker info > /dev/null 2>&1 || { echo "entrypoint: dind at $DOCKER_HOST never came up" >&2; exit 69; }
+fi
 
 exec ./run.sh

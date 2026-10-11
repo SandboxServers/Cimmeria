@@ -23,7 +23,7 @@ use super::patch_log::PatchLogWatcher;
 use super::process_watch::{ExitWaiter, WatchError};
 use super::queue::DiskQueue;
 use super::tail::{TailedLine, Tailer};
-use super::{Telemetry, TelemetryError};
+use super::{Telemetry, TelemetryError, MAX_CHUNKS_PER_FLUSH};
 
 #[derive(Debug, Error)]
 pub enum RunnerError {
@@ -107,7 +107,7 @@ pub async fn run_session(
                 let counts_event = patch_log.as_mut().and_then(|w| w.poll_counts(now));
                 event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
                 event_count = event_count.saturating_add(
-                    tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
+                    tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir, MAX_CHUNKS_PER_FLUSH).await,
                 );
             }
         }
@@ -118,7 +118,15 @@ pub async fn run_session(
     let counts_event = patch_log.as_mut().and_then(PatchLogWatcher::finish_counts);
     event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
     event_count = event_count.saturating_add(
-        tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
+        tick_once(
+            &telemetry,
+            &http,
+            &mut tailer,
+            &sessions_dir,
+            &binaries_dir,
+            usize::MAX,
+        )
+        .await,
     );
     let queue = DiskQueue::new(&state_dir);
     let dropped_lines = queue.dropped_count();
@@ -165,13 +173,15 @@ async fn enqueue_patch_event(telemetry: &Telemetry, event: Option<TelemetryEvent
 /// One refresh + tick + parse + enqueue + flush cycle. Returns the
 /// number of events enqueued this tick (not the number of bytes
 /// flushed) so the caller can keep a running event_count for the
-/// final bundle metadata.
+/// final bundle metadata. The final tick at game exit passes
+/// `usize::MAX` chunks so the whole backlog goes before the bundle.
 async fn tick_once(
     telemetry: &Telemetry,
     http: &reqwest::Client,
     tailer: &mut Tailer,
     sessions_dir: &Path,
     binaries_dir: &Path,
+    max_chunks: usize,
 ) -> u64 {
     if sessions_dir.is_dir() {
         tailer.refresh(sessions_dir, |p| {
@@ -207,7 +217,7 @@ async fn tick_once(
     if let Err(e) = telemetry.refresh_if_due(http).await {
         tracing::warn!(error = %e, "proactive token refresh failed; continuing on current token");
     }
-    if let Err(e) = telemetry.flush(http).await {
+    if let Err(e) = telemetry.flush(http, max_chunks).await {
         tracing::warn!(error = %e, "telemetry chunk flush failed; events queued for retry");
     }
     enqueued
