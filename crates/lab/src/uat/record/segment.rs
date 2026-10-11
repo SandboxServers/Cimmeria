@@ -11,23 +11,30 @@ use super::log::{DbSnapshot, RecordLog};
 /// What kind of call opened a row.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnchorKind {
+    /// `interact`: the person used an NPC or object.
     Interact,
+    /// `useItem`: the person used an inventory item.
     UseItem,
+    /// `moveItem`: the person moved, equipped or split an item.
     MoveItem,
+    /// `useAbility`: the person fired an ability.
     UseAbility,
+    /// A region entry after which the DB snapshot changed.
     Region,
 }
 
 /// The call that opened a row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Anchor {
+    /// Which call it was; the row's tables pick their steps from this.
     pub kind: AnchorKind,
+    /// The tick (`seq`) the call was recorded in; the row's first tick.
     pub tick: u32,
     /// The call as decoded; an `interact(0)` stays 0 here.
     pub call: Call,
     /// The entity the call acts on: an `interact(0)` resolved to the current
-    /// target (None when nothing was targeted yet); None for a move or a
-    /// region.
+    /// target (None when nothing was targeted yet), a `useItem` or
+    /// `useAbility` target of 0 as None; None for a move or a region.
     pub target: Option<u32>,
 }
 
@@ -38,7 +45,10 @@ pub struct RecordedRow {
     /// Ticks covered: the anchor's tick to the tick before the next anchor (or the last tick).
     pub first_tick: u32,
     pub last_tick: u32,
-    /// Calls after the anchor in the row (dialog choices, others), with their tick.
+    /// Calls after the anchor in the row (dialog choices, others), with their
+    /// tick. Movement is never kept (D-LR4): not a `gmGotoXYZ`, nor a region
+    /// call that did not anchor a row. `setTargetID`, chat and noise are not
+    /// kept either.
     pub calls: Vec<(u32, Call)>,
     /// Dot chat lines seen since the previous anchor (setup of this row).
     pub setup_chat: Vec<String>,
@@ -94,9 +104,10 @@ pub fn segment(log: &RecordLog) -> Vec<RecordedRow> {
                     }
                     let target = match call {
                         Call::Interact { target: 0 } => current_target,
+                        // A use with no target is like an unresolved interact(0).
                         Call::Interact { target }
                         | Call::UseItem { target, .. }
-                        | Call::UseAbility { target, .. } => Some(*target),
+                        | Call::UseAbility { target, .. } => Some(*target).filter(|t| *t != 0),
                         _ => None,
                     };
                     rows.push(RecordedRow {
@@ -113,6 +124,8 @@ pub fn segment(log: &RecordLog) -> Vec<RecordedRow> {
                         server: Vec::new(),
                     });
                 }
+                // A region that did not anchor is movement, never a TODO (D-LR4).
+                None if matches!(call, Call::Region { .. }) => {}
                 // Before the first anchor there is no row to attach it to.
                 None => {
                     if let Some(row) = rows.last_mut() {
@@ -163,6 +176,11 @@ fn anchor_kind(call: &Call) -> Option<AnchorKind> {
 /// that one does only when a snapshot from its tick up to (not including)
 /// the next candidate's tick differs from the last snapshot before it.
 /// Walking into a region that changes nothing is just walking.
+///
+/// Known limitation: persistence lands a tick or more after the call that
+/// caused it (README F5), so an anchor's own DB change can show up in the
+/// snapshots after a region entered right behind it, and that region then
+/// reads as an anchor too.
 fn anchors(events: &[(u32, Event)], snapshots: &[(u32, &DbSnapshot)]) -> Vec<bool> {
     let candidates: Vec<(usize, u32, &Call)> = events
         .iter()

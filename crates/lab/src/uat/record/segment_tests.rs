@@ -111,13 +111,138 @@ fn interact_zero_uses_the_last_set_target() {
     let log = log_of(vec![
         tick(0, vec![cell("setTargetID", 0, &[100751], &[])], None),
         tick(1, vec![cell("interact", 74, &[0], &[])], None),
+        // Inside the row, then picked up by the next interact(0).
+        tick(2, vec![cell("setTargetID", 0, &[200], &[])], None),
+        tick(3, vec![cell("interact", 74, &[0], &[])], None),
+    ]);
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    assert_eq!(rows[0].anchor.call, Call::Interact { target: 0 });
+    assert_eq!(rows[0].anchor.target, Some(100751));
+    assert_eq!((rows[0].first_tick, rows[0].last_tick), (1, 2));
+    assert!(rows[0].calls.is_empty(), "setTargetID is not a row call");
+    assert_eq!(rows[1].anchor.target, Some(200));
+}
+
+#[test]
+fn interact_zero_with_no_target_set_has_no_target() {
+    let rows = segment(&log_of(vec![tick(
+        1,
+        vec![cell("interact", 74, &[0], &[])],
+        None,
+    )]));
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(rows[0].anchor.target, None);
+}
+
+#[test]
+fn use_ability_and_move_item_open_their_own_rows() {
+    let log = log_of(vec![
+        tick(1, vec![cell("useAbility", 68, &[1234, 100751], &[])], None),
+        tick(3, vec![cell("moveItem", 38, &[123456, 1, 7, 3], &[])], None),
+    ]);
+    let rows = segment(&log);
+    let kinds: Vec<_> = rows.iter().map(|r| r.anchor.kind.clone()).collect();
+    assert_eq!(kinds, vec![AnchorKind::UseAbility, AnchorKind::MoveItem]);
+    let targets: Vec<_> = rows.iter().map(|r| r.anchor.target).collect();
+    assert_eq!(targets, vec![Some(100751), None]);
+    let spans: Vec<_> = rows.iter().map(|r| (r.first_tick, r.last_tick)).collect();
+    assert_eq!(spans, vec![(1, 2), (3, 3)]);
+}
+
+/// Two anchors in one tick: the first is a one-tick row, the second runs on.
+#[test]
+fn two_anchors_in_one_tick() {
+    let log = log_of(vec![
+        tick(
+            3,
+            vec![
+                cell("interact", 74, &[100751], &[]),
+                cell("useItem", 39, &[55, 100751], &[]),
+            ],
+            None,
+        ),
+        tick(5, vec![], None),
+    ]);
+    let rows = segment(&log);
+    let spans: Vec<_> = rows.iter().map(|r| (r.first_tick, r.last_tick)).collect();
+    assert_eq!(spans, vec![(3, 3), (3, 5)]);
+}
+
+/// An outbound message ahead of an anchor in the same tick, in tap order,
+/// belongs to the row before.
+#[test]
+fn an_outbound_row_before_an_anchor_goes_to_the_previous_row() {
+    let out = json!({"dir": "out", "msg_name": "onDialogDisplay", "decoded": {"dialog_id": 1}});
+    let log = log_of(vec![
+        tick(1, vec![cell("interact", 74, &[100751], &[])], None),
+        tick(3, vec![out, cell("useItem", 39, &[55, 100751], &[])], None),
+    ]);
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    assert_eq!(rows[0].server.len(), 1);
+    assert_eq!(rows[0].server[0].0, 3);
+    assert!(rows[1].server.is_empty());
+}
+
+/// A teleport and a region leave inside a row are movement, not calls.
+#[test]
+fn movement_inside_a_row_is_not_a_call() {
+    let pos = [1.0f32, 2.0, 3.0].map(|f| f.to_bits() as i32);
+    let log = log_of(vec![
+        tick(1, vec![cell("interact", 74, &[100751], &[])], None),
+        tick(
+            2,
+            vec![cell("gmGotoXYZ", 163, &pos, &[]), region(false)],
+            None,
+        ),
     ]);
     let rows = segment(&log);
     assert_eq!(rows.len(), 1, "{rows:#?}");
-    assert_eq!(rows[0].anchor.call, Call::Interact { target: 0 });
-    assert_eq!(rows[0].anchor.target, Some(100751));
-    assert_eq!((rows[0].first_tick, rows[0].last_tick), (1, 1));
-    assert!(rows[0].calls.is_empty(), "setTargetID is not a row call");
+    assert!(rows[0].calls.is_empty(), "{:?}", rows[0].calls);
+}
+
+/// The baseline is the last snapshot before the region, not the first: B
+/// before and B after is no change, though A came earlier.
+#[test]
+fn region_baseline_is_the_last_snapshot_before_it() {
+    let log = log_of(vec![
+        tick(0, vec![], Some(DbSnapshot::default())),
+        tick(1, vec![], Some(changed())),
+        tick(2, vec![region(true)], None),
+        tick(3, vec![], Some(changed())),
+    ]);
+    assert!(segment(&log).is_empty());
+}
+
+/// The region's own tick is in the window, not the baseline.
+#[test]
+fn region_baseline_excludes_the_regions_own_tick() {
+    let log = log_of(vec![
+        tick(0, vec![], Some(DbSnapshot::default())),
+        tick(1, vec![region(true)], Some(changed())),
+    ]);
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(rows[0].anchor.kind, AnchorKind::Region);
+}
+
+/// The window stops before the next anchor's tick: the interact's change at
+/// tick 5 is its own.
+#[test]
+fn region_window_end_is_exclusive() {
+    let log = log_of(vec![
+        tick(0, vec![], Some(DbSnapshot::default())),
+        tick(1, vec![region(true)], None),
+        tick(
+            5,
+            vec![cell("interact", 74, &[100751], &[])],
+            Some(changed()),
+        ),
+    ]);
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert_eq!(rows[0].anchor.kind, AnchorKind::Interact);
 }
 
 /// No change between the region (tick 1) and the next anchor (tick 5); the
@@ -184,7 +309,26 @@ fn dot_chat_goes_to_the_next_rows_setup_and_bug_lines_vanish() {
     assert_eq!((rows[0].first_tick, rows[0].last_tick), (1, 3));
     assert_eq!((rows[1].first_tick, rows[1].last_tick), (4, 5));
     assert_eq!(rows[1].anchor.kind, AnchorKind::UseItem);
-    assert_eq!(rows[1].anchor.target, Some(0));
+    // A use with target 0 has no target, like an unresolved interact(0).
+    assert_eq!(rows[1].anchor.target, None);
+}
+
+/// A `.bug` line the tap cut at 256 bytes (512 hex digits) still vanishes:
+/// it is neither setup chat nor a row call.
+#[test]
+fn a_long_bug_line_cut_by_the_tap_vanishes() {
+    let mut long_bug = chat(&format!(".bug {}", "x".repeat(300)));
+    let hex = long_bug["args_hex"].as_str().unwrap()[..512].to_string();
+    long_bug["args_hex"] = hex.into();
+    let log = log_of(vec![
+        tick(1, vec![cell("interact", 74, &[100751], &[])], None),
+        tick(2, vec![long_bug], None),
+        tick(3, vec![cell("useItem", 39, &[55, 100751], &[])], None),
+    ]);
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 2, "{rows:#?}");
+    assert!(rows[0].calls.is_empty(), "{:?}", rows[0].calls);
+    assert!(rows[1].setup_chat.is_empty(), "{:?}", rows[1].setup_chat);
 }
 
 /// Calls and outbound messages before the first anchor have no row; an
