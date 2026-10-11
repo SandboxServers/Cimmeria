@@ -75,6 +75,10 @@ mod system_options;
 mod vendor_dispatch;
 
 pub(crate) use deferred_flush::{flush_deferred_aoi, flush_deferred_self_methods};
+#[cfg(all(test, feature = "lab-chaos"))]
+pub(crate) use flush_chaos::lend_registry;
+#[cfg(feature = "lab-chaos")]
+pub(crate) use flush_chaos::{flush_delay, log_flush_delayed};
 
 #[cfg(test)]
 mod tests;
@@ -82,6 +86,8 @@ mod tests;
 mod tests_dispatch_arms;
 #[cfg(all(test, feature = "lab-chaos"))]
 mod tests_flush_chaos;
+#[cfg(test)]
+mod tests_flush_default_bytes;
 #[cfg(test)]
 mod tests_flush_fragmentation;
 

@@ -4,17 +4,33 @@
 //! feature. With no registry installed, or nothing set for the session,
 //! [`apply`] changes nothing and the flush is byte-identical.
 //!
-//! - `Delay { ms }`: the flush waits `ms` before it sends anything.
+//! - `Delay { ms }`: the flush's entity traffic is held for `ms` more, then
+//!   released introductions first. Never a sleep in the flush: the base's
+//!   receive loop awaits the flush inline, so a sleep there stalls every
+//!   session. [`flush_delay`] reads it for the AoI hold
+//!   (`world_entry_appearance::cinematic_aoi_hold::chaos_delay`), which keeps
+//!   the witness's AoI traffic buffered and releases it from a spawned timer;
+//!   [`apply`] leaves the flush itself alone. One delay per hold.
 //! - `Reorder { seed }`: a seeded shuffle of the introductions inside each
-//!   lifecycle segment. An entity's phase-1 record and its cascade move
-//!   together, and nothing else moves.
+//!   lifecycle segment. An entity's phase-1 record and its phase-2 cascade
+//!   move together (both are built from the shuffled order), and nothing
+//!   else moves.
 //! - `Pack { records }`: the first `records` phase-1 records go in one
 //!   single-packet bundle, the shape before #1341's mitigation; the rest
 //!   follow in a second phase-1 bundle.
 //! - `Shift { len }` / `ShiftSweep { seed }`: the Pack shape with as many
 //!   records as fit in one packet, and `len` bytes of filler ahead of them,
 //!   which moves every record's cursor in the client's bundle loop by `len`.
-//!   Filler design and evidence: `docs/analysis/lab-chaos/worknotes/CH-07-filler.md`.
+//!   Every lifecycle segment's first phase-1 bundle gets the filler.
+//!   Filler design and evidence: `docs/analysis/lab-chaos/worknotes/CH-07-filler.md`;
+//!   which messages make the filler is one switch, [`FILLER_POLICY`].
+//!
+//! Chaos stays set until its TTL or a clear: every later flush with
+//! introductions on that session (gate travel, a relog on the same
+//! character) is disturbed the same way, not only the first-login one.
+//! `ShiftSweep` draws from a process-wide counter, so two sessions sweeping
+//! at once interleave their draws; each `flush_shift_swept` row logs `seed`,
+//! `draw` and `len`, which is enough to replay any one flush.
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -43,20 +59,79 @@ const VOICE_DATA_HEADER_LEN: u16 = 3;
 /// reached with one record less (`L + 37`), which a 1-byte message cannot.
 const VOICE_DATA_MAX_LEN: u16 = 36;
 
+/// Which messages a shift filler is made of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// One variant is unused while the switch below picks the other.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) enum FillerPolicy {
+    /// The CH-07 design: `updateFrequencyNotification` for 2, one
+    /// `voiceData` for 3 to 36, both for 37 and 38.
+    UpdateFrequencyAndVoiceData,
+    /// `updateFrequencyNotification` only: a length `L` is `L / 2` copies of
+    /// `02 0A`, so only even lengths exist. Odd cursor residues other than 1
+    /// become unreachable.
+    UpdateFrequencyOnly,
+}
+
+/// The one switch for the filler. In the world, `voiceData` reaches
+/// `SGWMessageQueue` vtable slot 13, which queues it, and `EntityManager`
+/// reads and discards the body: statically verified safe for bodies of 0 to
+/// 33 bytes (`docs/reverse-engineering/findings/client-voicedata-and-update-frequency.md`),
+/// so the CH-07 design stays the default. The update-frequency-only form is
+/// kept as a cheap fallback; to use it, set this to [`FillerPolicy::UpdateFrequencyOnly`] and make
+/// `LabChaos::set` refuse odd `Shift` lengths (the registry still accepts
+/// them: a refused length would reach `flush_shift_refused` and go out
+/// unshifted). [`filler`], [`sweep_len`] and [`shift_for_cursor`] follow the
+/// switch on their own.
+pub(super) const FILLER_POLICY: FillerPolicy = FillerPolicy::UpdateFrequencyAndVoiceData;
+
 /// Counts `ShiftSweep` draws in this process, so each flush draws a new
 /// length. The draw index is logged with the length, so a run's lengths can
 /// be read back from its log even when several sessions sweep at once.
 static SWEEP_DRAWS: AtomicU64 = AtomicU64::new(0);
 
+/// The `Delay` set on this session, if any. The AoI hold reads it once per
+/// hold, when the hold's release is claimed, and keeps the buffer closed that
+/// much longer. `witness_id` is the session's player entity: chaos set for
+/// another entity on this address is cleared first (CH-04 worknote).
+pub(crate) fn flush_delay(addr: SocketAddr, witness_id: u32) -> Option<Duration> {
+    let registry = registry()?;
+    registry.clear_if_not(addr, witness_id);
+    match registry.flush_for(addr, Instant::now())? {
+        FlushChaos::Delay { ms } => Some(Duration::from_millis(u64::from(ms))),
+        _ => None,
+    }
+}
+
+/// The `flush_delayed` row, logged when a hold starts its delay.
+/// `buffered_introductions` is what the buffer holds then; more can arrive
+/// before the timer fires.
+pub(crate) fn log_flush_delayed(
+    witness_id: u32,
+    witness_name: Option<&'static str>,
+    delay: Duration,
+    buffered_introductions: usize,
+) {
+    tracing::info!(
+        target: "lab.chaos",
+        event = "flush_delayed",
+        witness_id,
+        witness_name,
+        delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
+        buffered_introductions,
+        "lab chaos: deferred-AoI flush held back, AoI traffic stays buffered"
+    );
+}
+
 /// The flush's chaos, read once per flush. `witness_id` is the flushing
-/// player's entity. Returns the wait before sending and the phase-1 shape.
+/// player's entity. Returns the phase-1 shape and may reorder `segments`.
 pub(super) fn apply(
     addr: SocketAddr,
     witness_id: u32,
     witness_name: Option<&'static str>,
     segments: &mut [Vec<DeferredAoiMsg>],
-) -> (Option<Duration>, Phase1Shape) {
-    let unchanged = (None, Phase1Shape::default());
+) -> Phase1Shape {
+    let unchanged = Phase1Shape::default();
     let Some(registry) = registry() else {
         return unchanged;
     };
@@ -68,28 +143,17 @@ pub(super) fn apply(
         return unchanged;
     };
     // A flush with no introductions (the self-method flush ahead of a
-    // cinematic hold) has nothing to disturb. Leaving it alone keeps a delay
-    // on the introductions and keeps sweep draws to flushes that use them.
+    // cinematic hold) has nothing to disturb, and leaving it alone keeps
+    // sweep draws to flushes that use them.
     let introductions: usize = segments.iter().map(|s| introduction_slots(s).len()).sum();
     if introductions == 0 {
         return unchanged;
     }
     match mode {
-        FlushChaos::Delay { ms } => {
-            tracing::info!(
-                target: "lab.chaos",
-                event = "flush_delayed",
-                witness_id,
-                witness_name,
-                delay_ms = ms,
-                introductions,
-                "lab chaos: deferred-AoI flush held back"
-            );
-            (
-                Some(Duration::from_millis(u64::from(ms))),
-                Phase1Shape::default(),
-            )
-        }
+        // Applied by the AoI hold before this flush ran (`flush_delay`); a
+        // flush never waits, and a hold's later release passes are not
+        // delayed again.
+        FlushChaos::Delay { .. } => unchanged,
         FlushChaos::Reorder { seed } => {
             let mut rng = SplitMix64(seed);
             for segment in segments.iter_mut() {
@@ -116,18 +180,15 @@ pub(super) fn apply(
                 introductions,
                 "lab chaos: first phase-1 records packed into one packet"
             );
-            (
-                None,
-                Phase1Shape {
-                    filler: Vec::new(),
-                    first_bundle_records: Some(usize::from(records)),
-                },
-            )
+            Phase1Shape {
+                filler: Vec::new(),
+                first_bundle_records: Some(usize::from(records)),
+            }
         }
-        FlushChaos::Shift { len } => (None, shift_shape(len, witness_id, witness_name)),
+        FlushChaos::Shift { len } => shift_shape(len, segments, witness_id, witness_name),
         FlushChaos::ShiftSweep { seed } => {
             let draw = SWEEP_DRAWS.fetch_add(1, Ordering::Relaxed);
-            let len = sweep_len(seed, draw);
+            let len = sweep_len(FILLER_POLICY, seed, draw);
             tracing::info!(
                 target: "lab.chaos",
                 event = "flush_shift_swept",
@@ -138,7 +199,7 @@ pub(super) fn apply(
                 len,
                 "lab chaos: shift sweep drew a filler length"
             );
-            (None, shift_shape(len, witness_id, witness_name))
+            shift_shape(len, segments, witness_id, witness_name)
         }
     }
 }
@@ -147,7 +208,12 @@ pub(super) fn apply(
 /// mitigation every message sits at cursor 1, and a filler in its own
 /// packet would shift nothing. So the first phase-1 bundle holds the filler
 /// and as many records as fit in one packet behind it.
-fn shift_shape(len: u16, witness_id: u32, witness_name: Option<&'static str>) -> Phase1Shape {
+fn shift_shape(
+    len: u16,
+    segments: &[Vec<DeferredAoiMsg>],
+    witness_id: u32,
+    witness_name: Option<&'static str>,
+) -> Phase1Shape {
     let Some(filler) = filler(len) else {
         // `LabChaos::set` refuses these lengths, so only a registry bug
         // reaches here; send the ordinary flush rather than a wrong shift.
@@ -162,6 +228,12 @@ fn shift_shape(len: u16, witness_id: u32, witness_name: Option<&'static str>) ->
         return Phase1Shape::default();
     };
     let records = (FRAGMENT_BODY_SIZE - usize::from(len)) / usize::from(PHASE1_RECORD_LEN);
+    // Each segment with introductions sends its own phase-1 bundle, and each
+    // of those carries the filler.
+    let shifted_segments = segments
+        .iter()
+        .filter(|s| !introduction_slots(s).is_empty())
+        .count();
     tracing::info!(
         target: "lab.chaos",
         event = "flush_shift_packs",
@@ -170,6 +242,7 @@ fn shift_shape(len: u16, witness_id: u32, witness_name: Option<&'static str>) ->
         len,
         filler_messages = filler.len(),
         first_bundle_records = records,
+        shifted_segments,
         "lab chaos: phase-1 records packed into one packet behind the shift filler"
     );
     Phase1Shape {
@@ -178,20 +251,39 @@ fn shift_shape(len: u16, witness_id: u32, witness_name: Option<&'static str>) ->
     }
 }
 
-/// The filler messages for a shift of `len` bytes, in send order: none for
-/// 0, `updateFrequencyNotification` for 2, one `voiceData` for 3 to 36, and
-/// both for 37 and 38. `None` for 1 (no message is 1 byte) and above
-/// [`SHIFT_LEN_MAX`].
+/// The filler messages for a shift of `len` bytes under [`FILLER_POLICY`],
+/// in send order. `None` for a length the policy cannot make.
 pub(super) fn filler(len: u16) -> Option<Vec<Vec<u8>>> {
-    match len {
-        0 => Some(Vec::new()),
-        UPDATE_FREQUENCY_LEN => Some(vec![update_frequency()]),
-        3..=VOICE_DATA_MAX_LEN => Some(vec![voice_data(len - VOICE_DATA_HEADER_LEN)]),
-        37..=SHIFT_LEN_MAX => Some(vec![
-            update_frequency(),
-            voice_data(len - UPDATE_FREQUENCY_LEN - VOICE_DATA_HEADER_LEN),
-        ]),
-        _ => None,
+    filler_with(FILLER_POLICY, len)
+}
+
+/// [`filler`] under `policy`. `UpdateFrequencyAndVoiceData`: none for 0,
+/// `updateFrequencyNotification` for 2, one `voiceData` for 3 to 36, both
+/// for 37 and 38, and `None` for 1 (no message is 1 byte). `UpdateFrequencyOnly`:
+/// `len / 2` `updateFrequencyNotification`s, `None` for an odd length. Both
+/// refuse anything above [`SHIFT_LEN_MAX`].
+pub(super) fn filler_with(policy: FillerPolicy, len: u16) -> Option<Vec<Vec<u8>>> {
+    if len > SHIFT_LEN_MAX {
+        return None;
+    }
+    match policy {
+        FillerPolicy::UpdateFrequencyAndVoiceData => match len {
+            0 => Some(Vec::new()),
+            UPDATE_FREQUENCY_LEN => Some(vec![update_frequency()]),
+            3..=VOICE_DATA_MAX_LEN => Some(vec![voice_data(len - VOICE_DATA_HEADER_LEN)]),
+            _ if len > VOICE_DATA_MAX_LEN => Some(vec![
+                update_frequency(),
+                voice_data(len - UPDATE_FREQUENCY_LEN - VOICE_DATA_HEADER_LEN),
+            ]),
+            _ => None,
+        },
+        FillerPolicy::UpdateFrequencyOnly if len.is_multiple_of(UPDATE_FREQUENCY_LEN) => {
+            Some(vec![
+                update_frequency();
+                usize::from(len / UPDATE_FREQUENCY_LEN)
+            ])
+        }
+        FillerPolicy::UpdateFrequencyOnly => None,
     }
 }
 
@@ -210,16 +302,27 @@ fn voice_data(body_len: u16) -> Vec<u8> {
     msg
 }
 
-/// The `draw`th sweep length for `seed`, uniform over 0 and 2 to
-/// [`SHIFT_LEN_MAX`]; never 1.
-pub(super) fn sweep_len(seed: u64, draw: u64) -> u16 {
-    // 0, then 2..=SHIFT_LEN_MAX: SHIFT_LEN_MAX values in all.
-    let pick = splitmix64(seed ^ splitmix64(draw)) % u64::from(SHIFT_LEN_MAX);
-    if pick == 0 {
-        0
-    } else {
-        // pick < SHIFT_LEN_MAX, so it fits.
-        pick as u16 + 1
+/// The `draw`th sweep length for `seed`, uniform over the lengths `policy`
+/// can make: 0 and 2 to [`SHIFT_LEN_MAX`] (never 1), or the even lengths
+/// only under `UpdateFrequencyOnly`.
+pub(super) fn sweep_len(policy: FillerPolicy, seed: u64, draw: u64) -> u16 {
+    let mixed = splitmix64(seed ^ splitmix64(draw));
+    match policy {
+        FillerPolicy::UpdateFrequencyAndVoiceData => {
+            // 0, then 2..=SHIFT_LEN_MAX: SHIFT_LEN_MAX values in all.
+            let pick = mixed % u64::from(SHIFT_LEN_MAX);
+            if pick == 0 {
+                0
+            } else {
+                // pick < SHIFT_LEN_MAX, so it fits.
+                pick as u16 + 1
+            }
+        }
+        FillerPolicy::UpdateFrequencyOnly => {
+            let evens = u64::from(SHIFT_LEN_MAX / UPDATE_FREQUENCY_LEN) + 1;
+            // pick < evens, so twice it is at most SHIFT_LEN_MAX.
+            (mixed % evens) as u16 * UPDATE_FREQUENCY_LEN
+        }
     }
 }
 
@@ -239,27 +342,43 @@ pub(super) enum CursorFamily {
 /// `records` introductions. `None` when no record can sit there: `r` before
 /// the first record, `j` past the last record, or past the one packet.
 ///
-/// The residue `L = 1` has no filler, so it uses `L = 38` on record `j - 1`,
-/// which lands on the same cursor. The lab picks a `Shift` length with this;
-/// the tests pin it against the bytes the flush sends.
+/// A residue with no filler (`L = 1` under the default policy) uses
+/// `L + 37` on record `j - 1`, which lands on the same cursor, when the
+/// policy has a filler of that length. The lab picks a `Shift` length with
+/// this; the tests pin it against the bytes the flush sends.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn shift_for_cursor(r: u32, family: CursorFamily, records: u32) -> Option<(u16, u32)> {
+    shift_for_cursor_with(FILLER_POLICY, r, family, records)
+}
+
+/// [`shift_for_cursor`] under `policy`. In `u64`: `r` comes from a client
+/// report and can be anything up to `u32::MAX`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn shift_for_cursor_with(
+    policy: FillerPolicy,
+    r: u32,
+    family: CursorFamily,
+    records: u32,
+) -> Option<(u16, u32)> {
     let first_cursor = match family {
         CursorFamily::Create => 1,
         CursorFamily::Avatar => 12,
     };
-    let record_len = u32::from(PHASE1_RECORD_LEN);
-    let from_first = r.checked_sub(first_cursor)?;
+    let record_len = u64::from(PHASE1_RECORD_LEN);
+    let from_first = u64::from(r).checked_sub(first_cursor)?;
     let (mut len, mut j) = (from_first % record_len, from_first / record_len);
-    if len == 1 {
+    // len < 37 here, so the cast is lossless.
+    if filler_with(policy, len as u16).is_none() {
         j = j.checked_sub(1)?;
         len += record_len;
     }
-    let fits = usize::try_from(len + record_len * (j + 1)).ok()? <= FRAGMENT_BODY_SIZE;
-    if j >= records || !fits {
+    let len = u16::try_from(len).ok()?;
+    filler_with(policy, len)?;
+    let end = u64::from(len) + record_len * (j + 1);
+    if j >= u64::from(records) || end > FRAGMENT_BODY_SIZE as u64 {
         return None;
     }
-    Some((u16::try_from(len).ok()?, j))
+    Some((len, u32::try_from(j).ok()?))
 }
 
 /// Indices of the introductions in `segment`, in order.
@@ -322,8 +441,9 @@ thread_local! {
 }
 
 /// Lends `registry` to flushes on this thread (a `#[tokio::test]` runs on
-/// its test's thread), or withdraws it with `None`.
+/// its test's thread, and so do the tasks it spawns on its current-thread
+/// runtime), or withdraws it with `None`.
 #[cfg(test)]
-pub(super) fn lend_registry(registry: Option<&'static LabChaos>) {
+pub(crate) fn lend_registry(registry: Option<&'static LabChaos>) {
     TEST_REGISTRY.with(|lent| lent.set(registry));
 }

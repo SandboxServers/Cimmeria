@@ -19,6 +19,16 @@ metadata:
   No 1-byte message exists; residue L=1 uses L=38 on record j-1.
 - The phase bundle send lives in `cell_dispatch/intro_bundles.rs` with a
   `Phase1Shape` (default = ordinary flush); chaos only changes the shape.
+- Never sleep in a flush: the base receive loop awaits `onClientReady` /
+  `cancelMovie` inline, so a sleep stalls every session. `Delay` is a
+  cinematic AoI hold (`cinematic_aoi_hold/chaos_delay.rs`), begun under the
+  lock that opens the pre-ready gate, drained from a spawned timer. With
+  `start_paused`, `elapsed() == ZERO` after the handler proves no wait.
+- Pinning "unchanged" bytes: `git restore --source=<old sha> -- <file>`,
+  run a capture test through the lane, `git checkout -- <file>` back, touch
+  it; hash decrypted packets (FNV-1a) with their lengths. See
+  `tests_flush_default_bytes.rs`.
+- The filler messages are one switch, `flush_chaos::FILLER_POLICY`.
 
 **Why:** CH-07 cost a design detour on each of these.
 **How to apply:** any later lab-chaos packet touching the flush or adding

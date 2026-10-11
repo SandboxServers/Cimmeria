@@ -163,9 +163,15 @@ pub async fn handle_on_client_ready(
                     c.listed_online = true;
                     cimmeria_base_session::base::player_index::log_listed(addr, c, "world_entry");
                 }
+                // A lab chaos `Delay` (lab-chaos builds only) holds the same
+                // way, from the same instant, so no live traffic slips ahead
+                // of the delayed introductions.
                 let aoi_hold = pending
                     .as_ref()
-                    .filter(|p| p.first_login != 0)
+                    .filter(|p| {
+                        p.first_login != 0
+                            || cinematic_aoi_hold::chaos_wants_hold(addr, p.entity_id)
+                    })
                     .map(|_| cinematic_aoi_hold::begin(c));
                 (
                     pending,
@@ -692,8 +698,12 @@ pub async fn handle_on_client_ready(
     //
     // On first login only the player-self method calls go now. Entity
     // introductions stay buffered until the movie is cancelled or runs out.
+    // A hold with no cinematic (lab chaos `Delay`) is released here, and the
+    // release keeps it up for the delay from a spawned timer.
     if let Some(hold) = aoi_hold {
-        super::super::world_entry::cell_dispatch::flush_deferred_self_methods(
+        cinematic_aoi_hold::on_client_ready(
+            hold,
+            pending.first_login != 0,
             entity_id,
             addr,
             transport,
@@ -701,14 +711,6 @@ pub async fn handle_on_client_ready(
             entity_to_addr,
         )
         .await;
-        cinematic_aoi_hold::arm_timeout(
-            hold,
-            entity_id,
-            addr,
-            transport,
-            connected,
-            entity_to_addr,
-        );
     } else {
         super::super::world_entry::cell_dispatch::flush_deferred_aoi(
             entity_id,

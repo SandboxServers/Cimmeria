@@ -15,15 +15,19 @@ use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, FLAG_FRAGMENTED};
 use cimmeria_mercury::transport::Transport;
 
-use super::flush_chaos::{apply, filler, lend_registry, shift_for_cursor, sweep_len, CursorFamily};
+use super::flush_chaos::{
+    apply, filler, filler_with, flush_delay, lend_registry, shift_for_cursor,
+    shift_for_cursor_with, sweep_len, CursorFamily, FillerPolicy, FILLER_POLICY,
+};
 use super::intro_bundles::Phase1Shape;
 use crate::base::deferred_aoi::DeferredAoiMsg;
-use crate::mercury::compose_create_entity_base_body;
-use crate::test_support::{test_default_connected_client_state, TestTransport};
+use crate::mercury::{compose_create_entity_base_body, compose_create_entity_cascade_body};
+use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 
 const WITNESS: u32 = 200;
 const RECORD: usize = 37;
 const CREATE_ENTITY: u8 = 0x09;
+const UPDATE_AVATAR: u8 = 0x10;
 
 fn addr() -> SocketAddr {
     "127.0.0.1:54701".parse().unwrap()
@@ -114,53 +118,23 @@ fn fragmented(packet: &[u8]) -> bool {
 
 /// Entity ids of the phase-1 creates the client dispatches, in order.
 fn create_order(packets: &[Vec<u8>]) -> Vec<u32> {
+    message_entities(packets, CREATE_ENTITY)
+}
+
+/// Entity ids (the payload's first four bytes) of every `msg_id` message
+/// the client dispatches, in order.
+fn message_entities(packets: &[Vec<u8>], msg_id: u8) -> Vec<u32> {
     unpack_reliable_stream(packets)
         .iter()
         .flat_map(|b| b.messages.clone())
-        .filter(|(id, _)| *id == CREATE_ENTITY)
+        .filter(|(id, _)| *id == msg_id)
         .map(|(_, payload)| u32::from_le_bytes(payload[..4].try_into().unwrap()))
         .collect()
 }
 
-/// Unset chaos changes no byte: no registry, an empty one, one with chaos for
-/// another address, and one with chaos left by the last character on this
-/// address (cleared by the flush) all send the same bytes, and the phase-1
-/// packet is exactly the records with nothing ahead. Fails if `apply` shapes
-/// a flush it should leave alone.
-#[tokio::test]
-async fn flush_without_chaos_is_byte_identical() {
-    let baseline = flush(burst(28), None).await;
-    assert_eq!(body(&baseline[0]), records(0, 28), "phase 1: records only");
-
-    let empty: &'static LabChaos = Box::leak(Box::new(LabChaos::new()));
-    assert_eq!(flush(burst(28), Some(empty)).await, baseline, "empty");
-
-    let other_addr: &'static LabChaos = Box::leak(Box::new(LabChaos::new()));
-    other_addr
-        .set(
-            "127.0.0.1:1".parse().unwrap(),
-            WITNESS,
-            "flush:pack".into(),
-            None,
-            Some(FlushChaos::Shift { len: 5 }),
-            60,
-            Instant::now(),
-        )
-        .unwrap();
-    assert_eq!(flush(burst(28), Some(other_addr)).await, baseline, "other");
-
-    let last_character = chaos(WITNESS + 1, FlushChaos::Shift { len: 5 });
-    assert_eq!(
-        flush(burst(28), Some(last_character)).await,
-        baseline,
-        "chaos set for the previous character on this address"
-    );
-    assert_eq!(
-        last_character.flush_for(addr(), Instant::now()),
-        None,
-        "the stale entry is cleared, so it cannot reach a later flush"
-    );
-}
+// The no-chaos and `Delay` flushes are pinned to pre-CH-07 bytes in
+// `tests_flush_default_bytes.rs`; the `Delay` hold is tested with the
+// cinematic AoI hold (`cinematic_aoi_hold/tests_chaos_delay.rs`).
 
 /// Pack: 24 records go in one unfragmented packet, 888 body bytes (the last
 /// record ends at client cursor 889). With 40 introductions, which the
@@ -307,7 +281,7 @@ fn shift_len_1_is_refused() {
     let mut seen = [false; SHIFT_LEN_MAX as usize + 1];
     for seed in [0u64, 7, 0xDEAD_BEEF] {
         for draw in 0..4000 {
-            seen[usize::from(sweep_len(seed, draw))] = true;
+            seen[usize::from(sweep_len(FILLER_POLICY, seed, draw))] = true;
         }
     }
     assert!(!seen[1], "the sweep drew 1");
@@ -372,33 +346,129 @@ async fn reorder_is_seeded() {
     for bundle in unpack_reliable_stream(&seven) {
         assert_eq!(bundle.abort, None);
     }
+    // Each entity's record and cascade move together: the avatar updates
+    // follow the creates' order, and phase 2 (every packet after the one
+    // phase-1 packet) is the cascades in that same order.
+    assert_eq!(message_entities(&seven, UPDATE_AVATAR), a);
+    let phase2: Vec<u8> = seven[1..].iter().flat_map(|p| body(p)).collect();
+    let cascades: Vec<u8> = a
+        .iter()
+        .flat_map(|&id| compose_create_entity_cascade_body(id, 1, 1, None))
+        .collect();
+    assert_eq!(phase2, cascades, "phase 2 in the shuffled order");
 }
 
+/// A cursor near `u32::MAX` used to overflow `len + 37 * (j + 1)` in `u32`
+/// (a panic in a debug build); it is simply past one packet.
+#[test]
+fn shift_for_cursor_survives_a_huge_cursor() {
+    for r in [u32::MAX, u32::MAX - 36, 4_294_967_000] {
+        for family in [CursorFamily::Create, CursorFamily::Avatar] {
+            assert_eq!(shift_for_cursor(r, family, u32::MAX), None, "R {r}");
+        }
+    }
+}
+
+/// The update-frequency-only filler policy: `L / 2` copies of `02 0A`, no
+/// odd length, an even-only sweep, and cursors reached only through even
+/// lengths (1 still via 38). Kept ready in case `voiceData` proves unsafe.
+#[test]
+fn update_frequency_only_policy_is_ready() {
+    let only = FillerPolicy::UpdateFrequencyOnly;
+    assert_eq!(filler_with(only, 0), Some(Vec::new()));
+    assert_eq!(filler_with(only, 6), Some(vec![vec![0x02, 0x0A]; 3]));
+    assert_eq!(filler_with(only, 5), None);
+    assert_eq!(filler_with(only, SHIFT_LEN_MAX + 2), None);
+    for len in (0..=SHIFT_LEN_MAX).step_by(2) {
+        let bytes = filler_with(only, len).unwrap().concat();
+        assert_eq!(bytes.len(), usize::from(len));
+        if !bytes.is_empty() {
+            assert_eq!(unpack_packet_bodies(&[&bytes]).abort, None, "len {len}");
+        }
+    }
+    let mut seen = [false; SHIFT_LEN_MAX as usize + 1];
+    for draw in 0..2000 {
+        seen[usize::from(sweep_len(only, 9, draw))] = true;
+    }
+    let drawn: Vec<usize> = (0..seen.len()).filter(|&l| seen[l]).collect();
+    let evens: Vec<usize> = (0..=usize::from(SHIFT_LEN_MAX)).step_by(2).collect();
+    assert_eq!(drawn, evens);
+    let cursor = |r| shift_for_cursor_with(only, r, CursorFamily::Create, 34);
+    assert_eq!(cursor(224), Some((38, 5)), "the 1-residue, as by default");
+    assert_eq!(cursor(41), None, "L = 3 (or 40) has no filler");
+    assert_eq!(cursor(5), Some((4, 0)));
+}
+
+/// `flush_delay` returns the configured wait for `Delay` only, and nothing
+/// for chaos the last character on this address left; `apply` leaves a
+/// delayed flush's shape alone (the hold already waited).
 #[test]
 fn delay_returns_the_configured_wait() {
     lend_registry(Some(chaos(WITNESS, FlushChaos::Delay { ms: 1500 })));
-    let mut segments = vec![burst(3)];
-    let got = apply(addr(), WITNESS, None, &mut segments);
-    let mut no_intros = vec![vec![DeferredAoiMsg::LeftAoI { entity_id: 7 }]];
-    let quiet = apply(addr(), WITNESS, None, &mut no_intros);
+    let wait = flush_delay(addr(), WITNESS);
+    let shape = apply(addr(), WITNESS, None, &mut [burst(3)]);
+    lend_registry(Some(chaos(WITNESS, FlushChaos::Pack { records: 3 })));
+    let packed = flush_delay(addr(), WITNESS);
+    lend_registry(Some(chaos(WITNESS + 1, FlushChaos::Delay { ms: 1500 })));
+    let stale = flush_delay(addr(), WITNESS);
     lend_registry(None);
-    assert_eq!(
-        got,
-        (Some(Duration::from_millis(1500)), Phase1Shape::default())
-    );
-    assert_eq!(quiet, (None, Phase1Shape::default()), "no introductions");
+    assert_eq!(wait, Some(Duration::from_millis(1500)));
+    assert_eq!(shape, Phase1Shape::default());
+    assert_eq!(packed, None, "not a delay");
+    assert_eq!(stale, None, "set for the previous character");
 }
 
-/// The flush itself waits: on a paused clock the packets go out only once
-/// the delay has passed.
-#[tokio::test(start_paused = true)]
-async fn delay_holds_the_flush_back() {
-    let start = tokio::time::Instant::now();
-    let sent = flush(
-        burst(3),
-        Some(chaos(WITNESS, FlushChaos::Delay { ms: 1500 })),
+/// Shift 38 with 40 introductions: the filler and the 34 records that fit
+/// behind it (38 + 34 * 37 = 1296 bytes) go in one unfragmented packet; the
+/// other six follow in a second phase-1 packet. Fails if the record count
+/// ignores the filler length (35 records would fragment).
+#[tokio::test]
+async fn shift_38_packs_34_records_in_one_packet() {
+    let shifted = flush(
+        burst(40),
+        Some(chaos(WITNESS, FlushChaos::Shift { len: 38 })),
     )
     .await;
-    assert!(!sent.is_empty());
-    assert!(start.elapsed() >= Duration::from_millis(1500));
+    let first = body(&shifted[0]);
+    assert!(!fragmented(&shifted[0]));
+    assert_eq!(first.len(), 38 + 34 * RECORD);
+    assert_eq!(&first[38..], records(0, 34).as_slice());
+    assert!(!fragmented(&shifted[1]));
+    assert_eq!(body(&shifted[1]), records(34, 40));
+    assert_eq!(
+        create_order(&shifted),
+        (0..40).map(entity_id).collect::<Vec<_>>()
+    );
+}
+
+/// ShiftSweep through `apply`: every flush draws the next index, and its
+/// filler is exactly the logged length for that draw. Fails if the draw
+/// counter stops moving (every flush would reuse one length).
+#[test]
+fn shift_sweep_draws_a_new_length_each_flush() {
+    const SEED: u64 = 0x5EED;
+    let capture = LogCapture::install();
+    lend_registry(Some(chaos(WITNESS, FlushChaos::ShiftSweep { seed: SEED })));
+    let lens: Vec<usize> = (0..8)
+        .map(|_| {
+            apply(addr(), WITNESS, None, &mut [burst(3)])
+                .filler
+                .concat()
+                .len()
+        })
+        .collect();
+    lend_registry(None);
+    let draws: Vec<u64> = capture
+        .all()
+        .iter()
+        .filter(|c| c.has_field("event", "flush_shift_swept"))
+        .map(|c| c.fields["draw"].parse().unwrap())
+        .collect();
+    assert_eq!(draws.len(), 8, "one draw per flush");
+    assert!(draws.windows(2).all(|w| w[0] < w[1]), "{draws:?}");
+    for (draw, len) in draws.iter().zip(&lens) {
+        let want = sweep_len(FILLER_POLICY, SEED, *draw);
+        assert_eq!(*len, usize::from(want), "draw {draw}");
+    }
+    assert!(lens.windows(2).any(|w| w[0] != w[1]), "{lens:?}");
 }

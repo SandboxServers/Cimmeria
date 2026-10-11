@@ -166,14 +166,12 @@ async fn dispatch_deferred(
     );
     // Lab chaos (CH-07): one read per flush. Only a `lab-chaos` build with
     // the registry installed and chaos set on this session changes anything.
+    // Never a wait here: the base's receive loop awaits this flush inline, so
+    // `Delay` is applied by the AoI hold before the flush runs.
     #[cfg(feature = "lab-chaos")]
     let (segments, phase1_shape) = {
         let mut segments = segments;
-        let (delay, shape) =
-            super::flush_chaos::apply(addr, witness_id, witness_name, &mut segments);
-        if let Some(wait) = delay {
-            tokio::time::sleep(wait).await;
-        }
+        let shape = super::flush_chaos::apply(addr, witness_id, witness_name, &mut segments);
         (segments, shape)
     };
     #[cfg(not(feature = "lab-chaos"))]

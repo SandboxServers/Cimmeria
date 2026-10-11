@@ -243,8 +243,8 @@ fn knob_bounds_are_refused() {
 }
 
 /// The pack cap is derived from the packet size, the record length and the
-/// longest filler; the refusal text names the numbers. Fails if any input
-/// moves without the text (or the derivation) following.
+/// longest filler, and the refusal texts name the caps. Fails if any input
+/// moves without the derivation, or the text the lab tools return, following.
 #[test]
 fn pack_cap_is_one_packet_with_the_longest_filler() {
     assert_eq!(SHIFT_LEN_MAX, 38);
@@ -252,6 +252,28 @@ fn pack_cap_is_one_packet_with_the_longest_filler() {
     let fill = |records: u16| usize::from(SHIFT_LEN_MAX + records * PHASE1_RECORD_LEN);
     assert!(fill(PACK_RECORDS_MAX) <= cimmeria_mercury::packet::FRAGMENT_BODY_SIZE);
     assert!(fill(PACK_RECORDS_MAX + 1) > cimmeria_mercury::packet::FRAGMENT_BODY_SIZE);
+
+    let chaos = LabChaos::new();
+    let refusal = |flush: FlushChaos| match chaos.set(
+        addr(40_091),
+        9,
+        "cap".into(),
+        None,
+        Some(flush),
+        60,
+        Instant::now(),
+    ) {
+        Err(ChaosRefused::BadKnob(text)) => text,
+        other => panic!("not refused as a knob: {other:?}"),
+    };
+    let pack = refusal(FlushChaos::Pack {
+        records: PACK_RECORDS_MAX + 1,
+    });
+    assert!(pack.contains(&PACK_RECORDS_MAX.to_string()), "{pack}");
+    let shift = refusal(FlushChaos::Shift {
+        len: SHIFT_LEN_MAX + 1,
+    });
+    assert!(shift.contains(&SHIFT_LEN_MAX.to_string()), "{shift}");
 }
 
 /// `set` sweeps every expired entry, not just the one it replaces, so the
