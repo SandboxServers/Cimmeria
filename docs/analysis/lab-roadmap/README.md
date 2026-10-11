@@ -90,11 +90,11 @@ None of these is needed for the packets marked "can start now" above.
 |---|---|---|
 | lab-spec-vocab | D-SV7 (calibration on the colo), D-SV8 (what `-Heal` does) | D-SV9: SV-15 |
 | lab-fixtures | D-FX1 (`.fixture` console commands or a DB write tool), D-FX2 (the lab-only gate), D-FX3 (which character a fixture row plays) | FX-12 |
-| lab-golden | D-GD6 (what may become golden) | GD-10 |
+| lab-golden | none (D-GD1 to D-GD10 decided 2026-10-10) | GD-10 |
 | lab-record | D-LR12 (drafts need five agreeing runs), D-LR13 (`.bug spec` on lab instances only) | D-LR15: LR-13, LR-16 |
 | client-limits | D-CL4 (Large Address Aware, a maintainer call after CL-05), D-CL5 (lab ini overrides), D-CL7 (more than five clients; recommend defer), D-CL8 (the stock-client residue probe) | CL-08, CL-09, CL-10 |
 | lab-chaos | D-CH1 (the `net` shim), D-CH2 (the triple gate; `network-security-auth` signs off), D-CH3 (the control tools) | CH-10, CH-11 |
-| lab-watch | none | D-LW7: LW-05 |
+| lab-watch | none (D-LW4, D-LW5 decided 2026-10-10; D-LW1 to D-LW3 and D-LW6 still proposed) | D-LW7: LW-05 |
 
 ## Rules every campaign inherits
 
