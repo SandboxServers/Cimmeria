@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use cimmeria_names::{NameBook, Table};
 
-use super::leash::{on_enter, LeashEntry};
+use super::leash::{on_enter, LeashEntry, LEASH_LOOP_COUNT};
 use crate::cell::space_manager::SpaceManager;
 use crate::test_support::LogCapture;
 
@@ -71,15 +71,16 @@ fn leash_enter_row_names_the_npc_its_template_and_its_target() {
     assert!(row.has_field("target_name", "Daniel"), "{row:?}");
 }
 
-/// TG-NPC-08 revert proof: drop `target_account_id` or `target_player_id`
-/// from the `enter` row and the player assertion fails; a row that names an
-/// NPC target must carry neither field.
+/// TG-NPC-08 revert proof: drop `target_account_id`, `target_player_id` or
+/// one of the name pairs from the `enter` row and the player assertion
+/// fails; a row that names an NPC target must carry none of them.
 #[test]
 fn leash_enter_row_carries_target_player_identity_only_for_a_player() {
     let mut mgr = agnos_with_guard_and_player();
     let p = mgr.get_entity_mut(PLAYER).unwrap();
     p.account_id = Some(7);
     p.player_id = Some(71);
+    p.stamp_log_names(Some("Daniel"), Some("acct"));
     mgr.spawn_npc(NPC_TARGET, "Agnos", [5.0, 0.0, 5.0], [0.0; 3])
         .unwrap();
     let logs = LogCapture::install();
@@ -114,11 +115,87 @@ fn leash_enter_row_carries_target_player_identity_only_for_a_player() {
         "{player_row:?}"
     );
     assert!(
-        !npc_row.fields.contains_key("target_account_id"),
-        "{npc_row:?}"
+        player_row.has_field("target_player_name", "Daniel"),
+        "{player_row:?}"
     );
     assert!(
-        !npc_row.fields.contains_key("target_player_id"),
-        "{npc_row:?}"
+        player_row.has_field("target_account_name", "acct"),
+        "{player_row:?}"
     );
+    for field in [
+        "target_account_id",
+        "target_player_id",
+        "target_player_name",
+        "target_account_name",
+    ] {
+        assert!(!npc_row.fields.contains_key(field), "{field}: {npc_row:?}");
+    }
+}
+
+/// TG-NPC-08: the `loop` row names its target like the `enter` row does. The
+/// loop trips on the third counted leash, so each run feeds the NPC
+/// `LEASH_LOOP_COUNT` entries against one target and reads the one loop row.
+/// Revert proof: drop a target identity or name field from the `loop` row
+/// and the player assertion fails; an NPC target carries none of them.
+#[test]
+fn leash_loop_row_carries_target_player_identity_only_for_a_player() {
+    let pos = cimmeria_common::Vector3::new(5.0, 0.0, 5.0);
+    let mut rows = Vec::new();
+    for target in [PLAYER, NPC_TARGET] {
+        let mut mgr = agnos_with_guard_and_player();
+        let p = mgr.get_entity_mut(PLAYER).unwrap();
+        p.account_id = Some(7);
+        p.player_id = Some(71);
+        p.stamp_log_names(Some("Daniel"), Some("acct"));
+        mgr.spawn_npc(NPC_TARGET, "Agnos", [5.0, 0.0, 5.0], [0.0; 3])
+            .unwrap();
+        let all = {
+            let logs = LogCapture::install();
+            for _ in 0..LEASH_LOOP_COUNT {
+                on_enter(
+                    &mut mgr,
+                    NPC,
+                    LeashEntry {
+                        target: Some((target, pos)),
+                        leash_distance: 30.0,
+                        reason: "leash_out",
+                        trigger: "beyond_band",
+                    },
+                    Instant::now(),
+                );
+            }
+            logs.all()
+        };
+        let row = all
+            .into_iter()
+            .find(|c| c.target == "npc_ai.leash" && c.has_field("event", "loop"))
+            .expect("the leash loop row");
+        rows.push(row);
+    }
+
+    let (player_row, npc_row) = (&rows[0], &rows[1]);
+    assert!(
+        player_row.has_field("target_account_id", "7"),
+        "{player_row:?}"
+    );
+    assert!(
+        player_row.has_field("target_player_id", "71"),
+        "{player_row:?}"
+    );
+    assert!(
+        player_row.has_field("target_player_name", "Daniel"),
+        "{player_row:?}"
+    );
+    assert!(
+        player_row.has_field("target_account_name", "acct"),
+        "{player_row:?}"
+    );
+    for field in [
+        "target_account_id",
+        "target_player_id",
+        "target_player_name",
+        "target_account_name",
+    ] {
+        assert!(!npc_row.fields.contains_key(field), "{field}: {npc_row:?}");
+    }
 }
