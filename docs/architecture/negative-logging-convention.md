@@ -312,7 +312,7 @@ warmup ability is the warmup tick, not the launch (AT-10).
 | `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
 | `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
 | `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
-| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter within their AoI radius (the target's range does not count: a player who sees only the target cannot see the shooter), or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter within their AoI radius (the target's range does not count: a player who sees only the target cannot see the shooter), or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id`, `present_via` (`player_side`, `aoi` or `threat_list`) and `world`. A `threat_list` row (a player fighting the NPC from outside AoI) is DEBUG and not throttled; the other two are WARN |
 | `stance_not_announced` | the Ability_End reached a witness but the NPC's `BSF_InCombat` stance had not (the shot came from outside the Fighting pass, or the stance sync regressed): the client draws no muzzle flash, tracer or weapon sound | same, plus `sequence_id`, `witness_count` |
 
 This is a Pattern D seam with one deliberate difference: the throttle
@@ -877,6 +877,19 @@ The player-bag move path (`inventory/move_/`) refuses a move in five places that
 
 Guards: the `live_db_move_refusal_*` tests in `move_/named_log_tests.rs`, one per reason, each asserting the WARN level, target, `event`, `reason`, account and player identity and the item id.
 
+## Minigame session end (TG-MG-03)
+
+`run_session` in `crates/minigame/src/minigame/server/mod.rs` returns a `SessionEnd` whose `EndReason` names the exit that stopped the session. `handle_connection` logs it once on the closing row, `event = "minigame.session_end"`, with `end_reason`, `outcome` (`victory`, `defeat` or `canceled`), `duration_ms` and `room_id` beside the Rule 6 identity. The abort row (`Minigame aborted without a result`) carries the same `end_reason`.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | `event = "minigame.session_end"`, `end_reason`, `outcome`, `duration_ms`, `room_id`, identity | Every minigame session that reached `handle_connection`, once, after the registry entry is removed |
+| INFO | message `Minigame aborted without a result`, `end_reason` | The game loop ended without a victory or defeat; `end_reason` is the same value as above |
+
+`end_reason` is one of `victory`, `defeat`, `client_closed`, `read_error`, `frame_too_long`, `idle_timeout` or `send_failed`. A send that fails after a result was reported keeps the result's reason.
+
+Guards: `an_idle_session_reports_idle_timeout_as_canceled` and `a_closed_socket_reports_client_closed` in `server/timeout_tests.rs`.
+
 ## Inert effect WARN (TG-CMB-03)
 
 An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
@@ -912,6 +925,18 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 | WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
+## Leave and invisible send failures (TG-AOI-08)
+
+`cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
+
+| `reason` | Meaning |
+|---|---|
+| `entity_to_addr_miss` | The witness has no `entity_to_addr` mapping; `addr_resolved = false` |
+| `client_disconnected` | The witness's client state is gone |
+| `send_error` | The transport refused the packet |
+
+Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
 ## Related
 
