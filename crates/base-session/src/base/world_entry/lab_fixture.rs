@@ -148,8 +148,8 @@ fn take_fixture_for_at(player_id: i32, account_id: i32, now: Instant) -> Option<
         tracing::warn!(
             player_id,
             player_name = %player_name,
-            staged_account_id,
-            playing_account_id = account_id,
+            staged_account_id, // nt:id-only lab-only check; account names are never logged
+            playing_account_id = account_id, // nt:id-only lab-only check; account names are never logged
             reason = "account_mismatch",
             "lab fixture left staged: the playing account does not own the character"
         );

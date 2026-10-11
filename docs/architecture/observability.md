@@ -460,9 +460,23 @@ The remaining per-packet TRACE rows are **not** sampled: `encrypt` /
 datagram), ACK queueing, `EntityMove` and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
 packet). They are a few fields each and arrive at about the rate of
-`mercury.packet`, which `cimmeria-network` already receives unsampled —
-roughly one `cimmeria-trace` row per datagram. If that proves too much,
-move them behind `cimmeria_wire::firehose` the same way.
+datagrams — roughly one `cimmeria-trace` row per datagram. If that proves
+too much, move them behind `cimmeria_wire::firehose` the same way.
+
+TG-MER-09 (owner decision D-TG7, reversing NA25's "every datagram at INFO")
+puts the transport's per-datagram rows on the same framework, as the fourth
+entry in `FIREHOSES`. `UdpTransport` writes every datagram to
+`wire.firehose.mercury_packet` at TRACE, which `protocol.log` keeps in full
+and the OTLP filters turn off. `mercury.packet` keeps one INFO row per 53
+datagrams in each direction (a `FirehoseSampler` per direction, so the
+send-heavy side cannot starve the receive side of samples), with
+`sampled_1_in` and `suppressed`, and every failed send on its own unsampled
+`mercury_packet_failed` row. The `mercury_datagrams_total{dir}` counter
+gives the exact rate. The emitter and its targets live in
+`cimmeria_mercury::firehose`, because `cimmeria-wire` depends on the
+transport crate and not the reverse; `cimmeria_wire::firehose` re-exports
+them. For the same reason `FirehoseSampler` lives in
+`cimmeria-observability`, at the bottom of the crate graph.
 
 ### Timestamps — server-receive vs. client-generate
 
