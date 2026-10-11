@@ -8,9 +8,8 @@
 > [#1341](https://github.com/SandboxServers/Cimmeria/issues/1341). Packet
 > specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): planned, nothing built.** CH-01 and CH-03
-> can start now. Three decisions (D-CH1, D-CH2, D-CH3) gate every server-side
-> packet. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
+> **Campaign status (2026-10-11): CH-01, CH-02 and CH-03 merged; D-CH1 to
+> D-CH3 decided (a); CH-04 in progress.** CH-05 to CH-07 follow CH-04. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
 > need the user's OK.
 
 ## Purpose
@@ -76,9 +75,9 @@ the report so a run can be replayed exactly.
 
 | ID | Status | Decision | Reason |
 |---|---|---|---|
-| D-CH1 | **BlockedDecision** (owner). Recommended: **(a)** | **How `net` shapes traffic.** (a) A server-side shim: the existing `LossyTransport`, made switchable at runtime and scoped to one session's address, in a lab build only (D-CH2). (b) A Windows packet shaper on the client machine (a WinDivert-based tool). | (a) is seeded and replayable, shapes both directions, needs no driver install or admin rights on the lab machine, and works the same against a local server and a lab server. (b) shapes the real socket but is not seedable, needs a kernel driver, and affects every process on the machine. |
-| D-CH2 | **BlockedDecision** (owner; `network-security-auth` signs off the gate). Recommended: **(a)** | **Gating server-side chaos (`net`, `flush`).** (a) Three gates, all required: compiled only with a new `lab-chaos` cargo feature that release and colo images never enable; refused at runtime unless `DEVELOPER_MODE` is true; set only through authenticated lab-mcp tools. Every set logs a WARN with the profile, level, seed, scope and expiry. (b) Feature gate only. | Chaos that reaches a player server is a denial of service. (a) means a production binary cannot contain it, a dev binary cannot enable it without the operator's mode, and nobody without the lab token can turn it on. |
-| D-CH3 | **BlockedDecision** (owner). Recommended: **(a)** | **The control surface.** (a) Three lab-mcp tools: `server_chaos_set {profile, level or knobs, seed, session_entity_id, ttl_s}`, `server_chaos_clear {}` and `server_chaos_status {}`. Scope is one session (by player entity id); there is no "all sessions" scope. `ttl_s` defaults to 300 and is clamped to 1800, after which the state clears itself. (b) Console commands (`.chaos ...`) instead of tools. | Tools are authenticated by the lab token; console commands are GM-gated only, and GMs exist on shared servers. The TTL means a crashed run never leaves chaos on. |
+| D-CH1 | **DECIDED (a)**, owner, 2026-10-11 | **How `net` shapes traffic.** (a) A server-side shim: the existing `LossyTransport`, made switchable at runtime and scoped to one session's address, in a lab build only (D-CH2). (b) A Windows packet shaper on the client machine (a WinDivert-based tool). | (a) is seeded and replayable, shapes both directions, needs no driver install or admin rights on the lab machine, and works the same against a local server and a lab server. (b) shapes the real socket but is not seedable, needs a kernel driver, and affects every process on the machine. |
+| D-CH2 | **DECIDED (a)**, owner, 2026-10-11 (`network-security-auth` signs off the gate in CH-04 review) | **Gating server-side chaos (`net`, `flush`).** (a) Three gates, all required: compiled only with a new `lab-chaos` cargo feature that release and colo images never enable; refused at runtime unless `DEVELOPER_MODE` is true; set only through authenticated lab-mcp tools. Every set logs a WARN with the profile, level, seed, scope and expiry. (b) Feature gate only. | Chaos that reaches a player server is a denial of service. (a) means a production binary cannot contain it, a dev binary cannot enable it without the operator's mode, and nobody without the lab token can turn it on. |
+| D-CH3 | **DECIDED (a)**, owner, 2026-10-11 | **The control surface.** (a) Three lab-mcp tools: `server_chaos_set {profile, level or knobs, seed, session_entity_id, ttl_s}`, `server_chaos_clear {}` and `server_chaos_status {}`. Scope is one session (by player entity id); there is no "all sessions" scope. `ttl_s` defaults to 300 and is clamped to 1800, after which the state clears itself. (b) Console commands (`.chaos ...`) instead of tools. | Tools are authenticated by the lab token; console commands are GM-gated only, and GMs exist on shared servers. The TTL means a crashed run never leaves chaos on. |
 | D-CH4 | PROPOSED (coordinator) | **`cpu` runs in the lab daemon** as N busy threads owned by the run, under a guard that stops them when the run ends, fails or is cancelled, and on daemon shutdown. Normal priority; no affinity unless `cores` asks for it. | The daemon already owns the run's lifetime (F10), so cleanup is a drop, not a separate process to hunt down. |
 | D-CH5 | PROPOSED (coordinator) | **`burst` uses existing GM commands** through the runner: `.spawnrandom` around the player, then a despawn of every entity the run spawned (by the ids the server reports), at row end and on failure. A fixed default template (a humanoid with a large cascade, chosen in CL-09). | No new server code, and spawns are GM-gated already (F9). |
 | D-CH6 | PROPOSED (coordinator; `aoi-witness-broadcast` confirms the filler) | **`flush` modes:** `delay` (hold the flush `delay_ms` longer); `reorder` (seeded shuffle of the introductions inside each phase); `pack` (force the pre-mitigation single-packet phase-1 bundle of up to 24 records, F7); `shift` (prepend one filler message of a seeded length, F6). With the gate off, the flush is byte-identical to today. | `pack` and `shift` make #1341 deterministic; `delay` and `reorder` test the client's tolerance without a known bug. |
@@ -92,9 +91,9 @@ the report so a run can be replayed exactly.
 | CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Integrated |
 | CH-02 | `lab uat --chaos` in the PowerShell CLI | packet-coder | S | 2 | CH-01 | Integrated |
 | CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Integrated |
-| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | BlockedDecision |
+| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | Writing |
 | CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder | S | 3 | CH-04 | BlockedDependency |
-| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDecision |
+| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDependency |
 | CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | BlockedDependency |
 | CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | BlockedDependency |
 | CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |

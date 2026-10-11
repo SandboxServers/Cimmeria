@@ -31,6 +31,10 @@ pub use cimmeria_base_session::base::{BaseError, OnlinePlayer};
 // The staged lab fixture store, for the lab endpoint (lab-fixtures FX-04),
 // which reaches the base only through this crate.
 pub use cimmeria_base_session::base::world_entry::lab_fixture;
+// The lab chaos registry (lab-chaos campaign), for the server's startup
+// install, the lab endpoint's chaos tools and the server's guard that a
+// default build has none (`COMPILED`, which exists without the feature).
+pub use cimmeria_base_session::base::lab_chaos;
 #[cfg(test)]
 pub(crate) use cimmeria_base_session::base::{ConnectedClientState, PendingClientReadyInfo};
 

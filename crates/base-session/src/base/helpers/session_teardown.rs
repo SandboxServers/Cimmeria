@@ -385,6 +385,16 @@ fn teardown_session(
         )
     };
 
+    // Lab chaos is scoped to this session: the owner check above passed, so
+    // the session at `addr` is the one ending. A relaunch takeover tears the
+    // old session down here before it inserts the new one, so the new
+    // session never inherits the old one's chaos; a late owner-checked
+    // teardown that found a newer session returned above and clears nothing.
+    #[cfg(feature = "lab-chaos")]
+    if let Some(chaos) = crate::base::lab_chaos::current() {
+        chaos.clear(Some(addr));
+    }
+
     if account_eid != 0 {
         tracing::debug!(
             %addr,

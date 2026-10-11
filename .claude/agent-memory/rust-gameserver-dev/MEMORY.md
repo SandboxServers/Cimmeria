@@ -123,6 +123,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Base sessions
 
+- [session-scoped-side-tables-and-teardown](session-scoped-side-tables-and-teardown.md) — clear per-address state in teardown after the owner check (covers relaunch takeover); logOff keeps the address.
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
 - [trade-results-client-ignores-space-cash.md](trade-results-client-ignores-space-cash.md) — client trade window acts only on results 1/2; space/cash codes 3-6 show nothing, so send a feedback line.
