@@ -114,10 +114,16 @@ engine half in `engine/src/storage/<name>/` and its host half in
 once to the SAS URL compiled in from `LAUNCHER_LOG_SAS_URL` as
 `logs/<host>-<utc>-<digest>.zip`. A content digest already in the
 `uploaded-logs.json` ledger (state directory, newest 100) sends nothing and
-answers `nothing_new`. It takes the operation gate first, so a stuck
-`ReconciliationRequired` operation refuses it with `busy`. A build with no SAS
-URL answers `disabled` and Settings hides the button. Failures are the codes
-`collect_failed`, `network` and `rejected`; none carries the URL.
+answers `nothing_new`. It reads at most 64 MiB of logs, chosen from file
+sizes before anything is read: over that, the oldest files are left out and it
+answers `uploaded_newest`. It takes the operation gate first, so a stuck
+`ReconciliationRequired` operation refuses it with `busy`; the logs are read
+and sent without the state lock, and the ledger write after the PUT takes the
+gate again (skipped, still `uploaded`, if an operation started). The PUT
+follows no redirect. A build with no SAS URL answers `disabled` and Settings
+hides the button. Failures are the codes `collect_failed`, `logs_too_large`
+(every log alone is over the cap), `network` and `rejected`; none carries the
+URL.
 
 The login-server and client-patches panels (`server-list-view.ts`,
 `client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.

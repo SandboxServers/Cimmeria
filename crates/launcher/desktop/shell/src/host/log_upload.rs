@@ -1,14 +1,15 @@
 //! Debug log upload. The webview names no file or URL; native code picks both.
-//! `log_upload_command` in `main.rs` runs the PUT between these two calls so
-//! the network never holds the state mutex.
+//! `log_upload_command` in `main.rs` reads the logs and runs the PUT between
+//! these two calls, so neither the file reads nor the network hold the state
+//! mutex.
 use super::NativeHost;
 use cimmeria_launcher_engine::log_upload::{
-    LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep, PendingUpload,
+    LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep, StoredUpload,
 };
 use cimmeria_launcher_engine::StorageError;
 
 impl NativeHost {
-    /// Admission, zip and ledger check, under the state mutex.
+    /// Admission, game path and ledger load, under the state mutex.
     pub fn begin_log_upload(
         &self,
         request: LogUploadCommand,
@@ -22,11 +23,11 @@ impl NativeHost {
     /// Record a stored upload's digest, under the state mutex.
     pub fn finish_log_upload(
         &self,
-        pending: PendingUpload,
+        stored: StoredUpload,
     ) -> Result<LogUploadStatus, LogUploadError> {
         let store = self.store()?;
         let state = store.lock().map_err(|_| StorageError::Io)?;
-        Ok(state.finish_log_upload(pending))
+        Ok(state.finish_log_upload(stored))
     }
 }
 
@@ -40,7 +41,7 @@ mod tests {
     ) -> Result<LogUploadState, LogUploadError> {
         match step? {
             LogUploadStep::Finished(status) => Ok(status.state),
-            LogUploadStep::Send(pending) => panic!("nothing should be sent: {pending:?}"),
+            LogUploadStep::Collect(collection) => panic!("nothing should be read: {collection:?}"),
         }
     }
 

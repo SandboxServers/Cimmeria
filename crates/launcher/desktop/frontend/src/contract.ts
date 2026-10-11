@@ -44,12 +44,12 @@ export type ScaffoldError = StorageCode | "unavailable";
 export type LogUploadCommand = {command: "inspect"; schema_version: 1} | {command: "upload"; schema_version: 1};
 export const LogUploadStatus = Schema.Struct({
   schema_version: Schema.Literal(1),
-  // `disabled`: no log store compiled in. `ready` answers Inspect; the last three answer Upload.
-  state: Schema.Literals(["disabled", "not_installed", "ready", "uploaded", "nothing_new", "no_logs"]),
+  // `disabled`: no log store compiled in. `ready` answers Inspect; the last four answer Upload.
+  state: Schema.Literals(["disabled", "not_installed", "ready", "uploaded", "uploaded_newest", "nothing_new", "no_logs"]),
 });
 export type LogUploadStatus = typeof LogUploadStatus.Type;
 /** One flat code string: a storage code (`"busy"` is the operation gate) or an upload code. */
-export type LogUploadError = StorageCode | "collect_failed" | "network" | "rejected";
+export type LogUploadError = StorageCode | "collect_failed" | "logs_too_large" | "network" | "rejected";
 
 // `client_maintenance_command` (engine `storage/client_maintenance/`, LX-06).
 export type ClientMaintenanceCommand = {command: "inspect"; schema_version: 1} |
@@ -110,7 +110,7 @@ export function scaffoldFailure(error: unknown): ScaffoldError | "transport" {
   return error === "unavailable" ? error : safeFailure(error).code as StorageCode | "transport";
 }
 
-const logUploadCodes = new Set(["collect_failed", "network", "rejected"]);
+const logUploadCodes = new Set(["collect_failed", "logs_too_large", "network", "rejected"]);
 /** A `log_upload_command` rejection, or `"transport"` for anything else it could be. */
 export function logUploadFailure(error: unknown): LogUploadError | "transport" {
   return typeof error === "string" && logUploadCodes.has(error)

@@ -8,6 +8,7 @@ export const logUploadText:Record<LogUploadStatus['state'],string>={
  not_installed:'Install the game first: there are no game logs to upload yet.',
  ready:'Sends the game\'s debug and session logs to the developers, to help with a problem report.',
  uploaded:'Uploaded',
+ uploaded_newest:'Uploaded the newest logs. Older logs were left out to keep the upload under 64 MiB.',
  nothing_new:'Nothing new to upload',
  no_logs:'No logs to upload yet: the game has not written any.',
 };
@@ -17,6 +18,7 @@ export const logUploadErrorText:Record<LogUploadError|'transport'|'schema',strin
  network:'The upload did not reach the log store. Check your connection and try again.',
  rejected:'The log store refused the upload. Try again later.',
  collect_failed:'The game\'s logs could not be read. Close the game and try again.',
+ logs_too_large:'Every game log is over 64 MiB on its own, so nothing was uploaded.',
  in_use:'The launcher state is in use. Try again in a moment.',
  io:'The launcher could not read its state. Try again.',
  corrupt:'The launcher state is damaged, so nothing was uploaded.',
@@ -46,8 +48,12 @@ export function mountLogUpload(document:Document,invoke:Invoke,context:PanelCont
   button.hidden=state==='disabled';button.disabled=state==='disabled'||state==='not_installed';};
  const inspect=()=>{if(disposed||uploading)return work;
   work=call('inspect').then(reply=>{if(disposed||uploading)return;
-   if(reply.error===null){show(reply.state);if(!showingResult)status.textContent=logUploadText[reply.state];}
-   else{button.hidden=false;button.disabled=false;if(!showingResult)status.textContent=logUploadErrorText[reply.error];}});return work;};
+   // A `ready` re-inspect keeps the last upload's result on screen; anything else
+   // (uninstalled, busy, an error) is news and replaces it.
+   if(reply.error===null&&reply.state==='ready'&&showingResult){show(reply.state);return;}
+   showingResult=false;
+   if(reply.error===null){show(reply.state);status.textContent=logUploadText[reply.state];}
+   else{button.hidden=false;button.disabled=false;status.textContent=logUploadErrorText[reply.error];}});return work;};
  const upload=()=>{if(disposed||uploading||button.disabled)return work;
   // Feedback before the native reply: the press is visibly taken at once.
   uploading=true;showingResult=true;button.disabled=true;button.setAttribute('aria-busy','true');button.textContent=logUploadUploading;status.textContent=logUploadUploading;

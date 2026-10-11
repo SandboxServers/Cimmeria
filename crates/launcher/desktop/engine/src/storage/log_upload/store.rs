@@ -40,39 +40,48 @@ impl LogStore {
         }
     }
 
-    /// One `Put Blob`: debug-log zips are far below the single-request limit,
-    /// and one request is one billable transaction.
-    pub async fn put(&self, pending: &PendingUpload) -> Result<(), LogUploadError> {
+    /// One `Put Blob`: a capped upload (`MAX_UPLOAD_BYTES`, 64 MiB) is far
+    /// below the single-request limit, and one request is one billable
+    /// transaction. Takes the upload by value so the body moves into the
+    /// request instead of being copied.
+    pub async fn put(&self, pending: PendingUpload) -> Result<StoredUpload, LogUploadError> {
+        let PendingUpload {
+            digest,
+            blob_name,
+            body,
+            trimmed,
+        } = pending;
+        let bytes = body.len();
         let http = reqwest::Client::builder()
             .https_only(self.https_only)
             // A redirect would replay the signed URL somewhere else.
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(120))
+            .timeout(put_timeout(bytes))
             .build()
-            .map_err(|_| LogUploadError::Network)?;
+            .map_err(|error| network_error(&error.without_url()))?;
         let response = http
-            .put(self.blob_url(&pending.blob_name))
+            .put(self.blob_url(&blob_name))
             .header("x-ms-blob-type", "BlockBlob")
             .header("content-type", "application/zip")
-            .body(pending.body.clone())
+            .body(body)
             .send()
             .await
-            .map_err(|error| {
-                // `reqwest::Error`'s text carries the URL; log a fixed reason.
-                tracing::warn!(reason = transport_reason(&error), "log upload failed");
-                LogUploadError::Network
-            })?;
+            .map_err(|error| network_error(&error.without_url()))?;
         let status = response.status();
         if !status.is_success() {
-            // The body is the store's error XML; it is not needed to triage.
+            // A 3xx lands here too: the policy above does not follow it. The
+            // body is the store's error XML; it is not needed to triage.
             tracing::warn!(status = status.as_u16(), "log upload was refused");
             return Err(LogUploadError::Rejected);
         }
-        tracing::info!(blob = %pending.blob_name, bytes = pending.body.len(), "log upload stored");
-        Ok(())
+        tracing::info!(blob = %blob_name, bytes, "log upload stored");
+        Ok(StoredUpload {
+            digest,
+            blob_name,
+            trimmed,
+        })
     }
-
     /// The blob path goes before the SAS query: `<container>/<blob>?<sas>`.
     fn blob_url(&self, blob_name: &str) -> String {
         let (base, query) = match self.sas_url.find('?') {
@@ -81,6 +90,30 @@ impl LogStore {
         };
         format!("{}/{blob_name}{query}", base.trim_end_matches('/'))
     }
+}
+
+/// What [`LogStore::put`] stored, for [`super::DesktopState::finish_log_upload`].
+#[derive(Debug)]
+pub struct StoredUpload {
+    pub(super) digest: String,
+    pub(super) blob_name: String,
+    pub(super) trimmed: bool,
+}
+
+/// One minute plus one second per 128 KiB, so a slow uplink of 1 Mbit/s
+/// still finishes: a full 64 MiB zip gets about nine and a half minutes. A
+/// fixed short timeout would fail every large upload on a slow line, and the
+/// player would press again for another doomed attempt.
+fn put_timeout(bytes: usize) -> Duration {
+    Duration::from_secs(60 + (bytes as u64).div_ceil(128 * 1024))
+}
+
+/// `error` has already had its URL stripped (`without_url`), so neither the
+/// fixed reason logged here nor anything formatting it later can carry the
+/// SAS signature.
+pub(super) fn network_error(error: &reqwest::Error) -> LogUploadError {
+    tracing::warn!(reason = transport_reason(error), "log upload failed");
+    LogUploadError::Network
 }
 
 fn transport_reason(error: &reqwest::Error) -> &'static str {

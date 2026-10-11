@@ -9,7 +9,7 @@ use cimmeria_launcher_engine::client_maintenance::{
     ClientMaintenanceCommand, ClientMaintenanceError, ClientMaintenanceStatus,
 };
 use cimmeria_launcher_engine::log_upload::{
-    LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
+    CollectedLogs, LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
 };
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
@@ -255,14 +255,22 @@ async fn log_upload_command(
     })
     .await
     .map_err(|_| StorageError::Io)??;
-    let pending = match step {
+    let collection = match step {
         LogUploadStep::Finished(status) => return Ok(status),
-        LogUploadStep::Send(pending) => pending,
+        LogUploadStep::Collect(collection) => collection,
     };
-    // `begin_log_upload` only sends when a store is compiled in.
+    // Reading and zipping up to 64 MiB of logs runs without the state mutex.
+    let pending = match tauri::async_runtime::spawn_blocking(move || collection.collect())
+        .await
+        .map_err(|_| StorageError::Io)??
+    {
+        CollectedLogs::Finished(status) => return Ok(status),
+        CollectedLogs::Send(pending) => pending,
+    };
+    // `begin_log_upload` only collects when a store is compiled in.
     let store = LogStore::compiled().ok_or(StorageError::Io)?;
-    store.put(&pending).await?;
-    tauri::async_runtime::spawn_blocking(move || host.finish_log_upload(pending))
+    let stored = store.put(pending).await?;
+    tauri::async_runtime::spawn_blocking(move || host.finish_log_upload(stored))
         .await
         .map_err(|_| StorageError::Io)?
 }

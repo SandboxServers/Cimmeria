@@ -6,7 +6,7 @@ use crate::{
 };
 use ed25519_dalek::{Signer, SigningKey};
 use uuid::Uuid;
-use wiremock::matchers::{header, method, path_regex, query_param};
+use wiremock::matchers::{header, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SECRET: &str = "sv=2026&sig=not-a-real-signature";
@@ -68,7 +68,33 @@ fn upload() -> LogUploadCommand {
 fn status(step: LogUploadStep) -> LogUploadState {
     match step {
         LogUploadStep::Finished(status) => status.state,
-        LogUploadStep::Send(pending) => panic!("expected a status, got {pending:?}"),
+        LogUploadStep::Collect(collection) => match collection.collect().unwrap() {
+            CollectedLogs::Finished(status) => status.state,
+            CollectedLogs::Send(pending) => panic!("expected a status, got {pending:?}"),
+        },
+    }
+}
+
+/// An admitted upload's collection step.
+fn collect(state: &DesktopState, store: &LogStore) -> LogCollection {
+    match state.begin_log_upload(upload(), Some(store)).unwrap() {
+        LogUploadStep::Collect(collection) => collection,
+        LogUploadStep::Finished(status) => panic!("expected a collection, got {status:?}"),
+    }
+}
+
+/// The rest of an upload after the collection step, as the shell runs it.
+async fn send(
+    state: &DesktopState,
+    store: &LogStore,
+    collection: LogCollection,
+) -> Result<LogUploadState, LogUploadError> {
+    match collection.collect()? {
+        CollectedLogs::Finished(status) => Ok(status.state),
+        CollectedLogs::Send(pending) => {
+            let stored = store.put(pending).await?;
+            Ok(state.finish_log_upload(stored).state)
+        }
     }
 }
 
@@ -76,11 +102,29 @@ fn status(step: LogUploadStep) -> LogUploadState {
 async fn run(state: &DesktopState, store: &LogStore) -> Result<LogUploadState, LogUploadError> {
     match state.begin_log_upload(upload(), Some(store))? {
         LogUploadStep::Finished(status) => Ok(status.state),
-        LogUploadStep::Send(pending) => {
-            store.put(&pending).await?;
-            Ok(state.finish_log_upload(pending).state)
-        }
+        LogUploadStep::Collect(collection) => send(state, store, collection).await,
     }
+}
+
+/// A store that answers every PUT with 201 and expects `puts` of them.
+async fn accepting_store(puts: u64) -> (MockServer, LogStore) {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(puts)
+        .mount(&server)
+        .await;
+    let store = LogStore::insecure_for_tests(&format!("{}/c?{SECRET}", server.uri()));
+    (server, store)
+}
+
+fn zip_names(body: &[u8]) -> Vec<String> {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(body.to_vec())).unwrap();
+    let mut names: Vec<_> = (0..zip.len())
+        .map(|i| zip.by_index(i).unwrap().name().to_owned())
+        .collect();
+    names.sort();
+    names
 }
 
 #[tokio::test]
@@ -117,13 +161,8 @@ async fn one_put_per_new_content_and_none_for_a_repeat() {
 
     let requests = server.received_requests().await.unwrap();
     assert_eq!(requests.len(), 2);
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(requests[0].body.clone())).unwrap();
-    let mut names: Vec<_> = (0..zip.len())
-        .map(|i| zip.by_index(i).unwrap().name().to_owned())
-        .collect();
-    names.sort();
     assert_eq!(
-        names,
+        zip_names(&requests[0].body),
         [
             "Binaries/SGWDebugLog.log",
             "Binaries/sessions/one/client.log"
@@ -164,6 +203,130 @@ async fn a_failed_put_names_no_part_of_the_signed_url_and_records_nothing() {
         }
     }
     assert!(!format!("{store:?}").contains("sig"));
+}
+
+/// A redirect is not followed: following it would send the signed request's
+/// body (and a request) to wherever the answer points. Fails if
+/// `.redirect(Policy::none())` is removed: the target then gets the request
+/// and the upload reports success.
+#[tokio::test]
+async fn a_redirect_is_rejected_and_not_followed() {
+    let server = MockServer::start().await;
+    Mock::given(path("/elsewhere"))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path_regex(r"^/c/logs/"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/elsewhere", server.uri()).as_str()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let store = LogStore::insecure_for_tests(&format!("{}/c?{SECRET}", server.uri()));
+    let (_root, state, _) = installed();
+    assert_eq!(run(&state, &store).await, Err(LogUploadError::Rejected));
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().all(|r| r.url.path() != "/elsewhere"),
+        "{requests:?}"
+    );
+}
+
+/// reqwest's own error text names the request URL, signature included; the
+/// mapping strips it first, so a later `{error}` anywhere cannot leak it.
+#[tokio::test]
+async fn a_transport_errors_url_is_stripped_before_it_is_mapped() {
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead_url = format!("http://{}/c?{SECRET}", closed.local_addr().unwrap());
+    drop(closed);
+    let error = reqwest::Client::new()
+        .put(&dead_url)
+        .send()
+        .await
+        .unwrap_err();
+    // The hazard is real: the raw error carries the signature.
+    assert!(format!("{error}").contains("sig="), "{error}");
+    let stripped = error.without_url();
+    for text in [format!("{stripped}"), format!("{stripped:?}")] {
+        assert!(!text.contains("sig="), "{text}");
+    }
+    assert_eq!(store::network_error(&stripped), LogUploadError::Network);
+}
+
+/// The cap is applied from file metadata before anything is read: the oldest
+/// logs are left out, the newest are sent, and the status says so. Fails if
+/// the cap is not applied (all three logs would be zipped and the state would
+/// be plain `uploaded`).
+#[tokio::test]
+async fn over_the_cap_the_oldest_logs_are_left_out() {
+    let (server, store) = accepting_store(1).await;
+    let (_root, state, binaries) = installed();
+    // `installed` wrote two 5- and 7-byte logs just now; add an old 4000-byte one.
+    let old = binaries.join("sessions/one/older.log");
+    std::fs::write(&old, [b'o'; 4000]).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&old)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(86_400))
+        .unwrap();
+    let collection = collect(&state, &store).with_max_bytes(1000);
+    assert_eq!(
+        send(&state, &store, collection).await,
+        Ok(LogUploadState::UploadedNewest)
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        zip_names(&requests[0].body),
+        [
+            "Binaries/SGWDebugLog.log",
+            "Binaries/sessions/one/client.log"
+        ]
+    );
+    // Every log alone over the cap: refused with its own code, nothing sent.
+    let collection = collect(&state, &store).with_max_bytes(4);
+    assert_eq!(
+        collection.collect().unwrap_err(),
+        LogUploadError::LogsTooLarge
+    );
+    assert_eq!(MAX_UPLOAD_BYTES, 64 * 1024 * 1024);
+}
+
+/// The PUT runs without the state lock, so an operation can start while it
+/// is in flight. The ledger write waits behind the gate like any other disk
+/// write: it is skipped, and the upload still reports success. Fails if
+/// `finish_log_upload` drops its `ensure_no_active_operation` re-check.
+#[tokio::test]
+async fn an_operation_started_during_the_put_skips_the_ledger_write() {
+    let (_server, store) = accepting_store(1).await;
+    let (root, mut state, _) = installed();
+    let collection = collect(&state, &store);
+    let CollectedLogs::Send(pending) = collection.collect().unwrap() else {
+        panic!("expected logs to send");
+    };
+    let stored = store.put(pending).await.unwrap();
+    let digest = stored.digest.clone();
+    let revision = state.operations().snapshot().revision;
+    state
+        .operations_mut()
+        .unwrap()
+        .begin(
+            Uuid::new_v4(),
+            crate::OperationKind::Launch,
+            [0; 32],
+            revision,
+        )
+        .unwrap();
+    assert_eq!(
+        state.finish_log_upload(stored).state,
+        LogUploadState::Uploaded
+    );
+    assert!(!state.uploaded_ledger().contains(&digest));
+    assert!(!root.path().join("state").join(LEDGER).exists());
 }
 
 #[test]
@@ -251,6 +414,7 @@ fn rejects_unknown_fields_and_versions() {
 fn errors_and_states_serialize_as_flat_codes() {
     for (error, code) in [
         (LogUploadError::CollectFailed, "collect_failed"),
+        (LogUploadError::LogsTooLarge, "logs_too_large"),
         (LogUploadError::Network, "network"),
         (LogUploadError::Rejected, "rejected"),
         (LogUploadError::Storage(StorageError::Busy), "busy"),

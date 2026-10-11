@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {makePanelContext} from './panel-context';
-import {mountLogUpload,logUploadErrorText,logUploadUploading} from './log-upload-view';
+import {mountLogUpload,logUploadErrorText,logUploadText,logUploadUploading} from './log-upload-view';
 const html=readFileSync('ui/index.html','utf8');
 type Request={command:string;schema_version:number};
 /** A fake native host: `answers` maps each command to a status state or a thrown code. */
@@ -62,4 +62,16 @@ test('a network failure is shown, and an unknown rejection is a transport failur
  ui.press();ui.release();await ui.app.settled();assert.equal(ui.text(),logUploadErrorText.network);await ui.app.dispose();
  const odd=mount({inspect:{error:'https://store.example/c?sig=secret'},upload:{state:'uploaded'}});await odd.app.ready;
  assert.equal(odd.text(),logUploadErrorText.transport);await odd.app.dispose();
+});
+
+test('a later re-inspect keeps the result while ready, and replaces it when the state changes',async()=>{
+ const answers:Record<string,{state?:string;error?:string}>={inspect:{state:'ready'},upload:{state:'uploaded_newest'}};
+ const ui=mount(answers);await ui.app.ready;ui.press();ui.release();await ui.app.settled();
+ assert.equal(ui.text(),logUploadText.uploaded_newest);assert.match(ui.text(),/Older logs were left out/);
+ await ui.app.refresh();assert.equal(ui.text(),logUploadText.uploaded_newest);
+ answers.inspect={state:'not_installed'};await ui.app.refresh();
+ assert.equal(ui.text(),logUploadText.not_installed);assert.equal(ui.button().disabled,true);
+ answers.inspect={state:'ready'};await ui.app.refresh();assert.equal(ui.text(),logUploadText.ready);
+ answers.inspect={error:'busy'};ui.press();await ui.app.settled();await ui.app.refresh();
+ assert.equal(ui.text(),logUploadErrorText.busy);await ui.app.dispose();
 });

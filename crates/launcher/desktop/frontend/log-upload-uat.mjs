@@ -35,6 +35,15 @@ try{
  ui=page(command=>{if(command==='upload')throw 'busy';return {schema_version:1,state:'ready'};});await ui.app.ready;
  ui.press();await tick();ui.release();await ui.app.settled();
  assert.match(ui.text(),/Finish or reconcile it first, then upload again\./);assert.equal(ui.button().disabled,false);
- console.log('Debug logs UAT passed: first press shows Uploading… then Uploaded; a repeat says Nothing new to upload; no store hides the button; a busy refusal says to finish or reconcile the running operation.');
+ await ui.app.dispose();
+ // Over the 64 MiB cap the newest logs go and the line says older ones were left
+ // out; an uninstall seen on a later re-inspect replaces that line.
+ let installed=true;
+ ui=page(command=>command==='upload'?{schema_version:1,state:'uploaded_newest'}:{schema_version:1,state:installed?'ready':'not_installed'});await ui.app.ready;
+ ui.press();await tick();ui.release();await ui.app.settled();
+ assert.match(ui.text(),/Older logs were left out to keep the upload under 64 MiB\./);
+ await ui.app.refresh();assert.match(ui.text(),/Older logs were left out/);
+ installed=false;await ui.app.refresh();assert.match(ui.text(),/Install the game first/);assert.equal(ui.button().disabled,true);
+ console.log('Debug logs UAT passed: first press shows Uploading… then Uploaded; a repeat says Nothing new to upload; no store hides the button; a busy refusal says to finish or reconcile the running operation; an over-cap upload says older logs were left out, and a later uninstall replaces that line.');
  console.log('Excluded: the real native host and network (engine tests cover the zip, ledger and PUT); the packaged window and visual layout.');
 }finally{await ui.app.dispose();}
