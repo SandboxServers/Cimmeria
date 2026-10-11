@@ -20,8 +20,11 @@ use crate::conditions::Condition;
 use crate::context::ExecutionContext;
 use crate::triggers::{Trigger, TriggerEvent, TriggerType};
 
+mod step_anchors;
 #[cfg(test)]
 mod tests;
+
+pub use step_anchors::StepAnchors;
 
 /// A single content chain: trigger + conditions + actions.
 ///

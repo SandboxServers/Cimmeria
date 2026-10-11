@@ -360,6 +360,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 content.resolve=debug,\
                 dialog.display=debug,\
                 mission.step_context=debug,\
+                mission.step_anchor=info,\
                 movement.movement_type=debug,\
                 movement.position_sample=debug,\
                 movement.validation=debug,\
