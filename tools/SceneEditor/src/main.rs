@@ -1,3 +1,5 @@
+//! `cimmeria-scene-editor`: the Tauri 3D scene editor that loads cooked SGW zones to view
+//! map geometry and place entities.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;

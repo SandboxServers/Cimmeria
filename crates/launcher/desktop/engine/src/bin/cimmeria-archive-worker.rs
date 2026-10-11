@@ -1,3 +1,6 @@
+//! `cimmeria-archive-worker`: the desktop launcher's one-request archive helper. It unpacks
+//! a client archive for the native parent over stdio.
+//!
 //! Built natively on Windows; run directly there or under a managed Wine prefix.
 #[cfg(not(windows))]
 fn main() {

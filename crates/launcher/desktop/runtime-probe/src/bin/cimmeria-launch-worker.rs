@@ -1,3 +1,6 @@
+//! `cimmeria-launch-worker`: the desktop launcher's Windows x86 game lifecycle worker. It
+//! starts `SGW.exe` suspended, injects DLLs, resumes it and reports its start and exit.
+//!
 //! Windows x86 lifecycle worker; compile natively on Windows.
 fn main() {
     #[cfg(windows)]

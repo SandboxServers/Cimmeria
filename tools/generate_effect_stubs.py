@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Effect Script Stub Generator
+Generate stub Python effect scripts, one per effect that has none, from the effect
+definitions in the PostgreSQL database.
 
 Reads effect definitions from the PostgreSQL database and generates stub Python
 scripts with correct class names, method signatures, and category-appropriate

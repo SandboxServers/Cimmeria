@@ -8,9 +8,19 @@ Skills in .agents/skills/ without the marker are hand-written and left alone.
 Relative Markdown links that leave the skill's folder (../../agents/x.md) are
 rewritten so they still resolve from the mirror.
 
-It also writes the Codex agents in CODEX_AGENTS, .codex/agents/<name>.toml, from
-.claude/agents/<name>.md: the name, description and effort from the frontmatter,
-and the body as the developer instructions.
+It also writes a Codex agent, .codex/agents/<name>.toml, for every
+.claude/agents/<name>.md, and removes a generated one whose source is gone
+(hand-written TOMLs without the marker line are left alone). The fields map as:
+
+  name                    <- frontmatter `name` (the file name when absent)
+  description             <- frontmatter `description`
+  model_reasoning_effort  <- frontmatter `effort` (low/medium/high; xhigh and max
+                             become high), else the Claude model tier: haiku -> low,
+                             sonnet -> medium, opus -> high; omitted when neither
+  developer_instructions  <- the Markdown body, as a TOML literal string
+
+Claude-only frontmatter (`model`, `tools`, `color`, `memory`) has no Codex
+field and is dropped: a Codex agent runs on the session's model with its tools.
 
 Usage:
   python tools/agent-skills/sync.py           # write the mirror
@@ -30,9 +40,11 @@ MIRROR = Path(".agents/skills")
 MARKER = "<!-- Generated from .claude/skills/{name}/ by tools/agent-skills/sync.py. Edit the source, then rerun the script. -->"
 AGENT_SOURCE = Path(".claude/agents")
 CODEX_AGENTS_DIR = Path(".codex/agents")
-# Agents with a Codex twin. A Codex agent needs its MCP servers configured in
-# Codex (.codex/config.toml.example) as well.
-CODEX_AGENTS = ("lab-driver",)
+# Every .claude/agents/*.md gets a Codex twin. One that calls MCP tools (lab-driver)
+# needs those servers configured in Codex too (.codex/config.toml.example).
+#: Claude `effort` values Codex lacks, and the model tier used when `effort` is absent.
+CODEX_EFFORT = {"xhigh": "high", "max": "high"}
+MODEL_EFFORT = {"haiku": "low", "sonnet": "medium", "opus": "high"}
 CODEX_MARKER = "# Generated from .claude/agents/{name}.md by tools/agent-skills/sync.py. Edit the source, then rerun the script."
 LINK = re.compile(r"(\]\()([^)\s]+)(\))")
 
@@ -126,6 +138,14 @@ def frontmatter(text):
     return fields, body, newline
 
 
+def codex_effort(fields):
+    """Codex's model_reasoning_effort for an agent's frontmatter, or None."""
+    effort = fields.get("effort", "").strip().lower()
+    if effort:
+        return CODEX_EFFORT.get(effort, effort)
+    return MODEL_EFFORT.get(fields.get("model", "").strip().lower())
+
+
 def codex_agent(name, text):
     """The Codex agent TOML for a .claude/agents/<name>.md text."""
     fields, body, newline = frontmatter(text)
@@ -136,8 +156,9 @@ def codex_agent(name, text):
         f"name = {json.dumps(fields.get('name', name))}",
         f"description = {json.dumps(fields.get('description', ''))}",
     ]
-    if fields.get("effort"):
-        out.append(f"model_reasoning_effort = {json.dumps(fields['effort'])}")
+    effort = codex_effort(fields)
+    if effort:
+        out.append(f"model_reasoning_effort = {json.dumps(effort)}")
     # A literal string: the instructions carry backslashes and quotes as written.
     out.append("developer_instructions = '''")
     return newline.join(out) + newline + body.rstrip("\r\n") + newline + "'''" + newline
@@ -146,14 +167,28 @@ def codex_agent(name, text):
 def expected_codex_agents(repo):
     """Map each Codex agent path to the bytes it should hold."""
     files = {}
-    for name in CODEX_AGENTS:
-        source = repo / AGENT_SOURCE / f"{name}.md"
-        if source.is_file():
-            files[CODEX_AGENTS_DIR / f"{name}.toml"] = codex_agent(
-                # Bytes, not read_text: that would turn CRLF into LF.
-                name, source.read_bytes().decode("utf-8")
-            ).encode("utf-8")
+    source_root = repo / AGENT_SOURCE
+    if not source_root.is_dir():
+        return files
+    for source in sorted(source_root.glob("*.md")):
+        name = source.stem
+        files[CODEX_AGENTS_DIR / f"{name}.toml"] = codex_agent(
+            # Bytes, not read_text: that would turn CRLF into LF.
+            name, source.read_bytes().decode("utf-8")
+        ).encode("utf-8")
     return files
+
+
+def generated_codex_agents(repo):
+    """Every .codex/agents/*.toml that carries the generated marker."""
+    root = repo / CODEX_AGENTS_DIR
+    if not root.is_dir():
+        return set()
+    return {
+        path.relative_to(repo)
+        for path in root.glob("*.toml")
+        if path.read_bytes().startswith(b"# Generated from .claude/agents/")
+    }
 
 
 def generated_mirror_files(repo):
@@ -181,8 +216,9 @@ def plan(repo):
             f"refusing to overwrite hand-written skill(s) in {MIRROR.as_posix()}: "
             f"{', '.join(clashes)}. Rename or remove one copy."
         )
-    deletes = sorted(generated_mirror_files(repo) - set(expected))
-    expected.update(expected_codex_agents(repo))
+    codex = expected_codex_agents(repo)
+    deletes = sorted((generated_mirror_files(repo) - set(expected)) | (generated_codex_agents(repo) - set(codex)))
+    expected.update(codex)
     writes = {
         rel: data
         for rel, data in expected.items()

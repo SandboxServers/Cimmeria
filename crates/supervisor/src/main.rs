@@ -1,3 +1,6 @@
+//! `cimmeria-supervisor`: an HTTP service (default port 8444, `SUPERVISOR_PORT`) that starts,
+//! stops and rebuilds `cimmeria-server` and streams its logs over a WebSocket.
+
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};

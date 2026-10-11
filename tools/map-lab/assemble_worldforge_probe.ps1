@@ -1,3 +1,6 @@
+# Assemble the Worldforge map-shell probe: clone Ancient sky, corridor and effect actors
+# from stock maps into a copy of an Agnos tile with upk_patch. Refuses an existing output;
+# the result still needs client testing. See README.md.
 param(
     [Parameter(Mandatory=$true)][string]$ClientRoot,
     [Parameter(Mandatory=$true)][string]$InputMap,

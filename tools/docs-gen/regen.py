@@ -32,6 +32,8 @@ Generators (NAME [ARGS]):
     gap-pct STATUSES [DECIMALS]
                         that sum as a percentage of the total (default 1 decimal)
     gap-systems         number of system rows in the matrix
+    tools-catalog       every script under tools/ and crate binary, grouped by task, from
+                        tools_catalog.py and the rules in tools_catalog.toml
 
 Usage:
     python tools/docs-gen/regen.py                # rewrite stale blocks (same as --write)
@@ -270,6 +272,11 @@ def gen_gap_pct(ctx: Context, args: list[str], after: str) -> str:
     return f"{100 * ctx.gap.count(args[0]) / total:.{decimals}f}%"
 
 
+def gen_tools_catalog(ctx: Context, args: list[str], after: str) -> str:
+    tc = sys.modules.get("tools_catalog") or _load("tools_catalog", pathlib.Path(__file__).with_name("tools_catalog.py"))
+    return tc.render(ctx.root)
+
+
 Generator = Callable[[Context, list, str], str]
 
 GENERATORS: dict[str, Generator] = {
@@ -288,6 +295,7 @@ GENERATORS: dict[str, Generator] = {
     "gap-count": gen_gap_count,
     "gap-pct": gen_gap_pct,
     "gap-systems": lambda ctx, a, s: n(len(ctx.gap.rows)),
+    "tools-catalog": gen_tools_catalog,
 }
 
 
