@@ -1,41 +1,44 @@
 name: launcher-release
 
-# Builds and publishes a GitHub Release containing the launcher .exe.
-# Triggered either manually via the Actions UI (`workflow_dispatch`) or
-# via the `/release-launcher` ChatOps command on a merged PR, which
-# dispatches this workflow through `launcher-release-on-comment.yml`.
+# Builds and publishes the desktop launcher (crates/launcher/desktop, the Tauri
+# one) as a GitHub Release. Triggered either manually via the Actions UI
+# (`workflow_dispatch`) or via the `/release-launcher` ChatOps command on a
+# merged PR, which dispatches this workflow through
+# `launcher-release-on-comment.yml`.
 #
-# Always builds whatever is at `main` HEAD — the triggering PR is just
-# the cut-point marker, mirroring the policy of `release-container.yml`.
+# Releases are built from `main` only. `workflow_dispatch` accepts any branch,
+# so the build job fails at its first step on any other ref, and the signing
+# and publishing jobs do not run; the signing job's environment,
+# `launcher-release`, is also restricted to `main` in the repository settings.
+# The commit built is the one dispatched (`github.sha`), main's HEAD at that
+# moment; the triggering PR is just the cut-point marker, mirroring the policy
+# of `release-container.yml`.
 #
-# The launcher stays a 64-bit build, but SGW.exe is 32-bit, and injection
-# must run at the target's bitness (it hands a remote thread the injector's
-# own LoadLibraryW). So the launcher carries three i686 artifacts, built first
-# and embedded through crates/launcher/build.rs: cimmeria-client-patches.dll,
-# cimmeria-client-telemetry.dll (the player build, without the lab-bridge
-# feature; injected only for players who opted in to telemetry) and the
-# sgw-start32.exe helper that injects them. The build runs in stages
-# from tools/launcher-release/build.sh, the same stages launcher-build.yml
-# dry-runs on every launcher PR, so this workflow's build is exercised before
-# a release needs it.
+# Four jobs, so the updater signing key never shares a job with the build's
+# third-party code (crates/launcher/desktop/docs/release.md, "Jobs"):
+#   - `desktop-windows` stamps the tag and version, builds, checks and zips the
+#     launcher. It never sees the Minisign secrets.
+#   - `sign` runs in the `launcher-release` environment, whose secrets are the
+#     Minisign key and password. It downloads only the zip, checks its digest
+#     against the build job's output, builds the release_feed tool with cargo
+#     alone (no node, no cache action) before the key is in any step, signs,
+#     writes latest.json and checks it as a launcher would.
+#   - `publish` creates or updates the dated release `launcher-YYYYMMDD-<sha7>`
+#     and, when signed, refreshes the rolling `launcher-current` (D-LX7):
+#     the zip, `.sha256`, `.zip.sig`, then `latest.json` last.
+#   - `egui-macos-wine`: until the macOS desktop build ships (LX-28, D-LX14),
+#     the original egui launcher as `sgw-launcher-macos-wine-<tag>.exe` for
+#     Mac players who run it under Wine. It is no longer published as
+#     `sgw-launcher-<tag>.exe`, the exact name the egui launcher updates itself
+#     from, so Windows players of the egui launcher stop being offered updates
+#     and move to the zip (D-LX2).
 #
-# Releases ship unsigned: code signing is deferred by the owner. The helper
-# keeps a stable name, a version resource and a place beside the launcher so
-# a Defender exclusion works; see docs/client/launcher-guide.md.
+# Releases ship unsigned: code signing is deferred by the owner (D-LX10). The
+# launch worker injects DLLs into the game, which is what Defender and
+# SmartScreen react to.
 #
-# The release also carries the client-patches UI overlay packed as a manifest
-# patch by `pack-client-overlay`, for the operator to add to the signed
-# content manifest; see docs/client/launcher-distribution-setup.md.
-#
-# One release, two launchers. After the original launcher is published, the
-# `desktop-windows` job builds the desktop launcher (crates/launcher/desktop,
-# the Tauri one) for Windows and attaches it to the same release as a zip.
-# It is a preview: unsigned, no installer and no self-update yet; the job's
-# comments list what is still open. It runs after the publish and only adds
-# an asset, so a failure there leaves the original launcher's release as it
-# is, and the original launcher's self-update (which looks for the exact
-# name `sgw-launcher-<tag>.exe`) does not see the extra file. The macOS
-# build of the desktop launcher is deferred; see the end of this file.
+# Every third-party action is pinned to a full commit SHA, with its version in
+# a comment, per GitHub's secure-use guide.
 
 on:
   workflow_dispatch:
@@ -50,192 +53,120 @@ concurrency:
   group: launcher-release
   cancel-in-progress: false
 
+env:
+  ZIP_NAME: StargateWorlds-Launcher-windows-x64.zip
+
 jobs:
-  release:
-    name: build + publish (Windows)
+  # The zip holds cimmeria-launcher-desktop.exe at its root with a windows/
+  # directory beside it (the 32-bit launch worker and the two game DLLs) and
+  # graphics/. The launcher refuses any of those three whose SHA-256 is not the
+  # one compiled into it, so they are built, staged and pinned in this one job.
+  # Its build runs in stages from tools/launcher-release/build-desktop.sh, the
+  # same stages launcher-desktop.yml dry-runs on every desktop-launcher PR.
+  desktop-windows:
+    name: desktop launcher (Windows) -> zip
     runs-on: windows-latest
     permissions:
-      contents: write
-    timeout-minutes: 45
+      # Reads the release list for the version; publishing is a later job.
+      contents: read
+    timeout-minutes: 60
     outputs:
       tag: ${{ steps.stamp.outputs.tag }}
       epoch: ${{ steps.stamp.outputs.epoch }}
+      version: ${{ steps.stamp.outputs.version }}
+      same_day: ${{ steps.stamp.outputs.same_day }}
+      zip_sha256: ${{ steps.digest.outputs.sha256 }}
+      has_overlay: ${{ steps.overlay.outputs.has_overlay }}
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
-      # Both secrets are baked into the binary at compile time via
-      # `option_env!` in src/config.rs and src/manifest.rs respectively.
-      # The release job is the only workflow that reads them — PR / build
-      # jobs produce binaries with the dev defaults (manifest signing
-      # falls back to a publicly-known key, log upload is disabled).
-      LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
-      # 64 hex chars = 32 raw bytes. Ed25519 public key whose private
-      # counterpart signs every manifest the launcher will accept.
-      # Generation + rotation procedure: see
-      # docs/client/launcher-distribution-setup.md.
-      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-      # Build-stamp inputs read by app::build_telemetry_config via
-      # option_env!. Default to "dev"/"unknown" when unset so PR builds
-      # keep working without secrets. The release job sets them so
-      # uploaded telemetry can correlate sessions with the launcher rev.
-      CIMMERIA_BUILD_BRANCH: main
-      CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+      ZIP: artifacts/StargateWorlds-Launcher-windows-x64.zip
+      # The Minisign public key, base64 of the `.pub` file. A repository
+      # variable, not a secret: it is public, and a variable shows in logs
+      # and settings, so a mismatch with the private key is easy to see.
+      LAUNCHER_UPDATER_PUBKEY: ${{ vars.LAUNCHER_UPDATER_PUBKEY }}
     steps:
-      # Actions pinned to immutable commit SHAs (with version comments) per
-      # GitHub's secure-use guide. This job is privileged — it builds with a
-      # secret SAS baked in and creates GitHub Releases — so the supply-chain
-      # surface from any third-party action is unusually large here.
+      # Before anything is checked out or built: a dispatch from any branch
+      # but main would otherwise build that branch, and the signing job would
+      # offer it to every player.
+      - name: refuse any ref but main
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF}" != refs/heads/main ]; then
+            echo "::error::launcher releases are built from main only; this run was dispatched on ${GITHUB_REF}"
+            exit 1
+          fi
+
       # `persist-credentials: false` so the GITHUB_TOKEN isn't left in the
       # local git config for later steps.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
         with:
-          ref: main
+          # The dispatched commit; every later job builds or tags the same one.
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: ./.github/actions/rust-toolchain
-        with:
-          targets: i686-pc-windows-msvc
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
-        with:
-          shared-key: launcher-release
-      # Stamped BEFORE the build: the launcher embeds the tag and the build
-      # time (CIMMERIA_LAUNCHER_TAG / CIMMERIA_LAUNCHER_BUILD_EPOCH, read by
-      # src/self_update/build_info.rs) to decide whether a later release is
-      # newer. Same-day releases are ordered by this job's start time
-      # against a release's published_at, which is sound because the
-      # `launcher-release` concurrency group runs one release at a time; see
-      # src/self_update/version.rs. Builds without the stamp (PR, local) are
-      # development builds and never update themselves.
-      - name: stamp version
+
+      # The tag and the build time, as before: a manifest's `min_launcher`
+      # compares them. The compiled version is D-LX8's `YYYY.M.D` from the
+      # same date, which the updater compares as SemVer. When dated releases
+      # already exist for that day this one is `YYYY.M.D-N`, N its place among
+      # the day's releases by creation time (the second is -2). A re-run of a
+      # run that already published its tag keeps that tag's place; the same
+      # commit dispatched again on the same day would need the same tag, so it
+      # is refused here, before anything is built. The stable channel refuses
+      # a prerelease, so a same-day build is never offered as an update; it is
+      # published as its dated release only and launcher-current keeps the
+      # day's first release.
+      - name: stamp tag and version
         id: stamp
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA:0:7}"
           EPOCH=$(date -u +%s)
           DATE=$(date -u -d "@${EPOCH}" +%Y%m%d)
           TAG="launcher-${DATE}-${SHORT_SHA}"
+          BASE="$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(date -u -d "@${EPOCH}" +%-d)"
+          # Two lines: this tag's 0-based place among the day's dated
+          # releases, oldest first (-1 when it has none), and their count.
+          # Captured first, so a failed listing fails the step instead of
+          # silently counting as "no releases today".
+          LISTING="$(gh release list --limit 200 --json tagName,createdAt --jq "
+            [.[] | select(.tagName | startswith(\"launcher-${DATE}-\"))]
+            | sort_by(.createdAt) | map(.tagName)
+            | ((to_entries | map(select(.value == \"${TAG}\")) | .[0].key // -1), length)")"
+          mapfile -t DAY <<<"${LISTING}"
+          PLACE="${DAY[0]:-}"; COUNT="${DAY[1]:-}"
+          [[ "${PLACE}" =~ ^-?[0-9]+$ && "${COUNT}" =~ ^[0-9]+$ ]] \
+            || { echo "::error::could not read today's releases: ${LISTING}"; exit 1; }
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [ "${PLACE}" -ge 0 ]; then
+            # The dated release's notes name the run that published it.
+            PUBLISHED_BODY="$(gh release view "${TAG}" --json body --jq .body)"
+            if grep -qF "${RUN_URL}" <<<"${PUBLISHED_BODY}"; then
+              N=$((PLACE + 1))
+              echo "re-run: ${TAG} was published by this run; it keeps its place (${N})"
+            else
+              echo "::error::${TAG} is already released by another run: commit ${SHORT_SHA} was released today. A second release of the same commit on the same day would need the same tag. Merge another commit first, or re-run the run that published ${TAG}."
+              exit 1
+            fi
+          else
+            N=$((COUNT + 1))
+          fi
+          if [ "${N}" -eq 1 ]; then
+            VERSION="${BASE}"; SAME_DAY=false
+          else
+            VERSION="${BASE}-${N}"; SAME_DAY=true
+          fi
+          [[ "${VERSION}" =~ ^[0-9]{4}\.[1-9][0-9]?\.[1-9][0-9]?(-[0-9]+)?$ ]] \
+            || { echo "::error::computed version ${VERSION} is not D-LX8 SemVer"; exit 1; }
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "epoch=${EPOCH}" >> "$GITHUB_OUTPUT"
-      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
-        shell: bash
-        run: tools/launcher-release/build.sh i686
-
-      - name: build the 64-bit launcher, embedding them
-        shell: bash
-        env:
-          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
-          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ steps.stamp.outputs.epoch }}
-        run: tools/launcher-release/build.sh launcher
-
-      - name: verify the artifacts
-        shell: bash
-        env:
-          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
-        run: tools/launcher-release/build.sh verify
-      # The .sha256 (sha256sum format, `<hex>  <file name>`) is what the
-      # launcher's self-update verifies its download against; a release
-      # without one is never offered as an update.
-      - name: stage artifact
-        shell: bash
-        env:
-          TAG: ${{ steps.stamp.outputs.tag }}
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          EXE="sgw-launcher-${TAG}.exe"
-          cp target/release/sgw-launcher.exe "artifacts/${EXE}"
-          HASH=$(sha256sum "artifacts/${EXE}" | cut -d' ' -f1)
-          printf '%s  %s\n' "${HASH}" "${EXE}" > "artifacts/${EXE}.sha256"
-          cat "artifacts/${EXE}.sha256"
-      # The overlay zip is served from this release's own immutable tag, so
-      # the entry's blob URL points here. With no overlay committed the tool
-      # prints "nothing to pack" and the release carries the launcher alone.
-      - name: pack client-patches overlay
-        shell: bash
-        env:
-          TAG: ${{ steps.stamp.outputs.tag }}
-        run: tools/launcher-release/build.sh overlay "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-      - name: upload build artifact (workflow run)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          name: sgw-launcher-${{ steps.stamp.outputs.tag }}
-          path: |
-            artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
-            artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe.sha256
-            overlay-out/
-          retention-days: 30
-      - name: create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TRIGGERING_PR: ${{ github.event.inputs.triggering_pr }}
-          TAG: ${{ steps.stamp.outputs.tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          BODY="Stargate Worlds launcher build from commit \`${GITHUB_SHA}\`."
-          if [ -n "${TRIGGERING_PR}" ]; then
-            BODY="${BODY}
-
-          Dispatched from PR #${TRIGGERING_PR}."
-          fi
-          BODY="${BODY}
-
-          This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/client/launcher-guide.md."
-          shopt -s nullglob
-          overlay=(overlay-out/*.zip overlay-out/*.entry.json)
-          if [ ${#overlay[@]} -gt 0 ]; then
-            BODY="${BODY}
-
-          Includes the client-patches UI overlay patch. To publish it, add its \`.entry.json\` to the content manifest and re-sign (docs/client/launcher-distribution-setup.md)."
-          fi
-          gh release create "${TAG}" \
-            --title "Launcher ${TAG}" \
-            --notes "${BODY}" \
-            "artifacts/sgw-launcher-${TAG}.exe" "artifacts/sgw-launcher-${TAG}.exe.sha256" \
-            "${overlay[@]}"
-
-  # The desktop launcher for Windows, attached to the release the job above
-  # created. Its build runs in stages from tools/launcher-release/build-desktop.sh,
-  # the same stages launcher-desktop.yml dry-runs on every desktop-launcher PR.
-  #
-  # What it ships: a zip holding cimmeria-launcher-desktop.exe with a windows/
-  # directory beside it (the 32-bit launch worker and the two game DLLs). The
-  # launcher refuses any of those three whose SHA-256 is not the one compiled
-  # into it, so they are built, staged and pinned in this one job.
-  #
-  # Still open before this is more than a preview:
-  #   - No installer. The launcher's own update path hands off to an NSIS
-  #     installer, which nothing builds or has tested, so this build cannot
-  #     update itself; no update feed or signing key is configured either
-  #     (crates/launcher/desktop/docs/updater.md).
-  #   - Unsigned, like the original launcher. The launch worker injects DLLs
-  #     into the game, which is what Defender and SmartScreen react to.
-  #   - Nothing installs the WebView2 runtime. Windows 11 has it; Windows 10
-  #     usually does.
-  #   - The window title and the UI still say "development".
-  #   - Tested natively on one Windows machine from a debug build
-  #     (2026-10-04: Install, Play, login, character select). Repair,
-  #     uninstall, game Update and adopting an existing copy were not.
-  desktop-windows:
-    name: desktop launcher (Windows) -> same release
-    needs: release
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    timeout-minutes: 60
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: 0
-      TAG: ${{ needs.release.outputs.tag }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
-        with:
-          # The commit the release job stamped into the tag, not whatever
-          # main has become since.
-          ref: ${{ github.sha }}
-          persist-credentials: false
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "same_day=${SAME_DAY}" >> "$GITHUB_OUTPUT"
+          echo "tag ${TAG}, version ${VERSION}, dated releases today: ${COUNT}"
 
       - uses: ./.github/actions/rust-toolchain
         with:
@@ -248,7 +179,7 @@ jobs:
             . -> target
             crates/launcher/desktop -> ../../../target/desktop
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
         with:
           node-version: '24'
 
@@ -260,37 +191,420 @@ jobs:
         shell: bash
         run: tools/launcher-release/build-desktop.sh stage
 
-      # The manifest key is on this step only. The test suites use the
-      # development key and fail with the production one set.
+      # The release stamps are on this step only. The test suites use the
+      # development manifest key and fail with the production one set, and the
+      # SAS is compiled in with `option_env!`, so no other step has them.
       - name: build the 64-bit desktop launcher, pinned to them
         shell: bash
         env:
+          # 64 hex chars = 32 raw bytes. Ed25519 public key whose private
+          # counterpart signs every manifest the launcher will accept
+          # (docs/client/launcher-distribution-setup.md).
           LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-          # The same identity as the original launcher of this release, so
-          # a manifest's `min_launcher` treats the two alike.
-          CIMMERIA_LAUNCHER_TAG: ${{ needs.release.outputs.tag }}
-          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ needs.release.outputs.epoch }}
+          # Where Settings' "Upload debug logs" PUTs the zip (D-LX11). Unset,
+          # the button is hidden.
+          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
+          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ steps.stamp.outputs.epoch }}
           CIMMERIA_BUILD_BRANCH: main
           CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+          # LAUNCHER_UPDATER_PUBKEY comes from the job env. Unset, the build's
+          # updater is Disabled.
         run: tools/launcher-release/build-desktop.sh launcher
 
       - name: verify the artifacts
         shell: bash
         env:
-          CIMMERIA_LAUNCHER_TAG: ${{ needs.release.outputs.tag }}
+          CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
         run: tools/launcher-release/build-desktop.sh verify
 
+      # StargateWorlds-Launcher-windows-x64.zip and its .sha256 (sha256sum
+      # format, `<hex>  <file name>`).
       - name: package
         shell: bash
-        run: tools/launcher-release/build-desktop.sh package "${TAG}"
+        run: tools/launcher-release/build-desktop.sh package
 
-      - name: upload build artifact (workflow run)
+      # The digest travels to the signing and publishing jobs as a job output,
+      # a channel separate from the artifact store: each checks the zip it
+      # downloads against it.
+      - name: record the zip digest
+        id: digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
+          [ "${SHA}" = "$(cut -d' ' -f1 "${ZIP}.sha256")" ] || { echo "::error::${ZIP}.sha256 does not match the zip"; exit 1; }
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      # The overlay zip is served from this release's own immutable tag, so
+      # the entry's blob URL points here. With no overlay committed the tool
+      # prints "nothing to pack" and the release carries the launcher alone.
+      - name: pack client-patches overlay
+        id: overlay
+        shell: bash
+        env:
+          TAG: ${{ steps.stamp.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cargo build --locked -p cimmeria-launcher-core --bin pack-client-overlay --release
+          tools/launcher-release/build.sh overlay "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          shopt -s nullglob
+          packed=(overlay-out/*.zip overlay-out/*.entry.json)
+          if [ ${#packed[@]} -gt 0 ]; then HAS=true; else HAS=false; fi
+          echo "has_overlay=${HAS}" >> "$GITHUB_OUTPUT"
+
+      # The signing job downloads this artifact and nothing else.
+      - name: upload the zip
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: stargate-worlds-launcher-desktop-windows-${{ needs.release.outputs.tag }}
-          path: artifacts/stargate-worlds-launcher-desktop-windows-*
+          name: launcher-zip-${{ steps.stamp.outputs.tag }}
+          path: |
+            artifacts/StargateWorlds-Launcher-windows-x64.zip
+            artifacts/StargateWorlds-Launcher-windows-x64.zip.sha256
+          if-no-files-found: error
           retention-days: 30
+          overwrite: true
 
+      - name: upload the overlay patch
+        if: steps.overlay.outputs.has_overlay == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-overlay-${{ steps.stamp.outputs.tag }}
+          path: overlay-out/
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+      - name: job summary
+        if: always()
+        shell: bash
+        env:
+          TAG: ${{ steps.stamp.outputs.tag }}
+          VERSION: ${{ steps.stamp.outputs.version }}
+          SAME_DAY: ${{ steps.stamp.outputs.same_day }}
+        run: |
+          {
+            echo "## Launcher ${TAG}"
+            echo
+            echo "Compiled version: \`${VERSION}\`"
+            if [ "${SAME_DAY}" = true ]; then
+              echo
+              echo "**Same-day build.** \`${VERSION}\` is a prerelease, which the launcher's stable channel refuses, so this build is not signed or offered to players as an update. It is published as its dated release only; \`launcher-current\` still holds the day's first release."
+            fi
+            if [ -z "${LAUNCHER_UPDATER_PUBKEY}" ]; then
+              echo
+              echo "The build's updater is Disabled (no \`LAUNCHER_UPDATER_PUBKEY\` variable)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # The only job that sees LAUNCHER_UPDATER_MINISIGN_KEY and _PASSWORD: they are
+  # secrets of the `launcher-release` environment, which only main may use.
+  # It runs no third-party action and no node: the checkout and artifact
+  # actions are GitHub's own, the toolchain action is this repository's
+  # (dtolnay/rust-toolchain by SHA inside), and there is no cache to restore
+  # from. The release_feed tool is compiled in a step with no secret, so the
+  # build scripts and proc macros of its dependencies never see the key; the
+  # sign step runs the built executable directly.
+  sign:
+    name: sign the zip and write the updater feed
+    needs: desktop-windows
+    if: github.ref == 'refs/heads/main' && needs.desktop-windows.outputs.same_day == 'false'
+    runs-on: windows-latest
+    environment: launcher-release
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    outputs:
+      signed: ${{ steps.keys.outputs.sign }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      ZIP: artifacts/StargateWorlds-Launcher-windows-x64.zip
+      TAG: ${{ needs.desktop-windows.outputs.tag }}
+      VERSION: ${{ needs.desktop-windows.outputs.version }}
+      ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
+      LAUNCHER_UPDATER_PUBKEY: ${{ vars.LAUNCHER_UPDATER_PUBKEY }}
+    steps:
+      # 'true' or 'false' only: the key itself reaches the sign step alone.
+      # The key and the public-key variable go together (D-LX9); the key
+      # without the variable is a misconfiguration, since the build could not
+      # verify what it is offered.
+      - name: decide whether to sign
+        id: keys
+        shell: bash
+        env:
+          HAS_UPDATER_KEY: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_KEY != '' }}
+        run: |
+          set -euo pipefail
+          if [ "${HAS_UPDATER_KEY}" = true ] && [ -z "${LAUNCHER_UPDATER_PUBKEY}" ]; then
+            echo "::error::LAUNCHER_UPDATER_MINISIGN_KEY is set but the LAUNCHER_UPDATER_PUBKEY variable is not; the launcher was built unable to verify what it is offered"
+            exit 1
+          fi
+          echo "sign=${HAS_UPDATER_KEY}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Signing ${TAG}"
+            echo
+            if [ "${HAS_UPDATER_KEY}" = true ]; then
+              echo "Signed with the updater key; \`latest.json\` offers \`${VERSION}\` to every older launcher."
+            else
+              echo "**No updater key.** \`LAUNCHER_UPDATER_MINISIGN_KEY\` is not set in the \`launcher-release\` environment, so the zip is unsigned, no \`latest.json\` was written and \`launcher-current\` is skipped. This is expected until the key holder does D-LX9 (crates/launcher/desktop/docs/release.md, \"Key holder steps\")."
+              if [ -n "${LAUNCHER_UPDATER_PUBKEY}" ]; then
+                echo
+                echo "Warning: \`LAUNCHER_UPDATER_PUBKEY\` is set without the private key, so this build's updater is enabled but nothing publishes a feed for it."
+              fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        if: steps.keys.outputs.sign == 'true'
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        if: steps.keys.outputs.sign == 'true'
+
+      - name: build the release_feed tool (no secrets in this step)
+        if: steps.keys.outputs.sign == 'true'
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh feed-tool
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        if: steps.keys.outputs.sign == 'true'
+        with:
+          name: launcher-zip-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+
+      - name: check the zip is the one the build job made
+        if: steps.keys.outputs.sign == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOT="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
+          [ -n "${ZIP_SHA256}" ] && [ "${GOT}" = "${ZIP_SHA256}" ] \
+            || { echo "::error::the downloaded zip is ${GOT}, the build job made ${ZIP_SHA256}"; exit 1; }
+          [ "$(cut -d' ' -f1 "${ZIP}.sha256")" = "${ZIP_SHA256}" ] \
+            || { echo "::error::${ZIP}.sha256 does not name the build job's digest"; exit 1; }
+
+      # The feed offers the zip from this release's own immutable tag, not
+      # from launcher-current: the signature pins those exact bytes, so a feed
+      # read while launcher-current's assets are being replaced still names a
+      # zip that matches it.
+      - name: sign the zip and write the updater feed
+        if: steps.keys.outputs.sign == 'true'
+        shell: bash
+        env:
+          LAUNCHER_UPDATER_MINISIGN_KEY: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_KEY }}
+          LAUNCHER_UPDATER_MINISIGN_PASSWORD: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          tools/launcher-release/build-desktop.sh sign "${VERSION}" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}" \
+            "Stargate Worlds launcher ${VERSION} (${TAG})."
+
+      # The launcher engine's own feed, signature and zip checks against the
+      # public key the build compiled in: a pair that does not match, or a
+      # feed the launcher would refuse, stops the release here.
+      - name: check the feed as a launcher would
+        if: steps.keys.outputs.sign == 'true'
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh verify-feed "${VERSION}"
+
+      - name: upload the signature and feed
+        if: steps.keys.outputs.sign == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-feed-${{ needs.desktop-windows.outputs.tag }}
+          path: |
+            artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+            artifacts/latest.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  # Creates or updates the dated release, then refreshes launcher-current when
+  # the zip was signed. Every step is safe to re-run: a re-run replaces this
+  # run's own assets rather than failing on an existing tag. It runs when the
+  # signing job succeeded or was skipped (a same-day build), never when it
+  # failed.
+  publish:
+    name: dated release + launcher-current
+    needs: [desktop-windows, sign]
+    if: >-
+      always() && github.ref == 'refs/heads/main'
+      && needs.desktop-windows.result == 'success'
+      && (needs.sign.result == 'success' || needs.sign.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 20
+    env:
+      ZIP: artifacts/StargateWorlds-Launcher-windows-x64.zip
+      TAG: ${{ needs.desktop-windows.outputs.tag }}
+      VERSION: ${{ needs.desktop-windows.outputs.version }}
+      ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
+      SIGNED: ${{ needs.sign.outputs.signed == 'true' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: launcher-zip-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        if: env.SIGNED == 'true'
+        with:
+          name: launcher-feed-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        if: needs.desktop-windows.outputs.has_overlay == 'true'
+        with:
+          name: launcher-overlay-${{ needs.desktop-windows.outputs.tag }}
+          path: overlay-out
+
+      - name: check the zip is the one the build job made
+        run: |
+          set -euo pipefail
+          GOT="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
+          [ -n "${ZIP_SHA256}" ] && [ "${GOT}" = "${ZIP_SHA256}" ] \
+            || { echo "::error::the downloaded zip is ${GOT}, the build job made ${ZIP_SHA256}"; exit 1; }
+
+      - name: create or update the dated release
+        env:
+          TRIGGERING_PR: ${{ github.event.inputs.triggering_pr }}
+        run: |
+          set -euo pipefail
+          STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/launcher-current/${ZIP_NAME}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # The run link is how the stamp step tells a re-run of this run from
+          # a second dispatch of the same commit; keep it in the notes.
+          BODY="Stargate Worlds launcher ${VERSION}, built from commit \`${GITHUB_SHA}\` by ${RUN_URL}."
+          if [ -n "${TRIGGERING_PR}" ]; then
+            BODY="${BODY}
+
+          Dispatched from PR #${TRIGGERING_PR}."
+          fi
+          BODY="${BODY}
+
+          **Windows:** download \`${ZIP_NAME}\`, unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`; keep the \`windows\` and \`graphics\` folders beside it. It needs the WebView2 runtime (part of Windows 11). The newest release is always at ${STABLE}.
+
+          **Players of the old Windows launcher (\`sgw-launcher.exe\`):** your old launcher will no longer update. Download the zip from ${STABLE} and use \`cimmeria-launcher-desktop.exe\` instead.
+
+          This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/client/launcher-guide.md."
+          assets=("${ZIP}" "${ZIP}.sha256")
+          if [ -f "${ZIP}.sig" ]; then assets+=("${ZIP}.sig"); fi
+          shopt -s nullglob
+          overlay=(overlay-out/*.zip overlay-out/*.entry.json)
+          if [ ${#overlay[@]} -gt 0 ]; then
+            BODY="${BODY}
+
+          Includes the client-patches UI overlay patch. To publish it, add its \`.entry.json\` to the content manifest and re-sign (docs/client/launcher-distribution-setup.md)."
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "${TAG} exists (a re-run): replacing its notes and assets"
+            gh release edit "${TAG}" --title "Launcher ${TAG}" --notes "${BODY}"
+            gh release upload "${TAG}" --clobber "${assets[@]}" "${overlay[@]}"
+          else
+            # --target: the tag is made at the dispatched commit, not at
+            # whatever main has become since.
+            gh release create "${TAG}" --target "${GITHUB_SHA}" \
+              --title "Launcher ${TAG}" \
+              --notes "${BODY}" \
+              "${assets[@]}" "${overlay[@]}"
+          fi
+
+      # D-LX7: the stable download link. `--clobber` replaces each asset (gh
+      # deletes and uploads it; any error fails the step). latest.json goes
+      # last, and it names the dated release's zip, so a launcher reading the
+      # feed mid-refresh is never pointed at a missing or mismatched file. The
+      # release is never marked latest, and its tag has no date, which the egui
+      # launcher's self-update skips. A re-run repairs a refresh that failed
+      # part-way.
+      - name: refresh launcher-current
+        if: env.SIGNED == 'true'
+        run: |
+          set -euo pipefail
+          CURRENT=launcher-current
+          NOTES="The newest Stargate Worlds launcher, currently ${TAG}. Download ${ZIP_NAME}. The desktop launcher's updater reads latest.json from here."
+          if gh release view "${CURRENT}" >/dev/null 2>&1; then
+            gh release edit "${CURRENT}" --latest=false --notes "${NOTES}"
+          else
+            gh release create "${CURRENT}" --latest=false --target "${GITHUB_SHA}" \
+              --title "Launcher (current)" --notes "${NOTES}"
+          fi
+          for file in "${ZIP}" "${ZIP}.sha256" "${ZIP}.sig" artifacts/latest.json; do
+            gh release upload "${CURRENT}" "${file}" --clobber
+          done
+
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "## Published ${TAG}"
+            echo
+            if [ "${SIGNED}" = true ]; then
+              echo "\`launcher-current\` now holds this release's zip, \`.sha256\`, \`.zip.sig\` and \`latest.json\`, which offers \`${VERSION}\` to every older launcher."
+            else
+              echo "Published as its dated release only; \`launcher-current\` was not changed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # D-LX14: Mac players run the original egui launcher under Wine until the
+  # macOS desktop build ships (LX-28), so it is still built, under a name the
+  # egui self-update does not look for (D-LX2; see the top of this file). It
+  # runs after the dated release exists and only adds an asset, so a failure
+  # here leaves the release as it is. LX-18 deletes this job with the egui
+  # launcher, after LX-28.
+  egui-macos-wine:
+    name: original launcher for macOS under Wine -> same release
+    needs: [desktop-windows, publish]
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TAG: ${{ needs.desktop-windows.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          # The commit the first job stamped into the tag, not whatever main
+          # has become since.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: launcher-release
+      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
+        shell: bash
+        run: tools/launcher-release/build.sh i686
+      # Both secrets are baked in at compile time via `option_env!` in
+      # src/config.rs and src/manifest.rs. The tag and epoch are the release's,
+      # read by src/self_update/build_info.rs.
+      - name: build the 64-bit launcher, embedding them
+        shell: bash
+        env:
+          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ needs.desktop-windows.outputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: main
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+        run: tools/launcher-release/build.sh launcher
+      - name: verify the artifacts
+        shell: bash
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
+        run: tools/launcher-release/build.sh verify
+      # Safe to re-run: the upload replaces this run's own asset, and the
+      # notes paragraph is added once.
       - name: attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -298,51 +612,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="artifacts/stargate-worlds-launcher-desktop-windows-${TAG}.zip"
-          gh release upload "${TAG}" "${ZIP}" "${ZIP}.sha256"
+          mkdir -p artifacts
+          EXE="sgw-launcher-macos-wine-${TAG}.exe"
+          cp target/release/sgw-launcher.exe "artifacts/${EXE}"
+          printf '%s  %s\n' "$(sha256sum "artifacts/${EXE}" | cut -d' ' -f1)" "${EXE}" > "artifacts/${EXE}.sha256"
+          gh release upload "${TAG}" --clobber "artifacts/${EXE}" "artifacts/${EXE}.sha256"
           BODY="$(gh release view "${TAG}" --json body --jq .body)"
-          BODY="${BODY}
+          if ! grep -qF '**macOS (under Wine):**' <<<"${BODY}"; then
+            BODY="${BODY}
 
-          **Desktop launcher for Windows (preview):** \`stargate-worlds-launcher-desktop-windows-${TAG}.zip\`. Unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`; keep the \`windows\` folder beside it. It is unsigned, has no installer and does not update itself yet, and it needs the WebView2 runtime (part of Windows 11). The original launcher above is still the supported one."
-          gh release edit "${TAG}" --notes "${BODY}"
-
-  # ── Deferred: the desktop launcher for macOS ─────────────────────────────
-  #
-  # Not built here yet, on purpose. A Mac build that players can open needs
-  # things this repository does not have, and a build without them is one
-  # macOS refuses to run after download:
-  #
-  # 1. A Developer ID Application certificate. The only identity in use so
-  #    far is an "Apple Development" one on a maintainer's machine, which
-  #    signs builds for that developer's own Macs and nothing else. Developer
-  #    ID comes from a paid Apple Developer Program membership and has to
-  #    reach the runner as secrets (a base64 .p12 and its password, imported
-  #    into a temporary keychain), or the release build has to run on a Mac
-  #    that holds it.
-  # 2. Notarization. The signed app is submitted to Apple with `notarytool`
-  #    (an App Store Connect API key: key id, issuer id and the .p8, as
-  #    secrets) and the ticket stapled to it. Gatekeeper blocks a downloaded
-  #    app that is not notarized.
-  # 3. Hardened runtime and entitlements. Notarization requires the hardened
-  #    runtime, and the launcher starts Wine, an x86 process tree that maps
-  #    unsigned Windows code. Which entitlements that needs has not been
-  #    worked out or tested; every executable inside the bundle has to be
-  #    signed as well, the Wine runtime included if it is ever bundled.
-  # 4. The Windows pieces. The Mac bundle carries Windows-built files (the
-  #    archive, prerequisite and launch workers, the two game DLLs), each
-  #    pinned by SHA-256 at compile time. A macOS job would take them as
-  #    artifacts from a Windows job of this workflow and stage them with
-  #    crates/launcher/desktop/tools/stage-helper.py before compiling.
-  # 5. Redistribution of what it downloads or bundles. The Wine runtime is a
-  #    third-party release pinned by hash, the D3D9 translation layer has its
-  #    own licence, and the x87 accelerator's provenance is not cleared
-  #    (docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md).
-  # 6. A package format (a .dmg or a zipped .app, arm64) and the same open
-  #    updater work as Windows.
-  #
-  # When those exist, the job is the `desktop-windows` job's shape: needs
-  # `release` for the tag, builds with `cargo tauri build --bundles app`
-  # (crates/launcher/desktop/bundle-macos-dev.sh is the development form),
-  # signs, notarizes, staples, and `gh release upload`s to the same tag.
-  # Until then Mac builds are made and signed locally for testing.
-
+          **macOS (under Wine):** \`${EXE}\` is the original launcher, for Mac players who run it under Wine (docs/guides/macos.md) until the macOS desktop launcher is released. It does not update itself to later releases; download the newest from the releases page."
+            gh release edit "${TAG}" --notes "${BODY}"
+          fi
