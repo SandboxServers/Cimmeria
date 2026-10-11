@@ -73,7 +73,8 @@ permissions:
 jobs:
   e2e:
     name: wireclient e2e (live DB)
-    runs-on: ubuntu-latest
+    # Fork PRs and CI_LINUX_RUNNER=hosted use GitHub-hosted runners (tools/ci-runners/README.md).
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:
@@ -98,7 +99,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
-        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
       - name: start schema + seeds load (background)
         # Loads db/database.sql into `sgw`, the template of the per-slot clones,
         # while the steps below compile. The wait step fails the job if it failed.
@@ -115,6 +116,8 @@ jobs:
           mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: wireclient-e2e
           save-if: ${{ github.ref == 'refs/heads/main' }}

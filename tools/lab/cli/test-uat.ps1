@@ -8,6 +8,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
+. (Join-Path $PSScriptRoot 'calibrate-lib.ps1')
 
 $script:failed = 0
 function Check([bool]$cond, [string]$what) {
@@ -349,6 +350,222 @@ try {
     $obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
     Check ($code -eq 2 -and $obj.exit -eq 2 -and $obj.error -ceq 'golden for broken-section cannot be read: it has no fingerprint') "-DiffGolden with an unreadable golden exits 2 up front ($code)"
 } finally { Remove-Item -LiteralPath $emptySpecs -Recurse -ErrorAction SilentlyContinue }
+
+# --- -Heal (lab-spec-vocab SV-12, D-SV8 (a)) ---
+Check ((Test-UatArguments 2 1 '' 20 15 3 '' $true) -like '-Heal needs -Leases 1*') '-Heal -Leases 2 is refused'
+Check ($null -eq (Test-UatArguments 1 5 '' 20 15 3 '' $true)) '-Heal with one lease is allowed'
+Check ($null -eq (Test-UatArguments 2 1 '' 20 15 3 '')) 'two leases without -Heal are allowed'
+
+function HealRow($id, $result, $pose) {
+    $r = [pscustomobject]@{ row = $id; result = $result; reasons = @('step action 2 failed') }
+    if ($pose) { $r | Add-Member -NotePropertyName heal -NotePropertyValue ([pscustomobject]@{ pose = $pose; step = 'hover' }) }
+    $r
+}
+$healRuns = @(
+    (Rec 'default' 1 $false @((HealRow 'FS-P1' 'PASS' $null), (HealRow 'FS-P3' 'FAIL' 'frost'), (HealRow 'FS-P4' 'FAIL' $null)))
+    (Rec 'default' 2 $false @((HealRow 'FS-P3' 'FAIL' 'frost'), (HealRow 'FS-P5' 'BLOCKED' 'supply')))
+    # A PASS row never carries a hint; one that somehow does is ignored.
+    (Rec 'default' 3 $true @((HealRow 'FS-P3' 'PASS' 'guard')))
+    (Rec 'default' 4 $false @() 'lab_uat_run failed: bridge down')
+)
+$hints = @(Get-UatHealHints $healRuns)
+Check ($hints.Count -eq 2 -and $hints[0].row -ceq 'FS-P3' -and $hints[0].pose -ceq 'frost' -and $hints[1].row -ceq 'FS-P5' -and $hints[1].pose -ceq 'supply') 'heal hints: two runs'' identical hint once, rows without one and PASS rows ignored'
+Check (@(Get-UatHealHints @((Rec 'default' 1 $false @((HealRow 'FS-P3' 'FAIL' $null))))).Count -eq 0) 'a failed batch without hints has none'
+$jl = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-heal-" + [guid]::NewGuid() + '.jsonl')
+try {
+    foreach ($r in $healRuns) { Add-UatRecord $jl $r }
+    $back = @(Get-UatHealHints @(Read-UatRecords $jl))
+    Check ($back.Count -eq 2 -and $back[0].pose -ceq 'frost') 'heal hints read back from batch.jsonl like live ones'
+} finally { Remove-Item -LiteralPath $jl -ErrorAction SilentlyContinue }
+Check ((Get-UatHealFileName 'FS-P3' 'frost') -ceq 'heal-FS-P3-frost.diff' -and (Get-UatHealFileName 'a/b' 'c d') -ceq 'heal-a_b-c_d.diff') 'heal file names are safe'
+
+# The heal pass with a stubbed lab_uat_calibrate: one call per hint on the
+# batch's instance, the proposal copied into the batch folder, no file under
+# the spec folder written.
+$healTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-heal-" + [guid]::NewGuid())
+$healBatch = Join-Path $healTmp 'batch'; $runDir = Join-Path $healTmp 'run'; $healSpecs = Join-Path $healTmp 'specs'
+New-Item -ItemType Directory -Path $healBatch, $runDir, $healSpecs, (Join-Path $healSpecs 'golden') | Out-Null
+# Every file under the spec folder with its hash: a write, a new file or a
+# deleted one changes it.
+function Get-SpecTreeHashes([string]$Dir) {
+    (@(Get-ChildItem -LiteralPath $Dir -Recurse -File | Sort-Object FullName |
+        ForEach-Object { "$($_.FullName)=$((Get-FileHash -LiteralPath $_.FullName).Hash)" })) -join "`n"
+}
+try {
+    $specFile = Join-Path $healSpecs 'first-session.toml'
+    Set-Content -LiteralPath $specFile -Value 'pose frost = { tag = "frost", radius_m = 3.75, bearing_deg = 322.5 }'
+    Set-Content -LiteralPath (Join-Path $healSpecs 'abilities.toml') -Value '[section]'
+    Set-Content -LiteralPath (Join-Path $healSpecs 'golden\first-session.json') -Value '{"schema":1}'
+    $specsBefore = Get-SpecTreeHashes $healSpecs
+    $diffText = "--- a/docs/guides/uat-specs/first-session.toml`n+++ b/docs/guides/uat-specs/first-session.toml`n@@ -1 +1 @@`n-pose frost = { bearing_deg = 322.5 }`n+pose frost = { bearing_deg = 330.0 }`n"
+    $script:calls = @()
+    $stub = {
+        param($a)
+        $script:calls += , $a
+        if ($a.pose -ceq 'frost') {
+            $d = Join-Path $runDir 'first-session.diff'
+            [IO.File]::WriteAllText($d, $diffText)
+            return [pscustomobject]@{ run_dir = $runDir; outcomes = @([pscustomobject]@{ ok = $true; section = $a.section; row = $a.row; pose = 'frost'
+                score = 8312; confirmed = 3; changed = [pscustomobject]@{ bearing_deg = @(322.5, 330.0) }; diff_path = $d; probes = 41 }) }
+        }
+        return [pscustomobject]@{ run_dir = $runDir; outcomes = @([pscustomobject]@{ ok = $false; section = $a.section; row = $a.row; pose = $a.pose
+            confirmed = 0; probes = 108; reason = 'no candidate hovered the target' }) }
+    }
+    $healed = @(Invoke-UatHeal $hints $healBatch 'first-session' $healSpecs 'p2' $stub)
+    Check ($script:calls.Count -eq 2) 'one lab_uat_calibrate call per hint'
+    $c = $script:calls[0]
+    Check ($c.section -ceq 'first-session' -and $c.row -ceq 'FS-P3' -and $c.pose -ceq 'frost' -and $c.instance -ceq 'p2' -and $c.specs_dir -ceq $healSpecs) 'the call names the section, row, pose, instance and spec folder'
+    $copy = Join-Path $healBatch 'heal-FS-P3-frost.diff'
+    Check ($healed[0].Diff -ceq $copy -and (Test-Path -LiteralPath $copy) -and [IO.File]::ReadAllText($copy) -ceq $diffText) 'the proposal is saved as heal-FS-P3-frost.diff in the batch folder'
+    Check ($healed[0].Line -ceq "heal FS-P3 frost: score 8312, confirmed 3/3, bearing 322.5 -> 330.0; diff $copy" -and $healed[0].Text -ceq $diffText) "the heal line names the batch copy, and the diff text is kept to print ($($healed[0].Line))"
+    Check ($null -eq $healed[1].Diff -and $healed[1].Line -ceq 'heal FS-P5 supply: no proposal: no candidate hovered the target' -and -not (Test-Path -LiteralPath (Join-Path $healBatch 'heal-FS-P5-supply.diff'))) 'a pose with no proposal writes no file'
+    Check ((Get-SpecTreeHashes $healSpecs) -ceq $specsBefore) 'no file under the spec folder is written, added or removed'
+
+    # The summary with the proposal: exit 8, over a failed batch's 1 and a golden 5.
+    $healSummary = Merge-UatResults $healRuns @($lanes[0]) @()
+    Check ((Get-UatExitCode $healSummary) -eq 1) 'without a proposal the failed batch exits 1'
+    $healSummary.heal = @($healed | Where-Object { $_.Diff } | ForEach-Object { [ordered]@{ row = $_.Row; pose = $_.Pose; diff = $_.Diff } })
+    Check ((Get-UatExitCode $healSummary) -eq 8) 'a heal proposal exits 8'
+    $hj = ConvertTo-UatCompactJson $healSummary $healBatch | ConvertFrom-Json
+    Check (@($hj.heal).Count -eq 1 -and $hj.heal[0].row -ceq 'FS-P3' -and $hj.heal[0].pose -ceq 'frost' -and $hj.heal[0].diff -ceq 'heal-FS-P3-frost.diff' -and $hj.batch -ceq $healBatch) '-Json lists heal as {row, pose, diff}, diff named in the batch folder'
+    Check (-not ($hj.PSObject.Properties.Name -contains 'more_heal')) 'one proposal has no more_heal'
+    $hmd = Format-UatSummary $healSummary 'lab uat first-session' $healBatch
+    Check ($hmd.Contains("- FS-P3 frost: $copy") -and $hmd -match 'nothing was applied') 'summary.md lists the heal proposal'
+    $both = Merge-UatResults @((GRec 'default' 1 $true $divA)) @($lanes[0]) @()
+    Check ((Get-UatExitCode $both) -eq 5) 'a golden divergence alone exits 5'
+    $both.heal = @([ordered]@{ row = 'FS-P3'; pose = 'frost'; diff = $copy })
+    Check ((Get-UatExitCode $both) -eq 8) '8 wins over 5 when both apply'
+
+    # A call that throws, and a reply without the pose, propose nothing.
+    $bad = @(Invoke-UatHeal @([ordered]@{ row = 'FS-P3'; pose = 'frost' }) $healBatch 'first-session' '' 'default' { param($a) throw 'lab_uat_calibrate failed: lease-0123456789abcdef held' })
+    Check ($null -eq $bad[0].Diff -and $bad[0].Line -ceq 'heal FS-P3 frost: lab_uat_calibrate failed: lease-<redacted> held') "a failed call proposes nothing ($($bad[0].Line))"
+    $none = @(Invoke-UatHeal @([ordered]@{ row = 'FS-P3'; pose = 'frost' }) $healBatch 'first-session' '' 'default' { param($a) [pscustomobject]@{ run_dir = 'x'; outcomes = @() } })
+    Check ($null -eq $none[0].Diff -and $none[0].Line -like '*no outcome for the pose') 'a reply without the pose proposes nothing'
+
+    # After a failed call: wait for the lease before the next hint (not
+    # after the last one), and stop healing, naming the rest, when it stays held.
+    $two = @([ordered]@{ row = 'FS-P3'; pose = 'frost' }, [ordered]@{ row = 'FS-P5'; pose = 'supply' })
+    $throwing = { param($a) $script:calls += , $a; throw 'lab_uat_calibrate timed out' }
+    $script:calls = @(); $script:waits = @()
+    $w = @(Invoke-UatHeal $two $healBatch 'first-session' '' 'p2' $throwing -WaitLeaseFree { param($i) $script:waits += $i; $true })
+    Check ($script:calls.Count -eq 2 -and $w.Count -eq 2 -and @($script:waits).Count -eq 1 -and $script:waits[0] -ceq 'p2') 'a failed call waits for the lease once before the next hint, not after the last'
+    $script:calls = @(); $script:waits = @()
+    $w = @(Invoke-UatHeal $two $healBatch 'first-session' '' 'p2' $throwing -WaitLeaseFree { param($i) $script:waits += $i; $false })
+    Check ($script:calls.Count -eq 1 -and $w.Count -eq 2 -and $null -eq $w[1].Row -and $w[1].Line -ceq 'heal stopped: the lease on p2 did not clear after the failed call; not recalibrated: FS-P5 supply') "a lease that stays held stops healing ($($w[1].Line))"
+    $script:calls = @()
+    $w = @(Invoke-UatHeal $two $healBatch 'first-session' '' 'p2' $throwing -WaitLeaseFree { param($i) throw 'status failed' })
+    Check ($script:calls.Count -eq 1 -and $w[1].Line -like 'heal stopped:*') 'a wait that throws counts as a held lease'
+    $script:calls = @(); $script:waits = @()
+    $w = @(Invoke-UatHeal $two $healBatch 'first-session' '' 'p2' $stub -WaitLeaseFree { param($i) $script:waits += $i; $true })
+    Check ($script:calls.Count -eq 2 -and @($script:waits).Count -eq 0) 'calls that return need no wait'
+
+    # Invoke-UatHealPass, the wiring uat.ps1 runs after the batch: the hints
+    # lead to calls, summary.md and batch.json are rewritten with heal, and
+    # the batch exits 8.
+    $passBatch = Join-Path $healTmp 'pass-batch'
+    New-Item -ItemType Directory -Path $passBatch | Out-Null
+    $passSummary = Merge-UatResults $healRuns @($lanes[0]) @()
+    $batchCtx = @{ Dir = $passBatch; Title = 'lab uat first-session'; Section = 'first-session'; RowIds = @('FS-P1', 'FS-P3', 'FS-P4', 'FS-P5')
+                   LaneCount = 1; RunsPerLease = 3; Started = (Get-Date) }
+    $md0 = Write-UatBatchSummary $passSummary $batchCtx
+    Check (-not $md0.Contains('Heal proposals') -and (Get-UatExitCode $passSummary) -eq 1) 'before the heal: no heal in the summary, the failed batch exits 1'
+    $script:calls = @(); $script:said = @(); $script:waits = @()
+    $passMd = Invoke-UatHealPass $healRuns $passSummary $batchCtx $healSpecs 'default' $stub { param($m) $script:said += $m } { param($i) $script:waits += $i; $true }
+    Check ($script:calls.Count -eq 2 -and $script:calls[0].pose -ceq 'frost' -and $script:calls[1].pose -ceq 'supply' -and $script:calls[0].instance -ceq 'default' -and $script:calls[0].specs_dir -ceq $healSpecs) 'the pass calls lab_uat_calibrate once per hint, on the batch instance'
+    Check (@($script:said).Count -eq 3 -and $script:said[0] -ceq 'heal: recalibrating 2 pose(s) on default: FS-P3 frost, FS-P5 supply' -and $script:said[1] -like 'heal FS-P3 frost: score 8312*' -and $script:said[2] -like 'heal FS-P5 supply: no proposal*') 'the pass says what it heals, then one line per hint'
+    $passCopy = Join-Path $passBatch 'heal-FS-P3-frost.diff'
+    $smd = Get-Content -LiteralPath (Join-Path $passBatch 'summary.md') -Raw
+    $bj = Get-Content -LiteralPath (Join-Path $passBatch 'batch.json') -Raw | ConvertFrom-Json
+    Check ((Test-Path -LiteralPath $passCopy) -and $smd.Contains("- FS-P3 frost: $passCopy") -and $passMd.Contains("- FS-P3 frost: $passCopy")) 'summary.md is rewritten with the proposal, and the pass returns it'
+    Check (@($bj.summary.heal).Count -eq 1 -and $bj.summary.heal[0].row -ceq 'FS-P3' -and $bj.summary.heal[0].pose -ceq 'frost' -and $bj.summary.heal[0].diff -ceq $passCopy -and $bj.section -ceq 'first-session' -and $bj.runs_per_lease -eq 3) 'batch.json is rewritten with heal'
+    Check ((Get-UatExitCode $passSummary) -eq 8) 'the healed batch exits 8'
+    Check ((Get-SpecTreeHashes $healSpecs) -ceq $specsBefore) 'the pass writes nothing under the spec folder'
+
+    # No hints: nothing called, the files stay as the batch wrote them.
+    $plainBatch = Join-Path $healTmp 'plain-batch'
+    New-Item -ItemType Directory -Path $plainBatch | Out-Null
+    $plainSummary = Merge-UatResults @((Rec 'default' 1 $false $frost)) @($lanes[0]) @()
+    $plainCtx = $batchCtx.Clone(); $plainCtx.Dir = $plainBatch
+    Write-UatBatchSummary $plainSummary $plainCtx | Out-Null
+    $plainBefore = Get-SpecTreeHashes $plainBatch
+    $script:calls = @(); $script:said = @()
+    $r = Invoke-UatHealPass @((Rec 'default' 1 $false $frost)) $plainSummary $plainCtx $healSpecs 'default' $stub { param($m) $script:said += $m }
+    Check ($null -eq $r -and $script:calls.Count -eq 0 -and $script:said[0] -like 'heal: no failed row carries a heal hint*' -and (Get-SpecTreeHashes $plainBatch) -ceq $plainBefore -and (Get-UatExitCode $plainSummary) -eq 1) 'no hints: no call, the summary files untouched, the batch code kept'
+
+    # Ctrl+C mid-heal (the stub stops the pipeline on the second hint, as
+    # Ctrl+C does): in a child process, since a pipeline stop ends the whole
+    # script. The diff of the first hint is still in batch.json and summary.md.
+    $intBatch = Join-Path $healTmp 'int-batch'
+    New-Item -ItemType Directory -Path $intBatch | Out-Null
+    $child = Join-Path $healTmp 'interrupt.ps1'
+    Set-Content -LiteralPath $child -Encoding utf8 -Value @'
+param($Lib, $CalLib, $Batch, $RunDir)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+. $Lib
+. $CalLib
+$hint = { param($row, $pose) [pscustomobject]@{ row = $row; result = 'FAIL'; reasons = @('hover missed'); heal = [pscustomobject]@{ pose = $pose; step = 'hover' } } }
+$runs = @(@{ Lane = 1; Instance = 'default'; Index = 1; Ok = $false; Rows = @((& $hint 'FS-P3' 'frost'), (& $hint 'FS-P4' 'guard')); RunDir = 'd'
+    Error = $null; Seconds = 1; Verdict = @{ Ok = $false; Row = 'FS-P3'; Result = 'FAIL'; Reason = 'hover missed'; Issue = $null } })
+$summary = Merge-UatResults $runs @(@{ Lane = 1; Instance = 'default' }) @()
+$batch = @{ Dir = $Batch; Title = 'lab uat first-session'; Section = 'first-session'; RowIds = @('FS-P3', 'FS-P4'); LaneCount = 1; RunsPerLease = 1; Started = (Get-Date) }
+Write-UatBatchSummary $summary $batch | Out-Null
+$script:n = 0
+Invoke-UatHealPass $runs $summary $batch '' 'default' {
+    param($a)
+    $script:n++
+    if ($script:n -gt 1) { throw [System.Management.Automation.PipelineStoppedException]::new() }
+    $d = Join-Path $RunDir 'first-session.diff'
+    [IO.File]::WriteAllText($d, "--- a/x`n+++ b/x`n")
+    [pscustomobject]@{ run_dir = $RunDir; outcomes = @([pscustomobject]@{ ok = $true; pose = $a.pose; score = 9000; confirmed = 3; diff_path = $d }) }
+} { param($m) } | Out-Null
+Set-Content -LiteralPath (Join-Path $Batch 'not-interrupted') -Value 'x'
+'@
+    & $pwshExe -NoProfile -File $child (Join-Path $PSScriptRoot 'uat-lib.ps1') (Join-Path $PSScriptRoot 'calibrate-lib.ps1') $intBatch $runDir 2>&1 | Out-Null
+    $ibj = Get-Content -LiteralPath (Join-Path $intBatch 'batch.json') -Raw | ConvertFrom-Json
+    $imd = Get-Content -LiteralPath (Join-Path $intBatch 'summary.md') -Raw
+    $intCopy = Join-Path $intBatch 'heal-FS-P3-frost.diff'
+    Check (-not (Test-Path -LiteralPath (Join-Path $intBatch 'not-interrupted'))) 'the stub stopped the child mid-heal'
+    Check (@(Get-UatField $ibj.summary 'heal' | Where-Object { $null -ne $_ }).Count -eq 1 -and $ibj.summary.heal[0].pose -ceq 'frost' -and $ibj.summary.heal[0].diff -ceq $intCopy -and $imd.Contains("- FS-P3 frost: $intCopy") -and -not (Test-Path -LiteralPath (Join-Path $intBatch 'heal-FS-P4-guard.diff'))) 'an interrupted heal still records the diff already written in batch.json and summary.md'
+} finally { Remove-Item -LiteralPath $healTmp -Recurse -Force -ErrorAction SilentlyContinue }
+
+# -Json bounds heal: at most 3 entries, more_heal for the rest, diff the
+# file name in the batch folder, within the -Json budget.
+$manyRuns = foreach ($i in 1..5) {
+    Rec 'default' $i $false @(($praxis | Select-Object -First 4 | ForEach-Object { Row $_ 'PASS' '' }) + @(Row 'FS-P3' 'FAIL' 'clause hover failed: frost not under the cursor'))
+}
+$many = Merge-UatResults $manyRuns @($lanes[0]) @()
+$manyBatch = 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261010-183832'
+$many.heal = @(foreach ($p in 'frost', 'supply', 'guard', 'crate', 'console') {
+    [ordered]@{ row = 'FS-P3'; pose = $p; diff = (Join-Path $manyBatch (Get-UatHealFileName 'FS-P3' $p)) }
+})
+$manyJson = ConvertTo-UatCompactJson $many $manyBatch
+$mj = $manyJson | ConvertFrom-Json
+Check (@($mj.heal).Count -eq 3 -and $mj.more_heal -eq 2 -and $mj.heal[2].diff -ceq 'heal-FS-P3-guard.diff') 'five proposals: three listed by file name, more_heal 2'
+# The batch without heal is the 500-character budget's (above); heal adds a
+# bounded block on top, whatever the number of proposals.
+$noHealJson = ConvertTo-UatCompactJson (Merge-UatResults $manyRuns @($lanes[0]) @()) $manyBatch
+$many.heal = @(foreach ($i in 1..40) { [ordered]@{ row = 'FS-P3'; pose = "pose$i"; diff = (Join-Path $manyBatch (Get-UatHealFileName 'FS-P3' "pose$i")) } })
+$fortyJson = ConvertTo-UatCompactJson $many $manyBatch
+Check ($noHealJson.Length -lt 500 -and $manyJson.Length - $noHealJson.Length -le 240 -and $fortyJson.Length - $noHealJson.Length -le 240) "heal adds at most 240 characters, for 5 or 40 proposals ($($noHealJson.Length) + $($manyJson.Length - $noHealJson.Length), $($fortyJson.Length - $noHealJson.Length))"
+Check ($manyJson.Length -lt 700 -and $fortyJson.Length -lt 700) "a failed batch with heal proposals stays under 700 characters ($($manyJson.Length), $($fortyJson.Length))"
+$many.heal = @(foreach ($p in 'frost', 'supply', 'guard', 'crate', 'console') {
+    [ordered]@{ row = 'FS-P3'; pose = $p; diff = (Join-Path $manyBatch (Get-UatHealFileName 'FS-P3' $p)) }
+})
+Check ((Format-UatSummary $many 't' $manyBatch).Contains("- FS-P3 console: $manyBatch\heal-FS-P3-console.diff")) 'summary.md lists every proposal with its full path'
+
+# -Heal with no hints: nothing is called, and the batch keeps its own code.
+$script:calls = @()
+$noHeal = @(Invoke-UatHeal @(Get-UatHealHints @((Rec 'default' 1 $false $frost))) 'C:\b' 's' '' 'default' { param($a) $script:calls += , $a })
+$plain = Merge-UatResults @((Rec 'default' 1 $false $frost)) @($lanes[0]) @()
+Check ($noHeal.Count -eq 0 -and $script:calls.Count -eq 0 -and (Get-UatExitCode $plain) -eq 1) '-Heal with no hints calls nothing and exits as before'
+Check ((ConvertTo-UatCompactJson $plain 'C:\b') -notmatch '"heal"' -and (Format-UatSummary $plain 't' 'C:\b') -notmatch 'Heal') 'a batch without a proposal has no heal in -Json or summary.md'
+
+# Through a real process: -Heal -Leases 2 stops with exit 2 before the daemon is asked.
+$out = @(& $pwshExe -NoProfile -File (Join-Path $PSScriptRoot 'uat.ps1') 'first-session' -Heal -Leases 2 -Json 2>$null)
+$code = $LASTEXITCODE
+$obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
+Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -like '-Heal needs -Leases 1*') "-Heal -Leases 2 exits 2 up front ($code)"
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'
