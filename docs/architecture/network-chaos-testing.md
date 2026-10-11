@@ -196,6 +196,22 @@ reorder buffer with the lossless-handshake path remain open gaps —
 noted inline in the wireclient chaos test's doc comments rather than
 built speculatively.
 
+**#1371 (2026-10-11):** latency and jitter are now a per-destination
+FIFO delay line on send and a read-ahead pump on recv. `send_to` and
+`recv_from` used to sleep out the latency inline. The base routes every
+cell-to-base message from one task, so that sleep capped the whole
+server at about one message per latency: at 80 ms plus 40 ms jitter it
+drained about 10 a second against the hundreds a second a populated
+Castle produces. That is finding F19 in
+[`docs/analysis/wireclient-ci/README.md`](../analysis/wireclient-ci/README.md).
+Jitter no longer reorders one destination's packets; use the reorder
+buffer for that. `LossyConfig::with_lossless_first_sends(n)` exempts
+the first `n` sends to each destination from the drop roll, because
+`cimmeria-wireclient` reads the two phase-3 handshake datagrams
+positionally and cannot wait for the server's RTO resend. The wire
+client's own waits now send the idle keep-alive every 250 ms, which
+carries the ACKs, as the real client's steady sends do.
+
 ### `PcapReplay`
 
 Loads a pcap file alongside a hex-encoded session key
@@ -266,9 +282,10 @@ actually built rather than the original spec.
 
 ### Negative
 
-- The `Transatlantic` profile integration test takes ~30 seconds
-  of wall time because of the 60ms-per-recv latency × 500
-  packets. This is the cost of integration fidelity; the test
+- The `Transatlantic` profile integration test stays `#[ignore]`d
+  for its 500-packet statistical volume. (Before #1371 its latency
+  added up per packet, about 30 seconds of wall time; it is now a
+  pipeline delay.) This is the cost of integration fidelity; the test
   isn't run on every commit (could be gated to a slower CI
   profile if needed).
 - L2's recv-side migration changes one production type signature

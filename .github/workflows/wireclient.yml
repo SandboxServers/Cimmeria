@@ -64,6 +64,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # No debug info in CI builds; see test.yml.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
   # Pinned to match test.yml and setup.ps1 (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1).
   RECAST_VERSION: "1.6.0"
 
@@ -74,7 +77,7 @@ jobs:
   e2e:
     name: wireclient e2e (live DB)
     # Fork PRs and CI_LINUX_RUNNER=hosted use GitHub-hosted runners (tools/ci-runners/README.md).
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',e2e,')) && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 60
     services:
       postgres:

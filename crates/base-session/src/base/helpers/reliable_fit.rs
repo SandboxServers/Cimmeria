@@ -436,21 +436,41 @@ pub(super) async fn send_bundle_reliable_to_addr(
         "estimated_packet_count contract violated — seq reservation overshoots finalize"
     );
 
-    tracing::info!(
-        %addr,
-        witness_id,
-        witness_name,
-        messages = num_messages,
-        body_bytes = body_len,
-        packets = packets.len(),
-        fragmented = packets.len() > 1,
-        packet_bytes = %packet_bytes,
-        header_guarded_cuts,
-        base_seq,
-        send_kind = kind,
-        "AoI bundle: flushed {num_messages} messages in {} packet(s)",
-        packets.len()
-    );
+    // A single-packet flush is the routine case (most AoI flushes), so it
+    // logs at DEBUG; INFO is kept for a bundle that needed several packets.
+    if packets.len() > 1 {
+        tracing::info!(
+            %addr,
+            witness_id,
+            witness_name,
+            messages = num_messages,
+            body_bytes = body_len,
+            packets = packets.len(),
+            fragmented = true,
+            packet_bytes = %packet_bytes,
+            header_guarded_cuts,
+            base_seq,
+            send_kind = kind,
+            "AoI bundle: flushed {num_messages} messages in {} packet(s)",
+            packets.len()
+        );
+    } else {
+        tracing::debug!(
+            %addr,
+            witness_id,
+            witness_name,
+            messages = num_messages,
+            body_bytes = body_len,
+            packets = packets.len(),
+            fragmented = false,
+            packet_bytes = %packet_bytes,
+            header_guarded_cuts,
+            base_seq,
+            send_kind = kind,
+            "AoI bundle: flushed {num_messages} messages in {} packet(s)",
+            packets.len()
+        );
+    }
 
     for (i, pkt) in packets.iter().enumerate() {
         let frag_seq = base_seq.wrapping_add(i as u32) & SEQUENCE_MASK;
