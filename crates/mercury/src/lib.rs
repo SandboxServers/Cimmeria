@@ -87,9 +87,11 @@ pub mod consts {
     pub const RX_WINDOW_SIZE: usize = 512;
 
     /// How long a reliable gap may block in-order delivery before the
-    /// receive-stall watchdog (`Channel::check_rx_stall`) warns. Nearly
-    /// the client's first 2.5 s resend timeout (later max(2.5 x SRTT,
-    /// 50 ms)), so an ordinary lost packet recovers close to it. See
+    /// receive-stall watchdog (`Channel::check_rx_stall`) warns. The
+    /// client's resend timeout is max(2.5 x smoothed RTT, 50 ms), so once
+    /// its RTT settles a lost packet recovers far inside this. Its RTT
+    /// starts at 1 s, though, so a loss in the first seconds of a session
+    /// waits 2.5 s for the first resend and can warn here first. See
     /// docs/reverse-engineering/findings/client-mercury-receive-path.md,
     /// section Receive limits.
     pub const RX_STALL_WARN_MS: u64 = 2_000;
