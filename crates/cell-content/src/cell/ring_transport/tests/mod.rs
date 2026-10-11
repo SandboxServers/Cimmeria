@@ -621,3 +621,43 @@ async fn send_visible_warns_when_cell_to_base_channel_closed() {
         capture.all()
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// FSM transition rows (TG-MOV-05).
+// ──────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn one_hide_deadline_logs_one_ring_transition_row() {
+    use crate::cell::ring_transport::{handle_select_destination, run_tick_with_engine};
+    use crate::test_support::LogCapture;
+    use support::{spawn_player, three_ring_mgr, FakeClock};
+
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    spawn_player(&mut mgr, 42, 700);
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    let capture = LogCapture::install();
+
+    mgr.ring_transporters
+        .get_mut(1)
+        .unwrap()
+        .region_triggered(true, 42);
+    handle_select_destination(1, 2, 42, &tx, &mut mgr, &engine).await;
+    // Past the 3.5s hide deadline, short of the 4.0s warmup.
+    clock.advance(std::time::Duration::from_millis(3_600));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|c| c.has_field("event", "ring.transition") && c.has_field("deadline", "hide"))
+        .count();
+    assert_eq!(
+        rows,
+        1,
+        "one hide deadline must log exactly one `ring.transition deadline=hide` row; \
+         reverting the transition log drops it. Captured: {:#?}",
+        capture.all()
+    );
+}
