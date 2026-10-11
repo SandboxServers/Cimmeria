@@ -576,6 +576,14 @@ $cs['chaos'] = Format-UatChaosHeader @('cpu', 'flush:pack')
 Check ((ConvertTo-UatCompactJson $cs 'C:\b' | ConvertFrom-Json).chaos -ceq 'chaos=cpu; chaos=flush:pack') '-Json has the chaos string when the run had chaos'
 Check ((Format-UatSummary $cs 't' 'C:\b').StartsWith('chaos=cpu; chaos=flush:pack')) 'the chaos header leads the summary'
 $noChaos = Merge-UatResults @((Rec 'default' 1 $true @())) @($lanes[0]) @()
+$body = @{}
+Check ((Set-UatChaos $body @('', 'cpu')) -ceq 'chaos=cpu' -and (@($body.chaos) -join '|') -ceq 'cpu') 'an empty -Chaos value reaches neither the body nor the header'
+$body = @{}
+Check ($null -eq (Set-UatChaos $body @()) -and -not $body.ContainsKey('chaos')) 'no -Chaos leaves the body without a chaos key'
+$wired = Merge-UatResults @((Rec 'default' 1 $true @())) @($lanes[0]) @()
+Add-UatChaosHeader $wired (Set-UatChaos @{} @('flush:pack'))
+Check ((ConvertTo-UatCompactJson $wired 'C:\b' | ConvertFrom-Json).chaos -ceq 'chaos=flush:pack') 'the header attached to a merged summary reaches -Json'
+Add-UatChaosHeader $noChaos $null
 Check ((ConvertTo-UatCompactJson $noChaos 'C:\b') -notmatch '"chaos"' -and (Format-UatSummary $noChaos 't' 'C:\b') -notmatch 'chaos=') 'a run without chaos has no chaos key or header'
 
 # -Chaos reaches the lab_uat_run request body. uat.ps1 is dot-sourced with

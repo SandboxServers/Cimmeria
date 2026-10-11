@@ -123,6 +123,22 @@ function Format-UatChaosHeader([string[]]$Chaos) {
     return (@($specs | ForEach-Object { "chaos=$_" }) -join '; ')
 }
 
+# Puts the non-empty -Chaos values on the lab_uat_run arguments and returns
+# the header. One filter for both, so the body and the header always agree.
+# Until CH-08 the header is built from the specs as typed (no resolved level
+# or seed); once the runner returns its own header, that one replaces it.
+function Set-UatChaos([hashtable]$BaseArgs, [string[]]$Chaos) {
+    $specs = @($Chaos | Where-Object { $_ })
+    if (-not $specs.Count) { return $null }
+    $BaseArgs.chaos = $specs
+    return Format-UatChaosHeader $specs
+}
+
+# Attaches the chaos header to a run summary, so -Json and summary.md carry it.
+function Add-UatChaosHeader($Summary, [string]$Header) {
+    if ($Header) { $Summary['chaos'] = $Header }
+}
+
 # Lease ids (lease-<hex>) replaced in text that leaves the command.
 function Hide-LeaseIds([string]$Text) {
     return ($Text -replace 'lease-[0-9a-fA-F]{8,}', 'lease-<redacted>')

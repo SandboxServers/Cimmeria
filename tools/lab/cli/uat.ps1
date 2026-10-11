@@ -129,7 +129,7 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Chaos spec,...] [-Heal] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
@@ -176,8 +176,7 @@ function Invoke-LabUat {
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
     if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
-    if ($Chaos) { $baseArgs.chaos = @($Chaos) }
-    $chaosHeader = Format-UatChaosHeader $Chaos
+    $chaosHeader = Set-UatChaos $baseArgs $Chaos
     if ($Fingerprint -or $DiffGolden) { $baseArgs.fingerprint = $true }
     # lab_golden_diff's arguments less run_dir, or $null without -DiffGolden.
     $diffArgs = if ($DiffGolden) { @{ section = $Section; specs_dir = $specs } } else { $null }
@@ -294,7 +293,7 @@ function Invoke-LabUat {
         $allRuns = @(Read-UatRecords $jsonl)
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
-        if ($chaosHeader) { $summary['chaos'] = $chaosHeader }
+        Add-UatChaosHeader $summary $chaosHeader
         $title = "lab uat $Section"
         $batch = @{ Dir = $batchDir; Title = $title; Section = $Section; RowIds = $rowIds
                     LaneCount = $plan.Lanes.Count; RunsPerLease = $RunsPerLease; Started = $started }
