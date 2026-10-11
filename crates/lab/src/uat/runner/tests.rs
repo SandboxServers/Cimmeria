@@ -3,7 +3,7 @@
 //! flows report an in-world client. Each test pins one grading rule the
 //! bundle must never get wrong.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use serde_json::{json, Map, Value};
@@ -36,6 +36,41 @@ pub(super) struct Fake {
     pub(super) triggers: Mutex<Vec<(String, String, Value)>>,
     /// How long after the call the fake press "goes out" (`press_ms`).
     pub(super) press_delay_ms: Mutex<i64>,
+    /// Scripted replies per tool, popped in order (see `answer`).
+    canned: Mutex<HashMap<String, VecDeque<Value>>>,
+}
+
+/// The next scripted reply for `name`: the front of its queue, or the last
+/// one again once only that is left. `None` when nothing was scripted.
+pub(super) fn next_canned(
+    canned: &Mutex<HashMap<String, VecDeque<Value>>>,
+    name: &str,
+) -> Option<Value> {
+    let mut map = canned.lock().unwrap();
+    let queue = map.get_mut(name)?;
+    if queue.len() > 1 {
+        queue.pop_front()
+    } else {
+        queue.front().cloned()
+    }
+}
+
+/// A canned reply `{ "__error": msg, "__data": data }` fails the call with
+/// that error and data; any other reply is the call's result.
+pub(super) fn canned_outcome(reply: Value) -> ToolOutcome {
+    match reply.get("__error").and_then(Value::as_str) {
+        Some(msg) => ToolOutcome {
+            ok: false,
+            error: Some(msg.to_string()),
+            error_data: reply.get("__data").cloned(),
+            ..Default::default()
+        },
+        None => ToolOutcome {
+            ok: true,
+            json: reply,
+            ..Default::default()
+        },
+    }
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -69,7 +104,17 @@ impl Fake {
             events: Mutex::new(vec![]),
             triggers: Mutex::new(vec![]),
             press_delay_ms: Mutex::new(0),
+            canned: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Script the replies `tool` gives, in order; the last one repeats.
+    pub(super) fn answer(self, tool: &str, replies: Vec<Value>) -> Self {
+        self.canned
+            .lock()
+            .unwrap()
+            .insert(tool.to_string(), VecDeque::from(replies));
+        self
     }
 
     /// A client that is not running yet, playing `name` once in world.
@@ -90,7 +135,7 @@ impl Fake {
         self.calls.lock().unwrap().clone()
     }
 
-    fn without(mut self, tool: &str) -> Self {
+    pub(super) fn without(mut self, tool: &str) -> Self {
         self.tools.remove(tool);
         self
     }
@@ -122,6 +167,9 @@ impl ToolInvoker for Fake {
             .lock()
             .unwrap()
             .push((name.to_string(), args.clone()));
+        if let Some(reply) = next_canned(&self.canned, name) {
+            return canned_outcome(reply);
+        }
         let ok = |json: Value| ToolOutcome {
             ok: true,
             json,
@@ -820,4 +868,25 @@ async fn the_caster_dummy_rows_are_ready_once_unblocked() {
     for r in &out.rows {
         assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
     }
+}
+
+/// A scripted reply pops in order and the last one repeats; a `__error`
+/// reply fails its call with the error and data it carries.
+#[tokio::test]
+async fn a_scripted_reply_pops_then_repeats() {
+    let fake = Fake::new(&[]).answer(
+        "client_lua_eval",
+        vec![
+            json!({ "ok": false }),
+            json!({ "__error": "lua failed", "__data": { "line": 3 } }),
+        ],
+    );
+    let first = fake.call("client_lua_eval", json!({})).await;
+    assert_eq!(first.json, json!({ "ok": false }));
+    let second = fake.call("client_lua_eval", json!({})).await;
+    assert!(!second.ok);
+    assert_eq!(second.error.as_deref(), Some("lua failed"));
+    assert_eq!(second.error_data, Some(json!({ "line": 3 })));
+    assert!(!fake.call("client_lua_eval", json!({})).await.ok);
+    assert_eq!(fake.names().len(), 3, "every call is logged");
 }

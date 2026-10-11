@@ -175,6 +175,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     (_, Err(e)) => fail(&mut rec, e.to_string()),
                 }
             }
+            // lab-spec-vocab (SV-03)
+            Ok(ActionKind::ServerWait) => {
+                rec.kind = "wait_server".into();
+                fail(&mut rec, "wait_server: not implemented yet (SV-08)".into());
+            }
+            // end lab-spec-vocab
             Err(e) => fail(&mut rec, e),
         }
         rec.elapsed_ms = t0.elapsed().as_millis() as u64;

@@ -7,8 +7,26 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
-use super::spec::{ActionKind, ActionSpec, ExpectSpec, Op, RowSpec, SectionSpec, Source, SCHEMA};
-use super::tools::TARGET_PLAYER_TOOL;
+use super::spec::{
+    ActionKind, ActionSpec, AimMode, ExpectSpec, Op, RowSpec, SectionSpec, Source, SCHEMA,
+};
+use super::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
+
+/// Tools that take a `pose` argument (after `@` resolution).
+const POSE_TOOLS: [&str; 5] = [
+    "client_camera",
+    "client_world_click",
+    "client_target",
+    "client_entity_find",
+    STAND_TOOL,
+];
+/// Tools that take a `tag` argument.
+const TAG_TOOLS: [&str; 4] = [
+    "client_world_click",
+    "client_target",
+    "client_entity_find",
+    STAND_TOOL,
+];
 
 /// Structural checks the type system cannot express. Every problem is
 /// reported with its row id so an author can find it.
@@ -47,6 +65,7 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
         let mut labels = HashSet::new();
         for a in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
             check_action(r, a, &mut errs);
+            check_target_args(row, a, &mut errs);
             if let Some(l) = &a.label {
                 if !labels.insert(l.clone()) {
                     errs.push(format!("{r}: duplicate action label {l:?}"));
@@ -81,6 +100,7 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
             }
         }
         check_players(row, &mut errs);
+        check_poses(row, &mut errs);
     }
     if errs.is_empty() {
         Ok(())
@@ -155,6 +175,119 @@ fn check_players(row: &RowSpec, errs: &mut Vec<String>) {
     }
 }
 
+/// SV-03 pose rules: unique `[a-z0-9-]+` ids, the tag's shape, the range
+/// of every number, and `aim_dy_m` exactly when the aim is a point.
+fn check_poses(row: &RowSpec, errs: &mut Vec<String>) {
+    let r = &row.id;
+    let mut ids = HashSet::new();
+    for p in &row.pose {
+        if !ids.insert(p.id.clone()) {
+            errs.push(format!("{r}: duplicate pose id {:?}", p.id));
+        }
+        let mut bad = |what: String| errs.push(format!("{r}: pose {:?}: {what}", p.id));
+        if p.id.is_empty()
+            || !p
+                .id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        {
+            bad("id is not [a-z0-9-]+".into());
+        }
+        if p.tag.is_empty()
+            || !p
+                .tag
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        {
+            bad(format!("tag {:?} is not [A-Za-z0-9_.]+", p.tag));
+        }
+        if !(1.0..=8.0).contains(&p.radius_m) {
+            bad(format!("radius_m {} is outside 1.0..=8.0", p.radius_m));
+        }
+        if !(0.0..360.0).contains(&p.bearing_deg) {
+            bad(format!(
+                "bearing_deg {} is outside 0.0..360.0",
+                p.bearing_deg
+            ));
+        }
+        if !(-3.0..=3.0).contains(&p.dy_m) {
+            bad(format!("dy_m {} is outside -3.0..=3.0", p.dy_m));
+        }
+        for (name, v, lo, hi) in [
+            ("pitch_deg", p.pitch_deg, -78.75, 78.75),
+            ("yaw_offset_deg", p.yaw_offset_deg, -180.0, 180.0),
+            ("zoom", p.zoom, 100.0, 775.0),
+            ("aim_dy_m", p.aim_dy_m, -3.0, 3.0),
+        ] {
+            if let Some(v) = v.filter(|v| !(lo..=hi).contains(v)) {
+                bad(format!("{name} {v} is outside {lo}..={hi}"));
+            }
+        }
+        if p.calibrated
+            .as_deref()
+            .is_some_and(|c| c.chars().any(char::is_control))
+        {
+            bad("calibrated must be one line, with no control characters".into());
+        }
+        match (p.aim, p.aim_dy_m) {
+            (AimMode::Point, None) => bad("aim = \"point\" needs aim_dy_m".into()),
+            (AimMode::Entity, Some(_)) => bad("aim = \"entity\" forbids aim_dy_m".into()),
+            _ => {}
+        }
+    }
+}
+
+/// SV-03 target arguments on an action (and its fallbacks): `pose` names a
+/// pose of this row on the tools that aim, `tag` and `face_tag` only on
+/// the tools that take them, and neither together with what it replaces.
+fn check_target_args(row: &RowSpec, a: &ActionSpec, errs: &mut Vec<String>) {
+    let r = &row.id;
+    let what = a.label.as_deref().or(a.tool.as_deref()).unwrap_or("action");
+    let tool = a.tool.as_deref().unwrap_or_default();
+    if let Some(args) = a.args.as_ref().and_then(Value::as_object) {
+        if let Some(pose) = args.get("pose") {
+            if !POSE_TOOLS.contains(&tool) {
+                errs.push(format!(
+                    "{r}/{what}: pose applies to camera, world click, target, entity find and stand"
+                ));
+            }
+            let named = pose
+                .as_str()
+                .is_some_and(|p| row.pose.iter().any(|x| x.id == p));
+            if !named {
+                errs.push(format!("{r}/{what}: pose {pose} is not a pose of this row"));
+            }
+        }
+        if args.contains_key("tag") && !TAG_TOOLS.contains(&tool) {
+            errs.push(format!(
+                "{r}/{what}: tag applies to world click, target, entity find and stand"
+            ));
+        }
+        if args.contains_key("face_tag") && tool != "client_camera" {
+            errs.push(format!(
+                "{r}/{what}: face_tag applies to client_camera only"
+            ));
+        }
+        for (key, clashing) in [
+            ("tag", &["name", "entity_id", "point", "pose"][..]),
+            (
+                "face_tag",
+                &["face_name", "face_entity_id", "face_point", "pose"][..],
+            ),
+        ] {
+            if !args.contains_key(key) {
+                continue;
+            }
+            for c in clashing.iter().filter(|c| args.contains_key(**c)) {
+                errs.push(format!("{r}/{what}: {key} with {c}: give one"));
+            }
+        }
+    }
+    for f in &a.fallback {
+        check_target_args(row, f, errs);
+    }
+}
+
 fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
     match a.kind() {
         Err(e) => errs.push(format!("{row}: {e}")),
@@ -177,6 +310,19 @@ fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
         }
         Ok(_) => {}
     }
+    // lab-spec-vocab (SV-03)
+    if let Some(w) = &a.wait_server {
+        if w.log.is_empty() {
+            errs.push(format!("{row}: wait_server.log is empty"));
+        }
+        if !(1..=120_000).contains(&w.timeout_ms) {
+            errs.push(format!(
+                "{row}: wait_server.timeout_ms {} is outside 1..=120000",
+                w.timeout_ms
+            ));
+        }
+    }
+    // end lab-spec-vocab
     if let Some(re) = &a.regex {
         if let Err(e) = regex::Regex::new(&without_vars(re)) {
             errs.push(format!("{row}: bad regex {re:?}: {e}"));
@@ -284,6 +430,11 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
     }
     if let Some(re) = &c.matches {
         regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;
+    }
+    // lab-spec-vocab (SV-03): polling a tool or server read is capped.
+    if matches!(c.source, Source::Tool | Source::Server) && c.timeout_ms.is_some_and(|t| t > 60_000)
+    {
+        return Err("timeout_ms on a tool or server clause is at most 60000".into());
     }
     Ok(())
 }
