@@ -24,8 +24,8 @@ use super::patch_counts::{self, CountsTracker};
 /// field of the once-per-session telemetry event, so a missing Black
 /// Market window can be told apart from "never loaded" in SigNoz.
 ///
-/// Defined here, beside the event that reports it; the egui launcher's
-/// `client_patches::plan` decides it and re-exports it.
+/// Defined here, beside the event that reports it; the launcher decides
+/// it when it plans a launch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PatchInjection {
     Injected,

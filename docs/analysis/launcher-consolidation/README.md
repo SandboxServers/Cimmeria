@@ -91,7 +91,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | Review (this PR) |
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | BlockedDependency |
-| LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | BlockedDependency |
+| LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | Review (this PR) |
 | LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Ready |
 | LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
 | LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |

@@ -121,8 +121,8 @@ fn safe_sha_prefix(sha: &str) -> Result<&str, InstallError> {
     Ok(&sha[..12.min(sha.len())])
 }
 
-/// Progress events emitted during install. Forwarded to the UI thread by
-/// the egui launcher's worker, which wraps these in its `Event::Progress`.
+/// Progress events emitted during install, forwarded to the UI through an
+/// [`crate::install_progress`] reporter.
 #[derive(Debug, Clone)]
 pub enum Progress {
     Downloading {

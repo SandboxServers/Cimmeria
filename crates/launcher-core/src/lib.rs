@@ -1,14 +1,13 @@
-//! The launcher logic both shells share: the egui `sgw-launcher` and the
-//! desktop launcher's `cimmeria-launcher-engine` (LX-01 of the launcher
-//! consolidation campaign, `docs/analysis/launcher-consolidation/`).
+//! The launcher logic of the desktop launcher's `cimmeria-launcher-engine`,
+//! split out of the original egui launcher in LX-01 of the launcher
+//! consolidation campaign (`docs/analysis/launcher-consolidation/`), which
+//! shared it with the desktop launcher until LX-18 retired the egui one.
 //!
-//! Before this crate the engine compiled these files out of
-//! `crates/launcher/src/` through `#[path]` includes. Each shell now
-//! re-exports the modules under their old names, so `crate::manifest` in
-//! the egui launcher and `cimmeria_launcher_engine::manifest` keep
-//! resolving. Nothing here reaches back into either shell: where a module
-//! needs something only a shell knows (the launcher's own directory, say),
-//! it takes it as a parameter.
+//! The engine re-exports the modules under their old names, so
+//! `cimmeria_launcher_engine::manifest` keeps resolving. Nothing here
+//! reaches back into the shell: where a module needs something only the
+//! shell knows (the launcher's own directory, say), it takes it as a
+//! parameter.
 
 pub mod client_changes;
 pub mod client_paths;

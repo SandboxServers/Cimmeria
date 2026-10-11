@@ -163,9 +163,8 @@ fn encode_wide(path: &Path) -> Vec<u16> {
 // windows-sys), never dereferenced by us — it is only handed to Win32
 // APIs. The function has always been safe to call with a handle from
 // `create_process_suspended`; keeping it non-`unsafe` preserves the
-// launcher's existing call sites through the #685 extraction. This lint
-// only started applying now that these modules moved into a
-// clippy-covered crate (sgw-launcher is clippy-excluded).
+// launcher's call sites through the #685 extraction. This lint only
+// started applying when these modules moved into a clippy-covered crate.
 #[cfg(windows)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn inject_dll(
