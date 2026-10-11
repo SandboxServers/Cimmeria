@@ -94,7 +94,6 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3"
-cimmeria-test-support = { workspace = true }
 # Paused time for the UAT keep-alive tests (lease::tests).
 tokio = { workspace = true, features = ["test-util"] }
 # In-memory log exporter for the OTLP redaction tests (otlp::tests).

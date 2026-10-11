@@ -1440,7 +1440,6 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "cimmeria-client-launch",
- "cimmeria-test-support",
  "opentelemetry",
  "opentelemetry-appender-tracing",
  "opentelemetry-http",

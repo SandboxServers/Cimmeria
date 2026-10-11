@@ -223,16 +223,77 @@ impl ServerHandler for LabServer {
 
 #[cfg(test)]
 mod tests {
-    use cimmeria_test_support::LogCapture;
+    use std::sync::{Arc, Mutex};
+
     use serde_json::json;
+    use tracing::field::{Field, Visit};
+    use tracing::Event;
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::Layer;
 
     use crate::daemon::http_tests::{spawn_daemon, test_server, McpSession};
+
+    // A local capture rather than `cimmeria_test_support::LogCapture`: a
+    // test-support dev-dependency puts a crate on the live-DB wrapper's list
+    // (`live_db_wrapper_tests`), and the lab has no live-DB tests and is not
+    // built by CI's workspace jobs.
+
+    /// One captured event: its target and every field as text.
+    #[derive(Clone, Debug)]
+    struct Row {
+        target: String,
+        fields: Vec<(String, String)>,
+    }
+
+    impl Row {
+        fn field(&self, name: &str) -> Option<&str> {
+            self.fields
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.as_str())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Vec<Row>>>);
+
+    #[derive(Default)]
+    struct Fields(Vec<(String, String)>);
+
+    impl Visit for Fields {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.0.push((field.name().to_string(), value.to_string()));
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.0
+                .push((field.name().to_string(), format!("{value:?}")));
+        }
+    }
+
+    impl<S: tracing::Subscriber> Layer<S> for Capture {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut fields = Fields::default();
+            event.record(&mut fields);
+            self.0.lock().unwrap().push(Row {
+                target: event.metadata().target().to_string(),
+                fields: fields.0,
+            });
+        }
+    }
 
     /// A lease-gated tool called with no lease is refused, and its one
     /// `lab.call` row says so, names the tool and carries no arguments.
     #[tokio::test]
     async fn unleased_tool_call_logs_refused() {
-        let capture = LogCapture::install();
+        // An always-interested global dispatcher, so no callsite is cached
+        // as `never` before the scoped capture below exists (#891).
+        let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+        let cap = Capture::default();
+        // Thread-local; the current-thread test runtime runs the daemon's
+        // spawned tasks on this thread, so their events land here too.
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(cap.clone()));
         let url = spawn_daemon(test_server()).await;
         let mut s = McpSession::open(&url).await;
 
@@ -241,18 +302,24 @@ mod tests {
             .await;
         assert!(r["error"].is_object(), "{r}");
 
-        let rows: Vec<_> = capture
-            .all()
-            .into_iter()
+        let rows: Vec<Row> = cap
+            .0
+            .lock()
+            .unwrap()
+            .iter()
             .filter(|c| c.target == "lab.call")
+            .cloned()
             .collect();
         assert_eq!(rows.len(), 1, "one row per call: {rows:?}");
         let row = &rows[0];
-        assert!(row.has_field("outcome", "refused"), "{row:?}");
-        assert!(row.has_field("tool", "client_lua_eval"), "{row:?}");
-        assert!(row.fields.contains_key("duration_ms"), "{row:?}");
-        assert!(!row.fields.contains_key("lease_owner"), "{row:?}");
-        assert!(!row.fields.contains_key("chunk"), "{row:?}");
-        assert!(!row.message_contains("return 1"), "{row:?}");
+        assert_eq!(row.field("outcome"), Some("refused"), "{row:?}");
+        assert_eq!(row.field("tool"), Some("client_lua_eval"), "{row:?}");
+        assert!(row.field("duration_ms").is_some(), "{row:?}");
+        assert!(row.field("lease_owner").is_none(), "{row:?}");
+        assert!(row.field("chunk").is_none(), "{row:?}");
+        assert!(
+            row.fields.iter().all(|(_, v)| !v.contains("return 1")),
+            "{row:?}"
+        );
     }
 }
