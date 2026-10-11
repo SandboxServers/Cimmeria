@@ -108,7 +108,7 @@ A third, cheap: state is released on `destroy_entity`.
 | `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. Social sweep renames (NT-26): `type_id` on items is `item_type_id`, `item_def_id` is `item_type_id`, the chat `target` text is `chat_target`, and a Black Market `sequence_id` logged as an auction is `auction_id`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
 | `<key>_names` next to every bitflag word (`state_field_names`, `flags_names`, `interaction_flags_names`, `recipient_flags_names`, `from_mask_names`, …) | always, beside the raw word | The set bits' names joined `A\|B\|C` in the enum's order, from the flag set's one `FlagSet` table (`cimmeria_common::flag_names`): `STATE_FLAGS` (`cimmeria_wire::state_field`), `EFFECT_FLAGS` (cell-combat `cone_aoe`), `INTERACTION_FLAGS` (`cimmeria_entity::interaction_flags`), `MAIL_FLAGS` (`cimmeria_wire::cell::mail::codes::flags`), `ORG_PERMISSIONS` (`cimmeria_entity::organization`), `PACKET_FLAGS` (`cimmeria_mercury::packet`). Log it with `%`: `state_field, state_field_names = %STATE_FLAGS.render(state_field)`. Bits no token names render as one hex remainder (`BSF_Dead\|0x200`), and a zero word renders `0x0`. Each table is pinned to `entities/defs/enumerations.xml` by a test. A numeric enum code gets a name the same way: `error_code` pairs with `error_name` (`cimmeria_names::book().error_code`), and a code from another vocabulary logs its Rust enum with `?` under its domain's key (the Black Market's `bm_error = ?error`). Leave `_names` off rows exported per packet or per tick: the OTLP appender allocates a string per field per event. NT-31. |
 | `<domain>_arg` (`design_arg`, `mission_arg`, `template_arg`, `name_or_id_arg`), `target_raw` | GM console input that failed to parse | The raw text or out-of-range number a GM typed where an ID was expected. It is not an ID, so it has no name and never takes an `_id` key: a typed `DesignId` that isn't a number is logged as `mission_arg` / `template_arg` / `design_arg` (item), never `design_id`. A parsed one is logged under its domain key (`mission_id`, `template_id`, `item_type_id`) with its name (NT-27). |
-| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id` and keeps `user`: the name the client typed, which may name no account. Never a password, key or ticket (see [Credential fields](#credential-fields)). |
+| `account_name` on login lines | when the account resolved | The login name beside `account_id`. The auth (`auth/handlers.rs`) and Phase 3 (`base/login`) lines that resolved an account log it as `account_name`; NT-24 retired their old `user` key. A failed login with no matching account has no `account_id`; it still logs the name the client typed as `account_name`, which may name no account (TG-NET-04 retired the last `user` keys in `auth/handlers.rs`). Never a password, key or ticket (see [Credential fields](#credential-fields)). |
 | Names for closed enum IDs (`bag_name`, `stat_name`, `target_type_name`, `event_name`) | beside the ID | A small client enum logged as an ID is named from its `entities/defs/enumerations.xml` token, through one table each, pinned to the XML by a test: `cimmeria_entity::inventory::bag_name` (`EInventoryContainerId`, beside `bag_id`), `cimmeria_entity::stats::stat_name` (`EStats`, beside `stat_id`), `cimmeria_entity::abilities::target_type_name` (`ETargetType`, beside `target_type_id`) and `sequence_event_name` (`ESequenceEventType`, beside `event_id`). Content IDs that may be `None` resolve through `cimmeria_cell_world::cell::effects::content_names` (`ability_name`, `effect_name`, `template_name`, `item_name`). NT-20. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
@@ -277,6 +277,27 @@ login. Expect a high benign rate on `ticket_ip_mismatch` and never harden
 Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
 Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
 logging the credential.
+
+## Login refusal reasons (TG-NET-04)
+
+Every Phase 1 and Phase 2 refusal in `auth/handlers.rs` logs one row
+with a `reason`. None of the rows carries the password, the SID or a
+ticket. Each `reason` is pinned by a `LogCapture` test in that file.
+
+| Seam | Level | `reason` | Fields |
+|---|---|---|---|
+| Phase 1 `handle_user_auth`, SKU is not `SGW_BETA` | `info!` | `unknown_sku` | `peer_ip` |
+| Phase 1, plaintext over TLS outside 1 to 128 bytes | `info!` | `plaintext_length` | `peer_ip` |
+| Phase 1, valid login with no shards registered | `warn!` | `no_shards` | `account_id`, `account_name`, `peer_ip` |
+| Phase 2 `handle_server_selection`, no `SID` cookie | `info!` | `sid_missing` | `peer_ip` |
+| Phase 2, SID never issued or already consumed | `info!` | `sid_unknown` | `peer_ip` |
+| Phase 2, SID older than the 300 s session TTL | `info!` | `sid_expired` | `account_id`, `account_name`, `sid_age_secs`, `peer_ip` |
+| Phase 2, selected shard does not exist | `info!` | `unknown_shard` | `account_id`, `account_name`, `peer_ip` |
+
+Key change (TG-NET-04): the `user` field on the `auth/handlers.rs` rows
+(plaintext over HTTP, invalid credentials, disabled account, DB query
+failure, developer-mode fallback, no database) is now `account_name`.
+`peer_ip` is the new key for the client address on the refusal rows.
 
 ## Database startup and credential-check seams
 

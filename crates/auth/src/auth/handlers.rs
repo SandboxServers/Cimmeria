@@ -104,6 +104,11 @@ pub(super) async fn handle_user_auth(
     }
 
     if req.sku != "SGW_BETA" {
+        tracing::info!(
+            reason = "unknown_sku",
+            peer_ip = %client_ip,
+            "Phase 1 login rejected: unknown service SKU"
+        );
         return login_error(3, "The specified service does not exist.");
     }
     // Validate the account name before it reaches the span or any audit row:
@@ -131,13 +136,18 @@ pub(super) async fn handle_user_auth(
     let credential = match classify_credential(&req.password, over_tls) {
         Ok(c) => c,
         Err(CredentialGateError::PlaintextRequiresTls) => {
-            tracing::warn!(user = %req.account_name, "plaintext credential rejected over plain HTTP");
+            tracing::warn!(account_name = %req.account_name, "plaintext credential rejected over plain HTTP");
             audit!(LoginOutcome::PlaintextRequiresTls);
             // Reuse the malformed-password code: the client must not learn that
             // a plaintext-over-TLS path exists.
             return login_error(2, "The specified password is invalid.");
         }
         Err(CredentialGateError::PlaintextLength) => {
+            tracing::info!(
+                reason = "plaintext_length",
+                peer_ip = %client_ip,
+                "Phase 1 login rejected: plaintext password length is outside the allowed range"
+            );
             return login_error(2, "The specified password is invalid.");
         }
     };
@@ -160,7 +170,7 @@ pub(super) async fn handle_user_auth(
         match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level, acct.test_account),
             Err(AuthCredError::InvalidCredentials) => {
-                tracing::info!(user = %req.account_name, "Invalid credentials");
+                tracing::info!(account_name = %req.account_name, "Invalid credentials");
                 audit!(LoginOutcome::InvalidCredentials);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
@@ -171,7 +181,7 @@ pub(super) async fn handle_user_auth(
                 return login_error(4, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
-                tracing::info!(user = %req.account_name, "Account disabled");
+                tracing::info!(account_name = %req.account_name, "Account disabled");
                 audit!(LoginOutcome::AccountDisabled);
                 cimmeria_discord::emit_player_auth_failed(
                     req.account_name.as_str(),
@@ -181,7 +191,7 @@ pub(super) async fn handle_user_auth(
                 return login_error(5, "This account has been suspended.");
             }
             Err(AuthCredError::DbError(e)) => {
-                tracing::error!(user = %req.account_name, error = %e, "DB query failed");
+                tracing::error!(account_name = %req.account_name, error = %e, "DB query failed");
                 audit!(LoginOutcome::DbError);
                 cimmeria_discord::emit_db_error("auth_credential_check", e.to_string());
                 return login_error(10, "A request to the database server failed.");
@@ -189,7 +199,7 @@ pub(super) async fn handle_user_auth(
         }
     } else if state.developer_mode && !state.db_configured {
         tracing::warn!(
-            user = %req.account_name,
+            account_name = %req.account_name,
             reason = "dev_mode_no_db_login",
             "Developer mode with no database configured: accepting credentials \
              unchecked as account 1, access level 99"
@@ -207,7 +217,7 @@ pub(super) async fn handle_user_auth(
             "no_database"
         };
         tracing::error!(
-            user = %req.account_name,
+            account_name = %req.account_name,
             reason,
             "Login refused: no database connection to check credentials against"
         );
@@ -216,6 +226,13 @@ pub(super) async fn handle_user_auth(
     };
 
     if state.shards.is_empty() {
+        tracing::warn!(
+            account_id,
+            account_name = %req.account_name,
+            reason = "no_shards",
+            peer_ip = %client_ip,
+            "Phase 1 login refused: no shards are available"
+        );
         audit!(LoginOutcome::NoShards, id = account_id);
         return login_error(7, "No shards are available to the authentication server.");
     }
@@ -285,18 +302,39 @@ pub(super) async fn handle_server_selection(
 
     let sid = match extract_sid(&headers) {
         Some(s) => s,
-        None => return select_error(15, "Your logon session has expired. Please log in again."),
+        None => {
+            tracing::info!(
+                reason = "sid_missing",
+                peer_ip = %client_ip,
+                "Phase 2 refused: no SID cookie"
+            );
+            return select_error(15, "Your logon session has expired. Please log in again.");
+        }
     };
 
     // Consume session (remove from map) — each SID is single-use for Phase 2.
     let session = { state.sessions.lock().unwrap().remove(&sid) };
     let session = match session {
         Some(s) if s.created.elapsed() < SESSION_TTL => s,
-        Some(_) => {
-            tracing::info!("Session expired for SID");
+        Some(s) => {
+            tracing::info!(
+                reason = "sid_expired",
+                account_id = s.account_id,
+                account_name = %s.account_name,
+                sid_age_secs = s.created.elapsed().as_secs(),
+                peer_ip = %client_ip,
+                "Phase 2 refused: SID expired"
+            );
             return select_error(15, "Your logon session has expired. Please log in again.");
         }
-        None => return select_error(15, "Your logon session has expired. Please log in again."),
+        None => {
+            tracing::info!(
+                reason = "sid_unknown",
+                peer_ip = %client_ip,
+                "Phase 2 refused: SID not issued or already consumed"
+            );
+            return select_error(15, "Your logon session has expired. Please log in again.");
+        }
     };
 
     // Cross-IP detection (issue #442, warn-only first): the SID was issued
@@ -333,7 +371,16 @@ pub(super) async fn handle_server_selection(
 
     let shard = match state.shards.iter().find(|s| s.name == selected) {
         Some(s) => s.clone(),
-        None => return select_error(8, "No such shard."),
+        None => {
+            tracing::info!(
+                reason = "unknown_shard",
+                account_id = session.account_id,
+                account_name = %session.account_name,
+                peer_ip = %client_ip,
+                "Phase 2 refused: no such shard"
+            );
+            return select_error(8, "No such shard.");
+        }
     };
 
     // Protected shard access control (matches C++ AccessDenied behaviour).
@@ -501,15 +548,24 @@ mod tests {
     }
 
     fn test_handler_state_with(developer_mode: bool, db_configured: bool) -> Arc<HandlerState> {
+        let shards = vec![super::super::ShardInfo {
+            name: "TestShard".into(),
+            host: "127.0.0.1".into(),
+            port: 32832,
+            protected: false,
+        }];
+        test_handler_state_shards(developer_mode, db_configured, shards)
+    }
+
+    fn test_handler_state_shards(
+        developer_mode: bool,
+        db_configured: bool,
+        shards: Vec<super::super::ShardInfo>,
+    ) -> Arc<HandlerState> {
         use std::collections::HashMap;
         use std::sync::Mutex;
         Arc::new(HandlerState {
-            shards: vec![super::super::ShardInfo {
-                name: "TestShard".into(),
-                host: "127.0.0.1".into(),
-                port: 32832,
-                protected: false,
-            }],
+            shards,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             developer_mode,
@@ -577,6 +633,17 @@ mod tests {
     /// stock protocol digest) to a plain-HTTP Router over `state`; returns
     /// the `Set-Cookie` header (if any) and the response body.
     async fn post_user_auth(state: Arc<HandlerState>) -> (Option<String>, String) {
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="anyone" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+        post_user_auth_with(state, body, false).await
+    }
+
+    /// POST `body` to a Router over `state`, from 127.0.0.1, with or without
+    /// the TLS marker extension. Returns the `Set-Cookie` header and body.
+    async fn post_user_auth_with(
+        state: Arc<HandlerState>,
+        body: &str,
+        over_tls: bool,
+    ) -> (Option<String>, String) {
         use axum::body::Body;
         use axum::http::Request;
         use axum::routing::post;
@@ -586,16 +653,17 @@ mod tests {
         let app = Router::new()
             .route("/SGWLogin/UserAuth", post(handle_user_auth))
             .with_state(state);
-        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="anyone" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
-        let request = Request::builder()
+        let mut builder = Request::builder()
             .method("POST")
             .uri("/SGWLogin/UserAuth")
             .header("Content-Type", "text/xml")
             .extension(axum::extract::ConnectInfo(
                 "127.0.0.1:5555".parse::<SocketAddr>().unwrap(),
-            ))
-            .body(Body::from(body))
-            .unwrap();
+            ));
+        if over_tls {
+            builder = builder.extension(super::super::TlsConn);
+        }
+        let request = builder.body(Body::from(body.to_string())).unwrap();
         let response = app.oneshot(request).await.expect("request");
         let cookie = response
             .headers()
@@ -718,6 +786,201 @@ mod tests {
         assert_eq!(
             warn.fields.get("client_ip").map(String::as_str),
             Some("203.0.113.20")
+        );
+    }
+
+    /// Phase 1 body for `sku` and `password` with the stock protocol digest.
+    fn phase1_body(sku: &str, password: &str) -> String {
+        format!(
+            r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="{sku}" AccountName="anyone" Password="{password}" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#
+        )
+    }
+
+    /// Insert a Phase-1 SID record for `account_id`, issued at `created`.
+    fn seed_session(state: &HandlerState, sid: &str, account_id: u32, created: Instant) {
+        state.sessions.lock().unwrap().insert(
+            sid.to_string(),
+            SessionRecord {
+                account_id,
+                access_level: 0,
+                test_account: false,
+                account_name: "refusal-check".to_string(),
+                client_ip: "127.0.0.1".parse().unwrap(),
+                created,
+            },
+        );
+    }
+
+    /// Drive `handle_server_selection` from 127.0.0.1 with an optional SID
+    /// cookie, selecting `shard`. The response is not inspected: the tests
+    /// assert on the refusal row.
+    async fn post_server_selection(state: Arc<HandlerState>, sid: Option<&str>, shard: &str) {
+        use axum::http::{header, HeaderMap};
+        let mut headers = HeaderMap::new();
+        if let Some(sid) = sid {
+            headers.insert(header::COOKIE, format!("SID={sid}").parse().unwrap());
+        }
+        let addr: SocketAddr = "127.0.0.1:5555".parse().unwrap();
+        let body = format!(
+            "<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin=\"http://www.stargateworlds.com/xml/sgwlogin\" ServerSelection=\"{shard}\" />"
+        );
+        handle_server_selection(State(state), ConnectInfo(addr), headers, body).await;
+    }
+
+    /// **Refusal-reason guard.** An unknown SKU is refused with a login error
+    /// and an INFO row carrying `reason = "unknown_sku"` and the peer IP.
+    /// Reverting the log line removes the row and trips this test.
+    #[tokio::test]
+    async fn refusal_unknown_sku_logs_reason() {
+        let capture = crate::test_support::LogCapture::install();
+        let body = phase1_body("SGW_OTHER", "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3");
+        let (cookie, xml) = post_user_auth_with(test_handler_state(), &body, false).await;
+        assert!(
+            xml.contains("SGWLoginError") && cookie.is_none(),
+            "got: {xml}"
+        );
+        let event = capture
+            .find_event(tracing::Level::INFO, "unknown service SKU", "unknown_sku")
+            .expect("unknown SKU must log reason=unknown_sku at INFO");
+        assert_eq!(
+            event.fields.get("peer_ip").map(String::as_str),
+            Some("127.0.0.1")
+        );
+    }
+
+    /// **Refusal-reason guard.** An over-long plaintext password over TLS is
+    /// refused with `reason = "plaintext_length"`, and the password itself
+    /// never reaches any captured row.
+    #[tokio::test]
+    async fn refusal_plaintext_length_logs_reason_without_password() {
+        let capture = crate::test_support::LogCapture::install();
+        let password = "x".repeat(129); // MAX_PLAINTEXT_LEN is 128
+        let body = phase1_body("SGW_BETA", &password);
+        let (cookie, xml) = post_user_auth_with(test_handler_state(), &body, true).await;
+        assert!(
+            xml.contains("SGWLoginError") && cookie.is_none(),
+            "got: {xml}"
+        );
+        capture
+            .find_event(
+                tracing::Level::INFO,
+                "password length is outside",
+                "plaintext_length",
+            )
+            .expect("over-long plaintext must log reason=plaintext_length at INFO");
+        let leaked = capture.all().iter().any(|c| {
+            c.message.as_deref().unwrap_or("").contains(&password)
+                || c.fields.values().any(|v| v.contains(&password))
+        });
+        assert!(!leaked, "the plaintext password must never be logged");
+    }
+
+    /// **Refusal-reason guard.** With no shards registered, a valid login is
+    /// refused at WARN with `reason = "no_shards"` and the account pair.
+    #[tokio::test]
+    async fn refusal_no_shards_logs_reason_with_account() {
+        let capture = crate::test_support::LogCapture::install();
+        let state = test_handler_state_shards(true, false, Vec::new());
+        let (cookie, xml) = post_user_auth(state).await;
+        assert!(
+            xml.contains("SGWLoginError") && cookie.is_none(),
+            "got: {xml}"
+        );
+        let event = capture
+            .find_event(tracing::Level::WARN, "no shards are available", "no_shards")
+            .expect("no shards must log reason=no_shards at WARN");
+        assert_eq!(
+            event.fields.get("account_id").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            event.fields.get("account_name").map(String::as_str),
+            Some("anyone")
+        );
+    }
+
+    /// **Refusal-reason guard.** Phase 2 with no SID cookie logs
+    /// `reason = "sid_missing"` at INFO.
+    #[tokio::test]
+    async fn refusal_sid_missing_logs_reason() {
+        let capture = crate::test_support::LogCapture::install();
+        post_server_selection(test_handler_state(), None, "TestShard").await;
+        let event = capture
+            .find_event(tracing::Level::INFO, "no SID cookie", "sid_missing")
+            .expect("missing SID must log reason=sid_missing at INFO");
+        assert_eq!(
+            event.fields.get("peer_ip").map(String::as_str),
+            Some("127.0.0.1")
+        );
+    }
+
+    /// **Refusal-reason guard.** A SID that was never issued (or was already
+    /// consumed) logs `reason = "sid_unknown"`, and the SID is not logged.
+    #[tokio::test]
+    async fn refusal_sid_unknown_logs_reason_without_sid() {
+        let capture = crate::test_support::LogCapture::install();
+        let sid = random_alphanumeric(40);
+        post_server_selection(test_handler_state(), Some(sid.as_str()), "TestShard").await;
+        capture
+            .find_event(
+                tracing::Level::INFO,
+                "not issued or already consumed",
+                "sid_unknown",
+            )
+            .expect("unknown SID must log reason=sid_unknown at INFO");
+        let leaked = capture
+            .all()
+            .iter()
+            .any(|c| c.fields.values().any(|v| v.contains(&sid)));
+        assert!(!leaked, "the SID must never be logged");
+    }
+
+    /// **Refusal-reason guard.** A SID older than `SESSION_TTL` logs
+    /// `reason = "sid_expired"` with the account pair and `sid_age_secs`.
+    #[tokio::test]
+    async fn refusal_sid_expired_logs_reason_with_account_and_age() {
+        let capture = crate::test_support::LogCapture::install();
+        let state = test_handler_state();
+        let sid = random_alphanumeric(40);
+        let issued = Instant::now()
+            .checked_sub(super::super::SESSION_TTL + std::time::Duration::from_secs(1))
+            .expect("process uptime exceeds the session TTL");
+        seed_session(&state, &sid, 42, issued);
+        post_server_selection(state, Some(sid.as_str()), "TestShard").await;
+        let event = capture
+            .find_event(tracing::Level::INFO, "SID expired", "sid_expired")
+            .expect("expired SID must log reason=sid_expired at INFO");
+        assert_eq!(
+            event.fields.get("account_id").map(String::as_str),
+            Some("42")
+        );
+        let age: u64 = event
+            .fields
+            .get("sid_age_secs")
+            .and_then(|v| v.parse().ok())
+            .expect("sid_age_secs must be numeric");
+        assert!(age >= 301, "age must exceed the 300 s TTL, got {age}");
+    }
+
+    /// **Refusal-reason guard.** A valid SID selecting a shard that does not
+    /// exist logs `reason = "unknown_shard"` with the account pair.
+    #[tokio::test]
+    async fn refusal_unknown_shard_logs_reason_with_account() {
+        let capture = crate::test_support::LogCapture::install();
+        let state = test_handler_state();
+        let sid = random_alphanumeric(40);
+        seed_session(&state, &sid, 42, Instant::now());
+        post_server_selection(state, Some(sid.as_str()), "NoSuchShard").await;
+        let event = capture
+            .find_event(tracing::Level::INFO, "no such shard", "unknown_shard")
+            .expect("unknown shard must log reason=unknown_shard at INFO");
+        assert_eq!(
+            event.fields.get("account_id").map(String::as_str),
+            Some("42")
+        );
+        assert_eq!(
+            event.fields.get("account_name").map(String::as_str),
+            Some("refusal-check")
         );
     }
 }
