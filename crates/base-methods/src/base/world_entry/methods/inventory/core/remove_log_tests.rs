@@ -98,7 +98,7 @@ async fn remove(pool: &PgPool, item_id: i32, quantity: i32) -> bool {
 }
 
 #[tokio::test]
-async fn partial_remove_logs_stack_counts() {
+async fn live_db_partial_remove_logs_stack_counts() {
     let pool = require_db_or_skip!();
     setup(&pool).await;
     let stack = insert(&pool, SLAPPACK, 3, 0).await;
