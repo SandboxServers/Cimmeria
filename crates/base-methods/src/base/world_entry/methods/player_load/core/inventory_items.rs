@@ -52,9 +52,12 @@ pub(super) async fn query_inventory_items(
             .collect(),
         Err(e) => {
             tracing::error!(
+                event = "player_load_degraded",
+                reason = "inventory_query_failed",
                 player_id,
                 player_name = cimmeria_entity::known_names::player_name(player_id),
-                "Failed to query inventory items: {e}"
+                error = %e,
+                "Inventory query failed at mapLoaded; the player loads with no items, a re-accept will overwrite saved items"
             );
             vec![]
         }

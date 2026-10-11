@@ -75,9 +75,12 @@ pub async fn query_saved_missions(
         }
         Err(e) => {
             tracing::error!(
+                event = "player_load_degraded",
+                reason = "missions_query_failed",
                 player_id,
                 player_name = known_names::player_name(player_id),
-                "Failed to query saved missions: {e}"
+                error = %e,
+                "Saved missions query failed at mapLoaded; the player loads with no missions, a re-accept will overwrite saved progress"
             );
             vec![]
         }

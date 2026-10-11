@@ -662,6 +662,21 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Player-load degraded fallbacks (TG-DB-07)
+
+Every fallback in the mapLoaded loaders logs `event = "player_load_degraded"` at `error!`, with a stable `reason` and `error` (`error = %e`). The message states the consequence. Identity fields are the ones in scope: `account_id` / `account_name` where the loader has the account (`query_player_load_data`), `player_id` / `player_name` everywhere.
+
+| `reason` | Site | Fields |
+|---|---|---|
+| `player_row_missing` | `player_load/core/player_data.rs`, no `sgw_player` row for the account and player | `player_id`, `player_name`, `account_id`, `account_name` |
+| `player_query_failed` | `player_data.rs`, the base row read | the above, plus `error` |
+| `equipment_visuals_query_failed` | `player_data.rs`, the equipment-slot visuals | the above, plus `error` |
+| `weapon_visual_query_failed` | `player_data.rs`, the active bandolier weapon visual | the above, plus `error` |
+| `inventory_query_failed` | `player_load/core/inventory_items.rs` | `player_id`, `player_name`, `error` |
+| `missions_query_failed` | `missions/mod.rs`, `query_saved_missions` | `player_id`, `player_name`, `error` |
+
+The `missions_query_failed` and `player_query_failed` rows say a re-accept will overwrite saved progress, the #411-class data loss. Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. The visual and row-missing reasons need a live row and have no guard here.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
