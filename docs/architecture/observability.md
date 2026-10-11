@@ -293,7 +293,7 @@ round 2 fourteen of them emitted DEBUG rows that reached neither a file
 nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`,
 `content.resolve`, `dialog.display`, `mission.step_context`,
 `movement.movement_type`, `movement.position_sample`, `movement.validation`,
-`player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
+`player.journal`, `player.respawn`, `trade.atomic_swap`, `console.feedback`, `client.native`,
 `launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
 DEBUG, except `client.native`, which moved to the `cimmeria-client` index
 (every level) in 2026-09. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
@@ -308,7 +308,9 @@ crate linked into the server, finds each literal-target event call and
 requires it to reach one index at the level it is emitted; the only
 exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
-cannot skip the scan.
+cannot skip the scan. Test code is cut only at an inline `#[cfg(test)] mod name {`;
+a `#[cfg(test)] mod tests;` declaration does not end the file's scan, so the
+production code below it is still checked.
 
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
@@ -447,6 +449,7 @@ space ids to world names by hand):
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
 | `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
+| `discord_events_total` | `outcome` (7) | TG-SOC-12: one per Discord event, at the point it ends: `sent`, `filtered`, `dropped_full`, `dropped_closed`, `no_webhook`, `rate_limited`, `failed`. Every drop counts, including the ones the `discord.dropped` WARN throttle (one per 60 s per outcome, with `suppressed`) swallows |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (6) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC. Routes with **no** usable path only; a partial route counts in `npc_path_partial_total` |
 | `npc_path_partial_total` | `world` (~24), `state` (5) | NA02: a partial corridor that was still walked. Its `npc_ai.path_fail reason=partial` row has its own throttle window (`path_partial`), so it cannot hold back a real routing failure for the same NPC |
 | `npc_path_requests_total` | `world` (~24), `state` (5), `status` (7) | One per AI `find_path` (NA02), beside the `npc_ai.path` row — the path-status mix |
@@ -459,6 +462,9 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
+| `aoi_introductions_total` | `world` (~24) | One per `EnteredAoI` that `push_introduction` queues, per witness: the AoI diff's entry and the NPC respawn rebuild |
+| `aoi_leaves_total` | `world` (~24) | One per `LeftAoI` the AoI diff queues, per witness |
+| `aoi_witness_set_size` (up/down gauge) | `world` (~24) | Net change of each player's witness set on each AoI tick, so the sum per world is that world's witness count. A removed player's share is subtracted on disconnect or destroy, so no final AoI diff is needed |
 | `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs. `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counts every GM off-mesh packet; its `movement.navmesh_gm_bypass` row is INFO and throttled per GM (TG-MOV-10) |
 
 Never entity ids, positions or mesh hashes as labels — those are

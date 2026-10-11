@@ -133,6 +133,33 @@ async fn full_exit_logoff_writes_no_character_select_row() {
     );
 }
 
+/// TG-NET-02: logOff(1) marks the session, so the teardown that follows
+/// writes the one row with `logoff_requested=true` and its own mechanism.
+/// Without the handler's `LogoffRequested` insert the row reads `false`.
+#[tokio::test]
+async fn full_exit_then_teardown_says_logoff_requested() {
+    let addr: SocketAddr = "127.0.0.1:54807".parse().unwrap();
+    let connected = in_world_session(addr, true);
+    let (tx, _rx) = mpsc::channel::<BaseToCellMsg>(8);
+    let capture = LogCapture::install();
+
+    log_off(1, addr, &connected, tx.clone()).await;
+    teardown(addr, &connected, tx);
+
+    let ends = session_ends(&capture);
+    assert_eq!(ends.len(), 1, "one session.end row: {:#?}", capture.all());
+    assert!(
+        ends[0].has_field("logoff_requested", "true"),
+        "{:#?}",
+        ends[0]
+    );
+    assert!(
+        !ends[0].has_field("disconnect_reason", "logoff_character_select"),
+        "the row names the teardown's mechanism: {:#?}",
+        ends[0]
+    );
+}
+
 /// logOff(0), then the session's teardown: one row in total.
 #[tokio::test]
 async fn logoff_then_teardown_writes_one_row() {
