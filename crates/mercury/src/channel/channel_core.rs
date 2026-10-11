@@ -625,7 +625,7 @@ impl Channel {
                 srtt_ms,
                 peer_last_rx_ms,
                 send_kind = entry.send_kind,
-                msg_id = entry.first_message.map(|m| m.msg_id),
+                msg_id = entry.first_message.map(|m| m.msg_id), // nt:id-only transport has no method tables, so no msg_name here
                 fragment_index = entry.fragment_index,
                 wire_fingerprint = %crate::instrumentation::wire_fingerprint(&entry.raw_bytes),
                 "Mercury: reliable packet retransmit"
