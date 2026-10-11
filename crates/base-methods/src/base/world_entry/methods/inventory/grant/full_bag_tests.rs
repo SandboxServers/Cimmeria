@@ -149,6 +149,19 @@ async fn live_db_full_crafting_bag_refuses_instead_of_using_the_vault() {
     ] {
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
     }
+    // One refusal is one row: the persist layer's "container full" line is
+    // DEBUG, so a full bag adds no WARN beside the INFO grant_refused.
+    let rows = capture.all();
+    let refused: Vec<_> = rows
+        .iter()
+        .filter(|c| c.message_contains("grant_refused"))
+        .collect();
+    assert_eq!(refused.len(), 1, "one grant_refused row: {rows:?}");
+    assert_eq!(refused[0].level, Level::INFO, "{rows:?}");
+    assert!(
+        rows.iter().all(|c| c.level != Level::WARN),
+        "a full bag logs no WARN: {rows:?}"
+    );
     let texts = sent_texts(&test_transport);
     assert!(
         texts.iter().any(|t| t.contains("that bag is full")),
@@ -288,7 +301,7 @@ async fn live_db_buyback_is_never_a_grant_target() {
     .await;
     assert!(bags(&pool, player_id).await.is_empty(), "nothing written");
     assert!(capture
-        .find_event(Level::INFO, "grant_refused", "not_grantable_container")
+        .find_event(Level::WARN, "grant_refused", "not_grantable_container")
         .is_some());
 
     let (tx, mut rx) = mpsc::channel(8);
