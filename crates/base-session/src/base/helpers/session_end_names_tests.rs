@@ -127,6 +127,110 @@ fn session_end_at_character_select_leaves_the_character_names_off() {
     );
 }
 
+/// TG-NET-02: a full exit (`logOff(1)`) keeps the session, so the row that
+/// ends it comes later from the teardown. The `LogoffRequested` marker
+/// survives to that teardown: `session.end` keeps the true mechanism
+/// (`inactivity_timeout`) and adds `logoff_requested=true`, the idle time,
+/// whether the character was in the world, and the world. The cleanup row
+/// carries a numeric `player_id` and a bare `player_entity_id`, not
+/// `"Some(n)"`. Reverting any field drops it from the row and fails here.
+#[test]
+fn logoff_requested_survives_to_inactivity_teardown() {
+    let capture = LogCapture::install();
+    let addr: SocketAddr = "127.0.0.1:52404".parse().unwrap();
+    let (connected, entity_manager, entity_to_addr) = maps(addr);
+    {
+        let mut clients = connected.lock().unwrap();
+        let c = clients.get_mut(&addr).unwrap();
+        c.extensions.insert(LogoffRequested);
+        c.world_name = Some("Castle_CellBlock".into());
+        // The full exit already unlisted the character.
+        c.listed_online = false;
+        // Silent for 5 s. `checked_sub` fails only on a host up under 5 s.
+        *c.last_recv.lock().unwrap() = Instant::now()
+            .checked_sub(std::time::Duration::from_secs(5))
+            .expect("host uptime must exceed 5 s to backdate last_recv");
+    }
+
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &None,
+        &entity_to_addr,
+        &transport(),
+        &None,
+        "inactivity_timeout",
+    );
+
+    let ended = capture
+        .find_message(Level::INFO, "player session ended")
+        .unwrap_or_else(|| panic!("no session.end line: {:#?}", capture.all()));
+    assert!(
+        ended.has_field("disconnect_reason", "inactivity_timeout"),
+        "{ended:#?}"
+    );
+    assert!(ended.has_field("logoff_requested", "true"), "{ended:#?}");
+    let idle_ms: u64 = ended
+        .fields
+        .get("idle_ms")
+        .unwrap_or_else(|| panic!("no idle_ms: {ended:#?}"))
+        .parse()
+        .expect("idle_ms is a number");
+    assert!(idle_ms >= 5_000, "idle_ms {idle_ms} must cover the 5 s");
+    assert!(ended.has_field("in_world", "false"), "{ended:#?}");
+    assert!(ended.has_field("world", "Castle_CellBlock"), "{ended:#?}");
+
+    let cleaned = capture
+        .find_message(Level::INFO, "Client entities cleaned up")
+        .expect("cleanup line");
+    assert!(
+        cleaned.has_field("player_id", &PLAYER_ID.to_string()),
+        "{cleaned:#?}"
+    );
+    assert!(cleaned.has_field("player_name", "Teal'c"), "{cleaned:#?}");
+    assert!(
+        cleaned.has_field("player_entity_id", &PLAYER_EID.to_string()),
+        "{cleaned:#?}"
+    );
+}
+
+/// Without the marker (a plain disconnect), `logoff_requested` is `false`
+/// and a listed character reads `in_world=true`.
+#[tokio::test]
+async fn session_end_without_logoff_marker_reads_false() {
+    let capture = LogCapture::install();
+    let addr: SocketAddr = "127.0.0.1:52405".parse().unwrap();
+    let (connected, entity_manager, entity_to_addr) = maps(addr);
+    connected
+        .lock()
+        .unwrap()
+        .get_mut(&addr)
+        .unwrap()
+        .listed_online = true;
+
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &None,
+        &entity_to_addr,
+        &transport(),
+        &None,
+        "client_disconnect",
+    );
+
+    let ended = capture
+        .find_message(Level::INFO, "player session ended")
+        .unwrap_or_else(|| panic!("no session.end line: {:#?}", capture.all()));
+    assert!(ended.has_field("logoff_requested", "false"), "{ended:#?}");
+    assert!(ended.has_field("in_world", "true"), "{ended:#?}");
+    assert!(
+        !ended.fields.contains_key("world"),
+        "no world is left off: {ended:#?}"
+    );
+}
+
 /// The inactivity timeout names who went silent. The session is still in
 /// the map when the line is written; the teardown runs after it.
 #[tokio::test]

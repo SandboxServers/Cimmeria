@@ -244,6 +244,13 @@ impl SpaceManager {
 
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 if let Some(cell_entity) = space.entities.remove(&entity_id) {
+                    // No final AoI diff reports this player's witness set, so
+                    // take its share off the gauge here.
+                    cimmeria_observability::gauge_add!(
+                        "aoi_witness_set_size",
+                        -(cell_entity.witnesses.len() as i64),
+                        "world" => space.world_name.clone(),
+                    );
                     space
                         .space
                         .remove_entity(EntityId(entity_id as i32), &cell_entity.position);
@@ -553,6 +560,12 @@ impl SpaceManager {
                                 .is_some_and(|other| other.witnesses.contains(&target))
                     })
                     .collect();
+                // Each observer's copy of this player is cleared below, unreported.
+                cimmeria_observability::gauge_add!(
+                    "aoi_witness_set_size",
+                    -(observers.len() as i64),
+                    "world" => space.world_name.clone(),
+                );
                 for witness_id in observers {
                     if let Err(e) = tx
                         .send(CellToBaseMsg::LeftAoI {
