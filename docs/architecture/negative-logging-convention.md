@@ -552,7 +552,7 @@ made, in `cell-interactions` `bank/tests.rs`
 
 ## Grant and loot hand-back seams
 
-Target `inventory`. A loot pickup takes the item off the corpse before the
+Target `cimmeria_base_methods::base::world_entry::methods::inventory::ammo` (module path). A loot pickup takes the item off the corpse before the
 base writes it to the looter's inventory, so every way the grant can fail
 is a seam: the item goes back on the corpse, or its loss is logged.
 
@@ -664,7 +664,7 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 
 ## Bandolier ammo writeback seam (TG-ITM-06)
 
-Target `inventory`. The bandolier ammo writeback (`update_bandolier_ammo`, `base-methods` `inventory/ammo.rs`) is a write guard keyed on the slot's instance id. A zero-row result means the slot is empty or its item was swapped, so the ammo the cell computed for that slot is dropped. That is a loss the player can feel, so it is a WARN, not a DEBUG.
+Target `cimmeria_base_methods::base::world_entry::methods::inventory::ammo` (module path). The bandolier ammo writeback (`update_bandolier_ammo`, `base-methods` `inventory/ammo.rs`) is a write guard keyed on the slot's instance id. A zero-row result means the slot is empty or its item was swapped, so the ammo the cell computed for that slot is dropped. That is a loss the player can feel, so it is a WARN, not a DEBUG.
 
 | `event` | Level | `reason` | Fields |
 |---|---|---|---|
