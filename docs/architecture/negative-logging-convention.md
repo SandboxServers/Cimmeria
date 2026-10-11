@@ -975,6 +975,16 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
 
+## Unsent onEndAidWait on respawn (TG-CMB-10)
+
+`handle_respawn` (`cell/respawn/mod.rs` in `cimmeria-cell-interactions`) closes the Defeat Window with `onEndAidWait` before it reanchors or travels. A closed base channel leaves the window open on the client, so the failed send is logged rather than dropped. The cross-world INFO row carries the identity too.
+
+| Level | Row | When | Fields |
+|---|---|---|---|
+| WARN | `event = "wire_send_failed"`, `method = "onEndAidWait"`, `reason = "base_channel_closed"`, `error` | The cell-to-base send of `onEndAidWait` failed | identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id`, `entity_name` |
+
+Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tests/respawn_send_failures.rs` (a dropped receiver gives the WARN with `reason`).
+
 ## Minigame victory for an unknown entity (TG-MG-09)
 
 `cell/service/base_messages/minigame.rs`, `handle_minigame_result`. A victory whose `entity_id` is not in the cell's space manager still fires its `on_victory_chains` with player 0, as it always has; the WARN row says the player those chains name is not there. The entity has no name to give, so `entity_id` is `// nt:id-only`.
