@@ -65,6 +65,7 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
     } = entry;
     let target_id = target.map_or(0, |(id, _)| id);
     let target_pos = target.map(|(_, p)| p);
+    let target_identity = space_mgr.player_identity(target_id);
     let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
@@ -86,6 +87,10 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
         space_id = ident.space_id,
         target_id,
         target_name = space_mgr.entity_label(target_id),
+        target_account_id = target_identity.account_id,
+        target_account_name = target_identity.account_name,
+        target_player_id = target_identity.player_id,
+        target_player_name = target_identity.player_name,
         reason,
         trigger,
         // Horizontal: the distance the NA12 leash measures.
@@ -126,6 +131,7 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
     else {
         return;
     };
+    let target_identity = space_mgr.player_identity(target_id);
     tracing::warn!(
         target: "npc_ai.leash",
         event = "loop",
@@ -138,6 +144,10 @@ pub fn on_enter(space_mgr: &mut SpaceManager, npc_id: u32, entry: LeashEntry, no
         space_id = ident.space_id,
         target_id,
         target_name = space_mgr.entity_label(target_id),
+        target_account_id = target_identity.account_id,
+        target_account_name = target_identity.account_name,
+        target_player_id = target_identity.player_id,
+        target_player_name = target_identity.player_name,
         leash_count,
         window_secs = LEASH_LOOP_WINDOW.as_secs(),
         target_to_spawn = spawn.zip(target_pos).map(|(s, t)| s.distance_to(&t)),
@@ -226,6 +236,7 @@ pub fn on_damage_while_leashing(
     let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
         return;
     };
+    let attacker_identity = space_mgr.player_identity(attacker_id);
     tracing::debug!(
         target: "npc_ai.leash",
         event = "damage_ignored",
@@ -238,6 +249,10 @@ pub fn on_damage_while_leashing(
         space_id = ident.space_id,
         attacker_id,
         attacker_name = space_mgr.entity_label(attacker_id),
+        attacker_account_id = attacker_identity.account_id,
+        attacker_account_name = attacker_identity.account_name,
+        attacker_player_id = attacker_identity.player_id,
+        attacker_player_name = attacker_identity.player_name,
         amount,
         "npc_ai.leash: NPC is walking home (evading): threat ignored"
     );
