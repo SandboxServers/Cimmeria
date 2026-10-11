@@ -6,6 +6,9 @@ use crate::uat::golden::testkit::{
     fs_p3_entities, fs_p3_tap, fs_p3_windows, row_evidence, tap_messages, write_run,
 };
 
+#[path = "golden_rebless_tests.rs"]
+mod rebless;
+
 const SECTION: &str = "first-session";
 const NOW: &str = "2026-10-11T00:00:00Z";
 
@@ -58,8 +61,12 @@ struct Lab {
 
 impl Lab {
     fn new() -> Self {
+        Self::with_spec(SPEC)
+    }
+
+    fn with_spec(spec: &str) -> Self {
         let specs = tempfile::tempdir().unwrap();
-        std::fs::write(specs.path().join("first-session.toml"), SPEC).unwrap();
+        std::fs::write(specs.path().join("first-session.toml"), spec).unwrap();
         let sha = load_sections(specs.path(), None).unwrap()[0].sha256.clone();
         Self {
             specs,
@@ -107,11 +114,35 @@ impl Lab {
             .collect()
     }
 
+    /// Five unchanged, passing runs numbered from `first`.
+    fn five_from(&self, first: usize) -> Vec<String> {
+        (first..first + 5)
+            .map(|k| self.good(&format!("run{k}")))
+            .collect()
+    }
+
+    /// A run of `rows`, each with FS-P1's tap and no entities or windows.
+    fn plain_run(&self, id: &str, rows: &[(&str, RowResult)]) -> String {
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|(row, result)| (row_evidence(row, *result, &[]), Some(p1_tap()), None, None))
+            .collect();
+        let run = write_run(self.runs.path(), id, SECTION, &rows);
+        let mut manifest: Value = run.read_json(&run.run_json()).unwrap();
+        manifest["specs"][0]["sha256"] = json!(self.sha);
+        run.write_json(&run.run_json(), &manifest).unwrap();
+        run.root.display().to_string()
+    }
+
     fn record(&self, run_dirs: Vec<String>, rebless: bool) -> Value {
+        self.record_rows(None, run_dirs, rebless)
+    }
+
+    fn record_rows(&self, rows: Option<&[&str]>, run_dirs: Vec<String>, rebless: bool) -> Value {
         record(
             GoldenRecordArgs {
                 section: SECTION.to_string(),
-                rows: None,
+                rows: rows.map(|r| r.iter().map(|s| s.to_string()).collect()),
                 run_dirs,
                 specs_dir: Some(self.specs.path().display().to_string()),
                 rebless,
@@ -197,7 +228,7 @@ fn record_refuses_an_existing_golden_without_rebless() {
     assert!(error(&reply).contains("rebless"), "{reply}");
     assert_eq!(std::fs::read(lab.golden()).unwrap(), before);
 
-    let reply = lab.record(runs, true);
+    let reply = lab.record(lab.five_from(6), true);
     assert_eq!(reply["ok"], true, "{reply}");
 }
 
@@ -346,6 +377,49 @@ fn diff_lists_the_other_diverged_rows() {
     );
     assert_eq!(reply["diverged"], 2);
     assert_eq!(reply["rows"], json!({ "FS-P3": DIALOG_LINE }));
+}
+
+/// Seven rows all diverge: `first` plus four in `rows`, `diverged` the total.
+#[test]
+fn diff_caps_the_listed_rows() {
+    let ids = ["R1", "R2", "R3", "R4", "R5", "R6", "R7"];
+    let mut spec = SPEC[..SPEC.find("[[row]]").unwrap()].to_string();
+    for id in ids {
+        spec.push_str(&format!(
+            "[[row]]\nid = \"{id}\"\ntitle = \"t\"\nexpected = \"e\"\n\
+             step = [{{ chat = \".help\", label = \"help\" }}]\n\
+             [[row.expect]]\nid = \"help\"\ntext = \"t\"\nsource = \"chat\"\n\
+             since = \"help\"\ncontains = \"help\"\n\n"
+        ));
+    }
+    let lab = Lab::with_spec(&spec);
+    let pass: Vec<_> = ids.iter().map(|r| (*r, RowResult::Pass)).collect();
+    let runs = (1..=5)
+        .map(|k| lab.plain_run(&format!("run{k}"), &pass))
+        .collect();
+    assert_eq!(lab.record(runs, false)["ok"], true);
+
+    let fail: Vec<_> = ids.iter().map(|r| (*r, RowResult::Fail)).collect();
+    let reply = lab.diff(lab.plain_run("run6", &fail));
+    assert_eq!(reply["first"], "row R1: expected result `PASS`, got `FAIL`");
+    assert_eq!(reply["diverged"], 7);
+    let listed: Vec<&str> = reply["rows"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(listed, ["R2", "R3", "R4", "R5"]);
+}
+
+#[test]
+fn diff_of_an_unreadable_run_is_cannot_diff() {
+    let lab = Lab::new();
+    assert_eq!(lab.record(lab.five(|_, _| None), false)["ok"], true);
+    let missing = lab.runs.path().join("no-such-run");
+    let reply = lab.diff(missing.display().to_string());
+    assert_eq!(code(&reply), "cannot_diff", "{reply}");
+    assert!(!error(&reply).contains('\n'));
 }
 
 #[test]

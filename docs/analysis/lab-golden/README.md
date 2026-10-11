@@ -95,7 +95,7 @@ new Praxis character on 2026-10-10.
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | Integrated |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
-| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
+| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | Integrated |
 | GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
 | GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
 | GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, the user's OK for the lab | BlockedDependency |
@@ -199,7 +199,9 @@ then the reference, not the spec.
   ran out of context reading the M-size spec and the merged code, so the
   remaining M packets (GD-04, GD-07) go to `rust-gameserver-dev` too. A core
   `normalise_tap` returns `Normalised { events, unordered, transitions }`;
-  `events_from_tap` keeps the contract signature as a wrapper. Tests live in
+  `events_from_tap` kept the contract signature as a wrapper until GD-07
+  removed it, with the `pub use event::{..}` re-export (nothing in lab-chaos
+  or lab-record uses either). Tests live in
   `normalise_tests.rs` and `build_tests.rs`. Run variables (`RUN_VARS`) are
   substituted in the JSON string leaves before `render_json`. Labelling is
   two-pass: ordered events number their unknown ids first, in tap order; the
@@ -245,3 +247,19 @@ then the reference, not the spec.
   control characters become spaces, and the `after` value shrinks (cap 60,
   then down to 3) so the line fits 300 characters with `expected` and `got`
   whole.
+- **GD-07.** Implemented by `rust-gameserver-dev` in `server/golden.rs`.
+  Replies: record is `{ok, path, rows, events, bytes, runs}`, diff is
+  `{ok, match}` or `{ok, match: false, first, diverged?, rows?}`, and a
+  refusal is `{ok: false, code, error}` with `error` one line of at most 400
+  characters. Diff's `rows` leaves out the first diverged row (it is
+  `first`), lists at most four more, and `diverged` (the total) appears when
+  more than one row diverged. Record refuses runs whose spec hash is not the
+  spec file's current hash (`cannot_record`): the golden stores today's
+  variance under the runs' hash. Diff adds the code `cannot_diff` for a run
+  directory it cannot open or fingerprint; GD-08 and GD-09 must map it.
+  Rebless needs five fresh runs: a run id already in the old golden's
+  `evidence` is `cannot_record`, and so is a row set that drops a row the old
+  golden held (the error names the rows). `rows: []` means every row, like
+  omitting it. `lab_golden_record` is in `OPEN` although it writes the golden
+  file: `OPEN` now means "never drives the client", not read-only. Two
+  concurrent records of one section race; the last write wins.

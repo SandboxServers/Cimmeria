@@ -17,7 +17,7 @@ use serde_json::{json, Map, Value};
 use super::LabServer;
 use crate::uat::evidence::RunDir;
 use crate::uat::golden::agree::{agree, check_runs, AgreeError};
-use crate::uat::golden::build::fingerprint_run;
+use crate::uat::golden::build::{fingerprint_run, RunMeta};
 use crate::uat::golden::diff::diff_run_dir;
 use crate::uat::golden::file::{self, golden_path, GoldenBuild, GoldenEvidence, GoldenFile};
 use crate::uat::{load_sections, specs_dir};
@@ -34,7 +34,7 @@ const MAX_ERROR_CHARS: usize = 400;
 pub struct GoldenRecordArgs {
     /// The section id (`first-session`, ...).
     pub section: String,
-    /// Only these row ids; omit for every row the runs reached.
+    /// Only these row ids; omit (or pass []) for every row the runs reached.
     #[serde(default)]
     pub rows: Option<Vec<String>>,
     /// The fresh fingerprint-mode run directories, at least five.
@@ -61,8 +61,10 @@ pub struct GoldenDiffArgs {
     pub specs_dir: Option<String>,
 }
 
-/// `{ ok: false, code, error }` with `error` as one capped line.
+/// `{ ok: false, code, error }` with `error` as one capped line. Only the
+/// code is logged: the error text can name local run and spec paths.
 fn refuse(code: &str, error: impl AsRef<str>) -> Value {
+    tracing::warn!(target: "lab.golden", code, "golden tool refused");
     json!({ "ok": false, "code": code, "error": one_line(error.as_ref()) })
 }
 
@@ -159,18 +161,28 @@ pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
     };
     let section = loaded.spec.section.id.clone();
     let path = golden_path(&dir, &section);
-    if path.exists() && !args.rebless {
-        return refuse(
-            "exists",
-            format!("{} exists; pass rebless to replace it", path.display()),
-        );
+    let rows: Vec<String> = golden.rows.iter().map(|r| r.row.clone()).collect();
+    let reblessed = path.exists();
+    if reblessed {
+        if !args.rebless {
+            return refuse(
+                "exists",
+                format!("{} exists; pass rebless to replace it", path.display()),
+            );
+        }
+        // A golden that no longer loads has nothing to protect; replace it.
+        if let Ok(old) = file::load(&path) {
+            if let Err(e) = check_rebless(&old, &metas, &rows) {
+                return refuse("cannot_record", e);
+            }
+        }
     }
     // check_runs has proved these present, non-empty and equal in every run.
     let first = &metas[0];
     let g = GoldenFile {
         schema: file::GOLDEN_SCHEMA,
         section,
-        rows: golden.rows.iter().map(|r| r.row.clone()).collect(),
+        rows,
         recorded_utc: now_utc.to_string(),
         spec_sha256: first.spec_sha256.clone().unwrap_or_default(),
         build: GoldenBuild {
@@ -187,17 +199,60 @@ pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
         fingerprint: golden,
     };
     let events: usize = g.fingerprint.rows.iter().map(|r| r.events.len()).sum();
+    // Two concurrent records of one section race: the last write wins.
     match file::save(&path, &g) {
-        Ok(bytes) => json!({
+        Ok(bytes) => {
+            tracing::info!(
+                target: "lab.golden",
+                section = %g.section,
+                rows = %g.rows.join(","),
+                runs = %g.evidence.iter().map(|e| e.run_id.as_str()).collect::<Vec<_>>().join(","),
+                rebless = reblessed,
+                file = %path.file_name().unwrap_or_default().to_string_lossy(),
+                events,
+                bytes,
+                "golden recorded"
+            );
+            json!({
             "ok": true,
             "path": path.display().to_string(),
             "rows": g.rows.len(),
             "events": events,
             "bytes": bytes,
             "runs": fps.len(),
-        }),
+            })
+        }
         Err(e) => refuse("cannot_record", e),
     }
+}
+
+/// A rebless must not reuse the old golden's evidence (the owner's rule is
+/// five fresh agreeing runs) and must not silently drop a row it held.
+fn check_rebless(old: &GoldenFile, metas: &[RunMeta], rows: &[String]) -> Result<(), String> {
+    let reused: Vec<&str> = metas
+        .iter()
+        .filter(|m| old.evidence.iter().any(|e| e.run_id == m.run_id))
+        .map(|m| m.run_id.as_str())
+        .collect();
+    if !reused.is_empty() {
+        return Err(format!(
+            "rebless needs fresh runs; the old golden already holds {}",
+            reused.join(", ")
+        ));
+    }
+    let dropped: Vec<&str> = old
+        .rows
+        .iter()
+        .filter(|r| !rows.contains(r))
+        .map(String::as_str)
+        .collect();
+    if !dropped.is_empty() {
+        return Err(format!(
+            "rebless would drop rows {} from the golden; record them too",
+            dropped.join(", ")
+        ));
+    }
+    Ok(())
 }
 
 /// Compare one run with the section's golden, under the golden's stored
@@ -242,9 +297,6 @@ pub(crate) fn diff(args: GoldenDiffArgs) -> Value {
         .collect();
     if !others.is_empty() {
         out.insert("rows".into(), Value::Object(others));
-    }
-    if !report.not_in_golden.is_empty() {
-        out.insert("not_in_golden".into(), json!(report.not_in_golden));
     }
     Value::Object(out)
 }
