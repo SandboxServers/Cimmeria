@@ -249,6 +249,7 @@ fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
             sha256: seed_hash.into(),
         },
         patches: vec![],
+        file_index: None,
     }
 }
 
