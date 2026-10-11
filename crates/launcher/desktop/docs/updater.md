@@ -1,13 +1,15 @@
 # Signed launcher updates
 
-> Reference · desktop launcher maintainers · 2026-10-04
+> Reference · desktop launcher maintainers · 2026-10-11
 
 The desktop launcher can check a native-configured release feed, download a
 package, and verify its Minisign signature and signed version before saving it.
 Apply re-verifies saved bytes and can replace a native Mac application bundle or
-hand off a Windows installer. The new compiled launcher version must acknowledge
-startup before an update is reported installed. The production composition currently supplies no endpoint or signing key, so
-its visible status is **Disabled**. Game-manifest signatures and legacy launcher
+swap the Windows launcher's files in place from the release zip. The new compiled
+launcher version must acknowledge startup before an update is reported installed.
+On Windows the feed is compiled in as the `launcher-current` release's
+`latest.json` and the Minisign public key comes from `LAUNCHER_UPDATER_PUBKEY` at
+compile time; a build without the key, and every macOS build, shows **Disabled**. Game-manifest signatures and legacy launcher
 checksums remain separate mechanisms.
 
 `updater_command` accepts schema 1 `inspect`, `check`, `prepare`, or `apply`. Check uses
@@ -32,7 +34,7 @@ the trusted comment. Exactly one tab-separated `version:` field must equal the
 announced SemVer. Thus an old signed artifact relabeled as a new release fails.
 The implementation rejects duplicate version fields, more strictly than Tauri's
 first-match parser. Release automation must still pin and test a Tauri CLI that
-emits this field; no CLI, keys, endpoints or publishing are configured here.
+emits this field; signing and publishing belong to the release workflow (LX-15).
 
 Transport requires HTTPS, port 443, an exact native host allowlist, no URL
 credentials or fragments, and at most four followed redirects. Every redirect
@@ -77,8 +79,11 @@ foreign-stage preservation, and compiled-version acknowledgment. Shell tests
 prove that a dropped renderer reply still invokes the native shutdown callback
 once, including when the post-spawn atomic save fails before or after replacement.
 Failed spawn never invokes shutdown, even though handoff intent is already durable.
-Windows handoff state is fixture-tested;
-actual NSIS/MSI installation, UAC, locking and durability remain native Windows gates.
+The Windows zip swap is tested against temporary install folders: a full swap,
+a rename failure injected mid-swap restored byte for byte, a failed relaunch
+restored, unsafe zip entries refused before any write, and startup cleanup of
+`.old` files. Replacing the real running launcher, antivirus locks and the
+pid wait before the single-instance guard remain native Windows gates (LX-26).
 These checks do not prove packaged Tauri IPC/layout/exit, production HTTPS,
 replacement of the actual launcher, application health or production restart. Production key custody, updater-compatible CLI signing, release
 publication, OS signing/notarization and release ordering remain separate gates.
@@ -121,25 +126,82 @@ response. A failure saving the restart state still shuts down the old process so
 the replacement can acquire the state lock. The error remains an error, durable
 ownership blocks duplicate Apply, and reopening requires reconciliation. Durable
 handoff intent alone never triggers shutdown: it is written before spawn, which
-can still fail. A Mac replacement receives a fixed restart
-argument and waits up to 30 seconds for the old state owner to exit. No arbitrary
-process is killed. On reopen, only the current executable's compiled version and
+can still fail. The replacement, Mac or Windows, receives`
+`--launcher-update-restart <old pid>`, waits up to 30 seconds for that process to
+exit, then registers the single-instance guard; opening the state lock also
+retries for 30 seconds. No arbitrary process is killed. On reopen, only the current executable's compiled version and
 native target can acknowledge the expected release. Mac acknowledgment also
 checks the replacement tree fingerprint. `installed` is persisted before
 best-effort backup cleanup, so a crash during garbage collection cannot undo a
 valid startup acknowledgment. This proves version startup, not app health.
 
-Windows uses the signed `.exe` or `.msi` asset with native-only installer flags.
-NSIS uses passive update/restart flags and the current executable's directory;
-MSI uses the system `msiexec` path and launch-after-install properties.
-`ShellExecuteExW` supports normal Windows elevation and detects rejected launch.
-Installer handoff remains pending until the new compiled launcher starts. An old
-version reopening cannot infer that the installer was cancelled or completed;
-it preserves the owner and blocks game/setup changes. Real installer cancellation,
-reboot, elevation and package upgrade identity must be exercised before release.
+### Windows: zip swap (D-LX3)
+
+On Windows the package is the release zip, `StargateWorlds-Launcher-windows-x64.zip`:
+one root `.exe` with `windows/` and `graphics/` beside it. There is no installer;
+an offer whose URL is not a `.zip` is refused. After the Minisign and signed
+version checks, Apply:
+
+1. Validates every zip entry before writing anything. It refuses `..`, absolute
+   and drive-letter paths, backslash separators, trailing dots or spaces, device
+   names, links, duplicate or case-aliased names, a file that is also a folder,
+   names ending in `.old`, 8.3 short names (`~` then a digit), `CONIN$` and
+   `CONOUT$`, more than one root `.exe`, and archives past the entry and
+   expanded-size bounds.
+2. Extracts into `<exe dir>\.update-<version>-<attempt>\`, created exclusively
+   with an owner marker. An existing stage is never adopted. Because the name
+   is per attempt, a stage a failed attempt could not delete (antivirus holding
+   a new `.exe`) never blocks a retry; Apply and every start remove any marked
+   stage that is not the in-flight attempt's.
+3. Checks every destination: absent or a plain file, under plain folders (no links
+   or junctions). A leftover `<name>.old` from an earlier update is deleted now, or
+   Apply stops with nothing changed.
+4. Saves the plan (each file, and whether it replaces one) before the first rename.
+5. For each file in turn, renames the installed copy to `<name>.old` and renames
+   the new copy in. Windows lets a running executable be renamed but not
+   overwritten. The executable moves last, so a launcher that starts from the
+   installed path with the new compiled version proves every other file moved.
+   The root `.exe` is installed under the running executable's name, whatever
+   the player called it.
+6. Starts the new executable with `--launcher-update-restart <old pid>` through
+   `CreateProcess`, then exits. Nothing is elevated, and a missing executable
+   fails synchronously, so no shell error dialog can stall the handoff.
+
+If any rename or the relaunch fails, Apply moves each new file off its name to
+`<name>.new-<attempt>` (a loaded file can be renamed but not deleted), renames
+each `.old` back over its name, deletes the moved-aside new files where it can,
+removes the folders the update created once empty, and removes the stage: the installed files are restored byte for byte and the
+status is **Failed**. A rollback step that cannot complete keeps reconciliation
+ownership. A process that dies mid-swap is rolled back the same way, from the
+saved plan, the next time the old launcher opens. Files in the install folder
+that the zip does not name are left alone.
+
+Known limits, both recovered by hand:
+
+- Between renaming `<name>.exe` to `<name>.exe.old` and renaming the new one in,
+  no launcher executable exists at its name. A crash or power loss in that
+  window leaves nothing to double-click, so nothing reopens to roll back. Rename
+  `<name>.exe.old` back to `<name>.exe`; the next start rolls the rest back from
+  the saved plan.
+- A new release that crashes at start cannot roll itself back: the old
+  executable is already `<name>.exe.old` and only the new version acknowledges.
+  Delete or rename the broken `<name>.exe`, then rename `<name>.exe.old` back to
+  `<name>.exe`.
+
+The restarted launcher waits up to 30 seconds for the old process id to exit,
+then registers the single-instance guard as a normal start does, so a later
+manual launch focuses its window. It then acknowledges startup as the Mac path
+does: its compiled version must equal the offered version and the installed
+executable must match the applied one. After `installed` is saved it deletes
+the `.old` files the plan names and the stage. A file it cannot delete yet (an
+antivirus scan, say) is retried on the next start and before the next update.
+An old version reopening after the handoff cannot acknowledge and keeps
+reconciliation ownership.
 
 `frontend/updater-apply-native-uat.mjs` drives the production Effect/view through
-an isolated native bundle/process fixture. It covers duplicate Apply suppression,
-real replacement, persisted reopen, game exclusion and a fixture-supplied compiled
-version acknowledgment. It does not replace packaged visual/IPC UAT or a real
-old-to-new signed launcher upgrade.
+an isolated native fixture: a Mac bundle exchange with a spawned fixture executable,
+or on Windows a zip swap in a temporary install folder with the relaunch recorded
+instead of spawned. It covers duplicate Apply suppression, real replacement,
+persisted reopen, game exclusion, a fixture-supplied compiled version
+acknowledgment and, on Windows, `.old` and stage cleanup. It does not replace
+packaged visual/IPC UAT or a real old-to-new signed launcher upgrade.

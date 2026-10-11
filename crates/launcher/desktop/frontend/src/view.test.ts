@@ -39,8 +39,9 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get('gear').hidden, true);
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
-    // The changes panel reads its list once, on the first snapshot (LX-07).
-    assert.deepEqual(calls, ['launcher_command', 'client_changes_command', 'fetch_patch_notes']);
+    // The debug-log panel asks once at mount whether an upload can run (LX-05);
+    // the changes (LX-07) and PhysX (LX-12) panels each read once, on the first snapshot.
+    assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });
@@ -102,12 +103,13 @@ test('disposing during pending IPC removes controls without claiming a saved res
   const ui = dom(); let calls=0;
   const app = mountLauncher(ui.document, async () => { calls++; return new Promise(() => {}); });
   await flush();
-  assert.equal(calls,1);
+  // Launcher inspect plus the debug-log panel's inspect (LX-05).
+  assert.equal(calls,2);
   await app.dispose();
   ui.click('settings');
   assert.equal(ui.get('gear').hidden,true);
   assert.equal(ui.get<HTMLInputElement>('telemetry').disabled,true);
-  assert.equal(calls,1);
+  assert.equal(calls,2);
 });
 
 test('a refresh asked for during an inspect resolves only after a fresh inspect, coalesced', {timeout:5000}, async () => {

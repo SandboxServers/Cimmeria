@@ -1,4 +1,5 @@
-//! Verified-copy adoption IPC. Destinations, releases and artifacts stay native.
+//! Adoption IPC: a verified copy on macOS, the imported folder in place elsewhere
+//! (D-LX12). Destinations, releases and artifacts stay native.
 //!
 //! Lock order: the adoption mutex, then the store. Retained engine workers take
 //! only the store, so nothing takes the two in the other order. A native preview
@@ -8,7 +9,7 @@ use cimmeria_launcher_engine::{
     adoption::{self, Choices},
     catalog::VerifiedRelease,
 };
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 use cimmeria_launcher_engine::{OperationKind, OperationState};
 use uuid::Uuid;
 mod contract;
@@ -19,8 +20,11 @@ pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
 #[cfg(all(test, target_os = "macos"))]
 use contract::{Completed, Imported, Phase, Reconciliation};
 use review::Review;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod fixture;
+#[cfg(all(test, not(target_os = "macos")))]
+mod in_place_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -29,11 +33,14 @@ mod play_tests;
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
 mod uat_bridge;
+#[cfg(all(test, not(target_os = "macos")))]
+mod uat_bridge_in_place;
 #[cfg(all(test, target_os = "macos"))]
 mod wine_tests;
 
 /// Created inside the folder the user picks. Confirmation requires a destination
 /// that does not exist yet, and a folder dialog can only return existing folders.
+#[cfg(any(target_os = "macos", test))]
 const COPY_FOLDER: &str = "Stargate Worlds";
 
 #[derive(Default)]
@@ -52,6 +59,8 @@ struct Session {
 struct ConfirmJob {
     worker: adoption::ConfirmationWorker,
     preview_handle: Uuid,
+    /// Admitted in-place moves are never cancelled part-way.
+    in_place: bool,
 }
 /// Signed fixture origin for host tests; production always uses the fixed catalog
 /// and the bundled helper.
@@ -65,7 +74,7 @@ pub(super) struct TestDispatch {
 }
 impl NativeHost {
     fn adoption_backend(&self) -> Backend {
-        #[cfg(test)]
+        #[cfg(all(test, target_os = "macos"))]
         if self.adoption_fixture.is_some() {
             return Backend::Available;
         }
@@ -82,13 +91,13 @@ impl NativeHost {
             }
         }
         #[cfg(not(target_os = "macos"))]
-        Backend::UnsupportedPlatform
+        Backend::InPlace
     }
     /// Checked before a folder dialog or the network is touched, and again when
     /// the preview is admitted.
     pub fn adoption_choice_allowed(&self) -> Result<(), AdoptionError> {
         let status = self.adoption_status()?;
-        if status.backend != Backend::Available {
+        if !matches!(status.backend, Backend::Available | Backend::InPlace) {
             return Err(AdoptionError::PlatformUnavailable);
         }
         if status.native.requires_reopen {
@@ -120,6 +129,7 @@ impl NativeHost {
     }
     /// `location` is the folder the user picked natively; the copy goes into a
     /// new folder inside it.
+    #[cfg(any(target_os = "macos", test))]
     pub fn begin_adoption_preview(
         &self,
         location: PathBuf,
@@ -133,6 +143,22 @@ impl NativeHost {
         if std::fs::symlink_metadata(&destination).is_ok() {
             return Err(AdoptionError::InvalidDirectory);
         }
+        self.admit_adoption_preview(release, |_| destination)
+    }
+    /// The imported game folder is the one adopted; there is nothing to choose.
+    #[cfg(not(target_os = "macos"))]
+    pub fn begin_adoption_in_place(
+        &self,
+        release: VerifiedRelease,
+    ) -> Result<AdoptionStatus, AdoptionError> {
+        self.adoption_choice_allowed()?;
+        self.admit_adoption_preview(release, |imported| imported.source.game_directory.clone())
+    }
+    fn admit_adoption_preview(
+        &self,
+        release: VerifiedRelease,
+        destination: impl FnOnce(&cimmeria_launcher_engine::migration::LegacyImport) -> PathBuf,
+    ) -> Result<AdoptionStatus, AdoptionError> {
         {
             let mut adoption = self.adoption.lock().map_err(|_| AdoptionError::Io)?;
             if adoption.preview.is_some()
@@ -149,8 +175,8 @@ impl NativeHost {
                     .map_err(|_| AdoptionError::CorruptState)?
                     .ok_or(AdoptionError::ImportRequired)?;
                 adoption::PreviewRequest {
+                    destination: destination(&imported),
                     import_digest: imported.confirmation,
-                    destination,
                     operation_revision: state.operations().snapshot().revision,
                     preferences_revision: state.preferences().revision,
                     release,
@@ -199,10 +225,7 @@ impl NativeHost {
             )?)
         }
         #[cfg(not(target_os = "macos"))]
-        {
-            let _ = (store, request);
-            Err(AdoptionError::PlatformUnavailable)
-        }
+        Ok(adoption::start_preview(store, request)?)
     }
     pub fn adoption_command(
         &self,
@@ -329,6 +352,7 @@ impl NativeHost {
         let Some(session) = adoption.session.take() else {
             return Err(AdoptionError::ReviewUnavailable);
         };
+        let in_place = session.preview.report().in_place();
         #[cfg(test)]
         let fault = self
             .adoption_fixture
@@ -353,6 +377,7 @@ impl NativeHost {
         adoption.confirm = Some(ConfirmJob {
             worker,
             preview_handle,
+            in_place,
         });
         adoption.last_error = None;
         Ok(())

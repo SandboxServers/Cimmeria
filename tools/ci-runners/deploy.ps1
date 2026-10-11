@@ -41,9 +41,9 @@ $ErrorActionPreference = 'Stop'
 # node1 runs 8 as an experiment (2026-10-11): five jobs x 16 compiles on 16 cores
 # spent ~19% of node1's CPU in the kernel; compare its job times with the others'.
 $targets = @{
-    node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g'; Cache = '12gb'; BuildkitMb = 50000 }
+    node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g'; Cache = '12gb'; BuildkitMb = 50000; Jobs = 8 }
     node1 = @{ Ssh = 'cimmeria-node1'; Dir = '/var/lib/gha-runners'; Mem = '16g'; Cache = '16gb'; BuildkitMb = 80000; Jobs = 8 }
-    node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g'; Cache = '24gb'; BuildkitMb = 80000 }
+    node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g'; Cache = '24gb'; BuildkitMb = 80000; Jobs = 8 }
 }
 foreach ($n in $Nodes) { if (-not $targets.ContainsKey($n)) { throw "unknown node '$n' (known: $($targets.Keys -join ', '))" } }
 if ($CacheHost -and -not $targets.ContainsKey($CacheHost)) { throw "unknown cache host '$CacheHost'" }

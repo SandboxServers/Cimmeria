@@ -130,6 +130,7 @@ fn interrupted(state: &mut DesktopState, intent: &InstallIntent) -> Plan {
         schema_version: 1,
         id: Uuid::new_v4(),
         installation: intent.clone(),
+        in_place: false,
     };
     atomic::write(&state.directory.root, &name(plan.id), &plan).unwrap();
     let rev = state.operations().snapshot().revision;

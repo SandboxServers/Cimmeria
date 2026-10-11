@@ -66,6 +66,7 @@ mod org_cell_to_base;
 mod plugin_msg;
 mod shutdown_flush;
 mod tutorial_content;
+mod world_entry_cause;
 
 pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
@@ -104,6 +105,7 @@ pub use shutdown_flush::{
     ShutdownAmmoSlot, ShutdownFlushRequest, ShutdownPlayerSave, SHUTDOWN_FLUSH_DEADLINE,
 };
 pub use tutorial_content::{RecordTutorialShown, TutorialRecordOutcome, TutorialRecorded};
+pub use world_entry_cause::WorldEntryCause;
 
 #[cfg(test)]
 mod tests;

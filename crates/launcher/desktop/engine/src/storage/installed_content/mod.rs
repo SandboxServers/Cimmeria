@@ -134,6 +134,21 @@ impl DesktopState {
             .then_some(record.intent.login_servers)
     }
 
+    /// Whether `intent` was adopted in place (D-LX12), so its owner root also
+    /// holds the player's own files. Uninstall then removes only what it manages.
+    pub(super) fn adopted_in_place(&self, intent: &InstallIntent) -> Result<bool, StorageError> {
+        let record: Record = read(&self.directory.root.join(NAME))?.ok_or(StorageError::Corrupt)?;
+        if record.intent != *intent {
+            return Err(StorageError::Corrupt);
+        }
+        match adoption_shape(&record)? {
+            None => Ok(false),
+            Some(provenance) => Ok(super::adoption::published_plan(self, intent, provenance)?
+                .report
+                .in_place()),
+        }
+    }
+
     /// Read-only admission view: the verified owner and its signed release, plus
     /// the provenance of an adopted copy. Older successful installs can be checked
     /// without materializing the installed-content index. Imported settings are

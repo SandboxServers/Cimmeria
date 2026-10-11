@@ -98,8 +98,8 @@ async fn an_npc_timer_is_sent_to_nobody() {
     assert_eq!(route, TimerRoute::NotPlayer);
     assert!(drain(&mut rx).is_empty(), "no witness may receive it");
     let skip = logs
-        .find_event(Level::DEBUG, "onTimerUpdate not sent", "not_player")
-        .expect("the skip is logged at DEBUG with reason=not_player");
+        .find_event(Level::TRACE, "onTimerUpdate not sent", "not_player")
+        .expect("the skip is logged at TRACE with reason=not_player");
     assert!(skip.has_field("entity_id", "3"), "{skip:?}");
 }
 

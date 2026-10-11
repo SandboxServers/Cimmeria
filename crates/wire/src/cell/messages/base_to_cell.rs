@@ -211,6 +211,10 @@ pub enum BaseToCellMsg {
         /// condition and the `show_tutorial` action read. Empty when the
         /// row could not be read.
         shown_tutorials: Vec<i32>,
+        /// Login or travel: whether this is the character's first world
+        /// entry of the session (TG-NET-15). Stamped on `session.start` as
+        /// `start_cause`.
+        entry_cause: super::WorldEntryCause,
     },
 
     /// The saved missions could not be read at world entry (TG-DB-12,

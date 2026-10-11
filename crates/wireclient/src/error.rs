@@ -115,6 +115,11 @@ pub enum Error {
     #[error("bundle decode: {0}")]
     Decode(#[from] crate::bundle::DecodeError),
 
+    /// The entity mirror rejected a message (a known method with bad bytes)
+    /// or a query found no entity, or more than one.
+    #[error("mirror: {0}")]
+    Mirror(#[from] crate::mirror::MirrorError),
+
     // ── World entry ─────────────────────────────────────────────────────────
     /// A world-entry step got no reply, or a reply without what it needs
     /// (`GameSession::enter_world`).
@@ -126,6 +131,16 @@ pub enum Error {
     /// (`base/character_create/fail_code.rs`).
     #[error("createCharacter refused, code {0}")]
     CharacterCreateFailed(i32),
+
+    // ── Scripts ─────────────────────────────────────────────────────────────
+    /// A `ScriptSession` wait ran out before its message arrived. `trail` is
+    /// the last 30 messages the script saw, one per line (D-WC9).
+    #[error("script: waited {waited:?} for {what}; last events:\n{trail}")]
+    ScriptTimeout {
+        what: String,
+        waited: std::time::Duration,
+        trail: String,
+    },
 
     // ── Replay / trace ──────────────────────────────────────────────────────
     /// Session-trace JSON could not be parsed.

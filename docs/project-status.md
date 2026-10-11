@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-05
+last_updated: 2026-10-11
 ---
 
 # Project Status
@@ -22,6 +22,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-10-05 update**: the headline and the Observability pipeline, Discord notifications and Metrics / telemetry rows follow the named-telemetry close-out (NT-50b, [ledger](analysis/named-telemetry/README.md)), which added one NT row each to §33 and §35 of the gap analysis and changed no existing row. Every logged ID is now paired with its name (7,039 unpaired ID fields to 0), and Discord shows every object as `Name (#id)`.
 >
 > **2026-10-05 update (Debug Area)**: the headline and the Character creation, World entry, NPC AI, Stargate travel, Ring transport and Admin / GM rows follow the Debug Area and starter-kit close-out (DA-05, [ledger](analysis/debug-area/README.md)), which added eleven NT rows across §5, §6, §16, §20, §37 and Admin / GM Tools and changed no existing row. The campaign is released; its rows wait on the [DA-06 live-client checks](analysis/debug-area/README.md#da-06-live-client-checks).
+>
+> **2026-10-11 update (lab)**: the lab spec vocabulary close-out (SV-16, [ledger](analysis/lab-spec-vocab/README.md)) adds the live research lab's UAT runner to [Development Tooling](#development-tooling) and changes no gap-analysis row: it is tooling, not a game system.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -143,6 +145,7 @@ Tools for working on the project rather than features of the server. They have n
 | Tool | Status | Notes |
 |------|--------|-------|
 | Token profiler (`tools/token-profile/`) | Working | Measures what AI-assisted work costs: ingests local Claude Code transcripts, reports tokens, list-price USD (a floor about 10% under Claude Code's own total), context pressure and attribution per PR and campaign, and reconciles against Claude Code's `cost-state` totals. Every merged PR gets one stats comment (406 backfilled on 2026-10-03), and local scheduled jobs post missed comments daily and write a weekly report. The OTel reconciliation waits for the first telemetry export. How-to: [guides/token-profiling.md](guides/token-profiling.md); findings: [retro cost study](analysis/token-usage/retro-cost-study.md) |
+| Live research lab UAT runner (`lab uat`, `lab calibrate`) | Working; live acceptance pending | Runs the TOML UAT specs against the real client with no agent in the loop. The lab spec vocabulary (released 2026-10-11) lets a step name its target by spawn tag, stand at a pose, set an absolute camera and wait on a server log line; `lab calibrate` finds a pose by hover alone and `lab uat -Heal` proposes the fix for a missed hover, both as a spec diff, never a commit. The calibrated first-session acceptance run (SV-15) is paused until the workstation is idle. How-to: [guides/automated-uat.md](guides/automated-uat.md); ledger: [analysis/lab-spec-vocab/](analysis/lab-spec-vocab/README.md) |
 
 ## Content Coverage
 

@@ -4,6 +4,10 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+#[cfg(test)]
+mod event_tests;
+pub(crate) mod install_event;
+pub mod patch_events;
 mod session;
 pub use session::{passthrough_environment, start, Session};
 #[cfg(test)]

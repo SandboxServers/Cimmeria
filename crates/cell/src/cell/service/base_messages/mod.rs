@@ -204,6 +204,7 @@ pub(super) async fn handle_base_message(
             body_set,
             looted_containers,
             shown_tutorials,
+            entry_cause,
         } => {
             init_grant_merge::merge_into_snapshot(
                 entity_id,
@@ -291,6 +292,7 @@ pub(super) async fn handle_base_message(
                 bandolier_items,
                 system_options,
                 access_level,
+                entry_cause,
                 tx,
                 space_mgr,
                 engine,

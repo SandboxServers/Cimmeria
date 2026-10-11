@@ -22,7 +22,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use cimmeria_observability::FirehoseSampler;
 use tokio::net::UdpSocket;
+
+use crate::firehose::{log_mercury_packet, MERCURY_PACKET_SAMPLE_EVERY};
+use crate::instrumentation::Direction;
 
 /// The outbound side of the Mercury transport.
 ///
@@ -49,12 +53,22 @@ pub trait Transport: Send + Sync {
 /// every handler for the send side.
 pub struct UdpTransport {
     socket: Arc<UdpSocket>,
+    /// Outbound `mercury.packet` sample. One sampler per direction so a
+    /// heavy direction (the server sends ~200x what it receives in an
+    /// NPC-dense zone) cannot starve the other of samples.
+    sent: FirehoseSampler,
+    /// Inbound `mercury.packet` sample.
+    received: FirehoseSampler,
 }
 
 impl UdpTransport {
     /// Wrap an already-bound shared UDP socket.
     pub fn new(socket: Arc<UdpSocket>) -> Self {
-        Self { socket }
+        Self {
+            socket,
+            sent: FirehoseSampler::new(MERCURY_PACKET_SAMPLE_EVERY),
+            received: FirehoseSampler::new(MERCURY_PACKET_SAMPLE_EVERY),
+        }
     }
 }
 
@@ -67,15 +81,15 @@ impl Transport for UdpTransport {
         // recording in Channel records `seq`/`flags` but Channel
         // isn't called in production — only in tests. Without this
         // helper at the transport layer, the entire `mercury.packet`
-        // log stream is empty in SigNoz.
-        tracing::info!(
-            target: "mercury.packet",
-            dir = "out",
-            transport = "udp",
-            len = bytes.len(),
-            peer = %addr,
-            ok = result.is_ok(),
-            "mercury_packet"
+        // log stream is empty in SigNoz. Since TG-MER-09 it is a firehose:
+        // every datagram on disk, a counted sample exported (see
+        // `crate::firehose`).
+        log_mercury_packet(
+            &self.sent,
+            Direction::Out,
+            bytes.len(),
+            addr,
+            result.as_ref().err(),
         );
         result
     }
@@ -109,14 +123,7 @@ impl BidirectionalTransport for UdpTransport {
         let result = self.socket.recv_from(buf).await;
         if let Ok((len, addr)) = &result {
             // See the send_to comment above — production hot path.
-            tracing::info!(
-                target: "mercury.packet",
-                dir = "in",
-                transport = "udp",
-                len = *len,
-                peer = %addr,
-                "mercury_packet"
-            );
+            log_mercury_packet(&self.received, Direction::In, *len, *addr, None);
         }
         result
     }

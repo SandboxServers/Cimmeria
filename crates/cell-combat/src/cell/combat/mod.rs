@@ -52,8 +52,8 @@ pub use health_threshold::{health_pct, health_pct_from, HealthPct};
 pub use faction_reaction::HOSTILE_FACTION;
 
 pub use state::{
-    is_dead_state, mark_npc_dead, BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
-    PLAYER_STATE_DEAD,
+    is_dead_state, mark_npc_dead, mark_npc_dead_with_kill, BSF_AUTO_CYCLING, BSF_DEAD,
+    BSF_IN_COMBAT, BSF_MOVEMENT_LOCK, PLAYER_STATE_DEAD,
 };
 pub use threat::{
     clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,

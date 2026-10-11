@@ -238,6 +238,8 @@ per-session is a record attribute instead:
 
 Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
+The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on server session rows, so one filter spans client, launcher and server rows.
+
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
 Black Market overlay's `[Cimmeria BM]` lines), `client.sequence.dropped` (a
@@ -327,6 +329,48 @@ events of two crates. `EnvFilter` matches by string prefix, so a bare
 crates' own rows would then go unnoticed; the base, cell and wire rows name
 their crates' modules for that reason.
 
+### The lab daemon (`cimmeria-lab`)
+
+A fifth service, outside the server: the lab daemon (`cimmeria-lab --http`)
+ships its own log as `service.name = cimmeria-lab` (TG-PIPE-17, owner
+decision D-TG2 of the [telemetry-gaps campaign](../analysis/telemetry-gaps/README.md)),
+so a watchdog relaunch, a lease expiry or an orphaned `SGW.exe` sits next to
+the server's rows for the same session. The exporter is
+`crates/lab/src/otlp/`, built on the same OpenTelemetry crates as the
+server's `otel.rs`, logs only.
+
+- **Off by default.** It runs only when `CIMMERIA_LAB_OTLP_ENDPOINT` is set
+  in `%LOCALAPPDATA%\cimmeria-lab\labd.env` (protocol `grpc`, or
+  `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf`). It deliberately ignores the
+  standard `OTEL_EXPORTER_OTLP_*` variables, which other tools set
+  user-wide. `labd.log` is written either way.
+- **Never blocks the daemon.** A batch processor on its own thread with a
+  bounded queue; an unreachable collector drops rows, and shutdown waits at
+  most 2 s.
+- **Filter:** `OTLP_FILTER`: `lab.*` targets and `cimmeria_lab::*` module
+  rows at INFO, dependencies at WARN, the exporter's own stack off
+  (`tower_http` stays at WARN, since `tower=off` would cover it by prefix).
+- **Rows are redacted.** Every string field and the message pass through
+  `otlp::Redactor` before the SDK stores them: a local path becomes the
+  instance it belongs to (`...\instances\p2\profile` is `p2`) or `<path>`
+  (a profile folder with a space, `C:\Users\Jane Doe`, is taken whole), the
+  Windows user name becomes `<user>`, `COMPUTERNAME` becomes `<host>`, and
+  the lab's bearer tokens become `<secret>`. The lease's free text
+  (`owner`, `purpose`, `prev_*`, a `lab.lease` `reason`) and
+  credential-named fields are not exported. An event name holding a
+  dependency's absolute source path is left off. Pinned by `otlp::tests`.
+- **Nothing from `OTEL_*`.** The resource is built empty, so
+  `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SERVICE_NAME` are ignored; headers
+  from `OTEL_EXPORTER_OTLP_HEADERS` / `..._LOGS_HEADERS`, which the SDK
+  merges in unconditionally, are stripped before sending (a gRPC
+  interceptor, a wrapping HTTP client). Pinned by
+  `otlp::tests::init_pipeline_redacts_and_sends_nothing_from_otel_env`.
+- **Resource:** `service.name = cimmeria-lab`, `service.version` = the
+  crate version, `cimmeria.lab.instance` (the hosted instance labels, or
+  `default`), `deployment.environment` and `cimmeria.deploy_env` (from
+  `CIMMERIA_DEPLOY_ENV`, default `dev`), `cimmeria.source = lab`. No
+  `host.name`: on a dev box it is often the owner's name.
+
 ### Stable target catalog
 
 Every event with a stable `target:` is a queryable surface in SigNoz. The catalog, one row per target with its level, where it is emitted and the question it answers, is in [observability-target-catalog.md](observability-target-catalog.md), together with the rule that a new target must also be named in `OTEL_FILTER`, the saved SigNoz views for reading a playtest, and the `npc_ai.decision_outcome` enum. It moved out of this ADR on 2026-10-03 because it had grown to most of the file.
@@ -402,6 +446,7 @@ space ids to world names by hand):
 | Metric | Labels | Notes |
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
+| `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (6) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC. Routes with **no** usable path only; a partial route counts in `npc_path_partial_total` |
 | `npc_path_partial_total` | `world` (~24), `state` (5) | NA02: a partial corridor that was still walked. Its `npc_ai.path_fail reason=partial` row has its own throttle window (`path_partial`), so it cannot hold back a real routing failure for the same NPC |
 | `npc_path_requests_total` | `world` (~24), `state` (5), `status` (7) | One per AI `find_path` (NA02), beside the `npc_ai.path` row — the path-status mix |
@@ -414,7 +459,7 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
-| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged |
+| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs. `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counts every GM off-mesh packet; its `movement.navmesh_gm_bypass` row is INFO and throttled per GM (TG-MOV-10) |
 
 Never entity ids, positions or mesh hashes as labels — those are
 per-entity and per-build correlators and belong on the log event.
@@ -455,14 +500,27 @@ trace index. Estimated volume with five active players: ~75 inbound
 packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
 relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
 NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
-The remaining per-packet TRACE rows are **not** sampled: `encrypt` /
-`decrypt` in `cimmeria_mercury` (one per outbound and per inbound
-datagram), ACK queueing, `EntityMove` and
+The remaining per-packet TRACE rows are **not** sampled: ACK queueing and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
-packet). They are a few fields each and arrive at about the rate of
-`mercury.packet`, which `cimmeria-network` already receives unsampled —
-roughly one `cimmeria-trace` row per datagram. If that proves too much,
-move them behind `cimmeria_wire::firehose` the same way.
+packet). The cell's per-packet `EntityMove` row was dropped (TG-MOV-11);
+the sampled `movement.player` row covers the position stream. They are a few fields each and arrive at about the rate of
+datagrams — roughly one `cimmeria-trace` row per datagram. If that proves
+too much, move them behind `cimmeria_wire::firehose` the same way.
+
+TG-MER-09 (owner decision D-TG7, reversing NA25's "every datagram at INFO")
+puts the transport's per-datagram rows on the same framework, as the fourth
+entry in `FIREHOSES`. `UdpTransport` writes every datagram to
+`wire.firehose.mercury_packet` at TRACE, which `protocol.log` keeps in full
+and the OTLP filters turn off. `mercury.packet` keeps one INFO row per 53
+datagrams in each direction (a `FirehoseSampler` per direction, so the
+send-heavy side cannot starve the receive side of samples), with
+`sampled_1_in` and `suppressed`, and every failed send on its own unsampled
+`mercury_packet_failed` row. The `mercury_datagrams_total{dir}` counter
+gives the exact rate. The emitter and its targets live in
+`cimmeria_mercury::firehose`, because `cimmeria-wire` depends on the
+transport crate and not the reverse; `cimmeria_wire::firehose` re-exports
+them. For the same reason `FirehoseSampler` lives in
+`cimmeria-observability`, at the bottom of the crate graph.
 
 ### Timestamps — server-receive vs. client-generate
 

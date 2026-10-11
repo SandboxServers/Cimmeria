@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -93,12 +94,58 @@ pub(crate) async fn run_connect_loop(
                 // when a previous send_to targeted a closed port (ICMP port
                 // unreachable).  This is per-destination, NOT a socket failure.
                 if e.raw_os_error() == Some(10054) {
-                    tracing::debug!("UDP recv: WSAECONNRESET (10054) -- remote closed, continuing");
+                    log_connreset();
                     continue;
                 }
                 tracing::error!("Base service UDP recv error (fatal): {e}");
                 break;
             }
+        }
+    }
+}
+
+/// How long one `WSAECONNRESET` row covers. Resets inside the window are
+/// counted and carried into the next row's `suppressed`.
+const CONNRESET_WINDOW: Duration = Duration::from_secs(10);
+
+/// The `WSAECONNRESET` throttle: when the open window started, and how
+/// many resets it has swallowed since its row.
+#[derive(Debug)]
+struct ConnResetWindow {
+    opened: Option<Instant>,
+    suppressed: u64,
+}
+
+/// The process-wide throttle behind [`log_connreset`].
+static CONNRESET: Mutex<ConnResetWindow> = Mutex::new(ConnResetWindow {
+    opened: None,
+    suppressed: 0,
+});
+
+/// Count one `WSAECONNRESET` and log it at most once per
+/// [`CONNRESET_WINDOW`], with the number of resets swallowed since the
+/// last row. Also bumps `udp_connreset_total` for every reset.
+fn log_connreset() {
+    cimmeria_observability::counter!("udp_connreset_total");
+    let mut window = CONNRESET.lock().unwrap_or_else(PoisonError::into_inner);
+    log_connreset_at(&mut window, Instant::now());
+}
+
+/// The throttle decision and the row, at `now`. The first reset writes
+/// at once; the rest of its window only count.
+fn log_connreset_at(window: &mut ConnResetWindow, now: Instant) {
+    match window.opened {
+        Some(opened) if now.saturating_duration_since(opened) < CONNRESET_WINDOW => {
+            window.suppressed += 1;
+        }
+        _ => {
+            let suppressed = std::mem::take(&mut window.suppressed);
+            window.opened = Some(now);
+            tracing::debug!(
+                reason = "icmp_port_unreachable",
+                suppressed,
+                "UDP recv: WSAECONNRESET (10054) -- remote closed, continuing"
+            );
         }
     }
 }
@@ -278,6 +325,35 @@ pub(super) fn read_word_length_payload<'a>(body: &'a [u8], offset: &mut usize) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::LogCapture;
+
+    #[test]
+    fn connreset_burst_writes_one_row() {
+        let capture = LogCapture::install();
+        // The `suppressed` field of every `WSAECONNRESET` row written so far.
+        let rows = || -> Vec<String> {
+            capture
+                .all()
+                .iter()
+                .filter(|c| c.message_contains("WSAECONNRESET"))
+                .map(|c| c.fields.get("suppressed").cloned().unwrap_or_default())
+                .collect()
+        };
+        let mut window = ConnResetWindow {
+            opened: None,
+            suppressed: 0,
+        };
+        let start = Instant::now();
+        for _ in 0..50 {
+            log_connreset_at(&mut window, start);
+        }
+        assert_eq!(rows(), vec!["0".to_string()]);
+
+        // The first reset after the window writes the row that carries the
+        // 49 swallowed inside the burst.
+        log_connreset_at(&mut window, start + CONNRESET_WINDOW);
+        assert_eq!(rows(), vec!["0".to_string(), "49".to_string()]);
+    }
 
     #[test]
     fn scanner_constant_length_0x02() {

@@ -46,14 +46,20 @@ concurrency:
   # Windows validation from completing. GitHub retains the newest pending run.
   cancel-in-progress: false
 
+# Windows jobs run on the self-hosted `cimmeria-windows` pool (node3,
+# tools/ci-runners/README.md "Windows pool"). Fork and Dependabot PRs, and every run
+# while the repository variable CI_WINDOWS_RUNNER is `hosted`, use windows-latest.
 jobs:
   native-engine:
+    # The check names stay `native-engine (windows-latest)` / `(macos-latest)`
+    # (tools/build-lane/ship.py waits on them), so matrix.os keeps the hosted label
+    # and runs-on maps the Windows leg to the pool.
     name: native-engine (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os != 'windows-latest' && matrix.os || ((github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows') }}
     timeout-minutes: 30
     defaults:
       run:
@@ -118,7 +124,7 @@ jobs:
   # a development build, as every PR build is.
   release-dry-run:
     name: desktop release build dry run (Windows)
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     timeout-minutes: 60
     defaults:
       run:
@@ -130,7 +136,9 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
         with:
           targets: i686-pc-windows-msvc
+      # Self-hosted runners use the shared sccache instead.
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-release-desktop-dry-run
           save-if: ${{ github.ref == 'refs/heads/main' }}

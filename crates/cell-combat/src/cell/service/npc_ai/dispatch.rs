@@ -405,10 +405,34 @@ pub async fn npc_ai_retry_sweep(
 /// How often an Idle NPC nobody can see writes its tick row (NA24, UAT-1 E).
 pub(in crate::cell::service) const IDLE_UNWITNESSED_TICK_SAMPLE: Duration = Duration::from_secs(60);
 
+/// How often an unwitnessed NPC writes each of its leg rows (patrol and wander
+/// arrivals and waypoints, ok path requests), per row kind (TG-NPC-09).
+pub(in crate::cell::service) const UNWITNESSED_LEG_SAMPLE: Duration = Duration::from_secs(60);
+
+/// Gate for one leg row of an NPC. `Some(None)`: a witnessed NPC writes every
+/// row, with no `suppressed`. `Some(Some(n))`: an unwitnessed NPC writes one row
+/// per [`UNWITNESSED_LEG_SAMPLE`] for this `kind`, and `n` rows were skipped since
+/// the last one. `None`: skip this row. Only the rows that describe where an NPC
+/// walks go through here; failures are never sampled.
+pub(in crate::cell::service) fn admit_leg_row(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    kind: &'static str,
+) -> Option<Option<u32>> {
+    if space_mgr.has_witness(npc_id) {
+        return Some(None);
+    }
+    space_mgr
+        .npc_detectors
+        .admit_sample(npc_id, kind, Instant::now(), UNWITNESSED_LEG_SAMPLE)
+        .map(Some)
+}
+
 /// Whether this tick's row is written, and how many of this NPC's rows were
-/// skipped since the last one. Every tick of a non-Idle or witnessed NPC is
-/// written (`suppressed = 0`); an NPC that was Idle, stayed Idle and is in no
-/// player's AoI writes one row per [`IDLE_UNWITNESSED_TICK_SAMPLE`].
+/// skipped since the last one. Every tick of a witnessed NPC, or of one whose
+/// state changed, is written (`suppressed = 0`); an Idle, Patrol or Wander NPC
+/// that stayed in its state and is in no player's AoI writes one row per
+/// [`IDLE_UNWITNESSED_TICK_SAMPLE`] (TG-NPC-01).
 ///
 /// Since NA13 every hostile Idle NPC is ticked every 2 s, so an empty server
 /// wrote ~14 `npc_ai.tick` rows a second describing guards standing still in
@@ -421,11 +445,15 @@ fn admit_ai_tick_row(
     now: Instant,
 ) -> Option<u32> {
     use cimmeria_entity::cell_entity::AiState;
-    let idle = state_before == AiState::Idle
+    let quiet_state = matches!(
+        state_before,
+        AiState::Idle | AiState::Patrol | AiState::Wander
+    );
+    let unchanged = quiet_state
         && space_mgr
             .get_entity(npc_id)
-            .is_some_and(|e| e.ai_state() == AiState::Idle);
-    if !idle || !space_mgr.get_witnesses_of(npc_id).is_empty() {
+            .is_some_and(|e| e.ai_state() == state_before);
+    if !unchanged || !space_mgr.get_witnesses_of(npc_id).is_empty() {
         return Some(0);
     }
     space_mgr.npc_detectors.admit_sample(
@@ -440,8 +468,9 @@ fn admit_ai_tick_row(
 /// silent paths: where the NPC is, where it is going, which way it faces (and
 /// the byte clients are sent), and what it is fighting or following. An empty
 /// `decision_outcome` means the handler returned without declaring one --
-/// itself worth seeing. Idle, unwitnessed NPCs are sampled
-/// ([`admit_ai_tick_row`]); `suppressed` counts the rows skipped.
+/// itself worth seeing. Unchanged Idle, Patrol and Wander NPCs that nobody
+/// witnesses are sampled ([`admit_ai_tick_row`]); `suppressed` counts the rows
+/// skipped.
 fn log_ai_tick(
     space_mgr: &mut SpaceManager,
     npc_id: u32,

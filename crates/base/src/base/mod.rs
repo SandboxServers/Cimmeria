@@ -20,6 +20,9 @@ pub(crate) mod login;
 mod service;
 
 #[cfg(test)]
+mod mercury_crypto_tests;
+
+#[cfg(test)]
 mod smoke_tests;
 
 pub use service::BaseService;

@@ -29,7 +29,7 @@ pub(super) async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> O
     .await
     .expect("worker finishes within fixture deadline")
 }
-async fn requested(server: &MockServer) {
+pub(super) async fn requested(server: &MockServer) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if !server.received_requests().await.unwrap().is_empty() {
@@ -290,7 +290,7 @@ async fn extraction_checkpoint_cancellation_persists_cancelled_and_retains_parti
         id,
         cancel: cancel.clone(),
     }));
-    let result = install_owned(
+    let (result, _) = install_owned(
         &intent,
         &root.path().join("state"),
         &release,

@@ -135,6 +135,7 @@ pub const LEASED: &[&str] = &[
     // Flows.
     "lab_login",
     "lab_logout",
+    "lab_disconnect",
     "lab_play_character",
     "lab_create_character",
     "lab_delete_character",
@@ -165,6 +166,8 @@ mod tests {
         assert_eq!(gate("client_some_future_tool"), Gate::Lease);
         assert_eq!(gate("lab_client_status"), Gate::Open);
         assert_eq!(gate("client_lua_eval"), Gate::Lease);
+        // Clicks Back at character select: it drives the client.
+        assert_eq!(gate("lab_disconnect"), Gate::Lease);
     }
 
     /// Regression guard (review 2026-10-04): tools with hidden shared

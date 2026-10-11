@@ -57,6 +57,10 @@ use super::super::ConnectedClientState;
 /// a relaunched client on the same address:port.
 pub(crate) const REASON_RELAUNCH_TAKEOVER: &str = "relaunch_takeover";
 
+/// Idle time from which a displaced session counts as dead: a client that
+/// crashed and relaunched goes silent well before this, a live one never does.
+const STALE_IDLE_MS: u64 = 15_000;
+
 /// One session to evict, snapshotted under the `connected` lock.
 struct Displaced {
     addr: SocketAddr,
@@ -64,6 +68,10 @@ struct Displaced {
     enc_version: EncryptionVersion,
     identity: cimmeria_entity::cell_entity::PlayerIdentity,
     session_secs: u64,
+    /// Milliseconds since the old session last received a packet.
+    idle_ms: u64,
+    /// Whether the old session had reached world entry.
+    in_world: bool,
 }
 
 /// Evict every session of `login`'s account, wherever it is, ahead of the
@@ -94,6 +102,8 @@ pub(super) async fn evict_prior_sessions(
                 enc_version: c.enc_version,
                 identity: session_identity::session_identity(c),
                 session_secs: c.connected_at.elapsed().as_secs(),
+                idle_ms: c.last_recv.lock().unwrap().elapsed().as_millis() as u64,
+                in_world: c.player_entity_id.is_some(),
             })
             .collect()
     };
@@ -105,28 +115,68 @@ pub(super) async fn evict_prior_sessions(
             // client's.
             super::relaunch::REASON_ADDRESS_RECLAIMED
         } else if old.addr == addr {
-            tracing::warn!(
-                %addr,
-                account_id = login.account_id,
-                account_name = %login.account_name,
-                player_id = old.identity.player_id,
-                player_name = old.identity.player_name,
-                old_session_secs = old.session_secs,
-                reason = REASON_RELAUNCH_TAKEOVER,
-                "Client relaunched on its live session's address -- evicting the old session \
-                 and accepting the new login"
-            );
+            // INFO for a stale session (a crash-and-relaunch), WARN for one
+            // still receiving packets (a real concurrent login).
+            if old.idle_ms >= STALE_IDLE_MS {
+                tracing::info!(
+                    %addr,
+                    account_id = login.account_id,
+                    account_name = %login.account_name,
+                    player_id = old.identity.player_id,
+                    player_name = old.identity.player_name,
+                    old_session_secs = old.session_secs,
+                    old_idle_ms = old.idle_ms,
+                    old_in_world = old.in_world,
+                    reason = REASON_RELAUNCH_TAKEOVER,
+                    "Client relaunched on its live session's address -- evicting the old session \
+                     and accepting the new login"
+                );
+            } else {
+                tracing::warn!(
+                    %addr,
+                    account_id = login.account_id,
+                    account_name = %login.account_name,
+                    player_id = old.identity.player_id,
+                    player_name = old.identity.player_name,
+                    old_session_secs = old.session_secs,
+                    old_idle_ms = old.idle_ms,
+                    old_in_world = old.in_world,
+                    reason = REASON_RELAUNCH_TAKEOVER,
+                    "Client relaunched on its live session's address -- evicting the old session \
+                     and accepting the new login"
+                );
+            }
             REASON_RELAUNCH_TAKEOVER
         } else {
-            tracing::warn!(
-                account_id = login.account_id,
-                account_name = %login.account_name,
-                player_id = old.identity.player_id,
-                player_name = old.identity.player_name,
-                old_addr = %old.addr,
-                %addr,
-                "Duplicate login -- evicting old session"
-            );
+            if old.idle_ms >= STALE_IDLE_MS {
+                tracing::info!(
+                    account_id = login.account_id,
+                    account_name = %login.account_name,
+                    player_id = old.identity.player_id,
+                    player_name = old.identity.player_name,
+                    old_addr = %old.addr,
+                    %addr,
+                    old_session_secs = old.session_secs,
+                    old_idle_ms = old.idle_ms,
+                    old_in_world = old.in_world,
+                    reason = "duplicate_login",
+                    "Duplicate login -- evicting old session"
+                );
+            } else {
+                tracing::warn!(
+                    account_id = login.account_id,
+                    account_name = %login.account_name,
+                    player_id = old.identity.player_id,
+                    player_name = old.identity.player_name,
+                    old_addr = %old.addr,
+                    %addr,
+                    old_session_secs = old.session_secs,
+                    old_idle_ms = old.idle_ms,
+                    old_in_world = old.in_world,
+                    reason = "duplicate_login",
+                    "Duplicate login -- evicting old session"
+                );
+            }
             send_logged_off(transport, connected, &old).await?;
             "duplicate_login"
         };
@@ -169,6 +219,13 @@ async fn send_logged_off(
         }
     };
     let pkt = build_logged_off(&old.key, seq, &acks, old.enc_version);
-    let _ = transport.send_to(&pkt, old.addr).await;
+    if let Err(e) = transport.send_to(&pkt, old.addr).await {
+        tracing::debug!(
+            old_addr = %old.addr,
+            reason = "send_failed",
+            error = %e,
+            "LOGGED_OFF to the displaced session failed"
+        );
+    }
     Ok(())
 }

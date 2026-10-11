@@ -84,17 +84,26 @@ fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
 /// Stable hash over (rel_path, contents) pairs in canonical sort order.
 /// Independent of zip-time so dedup ledger checks survive re-zipping.
 pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogError> {
-    let files = collect_log_inputs(install_dir)?;
+    let files: Vec<_> = collect_log_inputs(install_dir)?
+        .into_iter()
+        .map(|p| (p, u64::MAX))
+        .collect();
+    digest_files(install_dir, &files)
+}
+
+/// The digest over `(path, bytes read up to its length)` pairs, in the
+/// order given.
+fn digest_files(install_dir: &Path, files: &[(PathBuf, u64)]) -> Result<Option<String>, LogError> {
     if files.is_empty() {
         return Ok(None);
     }
     let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut hasher = Sha256::new();
-    for path in &files {
+    for (path, len) in files {
         let rel = rel_in_archive(path, &binaries);
         hasher.update(rel.as_bytes());
         hasher.update([0u8]);
-        let data = std::fs::read(path)?;
+        let data = read_up_to(path, *len)?;
         hasher.update(&data);
         hasher.update([0u8]);
     }
@@ -112,6 +121,73 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
 pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
     let files = collect_log_inputs(install_dir)?;
     zip_log_files(install_dir, &files)
+}
+
+/// The log files one size-capped upload carries, chosen from file metadata
+/// before any log is read. Each file is read only up to the length it had
+/// when chosen, so a log the game is still writing cannot push the upload
+/// past the cap, and the digest and the zip see the same bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogSelection {
+    /// In path order, for a stable digest.
+    files: Vec<(PathBuf, u64)>,
+    left_out: usize,
+}
+
+impl LogSelection {
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+
+    /// How many log files were left out to stay under the cap.
+    pub fn left_out(&self) -> usize {
+        self.left_out
+    }
+
+    /// [`compute_content_digest`] over the chosen files: the same value when
+    /// nothing was left out and no file grew since it was chosen.
+    pub fn digest(&self, install_dir: &Path) -> Result<Option<String>, LogError> {
+        digest_files(install_dir, &self.files)
+    }
+
+    /// [`build_log_zip`] over the chosen files.
+    pub fn zip(&self, install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
+        zip_capped_files(install_dir, &self.files)
+    }
+}
+
+/// Choose the newest log files (by modification time) whose sizes add up to
+/// at most `max_bytes`, so trimming drops the oldest logs. A file that does
+/// not fit is left out and older, smaller ones still get their turn; a file
+/// with no modification time counts as the oldest.
+pub fn select_log_inputs(install_dir: &Path, max_bytes: u64) -> Result<LogSelection, LogError> {
+    let mut candidates = Vec::new();
+    for path in collect_log_inputs(install_dir)? {
+        let meta = std::fs::metadata(&path)?;
+        candidates.push((meta.modified().ok(), meta.len(), path));
+    }
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
+    let (mut files, mut total, mut left_out) = (Vec::new(), 0u64, 0);
+    for (_, len, path) in candidates {
+        match total.checked_add(len).filter(|t| *t <= max_bytes) {
+            Some(t) => {
+                total = t;
+                files.push((path, len));
+            }
+            None => left_out += 1,
+        }
+    }
+    files.sort();
+    Ok(LogSelection { files, left_out })
+}
+
+fn read_up_to(path: &Path, len: u64) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut data = Vec::new();
+    std::fs::File::open(path)?
+        .take(len)
+        .read_to_end(&mut data)?;
+    Ok(data)
 }
 
 /// [`build_log_zip`] for one telemetry session: only the log files written
@@ -136,6 +212,14 @@ pub fn build_session_log_zip(
 }
 
 fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>>, LogError> {
+    let files: Vec<_> = files.iter().map(|p| (p.clone(), u64::MAX)).collect();
+    zip_capped_files(install_dir, &files)
+}
+
+fn zip_capped_files(
+    install_dir: &Path,
+    files: &[(PathBuf, u64)],
+) -> Result<Option<Vec<u8>>, LogError> {
     if files.is_empty() {
         return Ok(None);
     }
@@ -146,7 +230,7 @@ fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>
         let mut zw = zip::ZipWriter::new(cursor);
         let options: FileOptions<()> =
             FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for path in files {
+        for (path, len) in files {
             let rel = rel_in_archive(path, &binaries);
             // Each entry carries its file's own modification time, so the
             // server's newest-first replay keeps the latest logs.
@@ -159,7 +243,7 @@ fn zip_log_files(install_dir: &Path, files: &[PathBuf]) -> Result<Option<Vec<u8>
                 None => options,
             };
             zw.start_file(rel, options)?;
-            let data = std::fs::read(path)?;
+            let data = read_up_to(path, *len)?;
             zw.write_all(&data)?;
         }
         zw.finish()?;
@@ -378,6 +462,57 @@ mod tests {
             (old_stamp.datepart(), old_stamp.timepart())
                 < (new_stamp.datepart(), new_stamp.timepart())
         );
+    }
+
+    /// Over the cap, the oldest logs are left out and the newest kept; a log
+    /// that grows after it was chosen is read only to its chosen length.
+    #[test]
+    fn capped_selection_keeps_the_newest_logs_under_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("Binaries");
+        std::fs::create_dir_all(bin.join("sessions")).unwrap();
+        let now = std::time::SystemTime::now();
+        for (name, age_days) in [("sessions/old.log", 2), ("sessions/mid.log", 1)] {
+            std::fs::write(bin.join(name), [b'x'; 40]).unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(bin.join(name))
+                .unwrap()
+                .set_modified(now - std::time::Duration::from_secs(age_days * 86_400))
+                .unwrap();
+        }
+        std::fs::write(bin.join("SGWDebugLog.log"), [b'n'; 40]).unwrap();
+
+        let all = select_log_inputs(dir.path(), 120).unwrap();
+        assert_eq!(all.left_out(), 0);
+        assert_eq!(
+            all.digest(dir.path()).unwrap(),
+            compute_content_digest(dir.path()).unwrap()
+        );
+
+        let capped = select_log_inputs(dir.path(), 100).unwrap();
+        assert_eq!(capped.left_out(), 1);
+        std::fs::write(bin.join("SGWDebugLog.log"), [b'n'; 4000]).unwrap();
+        let zip = capped.zip(dir.path()).unwrap().unwrap();
+        let mut zr = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+        let mut entries: Vec<(String, u64)> = (0..zr.len())
+            .map(|i| {
+                let f = zr.by_index(i).unwrap();
+                (f.name().to_string(), f.size())
+            })
+            .collect();
+        entries.sort();
+        assert_eq!(
+            entries,
+            [
+                ("Binaries/SGWDebugLog.log".to_string(), 40),
+                ("Binaries/sessions/mid.log".to_string(), 40)
+            ]
+        );
+        // Nothing fits: an empty selection that still counts what it dropped.
+        let none = select_log_inputs(dir.path(), 10).unwrap();
+        assert!(none.is_empty());
+        assert_eq!(none.left_out(), 3);
     }
 
     #[test]
