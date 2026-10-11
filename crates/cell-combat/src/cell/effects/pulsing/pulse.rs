@@ -62,7 +62,15 @@ pub(super) async fn pulse_one(
     // `entity_health_below` on its way past the band, breaking the "exactly
     // one of the two per hit" contract that the single-target path already
     // honours.
-    dot_kill_credit(target_id, inst.invoker_id, events, tx, space_mgr).await;
+    dot_kill_credit(
+        target_id,
+        inst.invoker_id,
+        inst.cast_id,
+        events,
+        tx,
+        space_mgr,
+    )
+    .await;
     events.pending_health_below(tx, space_mgr).await;
     space_mgr.exit_effect_scope(outer_cast);
     // The pulse's debug lines (AB-N1), now its scope is closed.
@@ -87,6 +95,7 @@ pub(super) async fn pulse_one(
 async fn dot_kill_credit(
     target_id: u32,
     invoker_id: u32,
+    cast_id: Option<i32>,
     events: &dyn ContentEvents,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -141,6 +150,31 @@ async fn dot_kill_credit(
     let Some((credited, player_id)) =
         crate::cell::abilities::credited_player(space_mgr, invoker_id)
     else {
+        // An NPC-only kill credits nobody by design (abilities decision 32)
+        // and stays silent. What is left is a pet whose owner has left, or
+        // an invoker that has vanished: the kill lands but credits nobody
+        // (mirrors `kill_credit.rs`), and that is the fault this WARN names.
+        if crate::cell::abilities::npc_only_kill(space_mgr, invoker_id) {
+            return;
+        }
+        let who = space_mgr.player_identity(invoker_id);
+        tracing::warn!(
+            target: "abilities",
+            event = "kill_credit_no_player",
+            source = "dot",
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            entity_id = invoker_id,
+            entity_name = space_mgr.entity_label(invoker_id),
+            target_id,
+            target_name = space_mgr.entity_label(target_id),
+            npc_tag = tag.as_str(),
+            cast_id, // nt:id-only per-cast sequence number, no name exists
+            reason = "no_credited_player",
+            "dot_kill_credit: killer credits no player — skipping EntityDeath event"
+        );
         return;
     };
     events

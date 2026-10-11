@@ -203,7 +203,7 @@ async fn the_idle_scan_names_its_rejects() {
     let rejected = rows(&logs, "npc_ai.aggro_scan", "candidate_rejected");
     assert_eq!(rejected.len(), 1, "{:#?}", logs.all());
     assert!(rejected[0].has_field("reason", "same_faction"));
-    assert!(rejected[0].has_field("player_id", "101"));
+    assert!(rejected[0].has_field("witness_id", "101"));
     assert!(
         rejected[0].has_field("aggro_radius", "18.0"),
         "{:?}",
@@ -316,6 +316,7 @@ async fn a_chaser_that_never_gets_a_path_is_stuck() {
     assert_eq!(found.len(), 1, "{:#?}", logs.all());
     assert!(found[0].has_field("decision_outcome", "no_path"));
     assert!(found[0].has_field("nav_path_len", "0"));
+    assert!(found[0].has_field("target_player_id", "101"));
 }
 
 /// Chasing with a stale path and no route: the NPC never closes (the
@@ -337,6 +338,7 @@ async fn a_chase_that_never_closes_is_stuck() {
     assert_eq!(found.len(), 1, "{:#?}", logs.all());
     assert_eq!(found[0].level, Level::WARN);
     assert!(found[0].has_field("target_id", "101"));
+    assert!(found[0].has_field("target_player_id", "101"));
 }
 
 /// A blocked line of sight is logged with its ray, sampled per pair.

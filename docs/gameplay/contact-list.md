@@ -37,7 +37,7 @@ The Rust implementation splits across the two services. The six inbound cell met
 | Member sync to client | DONE | `onContactListAddMembers` (CM 87), `onContactListRemoveMembers` (CM 88) |
 | Contact events | DONE | `onContactListEvent` (CM 89) — all four event types fire (see below) |
 | Login status broadcast | DONE | `handlers::presence_fanout::fanout_login_status`, called from `dispatch/session.rs` on disconnect and `world_entry_appearance/client_ready.rs` on login |
-| Event broadcast | DONE | `handlers::presence_fanout::fanout_contact_event` |
+| Event broadcast | DONE | `handlers::presence_fanout::fanout_contact_event`. A watcher who holds the subject on an Ignore list (flags 301) is dropped before any send (D-TG10), even if the subject is also on their Friends list. The `contacts.presence_fanout` row counts them in `ignoring_watchers` and `skipped_ignoring`; `online_watchers` and `sent` count only eligible watchers. The login reverse sync and add-members announce skip a player's own Ignore list too |
 | Persistence | DONE | `sgw_contact_list` (headers) + `sgw_contact_list_member` (members by name) |
 | Login push | DONE | `push_contact_lists_on_login` sends all lists + members after the world-entry burst bundle |
 | System lists | DONE | `ensure_system_lists` guarantees every character has Friends / Ignore on first login |

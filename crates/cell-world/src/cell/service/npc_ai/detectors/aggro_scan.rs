@@ -100,10 +100,10 @@ pub fn report_scan(
     else {
         return;
     };
-    for &(player_id, reason) in rejects {
+    for &(witness_id, reason) in rejects {
         let Some(suppressed) = space_mgr.npc_detectors.pair_log.admit(
             npc_id,
-            player_id,
+            witness_id,
             reason.label(),
             now,
             REJECT_SAMPLE_INTERVAL,
@@ -116,7 +116,12 @@ pub fn report_scan(
         else {
             return;
         };
-        let target_pos = space_mgr.get_entity(player_id).map(|p| p.position);
+        let target_pos = space_mgr.get_entity(witness_id).map(|p| p.position);
+        // The rejected candidate is a witness entity (an NPC one for
+        // `not_player`), so its entity id is `witness_id`; `player_id` is the
+        // sgw character id of a player witness and is left out for an NPC
+        // (TG-NPC-07: this row logged the entity id as `player_id`).
+        let who = space_mgr.player_identity(witness_id);
         tracing::debug!(
             target: "npc_ai.aggro_scan",
             event = "candidate_rejected",
@@ -128,8 +133,12 @@ pub fn report_scan(
             world = %ident.world,
             space_id = ident.space_id,
             reason = reason.label(),
-            player_id,
-            player_name = space_mgr.entity_label(player_id),
+            witness_id,
+            witness_name = space_mgr.entity_label(witness_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             npc_to_target = target_pos.map(|p| p.distance_to(&npc_pos)),
             dy = target_pos.map(|p| p.y - npc_pos.y),
             aggro_radius = radius,
@@ -178,17 +187,20 @@ pub fn report_scan(
 /// Log the NA14 assist fan-out's considered-but-rejected neighbours:
 /// `event=assist_rejected`, one row per `(assister, victim, reason)` per
 /// [`REJECT_SAMPLE_INTERVAL`]. `npc_id` is the would-be assister,
-/// `victim_id` the neighbour that just engaged, `player_id` the target.
+/// `victim_id` the neighbour that just engaged, `target_entity_id` the entity
+/// it is fighting. A player target also carries the `target_` identity
+/// quartet (TG-NPC-07: the entity id used to be logged as `player_id`).
 pub fn report_assist_rejects(
     space_mgr: &mut SpaceManager,
     victim_id: u32,
-    player_id: u32,
+    target_entity_id: u32,
     rejects: &[(u32, ScanReject)],
     now: Instant,
 ) {
     let Some(victim_pos) = space_mgr.get_entity(victim_id).map(|e| e.position) else {
         return;
     };
+    let target = space_mgr.player_identity(target_entity_id);
     for &(assister_id, reason) in rejects {
         let Some(suppressed) = space_mgr.npc_detectors.pair_log.admit(
             assister_id,
@@ -218,8 +230,12 @@ pub fn report_assist_rejects(
             reason = reason.label(),
             victim_id,
             victim_name = space_mgr.entity_label(victim_id),
-            player_id,
-            player_name = space_mgr.entity_label(player_id),
+            target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id),
+            target_account_id = target.account_id,
+            target_account_name = target.account_name,
+            target_player_id = target.player_id,
+            target_player_name = target.player_name,
             ai_state = e.ai_state().label(),
             npc_to_victim = e.position.distance_to(&victim_pos),
             dy = victim_pos.y - e.position.y,
@@ -304,10 +320,82 @@ mod tests {
 
     use cimmeria_names::{NameBook, Table};
 
-    use super::{report_scan, SpaceManager};
+    use super::{report_assist_rejects, report_scan, ScanReject, SpaceManager};
     use crate::test_support::LogCapture;
 
     const NPC: u32 = 910;
+    /// A player entity whose sgw `player_id` is deliberately not its entity
+    /// id, so a row that logs the entity id as `player_id` is caught.
+    const PLAYER_ENTITY: u32 = 911;
+    const SGW_PLAYER_ID: i32 = 4242;
+    const ASSISTER: u32 = 912;
+
+    fn add_player(mgr: &mut SpaceManager) {
+        mgr.create_entity(PLAYER_ENTITY, "Agnos", [5.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let p = mgr.get_entity_mut(PLAYER_ENTITY).unwrap();
+        p.is_player = true;
+        p.account_id = Some(6);
+        p.player_id = Some(SGW_PLAYER_ID);
+        p.character_name = Some("Teal'c".into());
+        p.stamp_log_names(Some("Teal'c"), Some("sgc_login"));
+    }
+
+    /// TG-NPC-07 revert proof: log the witness's entity id as `player_id`
+    /// again and `player_id` reads 911, not 4242, and `witness_id` is gone.
+    #[test]
+    fn candidate_rejected_logs_witness_entity_and_sgw_player_id() {
+        let mut mgr = agnos_with_npc();
+        add_player(&mut mgr);
+        let logs = LogCapture::install();
+        report_scan(
+            &mut mgr,
+            NPC,
+            1,
+            &[(PLAYER_ENTITY, ScanReject::SameFaction)],
+            false,
+            Instant::now(),
+        );
+        let all = logs.all();
+        let row = all
+            .iter()
+            .find(|c| c.target == "npc_ai.aggro_scan" && c.has_field("event", "candidate_rejected"))
+            .expect("the candidate_rejected row");
+        assert!(row.has_field("witness_id", "911"), "{row:?}");
+        assert!(row.has_field("player_id", "4242"), "{row:?}");
+        assert!(row.has_field("player_name", "Teal'c"), "{row:?}");
+        assert!(row.has_field("account_id", "6"), "{row:?}");
+        assert!(row.has_field("account_name", "sgc_login"), "{row:?}");
+    }
+
+    /// TG-NPC-07 revert proof: log the fight target's entity id as
+    /// `player_id` again and `target_player_id` (and `target_entity_id`)
+    /// disappear from the row.
+    #[test]
+    fn assist_rejected_logs_target_entity_and_sgw_player_id() {
+        let mut mgr = agnos_with_npc();
+        add_player(&mut mgr);
+        mgr.spawn_npc(ASSISTER, "Agnos", [40.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let logs = LogCapture::install();
+        report_assist_rejects(
+            &mut mgr,
+            NPC,
+            PLAYER_ENTITY,
+            &[(ASSISTER, ScanReject::OutOfRadius)],
+            Instant::now(),
+        );
+        let all = logs.all();
+        let row = all
+            .iter()
+            .find(|c| c.target == "npc_ai.aggro_scan" && c.has_field("event", "assist_rejected"))
+            .expect("the assist_rejected row");
+        assert!(row.has_field("target_entity_id", "911"), "{row:?}");
+        assert!(row.has_field("target_player_id", "4242"), "{row:?}");
+        assert!(row.has_field("target_player_name", "Teal'c"), "{row:?}");
+        assert!(row.has_field("target_account_id", "6"), "{row:?}");
+        assert!(!row.fields.contains_key("player_id"), "{row:?}");
+    }
 
     fn agnos_with_npc() -> SpaceManager {
         let mut book = NameBook::empty();

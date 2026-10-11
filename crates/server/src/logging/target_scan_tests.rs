@@ -152,17 +152,33 @@ pub(super) fn is_test_path(rel: &Path) -> bool {
     })
 }
 
+/// Cuts `src` at the first `#[cfg(test)]` that opens an inline module body.
+/// A `#[cfg(test)] mod tests;` declaration does not cut: the file it names is
+/// a separate test file, and the production code after it is still scanned.
 pub(super) fn strip_test_module(src: &str) -> &str {
     let mut from = 0;
     while let Some(i) = src[from..].find("#[cfg(test)]") {
         let at = from + i;
         let rest = src[at + "#[cfg(test)]".len()..].trim_start();
-        if rest.starts_with("mod ") || rest.starts_with("pub(crate) mod ") {
+        if opens_inline_mod(rest) {
             return &src[..at];
         }
         from = at + 1;
     }
     src
+}
+
+/// True when `item` (the text after `#[cfg(test)]`) is `mod name {`, not
+/// `mod name;`: whichever of `{` or `;` comes first decides.
+fn opens_inline_mod(item: &str) -> bool {
+    let Some(body) = item
+        .strip_prefix("mod ")
+        .or_else(|| item.strip_prefix("pub(crate) mod "))
+    else {
+        return false;
+    };
+    body.find(['{', ';'])
+        .is_some_and(|i| body[i..].starts_with('{'))
 }
 
 pub(super) fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -451,6 +467,25 @@ fn scan_parses_macro_and_event_forms() {
             ("c".to_string(), Level::WARN),
             ("d".to_string(), Level::TRACE),
         ]
+    );
+}
+
+/// A `mod tests;` declaration under `#[cfg(test)]` keeps the code after it in
+/// the scan; only an inline `#[cfg(test)] mod name {` body cuts the file.
+#[test]
+fn strip_test_module_keeps_code_after_a_test_mod_declaration() {
+    let src = r#"
+fn a() {}
+#[cfg(test)]
+mod tests;
+fn b() {}
+#[cfg(test)]
+mod inline {
+}
+"#;
+    assert_eq!(
+        strip_test_module(src),
+        "\nfn a() {}\n#[cfg(test)]\nmod tests;\nfn b() {}\n"
     );
 }
 

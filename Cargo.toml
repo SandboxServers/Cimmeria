@@ -219,6 +219,9 @@ proptest = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
+# `log::LevelFilter`, the type sqlx's `ConnectOptions::log_slow_statements`
+# takes (cimmeria-services, TG-DB-06). Already in the tree through sqlx.
+log = "0.4"
 
 # Error handling
 thiserror = "2"

@@ -76,26 +76,57 @@ pub fn mark_npc_dead_with_kill(
             cimmeria_cell_world::cell::space_manager::EntityNames::of(entity).entity_name;
         let template_name =
             cimmeria_cell_world::cell::effects::content_names::template_name(entity.template_id);
+        let space_id = entity.space_id.0;
         // `tracing` takes a constant level, so the two levels are two calls.
         if player_side || entity.extensions.contains::<PetState>() {
             tracing::info!(
+                event = "respawn_scheduled",
                 entity_id = entity.entity_id.0,
                 entity_name,
                 template_id = entity.template_id,
                 template_name,
                 respawn_secs = secs,
+                world,
+                space_id,
                 "NPC death: respawn scheduled",
             );
         } else {
             tracing::debug!(
+                event = "respawn_scheduled",
                 entity_id = entity.entity_id.0,
                 entity_name,
                 template_id = entity.template_id,
                 template_name,
                 respawn_secs = secs,
+                world,
+                space_id,
                 "NPC death: respawn scheduled",
             );
         }
+    } else {
+        // TG-NPC-04: a corpse that will not come back says why. `content_spawn`
+        // is a content-placed NPC with no spawn row (`spawn_id` is None).
+        let reason = if entity.spawn_id.is_none() {
+            "content_spawn"
+        } else {
+            "no_respawn_secs"
+        };
+        let entity_name =
+            cimmeria_cell_world::cell::space_manager::EntityNames::of(entity).entity_name;
+        let template_name =
+            cimmeria_cell_world::cell::effects::content_names::template_name(entity.template_id);
+        tracing::info!(
+            target: "npc_ai.respawn",
+            event = "respawn_not_scheduled",
+            reason,
+            entity_id = entity.entity_id.0,
+            entity_name,
+            template_id = entity.template_id,
+            template_name,
+            world,
+            space_id = entity.space_id.0,
+            "NPC death: respawn not scheduled",
+        );
     }
     entity.last_movement_type = None;
     // The Dead transition above already stopped the corpse; this covers a
@@ -235,5 +266,55 @@ mod tests {
         e.unset_state_flag(BSF_DEAD);
         assert!(!e.has_state_flag(BSF_DEAD));
         assert!(e.has_state_flag(BSF_TEST_UNUSED_BIT_12));
+    }
+
+    #[test]
+    fn death_without_respawn_secs_logs_reason() {
+        use crate::test_support::LogCapture;
+        // A content-placed NPC (no spawn row) and a spawned NPC with no timer
+        // each give a not-scheduled INFO row with its own `reason`.
+        let capture = LogCapture::install();
+        let mut content = entity();
+        mark_npc_dead(&mut content, "NA26");
+        let row = capture
+            .find_event(
+                tracing::Level::INFO,
+                "respawn not scheduled",
+                "content_spawn",
+            )
+            .expect("content-placed death without respawn_secs must log INFO");
+        assert_eq!(row.target, "npc_ai.respawn");
+        assert!(row.has_field("event", "respawn_not_scheduled"));
+        assert!(row.has_field("world", "NA26"));
+        assert!(row.has_field("space_id", "0"));
+        assert!(row.has_field("entity_id", "1"));
+
+        let mut spawned = entity();
+        spawned.spawn_id = Some(7);
+        mark_npc_dead(&mut spawned, "NA26");
+        let row = capture
+            .find_event(
+                tracing::Level::INFO,
+                "respawn not scheduled",
+                "no_respawn_secs",
+            )
+            .expect("spawned death without respawn_secs must log INFO");
+        assert!(row.has_field("event", "respawn_not_scheduled"));
+    }
+
+    #[test]
+    fn respawn_scheduled_row_carries_world() {
+        use crate::test_support::LogCapture;
+        let capture = LogCapture::install();
+        let mut e = entity();
+        e.respawn_secs = Some(30);
+        mark_npc_dead_with_kill(&mut e, "NA26", true);
+        let row = capture
+            .find_message(tracing::Level::INFO, "respawn scheduled")
+            .expect("player-side kill with respawn_secs must log INFO");
+        assert!(row.has_field("event", "respawn_scheduled"));
+        assert!(row.has_field("world", "NA26"));
+        assert!(row.has_field("space_id", "0"));
+        assert!(row.has_field("respawn_secs", "30"));
     }
 }

@@ -257,26 +257,73 @@ async fn run_one_deadline(
         return true;
     }
 
-    let effects: Vec<Effect> = if let Some(t) = space_mgr.ring_transporters.get_mut(region_id) {
-        if deadline.is_hide() {
-            t.hide_timer_expired()
-        } else if deadline.is_warmup() {
-            match destination_for_warmup.as_ref() {
+    // One borrow of the source transporter applies the transition and reads
+    // the state on either side of it. `Err` names the arm that did not run,
+    // so the unapplied log says why rather than just that nothing ran.
+    let transition = match space_mgr.ring_transporters.get_mut(region_id) {
+        None => Err("no_transporter"),
+        Some(t) => {
+            let state_before = t.state;
+            // Passengers live in different collections per deadline. The
+            // source's hide and warmup read `send_players`; the destination's
+            // remote_warmup and cooldown read `players_loaded`, which is
+            // where those passengers sit once the source has handed them over.
+            let passengers = if deadline.is_remote_warmup() || deadline.is_cooldown() {
+                t.players_loaded.len()
+            } else {
+                t.send_players.len()
+            };
+            let remote_region_id = t.remote_region_id;
+            let effects: Option<Vec<Effect>> = if deadline.is_hide() {
+                Some(t.hide_timer_expired())
+            } else if deadline.is_warmup() {
                 // The pad row verbatim — validated above, never substituted.
-                Some(dst) => t.warmup_timer_expired([dst.x, dst.y, dst.z], &dst.world_name),
-                // Unreachable: the `is_none()` guard above returned already.
-                None => return false,
+                // `None` (unreachable: the `is_none()` guard above returned)
+                // is reported as `no_destination` below.
+                destination_for_warmup
+                    .as_ref()
+                    .map(|dst| t.warmup_timer_expired([dst.x, dst.y, dst.z], &dst.world_name))
+            } else if deadline.is_remote_warmup() {
+                Some(t.remote_warmup_timer_expired(now))
+            } else if deadline.is_cooldown() {
+                Some(t.cooldown_timer_expired())
+            } else {
+                None
+            };
+            match effects {
+                Some(effects) => Ok((effects, state_before, t.state, passengers, remote_region_id)),
+                None if deadline.is_warmup() => Err("no_destination"),
+                None => Err("no_handler"),
             }
-        } else if deadline.is_remote_warmup() {
-            t.remote_warmup_timer_expired(now)
-        } else if deadline.is_cooldown() {
-            t.cooldown_timer_expired()
-        } else {
+        }
+    };
+    let (effects, state_before, state_after, passengers, remote_region_id) = match transition {
+        Ok(applied) => applied,
+        Err(cause) => {
+            tracing::debug!(
+                region_id,
+                region_name = space_mgr.ring_transporters.region_name(region_id),
+                deadline = deadline_label(deadline),
+                reason = "deadline_unapplied",
+                cause,
+                "ring tick: deadline elapsed but no transition ran — the region has no \
+                 transporter or no handler for this deadline; the entry is skipped"
+            );
             return false;
         }
-    } else {
-        return false;
     };
+    tracing::debug!(
+        event = "ring.transition",
+        region_id,
+        region_name = space_mgr.ring_transporters.region_name(region_id),
+        destination_region_id = remote_region_id,
+        destination_region_name = remote_region_id.and_then(|d| space_mgr.ring_transporters.region_name(d)),
+        deadline = deadline_label(deadline),
+        state_before = ?state_before,
+        state_after = ?state_after,
+        passengers,
+        "ring transition applied"
+    );
 
     // For warmup we have to update the destination's expected-passenger set
     // BEFORE dispatching the TeleportPlayer effects — same-world teleports
@@ -292,6 +339,23 @@ async fn run_one_deadline(
 
     dispatch_effects(effects, tx, space_mgr, engine).await;
     true
+}
+
+/// Log label for a deadline kind: `hide|warmup|remote_warmup|cooldown|stall`.
+fn deadline_label(deadline: super::super::transporter::RawDeadline) -> &'static str {
+    if deadline.is_hide() {
+        "hide"
+    } else if deadline.is_warmup() {
+        "warmup"
+    } else if deadline.is_remote_warmup() {
+        "remote_warmup"
+    } else if deadline.is_cooldown() {
+        "cooldown"
+    } else {
+        // Only `is_stall` reaches here, and the stall abort returns before
+        // either log site calls this, so the label is never emitted.
+        "stall"
+    }
 }
 
 /// After the source ring's warmup expires, push the destination ring through

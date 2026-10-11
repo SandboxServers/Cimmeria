@@ -1371,6 +1371,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-entity",
  "cimmeria-names",
+ "cimmeria-test-support",
  "cimmeria-workspace-hack",
  "serde",
  "serde_json",
@@ -1393,6 +1394,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "chrono",
+ "cimmeria-observability",
  "cimmeria-workspace-hack",
  "notify",
  "reqwest 0.13.4",
@@ -1550,6 +1552,7 @@ dependencies = [
  "socket2",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1712,6 +1715,7 @@ dependencies = [
  "cimmeria-wire",
  "cimmeria-wire-log",
  "cimmeria-workspace-hack",
+ "log",
  "serde_json",
  "sqlx",
  "thiserror 2.0.21",

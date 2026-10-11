@@ -12,6 +12,7 @@ on:
       - 'crates/workspace-hack/**'
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
+      - '.github/workflows/launcher-release.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
@@ -30,6 +31,7 @@ on:
       - 'crates/workspace-hack/**'
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
+      - '.github/workflows/launcher-release.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
@@ -120,8 +122,9 @@ jobs:
   # time. This runs the same tools/launcher-release/build-desktop.sh stages,
   # in release profile, minus publishing: the i686 launch worker and game
   # DLLs, staging them as bundled resources, the 64-bit launcher pinned to
-  # them, the artifact checks and the zip. No manifest key and no tag: it is
-  # a development build, as every PR build is.
+  # them, the artifact checks, the zip, and the zip's signature and feed with a
+  # throwaway key. No manifest key, no tag and no updater key: it is a
+  # development build, as every PR build is.
   release-dry-run:
     name: desktop release build dry run (Windows)
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
@@ -157,11 +160,23 @@ jobs:
       - name: verify the artifacts
         run: tools/launcher-release/build-desktop.sh verify
       - name: package
-        run: tools/launcher-release/build-desktop.sh package dry-run
+        run: tools/launcher-release/build-desktop.sh package
+      # The release's sign and feed steps with a throwaway Minisign key made in
+      # the job: sign the zip with the `version:` trusted comment, write
+      # latest.json, then run the launcher engine's own feed, signature and
+      # zip-swap checks on them (engine/examples/release_feed.rs). A format the
+      # launcher would refuse fails here, not at release time.
+      - name: sign and check the updater feed with a throwaway key
+        run: |
+          set -euo pipefail
+          VERSION="$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)"
+          tools/launcher-release/build-desktop.sh feed-dry-run "${VERSION}"
       - name: Retain the package for inspection
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: desktop-launcher-windows-dry-run
-          path: artifacts/stargate-worlds-launcher-desktop-windows-dry-run.zip*
+          path: |
+            artifacts/StargateWorlds-Launcher-windows-x64.zip*
+            artifacts/latest.json
           retention-days: 7
 

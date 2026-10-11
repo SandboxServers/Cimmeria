@@ -18,7 +18,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::base::deferred_aoi::DeferredAoiMsg;
 use crate::cell::messages::NpcAoIData;
 use crate::mercury::{compose_create_entity_base_body, compose_create_entity_cascade_body};
-use crate::test_support::{test_default_connected_client_state, TestTransport};
+use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
 
 const WITNESS: u32 = 200;
 const NPC_COUNT: u32 = 24;
@@ -172,4 +172,54 @@ async fn flush_reaches_the_client_whole_for_every_cascade_size() {
         );
         assert_eq!(messages_of(&bundles), expected_messages(pad), "pad {pad}");
     }
+}
+
+/// Each flushed bundle names its source on the `AoI bundle: flushed` row: the
+/// phase-1 bundle is `aoi_flush_create_base`, the phase-2 cascade is
+/// `aoi_flush_cascade`. Reverting the labels to `witness_bundle` fails it.
+#[tokio::test]
+async fn deferred_flush_bundle_has_its_send_kind() {
+    let addr: SocketAddr = "127.0.0.1:54602".parse().unwrap();
+    let typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let mut state = test_default_connected_client_state();
+    for i in 0..2 {
+        state.deferred_aoi_msgs.push(DeferredAoiMsg::EnteredAoI {
+            entity_id: entity_id(i),
+            class_id: CLASS_ID,
+            position: [i as f32 * 3.0, 0.0, 0.0],
+            direction: [0.0; 3],
+            level: 1,
+            npc_data: Some(Box::new(npc(i, 0))),
+            player_data: None,
+        });
+    }
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(WITNESS, addr)])));
+
+    let capture = LogCapture::install();
+    super::deferred_flush::flush_deferred_aoi(
+        WITNESS,
+        addr,
+        "on_client_ready",
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|r| r.message_contains("AoI bundle: flushed"))
+        .collect();
+    assert_eq!(rows.len(), 2, "one row per flushed bundle: {rows:#?}");
+    assert!(
+        rows[0].has_field("send_kind", "aoi_flush_create_base"),
+        "{rows:#?}"
+    );
+    assert!(
+        rows[1].has_field("send_kind", "aoi_flush_cascade"),
+        "{rows:#?}"
+    );
 }

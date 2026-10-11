@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::names;
 use sqlx::PgPool;
@@ -17,8 +18,10 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 
+use super::super::session_identity;
 use super::super::world_entry::{handle_cancel_movie, handle_map_loaded};
 use super::super::ConnectedClientState;
+use super::cell_send::send_to_cell;
 
 /// Dispatch a cell-method message in the `0x80..=0xBF` range. Returns
 /// [`ControlFlow::Break`] to signal the encrypted dispatcher to `continue`
@@ -68,14 +71,17 @@ pub(super) async fn dispatch_cell_method(
     // The character name rides the lock this read already takes (interned,
     // so a hash hit): the lines below must not lock `connected` again just
     // to name the player (Rule 6, hot-path rule).
-    let (player_eid, player_label) = {
+    let (player_eid, player_label, who) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).map_or((None, None), |c| {
-            (
-                c.player_entity_id,
-                cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
-            )
-        })
+        clients
+            .get(&addr)
+            .map_or((None, None, PlayerIdentity::UNKNOWN), |c| {
+                (
+                    c.player_entity_id,
+                    cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
+                    session_identity::session_identity(c),
+                )
+            })
     };
     let Some(player_eid) = player_eid else {
         tracing::trace!(
@@ -156,27 +162,39 @@ pub(super) async fn dispatch_cell_method(
             }
 
             if let Some(ref tx) = cell_tx {
-                let _ = tx
-                    .send(BaseToCellMsg::CellMethodCall {
+                send_to_cell(
+                    tx,
+                    BaseToCellMsg::CellMethodCall {
                         entity_id: player_eid,
                         method_index,
                         args,
                         packet_seq,
-                    })
-                    .await;
+                    },
+                    "cell_method_call",
+                    addr,
+                    who,
+                    Some(method_index),
+                )
+                .await;
             }
         }
     } else {
         let method_index = (id - 0x80) as u16;
         if let Some(ref tx) = cell_tx {
-            let _ = tx
-                .send(BaseToCellMsg::CellMethodCall {
+            send_to_cell(
+                tx,
+                BaseToCellMsg::CellMethodCall {
                     entity_id: player_eid,
                     method_index,
                     args: method_payload.to_vec(),
                     packet_seq,
-                })
-                .await;
+                },
+                "cell_method_call",
+                addr,
+                who,
+                Some(method_index),
+            )
+            .await;
         }
     }
 

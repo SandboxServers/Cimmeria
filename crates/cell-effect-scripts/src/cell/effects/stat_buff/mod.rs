@@ -155,6 +155,7 @@ fn entry_monikers(ctx: &EffectContext) -> Vec<i64> {
             None => tracing::warn!(
                 target: "abilities",
                 event = "effect_moniker_unknown",
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 account_id = ctx.space_mgr.caster_identity(ctx.source_id).account_id,
                 account_name = ctx.space_mgr.caster_identity(ctx.source_id).account_name,
                 player_id = ctx.space_mgr.caster_identity(ctx.source_id).player_id,
@@ -197,6 +198,7 @@ fn apply_entry(ctx: &mut EffectContext, stacking: TimedStacking, script: &'stati
         tracing::warn!(
             target: "abilities",
             event = "stat_buff_skipped",
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             reason,
             script,
             account_id = who.account_id,

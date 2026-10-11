@@ -108,26 +108,56 @@ pub(super) async fn broadcast_to_witnesses(
 
     // Serialize onPlayerCommunication args once
     let args = serialize_on_player_communication(speaker_name, speaker_flags, channel, text);
+    let id = entity.identity();
 
     tracing::debug!(
         target: CHAT_LOG_TARGET,
+        event = "chat.spatial_broadcast",
         sender_id,
-        sender_name = entity.identity().player_name,
+        sender_name = id.player_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        account_id = id.account_id,
+        account_name = id.account_name,
         channel,
         witness_count = witnesses.len(),
+        ignored = ignored_by.len(),
         speaker = speaker_name,
         "Broadcasting chat to witnesses",
     );
 
-    // Send to each witness
+    // Send to each witness. A closed base channel drops the line silently
+    // otherwise, so each failed send is a WARN naming the witness.
     for witness_id in witnesses {
-        let _ = tx
+        let sent = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id: witness_id,
                 method_index: ON_PLAYER_COMMUNICATION,
                 args: args.clone(),
             })
             .await;
+        if sent.is_err() {
+            let witness = space_mgr.player_identity(witness_id);
+            tracing::warn!(
+                target: CHAT_LOG_TARGET,
+                event = "chat.spatial_send_failed",
+                reason = "base_channel_closed",
+                entity_id = sender_id,
+                entity_name = id.player_name,
+                player_id = id.player_id,
+                player_name = id.player_name,
+                account_id = id.account_id,
+                account_name = id.account_name,
+                target_entity_id = witness_id,
+                target_entity_name = witness.player_name,
+                target_player_id = witness.player_id,
+                target_player_name = witness.player_name,
+                target_account_id = witness.account_id,
+                target_account_name = witness.account_name,
+                channel,
+                "spatial chat send to a witness failed"
+            );
+        }
     }
 
     // Echo to the sender themselves -- but NEVER for `say`. The original
@@ -153,12 +183,27 @@ pub(super) async fn broadcast_to_witnesses(
     // Info tab (client-native echo + server echo). See
     // `docs/reverse-engineering/findings/chat-speaker-echo.md`.
     if channel != CHAN_SAY {
-        let _ = tx
+        let sent = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id: sender_id,
                 method_index: ON_PLAYER_COMMUNICATION,
                 args,
             })
             .await;
+        if sent.is_err() {
+            tracing::warn!(
+                target: CHAT_LOG_TARGET,
+                event = "chat.spatial_send_failed",
+                reason = "base_channel_closed",
+                entity_id = sender_id,
+                entity_name = id.player_name,
+                player_id = id.player_id,
+                player_name = id.player_name,
+                account_id = id.account_id,
+                account_name = id.account_name,
+                channel,
+                "spatial chat echo to the speaker failed"
+            );
+        }
     }
 }

@@ -25,6 +25,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::{Instant, SystemTime};
 
 use axum::extract::{ConnectInfo, Request};
+use axum::http::HeaderMap;
 use axum::Json;
 use flate2::bufread::GzDecoder;
 
@@ -32,7 +33,7 @@ use super::dto::{ChunkResponse, IngestError, TelemetryEvent};
 use super::entity_labels::{self, name_chunk};
 use super::field_caps::cap_event;
 use super::refusal_log::Truncation;
-use super::replay::replay_events;
+use super::replay::replay_events_from_client;
 use super::session_budget::{
     admit_budgeted, EVENTS_PER_WINDOW, PRIORITY_EVENTS_PER_WINDOW, WINDOW_SECS,
 };
@@ -84,6 +85,7 @@ async fn chunk_flow(
 ) -> Result<ChunkResponse, IngestError> {
     let (parts, body) = request.into_parts();
     let Admitted { claims, slot } = admit(state, policy, Route::Chunk, &parts.headers, who, now)?;
+    let client_pid = client_pid_header(&parts.headers);
     let limits = state.limits.clone();
 
     let deadline = tokio::time::Instant::now() + limits.body_timeout;
@@ -122,7 +124,7 @@ async fn chunk_flow(
         entity_labels::link(),
     )
     .await;
-    let counts = replay_events(&claims, events, &labels, &admitted_rows);
+    let counts = replay_events_from_client(&claims, events, &labels, &admitted_rows, client_pid);
     let (accepted, parsed, suppressed) = (counts.accepted, counts.parsed, counts.suppressed);
 
     if let Some(t) = &truncation {
@@ -171,6 +173,23 @@ async fn chunk_flow(
         truncated: truncation.is_some(),
         bad_rows,
     })
+}
+
+/// The header the DLL sends its process id in with each chunk (TG-PIPE-02).
+/// Older DLLs do not send it, so its absence is normal.
+pub(super) const CLIENT_PID_HEADER: &str = "x-cimmeria-client-pid";
+
+/// The uploading process's id from [`CLIENT_PID_HEADER`]. Absent, or not a
+/// `u32`, reads as `None`: a bad header must not refuse the chunk (the
+/// uploader would re-send it forever), and it never becomes pid 0.
+pub(super) fn client_pid_header(headers: &HeaderMap) -> Option<u32> {
+    headers
+        .get(CLIENT_PID_HEADER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// A chunk's rows, and where it was cut if it passed a budget.

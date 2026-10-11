@@ -8,6 +8,7 @@
 //! - [`respawn_recreate`]: the respawned NPC is re-created on every
 //!   witness (`LeftAoI` + AoI-enter introduction) so it stands up.
 //! - [`respawn_names`]: NT-25, the respawn row pairs ids with names.
+//! - [`respawn_warns`]: TG-NPC-12, dropped sends and no-position NPCs log.
 //! - [`harset_respawn`]: live-DB guards on the Harset hub spawn rows
 //!   (Harset packet H13 / defect H-B7) — seed row through to promotion.
 
@@ -17,4 +18,5 @@ mod respawn_lifecycle;
 mod respawn_names;
 mod respawn_recreate;
 mod respawn_target_clear;
+mod respawn_warns;
 mod respawn_witness_loot;

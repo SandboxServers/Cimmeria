@@ -72,6 +72,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cooked-item-additions-shape.md](cooked-item-additions-shape.md) — real shipped COOKED_ITEM shape (not alphabetical); new ids via ITEM_ADDITIONS; AmmoType_Icons = EAmmoType labels.
 - [client-gm-slash-xml-and-dhd-address-resolution.md](client-gm-slash-xml-and-dhd-address-resolution.md) — /gm* need InternalSlashCommands.xml; property 7 = command mask; updateStargateAddress resolves async (open DHD shows "Unknown").
 - [ability-telemetry-coverage-gate.md](ability-telemetry-coverage-gate.md) — AB-C7: script set + four scanned code tables + client declaration; AB-C6 timing tables are process-global.
+- [praxis-wire-script-traps.md](praxis-wire-script-traps.md) — Praxis pistol is a chain-1005 grant; ability arrays hash-ordered; trail drowns in 0x10; movie/arrival race.
 - [entity-tint-packed-colours.md](entity-tint-packed-colours.md) — onEntityTint args are packed 0xRRGGBB__ colours; seed bigints = signed i32, send low 32 bits; opt-in send_tint.
 
 ## Lab supervisor
@@ -87,6 +88,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [uat-run-dir-sibling-json-trap](uat-run-dir-sibling-json-trap.md) — `RunDir::rows` parses every json beside the row JSON (skip `.snapshot.json`); attest re-grade must re-apply post-grade rules.
 - [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
+- [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -98,6 +100,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-preferences-schema-change-fanout](launcher-preferences-schema-change-fanout.md) — desktop Preferences change: strict TS decode breaks ~10 fixtures; migrate in serde try_from; adoption Plan digest goes through `digest_form`.
 - [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
 - [desktop-repair-update-terminal-hooks](desktop-repair-update-terminal-hooks.md) — Repair/Update `finish_failure` runs after every commit (dropped handoff); run-end hooks must check the op was open.
+- [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`.
 
 ## Injected client DLLs
 

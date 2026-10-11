@@ -225,6 +225,7 @@ per-session is a record attribute instead:
 | `cimmeria.session_kind` | `lab` (a Live Research Lab session) or `player`, from the signed `kind` claim |
 | `lab` | `true` for a lab session |
 | `ts_ms`, `seq` | The uploader's clock and sequence number |
+| `client_pid` | The uploading process's id, from the `X-Cimmeria-Client-Pid` header (TG-PIPE-04). Absent when the header is absent or not a `u32`; never 0 |
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
 | `class_id` + `class_name`, `method_index` + `method_name`, `msg_id` + `msg_name` | Lifted from the DLL's `fields` bag (`type_id` becomes `class_id`) and named from the NT-30 wire tables: `method_index` is a flat ClientMethod index, looked up in the row's entity type when it has one; `msg_id` is read from the server's interface on `client.net.out` and `client.ability.sent*`, the client's otherwise |
@@ -238,7 +239,9 @@ per-session is a record attribute instead:
 
 Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
-The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on server session rows, so one filter spans client, launcher and server rows.
+The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on `session.end` and `Client entities cleaned up` (base), and carries it to the cell on `InitPlayerState` (stored as `CellEntity.session_kind`) for `session.start` and every `playtest.friction` row, so one filter spans client, launcher and server rows. It is absent when Phase 3 did not resolve the account.
+
+`session.end` also carries the session's Mercury channel health (TG-MER-07), snapshotted from `Channel::health()` before the session is removed: `tx_outstanding` (reliable packets sent and not acked, TX window plus deferred queue), `oldest_unacked_age_ms` (from the oldest one's first send; absent when none), `retransmits_total`, `tx_holes`, `tx_hole_stalls`, `rx_stalls` (lifetime counters), `srtt_ms` (absent before a clean RTT sample) and `last_rx_age_ms`. A large `last_rx_age_ms` with `tx_outstanding = 0` is a client that vanished; a deep `tx_outstanding` with an old `oldest_unacked_age_ms` and climbing `retransmits_total` is a peer that still talks but stopped acking.
 
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
@@ -293,7 +296,7 @@ round 2 fourteen of them emitted DEBUG rows that reached neither a file
 nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`,
 `content.resolve`, `dialog.display`, `mission.step_context`,
 `movement.movement_type`, `movement.position_sample`, `movement.validation`,
-`player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
+`player.journal`, `player.respawn`, `trade.atomic_swap`, `console.feedback`, `client.native`,
 `launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
 DEBUG, except `client.native`, which moved to the `cimmeria-client` index
 (every level) in 2026-09. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
@@ -308,7 +311,25 @@ crate linked into the server, finds each literal-target event call and
 requires it to reach one index at the level it is emitted; the only
 exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
-cannot skip the scan.
+cannot skip the scan. Test code is cut only at an inline `#[cfg(test)] mod name {`;
+a `#[cfg(test)] mod tests;` declaration does not end the file's scan, so the
+production code below it is still checked.
+
+**Database pool (TG-DB-06).** `db.pool=debug` exports the pool's
+`db_pool_configured` row at connect, its 15 s `size` / `idle` sample and the
+throttled `db_pool_saturated` WARN. The pool is built with sqlx's defaults
+written out (10 connections, a 30 s acquire timeout) and a 250 ms
+slow-statement threshold (sqlx's default is 1 s), so every statement over
+250 ms is a WARN on `sqlx::query` carrying the SQL text (never its bound
+parameters; values written into the SQL text itself are logged). sqlx also
+WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
+is the earlier, sampled signal for a pool running out of connections. See the
+[target catalog](observability-target-catalog.md).
+
+**Content engine conditions (TG-MIS-13).** `cimmeria_content_engine=debug`
+exports the crate's DEBUG rows, including the fail-closed condition decisions
+in `conditions` (`Condition::World`, `EntityTagState`, `TutorialShown`), which
+the leading `info` used to cut. See the [target catalog](observability-target-catalog.md).
 
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
@@ -446,7 +467,10 @@ space ids to world names by hand):
 | Metric | Labels | Notes |
 |---|---|---|
 | `movement_validation_rejects_total` | `reason` (3), `world` (~24), `gate` (5, incl. `n/a` for non-navmesh rejects) | Incremented on **every** reject, including ones the log throttle suppresses — a throttle must never deflate the rate an operator alerts on |
+| `movement_navmesh_missing_total` | `world` (~24), `reason` (2: `missing`, `load_failed`) | TG-MOV-12: one per space created without a navmesh, beside its `movement.navmesh` WARN (`navmesh_missing` or `navmesh_load_failed`). Counted once per space creation, not per tick |
 | `udp_connreset_total` | none | Every WSAECONNRESET on the base's UDP socket (an ICMP port-unreachable from a client that went away), including ones the 10 s log throttle suppresses (TG-MER-10) |
+| `base_cell_channel_stalls_total` | none | Every base-to-cell send that waited 50 ms or more on a full cell queue (it holds the base receive loop, and with it every client's ACKs), including ones the 5 s log throttle suppresses (TG-MER-05) |
+| `discord_events_total` | `outcome` (7) | TG-SOC-12: one per Discord event, at the point it ends: `sent`, `filtered`, `dropped_full`, `dropped_closed`, `no_webhook`, `rate_limited`, `failed`. Every drop counts, including the ones the `discord.dropped` WARN throttle (one per 60 s per outcome, with `suppressed`) swallows |
 | `npc_path_fail_total` | `world` (~24), `state` (5), `reason` (6) | Same discipline: counted every AI tick, logged ≤ 1 / 5 s per NPC. Routes with **no** usable path only; a partial route counts in `npc_path_partial_total` |
 | `npc_path_partial_total` | `world` (~24), `state` (5) | NA02: a partial corridor that was still walked. Its `npc_ai.path_fail reason=partial` row has its own throttle window (`path_partial`), so it cannot hold back a real routing failure for the same NPC |
 | `npc_path_requests_total` | `world` (~24), `state` (5), `status` (7) | One per AI `find_path` (NA02), beside the `npc_ai.path` row — the path-status mix |
@@ -459,6 +483,9 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
+| `aoi_introductions_total` | `world` (~24) | One per `EnteredAoI` that `push_introduction` queues, per witness: the AoI diff's entry and the NPC respawn rebuild |
+| `aoi_leaves_total` | `world` (~24) | One per `LeftAoI` the AoI diff queues, per witness |
+| `aoi_witness_set_size` (up/down gauge) | `world` (~24) | Net change of each player's witness set on each AoI tick, so the sum per world is that world's witness count. A removed player's share is subtracted on disconnect or destroy, so no final AoI diff is needed |
 | `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs. `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counts every GM off-mesh packet; its `movement.navmesh_gm_bypass` row is INFO and throttled per GM (TG-MOV-10) |
 
 Never entity ids, positions or mesh hashes as labels — those are
