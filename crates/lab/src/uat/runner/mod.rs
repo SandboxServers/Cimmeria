@@ -516,6 +516,8 @@ mod ability_tests;
 #[cfg(test)]
 mod fingerprint_tests;
 #[cfg(test)]
+mod first_session_plan_tests;
+#[cfg(test)]
 mod fixture_session_tests;
 #[cfg(test)]
 mod fixture_tests;
