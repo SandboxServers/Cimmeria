@@ -1,175 +1,20 @@
 //! LX-05: the MCP client against a private stub of the daemon's endpoint.
 //! Ports the `Hide-LeaseIds` check of `tools/lab/cli/test-uat.ps1`.
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+#[path = "mcp/stub.rs"]
+mod stub;
+
+use std::net::TcpListener;
 use std::time::Duration;
 
 use cimmeria_lab_cli::daemon::mcp::{
     hide_lease_ids, wait_lease_free_at_every, wait_lease_free_with, McpClient, McpError,
 };
 use serde_json::{json, Value};
+use stub::{route, Route, Stub};
 
 const TOKEN: &str = "tok-123";
 const T: Duration = Duration::from_secs(5);
-
-// ---- the stub: one request per connection, replies recorded, routes matched in order ----
-
-#[derive(Clone)]
-struct Route {
-    method: &'static str,
-    path: &'static str,
-    /// The request body must contain this text.
-    body_has: Option<&'static str>,
-    status: u16,
-    headers: Vec<(&'static str, &'static str)>,
-    body: String,
-    delay_ms: u64,
-}
-
-fn route(
-    method: &'static str,
-    path: &'static str,
-    body_has: Option<&'static str>,
-    status: u16,
-    body: &str,
-) -> Route {
-    Route {
-        method,
-        path,
-        body_has,
-        status,
-        headers: vec![],
-        body: body.to_owned(),
-        delay_ms: 0,
-    }
-}
-
-#[derive(Clone, Debug)]
-struct Recorded {
-    method: String,
-    path: String,
-    headers: Vec<(String, String)>, // names lower-cased
-    body: String,
-}
-
-impl Recorded {
-    fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.as_str())
-    }
-}
-
-struct Stub {
-    addr: SocketAddr,
-    seen: Arc<Mutex<Vec<Recorded>>>,
-    stop: Arc<AtomicBool>,
-}
-
-impl Stub {
-    fn start(routes: Vec<Route>) -> Stub {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind the stub");
-        let addr = listener.local_addr().expect("stub address");
-        let routes = Arc::new(routes);
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let stop = Arc::new(AtomicBool::new(false));
-        let (r, s, st) = (routes.clone(), seen.clone(), stop.clone());
-        std::thread::spawn(move || {
-            for conn in listener.incoming() {
-                if st.load(Ordering::SeqCst) {
-                    break;
-                }
-                let Ok(stream) = conn else { continue };
-                let (r, s) = (r.clone(), s.clone());
-                std::thread::spawn(move || serve(stream, &r, &s));
-            }
-        });
-        Stub { addr, seen, stop }
-    }
-    fn base_url(&self) -> String {
-        format!("http://{}", self.addr)
-    }
-    fn requests(&self) -> Vec<Recorded> {
-        self.seen.lock().unwrap().clone()
-    }
-    /// The recorded POST whose body contains `needle`.
-    fn post_with(&self, needle: &str) -> Recorded {
-        self.requests()
-            .into_iter()
-            .find(|r| r.method == "POST" && r.body.contains(needle))
-            .unwrap_or_else(|| panic!("no POST containing {needle}"))
-    }
-}
-
-impl Drop for Stub {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        let _ = TcpStream::connect(self.addr); // wakes the accept loop
-    }
-}
-
-fn serve(stream: TcpStream, routes: &[Route], seen: &Mutex<Vec<Recorded>>) {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
-    let mut first = String::new();
-    if reader.read_line(&mut first).unwrap_or(0) == 0 {
-        return;
-    }
-    let mut parts = first.split_whitespace();
-    let method = parts.next().unwrap_or("").to_owned();
-    let path = parts.next().unwrap_or("").to_owned();
-    let mut headers = Vec::new();
-    let mut length = 0usize;
-    loop {
-        let mut line = String::new();
-        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-            break;
-        }
-        let line = line.trim_end().to_owned();
-        if line.is_empty() {
-            break;
-        }
-        if let Some((k, v)) = line.split_once(':') {
-            let (k, v) = (k.trim().to_ascii_lowercase(), v.trim().to_owned());
-            if k == "content-length" {
-                length = v.parse().unwrap_or(0);
-            }
-            headers.push((k, v));
-        }
-    }
-    let mut body = vec![0u8; length];
-    let _ = reader.read_exact(&mut body);
-    let body = String::from_utf8_lossy(&body).into_owned();
-    seen.lock().unwrap().push(Recorded {
-        method: method.clone(),
-        path: path.clone(),
-        headers,
-        body: body.clone(),
-    });
-    let hit = routes.iter().find(|r| {
-        r.method == method && r.path == path && r.body_has.is_none_or(|n| body.contains(n))
-    });
-    let (status, extra, out, delay) = match hit {
-        Some(r) => (r.status, r.headers.clone(), r.body.clone(), r.delay_ms),
-        None => (500, vec![], "no route".to_owned(), 0),
-    };
-    std::thread::sleep(Duration::from_millis(delay));
-    let mut head = format!(
-        "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n",
-        out.len()
-    );
-    for (k, v) in extra {
-        head.push_str(&format!("{k}: {v}\r\n"));
-    }
-    let mut stream = stream;
-    let _ = stream.write_all(format!("{head}\r\n{out}").as_bytes());
-    let _ = stream.flush();
-    let _ = stream.shutdown(std::net::Shutdown::Both);
-}
 
 // ---- reply builders ----
 
@@ -321,6 +166,104 @@ fn a_slow_reply_past_the_timeout_is_unreachable() {
     }
 }
 
+fn protocol_message(r: Result<Value, McpError>) -> String {
+    match r {
+        Err(McpError::Protocol(m)) => m,
+        other => panic!("expected Protocol, got {other:?}"),
+    }
+}
+
+#[test]
+fn an_empty_or_data_less_reply_is_returned_nothing() {
+    for body in ["", "event: message\n\n"] {
+        let (_stub, mut c) = open_with(call_route(200, body));
+        let m = protocol_message(c.call_tool("lab_x", json!({}), T));
+        assert_eq!(m, "lab_x returned nothing", "body {body:?}");
+    }
+}
+
+#[test]
+fn a_reply_that_is_not_json_is_a_protocol_error() {
+    for body in ["{not json", "data: {not json\n\n"] {
+        let (_stub, mut c) = open_with(call_route(200, body));
+        let m = protocol_message(c.call_tool("t", json!({}), T));
+        assert!(m.starts_with("reply is not JSON: "), "body {body:?}: {m}");
+    }
+}
+
+#[test]
+fn a_reply_without_result_or_content_text_is_a_protocol_error() {
+    let (_stub, mut c) = open_with(call_route(200, r#"{"jsonrpc":"2.0","id":2}"#));
+    assert_eq!(
+        protocol_message(c.call_tool("lab_x", json!({}), T)),
+        "lab_x returned no result"
+    );
+    let no_text = r#"{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"image"}]}}"#;
+    let (_stub, mut c) = open_with(call_route(200, no_text));
+    assert_eq!(
+        protocol_message(c.call_tool("lab_x", json!({}), T)),
+        "lab_x returned no content"
+    );
+}
+
+#[test]
+fn a_json_rpc_error_without_a_message_says_no_message() {
+    let body = r#"{"jsonrpc":"2.0","id":2,"error":{"code":-1}}"#;
+    let (_stub, mut c) = open_with(call_route(200, body));
+    match c.call_tool("t", json!({}), T) {
+        Err(McpError::Tool(m)) => assert_eq!(m, "no message"),
+        other => panic!("expected Tool, got {other:?}"),
+    }
+}
+
+#[test]
+fn sse_lines_may_end_in_crlf() {
+    let sse = format!("event: message\r\ndata: {}\r\n\r\n", rpc_text(r#"{"v":7}"#));
+    let (_stub, mut c) = open_with(call_route(200, &sse));
+    assert_eq!(c.call_tool("t", json!({}), T).unwrap(), json!({"v": 7}));
+}
+
+#[test]
+fn an_http_error_body_is_cut_to_200_characters() {
+    let long = "é".repeat(300);
+    let (_stub, mut c) = open_with(call_route(500, &long));
+    match c.call_tool("t", json!({}), T) {
+        Err(McpError::Http(500, body)) => assert_eq!(body, "é".repeat(200)),
+        other => panic!("expected Http(500), got {other:?}"),
+    }
+}
+
+#[test]
+fn a_json_rpc_error_on_initialize_fails_the_open() {
+    let body = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"bad version"}}"#;
+    let stub = Stub::start(vec![route("POST", "/mcp", None, 200, body)]);
+    match McpClient::open(&stub.base_url(), Some(TOKEN)) {
+        Err(McpError::Tool(m)) => assert_eq!(m, "bad version"),
+        other => panic!("expected Tool, got {:?}", other.err()),
+    }
+}
+
+#[test]
+fn a_reply_cut_short_is_a_protocol_error() {
+    let mut cut = call_route(200, &rpc_text("{}"));
+    cut.short_by = 10; // promises 10 more bytes than it sends, then closes
+    let (_stub, mut c) = open_with(cut);
+    let m = protocol_message(c.call_tool("t", json!({}), T));
+    assert!(m.starts_with("reading the reply: "), "{m}");
+}
+
+#[test]
+fn a_body_that_stalls_past_the_timeout_is_unreachable() {
+    // The headers arrive at once; the body is what times out.
+    let mut stalled = call_route(200, &rpc_text("{}"));
+    stalled.stall_ms = 1500;
+    let (_stub, mut c) = open_with(stalled);
+    match c.call_tool("t", json!({}), Duration::from_millis(200)) {
+        Err(McpError::Unreachable(_)) => {}
+        other => panic!("expected Unreachable, got {other:?}"),
+    }
+}
+
 // ---- what the client sends ----
 
 #[test]
@@ -439,8 +382,7 @@ fn close_without_a_session_id_sends_nothing() {
 #[test]
 fn close_ignores_a_dead_daemon() {
     let (stub, c) = open_with(call_route(200, &rpc_text("{}")));
-    drop(stub);
-    std::thread::sleep(Duration::from_millis(50));
+    stub.shut_down(); // returns once connecting to the port is refused
     c.close(); // must return, not panic
 }
 
@@ -578,7 +520,10 @@ fn wait_over_http_stays_false_while_held_or_unauthorized() {
         Duration::from_millis(80),
         Duration::from_millis(20)
     ));
-    let denied = Stub::start(vec![route("GET", "/status", None, 401, "no")]);
+    // A 401 whose body is a free-lease status: only the status check says no.
+    let mut free = status_route(false);
+    free.status = 401;
+    let denied = Stub::start(vec![free]);
     assert!(!wait_lease_free_at_every(
         &denied.base_url(),
         None,
