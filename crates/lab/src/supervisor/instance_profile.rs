@@ -131,11 +131,18 @@ pub enum Seeded {
 /// Serialises seeds: two launches of one instance at once must not race on
 /// its `SGWGame.seeding` folder (the loser would fall back to the shared
 /// folder, the #1312 lock). Seeds are rare, so one lock for every instance.
+/// The ini overrides take it too ([`super::ini_overrides`]), around their
+/// read-modify-write of a profile's ini.
 static SEED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Take [`SEED_LOCK`]. Not reentrant: never call [`seed`] while holding it.
+pub(super) fn seed_lock() -> std::sync::MutexGuard<'static, ()> {
+    SEED_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
 
 /// Seed `profile`'s `SGWGame` from `source` (the real one), once.
 pub fn seed(source: &Path, profile: &Path) -> std::io::Result<Seeded> {
-    let _guard = SEED_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = seed_lock();
     let dst = sgwgame_dir(&profile.join("Documents"));
     if dst.is_dir() {
         return Ok(Seeded::AlreadyThere);
@@ -292,17 +299,22 @@ pub fn prepare(install_dir: &Path, label: &str) -> Option<(String, String)> {
             .map(PathBuf::from)
             .as_deref(),
     );
-    prepare_from(shared, real_sgwgame, root, install_dir, label)
+    let overrides = super::ini_overrides::overrides_path();
+    prepare_from(shared, real_sgwgame, root, install_dir, label, overrides)
 }
 
 /// [`prepare`] over its inputs: the opt-out, how to find the real `SGWGame`
-/// folder (only asked when not opted out), and the profile root.
+/// folder (only asked when not opted out), the profile root, and the ini
+/// overrides file, if any. The overrides go only into the instance's own
+/// seeded profile: every path that falls back to the shared folder returns
+/// before them, so the real ini is never touched.
 fn prepare_from(
     shared: bool,
     real: impl FnOnce() -> Result<PathBuf, String>,
     root: Option<PathBuf>,
     install_dir: &Path,
     label: &str,
+    overrides: Option<PathBuf>,
 ) -> Option<(String, String)> {
     if shared {
         tracing::info!(target: "lab.instance", event = "user_dir_shared", instance = label,
@@ -340,6 +352,19 @@ fn prepare_from(
     let profile = profile_dir(&root, label);
     match seed(&source, &profile) {
         Ok(outcome) => {
+            if outcome == Seeded::NoSource {
+                // The game writes its ini on this first run; the overrides
+                // apply from the next launch (`AlreadyThere`).
+                tracing::info!(target: "lab.instance", event = "ini_override_skipped",
+                    instance = label, reason = "no_source",
+                    "new empty profile has no ini yet; lab ini overrides apply from the next launch");
+            } else {
+                super::ini_overrides::apply_for_instance(
+                    &sgwgame_dir(&profile.join("Documents")).join("Config"),
+                    label,
+                    overrides.as_deref(),
+                );
+            }
             let (seeded, files, bytes) = match outcome {
                 Seeded::AlreadyThere => ("already_there", 0, 0),
                 Seeded::Copied { files, bytes } => ("copied", files, bytes),
@@ -363,313 +388,5 @@ fn prepare_from(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_an_explicit_yes_shares_the_folder() {
-        for yes in ["1", "true", "yes", " 1 ", "TRUE", "Yes"] {
-            assert!(shared_user_dir_from(Some(yes)), "{yes:?}");
-        }
-        for no in [None, Some(""), Some("0"), Some("false"), Some("no")] {
-            assert!(!shared_user_dir_from(no), "{no:?}");
-        }
-    }
-
-    #[test]
-    fn profile_lives_under_the_root() {
-        let p = profile_dir(Path::new("C:/cimmeria-lab/instances"), "p3");
-        assert!(p.ends_with("cimmeria-lab/instances/p3/profile"));
-    }
-
-    #[test]
-    fn profile_root_prefers_the_override_then_local_app_data() {
-        let local = Path::new(r"C:\Users\tester\AppData\Local");
-        let default = local.join("cimmeria-lab").join("instances");
-        assert_eq!(
-            profile_root_from(Some(r" D:\lab\profiles "), Some(local)),
-            Some(PathBuf::from(r"D:\lab\profiles"))
-        );
-        for raw in [None, Some(""), Some("   ")] {
-            assert_eq!(
-                profile_root_from(raw, Some(local)),
-                Some(default.clone()),
-                "{raw:?}"
-            );
-        }
-        assert_eq!(profile_root_from(None, None), None);
-        assert_eq!(profile_root_from(Some(""), None), None);
-    }
-
-    #[test]
-    fn inside_ignores_case_and_needs_a_component_boundary() {
-        let install = Path::new(r"c:\games\sgw");
-        assert!(inside(Path::new(r"C:\Games\SGW\binaries\x"), install));
-        assert!(inside(Path::new(r"C:\Games\SGW"), install));
-        assert!(inside(Path::new("C:/Games/SGW/Binaries"), install));
-        assert!(!inside(Path::new(r"C:\Games\SGW2"), install));
-        assert!(!inside(Path::new(r"C:\Games"), install));
-        assert!(!inside(Path::new(r"D:\Games\SGW\x"), install));
-    }
-
-    #[test]
-    fn inside_normalises_dots_verbatim_prefixes_and_non_ascii_case() {
-        let install = Path::new(r"C:\Games\SGW");
-        // `..` pops: this path is the install's own sibling folder walked back in.
-        assert!(inside(Path::new(r"C:\Games\Other\..\SGW\x"), install));
-        assert!(!inside(Path::new(r"C:\Games\SGW\..\Other"), install));
-        // `.` is dropped.
-        assert!(inside(Path::new(r"C:\Games\.\SGW\x"), install));
-        // A verbatim prefix matches its plain drive form.
-        assert!(inside(Path::new(r"\\?\C:\Games\SGW\x"), install));
-        assert!(inside(Path::new(r"\\?\c:\games\sgw"), install));
-        assert!(!inside(Path::new(r"\\?\C:\Games\SGW2"), install));
-        // Lowercasing is not ASCII-only.
-        assert!(inside(
-            Path::new(r"C:\Jeux\ÉTÉ\x"),
-            Path::new(r"c:\jeux\été")
-        ));
-    }
-
-    #[test]
-    fn inside_treats_an_empty_dir_as_containing_everything() {
-        assert!(inside(Path::new(r"C:\Games\SGW\x"), Path::new("")));
-        assert!(!inside(Path::new(""), Path::new(r"C:\Games\SGW")));
-    }
-
-    #[test]
-    fn userprofile_relative_documents_are_redirectable() {
-        let home = Path::new("C:/Users/tester");
-        for raw in [
-            r"%USERPROFILE%\Documents",
-            r"%userprofile%\Documents",
-            "%USERPROFILE%/Documents",
-            r" %USERPROFILE%\Documents\ ",
-        ] {
-            assert_eq!(
-                redirectable_documents(raw, home).unwrap(),
-                home.join("Documents"),
-                "{raw:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn absolute_documents_are_not_redirectable() {
-        let home = Path::new("C:/Users/tester");
-        for raw in [
-            r"C:\Users\tester\OneDrive\Documents",
-            r"D:\Docs",
-            r"%OneDrive%\Documents",
-            "",
-        ] {
-            let err = redirectable_documents(raw, home).unwrap_err();
-            assert!(err.contains("#1312"), "{raw:?}: {err}");
-        }
-    }
-
-    fn write(path: &Path, body: &str) {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, body).unwrap();
-    }
-
-    #[test]
-    fn seed_copies_config_content_cache_and_top_files_only() {
-        let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().join("real/SGWGame");
-        write(&src.join("Cache.en-US/TextStrings.pak"), "pak");
-        write(&src.join("Config/SGWEngine.ini"), "ini");
-        write(&src.join("Content/LocalShaderCache-PC-D3D-SM3.upk"), "upk");
-        write(&src.join("SavedSystemOptions.xml"), "xml");
-        write(
-            &src.join("lab/Labone/ActionButtons - Saved Vars.lua"),
-            "account",
-        );
-        write(&src.join("Logs/Launch.log"), "log");
-        write(&src.join("CrashDumps/x.dmp"), "dump");
-        let profile = tmp.path().join("profile");
-
-        let out = seed(&src, &profile).unwrap();
-        assert_eq!(
-            out,
-            Seeded::Copied {
-                files: 4,
-                bytes: 12
-            }
-        );
-        let dst = sgwgame_dir(&profile.join("Documents"));
-        for kept in [
-            "Cache.en-US/TextStrings.pak",
-            "Config/SGWEngine.ini",
-            "Content/LocalShaderCache-PC-D3D-SM3.upk",
-            "SavedSystemOptions.xml",
-        ] {
-            assert!(dst.join(kept).is_file(), "{kept} must be seeded");
-        }
-        for left in ["lab", "Logs", "CrashDumps"] {
-            assert!(!dst.join(left).exists(), "{left} must not be seeded");
-        }
-        assert!(!dst.with_file_name("SGWGame.seeding").exists());
-    }
-
-    #[test]
-    fn seed_runs_once_so_the_instance_keeps_its_own_cache() {
-        let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().join("real/SGWGame");
-        write(&src.join("Cache.en-US/CookedWorldInfo.pak"), "v1");
-        let profile = tmp.path().join("profile");
-        seed(&src, &profile).unwrap();
-        let mine = sgwgame_dir(&profile.join("Documents")).join("Cache.en-US/CookedWorldInfo.pak");
-        std::fs::write(&mine, "updated by this instance's login").unwrap();
-        write(&src.join("Cache.en-US/CookedWorldInfo.pak"), "v2");
-
-        assert_eq!(seed(&src, &profile).unwrap(), Seeded::AlreadyThere);
-        assert_eq!(
-            std::fs::read_to_string(&mine).unwrap(),
-            "updated by this instance's login"
-        );
-    }
-
-    #[test]
-    fn seed_without_a_real_folder_starts_empty() {
-        let tmp = tempfile::tempdir().unwrap();
-        let profile = tmp.path().join("profile");
-        assert_eq!(
-            seed(&tmp.path().join("missing"), &profile).unwrap(),
-            Seeded::NoSource
-        );
-        assert!(sgwgame_dir(&profile.join("Documents")).is_dir());
-    }
-
-    #[test]
-    fn an_interrupted_seed_is_redone() {
-        let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().join("real/SGWGame");
-        write(&src.join("Config/SGWEngine.ini"), "ini");
-        let profile = tmp.path().join("profile");
-        let half = sgwgame_dir(&profile.join("Documents")).with_file_name("SGWGame.seeding");
-        write(&half.join("partial.tmp"), "x");
-
-        assert_eq!(
-            seed(&src, &profile).unwrap(),
-            Seeded::Copied { files: 1, bytes: 3 }
-        );
-        assert!(!half.exists());
-        assert!(
-            !sgwgame_dir(&profile.join("Documents"))
-                .join("partial.tmp")
-                .exists(),
-            "a half-finished seed's files must not reach the instance"
-        );
-    }
-
-    #[test]
-    fn prepare_points_the_default_instance_at_its_own_profile() {
-        let tmp = tempfile::tempdir().unwrap();
-        let src = tmp.path().join("real/SGWGame");
-        write(&src.join("Config/SGWEngine.ini"), "ini");
-        let install = tmp.path().join("install");
-        let root = tmp.path().join("profiles");
-        let env = prepare_from(
-            false,
-            || Ok(src.clone()),
-            Some(root.clone()),
-            &install,
-            "default",
-        )
-        .unwrap();
-        let profile = profile_dir(&root, "default");
-        assert_eq!(
-            env,
-            (
-                USER_PROFILE_ENV.to_string(),
-                profile.to_string_lossy().into_owned()
-            )
-        );
-        assert!(sgwgame_dir(&profile.join("Documents"))
-            .join("Config/SGWEngine.ini")
-            .is_file());
-    }
-
-    #[test]
-    fn prepare_falls_back_to_the_shared_folder() {
-        let tmp = tempfile::tempdir().unwrap();
-        let install = tmp.path().join("install");
-        let src = tmp.path().join("real/SGWGame");
-        let root = tmp.path().join("profiles");
-        write(&src.join("Config/SGWEngine.ini"), "ini");
-
-        // Opted out: the real folder is not even looked up.
-        assert_eq!(
-            prepare_from(
-                true,
-                || panic!("not asked"),
-                Some(root.clone()),
-                &install,
-                "p2"
-            ),
-            None
-        );
-        // Documents not redirectable (OneDrive, a registry error).
-        assert_eq!(
-            prepare_from(
-                false,
-                || Err("absolute".into()),
-                Some(root.clone()),
-                &install,
-                "p2"
-            ),
-            None
-        );
-        // The seed fails: the profile's Documents is a file.
-        write(&profile_dir(&root, "p3").join("Documents"), "not a dir");
-        assert_eq!(
-            prepare_from(
-                false,
-                || Ok(src.clone()),
-                Some(root.clone()),
-                &install,
-                "p3"
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn prepare_refuses_an_unsafe_root() {
-        let tmp = tempfile::tempdir().unwrap();
-        let install = tmp.path().join("install");
-        let src = tmp.path().join("real/SGWGame");
-        write(&src.join("Config/SGWEngine.ini"), "ini");
-
-        let inside_root = install.join("Binaries/sessions/instances");
-        assert_eq!(
-            prepare_from(false, || Ok(src.clone()), Some(inside_root), &install, "p2"),
-            None
-        );
-        // No root at all (no override, no LOCALAPPDATA): also shared.
-        assert_eq!(
-            prepare_from(false, || Ok(src.clone()), None, &install, "p2"),
-            None
-        );
-        // A relative root would resolve against the game's cwd (Binaries).
-        let relative = PathBuf::from(r"profiles\instances");
-        assert_eq!(
-            prepare_from(false, || Ok(src.clone()), Some(relative), &install, "p2"),
-            None
-        );
-        // An empty LOCALAPPDATA gives the same relative default root.
-        let from_empty_local = profile_root_from(None, Some(Path::new(""))).unwrap();
-        assert!(!from_empty_local.is_absolute());
-        assert_eq!(
-            prepare_from(
-                false,
-                || Ok(src.clone()),
-                Some(from_empty_local),
-                &install,
-                "p2"
-            ),
-            None
-        );
-    }
-}
+#[path = "instance_profile_tests.rs"]
+mod tests;

@@ -333,28 +333,51 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
     // player-side target or threat entry (DA-F2, #1265:
     // `SpaceManager::player_present`). A player who sees only the target
     // is not a fault, and NPC-vs-NPC with no player around writes nothing.
-    if warns
-        && witness_count == 0
-        && is_npc(space_mgr, entity_id)
-        && space_mgr.player_present(entity_id, u32::try_from(target_id).ok())
-    {
-        if let Some(suppressed) = admit_warn(space_mgr, ability_id, "no_witnesses") {
-            tracing::warn!(
-                target: "abilities.sequence",
-                event = "ability_end",
-                outcome = "no_witnesses",
-                source_id = entity_id,
-                source_name = space_mgr.entity_label(entity_id),
-                target_id,
-                target_name = space_mgr.entity_label(target_id as u32),
-                ability_id,
-                ability_name = cimmeria_names::book().ability(ability_id),
-                sequence_id,
-                sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
-                suppressed,
-                "PlaySequence: NPC attack onSequence expected at least one witness but had \
-                 none -- the target is not seeing the NPC that shoots it"
-            );
+    if warns && witness_count == 0 && is_npc(space_mgr, entity_id) {
+        let present = space_mgr.player_present_via(entity_id, u32::try_from(target_id).ok());
+        if let Some(present_via) = present {
+            let world = space_mgr
+                .get_entity_world_name(entity_id)
+                .unwrap_or_default();
+            // A threat-list-only player logs DEBUG and skips the WARN
+            // throttle, which counts only the WARN rows.
+            if present_via == "threat_list" {
+                tracing::debug!(
+                    target: "abilities.sequence",
+                    event = "ability_end",
+                    outcome = "no_witnesses",
+                    source_id = entity_id,
+                    source_name = space_mgr.entity_label(entity_id),
+                    target_id,
+                    target_name = space_mgr.entity_label(target_id as u32),
+                    ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
+                    sequence_id,
+                    sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
+                    present_via,
+                    world = %world,
+                    "PlaySequence: NPC attack onSequence had no witnesses; a player on its threat list is fighting it"
+                );
+            } else if let Some(suppressed) = admit_warn(space_mgr, ability_id, "no_witnesses") {
+                tracing::warn!(
+                    target: "abilities.sequence",
+                    event = "ability_end",
+                    outcome = "no_witnesses",
+                    source_id = entity_id,
+                    source_name = space_mgr.entity_label(entity_id),
+                    target_id,
+                    target_name = space_mgr.entity_label(target_id as u32),
+                    ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
+                    sequence_id,
+                    sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
+                    suppressed,
+                    present_via,
+                    world = %world,
+                    "PlaySequence: NPC attack onSequence expected at least one witness but had \
+                     none -- the target is not seeing the NPC that shoots it"
+                );
+            }
         }
     }
     Some(witness_count)
