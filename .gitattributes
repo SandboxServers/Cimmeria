@@ -29,6 +29,10 @@ docs/reverse-engineering/findings/README.md merge=union
 # docs/readme.md also holds generated counts; union would keep both versions of a
 # count line, so tools/build-lane/rebase-pr.sh merges it without union.
 docs/readme.md merge=union
+# Each telemetry packet appends its own `## <seam> (<packet>)` section just above
+# `## Related`: 42 of the 107 rebase stops in early October 2026 were this file.
+# (observability-target-catalog.md edits its table rows in place, so it stays out.)
+docs/architecture/negative-logging-convention.md merge=union
 
 # Client UI overlay (BM-05): byte-for-byte copies of stock client files, patched.
 # The client reads them as-is, so they keep their CRLF line endings on every

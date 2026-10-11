@@ -1,23 +1,39 @@
 name: pr-container
 
-# Build the release container on every PR that touches files going into
-# the image, and smoke-test the result locally — without pushing to
-# GHCR. Catches Docker / db-init / s6 / boot regressions before merge,
-# which otherwise only surface when `release-container.yml` runs on
-# push to main and main is already broken.
+# Build the release container and smoke-test it locally, without pushing
+# to GHCR. Catches Docker / db-init / s6 / boot regressions long before
+# release-container.yml (which runs only on `/release` or a manual
+# dispatch) would.
 #
-# Path filter matches release-container.yml exactly, so a PR triggers
-# this iff a push of the same diff would have triggered a release.
+# Two triggers, two path lists:
 #
-# Cache: reuses the same `type=gha` cache scope as the release
-# workflow. The release stage uses `cargo build -p cimmeria-server
-# --release`; this workflow uses the same Dockerfile, so the buildx
-# layers (deps compiled, recast hydrated, db-init pgdata) are shared.
-# Cold first PR after a dep change is ~10-15 min; warm PRs are a few
-# minutes.
+#   * pull_request: only the files that are the container itself (the
+#     Dockerfile and s6 tree, the smoke script, the Trivy policy, these
+#     workflows) and the dependency set Trivy scans (Cargo.lock). Until
+#     2026-10-11 every crates/** or db/** PR ran it, which made it the
+#     self-hosted pool's largest load (more runner time than the gating
+#     build + nextest job) for a check that never gated a merge.
+#   * push to main: everything that goes into the image, the list the PR
+#     trigger used to have. A crates-only break is caught one merge later,
+#     on main, and the `report` job makes it loud: a `main-red` issue, and
+#     tools/build-lane/ship.py refuses code merges until a passing run on
+#     main closes it.
+#
+# Cache: self-hosted runners use the node's shared BuildKit daemon; hosted
+# runners reuse release-container.yml's `type=gha` scope. Cold first build
+# after a dep change is ~10-15 min; warm builds are a few minutes.
 
 on:
   pull_request:
+    paths:
+      - 'docker/**'
+      - 'Cargo.lock'
+      - '.trivyignore'
+      - '.github/workflows/pr-container.yml'
+      - '.github/workflows/release-container.yml'
+      - 'tools/container-smoke.sh'
+  push:
+    branches: [main]
     paths:
       - 'crates/**'
       - 'entities/defs/**'
@@ -30,6 +46,7 @@ on:
       - 'Cargo.lock'
       - '.cargo/**'
       - 'docker/**'
+      - '.trivyignore'
       - '.github/workflows/pr-container.yml'
       - '.github/workflows/release-container.yml'
       - 'tools/container-smoke.sh'
@@ -39,12 +56,13 @@ on:
 # This is the gold-standard least-privilege posture per Well-Architected.
 permissions: {}
 
-# Cancel superseded runs on the same PR — saves runner minutes when a
-# PR gets force-pushed during review. (Releases must NOT cancel; PRs
-# should.)
+# A PR cancels its own superseded run. On main a running build always
+# finishes (its verdict opens or closes the main-red issue), and GitHub keeps
+# only the newest pending run: a burst of merges is checked as one batch, at
+# the newest commit, instead of once per merge.
 concurrency:
   group: pr-container-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-smoke:
@@ -211,3 +229,28 @@ jobs:
             exit 1
           fi
           echo "refused as expected (exit $code)"
+
+  # Main only: a failed build or smoke on main opens (or updates) the
+  # `main-red` issue for this check, and a passing one closes it. A run that
+  # was cancelled or superseded says nothing either way. A manual dispatch on
+  # main reports too (`gh workflow run pr-container.yml --ref main`), so a
+  # Trivy flake or a newly published CVE fixed by .trivyignore can be cleared
+  # without waiting for the next image-input merge.
+  report:
+    name: report the main build
+    needs: build-and-smoke
+    if: always() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (needs.build-and-smoke.result == 'success' || needs.build-and-smoke.result == 'failure')
+    runs-on: ${{ (vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',report,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
+    permissions:
+      contents: read   # actions/checkout
+      issues: write    # the main-red issue
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/main-red
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VERDICT: ${{ needs.build-and-smoke.result == 'success' && 'pass' || 'fail' }}
+        run: bash tools/main-red/main-red.sh "$VERDICT" "container build + smoke" "$RUN"

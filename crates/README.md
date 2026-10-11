@@ -8,7 +8,7 @@ For testing conventions across these crates — test types, when to use which, c
 
 The workspace members and their **actual** inter-crate dependencies (an arrow
 **A → B** means *A depends on B*). The graph is generated from `cargo metadata` by
-`tools/crate-graph/crate_graph.py`, and the `regen-docs` workflow regenerates it on `main` after every merge. The members come
+`tools/crate-graph/crate_graph.py`, and the `regen-docs` workflow regenerates it on `main` every six hours. The members come
 from the `members` list in the root [Cargo.toml](../Cargo.toml): the crates under
 `crates/`, plus `src-tauri` and the tool crates (`tools/ContentEditor`,
 `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/` target is a deliberate

@@ -26,8 +26,11 @@ Read [docs/agents/pre-pr-checks.md](../../../docs/agents/pre-pr-checks.md) befor
 PR and whenever a check fails. Every compiling command goes through the lane (see the
 `lane-build` skill).
 
-- Blocking on every PR that touches more than Markdown, `.claude/` or doc images: `fmt`,
-  `clippy`, `build-and-test` (it runs the live-DB tier too).
+- Required by `main`'s ruleset, through its one required check `ci gate`, when the change
+  is more than Markdown, `.claude/` or doc images: `fmt`, `clippy`, `build-and-test` (it
+  runs the live-DB tier too). A PR push runs
+  only `fmt` and `clippy`; `build-and-test` runs in the merge queue (or on a PR labelled
+  `full-ci`), so run nextest locally through the lane before you push.
 - Blocking only when figures or `docs/drafts/spec/` chapters change: `figure-sources-in-sync`,
   `figure-style-lint`.
 - Warn-only: `markdownlint`, `spec-lint`.
@@ -52,6 +55,8 @@ python tools/build-lane/ship.py pr -C .claude/worktrees/<name> -m "feat(vendor):
 - Trailers come from `$SHIP_TRAILERS` and the PR footer from `$SHIP_PR_FOOTER`. The body must
   end with the harness's attribution footer.
 - Re-running on a branch that already has an open PR just pushes.
+- `--base <branch>` stacks the PR on another open PR's branch. `ship.py merge` refuses it
+  until that base merges, then restacks and retargets it to `main` for you.
 
 ## 4. Wait for CI without polling
 
@@ -75,21 +80,33 @@ with `ship.py pr` again.
 
 ## 6. Merge
 
-The owner's rule is to merge on the minimum build-proving CI: `fmt`, `clippy`,
-`build + nextest` and any change-specific lanes. `ship.py merge` waits for those three, plus
-the path-filtered lab and build-lane checks (`lab.yml`, `build-lane-scripts.yml`) whenever the
-PR's changes made them run (`CONDITIONAL` in `ship.py`). The build + nextest gate includes the live-DB tier (one job); coverage is not waited for.
+`main` merges through a merge queue ([pre-pr-checks.md § Merge queue](../../../docs/agents/pre-pr-checks.md#merge-queue)).
+`ship.py merge` waits for the PR's own checks (`fmt`, `clippy`, and `build + nextest`, which
+reports skipped on a PR push and counts as passing), plus the path-filtered lab and
+build-lane checks (`lab.yml`, `build-lane-scripts.yml`) whenever the PR's changes made them
+run (`CONDITIONAL` in `ship.py`). Then it adds the PR to the queue, which runs the full build +
+nextest + live-DB job on the merged code, and waits up to `--queue-timeout` (60m) for it to
+land. Coverage runs nightly and is never waited for.
 
 ```powershell
-python tools/build-lane/ship.py merge <PR> --retire <name>              # waits up to --timeout 30m
-python tools/build-lane/ship.py merge <PR> --retire <name> --no-wait    # local lane fmt/clippy/nextest already green
+python tools/build-lane/ship.py merge <PR> --retire <name>              # waits up to --timeout 30m, then the queue
+python tools/build-lane/ship.py merge <PR> --retire <name> --no-wait    # queue now; status=queued, retire later
 ```
 
-- Docs/memory-only PRs (`*.md` or `.claude/agent-memory/` only) merge at once: `ship.py merge` adds `--admin` to `gh pr merge` for them by itself.
-- Code PRs are rebased (`rebase-pr`) only when GitHub reports BEHIND or DIRTY, then squash-merged.
-- Serialize merges that share a baseline: merge one, then the next.
-- Exit codes: 0 merged, 1 conflict or failed check, 2 refused, 3 timed out, 4 git/gh error,
-  5 merged but the worktree was not retired. On 5, run step 7 by hand.
+- Never call `gh pr merge --admin` or merge around the queue, docs PRs included: that makes the
+  queue rebuild every group in flight. Docs/memory-only PRs (`*.md` or
+  `.claude/agent-memory/` only) skip the check wait and go straight into the queue.
+- Code PRs are rebased (`rebase-pr`) only when GitHub reports BEHIND or DIRTY. If the queue
+  drops a PR because it now conflicts, `ship.py` rebases and re-queues it.
+- An open `main-red` issue (container build on `main` or the nightly run failed) makes
+  `ship.py` refuse code PRs with `status=main-red`. Fix `main` first; only the fixing PR
+  passes `--allow-red-main` ([§ Main is red](../../../docs/agents/pre-pr-checks.md#main-is-red)).
+- After a merge, PRs stacked on the merged branch are restacked onto `main` and retargeted:
+  `restacked=<PRs>`, or `restack_conflict=<PRs>` for one that needs a worker.
+- Exit codes: 0 merged (or `queued` with `--no-wait`), 1 conflict, failed check, `main-red` or
+  `queue-failed`, 2 refused (closed, draft or stacked), 3 timed out (`status=queued`: it still
+  merges on its own; rerun `merge` to retire), 4 git/gh error, 5 merged but the worktree was
+  not retired. On 5, run step 7 by hand.
 
 ## 7. Retire the worktree the same day
 

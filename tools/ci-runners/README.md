@@ -162,7 +162,7 @@ Three pools:
 | Pool | Jobs | Where |
 | --- | --- | --- |
 | `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, launcher coverage, spec-lint | Five per node, plus three on the operator's desktop |
-| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, launcher, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
+| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, launcher, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style, and the `main-red` reporters (`test.yml`'s `nightly-report`, `pr-container.yml`'s `report`) | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
 | `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell) | GitHub-hosted |
 
 GitHub has no overflow between pools (a job waits for a runner with its label), so
@@ -176,7 +176,9 @@ Repository variables (Settings, Secrets and variables, Actions, Variables):
 
 - `CI_LINUX_RUNNER=hosted`: every routed job to GitHub-hosted runners, e.g. while the nodes are down.
 - `CI_HOSTED_JOBS`: comma-separated job ids (e.g. `coverage-workspace,e2e`) that always run GitHub-hosted. It matches the job id, not the workflow: `lint` covers markdownlint's, figure-style's and spec-lint's `lint` jobs, and `fmt` covers every `fmt` job.
-- `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow; `0` turns overflow off. Set to 0 on 2026-10-11: GitHub's hosted pool (shared with the Windows jobs) was as full as ours, so overflowed build jobs queued there while our runners sat idle. The decision is made once per run and never revisited.
+- `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow; `0` turns overflow off. Set to 0 on 2026-10-11: GitHub's hosted pool (shared with the Windows jobs) was as full as ours, so overflowed build jobs queued there while our runners sat idle. The decision is made once per run and never revisited. The merge-queue change of the same day leaves it at 0.
+
+Since 2026-10-11 the pool's load is shaped by `main`'s merge queue ([pre-pr-checks.md § Merge queue](../../docs/agents/pre-pr-checks.md#merge-queue)): a PR push runs `fmt`, `clippy` and the quick jobs only; `build-and-test` runs in the merge queue (`merge_group`), nightly at 09:23 UTC, and on PRs labelled `full-ci`; coverage runs nightly; and `pr-container` runs on PRs only for container files and otherwise on `main` after a merge, coalesced to the newest commit. Before that, in the two weeks to 2026-10-11, the pool's p90 queue wait was 19–23 minutes against a 7-minute build + nextest, branches averaged about ten CI runs each, and `pr-container` used more runner time than the gating job.
 
 ## Security
 

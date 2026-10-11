@@ -146,7 +146,7 @@ Recomputed 2026-09-27 directly from the feature rows, by script: every matrix ro
 
 ### Summary Percentages
 
-The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->504<!-- /gen:gap-count --> features.
+The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` every six hours; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->504<!-- /gen:gap-count --> features.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|

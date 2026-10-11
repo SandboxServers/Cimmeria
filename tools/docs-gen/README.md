@@ -4,8 +4,12 @@
 workspace test counts, the RE findings count, the gap-analysis totals, the docs
 count, and the crate graph. Two PRs that bump the same number conflict with each
 other, so no PR bumps them. The [`regen-docs`](../../.github/workflows/regen-docs.yml)
-workflow runs the script on `main` after every merge and commits whatever changed
-as `github-actions[bot]`.
+workflow runs the script on `main` every six hours (and on a manual dispatch, `gh
+workflow run regen-docs.yml`) and commits whatever changed as `github-actions[bot]`,
+so a generated block can lag `main` by up to six hours. It doesn't run after every
+merge: its commit is the one direct push to `main` the merge queue allows, and each
+one makes the queue rebuild every group in flight
+([pre-pr-checks.md § Merge queue](../../docs/agents/pre-pr-checks.md#merge-queue)).
 
 ```bash
 python tools/docs-gen/regen.py                      # rewrite stale blocks (same as --write)
