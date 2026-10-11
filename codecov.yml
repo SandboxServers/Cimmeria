@@ -1,7 +1,7 @@
 # Codecov configuration. Reference: https://docs.codecov.com/docs/codecov-yaml
 #
 # Coverage is advisory in this repo — the build-and-test job (no-DB and live-DB tiers) is the
-# blocking gate. Coverage runs on pushes to main and on PRs labeled `coverage`
+# blocking gate. Coverage runs nightly on main and on PRs labeled `coverage`
 # (test.yml); the Codecov status check surfaces drift, not fails builds on
 # small fluctuations.
 

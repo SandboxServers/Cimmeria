@@ -24,8 +24,8 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 The canonical workspace test count. Other docs link here rather than repeat the
 numbers. `tools/docs-gen/regen.py` generates this block from
-`tools/extract_tests.py`, and the `regen-docs` workflow reruns it on `main` after
-every merge, so don't edit it by hand or bump it in a PR. "Gated in CI" leaves out
+`tools/extract_tests.py`, and the `regen-docs` workflow reruns it on `main` every
+six hours, so don't edit it by hand or bump it in a PR. "Gated in CI" leaves out
 the crates on CI's exclude list (`WORKSPACE_EXCLUDES` in
 [test.yml](../../../.github/workflows/test.yml)). The last row is the threshold in
 [maintenance.md](maintenance.md#when-to-update): a PR that adds or removes that
