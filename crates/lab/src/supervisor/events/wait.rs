@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 
 use super::predicate::{glob, EventPredicate};
 use super::store::StoredEvent;
-use super::{KIND_CHAT, KIND_COMBAT};
+use super::{KIND_CHAT, KIND_CLICK, KIND_COMBAT};
 use crate::supervisor::flows::widgets;
 use crate::supervisor::Supervisor;
 
@@ -50,12 +50,12 @@ pub struct WaitRequest {
 
 impl WaitRequest {
     /// Whether the Lua rings need pumping: only when the predicate could
-    /// match a `combat.hit` or `chat.line` event. Saves one `lua_eval` per
-    /// poll on pure bridge-event waits.
+    /// match a `combat.hit`, `chat.line` or `ui.click` event. Saves one
+    /// `lua_eval` per poll on pure bridge-event waits.
     pub fn needs_lua(&self) -> bool {
         match &self.predicate.kind {
             None => true,
-            Some(k) => glob(k, KIND_COMBAT) || glob(k, KIND_CHAT),
+            Some(k) => glob(k, KIND_COMBAT) || glob(k, KIND_CHAT) || glob(k, KIND_CLICK),
         }
     }
 }
@@ -294,6 +294,7 @@ mod tests {
         assert!(mk(None).needs_lua());
         assert!(mk(Some("combat.*")).needs_lua());
         assert!(mk(Some("chat.line")).needs_lua());
+        assert!(mk(Some("ui.click")).needs_lua());
         assert!(!mk(Some("cme.event")).needs_lua());
         assert!(!mk(Some("net.out")).needs_lua());
     }

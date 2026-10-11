@@ -192,10 +192,12 @@ time in the header and `Ctrl+C to quit`):
 batch-20261011-013906  first-session  live  runs 3/6  passed 1  failed 2 (2 known)
 last failure  default#2  FS-01 BLOCKED: setup failed: lab_login: Login_PasswordEdit holds 0 ch...  [#1343]
 
-INSTANCE  CLIENT  LEASE                                      RUN  ROW          SHOT  LAST
-default   49448   lab_uat_run (UAT run, sections first-se...)  3/3  FS-P3 42s    5s    [default 2/3] FAIL FS-01: setup failed: lab_login: ... (88s)
-p2        51200   lab_uat_run (UAT run, sections first-se...)  2/3  FS-02 3s     -     [p2 1/3] FAIL FS-P2: clause movie-over failed [known #1341] (130s)
-p3        -       free                                       -    -            -     -
+INSTANCE  CLIENT  LEASE                                                      RUN  ROW        SHOT
+default   49448   lab_uat_run (UAT run, sections first-session, rows FS...)  3/3  FS-P3 42s  5s
+    [default 2/3] FAIL FS-01: setup failed: lab_login: Login_PasswordEdit holds 0 characters after typing, expected 4...
+p2        51200   lab_uat_run (UAT run, sections first-session, rows FS...)  2/3  FS-02 3s   -
+    [p2 1/3] FAIL FS-P2: clause movie-over failed: client_entity_find/count gte 1 [known #1341] (130s)
+p3        -       free                                                       -    -          -
 
 orphan SGW.exe: 63904 (#1342?)  relaunches: p2 1  login retries: 1 (#1343)
 ```
@@ -211,7 +213,11 @@ orphan SGW.exe: 63904 (#1342?)  relaunches: p2 1  login retries: 1 (#1343)
   footer then says `daemon has no run progress: lab install, then lab restart`).
 - SHOT is the age of the newest `*.png` under `<run_dir>\rows\`, run_dir
   from `/status` `uat` (else the lane's last record's `RunDir`), or `-`.
-- LAST is `Format-UatProgressLine` of the lane's last record.
+- LAST is `Format-UatProgressLine` of the lane's last record, tagged with the
+  re-classified issue, on its own line indented four spaces under the
+  instance's row (LW-03 review: the line is too long to share a 120-column
+  row with the lease). Without a plan its total reads `?`. An instance with no
+  record has no LAST line. Columns are as wide as their widest cell plus two.
 - Every line is cut to the window width (120 in tests).
 
 `-Once -Json` (one line; keys in this order; a key whose value would be

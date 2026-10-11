@@ -1,0 +1,74 @@
+{
+  "daemon": {
+    "pid": 40112,
+    "version": "0.1.0",
+    "started_at": "2026-10-11T01:20:02.000Z",
+    "uptime_s": 1281
+  },
+  "instances": [
+    {
+      "instance": "default",
+      "account": "lab1",
+      "bridge_port": 8770,
+      "client_pid": 49448,
+      "lease": {
+        "held": true,
+        "lease": {
+          "owner": "lab_uat_run",
+          "purpose": "UAT run, sections first-session, rows FS-01 FS-02 FS-P1 FS-P2 FS-P3 FS-P4 FS-P5",
+          "remaining_s": 1640
+        }
+      },
+      "uat": {
+        "run_id": "cfzzhpjy",
+        "run_dir": "C:\\lab\\uat-runs\\2026-10-11-unknown-cfzzhpjy",
+        "started_at": "2026-10-11T01:40:40.300Z",
+        "rows_total": 7,
+        "rows_done": 4,
+        "section": "first-session",
+        "current_row": "FS-P3",
+        "row_index": 5,
+        "row_started_at": "2026-10-11T01:40:41.000Z",
+        "last_row": "FS-P2",
+        "last_result": "PASS"
+      }
+    },
+    {
+      "instance": "p2",
+      "account": "lab2",
+      "bridge_port": 8771,
+      "client_pid": 51200,
+      "lease": {
+        "held": true,
+        "lease": {
+          "owner": "lab_uat_run",
+          "purpose": "UAT run lease-0123456789abcdef0123456789abcdef, sections first-session, rows FS-01 FS-02 FS-P1 FS-P2 FS-P3 FS-P4 FS-P5 ",
+          "remaining_s": 1700
+        }
+      },
+      "uat": {
+        "run_id": "cfzzhprq",
+        "run_dir": "C:\\lab\\uat-runs\\2026-10-11-unknown-cfzzhprq",
+        "started_at": "2026-10-11T01:40:13.700Z",
+        "rows_total": 7,
+        "rows_done": 1,
+        "section": "first-session",
+        "current_row": "FS-02",
+        "row_index": 2,
+        "row_started_at": "2026-10-11T01:41:20.000Z",
+        "last_row": "FS-01",
+        "last_result": "PASS"
+      }
+    },
+    {
+      "instance": "p3",
+      "account": "lab3",
+      "bridge_port": 8772,
+      "client_pid": null,
+      "lease": {
+        "held": false
+      },
+      "uat": null
+    }
+  ]
+}

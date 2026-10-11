@@ -848,6 +848,19 @@ Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst o
 
 Guards: `an_idle_session_reports_idle_timeout_as_canceled` and `a_closed_socket_reports_client_closed` in `server/timeout_tests.rs`.
 
+## Stale combat state (TG-CMB-02)
+
+A player stuck "in combat" never regenerates and never holsters, and nothing checked for it. The vitals sample tick (`cell/service/ticks/vitals.rs`) now runs `log_combat_state_stale` (`cell-combat`, `combat/vitals.rs`) for every living player: WARN `target: "threat"`, `event = "combat_state_stale"`, identity, with `reason`:
+
+| `reason` | Meaning |
+|---|---|
+| `mob_gone` | A threat entry names an entity that no longer exists |
+| `mob_dead` | A threat entry names a dead entity |
+| `bit_without_threat` | `BSF_InCombat` is set but the threat table is empty |
+| `threat_without_bit` | The threat table has entries but `BSF_InCombat` is clear |
+
+Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the throttle is forgotten when the entity is destroyed. Guards: the seven `log_combat_state_stale` tests in `combat/vitals.rs` (one per reason, a consistent-state silence case, a burst and an independence test).
+
 ## Minigame result and start seam (TG-MG-01)
 
 `cell_dispatch/minigame.rs` in `cimmeria-base-world-entry`. A minigame result is forwarded to the cell for its victory chains; when that hand-off cannot happen the chains never run, so it is logged. The identity is the entity pair (`entity_id`, `entity_name`) and the result is named by `result_code` and `result`.
