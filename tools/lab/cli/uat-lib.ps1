@@ -66,14 +66,40 @@ function Get-UatField($Object, [string]$Name) {
 
 # The argument checks that need no daemon: an error message, or $null.
 function Test-UatArguments([int]$Leases, [int]$RunsPerLease, [string]$Instance,
-                           [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3) {
+                           [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3,
+                           [string]$Fixtures = '', [bool]$Heal = $false) {
     if ($Leases -lt 1 -or $Leases -gt $script:UatMaxLeases) { return "-Leases must be 1 to $script:UatMaxLeases" }
     if ($RunsPerLease -lt 1 -or $RunsPerLease -gt $script:UatMaxRunsPerLease) { return "-RunsPerLease must be 1 to $script:UatMaxRunsPerLease" }
     if ($Instance -and $Leases -ne 1) { return '-Instance runs one lane; drop -Leases or -Instance' }
     if ($StaggerSeconds -lt 0 -or $StaggerSeconds -gt 300) { return '-StaggerSeconds must be 0 to 300' }
     if ($RunTimeoutMinutes -lt 1 -or $RunTimeoutMinutes -gt 120) { return '-RunTimeoutMinutes must be 1 to 120' }
     if ($MaxConsecutiveFailures -lt 0 -or $MaxConsecutiveFailures -gt 20) { return '-MaxConsecutiveFailures must be 0 to 20' }
+    # lab-fixtures D-FX10: when a row's fixture is applied (lab_uat_run `fixtures`).
+    if ($Fixtures -and @('auto', 'always', 'never') -cnotcontains $Fixtures) { return '-Fixtures must be auto, always or never' }
+    # D-SV8: a heal recalibrates on the batch's one instance, where the row failed.
+    if ($Heal -and $Leases -ne 1) { return '-Heal needs -Leases 1 (it recalibrates on the instance the batch ran on)' }
     return $null
+}
+
+# lab uat -Heal's work list: the distinct (row, pose) pairs of the runs'
+# row summaries that carry a heal hint (SV-11's `heal: {pose, step}`, set
+# only on a failed row whose first failed step missed on a pose), in the
+# order first seen. Rows without one are ignored.
+function Get-UatHealHints($Runs) {
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $out = @()
+    foreach ($run in @(@($Runs) | Where-Object { $null -ne $_ })) {
+        foreach ($r in @(Get-UatField $run 'Rows')) {
+            if ($null -eq $r -or [string](Get-UatField $r 'result') -eq 'PASS') { continue }
+            $pose = [string](Get-UatField (Get-UatField $r 'heal') 'pose')
+            $row = [string](Get-UatField $r 'row')
+            if (-not $pose -or -not $row) { continue }
+            $key = "$row`n$pose"
+            if (-not $seen.Add($key)) { continue }
+            $out += [ordered]@{ row = $row; pose = $pose }
+        }
+    }
+    return $out
 }
 
 # -Rows as clean ids: split on commas, trimmed, blanks and repeats dropped.
@@ -302,24 +328,113 @@ function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
     }
     $passed = @($Runs | Where-Object { $_.Ok }).Count
     $known = @($Runs | Where-Object { -not $_.Ok -and -not $_.Error -and $_.Verdict.Issue }).Count
-    return [ordered]@{
+    $out = [ordered]@{
         ok = ($Runs.Count -gt 0 -and $passed -eq $Runs.Count)
         runs = $Runs.Count; passed = $passed; failed = $Runs.Count - $passed
         failed_known = $known; failed_new = $Runs.Count - $passed - $known
         rows = $rowStats; lanes = @($laneStats); failures = @($groups.Values)
     }
+    $golden = Merge-UatGolden $Runs
+    if ($golden) { $out.golden = $golden }
+    return $out
 }
 
-# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake.
+# The value -DiffGolden stores in a run's Golden field (README D-GD7) from a
+# lab_golden_diff reply, or the message of a call that threw: 'match', the
+# first divergence line (it starts 'row '), or 'error: <why>'. A refusal
+# (no_golden, cannot_diff) or a reply without a verdict is an error, never a
+# match. Lease ids are hidden and the value is cut to 300 characters.
+function Get-UatGoldenValue($Reply, [string]$CallError) {
+    $match = Get-UatField $Reply 'match'
+    $first = [string](Get-UatField $Reply 'first')
+    $v = if ($CallError) { "error: $CallError" }
+    elseif (-not [bool](Get-UatField $Reply 'ok')) {
+        $code = [string](Get-UatField $Reply 'code')
+        "error: $(if ($code) { "${code}: " })$(Get-UatField $Reply 'error')"
+    }
+    elseif ($match -eq $true) { 'match' }
+    elseif ($match -eq $false -and $first) { $first }
+    else { 'error: lab_golden_diff gave no verdict' }
+    $v = Hide-LeaseIds ("$v" -replace '[\r\n]+', ' ')
+    if ($v.Length -gt 300) { $v = $v.Substring(0, 297) + '...' }
+    return $v
+}
+
+# The Golden value -DiffGolden gives one finished run, or $null for none: no
+# -DiffGolden ($DiffArgs is $null) or a run that did not pass (only passing
+# runs are compared). $DiffArgs are lab_golden_diff's arguments less run_dir;
+# $Invoke is the call itself, { param($Arguments) <reply> }, so the lane loop
+# passes the MCP call and the tests pass a stub.
+function Get-UatRunGolden($Rec, $DiffArgs, [scriptblock]$Invoke) {
+    if ($null -eq $DiffArgs -or -not [bool](Get-UatField $Rec 'Ok')) { return $null }
+    $runDir = [string](Get-UatField $Rec 'RunDir')
+    if (-not $runDir) { return 'error: the run named no run folder' }
+    $a = $DiffArgs.Clone(); $a.run_dir = $runDir
+    $reply = $null; $callError = $null
+    try { $reply = & $Invoke $a } catch { $callError = ($_.Exception.Message -split "`n")[0] }
+    return Get-UatGoldenValue $reply $callError
+}
+
+# Why a committed golden file cannot be used, or $null when it reads as JSON
+# with schema, section and fingerprint. -DiffGolden checks it before driving
+# anything, so a broken golden never costs a batch.
+function Test-UatGoldenFile([string]$Path) {
+    try { $g = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+    catch { return ($_.Exception.Message -split "`n")[0] }
+    if ($null -eq $g -or $g -isnot [pscustomobject]) { return 'it is not a JSON object' }
+    $missing = @('schema', 'section', 'fingerprint' | Where-Object { $null -eq (Get-UatField $g $_) })
+    if ($missing) { return "it has no $($missing -join ', ')" }
+    return $null
+}
+
+# The golden comparison of the runs that carry a Golden field: match and
+# diverged counts, errors (a diff that could not be made), and every
+# non-match line grouped with its count and up to 5 run refs, most common
+# first. $null when no run has one (a batch without -DiffGolden).
+function Merge-UatGolden($Runs) {
+    $withGolden = @(@($Runs) | Where-Object { Get-UatField $_ 'Golden' })
+    if (-not $withGolden.Count) { return $null }
+    $groups = [ordered]@{}
+    $match = 0; $diverged = 0; $errors = 0
+    foreach ($run in $withGolden) {
+        $line = [string](Get-UatField $run 'Golden')
+        if ($line -ceq 'match') { $match++; continue }
+        if ($line.StartsWith('error: ')) { $errors++ } else { $diverged++ }
+        if (-not $groups.Contains($line)) { $groups[$line] = [ordered]@{ line = $line; count = 0; runs = @() } }
+        $groups[$line].count++
+        if (@($groups[$line].runs).Count -lt 5) { $groups[$line].runs += "$(Get-UatField $run 'Instance')#$(Get-UatField $run 'Index')" }
+    }
+    return [ordered]@{
+        match = $match; diverged = $diverged; errors = $errors
+        groups = @($groups.Values | Sort-Object -Stable { $_.count } -Descending)
+    }
+}
+
+# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake, 5
+# every run passed but the golden comparison did not match on one (a
+# divergence, or a diff that could not be made; README D-GD7), 8 a heal
+# proposal was written (lab-spec-vocab SV-12's summary `heal`). 8 wins over
+# every other code, because a heal proposal needs action first.
 function Get-UatExitCode($Summary) {
-    if ($Summary.ok) { return 0 }
+    if (@(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ }).Count) { return 8 }
+    if ($Summary.ok) {
+        $g = Get-UatField $Summary 'golden'
+        if ($g -and ($g.diverged + $g.errors) -gt 0) { return 5 }
+        return 0
+    }
     if (@($Summary.lanes | Where-Object { $_.braked }).Count) { return 4 }
     return 1
 }
 
+# Text cut to $Max characters, ending '...' when cut.
+function Limit-UatText([string]$Text, [int]$Max) {
+    if ($Text.Length -le $Max) { return $Text }
+    return $Text.Substring(0, $Max - 3) + '...'
+}
+
 # The summary as compact JSON for an agent: no nulls, failures capped at
 # $MaxFailures groups (with a count of the rest), rows as "pass/total".
-function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures = 8) {
+function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures = 8, [int]$MaxHeal = 3) {
     $rows = [ordered]@{}
     foreach ($k in $Summary.rows.Keys) { $rows[$k] = "$($Summary.rows[$k].pass)/$($Summary.rows[$k].total)" }
     $fails = @($Summary.failures | Sort-Object { $_.count } -Descending)
@@ -343,6 +458,30 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     })
     if ($shown) { $out.failures = @($shown) }
     if ($fails.Count -gt $MaxFailures) { $out.more_failure_groups = $fails.Count - $MaxFailures }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        $go = [ordered]@{ match = $g.match; diverged = $g.diverged }
+        if ($g.errors) { $go.errors = $g.errors }
+        # first: the most common divergence, never an error line; error: the
+        # most common error, only when no run diverged. Both short enough
+        # that a batch with divergences stays a few hundred characters.
+        $lines = @(@($g.groups) | ForEach-Object { [string]$_.line })
+        $div = @($lines | Where-Object { -not $_.StartsWith('error: ') }) | Select-Object -First 1
+        $err = @($lines | Where-Object { $_.StartsWith('error: ') }) | Select-Object -First 1
+        if ($div) { $go.first = Limit-UatText $div 120 }
+        elseif ($err) { $go.error = Limit-UatText $err 120 }
+        $out.golden = $go
+    }
+    # D-SV12: only when -Heal proposed something; {row, pose, diff} with diff
+    # the file name in the batch folder (batch, below, is the folder), at most
+    # $MaxHeal entries and more_heal: <n> for the rest (summary.md has all).
+    $heal = @(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ })
+    if ($heal.Count) {
+        $out.heal = @($heal | Select-Object -First $MaxHeal | ForEach-Object {
+            [ordered]@{ row = $_.row; pose = $_.pose; diff = (Split-Path -Leaf ([string]$_.diff)) }
+        })
+        if ($heal.Count -gt $MaxHeal) { $out.more_heal = $heal.Count - $MaxHeal }
+    }
     $out.batch = $BatchDir
     return $out | ConvertTo-Json -Depth 6 -Compress
 }
@@ -373,13 +512,76 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
             [void]$sb.AppendLine("- $($f.count)x $($f.signature)$tag; runs: $(@($f.runs) -join ', ')")
         }
     }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        [void]$sb.AppendLine('')
+        $err = if ($g.errors) { ", $($g.errors) could not be compared" } else { '' }
+        [void]$sb.AppendLine("Golden: $($g.match) match, $($g.diverged) diverged$err")
+        foreach ($l in @($g.groups)) {
+            [void]$sb.AppendLine("- $($l.count)x $($l.line); runs: $(@($l.runs) -join ', ')")
+        }
+    }
+    $heal = @(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ })
+    if ($heal.Count) {
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine('Heal proposals (spec diffs to review; nothing was applied):')
+        foreach ($h in $heal) { [void]$sb.AppendLine("- $($h.row) $($h.pose): $($h.diff)") }
+    }
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("Batch: $BatchDir")
     return $sb.ToString()
 }
 
+# Writes the batch's summary.md and batch.json; returns the Markdown. $Batch
+# is @{ Dir; Title; Section; RowIds; LaneCount; RunsPerLease; Started }.
+function Write-UatBatchSummary($Summary, [hashtable]$Batch) {
+    $md = Format-UatSummary $Summary $Batch.Title $Batch.Dir
+    Set-Content -LiteralPath (Join-Path $Batch.Dir 'summary.md') -Value $md -Encoding utf8
+    [ordered]@{
+        section = $Batch.Section; rows = $Batch.RowIds; leases = $Batch.LaneCount; runs_per_lease = $Batch.RunsPerLease
+        started = $Batch.Started.ToString('o'); minutes = [math]::Round(((Get-Date) - $Batch.Started).TotalMinutes, 1)
+        summary = $Summary
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Batch.Dir 'batch.json') -Encoding utf8
+    return $md
+}
+
+# lab uat -Heal after the batch (D-SV8 (a)): recalibrates each heal hint of
+# the runs with Invoke-UatHeal (calibrate-lib.ps1) through $Invoke, prints a
+# line per hint through $Say (and the diff text when $PrintDiffs), and
+# records the proposals as $Summary.heal in batch.json and summary.md. The
+# records are collected as each call ends and the summary is rewritten in a
+# finally, so a Ctrl+C mid-heal still lists the diffs already written. $WaitLeaseFree is
+# Invoke-UatHeal's (after a failed call). Returns the new Markdown, or
+# $null when no proposal was written (the files stay as the batch left them).
+function Invoke-UatHealPass($Runs, $Summary, [hashtable]$Batch, [string]$SpecsDir, [string]$Instance,
+                            [scriptblock]$Invoke, [scriptblock]$Say, [scriptblock]$WaitLeaseFree = $null, [bool]$PrintDiffs = $false) {
+    $hints = @(Get-UatHealHints $Runs)
+    if (-not $hints.Count) {
+        & $Say 'heal: no failed row carries a heal hint; nothing to recalibrate'
+        return $null
+    }
+    & $Say "heal: recalibrating $($hints.Count) pose(s) on ${Instance}: $(($hints | ForEach-Object { "$($_.row) $($_.pose)" }) -join ', ')"
+    $healRecords = [System.Collections.Generic.List[object]]::new()
+    $healMd = $null
+    try {
+        Invoke-UatHeal $hints $Batch.Dir $Batch.Section $SpecsDir $Instance $Invoke -WaitLeaseFree $WaitLeaseFree -OnRecord {
+            param($r)
+            $healRecords.Add($r)
+            & $Say $r.Line
+            if ($r.Text -and $PrintDiffs) { Write-Host $r.Text }
+        } | Out-Null
+    } finally {
+        $proposed = @($healRecords | Where-Object { $_.Diff } | ForEach-Object { [ordered]@{ row = $_.Row; pose = $_.Pose; diff = $_.Diff } })
+        if ($proposed.Count) {
+            $Summary.heal = $proposed
+            $healMd = Write-UatBatchSummary $Summary $Batch
+        }
+    }
+    return $healMd
+}
+
 # The progress line lab uat prints for one finished run (Record: Instance, Index,
-# Ok, Error, Verdict, Seconds), with Total runs per lease.
+# Ok, Error, Verdict, Seconds, and Golden under -DiffGolden), with Total runs per lease.
 function Format-UatProgressLine($Record, [int]$Total) {
     $verdict = Get-UatField $Record 'Verdict'
     $runError = Get-UatField $Record 'Error'
@@ -390,5 +592,25 @@ function Format-UatProgressLine($Record, [int]$Total) {
         $tag = if ($issue) { " [known $issue]" } else { '' }
         $what = "FAIL $(Get-UatField $verdict 'Row'): $(Get-UatField $verdict 'Reason')$tag"
     }
-    return ("[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds'))
+    $line = "[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds')
+    $golden = Get-UatField $Record 'Golden'
+    if ($golden) { $line += "; golden: $golden" }
+    return $line
+}
+
+# Where lab uat's progress lines go: 'stderr' with -ProgressToStderr (even
+# under -Json, so lab golden can show a long batch live and still read one
+# JSON line from stdout), 'none' under -Quiet or -Json, else 'host'.
+function Get-UatProgressMode([bool]$Json, [bool]$Quiet, [bool]$ProgressToStderr) {
+    if ($ProgressToStderr) { return 'stderr' }
+    if ($Json -or $Quiet) { return 'none' }
+    return 'host'
+}
+
+# One progress line to where Get-UatProgressMode says.
+function Write-UatProgress([string]$Mode, [string]$Message) {
+    switch ($Mode) {
+        'stderr' { [Console]::Error.WriteLine($Message) }
+        'host' { Write-Host $Message }
+    }
 }

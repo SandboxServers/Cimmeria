@@ -5,11 +5,15 @@
 > [lab-roadmap handoff § 3](../lab-roadmap/handoff.md#3-golden-runs-and-run-diffing).
 > Packet specs: [work-packets.md](work-packets.md) (GD-01 to GD-07) and [work-packets-2.md](work-packets-2.md) (GD-08 to GD-11); shared names: [contract.md](contract.md).
 >
-> **Campaign status (2026-10-10): wave 1 running.** Every decision is made
-> (D-GD1 to D-GD10, by the user on 2026-10-10). GD-02 is being written; GD-01
-> waits for SV-03 to merge, because both edit `spec.rs` (lab-spec-vocab's
-> coordinator agreed the order). This campaign also runs lab-watch's LW-02,
-> which GD-08 needs. GD-10 still needs the user's OK for the lab.
+> **Campaign status (2026-10-11): code-complete; live acceptance pending.**
+> Every decision is made (D-GD1 to D-GD10, by the user on 2026-10-10).
+> GD-01 to GD-09 and lab-watch's LW-02 (which GD-08 needed) are merged, and
+> GD-11 closed out the docs. GD-10, the live acceptance, is
+> **BlockedDependency**: the user deferred it until lab-spec-vocab's SV-13
+> (migrating `first-session.toml`) and SV-15 (recalibrating it) have merged,
+> so the golden is not stale on arrival. It then needs the user's OK for the
+> lab, and becomes **UATPending**. No section has a committed golden until
+> it runs; [worknotes/GD-10.md](worknotes/GD-10.md) says what it must record.
 
 ## Purpose
 
@@ -89,17 +93,17 @@ new Praxis character on 2026-10-10.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Integrated |
-| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
-| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Integrated |
-| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | Integrated |
-| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
-| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
-| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | Integrated |
-| GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
-| GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
-| GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, the user's OK for the lab | BlockedDependency |
-| GD-11 | Close-out: guides, tools README, unified UAT, status docs | documentation-writer | S | 8 | all | BlockedDependency |
+| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Done |
+| GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Done |
+| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Done |
+| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | Done |
+| GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Done |
+| GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Done |
+| GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | rust-gameserver-dev | M | 4 | GD-04, GD-05, GD-06 | Done |
+| GD-08 | `lab golden record` command | general-purpose | M | 5 | GD-07, LW-02 | Done |
+| GD-09 | `lab uat -DiffGolden` | general-purpose | S | 6 | GD-08 | Done |
+| GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, SV-13 and SV-15 merged, the user's OK for the lab | BlockedDependency (then UATPending) |
+| GD-11 | Close-out: guides, unified UAT, ADR, ledger, memory | documentation-writer | S | 8 | all but GD-10 | Done |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
 
@@ -263,3 +267,58 @@ then the reference, not the spec.
   omitting it. `lab_golden_record` is in `OPEN` although it writes the golden
   file: `OPEN` now means "never drives the client", not read-only. Two
   concurrent records of one section race; the last write wins.
+- **GD-08.** Implemented by a general-purpose (Opus) agent. `lab golden
+  record` exit codes: 0 recorded, 1 a run or row did not pass, 2 usage or a
+  golden exists without `-Rebless`, 3 the `lab uat` pre-flight or plan
+  failed, 6 the runs disagree, 7 cannot record (including `cannot_diff`, a
+  daemon failure after the runs, or `show` unable to read the golden). Every
+  failure after the runs names the `batch` folder. The child `lab uat` is
+  built by the pure `Get-GoldenBatchArgs` (`-Fingerprint`,
+  `-MaxConsecutiveFailures 1`, `-ProgressToStderr`), so its per-run progress
+  streams to the console while stdout stays one JSON line. `Get-GoldenPath`
+  maps a section id exactly as Rust's `path_safe` does (`v1.2` is
+  `golden/v1_2.json`). `uat.ps1` gained `-Fingerprint` and
+  `-ProgressToStderr` next to FX's `-Fixtures`.
+- **GD-09.** `lab uat -DiffGolden` refuses a missing golden (exit 2) right
+  after the argument checks, before the daemon is asked, and also refuses
+  when no spec folder is found (no `-SpecsDir`, no checkout) or the golden
+  is not JSON with `schema`, `section` and `fingerprint` ("golden for
+  <section> cannot be read: ..."). Only passing runs are diffed: a failed
+  run gets no `Golden` (review fix). A passing run's
+  `Golden` is `match`, the `first` line, or `error: <code>: <error>` for a
+  refusal (`no_golden`, `cannot_diff`), `error: <message>` for a call that
+  threw, or `error: ...` for a reply with no verdict; a passing run with no
+  run folder gets an error too. The per-run diff is the pure
+  `Get-UatRunGolden` (the MCP call passed in as a scriptblock), tested on
+  every branch and inside a `ForEach-Object -Parallel` runspace. The
+  summary's `golden` adds `errors` (runs
+  not compared) next to `match` and `diverged`, and **exit 5 also covers
+  errors**: a diff that could not be made is never read as a match. The
+  compact JSON shows `errors` only when non-zero; `first` is the most common
+  divergence, never an error line, and `error` (the most common error)
+  appears only when no run diverged. Both are capped at 120 characters, so
+  a 5-run batch with two 200-character divergences stays under 500
+  (review fix; it was 200, which broke that bound). `Get-UatExitCode` already returns 8
+  when the summary carries a non-empty `heal` list (SV-12's field, not on
+  `main` yet), and 8 wins over every other code, as SV-12's packet says;
+  `test-uat.ps1` pins 8 over 5 and over 1. The diff runs after the run's
+  `Seconds` are taken, so run times exclude it.
+- **GD-11.** The architecture paragraph sits in §3.4 of the ADR (the
+  supervisor), because the ADR has no UAT consequences section.
+  `docs/project-status.md` and `docs/gap-analysis*` are unchanged: their lab
+  rows describe the bridge, supervisor and server endpoint, not UAT
+  automation, and no earlier lab campaign added it there.
+
+## Lessons
+
+- **M-size Rust packets exceeded the Haiku `packet-coder`'s context.** It
+  ran out reading GD-03's spec plus the merged code it built on, so GD-03,
+  GD-04 and GD-07 went to `rust-gameserver-dev`, and GD-08 and GD-09 (the
+  PowerShell commands) to a general-purpose agent. Next campaign: give
+  `packet-coder` S packets only, or split an M packet before dispatch.
+- **Every packet's adversarial review found real bugs**, not style notes:
+  for example GD-06's tap left running on a lost lease and its failed
+  window sample read as "no windows", and GD-09 diffing failed runs and
+  breaking its own 500-character summary bound (the review outcomes above
+  mark each fix). Keep a fresh reviewer on every packet, and route the
+  fixes to a fresh worker.

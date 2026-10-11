@@ -2,7 +2,7 @@
 title: Live Research Lab — the research rulebook
 type: how-to
 audience: engineers and AI agents doing RE / live verification against a running SGW.exe + cimmeria-server
-last_updated: 2026-10-10
+last_updated: 2026-10-11
 companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
@@ -305,8 +305,10 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 `server_entity_*`, `server_witnesses`, `server_ability_state`, `server_packet_tap_*`,
-`server_log_tail`, `server_content_reload`, `server_db_query`. See ADR
-§3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+`server_log_tail`, `server_content_reload`, `server_db_query`, and
+`server_stage_fixture`, which stages a UAT row fixture for an offline lab
+fixture character ([below](#staging-a-row-fixture-server_stage_fixture)).
+See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.
@@ -336,6 +338,40 @@ Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
   "world_name": "Castle_CellBlock", "name": null, "template_id": 7001,
   "template_name": "Jaffa_Guard_T1", "current_target_id": 100, "current_target_name": "Tealc" }
 ```
+
+### Staging a row fixture (`server_stage_fixture`)
+
+`server_stage_fixture` is the endpoint's one tool that changes server state, and it writes no row itself: it puts a fixture in the server's in-memory store, and the BaseApp writes it when that character next presses Play, before world entry reads anything. `lab_uat_run` calls it for [row fixtures](automated-uat.md#row-fixtures) at character select; you rarely call it by hand. The design is in the [lab-fixtures ledger](../analysis/lab-fixtures/README.md) (D-FX1, D-FX2).
+
+The arguments are a row spec's `[row.fixture]` fields with `character` set to the character's name, its full name or the name's last word, compared ignoring case. An unknown field is refused.
+
+```json
+{ "character": "Fxpraxisdefa", "world": "Castle_CellBlock",
+  "missions": [{ "id": 622, "step": 80623 }, { "id": 1360, "state": "not_active" }],
+  "items": [{ "id": 55, "count": 0 }], "tutorials_unseen": [5882] }
+```
+
+It is lab-only by construction. The gates, in the order the tool checks them:
+
+1. The endpoint's bearer token, like every lab tool. No chat or console command reaches the store.
+2. Exactly one character matches the name.
+3. It is a **lab fixture character**: the last word of its name is `Fx` followed by letters (`Uat Fxpraxisdefa`). Any other character, a GM's main included, is refused before its account is looked at.
+4. Its account is a **GM** (`accesslevel` 2 or more).
+5. It is **offline or mid-login**: no session plays it. A session at character select of the same account does not block, so stage while logged in at character select.
+6. The fixture matches the seed: a finite position, a world in `resources.worlds`, each mission once and in the seed, an active step that belongs to its mission, a completed mission that has steps, each item design once and in the seed with a count of 0 to 10 in `main` or `mission`, tutorial ids above 0.
+
+On success it replies `{ "staged": true, "player_id", "player_name", "replaced" }`, where `player_name` is the full name and `replaced` is true when an earlier fixture for the character was still staged (the new one replaces it).
+
+A refusal is a JSON-RPC `invalid_params` error (-32602) whose message starts `stage refused:`, unlike the other `server_*` tools, which return an error result. A malformed call is refused the same way, naming the field (`stage refused: arguments: missions[0].state: unknown variant ...`). A database failure is an `internal_error` (-32603) whose message still starts `stage refused:` and says `lookup failed`. Each refusal logs one `lab fixture stage refused` event with a stable `reason`: WARN for `arguments`, `no_database`, `no_character`, `ambiguous`, `not_fixture_character`, `not_gm`, `online`, `position`, `world`, `mission`, `step`, `item` and `tutorial`, ERROR for `lookup_failed`. A stage logs INFO `lab fixture staged`, and every call is audited on `lab.tool_call` as usual.
+
+What happens to a staged fixture:
+
+- **Applied at the next Play, taken once.** Only the owning account's Play takes it: another account's `playCharacter` for the same id leaves it staged (WARN `account_mismatch`). It is applied once, so gate travel and respawn, which rerun the client-ready path, do not apply it again.
+- **Expires after 10 minutes.** A run that died before Play leaves nothing behind for long (WARN `expired` when a later Play finds it).
+- **Checked again at Play.** The session must still be a GM's, or the fixture is discarded (WARN `not_gm`). The apply logs INFO `lab fixture applied`, or ERROR `lab fixture not applied` with `reason` `precheck_refused` (nothing written) or `write_failed`. The character enters the world either way, so the runner verifies the state before the row runs.
+- **Lost on a server restart:** the store is in memory.
+
+On the colo this keeps rule 6: the tool reaches only `Fx...` characters on GM accounts, and only while they are offline.
 
 ## Driving the client with its own input
 
@@ -983,7 +1019,8 @@ first line of each.
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
-| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake |
+| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage, or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 a heal proposal was written (SV-12), which wins over 5 and every other code |
+| `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
 
 An unknown command exits 2. Examples:
 
@@ -1009,18 +1046,38 @@ lab doctor
 - **Brake.** A lane stops after `-MaxConsecutiveFailures` failed runs in a row (default 3, 0 never). A lane that ran every run is not counted as stopped early. The other lanes carry on.
 - **Timeouts.** Each run times out after `-RunTimeoutMinutes` (default 15). The lane then waits up to 10 minutes for that instance's lease to clear before its next run; a lease that never clears ends the lane.
 - **Ctrl+C** starts no new run, and the summary is still written from the runs that finished. A run already under way finishes on the daemon and releases its lease.
+- **`-DiffGolden`** compares every passing run with the section's committed golden (`<specs>/golden/<section>.json`, from `lab golden record`). The runs are fingerprinted, and `lab_golden_diff` is called on each passing run's folder; a failed run is not compared and gets no `golden` value. Each passing run gets one: `match`, the first divergence as one line, or `error: <why>` when the diff could not be made (`cannot_diff` on one run is reported on that run; the batch goes on). Rows' verdicts don't change (README D-GD7 of the [lab-golden ledger](../analysis/lab-golden/README.md)): a divergence on passing runs exits 5, not 1, and nothing gates `ship.py` or CI on it. A diff error is never counted as a match, so it exits 5 too. A failed run (1) or a stopped lane (4) keeps its own code, and a heal proposal (8, SV-12) wins over all of them. With no golden for the section, or one that is not JSON with `schema`, `section` and `fingerprint`, the command exits 2 before the daemon is asked.
 
 Output:
 
-- **Progress:** one line per run.
-- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out.
-- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-Quiet` prints one line.
+- **Progress:** one line per run; under `-DiffGolden` it ends with `; golden: <value>`.
+- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Under `-DiffGolden`, a Golden block counts the runs that matched, diverged or could not be compared, then lists each line with its count and up to five runs. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out.
+- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Under `-DiffGolden` it adds `golden: {match, diverged, first}` (`errors` when a run could not be compared; `first` is the most common divergence line, never an error; `error`, the most common error line, appears only when no run diverged; both are capped at 120 characters); a 5-run batch with two divergences stays under 500 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-ProgressToStderr` still writes the per-run progress lines, to stderr (`lab golden` uses it). `-Quiet` prints one line.
 - **Files.** Every batch writes `plan.json` first: the section, the rows, the lanes (lane and instance), the runs per lease, the start time (UTC) and the `lab uat` pid. Then `batch.jsonl` (one line per run, as each finishes) with `Started` and `Ended` (UTC) on each line, then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
 
 ```powershell
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
 lab uat first-session -Instance p2 -Rows FS-01,FS-02,FS-P1 -Json
+lab uat first-session -Rows FS-P4 -RunsPerLease 20
+lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
+```
+
+**`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `-Runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `-Leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly.
+
+- **Build.** `-ServerVersion` (the server build's commit, 7 to 40 hex characters) is required: the runs record it, and the tool refuses runs without one.
+- **Spec folder.** `-SpecsDir` works as in `lab uat` (default: the checkout's `docs/guides/uat-specs`). It goes to the runs and to the tool, so a draft spec folder can be blessed too.
+- **Re-bless.** An existing golden is refused (exit 2) unless `-Rebless` is given. A re-bless needs fresh runs (none the old golden names as evidence) and keeps every row the old golden held.
+- **While recording, don't call `lab_timeline` on the lab character.** It reads and drains the same packet tap, and a run with a drained tap can't be recorded.
+- **Output.** One line, `golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; <path>`, or under `-Json` one compact object: `{"ok":true,"exit":0,"path":...,"rows":7,"events":312,"bytes":21456,"runs":5}` or `{"ok":false,"exit":N,"code":...,"error":...,"batch":...}`. A refusal after the runs names the batch folder (`batch` under `-Json`), so the runs can be inspected. Each run's progress line from `lab uat` shows live on stderr, under `-Json` too, so a 25-minute batch is not silent.
+
+`show` prints a committed golden (section, rows, total ordered events, server build, SGW.exe hash, recorded time and evidence run ids) and needs no daemon.
+
+```powershell
+lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -ServerVersion 1a2b3c4
+lab golden record first-session -Runs 10 -Leases 2 -ServerVersion 1a2b3c4 -Rebless -Json
+lab golden show first-session
 ```
 
 The `first-session` SGU rows are not calibrated yet, so name the Praxis rows as above.

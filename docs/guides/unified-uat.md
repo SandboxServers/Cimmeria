@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-04
+last_updated: 2026-10-11
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-04. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-11. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -234,6 +234,16 @@ What every new player does in their first ten minutes, once per faction. Run it 
 | FS-S5 | Use the Elevator Controls; finish the dialog | Dialog 5357; objectives 5353 and 5358 done; you are moved to the armory | |
 | FS-S6 | Search the body holding the firearm | 1559 completes; a pistol in the backpack; dialog 5358 | |
 | FS-99 | Delete both characters | Both gone | |
+
+**Golden diff (lab only, once the golden exists).** After a server change, run `lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden`. Expect `golden: match` on every passing run. A divergence line (exit 5) does not fail a row: it names the first message, transition or window where the run stopped matching the recorded good runs. How to read it: [automated-uat.md, Golden runs](automated-uat.md#golden-runs).
+
+**Still to run: GD-10, record the first-session golden (owner or coordinator agent).** Not before lab-spec-vocab SV-13 (the spec migration) and SV-15 (its recalibration) have merged, or the golden is stale on arrival. Then, with the owner's OK and the lab free for about 25 minutes:
+
+1. Reinstall the lab from the merged `main`: `lab install -From <checkout>` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
+2. From the `gd10` worktree: `lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Runs 5 -ServerVersion <sha>`, where `<sha>` is the server build the lab runs against.
+3. Then `lab uat first-session -Rows <the same rows> -DiffGolden` once: it must report `golden: match`.
+
+The rules for a disagreement (exit 6) or an FS-P2 #1341 failure, and what to commit and record, are in [GD-10](../analysis/lab-golden/work-packets-2.md#gd-10-live-acceptance).
 
 **SigNoz:** search `body CONTAINS 'accepting mission'` and `body CONTAINS 'completing mission'` with the mission id (622, 1559) around the row's time; chain matching is `scope_name = 'content.resolve'`.
 

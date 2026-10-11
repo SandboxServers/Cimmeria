@@ -252,13 +252,15 @@ async fn a_failed_drain_is_flagged_and_drained_by_the_next_row() {
 }
 
 /// A failure after Play (no session to resolve the entity from) still
-/// ends the session it started.
+/// ends the session it started. The row has no `world`, so the verify step
+/// right after Play has no session to check and the entity lookup fails.
 #[tokio::test]
 async fn a_failure_after_play_ends_the_session() {
     let fake = client(fx_listed());
     let mut server = Endpoint::new(&fake);
     server.omit_in_world = true;
-    let rows = run(&fake, Some(&server), FIXTURE_ROW, FixtureMode::Auto).await;
+    let row = FIXTURE_ROW.replace("world = \"Castle_CellBlock\"\n", "");
+    let rows = run(&fake, Some(&server), &row, FixtureMode::Auto).await;
     let row = &rows[0];
     assert_eq!(row.result, RowResult::Blocked);
     let want = format!(

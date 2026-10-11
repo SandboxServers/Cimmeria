@@ -36,12 +36,12 @@ pub enum Gate {
     Lease,
     /// `lease_id` optional: a given one must be current; without one the
     /// tool takes a lease of its own for as long as it drives
-    /// (`lab_uat_run`, see [`super::RunLease`]).
+    /// (`lab_uat_run`, `lab_uat_calibrate`, see [`super::RunLease`]).
     OwnLease,
 }
 
 /// Tools that take a lease of their own when the caller passes none.
-pub const OWN_LEASE: &[&str] = &["lab_uat_run"];
+pub const OWN_LEASE: &[&str] = &["lab_uat_run", "lab_uat_calibrate"];
 
 /// Tools that do not drive the client. Most only look; `lab_golden_record`
 /// writes a golden file but touches no client. Everything else needs the
@@ -121,6 +121,8 @@ pub const LEASED: &[&str] = &[
     "client_target",
     "client_move_to",
     "client_camera",
+    // Moves the shared cursor (never clicks).
+    "client_hover_probe",
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",
@@ -171,6 +173,8 @@ mod tests {
     fn tools_with_hidden_writes_need_the_lease() {
         assert_eq!(gate("client_entity_find"), Gate::Lease);
         assert_eq!(gate("client_inventory"), Gate::Lease);
+        // Moves the cursor (no button), so it drives the client.
+        assert_eq!(gate("client_hover_probe"), Gate::Lease);
     }
 
     #[test]
@@ -182,5 +186,7 @@ mod tests {
             assert!(!OPEN.contains(t), "{t} is in two lists");
         }
         assert_eq!(gate("lab_uat_run"), Gate::OwnLease);
+        // lab-spec-vocab (SV-10): the calibration sweep leases like a run.
+        assert_eq!(gate("lab_uat_calibrate"), Gate::OwnLease);
     }
 }

@@ -82,6 +82,21 @@ pub struct Sim {
     /// Scales the gains the camera readout reports (1.0 is exact), so a
     /// closed loop's first look misses and its correction has to run.
     pub readout_gain_scale: f64,
+    /// What `window_rects` reports (empty: nothing over the 3D view).
+    pub window_rects: Vec<(String, [f64; 4])>,
+    /// Mouse-over is the player within this many pixels of the player's
+    /// projected body. The camera sits at the head, so the avatar projects
+    /// only when the camera pitches down (negative `cam_pitch`).
+    pub avatar_radius_px: Option<f64>,
+    /// `slots` (the mouse-over read) fails once it has answered this many
+    /// times, to prove a failing tool still puts the cursor back.
+    pub fail_mouse_over_after: Option<u32>,
+    pub slots_reads: u32,
+    /// `place_cursor` without a mouse move (a cursor restore) fails.
+    pub fail_cursor_restore: bool,
+    /// Entities mouse-over never reports (rendered, but the client's trace
+    /// does not hit them).
+    pub unhoverable: Vec<u32>,
 }
 
 impl Sim {
@@ -117,6 +132,12 @@ impl Sim {
             buttons: Vec::new(),
             clicks_do_nothing: false,
             readout_gain_scale: 1.0,
+            window_rects: Vec::new(),
+            avatar_radius_px: None,
+            fail_mouse_over_after: None,
+            slots_reads: 0,
+            fail_cursor_restore: false,
+            unhoverable: Vec::new(),
         }
     }
 
@@ -159,11 +180,25 @@ impl Sim {
         Some((cx + right / fwd * focal, cyy - up / fwd * focal))
     }
 
-    /// The nearest rendered entity within 25 px of the cursor.
+    /// The nearest rendered entity within 25 px of the cursor; the player
+    /// first (nearest of all) when `avatar_radius_px` is set and covers it.
     fn under_cursor(&self) -> u32 {
         let (x, y) = (self.cursor.0 as f64, self.cursor.1 as f64);
+        if let Some(r) = self.avatar_radius_px {
+            let covered = [-40.0, 0.0, 50.0, 90.0].iter().any(|dz| {
+                self.project_point(Vec3::new(self.pos.x, self.pos.y, self.pos.z + dz))
+                    .is_some_and(|(px, py)| ((px - x).powi(2) + (py - y).powi(2)).sqrt() <= r)
+            });
+            if covered {
+                return PLAYER_ID;
+            }
+        }
         let mut best: Option<(f64, u32)> = None;
-        for e in self.entities.iter().filter(|e| e.rendered) {
+        for e in self
+            .entities
+            .iter()
+            .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
+        {
             for dz in [-40.0, 0.0, 50.0, 90.0] {
                 let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
                 else {
@@ -265,6 +300,13 @@ impl WorldIo for Sim {
     }
 
     async fn slots(&mut self) -> Result<Vec<(i32, u32)>, String> {
+        if self
+            .fail_mouse_over_after
+            .is_some_and(|n| self.slots_reads >= n)
+        {
+            return Err("injected mouse-over read failure".into());
+        }
+        self.slots_reads += 1;
         let mo = self.under_cursor();
         let hover_ok = !self.hover_needs_mouse_move || self.held("__mousemove");
         self.slots
@@ -361,6 +403,9 @@ impl WorldIo for Sim {
     }
 
     async fn place_cursor(&mut self, x: i32, y: i32, mouse_move: bool) -> Result<(), String> {
+        if !mouse_move && self.fail_cursor_restore {
+            return Err("injected cursor restore failure".into());
+        }
         self.cursor = (x, y);
         self.keys.insert("__mousemove".into(), mouse_move);
         Ok(())
@@ -392,6 +437,14 @@ impl WorldIo for Sim {
 
     async fn visible_windows(&mut self) -> Result<Vec<String>, String> {
         Ok(self.windows.clone())
+    }
+
+    async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
+        Ok(self.window_rects.clone())
+    }
+
+    async fn cursor(&mut self) -> Result<(i32, i32), String> {
+        Ok(self.cursor)
     }
 
     async fn target_unit(&mut self, slot: i32) -> Result<(), String> {

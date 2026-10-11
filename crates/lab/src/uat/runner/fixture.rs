@@ -80,7 +80,7 @@ fn stage_refusal(err: &str) -> &str {
 const STAGE_REFUSED: &str = "stage refused: ";
 
 /// Every record from `from` on was made by fixture plumbing.
-fn mark_fixture(ctx: &mut RowCtx, from: usize) {
+pub(super) fn mark_fixture(ctx: &mut RowCtx, from: usize) {
     if let Some(recs) = ctx.actions.get_mut(from..) {
         for r in recs {
             r.kind = FIXTURE_KIND.into();
@@ -90,28 +90,34 @@ fn mark_fixture(ctx: &mut RowCtx, from: usize) {
 
 impl<I: ToolInvoker> Runner<'_, I> {
     /// Whether `row`'s fixture is applied (D-FX10): `auto` continues the
-    /// chain only when the previous row of this section ran last in this
-    /// run, passed, and left the client in world.
+    /// chain only when the row continues a passing spec neighbour.
     pub(crate) fn applies_fixture(&self, spec: &SectionSpec, row: &RowSpec) -> bool {
         match self.req.fixtures {
             FixtureMode::Never => false,
             FixtureMode::Always => true,
-            FixtureMode::Auto => {
-                let prev = spec
-                    .rows
-                    .iter()
-                    .position(|r| r.id == row.id)
-                    .and_then(|i| i.checked_sub(1))
-                    .and_then(|i| spec.rows.get(i));
-                let continues = match (&self.last_row, prev) {
-                    (Some(last), Some(prev)) => {
-                        last.section == spec.section.id && last.row_id == prev.id && last.passed
-                    }
-                    _ => false,
-                };
-                !(continues && self.in_world_as.is_some())
-            }
+            FixtureMode::Auto => !self.continues_passing_neighbour(spec, row),
         }
+    }
+
+    /// The previous row of this section in spec order ran last in this
+    /// run, passed, and left the client in world. Fixture mode `auto`
+    /// chains on it, and only then can a parity mismatch fail a chained
+    /// row (FX-10): in `never` mode without it the chain state is whatever
+    /// the client happened to hold, so a mismatch is a flag.
+    pub(crate) fn continues_passing_neighbour(&self, spec: &SectionSpec, row: &RowSpec) -> bool {
+        let prev = spec
+            .rows
+            .iter()
+            .position(|r| r.id == row.id)
+            .and_then(|i| i.checked_sub(1))
+            .and_then(|i| spec.rows.get(i));
+        let continues = match (&self.last_row, prev) {
+            (Some(last), Some(prev)) => {
+                last.section == spec.section.id && last.row_id == prev.id && last.passed
+            }
+            _ => false,
+        };
+        continues && self.in_world_as.is_some()
     }
 
     /// End the running session: log out when in world, stop the client,
@@ -276,6 +282,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
         self.in_world_as = Some(name.clone());
         self.setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
+        // First thing after Play: content may rewrite the staged rows once
+        // the character is in world (FX-07, see `verify_staged`).
+        self.verify_staged(f, ctx).await?;
         // A caller's `player_entity_id` names some other session.
         ctx.vars.remove(ENTITY_VAR);
         let entity = self
@@ -283,8 +292,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .await
             .map_err(|e| format!("player entity: {e}"))?;
         ctx.vars.insert(ENTITY_VAR.into(), json!(entity));
-        // FX-07: verify_fixture here
-        Ok(())
+        self.verify_position(f, entity, ctx).await
     }
 
     /// Create the fixture character and give it its one first-login
@@ -367,6 +375,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             result: json!({ "skipped": skipped }),
             calls: vec![],
             client: None,
+            optional: false,
         });
     }
 }

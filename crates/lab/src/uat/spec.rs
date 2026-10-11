@@ -528,8 +528,6 @@ fn default_dy_m() -> f64 {
     0.1
 }
 
-// The calibrate and record packets (SV-07, SV-08) are the first non-test callers.
-#[cfg_attr(not(test), allow(dead_code))]
 impl PoseSpec {
     /// D-SV3: `target + radius * (cos b, 0, sin b)`, `y = target.y + dy_m`.
     pub fn stand_point(&self, target: [f64; 3]) -> [f64; 3] {
@@ -606,14 +604,12 @@ impl PoseSpec {
 }
 
 /// `v` rounded to `places` decimals, the value a `{:.N}` pose field holds.
-#[cfg_attr(not(test), allow(dead_code))]
 fn round_to(v: f64, places: i32) -> f64 {
     let k = 10f64.powi(places);
     (v * k).round() / k
 }
 
 /// A string as TOML writes it, escapes included.
-#[cfg_attr(not(test), allow(dead_code))]
 fn toml_string(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }

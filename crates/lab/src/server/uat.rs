@@ -124,8 +124,9 @@ pub struct UatAttestArgs {
     pub server_version: Option<String>,
 }
 
-/// Calls this server's tools in-process through its router.
-struct RouterInvoker<'a> {
+/// Calls this server's tools in-process through its router (also
+/// `lab_uat_calibrate`'s, `super::calibrate`).
+pub(super) struct RouterInvoker<'a> {
     server: &'a LabServer,
     ctx: RequestContext<RoleServer>,
     names: HashSet<String>,
@@ -133,6 +134,21 @@ struct RouterInvoker<'a> {
     /// touches it here: a long run stays leased, and a takeover stops the
     /// run at its next step. `None` only for `plan_only` (drives nothing).
     lease: Option<&'a RunLease>,
+}
+
+impl<'a> RouterInvoker<'a> {
+    pub(super) fn new(
+        server: &'a LabServer,
+        ctx: RequestContext<RoleServer>,
+        lease: Option<&'a RunLease>,
+    ) -> Self {
+        Self {
+            server,
+            ctx,
+            names: router_names(server),
+            lease,
+        }
+    }
 }
 
 /// Run `fut` under `lease`'s permit when the run took that lease itself; a
@@ -409,12 +425,7 @@ impl LabServer {
             fixtures: a.fixtures,
             fingerprint: a.fingerprint,
         };
-        let inv = RouterInvoker {
-            server: self,
-            ctx: ctx.clone(),
-            names: router_names(self),
-            lease: run_lease.as_ref(),
-        };
+        let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
         let wants_p2 = req
             .sections
@@ -451,13 +462,10 @@ impl LabServer {
         };
         // The second player's server: the hosted instance, else in-process.
         let p2_server = p2.as_ref().ok().map(|(name, _, _)| self.p2_lab(name));
-        let p2_inv = p2_server.as_ref().map(|server| RouterInvoker {
-            server,
-            ctx,
-            names: router_names(server),
-            // p2's own lease covers its steps when it is hosted; the run's
-            // lease (from p1's book) covers an in-process p2.
-            lease: p2_lease.as_ref().or(run_lease.as_ref()),
+        // p2's own lease covers its steps when it is hosted; the run's lease
+        // (from p1's book) covers an in-process p2.
+        let p2_inv = p2_server.as_ref().map(|server| {
+            RouterInvoker::new(server, ctx, p2_lease.as_ref().or(run_lease.as_ref()))
         });
         let second = match (&p2, &p2_inv) {
             (Ok((instance, account, character)), Some(inv)) => Ok(SecondPlayer {

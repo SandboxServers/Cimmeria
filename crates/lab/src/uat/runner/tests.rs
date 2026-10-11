@@ -16,7 +16,7 @@ use crate::uat::spec;
 
 /// A pretend client.
 pub(super) struct Fake {
-    tools: HashSet<String>,
+    pub(super) tools: HashSet<String>,
     /// Typed chat line → lines the "server" answers with.
     replies: HashMap<String, Vec<String>>,
     chat: Mutex<Vec<String>>,
@@ -641,7 +641,7 @@ async fn plan_only_drives_nothing() {
 /// The tools the router exposes on `main` today: a live `run.json` from
 /// 2026-09-29, the #1099 world tools, the item tools and
 /// `client_window_click`.
-const MAIN_TOOLS: &str =
+pub(super) const MAIN_TOOLS: &str =
     "client_call_native client_console client_cursor_move client_entity_table \
 client_events_read client_hook_install client_hook_list client_hook_remove client_input_focus \
 client_input_key client_input_mouse client_input_release client_input_status client_lua_eval \
@@ -761,17 +761,8 @@ async fn committed_specs_plan_against_main_tools() {
             None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
         }
     }
-    // First session (the smoke run): every row plans as ready, so a row
-    // that picks up an unrouted tool or a standing reason fails here.
-    let first_session: Vec<_> = out
-        .rows
-        .iter()
-        .filter(|r| r.section == "first-session")
-        .collect();
-    assert_eq!(first_session.len(), 14, "the section lost or gained rows");
-    for r in first_session {
-        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
-    }
+    // First session (the smoke run) is planned with and without a server
+    // in `first_session_plan_tests.rs`.
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");
