@@ -253,6 +253,7 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 
 - **Agent:** packet-coder. **Files:** `tools/SGWLauncher/`, `crates/launcher/prototype-packaging/`, `crates/launcher/prototype-macos/`, root `Cargo.toml` (`exclude` line for `tools/SGWLauncher/src-tauri`), `docs/readme.md` rows for the packaging proof, any `Grep` hit for those three paths outside `docs/analysis/`.
 - **Do:** `git rm -r` the three trees and remove every reference found. Leave historical mentions in `docs/analysis/` alone.
+- **Do not touch the repo-root `src-tauri/`.** That is `cimmeria-app`, the Cimmeria Admin desktop app, not a launcher. Only `tools/SGWLauncher/src-tauri` goes, and only its line in the root `Cargo.toml` `exclude` list; the `"src-tauri"` member line stays.
 - **Checks:** `cargo metadata --format-version 1 --no-deps` succeeds; `pwsh tools/lint-md.ps1` on the touched docs.
 - **Commit:** `chore(launcher): remove the dead Tauri prototype and the packaging prototypes (LX-19)`.
 
