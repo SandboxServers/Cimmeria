@@ -217,6 +217,7 @@ fn check_poses(row: &RowSpec, errs: &mut Vec<String>) {
             ("pitch_deg", p.pitch_deg, -78.75, 78.75),
             ("yaw_offset_deg", p.yaw_offset_deg, -180.0, 180.0),
             ("zoom", p.zoom, 100.0, 775.0),
+            ("aim_dy_m", p.aim_dy_m, -3.0, 3.0),
         ] {
             if let Some(v) = v.filter(|v| !(lo..=hi).contains(v)) {
                 bad(format!("{name} {v} is outside {lo}..={hi}"));

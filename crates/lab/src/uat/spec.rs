@@ -544,7 +544,7 @@ impl PoseSpec {
             keys.push("aim = \"point\"".into());
         }
         if let Some(d) = self.aim_dy_m {
-            keys.push(format!("aim_dy_m = {:.2}", round_to(d, 2)));
+            keys.push(format!("aim_dy_m = {:.2}", round_to(d, 2).clamp(-3.0, 3.0)));
         }
         if let Some(c) = &self.calibrated {
             let one_line: String = c
