@@ -287,6 +287,46 @@ fn clear_if_not_drops_only_another_entitys_chaos() {
     );
 }
 
+/// The net shim's lock-free check (CH-06) follows every path that adds or
+/// removes net chaos. Fails if any writer skips the recount: the shim would
+/// then skip a live entry (no chaos) or lock on every send forever.
+#[test]
+fn has_net_follows_every_net_entry_change() {
+    let chaos = LabChaos::new();
+    let now = Instant::now();
+    assert!(!chaos.has_net(), "a new registry has no net chaos");
+    chaos
+        .set(
+            addr(40_111),
+            1,
+            "flush:pack".into(),
+            None,
+            Some(FlushChaos::Pack { records: 24 }),
+            DEFAULT_TTL_S,
+            now,
+        )
+        .expect("a valid set");
+    assert!(!chaos.has_net(), "flush-only chaos is not net chaos");
+    set_net(&chaos, addr(40_112), 2, 1, now);
+    assert!(chaos.has_net(), "set");
+    assert_eq!(chaos.clear(Some(addr(40_112))), 1);
+    assert!(!chaos.has_net(), "clear one");
+    set_net(&chaos, addr(40_112), 2, 1, now);
+    assert!(chaos.clear_if_not(addr(40_112), 3));
+    assert!(!chaos.has_net(), "clear_if_not");
+    set_net(&chaos, addr(40_112), 2, 1, now);
+    assert_eq!(chaos.clear(None), 2);
+    assert!(!chaos.has_net(), "clear all");
+    set_net(&chaos, addr(40_112), 2, 1, now);
+    let after = now + Duration::from_secs(u64::from(DEFAULT_TTL_S));
+    assert!(
+        chaos.has_net(),
+        "expired but not yet removed still reads true"
+    );
+    assert_eq!(chaos.net_for(addr(40_112), after), None);
+    assert!(!chaos.has_net(), "an expired entry removed by a read");
+}
+
 #[test]
 fn status_reports_entity_ids_in_order() {
     let chaos = LabChaos::new();

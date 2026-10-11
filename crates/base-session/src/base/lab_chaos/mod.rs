@@ -29,7 +29,11 @@ use std::{
     collections::{hash_map::RandomState, HashMap},
     hash::BuildHasher,
     net::SocketAddr,
-    sync::{Mutex, MutexGuard, OnceLock, PoisonError},
+    ops::{Deref, DerefMut},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex, MutexGuard, OnceLock, PoisonError,
+    },
     time::{Duration, Instant},
 };
 
@@ -119,14 +123,18 @@ pub const MAX_TTL_S: u32 = 1800;
 
 /// The registry. Keyed by the session's client address.
 ///
-/// One mutex guards the whole map and every read takes it, so a reader on a
-/// per-packet path (CH-06's shim) pays one uncontended lock per send even
-/// when no chaos is set. CH-06 should consider a cheap "map is empty" check
-/// before calling [`LabChaos::net_for`] on its hot path.
+/// One mutex guards the whole map and every read takes it. The per-packet
+/// net shim (CH-06) asks [`LabChaos::has_net`] first, one atomic load, and
+/// takes the lock only when some session has net chaos.
 #[cfg(feature = "lab-chaos")]
 #[derive(Debug)]
 pub struct LabChaos {
     sessions: Mutex<HashMap<SocketAddr, SessionChaos>>,
+    /// How many entries carry net chaos (expired ones included until they
+    /// are removed). Written only while the lock is held, by
+    /// [`SessionsGuard`]'s drop, so it is in step with the map at every
+    /// unlock.
+    net_entries: AtomicUsize,
     /// Keys `addr_hash` in the logs. Random per process, so the hash
     /// correlates one run's rows without being a lookup table back to the
     /// address (an IPv4 space is small enough to hash exhaustively).
@@ -147,8 +155,17 @@ impl LabChaos {
     pub fn new() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
+            net_entries: AtomicUsize::new(0),
             addr_hasher: RandomState::new(),
         }
+    }
+
+    /// False when no session has net chaos: one atomic load, no lock. A
+    /// per-send caller checks this before [`Self::net_for`]. It can read
+    /// `true` for an entry that has expired but not yet been removed; the
+    /// caller then pays the lock and `net_for` removes it.
+    pub fn has_net(&self) -> bool {
+        self.net_entries.load(Ordering::Acquire) > 0
     }
 
     /// Sets (or replaces) one session's chaos and returns when it expires.
@@ -326,8 +343,11 @@ impl LabChaos {
     /// A panic while the lock was held cannot leave the map half-written
     /// (every change is one insert or remove), so a poisoned lock is still
     /// safe to use; refusing would wedge every send the shim filters.
-    fn sessions(&self) -> MutexGuard<'_, HashMap<SocketAddr, SessionChaos>> {
-        self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
+    fn sessions(&self) -> SessionsGuard<'_> {
+        SessionsGuard {
+            map: self.sessions.lock().unwrap_or_else(PoisonError::into_inner),
+            net_entries: &self.net_entries,
+        }
     }
 
     fn addr_hash(&self, addr: SocketAddr) -> String {
@@ -341,6 +361,41 @@ impl LabChaos {
             addr_hash = %self.addr_hash(addr),
             "lab chaos expired on a session"
         );
+    }
+}
+
+/// The locked map. Every path that can change it goes through this guard,
+/// and its drop recounts the net entries before the lock is released, so
+/// [`LabChaos::has_net`] never misses an entry a writer just inserted. The
+/// recount is a walk of the map, which holds one entry per session under
+/// live chaos.
+#[cfg(feature = "lab-chaos")]
+struct SessionsGuard<'a> {
+    map: MutexGuard<'a, HashMap<SocketAddr, SessionChaos>>,
+    net_entries: &'a AtomicUsize,
+}
+
+#[cfg(feature = "lab-chaos")]
+impl Deref for SessionsGuard<'_> {
+    type Target = HashMap<SocketAddr, SessionChaos>;
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+#[cfg(feature = "lab-chaos")]
+impl DerefMut for SessionsGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.map
+    }
+}
+
+#[cfg(feature = "lab-chaos")]
+impl Drop for SessionsGuard<'_> {
+    fn drop(&mut self) {
+        // Runs before `map` (the MutexGuard) drops, so still under the lock.
+        let n = self.map.values().filter(|c| c.net.is_some()).count();
+        self.net_entries.store(n, Ordering::Release);
     }
 }
 
