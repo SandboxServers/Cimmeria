@@ -110,7 +110,7 @@ companion_docs:
 - **Schema**: `sgw_contact_list`, `sgw_contact_list_member`, and the `list_id` sequence, all under [`db/sgw/Social/`](../../db/sgw/Social/) with seed data
 - **Recent PRs**: **#572 / #574 (schema, login-push, client methods 55-60, presence), #578 (`eventId` is a bitfield; LoggedInStatus is 1, not 0), #579 (GainLevel / Death / GateTravel), #581 (initial presence to the logging-in player), #583 (light up an already-online contact on add)**. None since 2026-07-25.
 - **Open issues**: #471 (security audit CAT-L covers chat and contact list)
-- **Path forward**: Nothing outstanding at the feature level. Work through the #471 audit findings.
+- **Path forward**: Nothing outstanding at the feature level. Work through the #471 audit findings. Client-test the Ignore filter on presence (TG-SOC-04, 2026-10-11).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
@@ -124,6 +124,7 @@ companion_docs:
 | Level-up events | CW | -- | base/world_entry/methods/progression/mod.rs:214 | `fanout_contact_event` with `EVENT_GAIN_LEVEL = 2` |
 | Death events | CW | -- | cell/abilities/death/mod.rs:71-98 | Cell→Base `ContactListPresenceEvent` with `EVENT_DEATH = 4`; **player deaths only**. NPC deaths skip the fanout to avoid flooding the channel during combat |
 | Gate-travel events | CW | -- | base/world_entry/gate_travel/mod.rs:416 | `EVENT_GATE_TRAVEL = 8`; `dataValue` carries the destination world id |
+| Presence skips watchers who ignore the subject | NT | -- | contact_list/persistence/mod.rs, handlers/presence_fanout.rs | **New 2026-10-11.** TG-SOC-04 (#1616, D-TG10): login, level, death and gate-travel presence no longer reaches a player who has the subject on their Ignore list (flags 301). `contacts.presence_fanout` counts `watchers`, `ignoring_watchers` and `sent` (TG-SOC-05, #1581). Live-DB guard `live_db_ignorer_gets_no_presence`; no two-client test yet ([unified UAT TG-UAT-G7](../guides/unified-uat.md#telemetry-gaps)). The trade half of D-TG10 is not built |
 
 ### 27. Dueling --- IM (1v1 duels implemented end to end; awaiting the owner's in-client UAT)
 

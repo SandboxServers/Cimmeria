@@ -52,6 +52,8 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
+| [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
+| [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -207,6 +209,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
 | 11. Special ammo | GM, plus a second character for AMMO-02, AMMO-03 and AMMO-18 | AMMO-01 to AMMO-03 first (the risks of the flag being on), then the debug-hub crate (AMMO-19), reloads, picker and damage (AMMO-04 to AMMO-17) in Castle Cellblock, loot in Castle (AMMO-20, AMMO-21), GM commands (AMMO-22, AMMO-23) | 90 min |
 | 12. Debug Area | Fresh character, GM | Debug Area DA-U1 to DA-U38 in zone order: the plaza (DA-U3 to DA-U18), dummies, faction yard, AI slope, gallery, arena, cover course, death yard; DA-U39 to DA-U42 on a second new character; the gate and rings (DA-U45, DA-U46); the System Lords' summit (DA-U47); the Visual NPC Lineup (DA-U48) | 95 min |
+| 13. Telemetry gaps | Any character, then a second player for G7-G8; the lab for L and C rows | Telemetry gaps TG-UAT-S1 to S7, N1 to N4 and G1 to G10 alongside any other session (note the times), then the lab rows L1-L3 and the client DLL load check C1-C10 (owner) | 30 min, plus 45 min in the lab |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -1212,6 +1215,93 @@ When the server cannot read a character's saved missions at login, it locks thei
 | ML-02 | Talk to the NPC or walk into the volume that offers the completed mission; try to accept it | "Mission data unavailable, try again shortly." on the first press; nothing is accepted. Pressing again within 5 s shows no second line. SigNoz: WARN `mission_state_unknown`, `reason = saved_missions_unreadable`, with `suppressed` on the next row | The completed row in `sgw_mission` is unchanged |
 | ML-03 | Grant the read back and wait up to 30 s | "Mission data restored."; the journal fills with your active missions. SigNoz: `mission_state_recovered`, then `player_loaded_replayed` if a login chain was dropped | A login (`player_loaded`) chain dropped during the lock re-fires now; any other refused chain does not: trigger it again |
 | ML-04 | Retry ML-02's offer | The offer guard judges it as normal: a completed, non-repeatable mission is not offered again | |
+
+## Telemetry gaps
+
+The telemetry-gaps campaign made the server, the lab and the client telemetry DLL log enough that a session can be explained from SigNoz alone: how it ended, what each system refused or dropped and why, and who it happened to ([ledger](../analysis/telemetry-gaps/README.md), closed 2026-10-11). The owner skipped lab UAT during the campaign, so none of these rows has been read back from a real session yet. The shutdown save and the mission data lock, which came from the same campaign, have their own sections: [Shutdown save](#shutdown-save) and [Mission data lock](#mission-data-lock).
+
+**Status:** server and lab rows (TG-UAT-S, N, G and L): Ready. Client DLL rows (TG-UAT-C): owner only, in the lab, before the next signed launcher release (D-TG4). Launcher rows (TG-UAT-R): Not ready for UAT until that release ships. A few server fields arrive with #1645 (noted per row); if it has not deployed, those fields are missing, which is not a failure.
+
+**Prerequisites:** a character on the colo (or a local server); SigNoz access ([Checking SigNoz](#checking-signoz)). Most rows ask you to play normally and then find a row: write down the time of each step. Server rows are `service.name = 'cimmeria-server'`, client DLL rows `service.name = 'cimmeria-client'` (the DLL's own target is the `client_target` field), and lab daemon rows `service.name = 'cimmeria-lab'`. Every server row below should carry your `account_id`, `account_name`, `player_id` and `player_name` once you are in the world; a row without them is a finding.
+
+### Session lifecycle
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-S1 | Log in and enter the world | `session.start` with `entry = login` and `cimmeria.session_kind = player` (or `lab` on a lab test account). The **World entry complete** row has `client_telemetry` = `present`, `absent`, `ambiguous` or `unknown` | `present` needs a launcher build with the `mid` claim (TG-UAT-R2); until then expect `absent` or `unknown` |
+| TG-UAT-S2 | Travel through a stargate to another world | A second `session.start` with `entry = travel`, not a new login | TG-NET-15 |
+| TG-UAT-S3 | Log out to character select | One `session.end` with `disconnect_reason = logoff_character_select`, carrying `logoff_requested`, `idle_ms`, `in_world`, `world` and channel health (`tx_outstanding`, `retransmits_total`, `srtt_ms`, `last_rx_age_ms` and the rest) | Before the campaign this ended no session row at all |
+| TG-UAT-S4 | From character select, go Back to the login screen | `Client entities cleaned up` with `disconnect_reason = logoff` and a numeric `player_id` | |
+| TG-UAT-S5 | In the world, pull the network cable (or kill the game in Task Manager) and wait 30 s | One `session.end` with `disconnect_reason = inactivity_timeout`; the inactivity row says `in_world`, `world`, `session_secs` and `tx_outstanding` | Tells "the client vanished" (`last_rx_age_ms` large) from "the server stopped acking" |
+| TG-UAT-S6 | Log in again on the same account while the old session is still timing out | The duplicate-login row has `old_idle_ms`, `old_in_world` and `reason = duplicate_login`: INFO when the old session was idle 15 s or more, WARN otherwise | TG-NET-03 |
+| TG-UAT-S7 | Be in the world during a colo deploy | `session.end` with `disconnect_reason = server_shutdown` for your session, then one `sessions_open_at_stop` row | Pairs with [Shutdown save](#shutdown-save) SD1 |
+
+### Login and network
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-N1 | Type a wrong password once, then log in properly | The refusal row names `account_name` (it used to say `user`); your Phase 3 login rows carry `addr` and your account | TG-NET-04, TG-NET-06 |
+| TG-UAT-N2 | Log in to the shard list and close the game without choosing a shard; wait a minute | A reaper row for the unused SID: `reason = sid_unconsumed`, with your account and `age_ms` (`ticket_unconsumed` if you closed after choosing a shard) | TG-NET-05 |
+| TG-UAT-N3 | Play normally for 10 minutes | No WARN-level `mercury.retransmit` storm; any `mercury.retransmit` row has `event = retransmit`, `age_ms`, `srtt_ms` and `send_kind`. With #1645 deployed, retransmit, backpressure, `tx_hole` and `rx_order` rows also carry your account and player | TG-MER-02 to TG-MER-04 |
+| TG-UAT-N4 | As a GM, teleport (for example with `.gotoxyz`) | `wire.out.forced_position` with `send = sent`, `client_class` and `streaming_hint = method_116_unbound`; on the client side, a dropped `onPlayerTeleport` replays at INFO with `drop_class = known_unbound`, not WARN | D-TG17: method 116 is unbound on every client class; the drop is expected |
+
+### Gameplay systems
+
+Each row is something a normal session does; the check is that its failure or outcome row exists and names you.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-G1 | Kill an NPC and loot it | `loot_rolled` with `loot_table_id`, `entries` and `dropped` (DEBUG; may need the trace index). The NPC's death row says `respawn_scheduled`, or `respawn_not_scheduled` with a `reason` | TG-ITM-02, TG-NPC-04 |
+| TG-UAT-G2 | Die to an NPC and revive | `player.death` with `killer_id`, `world` and your identity; no `killer_name = ""` | TG-CMB-06 |
+| TG-UAT-G3 | Try an inventory move the game refuses (for example an item into a bag that does not take it) | WARN `event = move_rejected` with a `reason` and the source container | TG-ITM-04 |
+| TG-UAT-G4 | Accept a mission, advance a step, then relog | `mission_accepted` and `mission_step_advanced` with `event` and a numeric `player_id`; `mission.step_anchor` at each new step with `advancers` and `anchors`; at relog one `missions_restored` row listing `active` as `mission:step` | TG-MIS-01, TG-MIS-03, TG-MIS-05 |
+| TG-UAT-G5 | Play one Livewire minigame to the end, then start another and close it at once | `minigame.claimed` with `ticket_age_ms`; `minigame.session_end` with `end_reason` (`victory`, then `client_closed`), `outcome` and `duration_ms`; the victory row says `validation = server` | TG-MG-03, TG-MG-07, TG-MG-08 |
+| TG-UAT-G6 | Ride a ring transport | `ring.transition` rows (`hide`, `warmup`, `cooldown`) and one `ring.passenger_released` naming you | TG-MOV-04, TG-MOV-05 |
+| TG-UAT-G7 | Two players, A and B. B adds A to a friends list and to the Ignore list. A logs out and back in. Then B takes A off the Ignore list and A relogs again | First relog: B's client shows no change for A, and `contacts.presence_fanout` for A has `ignoring_watchers = 1` and sends nothing to B. Second relog: B sees A come online | TG-SOC-04, TG-SOC-05, D-TG10. A behaviour change: presence (login, level, death, gate) now skips players who ignore the subject |
+| TG-UAT-G8 | Two players: open a trade, then have one walk out of range | `trade.session_opened`, then `trade.session_cancelled` with `reason = out_of_range` | TG-SOC-06 |
+| TG-UAT-G9 | Say something in spatial chat | `chat.spatial_broadcast` with `ignored` and your identity. Any `chat.malformed` or `chat.relay_failed` WARN in the session is a finding | TG-SOC-07, TG-SOC-08 |
+| TG-UAT-G10 | Stand in Castle for 5 minutes with no NPC in view | Few or no `npc_ai.tick` and `movement.npc` rows for unwitnessed NPCs (they are sampled now); `instance_populated` rows at world load with `spawned` and `failed` | W1 noise reduction, TG-NPC-06 |
+
+### Lab
+
+Needs the live research lab, so owner only (ask before using it).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-L1 | Run any UAT section with `lab_uat_run` | The run ends with the `_session_end` row: `lab_logout`, then `lab_disconnect`, and the server shows `session.end disconnect_reason=logoff_character_select` followed by `Client entities cleaned up disconnect_reason=logoff`. The row passes | TG-PIPE-07, TG-PIPE-08 (S1) |
+| TG-UAT-L2 | With `CIMMERIA_LAB_OTLP_ENDPOINT` set in `labd.env`, start and stop a lab client | `service.name = 'cimmeria-lab'` rows: `lab.client event = launched` (with `cause` and `grant`) and `event = stopped`; one `lab.call` per tool call with `outcome` and `duration_ms`. No local paths: the instance shows as its label | TG-PIPE-05, TG-PIPE-06, TG-PIPE-17 |
+| TG-UAT-L3 | Check a lab session's server rows | `cimmeria.session_kind = lab` on `session.start`, `session.end` and any `playtest.friction` row | TG-NET-16, TG-NET-17 |
+
+### Client DLL lab load check (D-TG4)
+
+Owner only, in the lab, with the built i686 `cimmeria-client-telemetry` DLL from current `main` (with #1645 merged for C1-C3 and C8). This is the gate before the DLL ships in a signed launcher release. Filter `service.name = 'cimmeria-client'` and the session's `session_id`.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-C1 | Load the DLL; log in and enter the world | `client.dll.attached` with `pid`; every row of the session carries `client_pid` (stamped at ingest). No boot-failure WARNs (`client.dll.uploader_spawn_failed`, `client.dll.bridge_failed`, `client.dll.input_unhooked`) | TG-PIPE-02, TG-PIPE-04, TG-PIPE-14 |
+| TG-UAT-C2 | Quit normally from the game menu | One `client.session.end` with `reason = crt_exit`, then a final `client.telemetry.health` row with `final: true`. The game closes without a noticeable hang | TG-PIPE-03, TG-CLI-04. A normal quit goes through MSVCR80 `exit`, not `ExitProcess`; both are hooked, and the hook waits at most 1.5 s for the last upload |
+| TG-UAT-C3 | Start again, enter the world, then end `SGW.exe` from Task Manager | The session has neither `client.session.end` nor a final health row: a killed process runs no exit hook, and that absence is how an unclean end reads (there is no reliable crash signal). The next session reports normally | Exercises the forced-quit path the PR asks for; `reason = exit_process` appears only on a quit that calls `ExitProcess` directly |
+| TG-UAT-C4 | Check the final health row from C2 | It reports `upload_failures_total` and `last_upload_status` | TG-PIPE-13 |
+| TG-UAT-C5 | Enter a busy world (Castle) and move around | Unknown-entity errors appear as `client.viewport.unknown_entity` with `entity_id`, `count` and `first_ts`: one row per entity, later counts on the rollup, not thousands of free-text rows | TG-CLI-01 |
+| TG-UAT-C6 | Make one cooked category resync ([Cooked-data resync](#cooked-data-resync) CD1) | `client.cooked_cache.write` with `category_id`, `version`, `tier` (`cache` or `source_cache`) and `result` | TG-CLI-03 |
+| TG-UAT-C7 | Load into a world (a hitch is normal while it streams) | Any `client.engine.hitch` row has `phase` and `phase_age_ms`, naming what the main thread was last doing | TG-CLI-05 |
+| TG-UAT-C8 | Look at the boot rows of C1 | `client.hooks.iat.slot_mismatch` (on `recvfrom`, if it still appears) names `owner_module` and `owner_rva`. Write down the module: it says whether receive-side telemetry is blind | TG-CLI-07 |
+| TG-UAT-C9 | Play a few minutes with sound | Audio stop rows name their cue; a stop whose name cannot be read is DEBUG, not WARN | TG-CLI-06 |
+| TG-UAT-C10 | Look for any `unpack_fault` or `request_misparse` row | It carries `seq` and `wire_fingerprint`; with #1645, BigWorld messages right after it on the same thread carry `after_unpack_fault` and `seq` | TG-MER-12, TG-CLI-02. Rare; skip if none appears |
+
+### Launcher
+
+Not ready for UAT until the next signed launcher release.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| TG-UAT-R1 | Play through the released egui launcher and quit the game | The launcher sends `session_meta kind=game_exited` with the exit code and pid | TG-PIPE-12 |
+| TG-UAT-R2 | Log in through the released launcher and enter the world | The server's **World entry complete** row says `client_telemetry = present`, with `client_telemetry_session_id` matching the client rows' `session_id` and a `client_machine_id`. Two machines behind one router read `ambiguous` | TG-NET-18, D-TG19. `present` is the launcher's claim, not proof |
+
+**Things only a human can check:** that a normal quit doesn't hang the game (TG-UAT-C2); that the presence change (TG-UAT-G7) shows nothing in the ignorer's client.
+
+Source: [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md) and [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md); row names in [negative-logging-convention.md](../architecture/negative-logging-convention.md), [observability-target-catalog.md](../architecture/observability-target-catalog.md) and [client-telemetry.md](../architecture/client-telemetry.md).
+
 ## Recording results
 
 Copy this block once per step you run, fill it in, and send it to the owner (or paste it on the campaign's tracking issue). Keep failures and passes both: a pass is evidence too.
