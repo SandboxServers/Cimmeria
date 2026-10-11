@@ -16,13 +16,21 @@ mod cast_id;
 mod checks;
 mod clauses;
 mod client_events;
+mod drive;
+mod fingerprint;
+mod fixture;
+mod fixture_verify;
+mod heal;
 mod lab_commands;
 mod packet;
 mod players;
 mod revocation;
+mod server_wait;
 mod session;
+mod snapshot;
+mod targets;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use rmcp::schemars;
@@ -34,12 +42,12 @@ use super::evidence::{
 use super::grade::grade;
 use super::invoke::{ServerInvoker, ToolInvoker};
 use super::ledger;
-use super::spec::{RowSpec, SectionSpec, Source};
-use super::tier::Role;
-use players::Who;
+use super::spec::{PoseSpec, RowSpec, SectionSpec};
 
 pub use players::SecondPlayer;
+pub(crate) use players::Who;
 pub use session::client_fingerprint;
+pub(crate) use targets::ResolvedTag;
 
 /// A parsed spec file and where it came from.
 #[derive(Debug, Clone)]
@@ -78,9 +86,10 @@ pub struct RunRequest {
     /// The lab instance label this run drives (`default`, `p2`, ...).
     pub instance: Option<String>,
     /// When a row's fixture is applied (D-FX10). Default `Auto`.
-    // Read by the FX-06 session step; no caller reads it yet.
-    #[allow(dead_code)]
     pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs ([`fingerprint`]); never
+    /// changes a row's grade.
+    pub fingerprint: bool,
 }
 
 /// When a row's fixture is applied: `auto` (the row has one), `always`,
@@ -109,6 +118,18 @@ pub enum FixtureMode {
     Never,
 }
 
+/// A pose click that missed, named so `-Heal` can recalibrate the pose
+/// (SV-11, README F15): the pose id and the world step that failed.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HealHint {
+    /// The pose id the failed action's target resolved through (its
+    /// `resolve.pose` call record), the key `-Heal` recalibrates.
+    pub pose: String,
+    /// The world-tool step that failed (`error_data.step`): `hover`,
+    /// `on_screen`, `face`, `abs_pitch` or `abs_yaw`.
+    pub step: String,
+}
+
 /// A finished row, as the tool reports it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RowSummary {
@@ -116,6 +137,9 @@ pub struct RowSummary {
     pub row: String,
     pub result: String,
     pub reasons: Vec<String>,
+    /// Set on a non-PASS row whose first failed step is a pose click miss.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heal: Option<HealHint>,
 }
 
 /// What a run returns.
@@ -167,6 +191,31 @@ pub(crate) struct RowCtx {
     /// Event-store seqs client_event clauses read from, per client and
     /// label (`Who::mark`; `""` is the row start), or why there is none.
     pub event_marks: HashMap<String, Result<u64, String>>,
+    /// Fingerprint-mode capture, when the run asked for it.
+    pub fp: Option<fingerprint::FpCapture>,
+    /// How a fixture row ran: `"fixture"` (its own staged session) or
+    /// `"chain"` (continued the previous row's session); `None` without a
+    /// fixture. Also the row's `fixture_mode` var.
+    pub fixture_mode: Option<&'static str>,
+    /// Errors from ending this row's fixture session. Each becomes a
+    /// `session end: ...` flag: visible, but never the row's result.
+    pub session_end: Vec<String>,
+    /// A chained fixture row's parity with its fixture (FX-10).
+    pub parity: Option<super::snapshot::Parity>,
+    /// The row's poses, for `pose = "<id>"` arguments ([`targets`]).
+    pub poses: Vec<PoseSpec>,
+    /// lab-spec-vocab (SV-08): the server log watermark the next
+    /// `wait_server` waits from, read before the action in front of it,
+    /// or why that read failed (the wait then reads a late one itself).
+    pub log_mark: Option<Result<server_wait::LogMark, String>>,
+}
+
+/// The last row the run finished, for fixture mode `auto` (D-FX10).
+#[derive(Debug, Clone)]
+pub(crate) struct LastRow {
+    pub(crate) section: String,
+    pub(crate) row_id: String,
+    pub(crate) passed: bool,
 }
 
 /// The runner. Holds the invokers, the run directory and its manifest.
@@ -188,6 +237,11 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) p2_in_world_as: Option<String>,
     /// The lease-loss signal that stops the run ([`revocation`]).
     pub(crate) revoked: Option<revocation::Revocation>,
+    /// The row this run finished last.
+    pub(crate) last_row: Option<LastRow>,
+    /// A character an `end_session` could not drain; the next one drains
+    /// it before its own (F24).
+    pub(crate) pending_drain: Option<String>,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -244,6 +298,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             p2: Err(players::NO_P2.into()),
             p2_in_world_as: None,
             revoked: None,
+            last_row: None,
+            pending_drain: None,
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -271,6 +327,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     }
                 }
                 let ev = self.run_row(&loaded.spec, row).await;
+                self.last_row = Some(LastRow {
+                    section: ev.section.clone(),
+                    row_id: ev.row_id.clone(),
+                    passed: ev.result == super::evidence::RowResult::Pass,
+                });
                 self.finish_row(&ev)?;
                 done.push(ev);
             }
@@ -288,6 +349,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     row: r.row_id.clone(),
                     result: r.result.as_str().to_string(),
                     reasons: r.reasons.clone(),
+                    heal: heal::summary_heal(r),
                 })
                 .collect(),
             ledger: done
@@ -351,6 +413,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             started_ms: now_ms(),
             tap: None,
             event_marks: HashMap::new(),
+            fp: None,
+            fixture_mode: None,
+            session_end: vec![],
+            parity: None,
+            poses: row.pose.clone(),
+            log_mark: None,
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -370,11 +438,18 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             };
             if let Some(r) = lost {
                 ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+                // The cut-off row's tap and capture are still in `ctx`.
+                self.tap_abandon(&mut ctx).await;
             }
         }
 
         let clauses: Vec<ClauseResult> = results.into_iter().flatten().collect();
         let mut g = grade(&ctx.blocked, &ctx.actions, &clauses, row.required_native);
+        // A failed session end does not change what the row proved, but the
+        // next login may meet the character still online: show it.
+        g.flags
+            .extend(ctx.session_end.iter().map(|e| format!("session end: {e}")));
+        super::snapshot::apply_parity(&mut g, ctx.parity.as_ref());
         // Plan only: a row that could run is SKIPPED, not graded.
         let result = if planned {
             g.reasons = vec!["plan only: ready to run, nothing was driven".into()];
@@ -414,141 +489,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             vars: Value::Object(ctx.vars),
             attestations: vec![],
             blocked: ctx.blocked,
-        }
-    }
-
-    /// State, anchor, packet tap, setup, steps, clauses, evidence, tap
-    /// read, teardown.
-    async fn drive_row(
-        &mut self,
-        spec: &SectionSpec,
-        row: &RowSpec,
-        ctx: &mut RowCtx,
-        results: &mut [Option<ClauseResult>],
-    ) {
-        if let Err(e) = self.ensure_state(spec, &row.state, ctx).await {
-            ctx.blocked
-                .push(format!("could not reach state {}: {e}", row.state));
-            return;
-        }
-        ctx.character = self.character_value(spec);
-        if row.players == 2 {
-            if let Err(e) = self.ensure_p2(ctx).await {
-                ctx.blocked
-                    .push(format!("could not bring p2 in world: {e}"));
-                return;
-            }
-        }
-        if row.state == "in_world" && row.anchor.unwrap_or(true) {
-            self.anchor(ctx).await;
-        }
-        let tapped = row.expect.iter().any(|c| c.source == Source::Packet);
-        if tapped {
-            self.tap_start(ctx).await;
-        }
-        self.event_marks_at(row, None, ctx).await;
-        let setup_ok = self.drive_steps(row, ctx, results).await;
-        // Read and stop the tap before teardown, and on the failed-setup
-        // path too: a tap left running would keep buffering this session.
-        if tapped {
-            self.tap_finish(ctx).await;
-            self.packet_clauses(row, ctx, results);
-        }
-        if setup_ok {
-            for a in &row.teardown {
-                let rec = self.exec(a, Role::Teardown, ctx).await;
-                ctx.actions.push(rec);
-            }
-        }
-    }
-
-    /// Setup, steps, clauses and evidence. False when setup failed (the
-    /// row is BLOCKED and its teardown does not run).
-    async fn drive_steps(
-        &mut self,
-        row: &RowSpec,
-        ctx: &mut RowCtx,
-        results: &mut [Option<ClauseResult>],
-    ) -> bool {
-        for a in &row.setup {
-            let rec = self.exec(a, Role::Setup, ctx).await;
-            let failed = !rec.ok && !a.optional;
-            let what = rec.requested.clone();
-            let err = rec.error.clone().unwrap_or_default();
-            ctx.actions.push(rec);
-            if failed {
-                ctx.blocked.push(format!("setup {what} failed: {err}"));
-                return false;
-            }
-        }
-        // Chat marks per client: each chat clause reads its own client's box.
-        let chat: Vec<(Who, Option<&str>)> = row
-            .expect
-            .iter()
-            .filter(|c| c.source == Source::Chat)
-            .map(|c| (Who::of(c.client.as_deref()), c.since.as_deref()))
-            .collect();
-        let mut readers: Vec<Who> = Vec::new();
-        for (who, _) in &chat {
-            // Not `dedup`: it drops only neighbours, and a second read of
-            // the same client would move its mark past lines to count.
-            if !readers.contains(who) {
-                readers.push(*who);
-            }
-        }
-        for who in &readers {
-            let tail = self.read_chat_of(*who).await.unwrap_or_default();
-            ctx.chat_marks.insert(who.mark(""), tail);
-        }
-        let since: HashSet<(Who, &str)> = chat
-            .iter()
-            .filter_map(|(w, s)| s.map(|s| (*w, s)))
-            .collect();
-        for a in &row.steps {
-            // `since = <label>` means "lines that arrived after this action
-            // started": mark before it runs, so a fast reply is not missed.
-            if let Some(label) = &a.label {
-                for who in [Who::P1, Who::P2] {
-                    if since.contains(&(who, label.as_str())) {
-                        let tail = self.read_chat_of(who).await.unwrap_or_default();
-                        ctx.chat_marks.insert(who.mark(label), tail);
-                    }
-                }
-                self.event_marks_at(row, Some(label), ctx).await;
-            }
-            let rec = self.exec(a, Role::Step, ctx).await;
-            let stop = !rec.ok && !a.optional;
-            ctx.actions.push(rec);
-            if let Some(label) = &a.label {
-                self.clauses_at(row, Some(label), ctx, results).await;
-                self.evidence_at(row, Some(label), ctx).await;
-            }
-            if stop {
-                break;
-            }
-        }
-        self.clauses_at(row, None, ctx, results).await;
-        self.evidence_at(row, None, ctx).await;
-        self.capture_final(ctx).await;
-        if row.players == 2 {
-            self.capture_final_p2(ctx).await;
-        }
-        true
-    }
-
-    /// Clauses whose `at` is `label` (or unset, for `None`), in spec order.
-    /// Packet clauses wait for the tap read ([`Self::packet_clauses`]).
-    async fn clauses_at(
-        &mut self,
-        row: &RowSpec,
-        label: Option<&String>,
-        ctx: &mut RowCtx,
-        results: &mut [Option<ClauseResult>],
-    ) {
-        for (i, c) in row.expect.iter().enumerate() {
-            if c.at.as_ref() == label && results[i].is_none() && c.source != Source::Packet {
-                results[i] = Some(self.eval_clause(c, ctx).await);
-            }
+            fixture_parity: ctx.parity,
         }
     }
 
@@ -575,11 +516,33 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 #[cfg(test)]
 mod ability_tests;
 #[cfg(test)]
+mod fingerprint_tests;
+#[cfg(test)]
+mod first_session_plan_tests;
+#[cfg(test)]
+mod fixture_session_tests;
+#[cfg(test)]
+mod fixture_tests;
+#[cfg(test)]
+mod fixture_verify_check_tests;
+#[cfg(test)]
+mod fixture_verify_tests;
+#[cfg(test)]
 mod packet_tests;
 #[cfg(test)]
 mod players_tests;
 #[cfg(test)]
+mod polled_clause_tests;
+#[cfg(test)]
 mod revocation_tests;
+#[cfg(test)]
+mod server_wait_tests;
+#[cfg(test)]
+mod snapshot_mode_tests;
+#[cfg(test)]
+mod snapshot_tests;
+#[cfg(test)]
+mod targets_tests;
 #[cfg(test)]
 mod test_server;
 #[cfg(test)]

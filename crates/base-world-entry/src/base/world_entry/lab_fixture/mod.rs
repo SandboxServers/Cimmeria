@@ -11,16 +11,18 @@
 //! rewards, Discord or tutorials. Each part is its own write, in the order
 //! missions, items, tutorials, position; the first failure stops the apply
 //! and earlier parts stay written. The runner's verify step reports what is
-//! missing. Every check (ownership, no items until FX-03, the world, the
-//! position, each mission and step) runs before the first write, so a
-//! refused fixture writes nothing; the ERROR's `reason` says which kind of
-//! failure it was (`precheck_refused` or `write_failed`).
+//! missing. Every check (ownership, the world, the position, each mission
+//! and step, each item and the room for its stacks) runs before the first
+//! write, so a refused fixture writes nothing; the ERROR's `reason` says
+//! which kind of failure it was (`precheck_refused` or `write_failed`).
 
 mod items;
 mod missions;
 mod position;
 mod tutorials;
 
+#[cfg(test)]
+mod items_live_db_tests;
 #[cfg(test)]
 mod play_character_live_db_tests;
 #[cfg(test)]
@@ -35,7 +37,7 @@ use sqlx::PgPool;
 use cimmeria_base_session::base::world_entry::lab_fixture as store;
 use cimmeria_base_session::base::world_entry::lab_fixture::StagedFixture;
 
-use items::apply_items;
+use items::{plan_items, write_items, ItemPlan};
 use missions::{plan_missions, write_missions, MissionRow};
 use position::move_player;
 use tutorials::forget_tutorials;
@@ -150,10 +152,17 @@ pub(crate) async fn apply_staged_fixture(
     account_id: i32,
     f: &StagedFixture,
 ) -> Result<FixtureApplied, ApplyError> {
-    let rows = precheck(pool, account_id, f)
+    let plan = precheck(pool, account_id, f)
         .await
         .map_err(ApplyError::Precheck)?;
-    write_parts(pool, f, &rows).await.map_err(ApplyError::Write)
+    write_parts(pool, f, &plan).await.map_err(ApplyError::Write)
+}
+
+/// What the precheck built: the rows and item counts the writes apply.
+#[derive(Debug)]
+struct Plan {
+    missions: Vec<MissionRow>,
+    items: Vec<ItemPlan>,
 }
 
 /// The writes, in the contract's order: missions, items, tutorials,
@@ -161,30 +170,28 @@ pub(crate) async fn apply_staged_fixture(
 async fn write_parts(
     pool: &PgPool,
     f: &StagedFixture,
-    missions: &[MissionRow],
+    plan: &Plan,
 ) -> Result<FixtureApplied, String> {
     let mut applied = FixtureApplied {
-        missions: write_missions(pool, f.player_id, missions).await?,
+        missions: write_missions(pool, f.player_id, &plan.missions).await?,
         ..FixtureApplied::default()
     };
     (applied.items_removed, applied.items_granted) =
-        apply_items(pool, f.player_id, &f.items).await?;
+        write_items(pool, f.player_id, &plan.items).await?;
     applied.tutorials_forgotten = forget_tutorials(pool, f.player_id, &f.tutorials_unseen).await?;
     applied.moved = move_player(pool, f.player_id, f.world.as_deref(), f.position).await?;
     Ok(applied)
 }
 
-/// Refuse before any write, and build the mission rows: the character must
-/// be `account_id`'s (a second check behind the store's account-scoped
-/// take, against the row itself), no items until FX-03, the world must be
-/// one `sgw_player.world_location` accepts, the position must be finite (a
-/// NaN makes the next world entry undefined; `move_player` relies on this
-/// check), and every mission and step must match the seed.
-async fn precheck(
-    pool: &PgPool,
-    account_id: i32,
-    f: &StagedFixture,
-) -> Result<Vec<MissionRow>, String> {
+/// Refuse before any write, and build what the writes apply: the character
+/// must be `account_id`'s (a second check behind the store's account-scoped
+/// take, against the row itself), the world must be one
+/// `sgw_player.world_location` accepts, the position must be finite (a NaN
+/// makes the next world entry undefined; `move_player` relies on this
+/// check), every mission and step must match the seed, and every item must
+/// be a known design in range whose stacks fit (`plan_items` dry-runs the
+/// item write and rolls it back).
+async fn precheck(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<Plan, String> {
     let owner: Option<i32> =
         sqlx::query_scalar("SELECT account_id FROM sgw_player WHERE player_id = $1")
             .bind(f.player_id)
@@ -200,11 +207,6 @@ async fn precheck(
             ))
         }
         Some(_) => {}
-    }
-    // FX-03 replaces this with its own item checks; until then an item
-    // fixture is refused here, so no other part is written for it.
-    if !f.items.is_empty() {
-        return Err(items::ITEMS_NOT_YET.to_string());
     }
     if let Some(world) = f.world.as_deref() {
         let known: bool =
@@ -222,5 +224,9 @@ async fn precheck(
             return Err(format!("position {p:?} is not finite"));
         }
     }
-    plan_missions(pool, &f.missions).await
+    let missions = plan_missions(pool, &f.missions).await?;
+    // Last: the item dry run takes the inventory locks, so it runs only for
+    // a fixture every other check passed.
+    let items = plan_items(pool, f.player_id, &f.items).await?;
+    Ok(Plan { missions, items })
 }

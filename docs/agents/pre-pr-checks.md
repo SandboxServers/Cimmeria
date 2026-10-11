@@ -22,6 +22,8 @@ Not every check blocks a merge. Here's what each one is actually worth:
 | `markdownlint` | [markdownlint.yml](../../.github/workflows/markdownlint.yml) | No — warn-only annotations | Any `**/*.md` change |
 | `spec-lint` | [spec-lint.yml](../../.github/workflows/spec-lint.yml) | No — warn-only annotations | `docs/spec/**`, `crates/**`, manifest changes |
 
+The `test.yml`, `wireclient.yml` and `pr-container.yml` jobs run on the self-hosted `cimmeria-linux` runners (five each on node5, node2 and node1), except fork PRs and Dependabot PRs, which get GitHub-hosted `ubuntu-latest`. Setting the repository variable `CI_LINUX_RUNNER=hosted` sends them all back to GitHub-hosted. Those runners use sccache instead of the rust-cache step. See [tools/ci-runners/README.md](../../tools/ci-runners/README.md).
+
 Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, run at the same time, upload to Codecov (which merges them) and do not gate. Only runs on `main` save the Rust caches, and PRs restore them (see [build-system.md §12](../architecture/build-system.md#12-ci-caches-are-saved-from-main-only)). After a merge, [regen-docs.yml](../../.github/workflows/regen-docs.yml) reruns `tools/docs-gen/regen.py` on `main` and commits any generated doc blocks that changed; nothing in a PR checks them. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
 ## Desktop launcher workspace

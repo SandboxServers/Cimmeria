@@ -8,6 +8,8 @@ use crate::supervisor::now_ms;
 
 /// Owner name of the lease `lab_uat_run` takes when the caller passes none.
 pub const UAT_RUN_OWNER: &str = "lab_uat_run";
+/// The same for `lab_uat_calibrate` (lab-spec-vocab SV-10).
+pub const CALIBRATE_OWNER: &str = "lab_uat_calibrate";
 
 /// The lease a `lab_uat_run` drives under. The runner calls tools in-process
 /// (around the `call_tool` gate), so it touches this lease before every
@@ -34,8 +36,17 @@ impl RunLease {
     /// A lease of the run's own, owner [`UAT_RUN_OWNER`]; refused like any
     /// acquire while someone else holds the lab.
     pub fn acquire_own(book: Arc<LeaseBook>, purpose: String) -> Result<Self, String> {
+        Self::acquire_own_as(book, UAT_RUN_OWNER, purpose)
+    }
+
+    /// [`Self::acquire_own`] under another tool's owner name.
+    pub fn acquire_own_as(
+        book: Arc<LeaseBook>,
+        owner: &str,
+        purpose: String,
+    ) -> Result<Self, String> {
         let l = book.acquire(AcquireRequest {
-            owner: UAT_RUN_OWNER.into(),
+            owner: owner.into(),
             purpose,
             ..Default::default()
         })?;

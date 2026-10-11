@@ -10,21 +10,15 @@ use super::spec::FixtureSpec;
 use super::spec_fixture::FixtureMissionState;
 
 /// The variable a row's specs read for the fixture character's name.
-// Read by the FX-06 session step; no caller reads it yet (tests included).
-#[allow(dead_code)]
 pub const FIXTURE_CHARACTER_VAR: &str = "fixture_character";
 
 /// Containers a fixture counts as carried: main through crafting. This
 /// mirrors `FIXTURE_CARRIED_CONTAINERS` in base-session, which the server
 /// uses when it stages; the two must move together.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub const FIXTURE_CARRIED_CONTAINERS: &[i32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 /// One read-only check: a label for the BLOCKED reason, the SQL, a JSON
 /// pointer into the `server_db_query` result and the value it must equal.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FixtureCheck {
     /// The label a BLOCKED reason names, e.g. `mission 622 active`.
@@ -41,8 +35,6 @@ pub struct FixtureCheck {
 /// the profile's letters (at most 8), then the instance label's letters
 /// (digits become `a` to `j`, at most 4). Letters only, so the name can
 /// be formatted into the SQL of [`verify_checks`] without escaping.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn fixture_character_name(profile: &str, instance: &str) -> String {
     let p: String = profile
         .chars()
@@ -65,8 +57,6 @@ pub fn fixture_character_name(profile: &str, instance: &str) -> String {
 /// The `server_stage_fixture` arguments: `f` as JSON with `character` set
 /// to `name`. Null fields are dropped, so the tool sees only what the spec
 /// says (an absent `step` is not `"step": null`).
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn stage_args(f: &FixtureSpec, name: &str) -> Value {
     let mut v = serde_json::to_value(f).unwrap_or(Value::Null);
     drop_nulls(&mut v);
@@ -91,8 +81,6 @@ fn drop_nulls(v: &mut Value) {
 /// the character `name`: per mission its row, per item its carried count,
 /// per tutorial that it is no longer unseen. `name` is formatted into SQL,
 /// so it must be ASCII letters.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn verify_checks(f: &FixtureSpec, name: &str) -> Result<Vec<FixtureCheck>, String> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
         return Err(format!(
