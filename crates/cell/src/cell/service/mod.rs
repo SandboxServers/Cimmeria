@@ -34,6 +34,7 @@ mod shutdown_flush;
 mod shutdown_report;
 mod start_profile_audit;
 mod startup;
+mod startup_report;
 pub(crate) mod ticks;
 
 #[cfg(test)]

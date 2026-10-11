@@ -1240,6 +1240,12 @@ The base's cell-to-base loop in `base/service.rs` times each `route_cell_message
 
 Guard: `base/dispatch_timing.rs` tests. `slow_dispatch_burst_writes_one_row_per_window` captures the WARN and asserts `suppressed` is `0` and then `49` after a burst of 50. `slow_dispatch_throttle_is_per_kind` checks that a second kind's first row is not swallowed and that a fast dispatch writes nothing.
 
+## Startup cache-load failures and summary (TG-DB-09)
+
+`cell/service/startup.rs` and `startup_report.rs` in `cimmeria-cell`. Each startup cache that fails to load used to log a free-text `warn!("Failed to load …")`. It now logs WARN `event = "cache_load_failed"` with `cache` (a fixed name), `error = %e` and `consequence` (what runs without the cache). Sites that already had their own level or event keep that row. Every failure, whichever row it uses, also lands in one INFO `event = "startup_caches"` per boot, with `failed_count` and `failed_caches`. `failed_count = 0` on a clean boot. The base's resource-cache WARN in `base/service.rs` carries the same fields inline; the base crate has no summary row.
+
+Guards: `startup_report.rs` tests `cache_failed_logs_structured_warn`, `startup_summary_counts_two_failures`, `startup_summary_logs_zero_when_nothing_failed`, and `start_logs_one_startup_summary_per_boot`, which asserts exactly one summary row per `start()`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
