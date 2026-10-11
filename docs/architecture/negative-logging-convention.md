@@ -358,6 +358,19 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+`session.end` also carries end-cause hints (TG-NET-02), so one row says
+how the session ended without joining other rows:
+
+| Field | Meaning |
+|---|---|
+| `logoff_requested` | `true` when the client asked for a full exit (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`) before the session ended. A full exit keeps the session until the client disconnects or the 60 s reap fires, so `disconnect_reason` stays the real mechanism (`client_disconnect`, `inactivity_timeout`) and this flag says the player meant to leave. `inactivity_timeout` with `logoff_requested=true` is a clean quit whose disconnect never arrived, not a crash. |
+| `idle_ms` | Milliseconds since the last fresh datagram from the client (`last_recv`) when the session ended. |
+| `in_world` | The character was listed online (past `onClientReady`) when the session ended: `false` for a drop during world entry, and after a `logOff` already took the character out of the world. |
+| `world` | The world name; absent when the session had none. |
+
+`Client entities cleaned up` carries `player_id` and `player_name` beside
+the numeric `player_entity_id` (it used to ship as `"Some(n)"`).
+
 Only a login whose ticket is already consumed reaches
 `login_retry_on_channel`. A plaintext `baseAppLogin` with a fresh ticket
 on an established channel is a client killed and relaunched on its fixed
@@ -773,6 +786,19 @@ Every fallback in the player-load loaders logs `event = "player_load_degraded"` 
 
 Only `missions_query_failed` says a re-accept will overwrite saved progress, the #411-class data loss; at world entry it now locks the missions instead (see TG-DB-12 below). Guard: `player_load/core/player_data.rs` `degraded_tests::player_load_fallbacks_log_degraded_reason` pins the level, `event` and `reason` for the three reasons reachable with the database down. `player_row_missing` is pinned by the live-DB test `live_db_query_player_load_data_account_mismatch_returns_default` (`player_load/core/mod.rs`). The equipment and weapon visual reasons need fault injection and are untested. `no_db_pool` and `bandolier_query_failed` have no guard.
 
+## Appearance refresh outcomes (TG-ITM-01)
+
+`refresh_player_appearance` (`base-methods/.../inventory/appearance.rs`) says why it gave up. A load that returned a different player is an ERROR when a DB pool exists. With `db_pool = None` (offline mode) it is a DEBUG instead, because the loader already logged `no_db_pool` at DEBUG. Either way the refresh still sends what it built (the abort is TG-ITM-14). A skip is WARN, except when the witness's session ended within the departed-witness window: that is a normal race, so DEBUG.
+
+| Event | Level | `reason` | Fields |
+|---|---|---|---|
+| `appearance_refresh_degraded` | ERROR (DEBUG when `db_pool` is `None`) | `cause = "player_load_failed"` (a field) | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_skipped` | WARN | `entity_to_addr_miss`, `client_state_missing`, `entity_missing` | `entity_id`, `entity_name`, `account_id`, `account_name`, `player_id`, `player_name` |
+| `appearance_refresh_skipped` | DEBUG | `witness_session_ended` | as above |
+| `appearance_refreshed` | DEBUG | none; a degraded refresh (default payload, including offline) is still logged with `degraded = true` | `entity_id`, `account_id`, `account_name`, `player_id`, `player_name`, `holstered`, `component_count`, `bodyset`, `degraded` |
+
+Guard: `appearance_refresh_logs_degraded_and_skips` in `inventory/appearance.rs` pins the offline DEBUG (no ERROR with `db_pool = None`), the live-pool ERROR, the `degraded = true` success row, the `client_state_missing` WARN and the DEBUG-after-departure (with no new WARN). The `entity_missing` skip is not pinned: it needs the mapping removed during the awaited load, which the test setup cannot do deterministically.
+
 ### Shutdown unsaved-state report (TG-DB-01)
 
 When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.
@@ -801,6 +827,17 @@ Before that report, the cell saves every in-world player through the base (`crat
 Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, so a failed write also logs that writer's own WARN (below) with its reason. A player missed for any reason gets exactly one `player_state_not_persisted`.
 
 `player_state_not_persisted` is conservative: it can over-report. A save the base aborts at the deadline may already have committed its write, and a write that lands after the cell stopped waiting still counts as missed, so a player it names may in fact be saved. It never under-reports. While the cell waits for the base's answer it does not drain base-to-cell messages; anything the base sends the cell in that window is handled (or dropped) by the shutdown that follows.
+
+### Sessions open at stop (TG-NET-10)
+
+After the cell's flush, `BaseService::stop` (`crates/base/src/base/service.rs`) ends the session row of every session still holding a player entity. It only logs; nothing is torn down, and it adds no await to the stop.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | target `session.end`, `disconnect_reason = "server_shutdown"`, identity, `entity_id`, `entity_name`, `addr`, `session_secs` | Once per session with a player entity. Without it, a stop left those sessions with a `session.start` and no end |
+| INFO | `sessions_open_at_stop` (every session in the map, account-only ones included), `sessions_ended` | Once per stop |
+
+Guard: `service.rs` `tests::stop_ends_each_live_session`.
 
 ## Logout position persistence (TG-DB-04)
 
@@ -873,6 +910,19 @@ An attack tick whose `handle_use_ability` call returns false (cooldown race, no 
 
 Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
 
+## Minigame session end (TG-MG-03)
+
+`run_session` in `crates/minigame/src/minigame/server/mod.rs` returns a `SessionEnd` whose `EndReason` names the exit that stopped the session. `handle_connection` logs it once on the closing row, `event = "minigame.session_end"`, with `end_reason`, `outcome` (`victory`, `defeat` or `canceled`), `duration_ms` and `room_id` beside the Rule 6 identity. The abort row (`Minigame aborted without a result`) carries the same `end_reason`.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | `event = "minigame.session_end"`, `end_reason`, `outcome`, `duration_ms`, `room_id`, identity | Every minigame session that reached `handle_connection`, once, after the registry entry is removed |
+| INFO | message `Minigame aborted without a result`, `end_reason` | The game loop ended without a victory or defeat; `end_reason` is the same value as above |
+
+`end_reason` is one of `victory`, `defeat`, `client_closed`, `read_error`, `frame_too_long`, `idle_timeout` or `send_failed`. A send that fails after a result was reported keeps the result's reason.
+
+Guards: `an_idle_session_reports_idle_timeout_as_canceled` and `a_closed_socket_reports_client_closed` in `server/timeout_tests.rs`.
+
 ## Inert effect WARN (TG-CMB-03)
 
 An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
@@ -908,6 +958,28 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 | WARN | `register_refused` | The session registry refused the ticket (duplicate); the player is never sent `onStartMinigame` | entity pair, `game_name` |
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
+
+## Minigame victory for an unknown entity (TG-MG-09)
+
+`cell/service/base_messages/minigame.rs`, `handle_minigame_result`. A victory whose `entity_id` is not in the cell's space manager still fires its `on_victory_chains` with player 0, as it always has; the WARN row says the player those chains name is not there. The entity has no name to give, so `entity_id` is `// nt:id-only`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| WARN | `entity_missing` | `MinigameResult` with `result_code` 1 and `get_entity` misses; the chains fire for player 0 | `entity_id`, `chain_count`, `result` |
+
+Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
+
+## Leave and invisible send failures (TG-AOI-08)
+
+`cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
+
+| `reason` | Meaning |
+|---|---|
+| `entity_to_addr_miss` | The witness has no `entity_to_addr` mapping; `addr_resolved = false` |
+| `client_disconnected` | The witness's client state is gone |
+| `send_error` | The transport refused the packet |
+
+Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
 ## Related
 

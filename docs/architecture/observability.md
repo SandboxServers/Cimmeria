@@ -293,7 +293,7 @@ round 2 fourteen of them emitted DEBUG rows that reached neither a file
 nor SigNoz: `abilities` (effect dispatch, pulses, shields), `abilities.sequence`,
 `content.resolve`, `dialog.display`, `mission.step_context`,
 `movement.movement_type`, `movement.position_sample`, `movement.validation`,
-`player.journal`, `trade.atomic_swap`, `console.feedback`, `client.native`,
+`player.journal`, `player.respawn`, `trade.atomic_swap`, `console.feedback`, `client.native`,
 `launcher.*` and `cimmeria_discord`. All are now named in `OTEL_FILTER` at
 DEBUG, except `client.native`, which moved to the `cimmeria-client` index
 (every level) in 2026-09. `launcher.key_dump` is turned `off` beside `launcher=debug`: it
@@ -308,7 +308,9 @@ crate linked into the server, finds each literal-target event call and
 requires it to reach one index at the level it is emitted; the only
 exemptions are the `off` targets, each listed with its reason. Every crate
 directory must be classified as in- or out-of-process, so a new crate
-cannot skip the scan.
+cannot skip the scan. Test code is cut only at an inline `#[cfg(test)] mod name {`;
+a `#[cfg(test)] mod tests;` declaration does not end the file's scan, so the
+production code below it is still checked.
 
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
