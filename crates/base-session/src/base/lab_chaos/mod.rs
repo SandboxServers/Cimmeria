@@ -31,7 +31,7 @@ use std::{
     net::SocketAddr,
     ops::{Deref, DerefMut},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Mutex, MutexGuard, OnceLock, PoisonError,
     },
     time::{Duration, Instant},
@@ -92,6 +92,8 @@ pub struct SessionChaos {
     pub net: Option<NetChaos>,
     pub flush: Option<FlushChaos>,
     pub expires_at: Instant,
+    /// New on every set, identical knobs too: the net shim restarts on it.
+    pub generation: u64,
 }
 
 /// Why a chaos request was refused. The lab-mcp tools return the text.
@@ -135,6 +137,8 @@ pub struct LabChaos {
     /// [`SessionsGuard`]'s drop, so it is in step with the map at every
     /// unlock.
     net_entries: AtomicUsize,
+    /// The last [`SessionChaos::generation`] handed out.
+    generations: AtomicU64,
     /// Keys `addr_hash` in the logs. Random per process, so the hash
     /// correlates one run's rows without being a lookup table back to the
     /// address (an IPv4 space is small enough to hash exhaustively).
@@ -156,6 +160,7 @@ impl LabChaos {
         Self {
             sessions: Mutex::new(HashMap::new()),
             net_entries: AtomicUsize::new(0),
+            generations: AtomicU64::new(0),
             addr_hasher: RandomState::new(),
         }
     }
@@ -207,6 +212,7 @@ impl LabChaos {
             net,
             flush,
             expires_at,
+            generation: self.generations.fetch_add(1, Ordering::Relaxed) + 1,
         };
         tracing::warn!(
             target: "lab.chaos",
@@ -295,6 +301,11 @@ impl LabChaos {
     /// Expired entries are removed here and read as None.
     pub fn net_for(&self, addr: SocketAddr, now: Instant) -> Option<NetChaos> {
         self.live(addr, now, |chaos| chaos.net.clone())
+    }
+
+    /// [`Self::net_for`] with the entry's [`SessionChaos::generation`].
+    pub fn net_entry_for(&self, addr: SocketAddr, now: Instant) -> Option<(NetChaos, u64)> {
+        self.live(addr, now, |c| c.net.clone().map(|net| (net, c.generation)))
     }
 
     /// Expired entries are removed here and read as None.

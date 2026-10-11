@@ -98,3 +98,5 @@ cimmeria-observability = { workspace = true, features = ["testing"] }
 # The drop-one-sequence `Transport` wrapper in the login handshake
 # retransmit tests (#842); the trait uses `#[async_trait]`.
 async-trait = { workspace = true }
+# `test-util` pauses the clock for the lab chaos net shim's delay-line tests.
+tokio = { workspace = true, features = ["test-util"] }

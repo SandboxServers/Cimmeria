@@ -348,6 +348,21 @@ fn scope_is_per_address() {
     assert_eq!(chaos.flush_for(addr(40_022), now), None);
 }
 
+/// A re-set with identical knobs reads back the same knobs under a new
+/// generation, which is what restarts the net shim's seeded streams.
+#[test]
+fn every_set_gets_a_new_generation() {
+    let chaos = LabChaos::new();
+    let now = Instant::now();
+    set_net(&chaos, addr(40_041), 1, 7, now);
+    let (first_net, first) = chaos.net_entry_for(addr(40_041), now).expect("set");
+    set_net(&chaos, addr(40_041), 1, 7, now);
+    let (again_net, again) = chaos.net_entry_for(addr(40_041), now).expect("set");
+    assert_eq!(again_net, first_net);
+    assert!(again > first, "generation {again} after {first}");
+    assert_eq!(chaos.net_for(addr(40_041), now), Some(first_net));
+}
+
 /// The set WARN names the session by a hash only: the logs reach SigNoz
 /// and Discord, and a lab address is still a player-style address.
 #[test]

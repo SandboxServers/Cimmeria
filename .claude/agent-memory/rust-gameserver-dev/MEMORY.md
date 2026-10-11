@@ -77,6 +77,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-chaos-net-shim-generation-and-teardown](lab-chaos-net-shim-generation-and-teardown.md) — net shim keys on per-set generation; teardown discards held/delayed sends; bounded line; paused-clock tests.
 - [client-lua-cegui-global-subscribe](client-lua-cegui-global-subscribe.md) — client Lua `window:subscribeGlobal(ns, ev, 'Fn')`; no unsubscribe, so once per Lua state; args (this, eventWindow, ...).
 - [lab-cli-child-test-daemon-isolation](lab-cli-child-test-daemon-isolation.md) — command tests in a child pwsh reach the real daemon (User-scope token): use -StatusFile + closed-port labd.pid.
 - [lab-native-cegui-input-and-levels](lab-native-cegui-input-and-levels.md) — cursor/drag via native CEGUI injectors; `cegui_fake.rs` test seam; new native-level words need a `from_reported` row.

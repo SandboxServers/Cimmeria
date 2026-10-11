@@ -260,10 +260,12 @@ async fn no_chaos_passes_everything_through() {
     assert_eq!(rig.shim.peer_count.load(Ordering::Acquire), 0);
 }
 
-/// Sends held for reordering are released when the chaos is cleared, not
-/// stranded. Fails if the shim forgets a peer without releasing its bucket.
+/// Session A's sends held for reordering are discarded when its chaos is
+/// cleared (session teardown), so they never reach session B, the next
+/// client on the same address. Fails if the shim releases a cleared peer's
+/// bucket instead of discarding it.
 #[tokio::test]
-async fn clearing_chaos_releases_held_reorder_sends() {
+async fn a_cleared_sessions_held_sends_never_reach_the_next_session() {
     let rig = Rig::new();
     let mut reorder = lossy(0, 1);
     reorder.reorder = 5;
@@ -272,9 +274,135 @@ async fn clearing_chaos_releases_held_reorder_sends() {
     assert_eq!(rig.delivered(addr(A)), Vec::<u32>::new(), "held");
 
     assert_eq!(rig.registry.clear(Some(addr(A))), 1);
-    rig.send_seqs(addr(A), 3..4).await;
-    assert_eq!(rig.delivered(addr(A)), [2, 1, 0, 3]);
+    // Session B's first datagram, on the same address, with no chaos.
+    rig.send_seqs(addr(A), 100..101).await;
+    assert_eq!(rig.delivered(addr(A)), [100], "only B's bytes");
     assert_eq!(rig.shim.peer_count.load(Ordering::Acquire), 0);
+    assert!(!rig.shim.shaper.tracks(addr(A)));
+}
+
+/// A re-set with identical knobs (the runner's next row) starts the seeded
+/// stream over, so the row replays. Fails if the shim keeps a peer's filter
+/// across a set it never saw cleared.
+#[tokio::test]
+async fn re_setting_identical_knobs_restarts_the_seeded_stream() {
+    let rig = Rig::new();
+    rig.set(addr(A), lossy(300, 7), DEFAULT_TTL_S);
+    rig.send_seqs(addr(A), 0..50).await;
+    let first = rig.delivered(addr(A));
+    assert!(
+        !first.is_empty() && first.len() < 50,
+        "30% loss drops some, not all: {} of 50 arrived",
+        first.len()
+    );
+
+    rig.set(addr(A), lossy(300, 7), DEFAULT_TTL_S);
+    rig.send_seqs(addr(A), 0..50).await;
+    let both = rig.delivered(addr(A));
+    assert_eq!(both[first.len()..], first[..], "the second set replays");
+}
+
+/// A send that read its entry just before the entry was cleared, or before
+/// it was set again, cannot rebuild the peer: the roll is refused. Fails if
+/// the shim's re-insert ignores the generation.
+#[tokio::test]
+async fn a_stale_generation_never_rebuilds_a_peer() {
+    let rig = Rig::new();
+    rig.set(addr(A), lossy(0, 1), DEFAULT_TTL_S);
+    let (net, old) = rig
+        .registry
+        .net_entry_for(addr(A), Instant::now())
+        .expect("set");
+
+    rig.registry.clear(Some(addr(A)));
+    let roll = rig.shim.roll(addr(A), &net, old, FlowFilter::roll_send);
+    assert!(roll.is_none(), "a cleared entry's send is not shaped");
+    assert_eq!(rig.shim.peer_count.load(Ordering::Acquire), 0);
+
+    rig.set(addr(A), lossy(0, 1), DEFAULT_TTL_S);
+    let (_, new) = rig
+        .registry
+        .net_entry_for(addr(A), Instant::now())
+        .expect("set");
+    assert!(rig
+        .shim
+        .roll(addr(A), &net, new, FlowFilter::roll_send)
+        .is_some());
+    let stale = rig.shim.roll(addr(A), &net, old, FlowFilter::roll_send);
+    assert!(
+        stale.is_none(),
+        "an older generation never replaces a newer"
+    );
+    assert_eq!(
+        rig.shim.peers().get(&addr(A)).map(|p| p.generation),
+        Some(new)
+    );
+}
+
+/// Session A's delayed sends die with its chaos even when nothing is ever
+/// sent to A again: a send to another chaos session sweeps A's peer and
+/// delay line. Fails if cleanup waits for a datagram to A.
+#[tokio::test(start_paused = true)]
+async fn a_dead_peer_is_swept_by_any_send() {
+    let rig = Rig::new();
+    let mut slow = lossy(0, 1);
+    slow.latency_ms = 300;
+    rig.set(addr(A), slow, DEFAULT_TTL_S);
+    rig.set(addr(B), lossy(0, 2), DEFAULT_TTL_S);
+    rig.send_seqs(addr(A), 0..3).await;
+    rig.send_seqs(addr(B), 0..1).await;
+    assert!(rig.shim.shaper.tracks(addr(A)), "A's sends are queued");
+
+    rig.registry.clear(Some(addr(A)));
+    rig.send_seqs(addr(B), 1..2).await;
+    assert_eq!(rig.shim.peer_count.load(Ordering::Acquire), 1, "B only");
+    assert!(!rig.shim.shaper.tracks(addr(A)));
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(rig.delivered(addr(A)), Vec::<u32>::new(), "A's queue died");
+    assert_eq!(rig.delivered(addr(B)), [0, 1]);
+}
+
+/// Latency is a pipeline delay and duplication doubles the send: `send_to`
+/// returns at once with nothing on the wire, and both copies arrive once
+/// the latency has passed. Fails if the shim sleeps in `send_to` or loses
+/// the latency or duplicate knob on the way to the shaper.
+#[tokio::test(start_paused = true)]
+async fn latency_and_duplicate_reach_the_wire_late_and_twice() {
+    let rig = Rig::new();
+    let mut net = lossy(0, 1);
+    net.latency_ms = 300;
+    net.dup_per_thousand = 1000;
+    rig.set(addr(A), net, DEFAULT_TTL_S);
+
+    let started = tokio::time::Instant::now();
+    rig.send_seqs(addr(A), 0..1).await;
+    assert!(
+        started.elapsed() < Duration::from_millis(50),
+        "send_to took {:?}",
+        started.elapsed()
+    );
+    assert_eq!(rig.delivered(addr(A)), Vec::<u32>::new(), "still delayed");
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(rig.delivered(addr(A)), [0, 0]);
+}
+
+/// A delay line holds at most `MAX_DELAYED_PER_DEST` sends; the rest are
+/// shed and counted. Fails if the line is unbounded again.
+#[tokio::test(start_paused = true)]
+async fn the_delay_line_sheds_past_its_cap() {
+    use cimmeria_mercury::lossy_transport::filter::MAX_DELAYED_PER_DEST;
+    let cap = u32::try_from(MAX_DELAYED_PER_DEST).expect("cap fits");
+    let rig = Rig::new();
+    let mut slow = lossy(0, 1);
+    slow.latency_ms = 1_000;
+    rig.set(addr(A), slow, DEFAULT_TTL_S);
+
+    rig.send_seqs(addr(A), 0..cap + 100).await;
+    assert_eq!(rig.shim.shaper.shed_total(), 100);
+    tokio::time::sleep(Duration::from_millis(1_100)).await;
+    assert_eq!(rig.delivered(addr(A)), (0..cap).collect::<Vec<_>>());
 }
 
 /// A full reorder bucket goes out reversed, the `LossyTransport` contract.
