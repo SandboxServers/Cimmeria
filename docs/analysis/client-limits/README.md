@@ -7,11 +7,15 @@
 > Related: [#1341](https://github.com/SandboxServers/Cimmeria/issues/1341)
 > (first-login flush tail drop). Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-11): wave 1 in progress.** Every decision is
-> answered (2026-10-11). CL-05 is done ([worknote](worknotes/CL-05.md));
-> CL-01, CL-02, CL-03, CL-04, CL-06 and CL-11 are being written. CL-12 is
-> dropped: the stock exe is already Large Address Aware. Every live packet
-> (CL-08, CL-09, CL-10) still needs the user's OK before it starts.
+> **Campaign status (2026-10-11): implementation done; live work next.**
+> Every decision is answered, and every packet that needs no lab is
+> integrated (CL-01 to CL-07, CL-11, CL-13); the bounds table is live in
+> [docs/client/limits/](../../client/limits/README.md). CL-12 is dropped: the
+> stock exe is already Large Address Aware. **Resume here:** the live packets
+> CL-08, CL-09 and CL-10, each after the user's OK on lab time (the lab DLL
+> must be rebuilt first so CL-06's frame fields reach SigNoz); then CL-14
+> (after CL-09 and a SO_RCVBUF measurement) and CL-15 (after CL-08); then
+> CL-16.
 
 ## Purpose
 
@@ -49,10 +53,10 @@ unless another finding is named.
 | F10 | AoI: `PLAYER_AOI_RADIUS` 150 m, `AOI_LEAVE_MARGIN` 25 m, NPC default 100 m (`crates/entity/src/cell_entity/`). The deferred buffer drops past `MAX_DEFERRED_AOI_MSGS` = 512 with a WARN. The first-login hold is 16 s (`HOLD_DURATION`); the appearance resend runs every 100 ms for 20 s (`cinematic.rs`). No client-side entity-count limit is documented. | CL-03, CL-09 |
 | F11 | A lab session with 161 extra NPCs (Debug Area lineup) ran after the cascade fragmenting fix; nobody has looked for the client's ceiling. | CL-09 |
 | F12 | The DLL already samples memory every 30 s: `client.engine.memory` carries `working_set_mb`, `peak_working_set_mb`, `private_mb`, `avail_virtual_mb`, `total_virtual_mb` and warns under 256 MB of free address space; `client.engine.hitch` fires on a tick gap of 200 ms or more ([client-telemetry.md § Subsystem seams](../../architecture/client-telemetry.md#subsystem-seams)). `total_virtual_mb` answers "is the client Large Address Aware" from SigNoz alone: about 2048 without the flag, about 4096 with it on 64-bit Windows. Nothing reports ordinary frame times. | CL-05, CL-06 |
-| F13 | A client not in the foreground runs at below-normal priority with a 5 ms sleep per `FEngineLoop::Tick`; the lab's virtual focus defeats it ([live-research-lab.md](../../guides/live-research-lab.md), "Focus"). The call site and any ini switch for it are not documented. | CL-04 |
+| F13 | **Resolved by CL-04 (2026-10-11).** The `Sleep(5)` (`FUN_00491320` at `0x004171f6`) on every unfocused tick, and the one-shot below-normal thread priority on the focus-loss tick, sit in a `FEngineLoop::Tick` block (`0x004171a7` to `0x00417204`) that is skipped unless `GIsEditor` (`0x01ead7ac`) is set; the player client never sets it, and no ini key or switch reaches it. The player client has no background throttle (static; live check LT-6). See [engine.md](../../client/limits/engine.md). | CL-04 |
 | F14 | The launcher already edits one PE header byte of `SGW.exe` (clears `DYNAMIC_BASE`, offset `0x186`; `crates/launcher/src/client_setup/aslr.rs`). **Corrected 2026-10-11:** the stock exe is already Large Address Aware. Its file header `Characteristics` is `0x0122` at file offset `0x13E`, the same in an untouched install and in a launcher-patched one, and every SigNoz memory sample reports `total_virtual_mb` 4096 (CL-05). No patch is needed. | CL-04 |
 | F19 | The 4 GB address space is nearly used up on Ihpet_Crater_Light: player sessions fall to 135.5 MB free with 3.5 GB committed, and all 7 `warn` memory samples in 30 days come from there (CL-05). Any pool raise (CL-13) must be measured there first. | CL-05, CL-13 |
-| F15 | No repo doc records `TextureStreaming` `PoolSize`, `MaxSmoothedFrameRate` or `bSmoothFrameRate`. The client reads `Config/SGWEngine.ini` from the user folder (`crates/lab/src/supervisor/instance_profile.rs` seeds it per lab instance); `DefaultEngine.ini` is based on `Engine/Config/GameplayEngine.ini`. | CL-04, CL-13 |
+| F15 | **Resolved by CL-04:** `[TextureStreaming] PoolSize` is inert (nothing reads it); the streaming margins and smoothing keys are the live ones ([engine.md](../../client/limits/engine.md)). The client reads `Config/SGWEngine.ini` from the user folder (`crates/lab/src/supervisor/instance_profile.rs` seeds it per lab instance); `DefaultEngine.ini` is based on `Engine/Config/GameplayEngine.ini`. | CL-04, CL-13 |
 | F16 | Server tick 10 Hz (`UPDATE_FREQUENCY_HZ`, `crates/wire/src/mercury/game_clock/mod.rs`), sent to the client at login. World entry `playCharacter` to `onClientReady` took about 2.4 s for Castle_CellBlock on one player machine. Client interpolation constants and teleport-to-AoI latency are not documented. | CL-03, CL-11 |
 | F17 | Lab capacity: `CEILING_MAX_CLIENTS` = 5, the five seeded lab accounts (`crates/lab/src/supervisor/instance.rs`); window 1280x720 windowed (`process.rs` `DEFAULT_WINDOW`); a client's bridge took about 25 s to come up with four others running ([parallel clients note](../../../.claude/agent-memory/main-session/reference_lab_parallel_clients_2026_10_10.md)). An idle lab client whose display the screensaver takes loses its D3D device after about 10 minutes (`D3DERR_NOTAVAILABLE`). | CL-01, CL-15 |
 | F18 | `crates/mercury/src/lossy_transport.rs` and the `chaos-testing` feature on `cimmeria-base` already give a seeded loss, latency, jitter, duplicate and reorder wrapper around the real transport ([network-chaos-testing.md](../../architecture/network-chaos-testing.md)). Lab-chaos's `net` profile builds on it. | lab-chaos |
@@ -99,7 +103,7 @@ path), **M** measured (run, date and sample size), **I** inferred. An empty
 
 | Bound | Known | Grade, source | To measure | Packet |
 |---|---|---|---|---|
-| Address space | 2 GB unless Large Address Aware | I, 32-bit image | The PE flag on the stock exe; `total_virtual_mb` from SigNoz | CL-04, CL-05 |
+| Address space | 4 GB on 64-bit Windows (Large Address Aware set in the stock exe) | S, PE `Characteristics` 0x0122 | `total_virtual_mb` from SigNoz | CL-05 |
 | Working-set peak per world | | | `peak_working_set_mb` per world, from SigNoz first, lab for worlds with no data | CL-05, CL-08 |
 | Lowest free address space seen | warning below 256 MB | C, `frame_health.rs` | `avail_virtual_mb` minimum per world | CL-05 |
 | Cache archives held open | 22 `Cache.en-US` paks, read/write | M, #1312 | none | CL-01 |
@@ -109,9 +113,9 @@ path), **M** measured (run, date and sample size), **I** inferred. An empty
 | Bound | Known | Grade, source | To measure | Packet |
 |---|---|---|---|---|
 | Frame time | hitch threshold 200 ms | C, `HITCH_MS` | p50, p95, max per 30 s window (needs CL-06) | CL-06, CL-08 |
-| Texture streaming pool | | | `[TextureStreaming]` `PoolSize` in the shipped ini chain | CL-04 |
+| Texture streaming pool | `PoolSize` is inert; the streaming margins are the live keys | C, `BaseEngine.ini` | See [engine.md](../../client/limits/engine.md) | CL-04 |
 | Frame smoothing | | | `bSmoothFrameRate`, `MaxSmoothedFrameRate`, `MinSmoothedFrameRate` | CL-04 |
-| Background throttle | below-normal priority, 5 ms sleep per tick | M, lab guide (F13) | RE: the call site; any ini switch | CL-04 |
+| Background throttle | none in the player client (editor-only block) | S, `0x004171c3` | Live check LT-6 | CL-04 |
 | Idle display loss | about 10 min, screensaver | M, lab operator note | none | CL-01 |
 
 ### Timing
@@ -139,7 +143,7 @@ path), **M** measured (run, date and sample size), **I** inferred. An empty
 | D-CL2 | ACCEPTED 2026-10-11 | **Every value carries a grade and a source:** static (address), config (constant or ini key with path), measured (run or query, date, sample size), inferred. No source, no value: the cell says "not measured". | The acceptance is a table people can trust without re-deriving it. |
 | D-CL3 | ACCEPTED 2026-10-11 | **Cheapest evidence first:** repo docs, then SigNoz (the DLL already reports memory, hitches and Mercury faults from player and lab sessions), then static RE through the `re-lookup` order, and only then the live lab. Every live packet waits for the user's OK. | The lab is shared, and most process numbers are already in SigNoz. |
 | D-CL4 | **MOOT 2026-10-11:** the stock exe is already Large Address Aware (F14, CL-05); CL-12 dropped | **Large Address Aware.** (a) Set the flag on lab installs only, as a trial (CL-12), if any world's free address space falls under 512 MB; ship to players only through a later client-patch decision. (b) Do not set it. | It is a client patch (rules-and-gotchas). It only matters if the client gets near 2 GB; CL-05 says whether it does. |
-| D-CL5 | **DECIDED (a)**, owner, 2026-10-11 | **Lab ini overrides.** (a) A lab instance profile may carry ini overrides (pool sizes, smoothing) from a committed file, applied after seeding and logged; distributing any of them to players is a separate client-patch decision. (b) No ini change anywhere without a maintainer decision. | (a) lets the lab measure the effect of a raise without touching player installs. |
+| D-CL5 | **DECIDED (a)**, owner, 2026-10-11 | **Lab ini overrides.** (a) A lab instance profile may carry ini overrides (streaming margins, smoothing) from a committed file, applied after seeding and logged; distributing any of them to players is a separate client-patch decision. (b) No ini change anywhere without a maintainer decision. | (a) lets the lab measure the effect of a raise without touching player installs. |
 | D-CL6 | ACCEPTED 2026-10-11 | **Server pacing changes are server-authoritative candidates,** each behind a measurement and a `bigworld-engine-advisor` review, with the old value one constant away. The first-login flush shape stays with #1341 and D-WC8; this campaign only measures it. | Server-side, no client patch (rules-and-gotchas). Two campaigns must not both change the flush. |
 | D-CL7 | **DEFERRED**, owner, 2026-10-11 | **Lab capacity above five clients** (more seeded lab accounts, a daemon on a second machine). Defer until lab-chaos or lab-golden shows a need. The low-resolution window (CL-15) does not need this decision. | The ceiling is the seeded accounts; raising it is an account and machine decision. |
 | D-CL8 | **DECIDED (a)**, owner, 2026-10-11; the run still waits for the user's OK on lab time | **The stock-client residue probe (CL-10).** (a) Run it on a lab client the user frees, with x64dbg non-freezing breakpoints only, once on a client with the DLL's hooks off and once on a default client. (b) Skip it and let #1341 choose its fix without knowing. | It is the decisive question for #1341's fix (server mitigation against a client patch of `0x01578e90`), and it needs a live client under a debugger. |
@@ -148,19 +152,19 @@ path), **M** measured (run, date and sample size), **I** inferred. An empty
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| CL-01 | Bounds docs skeleton under `docs/client/limits/` | documentation-writer | S | 1 | none | Writing |
-| CL-02 | RE: client receive and resend limits | game-archaeology-specialist | M | 1 | none | Writing |
-| CL-03 | RE: client entity capacity and interpolation | game-archaeology-specialist, bigworld-engine-advisor review | M | 1 | none | Writing |
-| CL-04 | Static: PE flags, engine ini chain, background throttle | game-archaeology-specialist | S | 1 | none | Writing |
-| CL-05 | SigNoz mining: memory, hitches, residues, flush faults | coordinator (`telemetry-triage` skill) | S | 1 | none | Done ([worknote](worknotes/CL-05.md)); rows fold into the area files after CL-01 |
-| CL-06 | DLL: frame-time percentiles on `client.engine.memory` | packet-coder | S | 1 | none | Writing |
-| CL-07 | Measurement spec `client-limits.toml` | packet-coder | S | 2 | CL-06 | BlockedDependency |
+| CL-01 | Bounds docs skeleton under `docs/client/limits/` | documentation-writer | S | 1 | none | Integrated (#1504) |
+| CL-02 | RE: client receive and resend limits | game-archaeology-specialist | M | 1 | none | Integrated (#1525) |
+| CL-03 | RE: client entity capacity and interpolation | game-archaeology-specialist, bigworld-engine-advisor review | M | 1 | none | Integrated (#1505) |
+| CL-04 | Static: PE flags, engine ini chain, background throttle | game-archaeology-specialist | S | 1 | none | Integrated (#1533) |
+| CL-05 | SigNoz mining: memory, hitches, residues, flush faults | coordinator (`telemetry-triage` skill) | S | 1 | none | Integrated (#1502, folded into the area files by the wave-1 fold; [worknote](worknotes/CL-05.md) keeps the method) |
+| CL-06 | DLL: frame-time percentiles on `client.engine.memory` | packet-coder | S | 1 | none | Integrated (#1532); live numbers need the lab DLL rebuilt |
+| CL-07 | Measurement spec `client-limits.toml` | packet-coder | S | 2 | CL-06 | Integrated (#1539); CL-M5 is CL-W2 with `-Leases 5` |
 | CL-08 | Live: per-world memory and frame time, one and five clients | coordinator + Haiku lab-driver | M | 3 | CL-07, user's OK | BlockedDependency |
-| CL-09 | Live: create-burst ceiling | coordinator + Haiku lab-driver | M | 3 | CL-01, user's OK | BlockedDependency |
+| CL-09 | Live: create-burst ceiling | coordinator + Haiku lab-driver | M | 3 | user's OK | BlockedDependency |
 | CL-10 | Live: stock-client residue probe | game-archaeology-specialist | M | 3 | user's OK | BlockedDependency |
-| CL-11 | Teleport and world-entry timing from captures | packet-coder | S | 1 | none | Writing |
+| CL-11 | Teleport and world-entry timing from captures | packet-coder | S | 1 | none | Integrated (#1503; folded into timing.md) |
 | CL-12 | Raise candidate: Large Address Aware lab trial | packet-coder | S | 4 | n/a | Dropped: the stock exe is already Large Address Aware (D-CL4) |
-| CL-13 | Raise candidate: lab ini overrides | packet-coder | M | 4 | CL-04 | BlockedDependency |
+| CL-13 | Raise candidate: lab ini overrides | packet-coder | M | 4 | none | Integrated (#1550); the live measurement rides on CL-08, Ihpet_Crater_Light first (F19) |
 | CL-14 | Raise candidate: server send window | rust-gameserver-dev | M | 4 | CL-09 | BlockedDependency |
 | CL-15 | Raise candidate: lab low-resolution window | packet-coder | S | 4 | CL-08 | BlockedDependency |
 | CL-16 | Close-out | documentation-writer | S | 5 | all | BlockedDependency |
@@ -206,4 +210,16 @@ Waves (packets in one wave touch disjoint files):
 
 ## Review outcomes
 
-None yet. Where merged work differs from the packet specs, record it here.
+Where merged work differs from the packet specs:
+
+- **CL-01.** Known values kept with their grade and source, and mixed rows split one value per row. Review fixed the server reap timer: 60 s (`INACTIVITY_TIMEOUT`), not 300 s (F8 corrected).
+- **CL-02.** Review replaced a wrong 50 ms ACK-flush row with the 1.5 s idle keepalive and traced the inactivity chain. Two stale comments in `crates/mercury/src/lib.rs` corrected.
+- **CL-03.** The binary has two avatar filter classes (BigWorld and SGW); the review had merged them. Same-timestamp position inputs are dropped: the server should coalesce to the latest position per entity per bundle.
+- **CL-04.** The player client has **no background throttle** (the `Sleep(5)` block is `GIsEditor`-only), and `[TextureStreaming] PoolSize` is inert; F13 and F15 corrected, D-CL5 now says streaming margins. A user `SGWEngine.ini` survives only while its `[IniVersion]` stamps match the chain files.
+- **CL-05.** Run by the coordinator against ClickHouse (the MCP cannot group on JSON fields).
+- **CL-06.** `memory_fields` stays pure; `frame_fields`, `record_gap` and `take_window` carry the window. A percentile in the open bucket reports the window's longest gap.
+- **CL-07.** The Haiku worker hit its context cap; the coordinator finished it. Five clients at once needs no schema: `-Rows CL-W2 -Leases 5`.
+- **CL-13.** Review found the installed daemon runs from the lab state dir, so the overrides file is looked up there (after `CIMMERIA_LAB_INI_OVERRIDES`, before a checkout's `tools/lab/`). Writes are atomic under the seed lock; `[IniVersion]`, path escapes and device names are refused.
+- **CL-11.** The Praxis tap has no create or `onClientReady` record, so teleport-to-AoI and the observed hold stay `not measured`; world entry comes from SigNoz instead (CL-05).
+
+New measurement needed (no packet yet): the client's socket receive buffer size, `getsockopt(SO_RCVBUF)` from the lab DLL. CL-14 depends on it.

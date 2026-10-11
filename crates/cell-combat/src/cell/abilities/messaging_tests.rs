@@ -337,6 +337,18 @@ fn no_witness_warns(logs: &crate::test_support::LogCaptureGuard) -> usize {
         .count()
 }
 
+/// The `wire_npc_no_witnesses` rows at `level`, whatever their `present_via`.
+fn no_witness_rows_at(logs: &crate::test_support::LogCaptureGuard, level: tracing::Level) -> usize {
+    logs.all()
+        .into_iter()
+        .filter(|c| {
+            c.level == level
+                && c.target == "abilities.wire"
+                && c.has_field("event", "wire_npc_no_witnesses")
+        })
+        .count()
+}
+
 /// **Regression guard (DA-F2, colo 2026-10-05).** The Debug Area arena's
 /// NPC-vs-NPC fights wrote `wire_npc_no_witnesses` WARNs for every health
 /// and state update while no player was near. Owner decision: with no
@@ -363,10 +375,11 @@ async fn an_npc_only_fight_nobody_watches_writes_no_witness_warn() {
 }
 
 /// The other half of the DA-F2 rule: the same unseen NPC with a player on
-/// its threat list (a player is fighting it) still WARNs, because a player
-/// should have seen that update. Fails if the gate silences every NPC.
+/// its threat list (a player is fighting it, outside AoI) still logs, now at
+/// DEBUG with `present_via=threat_list`, not WARN. Fails if the gate silences
+/// every NPC, or if the threat-list row is raised back to WARN.
 #[tokio::test]
-async fn an_unseen_npc_a_player_is_fighting_still_warns() {
+async fn an_unseen_npc_a_player_is_fighting_logs_debug_threat_list() {
     let mut mgr = npc_fight_nobody_watches();
     mgr.get_entity_mut(10).unwrap().threat_list.insert(1, 5.0);
     let (tx, _rx) = mpsc::channel(64);
@@ -374,7 +387,20 @@ async fn an_unseen_npc_a_player_is_fighting_still_warns() {
 
     send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
 
-    assert_eq!(no_witness_warns(&logs), 1, "{:#?}", logs.all());
+    assert_eq!(no_witness_warns(&logs), 0, "{:#?}", logs.all());
+    assert_eq!(
+        no_witness_rows_at(&logs, tracing::Level::DEBUG),
+        1,
+        "{:#?}",
+        logs.all()
+    );
+    assert!(
+        logs.all()
+            .iter()
+            .any(|c| c.has_field("present_via", "threat_list")),
+        "{:#?}",
+        logs.all()
+    );
 }
 
 /// **Review probe (#1244).** The WARN's own fault case: a player stands
@@ -396,4 +422,9 @@ async fn a_player_in_range_with_a_stale_witness_set_still_warns() {
     send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
 
     assert_eq!(no_witness_warns(&logs), 1, "{:#?}", logs.all());
+    assert!(
+        logs.all().iter().any(|c| c.has_field("present_via", "aoi")),
+        "{:#?}",
+        logs.all()
+    );
 }

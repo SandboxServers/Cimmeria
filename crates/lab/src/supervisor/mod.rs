@@ -43,6 +43,7 @@ pub mod entity_table;
 pub mod events;
 pub mod flows;
 pub mod heartbeat;
+pub mod ini_overrides;
 pub mod input;
 pub mod instance;
 pub mod instance_profile;
