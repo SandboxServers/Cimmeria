@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 13,221 |
-| Files with tests | 2,306 |
-| Gated in CI (every crate but CI's exclude list) | 10,557 |
+| Tests (`#[test]` / `#[tokio::test]`) | 13,239 |
+| Files with tests | 2,307 |
+| Gated in CI (every crate but CI's exclude list) | 10,562 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,758 |
-| Inventory threshold (5% of the tests) | 661 |
+| Inventory threshold (5% of the tests) | 662 |
 
 <!-- /gen:tests-totals -->
 
@@ -87,7 +87,7 @@ with no file in this directory yet.
 | `crates/lab` | `cimmeria-lab` | 998 | 155 | 0 | no | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 935 | 170 | 48 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 914 | 144 | 507 | yes | none |
-| `crates/launcher` | `sgw-launcher` | 873 | 160 | 0 | no | [launcher.md](launcher.md) |
+| `crates/launcher` | `sgw-launcher` | 886 | 161 | 0 | no | [launcher.md](launcher.md) |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 675 | 128 | 0 | no | none |
 | `crates/cell` | `cimmeria-cell` | 664 | 155 | 27 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 658 | 142 | 460 | yes | none |
@@ -100,8 +100,8 @@ with no file in this directory yet.
 | `crates/wire` | `cimmeria-wire` | 324 | 59 | 0 | yes | none |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 307 | 49 | 9 | yes | none |
+| `crates/launcher-core` | `cimmeria-launcher-core` | 295 | 39 | 0 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 294 | 27 | 0 | yes | [content-engine.md](content-engine.md) |
-| `crates/launcher-core` | `cimmeria-launcher-core` | 290 | 39 | 0 | yes | none |
 | `crates/base` | `cimmeria-base` | 240 | 50 | 17 | yes | none |
 | `crates/admin-api` | `cimmeria-admin-api` | 239 | 36 | 0 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 232 | 63 | 55 | yes | none |
