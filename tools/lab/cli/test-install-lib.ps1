@@ -90,6 +90,82 @@ try {
     $refused = $false
     try { Install-LabCli $bare } catch { $refused = $_.Exception.Message -like '*lab.ps1*' }
     Check $refused 'a root without tools\lab\lab.ps1 is refused'
+
+    # --- the lab.cmd shim and lab.exe (LX-03) ---
+    $homeBin = Join-Path $env:CIMMERIA_LAB_HOME 'bin'
+    $shimPath = Join-Path $homeBin 'lab.cmd'
+    $exePath = Join-Path $homeBin 'lab.exe'
+    Remove-Item -LiteralPath $homeBin -Recurse -Force -ErrorAction SilentlyContinue
+
+    Check (-not (Test-LabExeInstalled $env:CIMMERIA_LAB_HOME)) 'no lab.exe: Test-LabExeInstalled is false'
+    $written = Write-LabShim $env:CIMMERIA_LAB_HOME
+    Check (($written -eq $shimPath) -and (Test-Path -LiteralPath $shimPath)) 'without lab.exe, Write-LabShim writes bin\lab.cmd and returns its path'
+    $shimText = Get-Content -Raw -LiteralPath $shimPath
+    Check (($shimText -like '*pwsh -NoProfile -File*') -and ($shimText -like '*cli\lab.ps1*') -and ($shimText -like '*%*')) 'the shim runs cli\lab.ps1 with the arguments'
+
+    Install-LabCli $root
+    Check (Test-Path -LiteralPath $shimPath) 'without lab.exe, Install-LabCli leaves lab.cmd in place'
+
+    Set-Content -LiteralPath $exePath -Value 'fake exe' -Encoding ascii
+    Check (Test-LabExeInstalled $env:CIMMERIA_LAB_HOME) 'with a bin\lab.exe, Test-LabExeInstalled is true'
+    $said = @(Install-LabCli $root 6>&1 | ForEach-Object { "$_" })
+    Check (-not (Test-Path -LiteralPath $shimPath)) 'with lab.exe, Install-LabCli deletes bin\lab.cmd'
+    Check (Test-Path -LiteralPath $exePath) 'deleting the shim leaves lab.exe alone'
+    Check (($said -join "`n") -like '*lab.exe installed; the lab.cmd shim is no longer needed*') 'the shim removal prints the notice'
+
+    Install-LabCli $root
+    Check (-not (Test-Path -LiteralPath $shimPath)) 'with lab.exe and no shim, a second run leaves none'
+
+    # setup.ps1 as a whole, in a child process; -NoPath keeps it off the user PATH.
+    $setup = Join-Path $root 'tools\lab\cli\setup.ps1'
+    $savedHomeForSetup = $env:CIMMERIA_LAB_HOME
+    $env:CIMMERIA_LAB_HOME = Join-Path $tmp 'home-setup'
+    try {
+        & pwsh -NoProfile -File $setup -From $root -NoPath | Out-Null
+        Check (($LASTEXITCODE -eq 0) -and (Test-Path -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.cmd'))) 'setup without lab.exe writes bin\lab.cmd'
+        Set-Content -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.exe') -Value 'fake exe' -Encoding ascii
+        & pwsh -NoProfile -File $setup -From $root -NoPath | Out-Null
+        Check (($LASTEXITCODE -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.cmd'))) 'setup with lab.exe removes bin\lab.cmd and does not write it again'
+    } finally {
+        $env:CIMMERIA_LAB_HOME = $savedHomeForSetup
+    }
+
+    # --- Install-LabFile: rename, then copy ---
+    $fileDir = Join-Path $tmp 'files'
+    New-Item -ItemType Directory $fileDir | Out-Null
+    $src = Join-Path $fileDir 'src.exe'
+    $dst = Join-Path $fileDir 'dst.exe'
+    Set-Content -LiteralPath $src -Value 'new build' -Encoding ascii
+    Install-LabFile $src $dst
+    Check ((Get-Content -Raw -LiteralPath $dst).Trim() -eq 'new build') 'Install-LabFile copies to a missing destination'
+    Check (@(Get-ChildItem -LiteralPath $fileDir -Filter '*.old').Count -eq 0) 'a first install leaves no backup'
+
+    Install-LabFile $src $dst
+    Check (@(Get-ChildItem -LiteralPath $fileDir -Filter '*.old').Count -eq 0) 'an identical destination is skipped, with no backup'
+
+    Set-Content -LiteralPath $src -Value 'newer build' -Encoding ascii
+    Install-LabFile $src $dst
+    $olds = @(Get-ChildItem -LiteralPath $fileDir -Filter 'dst.exe.*.old')
+    Check ((Get-Content -Raw -LiteralPath $dst).Trim() -eq 'newer build') 'a changed file replaces the destination'
+    Check (($olds.Count -eq 1) -and ((Get-Content -Raw -LiteralPath $olds[0].FullName).Trim() -eq 'new build')) 'the replaced destination is kept as <name>.<date>.old'
+
+    Set-Content -LiteralPath $src -Value 'third build' -Encoding ascii
+    Install-LabFile $src $dst
+    Check (@(Get-ChildItem -LiteralPath $fileDir -Filter 'dst.exe.*.old').Count -eq 2) 'a second backup the same day gets a time-stamped name, not an overwrite'
+
+    Set-Content -LiteralPath $src -Value 'dry build' -Encoding ascii
+    Install-LabFile $src $dst -DryRun
+    Check ((Get-Content -Raw -LiteralPath $dst).Trim() -eq 'third build') '-DryRun does not change the destination'
+    Check (@(Get-ChildItem -LiteralPath $fileDir -Filter 'dst.exe.*.old').Count -eq 2) '-DryRun makes no backup'
+
+    # --- tools\lab\install.ps1 builds and installs lab.exe (text guard; it cannot run without a game install) ---
+    $installText = Get-Content -Raw -LiteralPath (Join-Path $repoLab 'install.ps1')
+    Check ($installText -match "'-p', 'cimmeria-lab', '-p', 'cimmeria-lab-cli', '--release'") 'install.ps1 builds cimmeria-lab and cimmeria-lab-cli in one lane call'
+    Check ($installText -match 'CIMMERIA_LAB_CLI_SHA') 'install.ps1 sets CIMMERIA_LAB_CLI_SHA for the CLI build'
+    Check ($installText -match "'release\\lab\.exe'") 'install.ps1 plans release\lab.exe'
+    Check ($installText -match "Join-Path \`$bin 'lab\.exe'") 'install.ps1 installs it to bin\lab.exe'
+    Check ($installText -match 'Install-LabFile -From') 'install.ps1 copies through Install-LabFile'
+    Check ($installText -notmatch 'Move-Item') 'install.ps1 no longer has its own rename-then-copy'
 } finally {
     $env:CIMMERIA_LAB_HOME = $savedHome
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

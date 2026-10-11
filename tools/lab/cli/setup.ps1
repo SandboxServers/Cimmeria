@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Refresh the installed lab CLI, write the lab.cmd shim, and add it to the user PATH.
+    Refresh the installed lab CLI, write the lab.cmd shim (unless lab.exe is installed), and add <LabHome>\bin to the user PATH.
 
 .DESCRIPTION
     Run it from a Cimmeria checkout, or pass -From. It copies the CLI into
-    <LabHome>\cli (Install-LabCli), writes <LabHome>\bin\lab.cmd, and adds
+    <LabHome>\cli (Install-LabCli), writes <LabHome>\bin\lab.cmd unless <LabHome>\bin\lab.exe exists (then it deletes the shim), and adds
     <LabHome>\bin to the user PATH when it is missing, then broadcasts the change
     so a new terminal sees it. LabHome is %LOCALAPPDATA%\cimmeria-lab, or
     CIMMERIA_LAB_HOME when set.
@@ -40,13 +40,11 @@ Install-LabCli $root
 $labHome = Get-InstallLabHome
 $bin = Join-Path $labHome 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-$shim = Join-Path $bin 'lab.cmd'
-# The real path, not %LOCALAPPDATA%, so the shim follows a CIMMERIA_LAB_HOME
-# override. OEM encoding is what cmd.exe reads a .cmd file as.
-Set-Content -LiteralPath $shim -Encoding oem -Value @(
-    '@echo off',
-    "pwsh -NoProfile -File `"$(Join-Path $labHome 'cli\lab.ps1')`" %*")
-Write-Host "shim:  $shim"
+# Install-LabCli already deleted bin\lab.cmd and printed the notice when bin\lab.exe exists.
+if (-not (Test-LabExeInstalled $labHome)) {
+    $shim = Write-LabShim $labHome
+    Write-Host "shim:  $shim"
+}
 
 $manual = "Add $bin to the user PATH to run 'lab' anywhere."
 if ($NoPath) {
