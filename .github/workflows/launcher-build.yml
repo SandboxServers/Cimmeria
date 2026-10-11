@@ -41,6 +41,10 @@ env:
 permissions:
   contents: read
 
+# The Windows jobs run on the self-hosted `cimmeria-windows` pool (node3,
+# tools/ci-runners/README.md "Windows pool"), where sccache replaces rust-cache. Fork
+# and Dependabot PRs, and every run while the repository variable CI_WINDOWS_RUNNER is
+# `hosted`, use windows-latest.
 jobs:
   fmt:
     name: cargo fmt --check (launcher)
@@ -61,7 +65,7 @@ jobs:
 
   clippy:
     name: cargo clippy -D warnings (Windows)
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,6 +74,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -81,7 +86,7 @@ jobs:
 
   build:
     name: cargo build (Windows)
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     needs: clippy
     steps:
       - uses: actions/checkout@v7
@@ -89,6 +94,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -97,7 +103,7 @@ jobs:
 
   test:
     name: cargo nextest (Windows)
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     needs: clippy
     steps:
       - uses: actions/checkout@v7
@@ -107,6 +113,7 @@ jobs:
         with:
           targets: i686-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -137,7 +144,7 @@ jobs:
   # pack.
   release-dry-run:
     name: release build dry run (Windows)
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
     needs: clippy
     steps:
       - uses: actions/checkout@v7
@@ -147,6 +154,7 @@ jobs:
         with:
           targets: i686-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-release-dry-run
           save-if: ${{ github.ref == 'refs/heads/main' }}

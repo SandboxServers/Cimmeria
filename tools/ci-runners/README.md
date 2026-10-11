@@ -4,8 +4,9 @@ Fifteen GitHub Actions runners for Cimmeria's Linux CI: five each on node5, node
 node1. Each runs in its own container, paired with its own docker-in-docker daemon. The
 `test.yml`, `wireclient.yml` and `pr-container.yml` jobs route to them through the
 `cimmeria-linux` label. Fork PRs and Dependabot PRs always get GitHub-hosted runners.
-Windows and macOS jobs, and the other workflows' light Linux jobs, stay on GitHub-hosted
-runners.
+Three Windows runners on node3 take the launcher workflows' Windows jobs (see
+[Windows pool](#windows-pool)). macOS jobs, the other Windows jobs and the other
+workflows' light Linux jobs stay on GitHub-hosted runners.
 
 | File | What it is |
 | --- | --- |
@@ -17,6 +18,9 @@ runners.
 | `start-exit.ps1` | Starts the exit proxy in Docker on the exit machine |
 | `status.ps1` | Cache and disk report from every runner's job log |
 | `deploy.ps1` | Copies the files to a node, mints a registration token with `gh`, builds and starts the stack |
+| `windows/setup.ps1` | Run on node3 as admin: the Windows toolchain, the egress proxy task, the runner account and three runner services |
+| `windows/deploy.ps1` | Copies the Windows files to node3, hands over the token and cache password, runs `setup.ps1` there |
+| `windows/hooks/job-started.ps1`, `windows/hooks/job-completed.ps1` | The Windows hooks: compile-cache choice, per-job cache stats, cleanup |
 
 ## Colo egress
 
@@ -63,6 +67,7 @@ Each node's `docker compose logs egress` shows every CONNECT and the route it to
 
 ```powershell
 pwsh tools/ci-runners/status.ps1   # per job: sccache hit rate, target/ size, free space; volume totals per node
+pwsh tools/ci-runners/status.ps1 -Nodes node3      # the Windows pool
 ```
 
 ## Deploy or update
@@ -195,3 +200,147 @@ a job that dumps its environment into a public log leaks it. It only protects th
 Making jobs unable to reach the host needs a runtime that isolates nested containers
 without `--privileged` (Sysbox, or rootless dind with user namespaces), or runners kept
 off the production node. Neither is done yet.
+
+## Windows pool
+
+Three runners on node3, `node3-win-1` to `node3-win-3`, with the label `cimmeria-windows`.
+node3 is a Windows Server 2022 Hyper-V host that also runs other people's VMs, so the
+pool shares the machine and never touches Hyper-V, the VMs or the network settings.
+There are no containers: each runner is a Windows service running as a non-admin
+account, with its own directory, toolchain and sccache server.
+
+| Workflow | Jobs on the pool |
+| --- | --- |
+| `launcher-desktop.yml` | `native-engine (windows-latest)` (the Windows matrix leg), `desktop release build dry run (Windows)` |
+| `launcher-build.yml` | `cargo clippy -D warnings (Windows)`, `cargo build (Windows)`, `cargo nextest (Windows)`, `release build dry run (Windows)` |
+| `launcher-runtime-probe.yml` | `runtime-probe`, `local-lab-tools` |
+
+`launcher-release.yml` stays on GitHub-hosted runners. Every job on the pool can write
+to the shared compile cache, its own cargo registry and its toolchain, so a bad job could
+plant an artifact that a later build reuses. A signed release must never be built from
+that, so releases build from scratch on a clean hosted machine. The `client-*-build`,
+`client-dll-boot`, `lab` and `build-lane-scripts` workflows' Windows jobs are candidates
+for the pool too; they are not moved yet.
+
+### Routing and the kill switch
+
+Each moved job has
+
+```yaml
+runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
+```
+
+The `native-engine` matrix keeps `os: [macos-latest, windows-latest]` and maps only the
+Windows leg in `runs-on`, because `tools/build-lane/ship.py` waits on the check names
+`native-engine (windows-latest)` and `native-engine (macos-latest)`. Self-hosted jobs
+skip `Swatinem/rust-cache` (`if: runner.environment == 'github-hosted'`).
+
+Set the repository variable `CI_WINDOWS_RUNNER=hosted` to send every one of these jobs
+back to `windows-latest`, for example while node3 or the egress exit is down. There is
+no overflow: when all three runners are busy, a job waits for one.
+
+### What is on node3
+
+| Where | What |
+| --- | --- |
+| Machine-wide | VS 2022 Build Tools (MSVC x64/x86, Windows 11 SDK 26100), Python 3.12.10 for all users, Node 24.21.0, the WebView2 Runtime, Git for Windows (already there) |
+| `F:\gha\deploy` | `setup.ps1`, the download cache, `node.json` (cache endpoint and password, egress exit) and the transient `secrets\`; SYSTEM and Administrators only |
+| `F:\gha\tools\sccache` | sccache 0.18.0, the same version as the Linux image |
+| `F:\gha\hooks`, `F:\gha\shared` | The job hooks and the cache settings they read; read-only to the runner account |
+| `F:\gha\egress` | `egress_proxy.py` and its rotated log |
+| `F:\gha\rN` | One runner: `runner\` (the Actions runner and its read-only `.env`), `work\`, `rust\` (its rustup and cargo homes), `sccache\`, `state\jobs.jsonl`, `tmp\`, `lane\` |
+
+Versions are pinned in `setup.ps1` (`$Pins`), checked against the publishers' SHA-256
+where one exists (the runner, rustup-init, sccache, Node) and by Authenticode signer
+otherwise (VS Build Tools, WebView2, and Python, whose MD5 is also checked against
+python.org). The Rust version comes from `rust-toolchain.toml`.
+
+### Why it's built this way
+
+- **A non-admin account.** The services run as the local user `gha-runner`, so a job
+  is not admin on a host that runs other people's VMs. Its password is random, given to
+  `config.cmd` and the services, and never stored; `setup.ps1` resets it only when a
+  runner needs registering, and updates every runner service when it does.
+- **A toolchain per runner.** The rust-toolchain action runs `rustup toolchain install`
+  and `rustup default` in every job, and rustup does not lock against a second rustup
+  in the same home. The cargo registry is per runner too.
+- **Git's `bin` first on PATH.** `C:\Windows\System32` holds WSL's `bash.exe`, and a
+  `shell: bash` step runs the first `bash` on PATH. Each runner's `.env` sets the full
+  PATH: its cargo `bin`, Git, Python, Node, sccache, then the machine PATH.
+- **Builds yield to the VMs.** Image File Execution Options give `RunnerService.exe`,
+  `Runner.Listener.exe` and `Runner.Worker.exe` below-normal CPU priority, and a child of
+  a below-normal process starts below-normal, so every compile does.
+- **One sccache server per runner.** Each runner has its own `SCCACHE_SERVER_PORT`
+  (4227 to 4229). On the default port the three would share one server, with the first
+  job's settings, and one job's end-of-job `--stop-server` would kill another's builds.
+- **Cache hits are per runner.** sccache's Rust keys include absolute paths (the work
+  tree, `CARGO_MANIFEST_DIR`, the `target\` dependency paths), and three runners on one
+  host can't share one set of paths, so a runner gets hits only from its own earlier
+  jobs. `SCCACHE_BASEDIRS` does not change that in sccache 0.18 (tested on node3,
+  2026-10-11: no path form gave a hit from a second root). On the Linux pool every
+  runner builds in the same container path, so there hits cross runners and nodes.
+- **The compile cache is chosen per job.** sccache 0.18 does not fail open when its
+  Redis drops packets: the startup storage check outlasts the client's 10-second wait,
+  and the compile that started the server fails. So the endpoint is not in `.env`.
+  `job-started.ps1` connects to the cache host's Redis (two seconds at most) and writes
+  `SCCACHE_CONF` with the Redis backend only when it answers; otherwise sccache uses the
+  runner's `SCCACHE_DIR`. The job log says which, without the address.
+- **One build lane per runner.** The lane's slot semaphore lives under `LANE_ROOT`,
+  which defaults to the account's `%LOCALAPPDATA%`, shared by all three runners. Each
+  runner sets its own. The lane keeps any `RUSTC_WRAPPER` it is given, so sccache runs
+  through it unchanged.
+- **Parallel compiles per job.** `CARGO_BUILD_JOBS=10`: node3 has 32 hardware threads
+  for three runners (`deploy.ps1 -Jobs`).
+- **The colo egress detour, on the host.** A scheduled task, `cimmeria-ci-egress`, runs
+  `egress_proxy.py` in the node role on `127.0.0.1:3128` as LOCAL SERVICE, at boot and
+  every five minutes (a no-op while it runs), so a crash is back within minutes. The
+  listener reads the proxy from its service's environment (it uploads the logs), job
+  steps from `.env`. `NO_PROXY` covers localhost and the cache host.
+- **The shared cache needs a firewall rule.** node3 reaches the cache host's Redis
+  (node2) only once the gateway's UniFi policy admits TCP 6379 from node3, as it does
+  for the other nodes. Until then every job uses its runner's local cache.
+
+### Deploy or update
+
+```powershell
+pwsh tools/ci-runners/windows/deploy.ps1 -EgressExit <exit-host:port>   # first time
+pwsh tools/ci-runners/windows/deploy.ps1                                 # update; keeps node3's settings
+pwsh tools/ci-runners/windows/deploy.ps1 -Stop                           # stop the three services
+```
+
+`deploy.ps1` needs repo admin through `gh` (for the registration token), the
+`cimmeria-node3` ssh alias (an admin account) and `cimmeria-node2` (sudo, to read the
+cache password from its `.env`). It sends the token and the password over ssh stdin
+into `F:\gha\deploy\secrets\`, never through this machine's disk or a command line, and
+`setup.ps1` deletes the file when it ends. The first run installs VS Build Tools, which
+takes a while. A rerun changes only what differs; a runner whose `.env` or service
+environment changed is restarted, which cuts off a job running on it, so update while the
+pool is idle. The runner updates itself between jobs.
+
+### Disk use per runner
+
+| Item | Bound |
+| --- | --- |
+| The job's `target\` | Deleted by `job-completed.ps1` after every job |
+| Compile cache | The cache host's Redis, or the runner's `sccache\` (trimmed to 20 GB by sccache) |
+| Toolchain and cargo registry | A few GB in the runner's `rust\` |
+| `RUNNER_TEMP`, the runner's `tmp\` | `RUNNER_TEMP` is emptied after every job; `tmp\` entries older than an hour go |
+| Node versions from `actions/setup-node` | Under `work\_tool`, one copy per version |
+
+### Security on node3
+
+- **Jobs are not admin.** Unlike the Linux pool, a job does not get the host. It runs
+  as `gha-runner`, which can write only to its runner directories (its `.env` and the
+  hooks are read-only to it).
+- **But it is a local user on someone else's host.** Like any local user it can read
+  what the host's ACLs give the Users group. On node3 that includes `F:\VHDs` and
+  `F:\VMs`, so a job could read a VM disk that no running VM holds open. This setup does
+  not change those ACLs; the host's owner should restrict them, or deny `gha-runner`
+  there.
+- **Runner state persists**, as on Linux: the work tree, the toolchain, the cargo
+  registry and its `bin\`, so a bad job can leave something behind for later jobs on that
+  runner. The cache password is readable by every job, as on Linux.
+- **Who can run code here** is the same as the Linux pool: people with write access;
+  fork PRs need a maintainer's approval and the routing sends them to GitHub-hosted
+  runners; Dependabot PRs go to GitHub-hosted runners.
+- **Defender stays on.** Real-time scanning slows builds, but no exclusions are added.
