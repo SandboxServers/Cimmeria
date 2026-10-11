@@ -9,10 +9,15 @@
 use std::collections::HashMap;
 use std::f64::consts::FRAC_PI_2;
 
+use serde_json::{json, Value};
+
+use super::camera::WHEEL_NOTCH;
 use super::geometry::{horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
-use super::memory::{WorldEntity, WorldSnapshot};
+use super::memory::{
+    WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN, CAMERA_ZOOM_STEP,
+};
 use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
@@ -53,6 +58,8 @@ pub struct Sim {
     pub cam_pitch: f64,
     /// Counts per radian of camera yaw (sign included).
     pub gain: f64,
+    /// Camera distance, moved by the wheel (30 per notch, 100..775).
+    pub zoom: f64,
     pub standing_turn: bool,
     pub hover_needs_mouse_move: bool,
     pub speed_uu_s: f64,
@@ -72,6 +79,9 @@ pub struct Sim {
     pub buttons: Vec<(usize, bool)>,
     /// Clicks reach the game but do nothing (to exercise the fallback).
     pub clicks_do_nothing: bool,
+    /// Scales the gains the camera readout reports (1.0 is exact), so a
+    /// closed loop's first look misses and its correction has to run.
+    pub readout_gain_scale: f64,
 }
 
 impl Sim {
@@ -85,6 +95,7 @@ impl Sim {
             cam_yaw: 0.0,
             cam_pitch: 0.0,
             gain: 400.0,
+            zoom: 250.0,
             standing_turn: true,
             hover_needs_mouse_move: false,
             speed_uu_s: 500.0,
@@ -105,6 +116,7 @@ impl Sim {
             target_unit_calls: 0,
             buttons: Vec::new(),
             clicks_do_nothing: false,
+            readout_gain_scale: 1.0,
         }
     }
 
@@ -319,7 +331,25 @@ impl WorldIo for Sim {
         if self.standing_turn {
             self.pawn_yaw = self.cam_yaw;
         }
+        let notches = f64::from(wheel) / f64::from(WHEEL_NOTCH);
+        self.zoom = (self.zoom - notches * f64::from(CAMERA_ZOOM_STEP))
+            .clamp(f64::from(CAMERA_DIST_MIN), f64::from(CAMERA_DIST_MAX));
         Ok(NativeLevel::RealInput)
+    }
+
+    async fn camera_readout(&mut self) -> Result<Value, String> {
+        // Rotator units per mouse count: 65536 per turn over the sim's gain.
+        // The readout's pitch rises with +dy, as the live camera's does.
+        let units = 65536.0 / std::f64::consts::TAU;
+        let gain = units / self.gain.abs() * self.readout_gain_scale;
+        Ok(json!({
+            "zoom": self.zoom,
+            "yaw_offset_deg": 0.0,
+            "pitch_offset_deg": -self.cam_pitch.to_degrees(),
+            "gain": gain,
+            "pitch_gain": gain,
+            "yaw_gain": units / self.gain * self.readout_gain_scale,
+        }))
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
