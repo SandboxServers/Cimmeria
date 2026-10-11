@@ -925,6 +925,16 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## NPC attack-not-fired throttle (TG-NPC-05)
+
+An attack tick whose `handle_use_ability` call returns false (cooldown race, no ammo, out of range) used to WARN on every retry, about twice a second per NPC. `warn_attack_not_fired()` in `service/npc_ai/fight.rs` in `cimmeria-cell-combat` throttles it (Pattern D, `admit_warn`, keyed by NPC). The first row in a 15 s window writes at once. The retries inside it are counted, and the next row carries them in `suppressed`. The retry itself is scheduled whether or not the row is written.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `npc_ai`, `event = "attack_not_fired"`, `reason = "handle_use_ability_returned_false"`, `npc_id` + `npc_name`, `template_id` + `template_name`, `world`, `space_id`, `target` + `target_name`, `suppressed` | An attack tick fired nothing; at most one row per NPC per 15 s |
+
+Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
+
 ## Trade cancel and refusal rows (TG-SOC-06)
 
 Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.

@@ -3,14 +3,60 @@
 //! The Idle auto-aggro seed that promotes an aggressive idle NPC into
 //! combat lives in [`super::idle_aggro`].
 
+use std::time::{Duration, Instant};
+
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 use super::ability_select::{ability_ranges, choose_npc_ability_within_reach};
 use super::fight_target::{select_target, Engagement};
 use super::leash::policy as leash_policy;
+
+/// Minimum gap between two `attack_not_fired` WARNs for one NPC. A retry
+/// burst logs one row, then a `suppressed` count of the rows it swallowed.
+const ATTACK_NOT_FIRED_WARN_INTERVAL: Duration = Duration::from_secs(15);
+
+/// WARN that an attack tick fired no ability, at most once per NPC per
+/// [`ATTACK_NOT_FIRED_WARN_INTERVAL`]. The caller schedules the retry
+/// whether or not this row is emitted.
+fn warn_attack_not_fired(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    target_id: u32,
+    ability_id: i32,
+    distance: f32,
+    now: Instant,
+) {
+    let Some(suppressed) = space_mgr.npc_detectors.admit_warn(
+        npc_id,
+        "attack_not_fired",
+        now,
+        ATTACK_NOT_FIRED_WARN_INTERVAL,
+    ) else {
+        return;
+    };
+    let names = space_mgr.get_entity(npc_id).map(EntityNames::of);
+    tracing::warn!(
+        target: "npc_ai",
+        event = "attack_not_fired",
+        npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
+        template_id = names.as_ref().and_then(|n| n.template_id),
+        template_name = names.as_ref().and_then(|n| n.template_name),
+        world = %super::world_label(space_mgr, npc_id),
+        space_id = space_mgr.get_entity_space_id(npc_id),
+        target = target_id,
+        target_name = space_mgr.entity_label(target_id),
+        ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
+        distance,
+        reason = "handle_use_ability_returned_false",
+        suppressed,
+        "NPC AI: attack tick produced no ability fire -- mob may appear stuck"
+    );
+}
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
 pub(super) async fn npc_ai_fight(
@@ -437,16 +483,13 @@ pub(super) async fn npc_ai_fight(
         // out-of-range). For NPC AI ticks this is normally a cooldown
         // race against the pick logic; warn! so player-visible "mob
         // standing still" can be diagnosed without attaching a profiler.
-        tracing::warn!(
+        warn_attack_not_fired(
+            space_mgr,
             npc_id,
-            npc_name = space_mgr.entity_label(npc_id),
-            target = target_id,
-            target_name = space_mgr.entity_label(target_id),
-            ability_id = chosen_ability,
-            ability_name = cimmeria_names::book().ability(chosen_ability),
-            distance = dist_to_target,
-            reason = "handle_use_ability_returned_false",
-            "NPC AI: attack tick produced no ability fire -- mob may appear stuck"
+            target_id,
+            chosen_ability,
+            dist_to_target,
+            std::time::Instant::now(),
         );
 
         // Schedule a 500ms retry so the NPC doesn't sit visibly idle
@@ -500,5 +543,73 @@ pub(super) fn face_target(
     }
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.direction = cimmeria_common::Vector3::new(0.0, dx.atan2(dz), 0.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{warn_attack_not_fired, Duration, Instant};
+    use crate::cell::space_manager::SpaceManager;
+    use crate::test_support::{Captured, LogCapture, LogCaptureGuard};
+
+    fn mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        for id in [100, 101] {
+            mgr.spawn_npc(id, "Agnos", [13.0, 0.0, 14.0], [0.0; 3])
+                .unwrap();
+        }
+        mgr
+    }
+
+    fn attack_rows(logs: &LogCaptureGuard) -> Vec<Captured> {
+        logs.all()
+            .into_iter()
+            .filter(|c| {
+                c.fields
+                    .get("event")
+                    .is_some_and(|v| v == "attack_not_fired")
+            })
+            .collect()
+    }
+
+    /// Three fast retries for one NPC emit one WARN; the next row after the
+    /// 15 s window carries `suppressed = 2`. A second NPC's first row is not
+    /// swallowed by the first NPC's window. Fails if the `admit_warn` gate
+    /// is removed from `warn_attack_not_fired`.
+    #[test]
+    fn retry_burst_warns_once_and_a_second_npc_is_not_swallowed() {
+        let mut mgr = mgr();
+        let logs = LogCapture::install();
+        let t0 = Instant::now();
+
+        for ms in [0, 10, 20] {
+            warn_attack_not_fired(&mut mgr, 100, 1, 7, 4.0, t0 + Duration::from_millis(ms));
+        }
+        let rows = attack_rows(&logs);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(
+            rows[0].fields.get("npc_id").map(String::as_str),
+            Some("100")
+        );
+
+        warn_attack_not_fired(&mut mgr, 101, 1, 7, 4.0, t0 + Duration::from_millis(30));
+        let rows = attack_rows(&logs);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(
+            rows[1].fields.get("npc_id").map(String::as_str),
+            Some("101")
+        );
+
+        warn_attack_not_fired(&mut mgr, 100, 1, 7, 4.0, t0 + Duration::from_secs(16));
+        let rows = attack_rows(&logs);
+        assert_eq!(rows.len(), 3, "{rows:?}");
+        assert_eq!(
+            rows[2].fields.get("suppressed").map(String::as_str),
+            Some("2")
+        );
     }
 }
