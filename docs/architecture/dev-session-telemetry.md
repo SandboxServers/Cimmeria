@@ -300,7 +300,7 @@ the telemetry DLL went in: `outcome` is `injected` (with `dll_path`),
 refused) or `inject_failed` (the game was started without it). The
 level is `info` for `injected`, `warn` otherwise. An opted-in session
 with no `client.dll.attached` row from the DLL can be told apart from
-one whose DLL never went in.
+one whose DLL never went in. Each chunk the DLL uploads carries its process id in the `X-Cimmeria-Client-Pid` header (TG-PIPE-02), so a relaunch under the same session is distinguishable.
 
 ## Failure modes
 
