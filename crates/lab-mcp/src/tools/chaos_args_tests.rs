@@ -94,9 +94,17 @@ fn the_tools_advertise_the_argument_schemas() {
     };
     assert_eq!(
         props("server_chaos_set"),
-        ["entity_id", "flush", "label", "net", "seed", "ttl_s"]
+        [
+            "account",
+            "entity_id",
+            "flush",
+            "label",
+            "net",
+            "seed",
+            "ttl_s"
+        ]
     );
-    assert_eq!(props("server_chaos_clear"), ["entity_id"]);
+    assert_eq!(props("server_chaos_clear"), ["account", "entity_id"]);
 }
 
 #[test]
@@ -308,7 +316,8 @@ fn a_well_formed_call_parses() {
         "label": "net+flush"
     }))
     .expect("valid");
-    assert_eq!(args.entity_id, 7);
+    assert_eq!(args.entity_id, Some(7));
+    assert_eq!(args.account, None);
     assert_eq!(args.seed, Some(3));
     assert!(matches!(
         args.flush.as_ref().and_then(|f| f.shift.as_ref()),

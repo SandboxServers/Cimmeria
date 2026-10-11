@@ -113,7 +113,42 @@ fn process_registry_gate_and_teardown_clear() {
     crate::base::helpers::clear_lab_chaos_on_character_select(a);
     assert_eq!(installed.net_for(a, now), None);
     assert!(installed.net_for(b, now).is_some());
+
+    // An arm (D-CH10) is for the account's next world entry: neither a
+    // session teardown nor a return to character select drops it.
+    installed
+        .arm(4242, "net".into(), Some(net(5)), None, DEFAULT_TTL_S, now)
+        .expect("a valid arm");
+    connected
+        .lock()
+        .unwrap()
+        .insert(a, test_default_connected_client_state());
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        a,
+        &None,
+        &entity_to_addr,
+        &transport,
+        &None,
+        "client_disconnect",
+    );
+    crate::base::helpers::clear_lab_chaos_on_character_select(a);
+    let armed: Vec<u32> = installed
+        .armed_status(now)
+        .iter()
+        .map(|arm| arm.account_id)
+        .collect();
+    assert_eq!(
+        armed,
+        [4242],
+        "the arm survives teardown and character select"
+    );
     installed.clear(None);
+    assert!(
+        installed.armed_status(now).is_empty(),
+        "clear-all drops arms"
+    );
 }
 
 #[test]
