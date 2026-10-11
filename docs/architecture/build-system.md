@@ -153,7 +153,9 @@ GitHub keeps 10 GB of Actions cache per repository and evicts the oldest entries
 - Those workflows cancel superseded runs only on PRs. Runs on `main` finish, because a cancelled run doesn't save its cache.
 - `build-and-test` builds `--all-targets` and then runs nextest on the same artifacts. That's one workspace compile where there used to be two, on separate runners with separate caches.
 - A `changes` job skips the Rust jobs on PRs that change only Markdown, `.claude/` or images under `docs/`. Tests read `docs/protocol/`, so it always counts as code.
-- Coverage is two jobs that run at the same time, `coverage-workspace` and `coverage-live-db`, instead of one 9.5-minute job that ran both passes back to back. Each uploads its own report and Codecov merges them (`after_n_builds: 2`). A third job would only repeat the instrumented compile, which is most of each job's time.
+- Coverage is two jobs that run at the same time, `coverage-workspace` and `coverage-live-db`, instead of one 9.5-minute job that ran both passes back to back. Each uploads its own report and Codecov merges them (`after_n_builds: 2`). A third job would only repeat the instrumented compile, which is most of each job's time. Since 2026-10-11 they run on pushes to `main` and on PRs labeled `coverage`, not on every PR.
+- Since 2026-10-11 `build-and-test` also runs the live-DB tier, on the test binaries it already built. Test binaries are the one part of a build sccache can't cache, so a separate live-DB job compiled them a second time.
+- CI sets `CARGO_PROFILE_DEV_DEBUG=0` and `CARGO_PROFILE_TEST_DEBUG=0` (`test.yml`, `wireclient.yml`): local builds keep line tables (§2), but CI's uncacheable test binaries compile and link faster without debug info. Panic messages keep their `file:line`. Binaries with no tests set `test = false` so `--all-targets` builds no test harness for them.
 
 ## Consequences
 

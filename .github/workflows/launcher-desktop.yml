@@ -48,6 +48,7 @@ concurrency:
 
 jobs:
   native-engine:
+    name: native-engine (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:

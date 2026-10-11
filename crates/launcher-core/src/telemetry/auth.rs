@@ -19,6 +19,38 @@ pub enum AuthError {
     Status { status: u16, body: String },
     #[error("Kill switch active (503) — retry after {retry_after_secs}s")]
     KillSwitch { retry_after_secs: u64 },
+    #[error("reply larger than {MAX_REPLY_BYTES} bytes")]
+    ReplyTooLarge,
+}
+
+/// The most of a mint or refresh reply (a few hundred bytes) the launcher
+/// reads; a bigger one is refused unread.
+pub const MAX_REPLY_BYTES: usize = 16 * 1024;
+
+/// `resp`'s body, read a network chunk at a time; `None` once it passes
+/// `max` bytes, so a hostile or broken server cannot make the launcher
+/// buffer an unbounded reply.
+pub(super) async fn read_capped(
+    mut resp: reqwest::Response,
+    max: usize,
+) -> Result<Option<Vec<u8>>, reqwest::Error> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if bytes.len() + chunk.len() > max {
+            return Ok(None);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Some(bytes))
+}
+
+/// An error reply's body for [`AuthError::Status`] and its kin: at most
+/// [`MAX_REPLY_BYTES`], empty when longer or unreadable.
+pub(super) async fn error_body(resp: reqwest::Response) -> String {
+    match read_capped(resp, MAX_REPLY_BYTES).await {
+        Ok(Some(bytes)) => String::from_utf8_lossy(&bytes).into_owned(),
+        _ => String::new(),
+    }
 }
 
 /// Request body for `POST /api/auth/dev-session`. Matches the
@@ -88,20 +120,17 @@ async fn send_and_parse(req: reqwest::RequestBuilder) -> Result<DevSessionRespon
     let resp = req.send().await?;
     let status = resp.status();
     if status.is_success() {
-        return Ok(resp.json::<DevSessionResponse>().await?);
+        let bytes = read_capped(resp, MAX_REPLY_BYTES)
+            .await?
+            .ok_or(AuthError::ReplyTooLarge)?;
+        return Ok(serde_json::from_slice::<DevSessionResponse>(&bytes)?);
     }
     if status.as_u16() == 503 {
-        let retry_after = resp
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(60);
         return Err(AuthError::KillSwitch {
-            retry_after_secs: retry_after,
+            retry_after_secs: super::chunk::parse_retry_after(&resp),
         });
     }
-    let body = resp.text().await.unwrap_or_default();
+    let body = error_body(resp).await;
     Err(AuthError::Status {
         status: status.as_u16(),
         body,
@@ -229,5 +258,57 @@ mod tests {
             AuthError::Status { status, .. } => assert_eq!(status, 500),
             other => panic!("expected Status, got {other:?}"),
         }
+    }
+
+    /// A refresh reply past [`MAX_REPLY_BYTES`] is refused, not buffered
+    /// whole; an error body that long is kept to nothing.
+    #[tokio::test]
+    async fn an_oversized_reply_is_refused() {
+        let server = MockServer::start().await;
+        let mut big = fake_response_body("new-tok", 1);
+        big["padding"] = serde_json::json!("x".repeat(MAX_REPLY_BYTES));
+        Mock::given(method("POST"))
+            .and(path("/auth/dev-session/refresh"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(big))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/auth/dev-session"))
+            .respond_with(
+                ResponseTemplate::new(500).set_body_string("y".repeat(MAX_REPLY_BYTES + 1)),
+            )
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        let err = refresh_dev_session(&http, &server.uri(), "old")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AuthError::ReplyTooLarge), "{err:?}");
+        match fetch_dev_session(&http, &server.uri(), &fake_request()).await {
+            Err(AuthError::Status { status: 500, body }) => assert!(body.is_empty()),
+            other => panic!("expected an empty Status body, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_503_retry_after_is_clamped_to_an_hour() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth/dev-session"))
+            .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "86400000"))
+            .mount(&server)
+            .await;
+        let err = fetch_dev_session(&reqwest::Client::new(), &server.uri(), &fake_request())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                AuthError::KillSwitch {
+                    retry_after_secs: 3_600
+                }
+            ),
+            "{err:?}"
+        );
     }
 }
