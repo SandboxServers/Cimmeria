@@ -183,6 +183,19 @@ fn patches_left_out_report_at_once_without_reading_a_log() {
     assert!(events.finish().is_empty());
 }
 
+/// A fresh install follows "Load client patches": off is an opt-out, on
+/// with no DLL in the plan is unavailable.
+#[test]
+fn a_fresh_installs_patch_verdict_follows_the_preference() {
+    let root = tempfile::tempdir().unwrap();
+    let mut state = DesktopState::open(root.path()).unwrap();
+    assert_eq!(state.patch_injection(false), PatchInjection::Unavailable);
+    assert_eq!(state.patch_injection(true), PatchInjection::Injected);
+    let revision = state.preferences().revision;
+    state.save_client_options(vec![], false, revision).unwrap();
+    assert_eq!(state.patch_injection(false), PatchInjection::OptedOut);
+}
+
 #[test]
 fn exit_events_are_queued_stamped_only_for_an_opted_in_player() {
     let root = tempfile::tempdir().unwrap();

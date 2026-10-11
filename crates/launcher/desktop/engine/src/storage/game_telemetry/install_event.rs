@@ -8,6 +8,12 @@
 //! the run when it has one ([`DesktopState::stash_install_report`]); the
 //! desktop's own terminal outcome decides `result` where the report cannot
 //! (a failure after every patch applied, a lost commit).
+//!
+//! Known gap: only the terminal commit queues the event. A run finished by
+//! reconciliation after a restart, a crash between that commit and the
+//! queue append, and a preparation whose owner went away before the commit
+//! handoff send nothing. Nothing records which runs were reported, so a
+//! later report could not be exactly-once (see `docs/launch.md`).
 use super::transport::{queue_now, Consent};
 use super::DesktopState;
 use crate::install_report::{InstallReport, RunResult};

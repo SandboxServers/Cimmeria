@@ -29,7 +29,7 @@ pub(super) async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> O
     .await
     .expect("worker finishes within fixture deadline")
 }
-async fn requested(server: &MockServer) {
+pub(super) async fn requested(server: &MockServer) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if !server.received_requests().await.unwrap().is_empty() {

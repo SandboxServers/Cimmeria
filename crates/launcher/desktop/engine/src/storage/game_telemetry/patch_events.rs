@@ -23,12 +23,27 @@ use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
 
 /// What Play did with the client-patches DLL. `listed`: the DLL was on the
-/// injection list; `enabled`: the player's "Load client patches" setting.
-pub fn injection(listed: bool, enabled: bool) -> PatchInjection {
-    match (listed, enabled) {
+/// injection list; `wanted`: Play's injection policy asked for it.
+pub fn injection(listed: bool, wanted: bool) -> PatchInjection {
+    match (listed, wanted) {
         (true, _) => PatchInjection::Injected,
         (false, false) => PatchInjection::OptedOut,
         (false, true) => PatchInjection::Unavailable,
+    }
+}
+
+impl DesktopState {
+    /// [`injection`] for a Play whose resolved resources did (`listed`) or
+    /// did not carry the DLL. "Wanted" is Play's own policy, never the raw
+    /// preference: an adopted copy launches with the choice reviewed at
+    /// adoption, so its patches-off is an opt-out too.
+    pub(crate) fn patch_injection(&self, listed: bool) -> PatchInjection {
+        // An unreadable policy would have refused admission. Count it as
+        // wanted: `unavailable` warns, where `opted_out` would hide it.
+        let wanted = self
+            .injection_policy()
+            .map_or(true, |policy| policy.client_patches);
+        injection(listed, wanted)
     }
 }
 
