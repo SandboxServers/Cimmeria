@@ -106,6 +106,7 @@ async fn handle_trade_request(
             entity_id,
             partner_entity_id,
             ETRADERESULTS_COMPLETED,
+            "bad_proposal",
             tx,
             space_mgr,
         )
@@ -156,6 +157,7 @@ async fn handle_trade_request_cancel(
         entity_id,
         partner_entity_id,
         ETRADERESULTS_COMPLETED,
+        "user_cancel",
         tx,
         space_mgr,
     )
@@ -269,6 +271,7 @@ async fn handle_trade_update_proposal(
             entity_id,
             partner_entity_id,
             ETRADERESULTS_CANCELLED,
+            "out_of_range",
             tx,
             space_mgr,
         )
@@ -282,6 +285,7 @@ async fn handle_trade_update_proposal(
             entity_id,
             partner_entity_id,
             ETRADERESULTS_COMPLETED,
+            "bad_proposal",
             tx,
             space_mgr,
         )
@@ -352,6 +356,7 @@ async fn handle_trade_lock_state(
             entity_id,
             partner_entity_id,
             ETRADERESULTS_CANCELLED,
+            "out_of_range",
             tx,
             space_mgr,
         )

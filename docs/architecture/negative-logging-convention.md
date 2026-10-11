@@ -835,6 +835,10 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Trade cancel and refusal rows (TG-SOC-06)
+
+Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
