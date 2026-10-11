@@ -3,6 +3,7 @@
 //! session tests (order, bootstrap, drains, failures after Play) are in
 //! `fixture_session_tests.rs`.
 
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use serde_json::{json, Value};
@@ -75,11 +76,36 @@ pub(super) struct Endpoint<'f> {
     pub(super) stuck: Option<String>,
     /// The in-world session is missing from the list.
     pub(super) omit_in_world: bool,
+    /// The world every session is listed in (`FIXTURE_ROW`'s world).
+    pub(super) world: String,
+    /// Sessions listed ahead of the in-world one, as given.
+    pub(super) others: Vec<Value>,
+    /// The player's position `server_entity_get` reports.
+    pub(super) position: [f64; 3],
+    /// `server_entity_get` answers `{"entity": null}`.
+    pub(super) no_entity: bool,
+    /// `server_db_query` fails with this message.
+    pub(super) db_error: Option<String>,
+    /// Scripted `server_db_query` replies per SQL substring, popped in
+    /// order (the last repeats); see `db_replies`.
+    db: Mutex<Vec<(String, VecDeque<Value>)>>,
 }
 
 fn contains_ci(hay: &str, needle: &str) -> bool {
     hay.to_ascii_lowercase()
         .contains(&needle.to_ascii_lowercase())
+}
+
+/// The `server_db_query` answer for a fixture the server staged in full:
+/// mission 622 on its step and active, nothing else carried or unseen.
+fn default_db_answer(sql: &str) -> Value {
+    if sql.contains("m.mission_id = 622") {
+        json!({ "rows": [{ "n_rows": 1, "status": 1, "step": 80623 }] })
+    } else if sql.contains("sgw_mission") {
+        json!({ "rows": [{ "n_rows": 0, "status": null, "step": null }] })
+    } else {
+        json!({ "rows": [{ "n": 0 }] })
+    }
 }
 
 impl<'f> Endpoint<'f> {
@@ -90,6 +116,12 @@ impl<'f> Endpoint<'f> {
             refuse: None,
             stuck: None,
             omit_in_world: false,
+            world: "Castle_CellBlock".into(),
+            others: vec![],
+            position: [-319.0, 73.6, -212.5],
+            no_entity: false,
+            db_error: None,
+            db: Mutex::new(vec![]),
         }
     }
 
@@ -106,6 +138,32 @@ impl<'f> Endpoint<'f> {
         self.names().iter().filter(|n| *n == tool).count()
     }
 
+    /// Script the `server_db_query` replies for SQL holding `needle`, in
+    /// order; the last one repeats. The first needle a query holds wins.
+    pub(super) fn db_replies(&self, needle: &str, replies: Vec<Value>) {
+        self.db
+            .lock()
+            .unwrap()
+            .push((needle.to_string(), VecDeque::from(replies)));
+    }
+
+    fn db_query(&self, sql: &str) -> ToolOutcome {
+        if let Some(e) = &self.db_error {
+            return ToolOutcome::err(e.clone());
+        }
+        let mut scripted = self.db.lock().unwrap();
+        let json = match scripted.iter_mut().find(|(n, _)| sql.contains(n.as_str())) {
+            Some((_, replies)) if replies.len() > 1 => replies.pop_front().unwrap_or_default(),
+            Some((_, replies)) => replies.front().cloned().unwrap_or_default(),
+            None => default_db_answer(sql),
+        };
+        ToolOutcome {
+            ok: true,
+            json,
+            ..Default::default()
+        }
+    }
+
     fn played(&self) -> Vec<String> {
         self.client
             .log
@@ -118,21 +176,22 @@ impl<'f> Endpoint<'f> {
     }
 
     fn sessions(&self) -> Value {
-        let mut list = vec![];
+        let mut list = self.others.clone();
         let played = self.played();
         if *self.client.login.lock().unwrap() == "in_world" && !self.omit_in_world {
             let (name, id) = match played.last() {
                 Some(p) if *p != self.client.name => (p.clone(), 42),
                 _ => (self.client.name.clone(), 41),
             };
-            list.push(json!({ "entity_id": id, "name": format!("Uat {name}") }));
+            list.push(json!({ "entity_id": id, "name": format!("Uat {name}"),
+                              "world": self.world }));
         }
         if let Some(s) = &self.stuck {
             let had_session =
                 contains_ci(s, &self.client.name) || played.iter().any(|p| contains_ci(s, p));
             let listed = list.iter().any(|r| r["name"] == s.as_str());
             if had_session && !listed {
-                list.push(json!({ "entity_id": 43, "name": s }));
+                list.push(json!({ "entity_id": 43, "name": s, "world": self.world }));
             }
         }
         json!({ "count": list.len(), "sessions": list })
@@ -180,6 +239,17 @@ impl ServerInvoker for Endpoint<'_> {
                 ..Default::default()
             },
             "server_stage_fixture" => self.stage(&args),
+            "server_db_query" => self.db_query(args["sql"].as_str().unwrap_or_default()),
+            "server_entity_get" => ToolOutcome {
+                ok: true,
+                json: if self.no_entity {
+                    json!({ "entity": null })
+                } else {
+                    json!({ "entity": { "entity_id": args["entity_id"],
+                                        "position": self.position } })
+                },
+                ..Default::default()
+            },
             _ => ToolOutcome::err(format!("unknown tool {name}")),
         };
         Box::pin(async move { out })
