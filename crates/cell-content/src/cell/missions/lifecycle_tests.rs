@@ -386,3 +386,36 @@ async fn abandon_with_missing_entity_warns_entity_missing() {
         "{row:#?}"
     );
 }
+
+/// TG-MIS-08: accept frames sent into a closed base channel are no longer
+/// dropped silently. The first one WARNs `reason=base_channel_closed` with
+/// `frame=onMissionUpdate` and the player's identity. Reverting
+/// `send_mission_frame` to `let _ = tx.send(..)` leaves no row and fails here.
+#[tokio::test]
+async fn accept_with_closed_base_channel_warns_frame_dropped() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_test_mgr();
+    mgr.get_entity_mut(1).unwrap().player_id = Some(7101);
+    let (tx, rx) = mpsc::channel(16);
+    drop(rx);
+
+    assert!(accept_mission(1, 100, 200, make_objectives(), &tx, &mut mgr).await);
+    let row = capture
+        .find_event(
+            Level::WARN,
+            "Mission journal frame not queued",
+            "base_channel_closed",
+        )
+        .unwrap_or_else(|| {
+            panic!(
+                "no base_channel_closed WARN; captured: {:#?}",
+                capture.all()
+            )
+        });
+    assert!(row.has_field("frame", "onMissionUpdate"), "{row:#?}");
+    assert!(row.has_field("player_id", "7101"), "{row:#?}");
+    assert!(row.has_field("mission_id", "100"), "{row:#?}");
+}
