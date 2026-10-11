@@ -37,6 +37,7 @@ mod golden;
 mod handler;
 mod instances;
 mod lease;
+mod record;
 mod uat;
 mod ui;
 mod world;
@@ -276,6 +277,7 @@ impl LabServer {
                 + Self::combat_router()
                 + Self::uat_router()
                 + Self::calibrate_router()
+                + Self::record_router()
                 + Self::golden_router()
                 + Self::ui_router()
                 + Self::composite_router()

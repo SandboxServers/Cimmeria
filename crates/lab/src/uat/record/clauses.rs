@@ -47,7 +47,8 @@ pub enum Diff {
         /// `current_step_id` after; None when it is NULL.
         to: Option<i32>,
     },
-    /// A carried stack's count changed; a stack that is not there counts 0.
+    /// A carried design id's units in one bag changed (`stack_size` summed);
+    /// none there counts 0.
     ItemCount {
         /// The item's design id.
         type_id: i32,
@@ -373,7 +374,7 @@ fn server_clause(d: &Diff, character: &str, timeout_ms: u64) -> ClauseOut {
                 None => format!("carried item {type_id} in bag {container}: {to}"),
             },
             format!(
-                "SELECT count(*)::int AS n FROM sgw_inventory i JOIN sgw_player p ON p.player_id = i.character_id \
+                "SELECT coalesce(sum(coalesce(i.stack_size,1)),0)::int AS n FROM sgw_inventory i JOIN sgw_player p ON p.player_id = i.character_id \
                  WHERE p.player_name = '{character}' AND i.type_id = {type_id} AND i.container_id = {container}"
             ),
             "/rows/0/n",
@@ -440,6 +441,8 @@ pub enum Inline {
     /// An inline table; its pairs are written in this order.
     Table(Vec<(String, Inline)>),
     /// An array, in this order.
+    // No emitter writes one: the fixture's lists go one entry per line.
+    #[cfg_attr(not(test), allow(dead_code))]
     Array(Vec<Inline>),
 }
 
@@ -471,8 +474,8 @@ impl Inline {
     }
 }
 
-/// A bare key when TOML allows one, else a quoted one.
-fn key(k: &str) -> String {
+/// A bare key when TOML allows one (`^[A-Za-z0-9_-]+$`), else a quoted one.
+pub(super) fn key(k: &str) -> String {
     let bare = !k.is_empty()
         && k.chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');

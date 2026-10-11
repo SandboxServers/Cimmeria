@@ -274,8 +274,6 @@ pub struct Supervisor {
     /// This instance's running `lab_uat_run`, for `/status`.
     uat_progress: crate::uat::progress::ProgressCell,
     /// This instance's recording (lab-record): at most one at a time.
-    // Read by the record tools LR-07 adds.
-    #[allow(dead_code)]
     record: Arc<record_slot::RecordSlot>,
 }
 

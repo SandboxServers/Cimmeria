@@ -48,6 +48,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
 - [powershell-git-commit-stdin-trap](powershell-git-commit-stdin-trap.md) — `git commit -F - @'..'@` takes the text as a pathspec; use `-F <file>` or `-m @'..'@`.
 - [powershell-strict-mode-empty-index](powershell-strict-mode-empty-index.md) — lab CLI strict mode: `@(..)[0]` on empty throws, use Select-Object -First 1; test git repos eat fixture files.
+- [powershell-like-backtick-and-injected-call-tests](powershell-like-backtick-and-injected-call-tests.md) — `-like` treats a backtick as escape; test lab CLI commands with the MCP call injected as a scriptblock.
 - [powershell-ctrl-c-test-pipeline-stopped](powershell-ctrl-c-test-pipeline-stopped.md) — Ctrl+C = PipelineStoppedException: no catch sees it, only finally; test it from a stub in a child pwsh.
 - [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 
@@ -92,6 +93,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
 - [lab-chaos-net-shim](lab-chaos-net-shim.md) — CH-06: shared `lossy_transport::filter`, ChaosTransport in base, recv drop-only, has_net guard, fake-wire tests.
 - [lab-mcp-feature-gated-tool-router](lab-mcp-feature-gated-tool-router.md) — feature-gated lab-mcp tools: second `#[tool_router(router, vis)]` block in the submodule, `+` merge in new().
+- [lab-record-tap-fixture-and-recorder-seams](lab-record-tap-fixture-and-recorder-seams.md) — tap fixtures need a cell msg_id + method_index for decode_call; Recorder test seams.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -107,6 +109,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — Tailer refresh() retain drops other roots' files (egui tail ships nothing once sessions/ exists); tick order is HashMap order; opt-out discard counter.
 - [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — one refresh per tick; NTFS coarse creation times vs baseline; same-tick ties; shared queue across sessions; undo must not bump discards.
 - [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`; macOS job layout and bash 3.2 trap.
+- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — refresh() drops other roots' files; one refresh per tick; NTFS coarse times; shared queue; undo must not bump discards.
 
 ## Injected client DLLs
 

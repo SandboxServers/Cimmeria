@@ -6,15 +6,17 @@ use serde_json::{json, Value};
 use super::super::server::{MAX_LOOKUPS_PER_TICK, MAX_TRACKED_IDS};
 use super::*;
 
-/// An inbound `setTargetID` naming `id` (4-byte entity prefix, then the
-/// INT32 target).
+/// An inbound `setTargetID` naming `id` (cell method 0, msg_id 0x80: the
+/// 4-byte entity prefix, then the INT32 target). `decode_call` reads it by
+/// method index, so a base msg_id (0xC0 and up) would name nothing.
 fn target_row(id: u32) -> Value {
     let le: String = id
         .to_le_bytes()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    json!({ "dir": "in", "msg_id": 200, "msg_name": "setTargetID", "args_hex": format!("00000000{le}") })
+    json!({ "dir": "in", "msg_id": 0x80, "method_index": 0, "msg_name": "setTargetID",
+            "args_hex": format!("00000000{le}") })
 }
 
 fn tap_of(ids: impl IntoIterator<Item = u32>) -> ToolOutcome {
