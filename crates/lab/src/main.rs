@@ -59,6 +59,8 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::{EnvFilter, Layer as _};
 
+#[allow(dead_code)] // wired into the runner by CH-08 (lab-chaos)
+mod chaos;
 mod client;
 mod daemon;
 mod lease;

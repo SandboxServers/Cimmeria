@@ -481,7 +481,8 @@ impl LabServer {
         let server = server_tools.as_ref().map(|s| s as &dyn ServerInvoker);
         let mut runner = Runner::new(&inv, server, req)
             .map_err(|e| McpError::internal_error(e, None))?
-            .with_p2(second);
+            .with_p2(second)
+            .with_progress(self.supervisor.uat_progress().clone());
         // Renew on a timer for the whole run (wait_ms steps make no tool
         // calls), and stop the run the moment the lease is lost. Declared
         // after `run_lease`, so it stops before an own lease is released.

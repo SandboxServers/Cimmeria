@@ -1,7 +1,7 @@
 //! Tests for the `handle_cell_message` dispatch.
 
 use super::*;
-use crate::test_support::TestTransport;
+use crate::test_support::{LogCapture, TestTransport};
 
 fn empty_maps() -> (
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -51,6 +51,116 @@ async fn minigame_result_forwards_to_cell_service() {
         // and let test output point at this line.
         _ => panic!("expected BaseToCellMsg::MinigameResult"),
     }
+}
+
+/// A dropped cell receiver loses the result and its victory chains; the
+/// ERROR names the reason and how many chains were lost.
+#[tokio::test]
+async fn minigame_result_with_dropped_cell_receiver_logs_error() {
+    let capture = LogCapture::install();
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let (connected, entity_to_addr) = empty_maps();
+    let (cell_tx, cell_rx) = mpsc::channel(1);
+    drop(cell_rx);
+
+    handle_cell_message(
+        CellToBaseMsg::MinigameResult {
+            entity_id: 10,
+            result_code: 2,
+            on_victory_chains: vec![100, 200],
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &Some(cell_tx),
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_event(
+            tracing::Level::ERROR,
+            "Minigame result lost",
+            "cell_channel_closed",
+        )
+        .expect("dropped receiver must log an ERROR");
+    assert!(event.has_field("chain_count", "2"), "{event:#?}");
+    assert!(event.has_field("entity_id", "10"), "{event:#?}");
+}
+
+/// With no cell channel at all the result is lost the same way, so it
+/// is a WARN with `reason = "no_cell_channel"`.
+#[tokio::test]
+async fn minigame_result_without_cell_channel_logs_warn() {
+    let capture = LogCapture::install();
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::MinigameResult {
+            entity_id: 10,
+            result_code: 2,
+            on_victory_chains: vec![100],
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_event(
+            tracing::Level::WARN,
+            "Minigame result lost",
+            "no_cell_channel",
+        )
+        .expect("missing cell channel must log a WARN");
+    assert!(event.has_field("chain_count", "1"), "{event:#?}");
+}
+
+/// A disabled minigame server (`None` registry) is a WARN naming the game,
+/// not a silent no-op.
+#[tokio::test]
+async fn start_minigame_with_disabled_server_logs_warn() {
+    let capture = LogCapture::install();
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::StartMinigame {
+            entity_id: 10,
+            player_id: 1,
+            game_name: "Livewire".into(),
+            difficulty: 1,
+            on_victory_chains: vec![],
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_event(
+            tracing::Level::WARN,
+            "minigame server is disabled",
+            "minigame_server_disabled",
+        )
+        .expect("disabled minigame server must log a WARN");
+    assert!(event.has_field("game_name", "Livewire"), "{event:#?}");
 }
 
 /// `flush_deferred_aoi` drains the session's deferred-AoI buffer through

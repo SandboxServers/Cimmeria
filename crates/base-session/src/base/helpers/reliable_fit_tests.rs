@@ -463,3 +463,28 @@ async fn multi_packet_aoi_bundle_logs_at_info() {
         "a multi-packet flush must not log at DEBUG"
     );
 }
+
+/// The session's player and entity ids go out on `mercury.reliable_send` as
+/// numbers (`player_id="71"`), not as `Option` debug text (`"Some(71)"`), so
+/// a log search by id matches the same value everywhere.
+#[test]
+fn reliable_send_player_id_is_numeric() {
+    let capture = LogCapture::install();
+    let addr: SocketAddr = "127.0.0.1:55901".parse().unwrap();
+    let mut state = crate::test_support::test_default_connected_client_state();
+    state.active_player_id = Some(71);
+    state.player_entity_id = Some(4711);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    super::shadow_register_reliable_send(
+        &connected,
+        addr,
+        0,
+        cimmeria_mercury::packet::Bytes::from_static(&[0u8; 32]),
+    );
+
+    let row = capture
+        .find_message(Level::DEBUG, "encrypted reliable datagram sent")
+        .expect("a registered reliable send must log at DEBUG");
+    assert!(row.has_field("player_id", "71"), "{row:#?}");
+    assert!(row.has_field("entity_id", "4711"), "{row:#?}");
+}
