@@ -31,6 +31,23 @@ pub(super) fn replayable_entry(name: &str) -> bool {
     base.starts_with("sgwdebuglog") || base.ends_with(".log")
 }
 
+/// The log4cxx level a client log line names: the token after its timestamp
+/// in the `%d %5p %c{1} - %m%n` layout (`2026-10-10 12:00:00,123 ERROR
+/// common - ...`). `None` for a line not in that shape, such as the
+/// continuation of a multi-line message; the severity is never derived from
+/// it.
+pub(super) fn log4cxx_level(line: &str) -> Option<&'static str> {
+    const LEVELS: [&str; 5] = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
+    let mut tokens = line.split_whitespace();
+    let date = tokens.next()?;
+    let time = tokens.next()?;
+    if date.as_bytes().get(4) != Some(&b'-') || !time.contains(':') {
+        return None;
+    }
+    let token = tokens.next()?;
+    LEVELS.iter().find(|level| **level == token).copied()
+}
+
 /// The entry count a zip's end-of-central-directory record declares, read
 /// without opening the archive (opening it reads every central-directory
 /// entry). `u64::MAX` for a Zip64 archive, whose real count lives in
@@ -220,6 +237,7 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
                 source = "bundle",
                 source_file = %path,
                 message = %capped(line, MAX_MESSAGE_BYTES),
+                level = log4cxx_level(line),
             );
             counts.lines += 1;
         }

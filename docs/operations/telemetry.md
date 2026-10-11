@@ -514,7 +514,7 @@ server:
 | `service.name` | Target (`scope_name`) | What it is |
 |---|---|---|
 | `cimmeria-client` | `client.native` | The injected DLL's events; the DLL's own event name is `client_target` and the log body |
-| `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles |
+| `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles. A bundle line carries `level` (the log4cxx level it names: `DEBUG`, `INFO`, `WARN`, `ERROR` or `FATAL`), and no `level` when it names none; the row's severity is unchanged |
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
