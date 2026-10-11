@@ -50,10 +50,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// 32-byte Ed25519 private key whose public counterpart is the dev
-/// default for [`MANIFEST_SIGNING_PUBKEY`]. Only compiled into the test
-/// binary; production code never needs the signing half.
-#[cfg(test)]
-pub(crate) const DEV_MANIFEST_PRIVKEY: [u8; 32] = [0x2a; 32];
+/// default for [`MANIFEST_SIGNING_PUBKEY`]. Only compiled into test
+/// binaries (here, or another crate's through the `test-fixtures`
+/// feature); production code never needs the signing half.
+#[cfg(any(test, feature = "test-fixtures"))]
+pub const DEV_MANIFEST_PRIVKEY: [u8; 32] = [0x2a; 32];
 
 /// Embedded Ed25519 public key used to verify the detached
 /// `manifest.json.sig` against the fetched `manifest.json` bytes.
@@ -160,7 +161,7 @@ pub struct Manifest {
     /// manifest supports. Optional, so no schema bump: an older launcher
     /// ignores it, and a newer one that is older than the minimum turns off
     /// Install / Update and Launch and makes the update banner mandatory.
-    /// See [`crate::self_update::version::check_min_launcher`].
+    /// See `check_min_launcher` in the egui launcher's `self_update::version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_launcher: Option<String>,
     pub seed: SeedEntry,
@@ -302,7 +303,7 @@ pub async fn fetch_manifest(http: &reqwest::Client, url: &str) -> Result<Manifes
 /// Build the URL of the detached signature object for a given manifest
 /// URL. The `.sig` suffix is inserted onto the path portion, after any
 /// fragment is stripped and before any query string is reattached.
-pub(crate) fn sig_url_for(url: &str) -> String {
+pub fn sig_url_for(url: &str) -> String {
     let no_fragment = url.split_once('#').map(|(l, _)| l).unwrap_or(url);
     match no_fragment.split_once('?') {
         Some((path, query)) => format!("{path}.sig?{query}"),

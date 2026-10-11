@@ -14,7 +14,9 @@ impl ProgressReporter for mpsc::UnboundedSender<Progress> {
 
 #[derive(Clone)]
 pub enum ProgressSink {
-    #[cfg(test)]
+    /// A test's own reporter (the desktop engine's tests reach it through
+    /// the `test-fixtures` feature).
+    #[cfg(any(test, feature = "test-fixtures"))]
     Checkpoint(std::sync::Arc<dyn ProgressReporter>),
     /// Preserve the existing egui worker's event stream.
     Legacy(mpsc::UnboundedSender<Progress>),
@@ -35,7 +37,7 @@ impl ProgressSink {
 impl ProgressReporter for ProgressSink {
     fn report(&self, value: Progress) {
         match self {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-fixtures"))]
             Self::Checkpoint(reporter) => reporter.report(value),
             Self::Legacy(sender) => sender.report(value),
             Self::Latest(sender) => {

@@ -29,13 +29,16 @@ platforms = [
 # The crates CI leaves out of the gated workspace (the GUI apps, the Windows-only
 # client-telemetry and client-patches cdylibs, and the lab supervisor). Their dependencies' features must not
 # leak into the unified set, or every crate would pull in GUI-only features that the Linux
-# CI runners can't build.
+# CI runners can't build. cimmeria-launcher-core is built by CI, but its only consumers are
+# sgw-launcher and the standalone desktop launcher workspace (outside this one), so
+# its launcher-only features (reqwest multipart, unrar) stay out of the server's set too.
 [traversal-excludes]
 workspace-members = [
     "cimmeria-app",
     "cimmeria-content-editor",
     "cimmeria-scene-editor",
     "sgw-launcher",
+    "cimmeria-launcher-core",
     "cimmeria-client-telemetry",
     "cimmeria-client-patches",
     "cimmeria-lab",
@@ -57,12 +60,14 @@ workspace-members = [
 # traversal exclude above).
 # cimmeria-sgw-testhost is the i686 stand-in for SGW.exe the DLL boot tests
 # inject into; its binary is std-only and its dev-dependencies are test-only.
+# cimmeria-launcher-core is kept out like sgw-launcher, its root-workspace consumer.
 [final-excludes]
 workspace-members = [
     "cimmeria-app",
     "cimmeria-content-editor",
     "cimmeria-scene-editor",
     "sgw-launcher",
+    "cimmeria-launcher-core",
     "cimmeria-client-telemetry",
     "cimmeria-client-patches",
     "cimmeria-lab",

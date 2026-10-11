@@ -26,6 +26,9 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 
 # Share the existing patch algorithms, including UPK normalization.
 cimmeria-patchset = { path = "../../../patchset" }
+# The manifest, install, unpack, client setup and telemetry marker code the
+# egui launcher shares (LX-01).
+cimmeria-launcher-core = { path = "../../../launcher-core" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"
 futures-util = "0.3"
@@ -45,6 +48,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 minisign = "=0.8.0"
 wiremock = "0.6"
 crc32fast = "1"
+# The dev manifest signing key and the archive fixtures the storage tests use.
+cimmeria-launcher-core = { path = "../../../launcher-core", features = ["test-fixtures"] }
 
 [[test]]
 name = "helper_supervisor_process"

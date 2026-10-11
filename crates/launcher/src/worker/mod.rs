@@ -148,6 +148,7 @@ impl Worker {
                 EndpointPolicy::from_login_servers(
                     cfg.login_server_urls.iter().map(String::as_str),
                 ),
+                &crate::config::exe_dir(),
             )
             .await
             {

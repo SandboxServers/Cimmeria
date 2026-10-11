@@ -1474,6 +1474,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-launcher-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "cimmeria-client-launch",
+ "cimmeria-patchset",
+ "crc32fast",
+ "ed25519-dalek",
+ "flate2",
+ "futures-util",
+ "gethostname",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "unrar",
+ "walkdir",
+ "windows-sys 0.61.2",
+ "wiremock",
+ "zip",
+]
+
+[[package]]
 name = "cimmeria-mercury"
 version = "0.1.0"
 dependencies = [
@@ -6851,14 +6879,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cimmeria-client-launch",
- "cimmeria-patchset",
- "crc32fast",
- "ed25519-dalek",
+ "cimmeria-launcher-core",
  "eframe",
  "egui 0.35.0",
- "flate2",
  "fs4",
- "futures-util",
  "gethostname",
  "reqwest 0.12.28",
  "serde",
@@ -6870,7 +6894,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "unrar",
  "uuid",
  "walkdir",
  "windows-sys 0.61.2",

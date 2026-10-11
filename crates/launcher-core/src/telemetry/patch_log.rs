@@ -19,7 +19,33 @@ use std::time::{Duration, Instant, SystemTime};
 
 use super::events::{ClientNativeEvent, TelemetryEvent};
 use super::patch_counts::{self, CountsTracker};
-use crate::client_patches::PatchInjection;
+
+/// How the client-patches DLL fared on one launch: the `injection`
+/// field of the once-per-session telemetry event, so a missing Black
+/// Market window can be told apart from "never loaded" in SigNoz.
+///
+/// Defined here, beside the event that reports it; the egui launcher's
+/// `client_patches::plan` decides it and re-exports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchInjection {
+    Injected,
+    OptedOut,
+    Unavailable,
+    /// The DLL was found but injection failed; the game was relaunched
+    /// without it.
+    InjectFailed,
+}
+
+impl PatchInjection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Injected => "injected",
+            Self::OptedOut => "opted_out",
+            Self::Unavailable => "unavailable",
+            Self::InjectFailed => "inject_failed",
+        }
+    }
+}
 
 /// The DLL's log file name, next to `SGW.exe`.
 pub const LOG_FILE_NAME: &str = "cimmeria-client-patches.log";
@@ -297,6 +323,15 @@ pub fn summary_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn injection_labels_are_stable() {
+        // SigNoz queries filter on these strings.
+        assert_eq!(PatchInjection::Injected.as_str(), "injected");
+        assert_eq!(PatchInjection::OptedOut.as_str(), "opted_out");
+        assert_eq!(PatchInjection::Unavailable.as_str(), "unavailable");
+        assert_eq!(PatchInjection::InjectFailed.as_str(), "inject_failed");
+    }
 
     /// A successful boot, as `boot.rs` logs it.
     const INSTALLED_LOG: &str = "\

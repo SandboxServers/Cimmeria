@@ -254,6 +254,25 @@ fn default_install_path() -> PathBuf {
 mod tests {
     use super::*;
 
+    /// Fresh-install defaults work together: the default auth URL is on a
+    /// default login server. It lives here, beside `TelemetrySettings`,
+    /// because the endpoint rule is in `cimmeria-launcher-core`, which has
+    /// no launcher config.
+    #[test]
+    fn the_default_auth_url_passes_with_the_default_login_servers() {
+        use crate::telemetry::endpoint;
+        let servers = crate::client_setup::login_servers::default_servers();
+        let policy =
+            endpoint::EndpointPolicy::from_login_servers(servers.iter().map(|s| s.url.as_str()));
+        let auth_url = TelemetrySettings::default().auth_url;
+        assert_eq!(policy.check(&auth_url), Ok(()));
+        // Without the login servers the same URL is refused: the login
+        // server list is what vouches for it.
+        assert!(endpoint::EndpointPolicy::default()
+            .check(&auth_url)
+            .is_err());
+    }
+
     #[test]
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();

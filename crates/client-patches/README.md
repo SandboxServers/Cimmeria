@@ -263,7 +263,7 @@ It stops after 2,000 lines.
 
 The launcher's telemetry session parses this file into one
 `client.patches.boot` event
-([`patch_log.rs`](../../crates/launcher/src/telemetry/patch_log.rs)), so
+([`patch_log.rs`](../../crates/launcher-core/src/telemetry/patch_log.rs)), so
 these messages from `boot.rs` are a contract. Change them together with
 that parser and its tests:
 

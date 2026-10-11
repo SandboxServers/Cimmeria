@@ -10,6 +10,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [mutation-restore-mtime-trap.md](mutation-restore-mtime-trap.md) — restoring from a backup copy leaves an old mtime; cargo keeps the mutated build. Touch restored files.
 - [dependency-dedupe-blockers.md](dependency-dedupe-blockers.md) — duplicate dep versions pinned upstream (sqlx, axum ws, reqwest, rmcp); machete false positives.
 - [services-split-extraction-traps.md](services-split-extraction-traps.md) — extracting a crate from services: allowlist edges, unreachable_pub, privacy errors in phases.
+- [launcher-core-path-include-extraction](launcher-core-path-include-extraction.md) — #[path] to crate: cfg(test) items need a `test-fixtures` feature; telemetry moved whole; ignored tests hide from nextest list.
 
 ## Working environment
 

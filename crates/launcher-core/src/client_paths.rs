@@ -146,10 +146,10 @@ fn dir_size_best_effort(path: &Path) -> u64 {
 /// tests can trash each other's expected values mid-assertion. Shared
 /// between the unit tests in this file and `worker::tests::spawn_wipe_*`.
 ///
-/// `#[cfg(test)]` so it doesn't leak into release builds, but
-/// `pub(crate)` so siblings can lock it.
-#[cfg(test)]
-pub(crate) fn env_test_lock() -> &'static std::sync::Mutex<()> {
+/// Test-only so it doesn't leak into release builds; the `test-fixtures`
+/// feature exposes it to the egui launcher's tests, which take it too.
+#[cfg(any(test, feature = "test-fixtures"))]
+pub fn env_test_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
 }

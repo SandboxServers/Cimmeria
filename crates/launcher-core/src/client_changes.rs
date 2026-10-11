@@ -195,6 +195,11 @@ fn patch_change(patch: &PatchEntry, installed: &InstalledState) -> ClientChange 
     }
 }
 
+/// The telemetry DLL's file name, which the telemetry row names. The egui
+/// launcher's `client_telemetry_dll` uses this one constant, so the row
+/// cannot name a file the launcher does not load.
+pub const TELEMETRY_DLL_FILE_NAME: &str = "cimmeria-client-telemetry.dll";
+
 fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
     let patches_description = if inputs.client_patches_enabled {
         "Adds cimmeria-client-patches.dll to SGW.exe when it starts. It finishes client \
@@ -504,10 +509,7 @@ mod tests {
                 .clone()
         };
         let on = describe(&list(&inputs(&[], &state, true, true)));
-        assert!(
-            on.contains(crate::client_telemetry_dll::DLL_FILE_NAME),
-            "{on}"
-        );
+        assert!(on.contains(TELEMETRY_DLL_FILE_NAME), "{on}");
         assert!(!on.contains("no code"), "{on}");
         let off = describe(&list(&inputs(&[], &state, true, false)));
         assert!(off.contains("loads no telemetry module"), "{off}");

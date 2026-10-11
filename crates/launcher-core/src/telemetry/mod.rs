@@ -15,13 +15,12 @@ pub mod runner;
 pub mod session;
 pub mod tail;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-use crate::config::exe_dir;
 use auth::{DevSessionRequest, DevSessionResponse};
 use chunk::ChunkError;
 use events::TelemetryEvent;
@@ -86,13 +85,17 @@ impl Telemetry {
     ///
     /// `endpoint_policy` decides which plain-http addresses are allowed
     /// (see [`endpoint`]); build it from the launcher's login servers.
+    /// `queue_dir` holds the on-disk overflow queue: the egui launcher
+    /// passes its own directory, which is where [`recover_pending_on_startup`]
+    /// looks on the next start.
     pub async fn start_session(
         http: &reqwest::Client,
         auth_base_url: &str,
         req: DevSessionRequest,
-        install_dir: &std::path::Path,
+        install_dir: &Path,
         launcher_version: &str,
         endpoint_policy: endpoint::EndpointPolicy,
+        queue_dir: &Path,
     ) -> Result<Self, TelemetryError> {
         let now_ms = chrono::Utc::now().timestamp_millis();
         // Refuse before sending anything, and refuse an upload endpoint
@@ -129,7 +132,7 @@ impl Telemetry {
             session_started_at_ms: now_ms,
             endpoint_policy,
             issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
-            queue: DiskQueue::new(&exe_dir()),
+            queue: DiskQueue::new(queue_dir),
             seq: Arc::new(Mutex::new(0)),
             retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
         })
@@ -287,8 +290,9 @@ fn map_chunk_err(e: ChunkError) -> TelemetryError {
 
 /// Drain any telemetry events left on disk from a previous launcher
 /// run that crashed or was killed before its bundle could upload.
-pub fn recover_pending_on_startup() -> u64 {
-    let q = DiskQueue::new(&exe_dir());
+/// `queue_dir` is the directory [`Telemetry::start_session`] was given.
+pub fn recover_pending_on_startup(queue_dir: &Path) -> u64 {
+    let q = DiskQueue::new(queue_dir);
     recover_pending_at(&q)
 }
 
@@ -321,23 +325,6 @@ fn recover_pending_at(q: &DiskQueue) -> u64 {
 mod tests {
     use super::*;
     use crate::telemetry::events::{ClientLogEvent, TelemetryEvent};
-
-    /// Fresh-install defaults work together: the default auth URL is on a
-    /// default login server. It lives here, not in `endpoint.rs`, because the
-    /// desktop launcher's engine compiles that file too and has no `config`.
-    #[test]
-    fn the_default_auth_url_passes_with_the_default_login_servers() {
-        let servers = crate::client_setup::login_servers::default_servers();
-        let policy =
-            endpoint::EndpointPolicy::from_login_servers(servers.iter().map(|s| s.url.as_str()));
-        let auth_url = crate::config::TelemetrySettings::default().auth_url;
-        assert_eq!(policy.check(&auth_url), Ok(()));
-        // Without the login servers the same URL is refused: the login
-        // server list is what vouches for it.
-        assert!(endpoint::EndpointPolicy::default()
-            .check(&auth_url)
-            .is_err());
-    }
 
     #[test]
     fn recover_pending_returns_zero_on_empty_queue() {
@@ -470,6 +457,7 @@ mod tests {
             dir.path(),
             "0.1.0",
             endpoint::EndpointPolicy::default(),
+            dir.path(),
         )
         .await
         .unwrap();
@@ -509,6 +497,7 @@ mod tests {
             dir.path(),
             "0.1.0",
             endpoint::EndpointPolicy::default(),
+            dir.path(),
         )
         .await
         .err()
@@ -551,6 +540,7 @@ mod tests {
             dir.path(),
             "0.1.0",
             endpoint::EndpointPolicy::default(),
+            dir.path(),
         )
         .await
         .err()
