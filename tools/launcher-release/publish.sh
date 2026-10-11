@@ -47,8 +47,9 @@ check() {
   local file="${1:?check needs a file}" want="${2:-}" got
   [ -s "$file" ] || die "$file was not downloaded"
   got="$(sha256sum "$file" | cut -d' ' -f1)"
-  [ -n "$want" ] && [ "$got" = "$want" ] \
-    || die "the downloaded $file is $got, its build job made '$want'"
+  if [ -z "$want" ] || [ "$got" != "$want" ]; then
+    die "the downloaded $file is $got, its build job made '$want'"
+  fi
   if [ -f "$file.sha256" ]; then
     [ "$(cut -d' ' -f1 "$file.sha256")" = "$want" ] \
       || die "$file.sha256 does not name the build job's digest"
