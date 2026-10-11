@@ -22,6 +22,13 @@ Facts found making adoption run natively on Windows (LX-10, 2026-10-11):
 - `inventory::identity` was unix-only (Windows returned `UnsafeFile`); the
   Windows version uses `GetFileInformationByHandle` (volume serial + file
   index, opened with `FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT`).
+- Rust's `File::open` on Windows shares read, write and delete, so a held
+  handle on `SGW.exe` does not stop a rename of it. In-place admission
+  detects a running game with `share_mode(0)` open (error 32). Its revert
+  proof showed the adoption moving the open exe without that check.
+- In-place only adopts the full `Working\Binaries` layout; folders the egui
+  launcher adopted with the install path at `Working` or `Binaries` are
+  refused once as `unsupported_layout` (fresh egui installs are always full).
 - The shell test binary for `npm run uat:adoption` is the lane's
   `target/desktop/debug/deps/cimmeria_launcher_desktop-*.exe`, read from the
   "Running unittests (...)" line of the lane log.

@@ -212,9 +212,19 @@ adopt this folder** after a legacy import; there is no location to choose.
 1. **Preflight.** The old launcher's `launcher-installed.json` must record the
    signed release's seed and every one of its patches, by their state keys. A
    folder it left out of date is refused before anything is downloaded
-   (`outdated_install`). The folder must already be in the release layout, must
-   not hold the old launcher's own folder, and must not already contain `game`,
-   `.cimmeria-install.json` or `content-ready.json`.
+   (`outdated_install`). The folder must not hold the old launcher's own
+   folder. It must be in the full layout the installer and a fresh install
+   write, with `SGW.exe` in `Working\Binaries`. The old launcher also manages
+   folders that point straight at `Working` or `Binaries`. Their release files
+   all sit at another path than the release keeps them, so such a folder is
+   refused once, before anything is downloaded (`unsupported_layout`), rather
+   than listing every file as blocked. A `game` folder,
+   `.cimmeria-install.json` or `content-ready.json` already in the folder is
+   refused (`leftover_launcher_files`). The exception is what an admission
+   leaves when it dies before its operation begins, or when Abandon could not
+   remove `game`. Those leftovers are an owner marker that no journal
+   operation or begun plan names, and an empty `game`. The launcher removes
+   them, logs a warning and continues.
 2. **Verification.** The signed seed and patches are fetched and reconstructed
    into a private reference, the same preparation the verified copy uses. Every
    release file in the folder is compared by size and SHA-256. The review names
@@ -222,7 +232,9 @@ adopt this folder** after a legacy import; there is no location to choose.
    confirmation is refused (`verification_failed`). Nothing in the player's
    folder is ever rewritten from the reference. The only accepted difference is
    the old launcher's own setup change, which the launcher re-applies.
-3. **Admission.** Confirmation writes the owner marker `.cimmeria-install.json`
+3. **Admission.** Confirmation first opens `Working\Binaries\SGW.exe`
+   exclusively. A sharing violation means the game is running, and confirmation
+   is refused with nothing admitted (`game_running`). It then writes the owner marker `.cimmeria-install.json`
    into the folder, creates an empty `game` folder, and saves the plan and a
    checkpoint before the Adopt operation begins. If admission fails before the
    operation exists, the marker and the empty folder are taken back.
@@ -238,15 +250,32 @@ adopt this folder** after a legacy import; there is no location to choose.
    Play, Repair and Update treat the folder as owned: its `game` tree is managed
    exactly like a fresh install's.
 
-`SGW.exe` moves to `game\Working\Binaries`, so shortcuts to the old path stop
-working, and the old launcher no longer finds the client. Start the game from
-this launcher afterwards.
+The review warns about the consequences before Confirm. `SGW.exe` and every
+release file move into the `game` folder, so desktop shortcuts and the old
+launcher stop working; start the game from this launcher afterwards. Don't run
+the old launcher on this folder again, because it may download the game a
+second time. Files you added inside the game folders, such as PAKs placed by
+hand in `SourceCache.en-us`, stay where they are and the game no longer uses
+them. Your settings and the client cache live in Documents and are not
+affected.
 
 An interruption after admission leaves the operation in reconciliation. Recover
-finishes the remaining moves and publication. Each file is either still in
-place or already in `game`; a file in both places, or in neither, is refused.
-Abandon, offered until publication, moves every release file back to where the
-review found it and removes the marker. A crash during verification leaves only
+finishes the remaining moves and publication. A file in neither place is
+refused. The old launcher or a running game can recreate a file at its old path
+after the review, so a file in both places is settled by content. Admission
+saves each release file's reviewed hash (`adoption-reviewed-<work>.json`). If
+the copy in `game` matches, the other copy stays where it is as a file the
+release does not list. If only the old-path copy matches, it replaces the copy
+in `game`, which is kept beside the old path as
+`<name>.adopt-conflict-<owner>`. If neither matches, recovery stops and names
+the file in the log (`duplicate_release_file`). Nothing is deleted in any case.
+
+Abandon moves every release file back to where the review found it and removes
+the marker. A file in both places keeps the folder's copy, and `game` keeps the
+other. Abandon is offered only while nothing but renames has happened: once
+every file is in `game` the checkpoint advances before the launcher's setup
+rewrites `LoginInternal.lua` and the ledger. Putting the files back after that
+would leave the launcher's setup in them, so only Recover is offered. A crash during verification leaves only
 the private reference. The folder has no marker yet, and the reference is
 removed with the existing preparation removal.
 
@@ -261,7 +290,11 @@ Engine tests in `engine/src/storage/adoption/in_place_tests.rs` cover the
 rename-not-copy adoption, a modified release file named and refused, an
 out-of-date ledger refused before download, uninstall that keeps unlisted files,
 recovery and abandonment after a crash mid-move, and a crash between
-verification and the marker. `shell/src/host/adoption/in_place_tests.rs` drives
+verification and the marker. `in_place_recovery_tests.rs` covers a release file
+recreated at its old path after a crash (recovered both ways, refused when
+neither copy verifies, and abandoned), recovery-only after setup, a running game
+held open, a folder outside the full layout, and admission leftovers taken back
+or refused. `shell/src/host/adoption/in_place_tests.rs` drives
 the same flow through the production host. On Windows, `npm run uat:adoption`
 runs `adoption-in-place-uat.mjs` against the
 `host::adoption::uat_bridge_in_place` bridge, again with the shell test binary

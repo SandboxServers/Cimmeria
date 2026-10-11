@@ -5,9 +5,12 @@
 use super::publication::{name, plan_name, read_large, write_large, Point};
 use super::*;
 use crate::install_progress::{ProgressReporter, ProgressSink};
-use std::{collections::BTreeSet, io::Write};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+};
 
-const OWNER: &str = ".cimmeria-install.json";
+pub(super) const OWNER: &str = ".cimmeria-install.json";
 /// What an owner root holds. A folder that already has any of these is refused.
 pub(super) const MANAGED: [&str; 3] = ["game", OWNER, "content-ready.json"];
 
@@ -72,6 +75,12 @@ pub(super) fn publish(
             ));
         }
     }
+    // The review's checkbox is a promise, not a check: a running game would
+    // hold SGW.exe open while its folder is moved out from under it.
+    if game_running(&root)? {
+        return Err(refused(Error::GameRunning, "SGW.exe is open"));
+    }
+    let store = state.directory.root.clone();
     let game = root.join("game");
     std::fs::create_dir(&game).map_err(|_| StorageError::InUse)?;
     let admitted = admit(preview, &mut state, id, choices, &root, &game);
@@ -103,7 +112,7 @@ pub(super) fn publish(
     let result = (|| {
         hook(Point::Plan)?;
         // Renames run without the state guard, so status reads stay responsive.
-        move_release_files(&plan, progress, &mut hook)?;
+        move_release_files(&store, &plan, progress, &mut hook)?;
         let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
         if state.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
@@ -190,6 +199,22 @@ fn admit(
         &format!("install-intent-{owner_id}.json"),
         &plan.installation,
     )?;
+    // What each release file held at review: recovery tells the reviewed copy
+    // from one something wrote at the old path afterwards (see `move_files`).
+    let reviewed: Reviewed = release_files(&preview.report)
+        .into_iter()
+        .map(|path| {
+            let entry = preview.source.get(path).ok_or(StorageError::Corrupt)?;
+            Ok((
+                path.to_string(),
+                Hashed {
+                    sha256: entry.sha256,
+                    size: entry.size,
+                },
+            ))
+        })
+        .collect::<Result<_, Error>>()?;
+    write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     // Staged here means the moves are authorized, not that they are done.
     write_large(
@@ -230,15 +255,86 @@ fn present(path: &Path) -> Result<bool, Error> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Hashed {
+    sha256: [u8; 32],
+    size: u64,
+}
+/// Release files by index name, as the review hashed them.
+type Reviewed = BTreeMap<String, Hashed>;
+fn reviewed_name(id: Uuid) -> String {
+    format!("adoption-reviewed-{id}.json")
+}
+fn holds(path: &Path, expected: &Hashed) -> Result<bool, Error> {
+    let entry = inventory::hash(path, &CancellationToken::new())?;
+    Ok(entry.sha256 == expected.sha256 && entry.size == expected.size)
+}
+
+/// Which way the release files go, and what a file found in both places means.
+#[derive(Clone, Copy)]
+enum Way<'a> {
+    /// Into `game`. The old launcher or a running game can recreate a file at
+    /// its old path after the review, so a duplicate is settled by content.
+    Adopt { plan: &'a Plan, store: &'a Path },
+    /// Back out of `game`. The folder's copy is kept and `game`'s copy is left
+    /// in `game`: nothing the player may want is deleted.
+    Abandon,
+}
+
+/// A release file in both places while adopting. The copy the review verified
+/// goes into `game`; the other stays outside it as a file the release does not
+/// list, so the owned tree still matches the signed reference.
+fn settle_duplicate(
+    path: &str,
+    source: &Path,
+    target: &Path,
+    plan: &Plan,
+    store: &Path,
+    reviewed: &mut Option<Reviewed>,
+) -> Result<(), Error> {
+    let owner = plan.installation.operation_id;
+    let expected = match reviewed {
+        Some(reviewed) => reviewed,
+        None => reviewed.insert(read_large(
+            &store.join(reviewed_name(plan.provenance.work_id)),
+        )?),
+    }
+    .get(path)
+    .copied()
+    .ok_or(StorageError::Corrupt)?;
+    if holds(target, &expected)? {
+        tracing::warn!(target: "adoption", path, "in-place adoption: a release file reappeared at its old path; the verified copy is already in game, the other is left where it is");
+        return Ok(());
+    }
+    if holds(source, &expected)? {
+        let mut aside = source.as_os_str().to_owned();
+        aside.push(format!(".adopt-conflict-{owner}"));
+        let aside = PathBuf::from(aside);
+        if present(&aside)? {
+            tracing::error!(target: "adoption", path, "in-place adoption: a duplicate release file's conflict name is taken");
+            return Err(Error::DuplicateReleaseFile);
+        }
+        std::fs::rename(target, &aside)?;
+        std::fs::rename(source, target)?;
+        tracing::warn!(target: "adoption", path, aside = %aside.display(), "in-place adoption: the copy in game did not verify; the reviewed copy replaced it and the other was kept beside the old path");
+        return Ok(());
+    }
+    tracing::error!(target: "adoption", path, "in-place adoption: a release file is in game and at its old path, and neither copy is the one the review verified");
+    Err(Error::DuplicateReleaseFile)
+}
+
 /// Move each file from `from` to `to`. Idempotent: a file already at `to` is
-/// one an interrupted run moved. A file in both places, or neither, is refused.
+/// one an interrupted run moved. A file in neither place is refused; one in
+/// both is settled as `way` says.
 fn move_files(
     files: &[&str],
     from: &Path,
     to: &Path,
+    way: Way<'_>,
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    let mut reviewed = None;
     for (current, path) in files.iter().enumerate() {
         progress.report(crate::install::Progress::Extracting {
             label: "Adopting in place".into(),
@@ -257,8 +353,16 @@ fn move_files(
                 hook(Point::Moved)?;
             }
             (false, true) => (),
-            _ => {
-                tracing::error!(target: "adoption", path, "in-place adoption: a release file is in both trees or in neither");
+            (true, true) => match way {
+                Way::Adopt { plan, store } => {
+                    settle_duplicate(path, &source, &target, plan, store, &mut reviewed)?
+                }
+                Way::Abandon => {
+                    tracing::warn!(target: "adoption", path, "abandoning in-place adoption: a release file is in both places; the folder's copy stays and game keeps the other");
+                }
+            },
+            (false, false) => {
+                tracing::error!(target: "adoption", path, "in-place adoption: a release file is in neither place");
                 return Err(StorageError::Corrupt.into());
             }
         }
@@ -273,6 +377,7 @@ fn move_files(
 }
 
 fn move_release_files(
+    store: &Path,
     plan: &Plan,
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
@@ -283,10 +388,35 @@ fn move_release_files(
         &release_files(&plan.report),
         root,
         &root.join("game"),
+        Way::Adopt { plan, store },
         progress,
         hook,
     )?;
     hook(Point::AfterPromotion)
+}
+
+/// Whether the folder's `SGW.exe` is open. Windows refuses an exclusive open
+/// of a file another process holds, which a running game always does.
+#[cfg(windows)]
+fn game_running(root: &Path) -> Result<bool, Error> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    match OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(crate::install_layout::sgw_exe(root))
+    {
+        Ok(_) => Ok(false),
+        Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Ok(true),
+        // A missing executable fails verification, not this check.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(StorageError::Io.into()),
+    }
+}
+/// Other hosts have no mandatory share modes; the review's confirmation stands.
+#[cfg(not(windows))]
+fn game_running(_root: &Path) -> Result<bool, Error> {
+    Ok(false)
 }
 
 /// Remove the directories the moves emptied, deepest first. A directory that
@@ -360,19 +490,28 @@ pub(super) fn finish(
             &release_files(&plan.report),
             root,
             &game,
+            Way::Adopt {
+                plan,
+                store: &state.directory.root,
+            },
             &ProgressSink::latest().0,
             &mut |_| Ok(()),
         )?;
+        // Checkpointed before setup rewrites any release bytes: from here only
+        // recovery is offered, because moving the files back would not undo
+        // the setup and Abandon would not put the folder back as reviewed.
+        record.phase = Phase::Promoted;
+        write_large(&state.directory.root, &name(id), &record)?;
+    }
+    if record.phase == Phase::Promoted {
+        // Idempotent, so a recovery after a crash here applies it again.
         crate::client_setup::prepare(&game, &plan.installation.login_servers)?;
         reference::ledger(&release)
             .save(&game)
             .map_err(|_| StorageError::Io)?;
-        validate(&game, plan)?;
-        record.phase = Phase::Promoted;
-        write_large(&state.directory.root, &name(id), &record)?;
-    } else {
-        validate(&game, plan)?;
+        hook(Point::SetUp)?;
     }
+    validate(&game, plan)?;
     atomic::write(root, "content-ready.json", &plan.installation)?;
     state.remember_adopted_content(&plan.installation, &plan.provenance)?;
     hook(Point::Receipt)?;
@@ -404,7 +543,7 @@ pub(super) fn finish(
     Ok(())
 }
 
-/// Before any content is published, abandonment can put every file back.
+/// While only renames have happened, abandonment can put every file back.
 pub(super) fn abandonable(state: &DesktopState, plan: &Plan) -> bool {
     read_large::<Record>(&state.directory.root.join(name(plan.provenance.work_id)))
         .is_ok_and(|record| record.plan == *plan && record.phase == Phase::Staged)
@@ -436,9 +575,14 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
         Ok(_) => {
             inventory::same_directory(&game, &plan.stage_identity)?;
             let files = release_files(&plan.report);
-            move_files(&files, &game, root, &ProgressSink::latest().0, &mut |_| {
-                Ok(())
-            })?;
+            move_files(
+                &files,
+                &game,
+                root,
+                Way::Abandon,
+                &ProgressSink::latest().0,
+                &mut |_| Ok(()),
+            )?;
             // The synthesized ledger is the launcher's own file.
             match std::fs::remove_file(game.join("launcher-installed.json")) {
                 Ok(()) => (),

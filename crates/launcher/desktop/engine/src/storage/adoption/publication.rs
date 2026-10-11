@@ -11,6 +11,8 @@ pub(super) enum Point {
     /// In place only: one more release file is now inside the owned tree.
     Moved,
     AfterPromotion,
+    /// In place only: the launcher's setup and ledger are written in `game`.
+    SetUp,
     Receipt,
     Preferences,
     Published,

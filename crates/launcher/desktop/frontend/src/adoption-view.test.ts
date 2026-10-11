@@ -166,7 +166,9 @@ test('in place: the imported folder is offered, a file that does not verify is n
   assert.equal(ui.get('adoption-source-label').textContent,'Game folder to adopt:');
   assert.equal(ui.get('adoption-destination-label').textContent,'Launcher-owned installation:');
   assert.equal(ui.get('confirm-adoption').textContent,'Adopt this folder');
-  assert.match(ui.get('adoption-consequences').textContent!,/moved, not copied.*stay exactly where they are; uninstalling removes only what the release lists/);
+  // The owner-approved warning, shown before Confirm.
+  const warning=ui.get('adoption-consequences').textContent!;
+  for(const pinned of [/SGW\.exe and every release file are moved, not copied, into a “game” folder/,/desktop shortcuts and the old launcher stop working/,/Don’t run the old launcher on this folder again; it may download the game a second time/,/PAKs placed by hand in SourceCache\.en-us, stay where they are and the game will no longer use them/,/settings and the client cache live in Documents and are not affected/])assert.match(warning,pinned);
   await ui.tick('adoption-closed');
   assert.equal(ui.disabled('confirm-adoption'),true,'a folder that does not verify is never confirmed');
   await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,0);
@@ -207,6 +209,10 @@ test('unavailable backends and unsupported imported settings are stated plainly'
   [{...idle(),backend:'helper_unavailable'},/does not include the verified archive helper/],
   [{...idle(),backend:'in_place'},/Adopt your existing game folder \/old-game in place/],
   [{...idle(),backend:'in_place',last_error:'outdated_install'},/has not installed the current signed release.*Nothing was changed/],
+  [{...idle(),backend:'in_place',last_error:'unsupported_layout'},/older layout.*cannot adopt in place.*Install the game fresh/],
+  [{...idle(),backend:'in_place',last_error:'game_running'},/game is running from this folder\. Close the game first/],
+  [{...idle(),backend:'in_place',last_error:'duplicate_release_file'},/neither copy matches.*log names the file\. Nothing was deleted/],
+  [{...idle(),backend:'in_place',last_error:'leftover_launcher_files'},/already holds launcher files.*cannot be adopted/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_catalog'}},/custom content catalog.*will not rewrite your settings/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_configuration'}},/custom patch DLL.*will not silently drop/],
   [{...idle(),imported:null},/Import legacy launcher settings above first/],

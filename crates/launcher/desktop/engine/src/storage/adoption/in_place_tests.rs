@@ -6,18 +6,18 @@ use serde_json::json;
 const SCREENSHOT: &str = "Working/Binaries/screenshot.bmp";
 const NOTES: &str = "notes.txt";
 
-struct Fixture {
+pub(super) struct Fixture {
     root: tempfile::TempDir,
-    state: Arc<Mutex<DesktopState>>,
+    pub(super) state: Arc<Mutex<DesktopState>>,
     source: migration::LegacySource,
     seed: PathBuf,
-    release: VerifiedRelease,
+    pub(super) release: VerifiedRelease,
 }
 impl Fixture {
     /// An old-launcher install of the signed release, with one file of the
     /// player's own beside the release and one inside a release folder.
     /// `ledger_seed` is what the old launcher's ledger claims was installed.
-    fn new(ledger_seed: Option<&str>) -> Self {
+    pub(super) fn new(ledger_seed: Option<&str>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let launcher = root.path().join("legacy");
         let game = root.path().join("old-game");
@@ -90,10 +90,10 @@ impl Fixture {
             release,
         }
     }
-    fn folder(&self) -> &Path {
+    pub(super) fn folder(&self) -> &Path {
         &self.source.game_directory
     }
-    fn request(&self) -> PreviewRequest {
+    pub(super) fn request(&self) -> PreviewRequest {
         let state = self.state.lock().unwrap();
         PreviewRequest {
             import_digest: state.legacy_import().unwrap().unwrap().confirmation,
@@ -111,7 +111,7 @@ impl Fixture {
             }),
         }
     }
-    fn preview(&self) -> Result<Preview, Error> {
+    pub(super) fn preview(&self) -> Result<Preview, Error> {
         preview(
             self.state.clone(),
             self.request(),
@@ -119,11 +119,11 @@ impl Fixture {
             crate::install_progress::ProgressSink::latest().0,
         )
     }
-    fn scan(&self) -> inventory::Index {
+    pub(super) fn scan(&self) -> inventory::Index {
         inventory::scan(self.folder(), &CancellationToken::new()).unwrap()
     }
     /// A launcher restart: the same store, opened again.
-    fn reopen(self) -> Self {
+    pub(super) fn reopen(self) -> Self {
         let Self {
             root,
             state,
@@ -141,7 +141,7 @@ impl Fixture {
             release,
         }
     }
-    fn operation(&self) -> (Uuid, OperationState) {
+    pub(super) fn operation(&self) -> (Uuid, OperationState) {
         let state = self.state.lock().unwrap();
         let op = state.operations().snapshot().operation.clone().unwrap();
         (op.id, op.state)
@@ -154,10 +154,10 @@ fn choices() -> Choices {
         old_game_closed: true,
     }
 }
-fn commit(preview: Preview) -> Result<Provenance, Error> {
+pub(super) fn commit(preview: Preview) -> Result<Provenance, Error> {
     commit_with(preview, |_| Ok(()))
 }
-fn commit_with(
+pub(super) fn commit_with(
     preview: Preview,
     hook: impl FnMut(publication::Point) -> Result<(), Error>,
 ) -> Result<Provenance, Error> {
@@ -173,14 +173,14 @@ fn commit_with(
     )
 }
 /// Fails at the first moved file: the folder is left half in the owned tree.
-fn crash_after_first_move(point: publication::Point) -> Result<(), Error> {
+pub(super) fn crash_after_first_move(point: publication::Point) -> Result<(), Error> {
     if point == publication::Point::Moved {
         Err(StorageError::Io.into())
     } else {
         Ok(())
     }
 }
-fn assert_player_files_untouched(f: &Fixture) {
+pub(super) fn assert_player_files_untouched(f: &Fixture) {
     assert_eq!(
         std::fs::read(f.folder().join(NOTES)).unwrap(),
         b"the player's notes"

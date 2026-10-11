@@ -83,6 +83,17 @@ pub enum Error {
     /// The old launcher's ledger records a different seed or lacks a patch of
     /// the signed release, so the folder cannot match it yet.
     OutdatedInstall,
+    /// In place: the folder is not the full `Working\Binaries` layout the
+    /// installer writes, so its release files are not where the release keeps them.
+    UnsupportedLayout,
+    /// In place: `SGW.exe` in the folder is open, so the game is running.
+    GameRunning,
+    /// In place: a release file is both in `game` and at its old path, and
+    /// neither copy is the one the review verified. The log names it.
+    DuplicateReleaseFile,
+    /// In place: the folder holds launcher-owned names that are not the
+    /// harmless leftovers of an admission that never began.
+    LeftoverLauncherFiles,
 }
 impl From<StorageError> for Error {
     fn from(e: StorageError) -> Self {

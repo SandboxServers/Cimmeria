@@ -70,7 +70,7 @@ try {
  await click('choose-adoption-destination');
  status=await until('the second review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
  assert.deepEqual(status.review.blocked_files,[]);assert.match(text(),/Nothing is moved until you confirm/);
- assert.match(get('adoption-consequences').textContent,/moved, not copied/);
+ assert.match(get('adoption-consequences').textContent,/moved, not copied.*old launcher stop working.*Don’t run the old launcher on this folder again.*no longer use them.*live in Documents and are not affected/);
  await tickShown();
  press('confirm-adoption');press('confirm-adoption');await settle();
  assert.equal(sent('confirm').length,1,'a double click confirms once');
