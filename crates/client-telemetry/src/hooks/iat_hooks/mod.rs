@@ -579,9 +579,17 @@ unsafe extern "stdcall-unwind" fn recvfrom_detour(
             } else {
                 None
             };
-        if let Some((level, fields)) =
-            super::mercury_recv::wire::recv_event(socket, len, wire, error, peer.as_deref())
-        {
+        // Stashed for the packet filter, which this thread runs next on the
+        // same datagram (TG-MER-12 join key; see `mercury_recv::wire`).
+        let wire_fp = super::mercury_recv::wire::stash_received(len, wire);
+        if let Some((level, fields)) = super::mercury_recv::wire::recv_event(
+            socket,
+            len,
+            wire,
+            wire_fp,
+            error,
+            peer.as_deref(),
+        ) {
             super::emit::emit("client.mercury.socket_recv", level, fields);
         }
     });

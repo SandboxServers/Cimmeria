@@ -166,6 +166,8 @@ mod mercury_dispatch;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod mercury_recv;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod mercury_unpack_fault;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod net_out;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod sequence_manager;

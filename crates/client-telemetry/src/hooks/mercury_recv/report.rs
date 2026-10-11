@@ -1,7 +1,7 @@
 //! Turns what the detours read into events: the target, level, gate and
 //! fields of `client.mercury.packet_in`, `client.mercury.fragment` and the
 //! end of `client.mercury.bundle`, plus the `client.mercury.error` that
-//! accompanies every non-happy one.
+//! accompanies every non-happy one except an `old_duplicate` packet.
 //!
 //! Keeping this apart from the detours means the volume rule is a tested
 //! function, not a property of hook plumbing: a non-happy outcome is always
@@ -13,7 +13,7 @@ use super::bundle::{BundleTrace, Exit};
 use super::fragment::{self, GroupView, Outcome};
 use super::tail::{self, Gate, Tail};
 use super::window::{self, Disposition, WindowState};
-use super::Fields;
+use super::{wire, Fields};
 
 /// What `queueAckForPacket` did, noted by its detour for the packet filter's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,13 +50,21 @@ pub(crate) fn error_fields(stage: &'static str, reason: &str, of: &Fields) -> Fi
 }
 
 /// `client.mercury.packet_in` for the datagram `tail`, given the window note
-/// (reliable packets) and the packet filter's `result`.
+/// (reliable packets), the packet filter's `result` and the fingerprint of
+/// the encrypted datagram the `recvfrom` detour saw (`wire_fp`).
+///
+/// A non-happy packet carries `wire_fingerprint` beside its `seq`, so it can
+/// be joined to the server's send of the same bytes. An `old_duplicate` (a
+/// resend of a packet the client already has) is still a warn with
+/// `disposition`, but has no paired `client.mercury.error`; one with
+/// `seq <= 2` (the login handshake's resends) is a debug.
 pub(crate) fn packet(
     tail: &Tail,
     note: Option<&WindowNote>,
     result: i32,
     bad_packets: Option<u32>,
     group_in_flight: bool,
+    wire_fp: Option<u64>,
 ) -> Report {
     let disposition = tail.seq.zip(note).map(|(seq, n)| (n.disposition(seq), n));
     let mut error: Option<String> = tail.fault.map(|f| f.reason().to_string());
@@ -92,7 +100,17 @@ pub(crate) fn packet(
     if let Some(n) = bad {
         fields.push(("bad_packets_delta", json!(n)));
     }
-    let level = if !happy {
+    if !happy {
+        if let Some(fp) = wire_fp {
+            fields.push(("wire_fingerprint", json!(wire::fingerprint_hex(fp))));
+        }
+    }
+    // The window's verdict is the error only when the footers had no fault.
+    let old_duplicate =
+        tail.fault.is_none() && matches!(disposition, Some((Disposition::OldDuplicate { .. }, _)));
+    let level = if old_duplicate && tail.seq.is_some_and(|s| s <= 2) {
+        "debug"
+    } else if !happy {
         "warn"
     } else if buffered || tail.is_fragment() {
         "info"
@@ -104,7 +122,9 @@ pub(crate) fn packet(
         level,
         gate: tail::gate(tail, happy, buffered, group_in_flight),
         fields,
-        error,
+        // `packet_in` already names it (`disposition`); a second warn per
+        // resend only doubled the rows.
+        error: error.filter(|_| !old_duplicate),
     }
 }
 
@@ -213,7 +233,7 @@ mod tests {
             after: st(71, 0),
             window: 512,
         };
-        let r = packet(&t, Some(&n), 0, None, false);
+        let r = packet(&t, Some(&n), 0, None, false, None);
         assert_eq!((r.gate, r.level), (Gate::Throttled, "debug"));
         assert_eq!(r.error, None);
         assert_eq!(get(&r, "disposition"), Some(json!("delivered")));
@@ -229,25 +249,32 @@ mod tests {
             after: st(71, 0),
             window: 512,
         };
-        assert_eq!(packet(&frag, Some(&n), 0, None, false).gate, Gate::Always);
+        assert_eq!(
+            packet(&frag, Some(&n), 0, None, false, None).gate,
+            Gate::Always
+        );
         let t = dg(0x58, 75, None);
         let buffered = WindowNote {
             before: st(74, 0),
             after: st(74, 1),
             window: 512,
         };
-        let r = packet(&t, Some(&buffered), 0, None, false);
+        let r = packet(&t, Some(&buffered), 0, None, false, None);
         assert_eq!((r.gate, r.level), (Gate::Always, "info"));
         let n2 = WindowNote {
             before: st(75, 0),
             after: st(76, 0),
             window: 512,
         };
-        assert_eq!(packet(&t, Some(&n2), 0, None, true).gate, Gate::Always);
+        assert_eq!(
+            packet(&t, Some(&n2), 0, None, true, None).gate,
+            Gate::Always
+        );
     }
 
     /// A packet the window dropped (already ACKed) or the filter rejected is
-    /// a warn with a reason, and never throttled.
+    /// a warn, and never throttled. An `old_duplicate` is named by its own
+    /// `disposition` and gets no second `client.mercury.error` row.
     #[test]
     fn a_dropped_packet_is_a_warn_with_a_reason_and_no_throttle() {
         let t = dg(0x58, 60, None);
@@ -256,9 +283,10 @@ mod tests {
             after: st(74, 0),
             window: 512,
         };
-        let r = packet(&t, Some(&stale), 0, None, false);
+        let r = packet(&t, Some(&stale), 0, None, false, None);
         assert_eq!((r.gate, r.level), (Gate::Always, "warn"));
-        assert_eq!(r.error.as_deref(), Some("old_duplicate"));
+        assert_eq!(get(&r, "disposition"), Some(json!("old_duplicate")));
+        assert_eq!(r.error, None);
         // A fragment the reassembler dropped surfaces as a non-zero result.
         let f = dg(0x78, 80, Some((70, 84)));
         let ok = WindowNote {
@@ -266,15 +294,64 @@ mod tests {
             after: st(81, 0),
             window: 512,
         };
-        let r = packet(&f, Some(&ok), -4, None, true);
+        let r = packet(&f, Some(&ok), -4, None, true, None);
         assert_eq!(r.error.as_deref(), Some("result_0xfffffffc"));
         assert_eq!(r.gate, Gate::Always);
         // A footer fault carries its own reason.
         let bad = parse(&[0x80, 1]);
         assert_eq!(
-            packet(&bad, None, -4, None, false).error.as_deref(),
+            packet(&bad, None, -4, None, false, None).error.as_deref(),
             Some("bad_flags")
         );
+    }
+
+    /// TG-MER-12: a non-happy packet carries the encrypted datagram's
+    /// `wire_fingerprint` beside its `seq`, the keys that join it to the
+    /// server's send. A happy packet does not (it is throttled traffic).
+    #[test]
+    fn a_non_happy_packet_carries_its_wire_fingerprint() {
+        let fp = 0xa430_d846_80aa_bd0b;
+        let t = dg(0x58, 60, None);
+        let stale = WindowNote {
+            before: st(74, 0),
+            after: st(74, 0),
+            window: 512,
+        };
+        let r = packet(&t, Some(&stale), 0, None, false, Some(fp));
+        assert_eq!(get(&r, "seq"), Some(json!(60)));
+        assert_eq!(get(&r, "wire_fingerprint"), Some(json!("a430d84680aabd0b")));
+        // A footer fault (no sequence number) still carries the fingerprint.
+        let bad = parse(&[0x80, 1]);
+        let r = packet(&bad, None, -4, None, false, Some(fp));
+        assert_eq!(r.error.as_deref(), Some("bad_flags"));
+        assert_eq!(get(&r, "wire_fingerprint"), Some(json!("a430d84680aabd0b")));
+        let ok = WindowNote {
+            before: st(60, 0),
+            after: st(61, 0),
+            window: 512,
+        };
+        let r = packet(&t, Some(&ok), 0, None, false, Some(fp));
+        assert_eq!(r.error, None);
+        assert_eq!(get(&r, "wire_fingerprint"), None);
+    }
+
+    /// A resend of one of the first two packets (the login handshake) is an
+    /// expected duplicate: debug, not warn, and still never throttled.
+    #[test]
+    fn an_early_old_duplicate_is_debug() {
+        let t = dg(0x58, 2, None);
+        let stale = WindowNote {
+            before: st(5, 0),
+            after: st(5, 0),
+            window: 512,
+        };
+        let r = packet(&t, Some(&stale), 0, None, false, None);
+        assert_eq!(get(&r, "disposition"), Some(json!("old_duplicate")));
+        assert_eq!((r.gate, r.level), (Gate::Always, "debug"));
+        assert_eq!(r.error, None);
+        let t3 = dg(0x58, 3, None);
+        let r = packet(&t3, Some(&stale), 0, None, false, None);
+        assert_eq!(r.level, "warn");
     }
 
     #[test]
@@ -283,7 +360,7 @@ mod tests {
         d.extend(9u32.to_le_bytes());
         d.push(1);
         let t = parse(&d);
-        let r = packet(&t, None, -4, None, false);
+        let r = packet(&t, None, -4, None, false, None);
         assert_eq!(r.error, None);
         assert_eq!(r.gate, Gate::Throttled);
     }
