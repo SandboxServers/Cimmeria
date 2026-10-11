@@ -16,9 +16,16 @@
 //!   core's [`line_to_event`] so the fields are the egui launcher's and
 //!   SigNoz queries keep working. Then a flush (at most eight chunks).
 //! - **One session at a time.** The queue is shared, and a finishing
-//!   session flushes all of it under its token, so [`SessionLoop::start`]
+//!   session flushes all of it under its token, so [`SessionLoop::settle`]
 //!   waits for the previous session (at most [`PREVIOUS_BOUND`], then stops
 //!   it) before a new one queues anything.
+//! - **Client patches.** Each tick, after the tail, the client-patches DLL's
+//!   events ([`PatchEvents::poll`]: the boot verdict once it is logged, the
+//!   counts when due) are queued too. At exit, after the last tail tick and
+//!   before `game_exited`, what [`PatchEvents::finish`] still owes. Only a
+//!   game that ran reports them: a session dropped before the game started
+//!   skips the finish. The log reads are file I/O, so they run off the
+//!   runtime.
 //! - **Exit.** Play's supervisor already watches the game: the launch worker
 //!   hands its exit to [`SessionLoop::finish`], and this loop does not watch
 //!   the process itself. Then one last tick, a `session_meta` event of kind
@@ -37,6 +44,7 @@
 //! Known limit, as in the egui launcher: a log the game truncates and
 //! rewrites past its old length between two ticks is read from the old
 //! length, so its first bytes are missed.
+use super::patch_events::PatchEvents;
 use super::transport::{Transport, TransportError};
 use cimmeria_launcher_core::install_layout::binaries_dir;
 use cimmeria_launcher_core::telemetry::events::{
@@ -81,10 +89,10 @@ pub struct SessionEnd {
 /// not sent goes with the new one.
 pub const PREVIOUS_BOUND: Duration = Duration::from_secs(35);
 
-/// A running session. Dropping it ends the session as a finish with no
-/// observed exit would (Play stopped before the game ran, or its outcome is
-/// unknown); the task itself is never aborted, except by the next session
-/// after [`PREVIOUS_BOUND`].
+/// A running session. Dropping it ends the session as a game that never
+/// ran: like a finish with no observed exit, but with no client-patches
+/// finish (Play stopped before the game started). The task itself is never
+/// aborted, except by the next session after [`PREVIOUS_BOUND`].
 pub struct SessionLoop {
     exit: oneshot::Sender<Option<GameExit>>,
     task: JoinHandle<SessionEnd>,
@@ -92,20 +100,23 @@ pub struct SessionLoop {
 
 impl SessionLoop {
     /// Wait for the previous session on this queue to finish (see
-    /// [`PREVIOUS_BOUND`]), then [`SessionLoop::begin`]. The queue is
-    /// shared, and a finishing session flushes all of it under its own
-    /// token, so a new session's events queued while the old one is still
-    /// flushing would go out under the old session id.
-    pub async fn start(transport: Transport, game_dir: &Path) -> Self {
+    /// [`PREVIOUS_BOUND`]), before [`Settled::begin`]. The queue is shared,
+    /// and a finishing session flushes all of it under its own token, so a
+    /// new session's events queued while the old one is still flushing
+    /// would go out under the old session id. Play settles before it
+    /// commits Running (the wait stays cancellable) and begins once it has
+    /// made the game's [`PatchEvents`].
+    pub async fn settle(transport: Transport) -> Settled {
         settle_previous(transport.queue_dir(), PREVIOUS_BOUND).await;
-        Self::begin(transport, game_dir)
+        Settled(transport)
     }
 
     /// Take the baseline and start the loop, with no wait for a previous
-    /// session: [`SessionLoop::start`] is the one Play uses. On the async
+    /// session: [`SessionLoop::settle`] is the one Play uses. On the async
     /// runtime, before the game is spawned. `game_dir` is the install's
-    /// `game` directory.
-    pub fn begin(transport: Transport, game_dir: &Path) -> Self {
+    /// `game` directory; `patches`, when given, is reported through the
+    /// session.
+    pub fn begin(transport: Transport, game_dir: &Path, patches: Option<PatchEvents>) -> Self {
         let binaries = binaries_dir(game_dir);
         let queue_dir = transport.queue_dir().to_path_buf();
         // Before the first walk: a file created after this is the session's.
@@ -116,7 +127,7 @@ impl SessionLoop {
         let mut tailer = Tailer::new();
         tailer.refresh(&binaries, |path| is_tailed(&binaries, path));
         let (exit, exited) = oneshot::channel();
-        let task = tokio::spawn(run(transport, tailer, binaries, baseline, exited));
+        let task = tokio::spawn(run(transport, tailer, binaries, baseline, patches, exited));
         previous_sessions()
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -124,12 +135,23 @@ impl SessionLoop {
         Self { exit, task }
     }
 
-    /// The game is gone: hand over its exit, if it was observed. The
+    /// The game ran and is gone: hand over its exit, if it was observed. The
     /// returned handle resolves when the bundle and the last flush are done;
     /// the launch worker does not wait on it.
     pub fn finish(self, exit: Option<GameExit>) -> JoinHandle<SessionEnd> {
         let _ = self.exit.send(exit);
         self.task
+    }
+}
+
+/// A transport whose queue no earlier session is still sending from:
+/// [`SessionLoop::settle`]'s result, ready to [`Settled::begin`].
+pub struct Settled(Transport);
+
+impl Settled {
+    /// [`SessionLoop::begin`] on the settled transport.
+    pub fn begin(self, game_dir: &Path, patches: Option<PatchEvents>) -> SessionLoop {
+        SessionLoop::begin(self.0, game_dir, patches)
     }
 }
 
@@ -181,6 +203,7 @@ async fn run(
     mut tailer: Tailer,
     binaries: PathBuf,
     baseline: SystemTime,
+    mut patches: Option<PatchEvents>,
     mut exited: oneshot::Receiver<Option<GameExit>>,
 ) -> SessionEnd {
     let mut end = SessionEnd::default();
@@ -192,12 +215,16 @@ async fn run(
     {
         return withdrawn(end);
     }
-    let exit = loop {
+    // A dropped sender is a Play that stopped before the game started.
+    let (exit, ran) = loop {
         tokio::select! {
             biased;
-            exit = &mut exited => break exit.ok().flatten(),
+            exit = &mut exited => break exit.map_or((None, false), |exit| (exit, true)),
             _ = ticker.tick() => {
                 if tick(&transport, &mut tailer, &binaries, baseline, &mut end).await.is_err()
+                    || queue_patches(&transport, &mut patches, PatchStep::Poll, &mut end)
+                        .await
+                        .is_err()
                     || transport.flush().await == Err(TransportError::NotOptedIn)
                 {
                     return withdrawn(end);
@@ -209,6 +236,15 @@ async fn run(
     if tick(&transport, &mut tailer, &binaries, baseline, &mut end)
         .await
         .is_err()
+    {
+        return withdrawn(end);
+    }
+    // LX-08c's rule: a game that never ran has no client-patches log to
+    // report on, so its owed events are not made up from a missing log.
+    if ran
+        && queue_patches(&transport, &mut patches, PatchStep::Finish, &mut end)
+            .await
+            .is_err()
     {
         return withdrawn(end);
     }
@@ -267,6 +303,43 @@ async fn tick(
     tailer.follow(binaries, |path| is_tailed(binaries, path), baseline);
     for line in tailer.tick() {
         queue(transport, line_to_event(line), end).await?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PatchStep {
+    Poll,
+    Finish,
+}
+
+/// Queue the client-patches events `step` returns. The log is read off the
+/// runtime; `patches` goes there and comes back, and is lost only if the
+/// read panicked. `Err` only when the player has opted out.
+async fn queue_patches(
+    transport: &Transport,
+    patches: &mut Option<PatchEvents>,
+    step: PatchStep,
+    end: &mut SessionEnd,
+) -> Result<(), ()> {
+    let Some(mut events) = patches.take() else {
+        return Ok(());
+    };
+    let read = tokio::task::spawn_blocking(move || {
+        let owed = match step {
+            PatchStep::Poll => events.poll(std::time::Instant::now()),
+            PatchStep::Finish => events.finish(),
+        };
+        (events, owed)
+    })
+    .await;
+    let Ok((events, owed)) = read else {
+        tracing::warn!("client-patches log read failed; its events are not sent");
+        return Ok(());
+    };
+    *patches = Some(events);
+    for event in owed {
+        queue(transport, event, end).await?;
     }
     Ok(())
 }

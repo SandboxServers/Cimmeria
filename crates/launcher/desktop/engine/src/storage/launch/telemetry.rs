@@ -1,7 +1,8 @@
 //! The launch side of opt-in game telemetry: one server session per Play, and
 //! the DLL joins the injection list only once that session's marker is on disk.
 use super::*;
-use crate::game_telemetry::session_loop::{GameExit, SessionLoop};
+use crate::game_telemetry::patch_events::PatchEvents;
+use crate::game_telemetry::session_loop::{GameExit, SessionLoop, Settled};
 use crate::game_telemetry::transport::{Consent, Transport};
 use crate::game_telemetry::{self, Outcome, Session};
 use std::sync::Mutex;
@@ -47,25 +48,42 @@ pub(super) fn injected<'a>(plan: &'a Plan, session: Option<&Session>) -> Option<
     Some(artifact)
 }
 
-/// Start the launcher's half of the session (log tailing, exit, bundle) on
-/// the session Play minted, before the game is spawned. The choice is read
-/// again under the lock; a transport that cannot be opened costs only the
-/// telemetry, never the launch. Waits first for the previous Play's session
-/// to finish sending (bounded, see `SessionLoop::start`).
-pub(super) async fn begin_session(
+/// Open the transport for the launcher's half of the session (log tailing,
+/// client-patches events, exit, bundle) on the session Play minted, and wait
+/// for the previous Play's session to finish sending (bounded, see
+/// `SessionLoop::settle`). Before Running, so the Play can still be
+/// cancelled during the wait. The choice is read again under the lock; a
+/// transport that cannot be opened costs only the telemetry, never the
+/// launch.
+pub(super) async fn open_session(
     state: &Arc<Mutex<DesktopState>>,
     plan: &Plan,
     session: &Session,
     servers: &[LoginServer],
-) -> Option<SessionLoop> {
+) -> Option<Settled> {
     let consent = Consent::read(&*state.lock().ok()?).ok().flatten()?;
     let game = plan.installation.destination.join("game");
     match Transport::open(consent, session, servers, &game) {
-        Ok(transport) => Some(SessionLoop::start(transport, &game).await),
+        Ok(transport) => Some(SessionLoop::settle(transport).await),
         Err(code) => {
             tracing::warn!(operation = %plan.id, ?code, "game telemetry session not started");
             None
         }
+    }
+}
+
+/// Start the session loop, before the game is spawned, so the tail's
+/// baseline holds only earlier sessions' lines. It reports `patches`; with
+/// no session open they come back for `patch_events::queue_at_exit`.
+pub(super) fn begin_session(
+    plan: &Plan,
+    settled: Option<Settled>,
+    patches: PatchEvents,
+) -> Result<SessionLoop, PatchEvents> {
+    let game = plan.installation.destination.join("game");
+    match settled {
+        Some(settled) => Ok(settled.begin(&game, Some(patches))),
+        None => Err(patches),
     }
 }
 

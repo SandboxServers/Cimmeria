@@ -177,17 +177,19 @@ pub async fn queue_without_session(
     consent: &Consent,
     event: TelemetryEvent,
 ) -> Result<(), TransportError> {
-    if !consent.current() {
-        return Err(TransportError::NotOptedIn);
-    }
-    queue_now(consent, &event)?;
-    consent.undo_if_withdrawn()
+    queue_now(consent, &event)
 }
 
 /// [`queue_without_session`] for callers that hold the state lock and
 /// cannot await: core's queue locks its own file only for the append.
+/// After an opt-out: Err(NotOptedIn), and nothing is left on disk, even for
+/// a consent read before the change.
 pub(crate) fn queue_now(consent: &Consent, event: &TelemetryEvent) -> Result<(), TransportError> {
+    if !consent.current() {
+        return Err(TransportError::NotOptedIn);
+    }
     DiskQueue::new(&consent.queue_dir)
         .enqueue(event)
-        .map_err(|_| TransportError::Queue)
+        .map_err(|_| TransportError::Queue)?;
+    consent.undo_if_withdrawn()
 }

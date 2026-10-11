@@ -309,6 +309,25 @@ async fn an_opted_out_player_sends_nothing() {
     server.verify().await;
 }
 
+/// The sync write behind the install result and the exit-time
+/// client-patches events keeps the same rule: a consent read before an
+/// opt-out writes nothing after it, and leaves no queue on disk.
+#[test]
+fn queue_now_after_an_opt_out_writes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let mut state = opted_in(root.path());
+    let consent = Consent::read(&state).unwrap().unwrap();
+    queue_now(&consent, &event("before")).unwrap();
+    state.set_game_telemetry(false).unwrap();
+    assert_eq!(
+        queue_now(&consent, &event("after")),
+        Err(TransportError::NotOptedIn)
+    );
+    let core = DiskQueue::new(root.path());
+    assert_eq!(core.pending_count::<TelemetryEvent>().unwrap(), 0);
+    assert!(!root.path().join("telemetry-queue.jsonl").exists());
+}
+
 /// Both writes refuse after an opt-out.
 async fn refuse_writes(transport: &Transport, consent: &Consent) {
     assert_eq!(

@@ -442,8 +442,13 @@ Windows launcher's own events, built by the same core code:
 and the client-patches DLL's `client.patches.boot` and `client.patches.counts`
 for each Play. The boot event's `injection` follows the policy Play used, so
 an adopted copy whose reviewed choice is patches off reports `opted_out`.
-None of these have a session of their own: they go to the disk queue and ship
-with the next session's first flush.
+When Play's own telemetry session runs, the client-patches events go through
+it: the boot verdict on the first tick after the DLL logs it, the counts at
+most once a minute while they move, and whatever is still owed (the verdict
+if none was logged, the final counts) after the last tail tick and before
+`game_exited`. Otherwise, and always for the install result, they go to the
+disk queue and ship with the next session's first flush. Either way they are
+reported only for a game that ran.
 
 **Not covered:**
 

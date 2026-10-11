@@ -1,5 +1,6 @@
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
+use crate::game_telemetry::patch_events::{PatchEvents, PatchInjection};
 use crate::game_telemetry::start;
 use crate::game_telemetry::transport::{recover_now, Consent, Recovery};
 use crate::storage::DesktopState;
@@ -69,7 +70,7 @@ async fn begin(state: &DesktopState, server: &MockServer, game: &Path) -> Sessio
     .await
     .unwrap();
     let transport = Transport::open(consent, &session, &servers(server), game).unwrap();
-    SessionLoop::begin(transport, game)
+    SessionLoop::begin(transport, game, None)
 }
 
 /// Every event of every chunk the server took, in order.
@@ -197,6 +198,112 @@ async fn a_log_grown_in_steps_ships_each_line_once_and_the_exit_closes_it() {
     assert!(seqs.windows(2).all(|w| w[0] < w[1]), "{seqs:?}");
 }
 
+/// The client-patches DLL's events go through the session: the boot verdict
+/// while the game runs (polled on a tick), the final counts at exit, each
+/// once and before `game_exited`.
+#[tokio::test]
+async fn client_patches_events_ship_live_and_at_exit_each_once() {
+    use cimmeria_launcher_core::telemetry::patch_log::LOG_FILE_NAME;
+    const BOOT: &str = "\
+[cimmeria-client-patches +0ms] attached, version 0.1.0, host SGW.exe\r\n\
+[cimmeria-client-patches +5ms] Black Market installed: received calls go to the Lua table CimmeriaBM\r\n";
+    const CALL: &str = "\
+[cimmeria-client-patches +980ms] delivered onBMListings to CimmeriaBM.onBMListings (#1)\r\n";
+    let root = tempfile::tempdir().unwrap();
+    let (game, binaries) = game(root.path());
+    let server = MockServer::start().await;
+    mount(&server).await;
+    let state = opted_in(&root.path().join("state"));
+    let consent = Consent::read(&state).unwrap().expect("opted in");
+    let minted = start(
+        &state.game_telemetry().unwrap().identity.unwrap(),
+        &servers(&server),
+        &["desktop-launcher"],
+    )
+    .await
+    .unwrap();
+    let transport = Transport::open(consent, &minted, &servers(&server), &game).unwrap();
+    let patches = PatchEvents::new(&binaries, PatchInjection::Injected);
+    let session = SessionLoop::begin(transport, &game, Some(patches));
+
+    let log = binaries.join(LOG_FILE_NAME);
+    append(&log, BOOT);
+    let targets = |events: &[serde_json::Value]| -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|e| e["target"].as_str().map(String::from))
+            .collect()
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !targets(&delivered(&server).await).contains(&"client.patches.boot".to_string()) {
+        assert!(Instant::now() < deadline, "the boot verdict never arrived");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    // A few more ticks: the verdict is not polled out again.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    // No await between the write and the exit: no tick polls the counts.
+    append(&log, CALL);
+    let end = session.finish(Some(EXIT)).await.unwrap();
+
+    let events = delivered(&server).await;
+    assert_eq!(
+        targets(&events),
+        ["client.patches.boot", "client.patches.counts"],
+        "{events:?}"
+    );
+    let counts = events
+        .iter()
+        .position(|e| e["target"] == "client.patches.counts")
+        .unwrap();
+    assert_eq!(events[counts]["fields"]["final"], true);
+    assert_eq!(events[counts]["fields"]["delivered"], 1);
+    let exited = events
+        .iter()
+        .position(|e| e["kind"] == "game_exited")
+        .unwrap();
+    assert_eq!(exited, events.len() - 1, "game_exited is last");
+    assert!(counts < exited);
+    assert_eq!(end.events, 4, "started, boot, counts, game_exited");
+}
+
+/// A session dropped before the game ran (Play cancelled, or the helper
+/// never started it) reports no client-patches events: with no log, the
+/// finish would make up a "no log" boot verdict for a game that never ran.
+#[tokio::test]
+async fn a_session_dropped_before_the_game_ran_reports_no_patch_events() {
+    let root = tempfile::tempdir().unwrap();
+    let (game, binaries) = game(root.path());
+    let server = MockServer::start().await;
+    mount(&server).await;
+    let state = opted_in(&root.path().join("state"));
+    let consent = Consent::read(&state).unwrap().expect("opted in");
+    let minted = start(
+        &state.game_telemetry().unwrap().identity.unwrap(),
+        &servers(&server),
+        &["desktop-launcher"],
+    )
+    .await
+    .unwrap();
+    let transport = Transport::open(consent, &minted, &servers(&server), &game).unwrap();
+    let patches = PatchEvents::new(&binaries, PatchInjection::Injected);
+    let session = SessionLoop::begin(transport, &game, Some(patches));
+    // Something for the bundle, so its upload marks the session's end.
+    append(&binaries.join("SGWDebugLog.log"), "only line\n");
+    drop(session);
+    // After the bundle only the last flush is left: give it time to land.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while posts(&server, BUNDLE).await == 0 {
+        assert!(Instant::now() < deadline, "the session never finished");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    let events = delivered(&server).await;
+    assert!(
+        !events.iter().any(|e| e["target"].is_string()),
+        "{events:?}"
+    );
+}
+
 /// No exit observed (the supervisor's outcome is unknown): the stream
 /// closes and the bundle goes, with no `game_exited` event to claim a code.
 #[tokio::test]
@@ -250,7 +357,7 @@ async fn a_launcher_restart_mid_session_ships_no_line_twice() {
     let transport = Transport::open(consent, &minted, &servers(&server), &game).unwrap();
     let session = {
         let _launcher = launcher.enter();
-        SessionLoop::begin(transport, &game)
+        SessionLoop::begin(transport, &game, None)
     };
     append(&debug, "before the close\n");
     wait_for_line(&server, "before the close").await;
@@ -341,7 +448,7 @@ async fn mount_two_sessions(server: &MockServer, slow_token: &str, slow: Duratio
     }
 }
 
-/// Play's mint and the session on it, through [`SessionLoop::start`] as
+/// Play's mint and the session on it, through [`SessionLoop::settle`] as
 /// the launch worker does: it waits for the previous session.
 async fn start_after_previous(
     state: &DesktopState,
@@ -357,7 +464,7 @@ async fn start_after_previous(
     .await
     .unwrap();
     let transport = Transport::open(consent, &session, &servers(server), game).unwrap();
-    SessionLoop::start(transport, game).await
+    SessionLoop::settle(transport).await.begin(game, None)
 }
 
 /// The messages and session kinds of every chunk sent on `token`.
