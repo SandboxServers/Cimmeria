@@ -382,8 +382,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         let needle = format!("${{{PLAYER_ENTITY_VAR}}}");
         let names_player = fields.values().any(|v| v.as_str() == Some(needle.as_str()));
         if names_player && !ctx.vars.contains_key(PLAYER_ENTITY_VAR) {
-            // SV-07: use player_entity
-            let id = self.find_player_entity(who, rec).await?;
+            let id = self.player_entity(who, rec).await?;
             ctx.vars.insert(PLAYER_ENTITY_VAR.into(), json!(id));
         }
         let filled = subst(&Value::Object(fields.clone()), &ctx.vars);
@@ -391,21 +390,5 @@ impl<I: ToolInvoker> Runner<'_, I> {
             return Err(format!("unresolved variable {v}"));
         }
         Ok(filled.as_object().cloned().unwrap_or_default())
-    }
-
-    /// The client's own player entity id (`client_entity_find`
-    /// `/player/id`), the same read SV-07's `player_entity` makes.
-    async fn find_player_entity(&self, who: Who, rec: &mut ActionRecord) -> Result<u64, String> {
-        let args = json!({ "include_player": true, "limit": 1, "project": false });
-        let out = self.on(who).call(FIND_TOOL, args.clone()).await;
-        rec.calls
-            .push(json!({ "tool": FIND_TOOL, "args": args, "ok": out.ok }));
-        if !out.ok {
-            return Err(format!("{FIND_TOOL}: {}", out.error.unwrap_or_default()));
-        }
-        out.json
-            .pointer("/player/id")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| format!("{FIND_TOOL} reported no /player/id"))
     }
 }

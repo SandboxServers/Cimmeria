@@ -515,11 +515,11 @@ mod polled_clause_tests;
 #[cfg(test)]
 mod revocation_tests;
 #[cfg(test)]
+mod server_wait_tests;
+#[cfg(test)]
 mod snapshot_mode_tests;
 #[cfg(test)]
 mod snapshot_tests;
-#[cfg(test)]
-mod server_wait_tests;
 #[cfg(test)]
 mod targets_tests;
 #[cfg(test)]
