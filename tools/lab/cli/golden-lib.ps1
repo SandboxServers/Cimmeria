@@ -22,7 +22,7 @@ function Test-GoldenArguments([string]$Action, [string]$Section, [int]$Runs, [in
     if (@('record', 'show') -notcontains $Action) { return 'usage: lab golden record|show <section> ...' }
     if (-not $Section) { return "usage: lab golden $Action <section>" }
     # The section names a file under golden/, so it may not reach outside it.
-    if ($Section -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $Section -match '\.\.') {
+    if ($Section -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $Section -match '\.\.') {
         return "section '$Section' is not a section id (letters, digits, '.', '_' and '-')"
     }
     if ($Runs -lt $script:GoldenMinRuns -or $Runs -gt $script:GoldenMaxRuns) {
@@ -36,9 +36,27 @@ function Test-GoldenArguments([string]$Action, [string]$Section, [int]$Runs, [in
     return $null
 }
 
-# The committed golden of a section under a spec folder.
+# The committed golden of a section under a spec folder, named as the daemon
+# names it (crates/lab golden_path): evidence.rs path_safe turns every
+# character outside [A-Za-z0-9_-] into '_', so v1.2 is golden/v1_2.json.
 function Get-GoldenPath([string]$SpecsDir, [string]$Section) {
-    return Join-Path (Join-Path $SpecsDir 'golden') "$Section.json"
+    return Join-Path (Join-Path $SpecsDir 'golden') "$($Section -creplace '[^A-Za-z0-9_-]', '_').json"
+}
+
+# The child `lab uat` arguments for a golden batch: fingerprint runs, Runs
+# split evenly over Leases (Test-GoldenArguments refuses an uneven split, and
+# so does this), a lane brake of one failed run, progress on stderr and one
+# JSON line on stdout. Each value is its own element, so a path with spaces
+# stays one argument.
+function Get-GoldenBatchArgs([string]$Section, [string[]]$Rows, [int]$Runs, [int]$Leases, [string]$ServerVersion, [string]$SpecsDir) {
+    if ($Leases -lt 1 -or $Runs % $Leases -ne 0) { throw "-Runs $Runs does not split evenly over -Leases $Leases" }
+    $a = @($Section)
+    $rowList = @($Rows | Where-Object { $_ })
+    if ($rowList.Count) { $a += '-Rows', ($rowList -join ',') }
+    $a += '-Leases', $Leases, '-RunsPerLease', ($Runs / $Leases), '-ServerVersion', $ServerVersion
+    if ($SpecsDir) { $a += '-SpecsDir', $SpecsDir }
+    $a += '-Fingerprint', '-MaxConsecutiveFailures', 1, '-ProgressToStderr', '-Json'
+    return , $a
 }
 
 # The RunDir of every batch.jsonl record, in order; $null when there are no
@@ -107,14 +125,16 @@ function ConvertTo-GoldenExit($Reply) {
 }
 
 # The reply as one compact JSON object with no nulls: on success
-# {ok, exit, path, rows, events, bytes, runs}, else {ok, exit, code, error}.
-function ConvertTo-GoldenCompactJson($Reply, [int]$Exit) {
+# {ok, exit, path, rows, events, bytes, runs}, else {ok, exit, code, error,
+# batch}: a refusal after the runs still names the batch folder they are in.
+function ConvertTo-GoldenCompactJson($Reply, [int]$Exit, [string]$Batch) {
     $out = [ordered]@{ ok = ($Exit -eq 0); exit = $Exit }
     $keys = if ($Exit -eq 0) { 'path', 'rows', 'events', 'bytes', 'runs' } else { 'code', 'error' }
     foreach ($k in $keys) {
         $v = Get-UatField $Reply $k
         if ($null -ne $v -and "$v" -ne '') { $out[$k] = $v }
     }
+    if ($Exit -ne 0 -and $Batch) { $out.batch = $Batch }
     return $out | ConvertTo-Json -Depth 4 -Compress
 }
 

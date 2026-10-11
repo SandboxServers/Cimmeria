@@ -22,13 +22,17 @@
     show prints a committed golden: section, rows, total ordered events,
     server build, recorded time and evidence run ids. It needs no daemon.
 
-    -Json prints only one compact JSON object: {"ok":true,"exit":0,...} or
-    {"ok":false,"exit":N,"error":...}.
+    record shows lab uat's per-run progress lines live on stderr.
+
+    -Json prints only one compact JSON object on stdout: {"ok":true,"exit":0,...}
+    or {"ok":false,"exit":N,"error":...}, with "batch" (the runs' batch
+    folder) on any failure after the runs. Progress still goes to stderr.
 
     Exit codes: 0 recorded (or shown); 1 a run or row did not pass; 2 usage,
     or a golden exists without -Rebless (show: no golden); 3 the lab uat
     pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the
-    runs cannot be recorded as given.
+    runs cannot be recorded as given, the daemon failed after the runs, or
+    (show) the golden cannot be read.
 
 .EXAMPLE
     lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -ServerVersion 1a2b3c4
@@ -57,12 +61,14 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
 . (Join-Path $PSScriptRoot 'golden-lib.ps1')
 
-# A failure: plain text on stderr, or under -Json one object on stdout.
-# Returns the exit code.
-function Stop-Golden([int]$Code, [string]$Message) {
+# A failure: plain text on stderr, or under -Json one object on stdout,
+# naming the batch folder once the runs exist. Returns the exit code.
+function Stop-Golden([int]$Code, [string]$Message, [string]$Batch) {
     $Message = Hide-LeaseIds $Message
     if ($Json) {
-        [Console]::Out.WriteLine(([ordered]@{ ok = $false; exit = $Code; error = $Message } | ConvertTo-Json -Compress))
+        $o = [ordered]@{ ok = $false; exit = $Code; error = $Message }
+        if ($Batch) { $o.batch = $Batch }
+        [Console]::Out.WriteLine(($o | ConvertTo-Json -Compress))
     } else {
         [Console]::Error.WriteLine($Message)
     }
@@ -74,7 +80,7 @@ function Show-Golden([string]$Specs) {
     $path = Get-GoldenPath $Specs $Section
     if (-not (Test-Path -LiteralPath $path)) { return Stop-Golden 2 "no golden for $Section ($path); record one with lab golden record" }
     try { $golden = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 50 }
-    catch { return Stop-Golden 1 "cannot read ${path}: $(($_.Exception.Message -split "`n")[0])" }
+    catch { return Stop-Golden 7 "cannot read ${path}: $(($_.Exception.Message -split "`n")[0])" }
     $summary = Get-GoldenSummary $golden
     if ($Json) {
         $o = [ordered]@{ ok = $true; exit = 0 }
@@ -100,38 +106,42 @@ function Invoke-LabGolden {
     $requested = @(ConvertTo-UatRowIds $Rows)
 
     # The batch runs as a child process so its -Json line can be captured: a
-    # bare & call would lose what uat.ps1 writes to [Console]::Out.
-    $childArgs = @($Section)
-    if ($requested.Count) { $childArgs += '-Rows', ($requested -join ',') }
-    $childArgs += '-Leases', $Leases, '-RunsPerLease', [int]($Runs / $Leases), '-ServerVersion', $ServerVersion
-    if ($specs) { $childArgs += '-SpecsDir', $specs }
-    $childArgs += '-Fingerprint', '-MaxConsecutiveFailures', 1, '-Json'
+    # bare & call would lose what uat.ps1 writes to [Console]::Out. Its
+    # progress lines go to stderr, which is not captured, so they reach the
+    # console live (under -Json too; stdout stays one JSON line).
+    $childArgs = Get-GoldenBatchArgs $Section $requested $Runs $Leases $ServerVersion $specs
     if (-not $Json) {
         Write-Host "lab golden record $Section`: $Runs fingerprint run(s) on $Leases lane(s), then lab_golden_record (a run takes a few minutes)"
     }
     $pwshExe = (Get-Process -Id $PID).Path
     $lines = @(& $pwshExe -NoProfile -File (Join-Path $PSScriptRoot 'uat.ps1') @childArgs)
     $batch = ConvertFrom-GoldenBatchOutput $lines $LASTEXITCODE
-    if ($batch.Exit -ne 0) { return Stop-Golden $batch.Exit $batch.Error }
+    if ($batch.Exit -ne 0) { return Stop-Golden $batch.Exit $batch.Error $batch.Batch }
 
     # Run folders come from batch.jsonl: -Json names only the batch (F16).
-    $dirs = Get-GoldenRunDirs (Read-UatRecords (Join-Path $batch.Batch 'batch.jsonl'))
-    if ($null -eq $dirs) { return Stop-Golden 7 "the batch passed but a run has no run folder; $($batch.Batch)" }
+    try { $dirs = Get-GoldenRunDirs (Read-UatRecords (Join-Path $batch.Batch 'batch.jsonl')) }
+    catch { return Stop-Golden 7 "cannot read the batch's runs: $(($_.Exception.Message -split "`n")[0]); $($batch.Batch)" $batch.Batch }
+    if ($null -eq $dirs) { return Stop-Golden 7 "the batch passed but a run has no run folder; $($batch.Batch)" $batch.Batch }
     $toolArgs = @{ section = $Section; run_dirs = @($dirs); rebless = [bool]$Rebless }
     if ($requested.Count) { $toolArgs.rows = $requested }
     if ($specs) { $toolArgs.specs_dir = $specs }
-    $token = Get-LabToken
-    if (-not $token) { return Stop-Golden 7 "the lab daemon is not answering (lab status); the runs are in $($batch.Batch)" }
     try {
-        $session = New-McpSession (Get-LabMcpUrl) $token
+        $token = Get-LabToken
+        $url = Get-LabMcpUrl
+    } catch {
+        return Stop-Golden 7 "cannot reach the lab daemon: $(($_.Exception.Message -split "`n")[0]); the runs are in $($batch.Batch)" $batch.Batch
+    }
+    if (-not $token) { return Stop-Golden 7 "the lab daemon is not answering (lab status); the runs are in $($batch.Batch)" $batch.Batch }
+    try {
+        $session = New-McpSession $url $token
         try { $reply = Invoke-McpTool $session 'lab_golden_record' $toolArgs 300 }
         finally { Close-McpSession $session }
     } catch {
-        return Stop-Golden 7 "lab_golden_record failed: $(($_.Exception.Message -split "`n")[0]); the runs are in $($batch.Batch)"
+        return Stop-Golden 7 "lab_golden_record failed: $(($_.Exception.Message -split "`n")[0]); the runs are in $($batch.Batch)" $batch.Batch
     }
     $code = ConvertTo-GoldenExit $reply
     if ($Json) {
-        [Console]::Out.WriteLine((Hide-LeaseIds (ConvertTo-GoldenCompactJson $reply $code)))
+        [Console]::Out.WriteLine((Hide-LeaseIds (ConvertTo-GoldenCompactJson $reply $code $batch.Batch)))
     } elseif ($code -eq 0) {
         Write-Host (Format-GoldenRecordLine $Section $reply)
     } else {

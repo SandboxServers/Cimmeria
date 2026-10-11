@@ -39,6 +39,31 @@ Check ((Test-GoldenArguments 'record' 'first-session' 5 1 '1A2B3C4') -like '-Ser
 Check ((Test-GoldenArguments 'record' 'first-session' 5 1 ('a' * 41)) -like '-ServerVersion must be*') 'a 41-character build is refused'
 Check ((Test-GoldenArguments 'record' 'first-session' 5 1 'main') -like '-ServerVersion must be*') 'a branch name is not a build'
 Check ((Get-GoldenPath 'C:\specs' 'first-session') -eq (Join-Path 'C:\specs' 'golden\first-session.json')) 'the golden sits at <specs>\golden\<section>.json'
+# The daemon names the file with evidence.rs path_safe: outside [A-Za-z0-9_-] is '_'.
+Check ($null -eq (Test-GoldenArguments 'record' 'v1.2' 5 1 $sha)) 'a section with a dot is valid'
+Check ((Get-GoldenPath 'C:\specs' 'v1.2') -eq (Join-Path 'C:\specs' 'golden\v1_2.json')) 'v1.2 is stored as golden\v1_2.json, as the daemon names it'
+Check ((Get-GoldenPath 'C:\specs' 'gm_Parity-2') -eq (Join-Path 'C:\specs' 'golden\gm_Parity-2.json')) 'letters, digits, _ and - keep their case'
+Check ((Test-GoldenArguments 'show' 'a/b' 5 1 '') -like '*is not a section id*') 'a section with / is refused'
+Check ((Test-GoldenArguments 'show' 'a\b' 5 1 '') -like '*is not a section id*') 'a section with \ is refused'
+Check ((Test-GoldenArguments 'show' ([string][char]0x212A) 5 1 '') -like '*is not a section id*') 'a non-ASCII letter (Kelvin sign) is refused'
+
+# --- the child lab uat arguments ---
+$specsSp = 'C:\My Specs\uat specs'
+$ba = Get-GoldenBatchArgs 'first-session' @('FS-01', 'FS-P1') 10 2 $sha $specsSp
+function ArgAfter($list, [string]$name) { $i = [array]::IndexOf(@($list), $name); if ($i -lt 0) { return $null }; return @($list)[$i + 1] }
+Check ($ba[0] -eq 'first-session') 'the section comes first'
+Check ($ba -contains '-Fingerprint') 'the runs are fingerprint runs'
+Check ((ArgAfter $ba '-MaxConsecutiveFailures') -eq 1) 'the lane brake is one failed run'
+Check ((ArgAfter $ba '-RunsPerLease') -eq 5 -and (ArgAfter $ba '-Leases') -eq 2) '-RunsPerLease is Runs / Leases'
+Check ((ArgAfter $ba '-SpecsDir') -ceq $specsSp) 'a -SpecsDir with spaces stays one element'
+Check ((ArgAfter $ba '-ServerVersion') -ceq $sha) 'the build goes to the runs'
+Check ((ArgAfter $ba '-Rows') -ceq 'FS-01,FS-P1') 'the rows go as one comma list'
+Check ($ba -contains '-ProgressToStderr' -and $ba[-1] -eq '-Json') 'progress goes to stderr and the result is JSON'
+$ba1 = Get-GoldenBatchArgs 'first-session' @() 5 1 $sha ''
+Check ($ba1 -notcontains '-Rows' -and $ba1 -notcontains '-SpecsDir' -and (ArgAfter $ba1 '-RunsPerLease') -eq 5) 'no rows and no spec folder add no arguments'
+Check ((Get-GoldenBatchArgs 'first-session' $null 5 1 $sha '') -notcontains '-Rows') 'null rows add no -Rows'
+$threw = $false; try { Get-GoldenBatchArgs 'first-session' @() 5 2 $sha '' | Out-Null } catch { $threw = $_.Exception.Message -like '*does not split evenly*' }
+Check $threw 'an uneven split is refused, as Test-GoldenArguments refuses it'
 
 # --- run folders from batch.jsonl records ---
 function Rec([bool]$ok, $dir) { [pscustomobject]@{ Lane = 1; Instance = 'default'; Ok = $ok; RunDir = $dir } }
@@ -78,6 +103,7 @@ $failLine = '{"ok":false,"runs":2,"passed":1,"failed":1,"failed_known":1,"failed
     '"failures":[{"n":1,"why":"FS-P2 FAIL: clause movie-over failed","issue":"#1341","runs":["default#2"]}],"batch":"C:\\b"}'
 $r = ConvertFrom-GoldenBatchOutput @($failLine) 4
 Check ($r.Exit -eq 1 -and $r.Error -like '*1/2 passed*FS-P2 FAIL: clause movie-over failed (runs: default#2)*') 'a braked lane is exit 1 with its first failure'
+Check ($r.Batch -eq 'C:\b') 'a failed batch still names its folder'
 $r = ConvertFrom-GoldenBatchOutput @($failLine) 1
 Check ($r.Exit -eq 1 -and $r.Error -like 'every run must pass*') 'a failed run is exit 1: every run must pass'
 $r = ConvertFrom-GoldenBatchOutput @() 1
@@ -107,6 +133,12 @@ Check (-not $b.ok -and $b.exit -eq 6 -and $b.code -eq 'disagree' -and $b.error -
 Check ($bad -notmatch 'null' -and $bad -notmatch 'path') 'a refusal has no nulls and no success fields'
 $sparse = ConvertTo-GoldenCompactJson ([pscustomobject]@{ ok = $false; code = 'cannot_record'; error = $null }) 7
 Check ($sparse -notmatch 'null' -and $sparse -notmatch 'error') 'a missing error is left out, not null'
+foreach ($c in @(@('disagree', 6), @('not_passing', 1), @('cannot_record', 7))) {
+    $j = ConvertTo-GoldenCompactJson ([pscustomobject]@{ ok = $false; code = $c[0]; error = 'x' }) $c[1] $batchDir | ConvertFrom-Json
+    Check ($j.exit -eq $c[1] -and $j.batch -eq $batchDir) "a $($c[0]) refusal names the batch folder"
+}
+Check ((ConvertTo-GoldenCompactJson $okReply 0 $batchDir) -notmatch 'batch') 'a success names the golden path, not the batch'
+Check ((ConvertTo-GoldenCompactJson ([pscustomobject]@{ ok = $false; code = 'disagree'; error = 'x' }) 6 '') -notmatch 'batch') 'no batch folder is left out, not empty'
 
 Check ((Format-GoldenRecordLine 'first-session' $okReply) -ceq "golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; $($okReply.path)") 'the record line'
 
@@ -149,6 +181,17 @@ try {
     $shown = $out | ConvertFrom-Json
     Check ($LASTEXITCODE -eq 0 -and $shown.ok -and $shown.events -eq 3 -and (@($shown.runs) -join ',') -eq 'r1,r2') 'show prints the committed golden as JSON'
     Check ("$out" -notmatch 'null') 'show JSON has no nulls'
+    # A dotted section is read from the file the daemon writes.
+    Set-Content -LiteralPath (Join-Path $specs 'golden\v1_2.json') -Value ($golden | ConvertTo-Json -Depth 50) -Encoding utf8
+    $out = & $pwshExe -NoProfile -File $cmd show v1.2 -SpecsDir $specs -Json
+    Check ($LASTEXITCODE -eq 0 -and ($out | ConvertFrom-Json).ok) 'show v1.2 reads golden\v1_2.json'
+    $out = & $pwshExe -NoProfile -File $cmd record v1.2 -ServerVersion $sha -SpecsDir $specs -Json
+    Check ($LASTEXITCODE -eq 2 -and ($out | ConvertFrom-Json).error -like 'a golden exists*') 'record v1.2 sees golden\v1_2.json exists'
+    # An unreadable golden is not "a run did not pass" (1).
+    Set-Content -LiteralPath (Join-Path $specs 'golden\broken.json') -Value '{ not json' -Encoding utf8
+    $out = & $pwshExe -NoProfile -File $cmd show broken -SpecsDir $specs -Json
+    $o = $out | ConvertFrom-Json
+    Check ($LASTEXITCODE -eq 7 -and $o.exit -eq 7 -and $o.error -like 'cannot read*') "an unreadable golden exits 7 ($LASTEXITCODE)"
 } finally { Remove-Item -LiteralPath $specs -Recurse -Force -ErrorAction SilentlyContinue }
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }

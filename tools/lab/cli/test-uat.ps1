@@ -145,6 +145,26 @@ $line = Format-UatProgressLine @{ Instance = 'p2'; Index = 2; Ok = $false; Verdi
     Error = 'lab_uat_run failed: bridge down'; Seconds = 3 } 3
 Check ($line -ceq '[p2 2/3] ERROR lab_uat_run failed: bridge down (3s)') "the progress line for an ERROR run ($line)"
 
+# --- where progress goes (-ProgressToStderr is lab golden's live progress) ---
+Check ((Get-UatProgressMode $false $false $false) -eq 'host') 'progress goes to the console by default'
+Check ((Get-UatProgressMode $true $false $false) -eq 'none') '-Json alone silences progress'
+Check ((Get-UatProgressMode $false $true $false) -eq 'none') '-Quiet silences progress'
+Check ((Get-UatProgressMode $true $false $true) -eq 'stderr') '-ProgressToStderr keeps progress under -Json, on stderr'
+Check ((Get-UatProgressMode $true $true $true) -eq 'stderr') '-ProgressToStderr wins over -Quiet'
+# Through a real process: stderr carries the line and stdout stays empty, so a
+# caller still reads one JSON line from stdout.
+$pwshExe = (Get-Process -Id $PID).Path
+$lib = Join-Path $PSScriptRoot 'uat-lib.ps1'
+$errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-progress-" + [guid]::NewGuid() + '.txt')
+try {
+    foreach ($m in 'stderr', 'none') {
+        $stdout = @(& $pwshExe -NoProfile -Command ". '$lib'; Write-UatProgress '$m' '[default 1/5] PASS (90s)'" 2> $errFile)
+        $stderr = (Get-Content -LiteralPath $errFile -Raw) ?? ''
+        if ($m -eq 'stderr') { Check ($stdout.Count -eq 0 -and $stderr -match '\[default 1/5\] PASS') 'stderr mode writes the line to stderr, nothing to stdout' }
+        else { Check ($stdout.Count -eq 0 -and $stderr -notmatch 'PASS') 'none mode writes nothing' }
+    }
+} finally { Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue }
+
 $planFile = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-plan-" + [guid]::NewGuid() + '.json')
 try {
     $planOut = [ordered]@{ schema = 1; section = 'first-session'; rows = @('FS-01', 'FS-P1')

@@ -1020,7 +1020,7 @@ first line of each.
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake |
-| `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given |
+| `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
 
 An unknown command exits 2. Examples:
 
@@ -1051,7 +1051,7 @@ Output:
 
 - **Progress:** one line per run.
 - **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out.
-- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-Quiet` prints one line.
+- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-ProgressToStderr` still writes the per-run progress lines, to stderr (`lab golden` uses it). `-Quiet` prints one line.
 - **Files.** Every batch writes `plan.json` first: the section, the rows, the lanes (lane and instance), the runs per lease, the start time (UTC) and the `lab uat` pid. Then `batch.jsonl` (one line per run, as each finishes) with `Started` and `Ended` (UTC) on each line, then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
 
 ```powershell
@@ -1068,7 +1068,7 @@ lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
 - **Spec folder.** `-SpecsDir` works as in `lab uat` (default: the checkout's `docs/guides/uat-specs`). It goes to the runs and to the tool, so a draft spec folder can be blessed too.
 - **Re-bless.** An existing golden is refused (exit 2) unless `-Rebless` is given. A re-bless needs fresh runs (none the old golden names as evidence) and keeps every row the old golden held.
 - **While recording, don't call `lab_timeline` on the lab character.** It reads and drains the same packet tap, and a run with a drained tap can't be recorded.
-- **Output.** One line, `golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; <path>`, or under `-Json` one compact object: `{"ok":true,"exit":0,"path":...,"rows":7,"events":312,"bytes":21456,"runs":5}` or `{"ok":false,"exit":N,"code":...,"error":...}`. Without `-Json`, a refusal after the runs also names the batch folder, so the runs can be inspected.
+- **Output.** One line, `golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; <path>`, or under `-Json` one compact object: `{"ok":true,"exit":0,"path":...,"rows":7,"events":312,"bytes":21456,"runs":5}` or `{"ok":false,"exit":N,"code":...,"error":...,"batch":...}`. A refusal after the runs names the batch folder (`batch` under `-Json`), so the runs can be inspected. Each run's progress line from `lab uat` shows live on stderr, under `-Json` too, so a 25-minute batch is not silent.
 
 `show` prints a committed golden (section, rows, total ordered events, server build, SGW.exe hash, recorded time and evidence run ids) and needs no daemon.
 
