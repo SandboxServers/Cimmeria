@@ -438,7 +438,7 @@ impl LauncherApp {
     ///
     /// **Why this exists:** the SGW client unconditionally writes its
     /// runtime cache (server-pushed PAK overrides) into
-    /// `%USERPROFILE%\Documents\My Games\Firesky\SGWGame\Cache.en-US\`
+    /// `<Documents>\My Games\Firesky\SGWGame\Cache.en-US\`
     /// and consults that cache **before** the bundled PAKs in the
     /// install directory (docs/architecture/mission-pak-overrides.md).
     /// A stale cache from a previous shard silently shadows the

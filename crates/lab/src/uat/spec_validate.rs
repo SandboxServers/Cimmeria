@@ -30,6 +30,23 @@ const TAG_TOOLS: [&str; 4] = [
     STAND_TOOL,
 ];
 
+/// The target arguments a `pose` replaces on `tool`: giving both is an
+/// error (SV-07), here and in the runner (for arguments built from `${vars}`).
+pub(crate) fn pose_clashes(tool: &str) -> &'static [&'static str] {
+    if tool == "client_camera" {
+        &[
+            "name",
+            "entity_id",
+            "point",
+            "face_name",
+            "face_entity_id",
+            "face_point",
+        ]
+    } else {
+        &["name", "entity_id", "point"]
+    }
+}
+
 /// Structural checks the type system cannot express. Every problem is
 /// reported with its row id so an author can find it.
 pub fn validate(spec: &SectionSpec) -> Result<(), String> {
@@ -317,6 +334,9 @@ fn check_target_args(row: &RowSpec, a: &ActionSpec, errs: &mut Vec<String>) {
                 .is_some_and(|p| row.pose.iter().any(|x| x.id == p));
             if !named {
                 errs.push(format!("{r}/{what}: pose {pose} is not a pose of this row"));
+            }
+            for c in pose_clashes(tool).iter().filter(|c| args.contains_key(**c)) {
+                errs.push(format!("{r}/{what}: pose with {c}: give one"));
             }
         }
         if args.contains_key("tag") && !TAG_TOOLS.contains(&tool) {
