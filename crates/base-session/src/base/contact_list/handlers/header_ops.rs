@@ -18,6 +18,24 @@ use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
+/// `event` on every `contacts.list_created` row.
+const EVENT_CREATED: &str = "contacts.list_created";
+/// `event` on every `contacts.list_deleted` row.
+const EVENT_DELETED: &str = "contacts.list_deleted";
+/// `event` on every `contacts.list_renamed` row.
+const EVENT_RENAMED: &str = "contacts.list_renamed";
+/// `event` on every `contacts.list_flags_updated` row.
+const EVENT_FLAGS_UPDATED: &str = "contacts.list_flags_updated";
+
+/// The closed `reason` for a failed create: `duplicate_name` when Postgres
+/// rejected the unique `(player_id, name)` key, otherwise `db_write_failed`.
+fn create_failure_reason(e: &sqlx::Error) -> &'static str {
+    match e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => "duplicate_name",
+        _ => "db_write_failed",
+    }
+}
+
 /// Handle `ContactListCreate` — insert a new list and echo CM 85.
 pub async fn handle_create(
     entity_id: u32,
@@ -38,8 +56,11 @@ pub async fn handle_create(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_CREATED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 "ContactListCreate: no DB pool, dropping"
@@ -56,8 +77,11 @@ pub async fn handle_create(
                 entity_id,
             );
             tracing::info!(
+                event = EVENT_CREATED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -91,12 +115,17 @@ pub async fn handle_create(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_CREATED,
+                reason = create_failure_reason(&e),
+                error = %e,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 name,
-                "ContactListCreate: DB error (duplicate name?): {e}"
+                "ContactListCreate: list not created"
             );
         }
     }
@@ -121,8 +150,11 @@ pub async fn handle_delete(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_DELETED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -140,8 +172,11 @@ pub async fn handle_delete(
                 entity_id,
             );
             tracing::info!(
+                event = EVENT_DELETED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -174,8 +209,11 @@ pub async fn handle_delete(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_DELETED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -189,8 +227,11 @@ pub async fn handle_delete(
                 entity_id,
             );
             tracing::error!(
+                event = EVENT_DELETED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -220,8 +261,11 @@ pub async fn handle_rename(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_RENAMED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -242,8 +286,11 @@ pub async fn handle_rename(
                         entity_id,
                     );
                     tracing::info!(
+                        event = EVENT_RENAMED,
                         entity_id,
                         entity_name = who.player_name,
+                        account_id = who.account_id,
+                        account_name = who.account_name,
                         player_id,
                         player_name = who.player_name,
                         list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -277,8 +324,11 @@ pub async fn handle_rename(
                         entity_id,
                     );
                     tracing::warn!(
+                        event = EVENT_RENAMED,
                         entity_id,
                         entity_name = who.player_name,
+                        account_id = who.account_id,
+                        account_name = who.account_name,
                         player_id,
                         player_name = who.player_name,
                         list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -292,8 +342,11 @@ pub async fn handle_rename(
                         entity_id,
                     );
                     tracing::error!(
+                        event = EVENT_RENAMED,
                         entity_id,
                         entity_name = who.player_name,
+                        account_id = who.account_id,
+                        account_name = who.account_name,
                         player_id,
                         player_name = who.player_name,
                         list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -309,8 +362,11 @@ pub async fn handle_rename(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_RENAMED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -324,8 +380,11 @@ pub async fn handle_rename(
                 entity_id,
             );
             tracing::error!(
+                event = EVENT_RENAMED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -355,8 +414,11 @@ pub async fn handle_flags_update(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_FLAGS_UPDATED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -375,8 +437,11 @@ pub async fn handle_flags_update(
                     entity_id,
                 );
                 tracing::info!(
+                    event = EVENT_FLAGS_UPDATED,
                     entity_id,
                     entity_name = who.player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id,
                     player_name = who.player_name,
                     list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -410,8 +475,11 @@ pub async fn handle_flags_update(
                     entity_id,
                 );
                 tracing::warn!(
+                    event = EVENT_FLAGS_UPDATED,
                     entity_id,
                     entity_name = who.player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id,
                     player_name = who.player_name,
                     list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -425,8 +493,11 @@ pub async fn handle_flags_update(
                     entity_id,
                 );
                 tracing::error!(
+                    event = EVENT_FLAGS_UPDATED,
                     entity_id,
                     entity_name = who.player_name,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id,
                     player_name = who.player_name,
                     list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -441,8 +512,11 @@ pub async fn handle_flags_update(
                 entity_id,
             );
             tracing::warn!(
+                event = EVENT_FLAGS_UPDATED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -456,8 +530,11 @@ pub async fn handle_flags_update(
                 entity_id,
             );
             tracing::error!(
+                event = EVENT_FLAGS_UPDATED,
                 entity_id,
                 entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
                 player_id,
                 player_name = who.player_name,
                 list_id, // nt:id-only list row is player-owned, no name loaded at this site
@@ -466,3 +543,6 @@ pub async fn handle_flags_update(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1140,6 +1140,16 @@ Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `dup
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Contact-list header ops (TG-SOC-10)
+
+`handlers/header_ops.rs` in `cimmeria-base-session`. Every row carries `event` (`contacts.list_created`, `contacts.list_deleted`, `contacts.list_renamed`, `contacts.list_flags_updated`) and the identity pair `account_id` + `account_name`, beside `player_id` + `player_name`. A failed create logs WARN with `reason` and `error = %e`; its message is the constant `ContactListCreate: list not created`.
+
+| `reason` | Meaning |
+|---|---|
+| `duplicate_name` | Postgres rejected the unique `(player_id, name)` key (`is_unique_violation()`) |
+| `db_write_failed` | Any other insert error |
+
+Guard: `live_db_header_ops_log_event_account_and_duplicate_reason` in `handlers/header_ops/tests.rs` asserts `event` and `account_id` on each op and `reason=duplicate_name` on the second create. `no_pool_rows_carry_event_and_account` guards the no-pool rows.
 ## Cinematic AoI hold lifecycle (TG-AOI-06)
 
 `release` in `cinematic_aoi_hold/mod.rs` (`cimmeria-base-world-entry`) and `log_discarded_on_teardown` in `base/deferred_aoi.rs` (`cimmeria-base-session`). A `release` that finds no hold to end used to return silently. It now logs DEBUG `target: "aoi.cinematic_hold"`, `event = "hold_release_skipped"`, with `witness_id` + `witness_name` and `reason`; `witness_name` is absent when the session is gone. A teardown inside a hold with a non-empty buffer logs INFO `event = "hold_abandoned"` with `discarded` (buffered messages), `held_ms` and the account and player identity fields. An intro-only buffer, which the entity-method row skips, is covered by this row.
