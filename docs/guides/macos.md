@@ -2,10 +2,11 @@
 title: "Playing on a Mac (experimental)"
 type: how-to
 audience: players and testers on Apple Silicon Macs; no programming needed
-status: experimental (not yet confirmed with the Cimmeria launcher, 2026-09-29)
-last_updated: 2026-09-29
+status: experimental (the macOS launcher has not yet been confirmed by a player, 2026-10-11)
+last_updated: 2026-10-11
 companion_docs:
   - ../client/launcher-guide.md
+  - ../../crates/launcher/desktop/docs/release.md
   - unified-uat.md
   - ../operations/telemetry.md
 ---
@@ -13,93 +14,85 @@ companion_docs:
 # Playing on a Mac (experimental)
 
 Stargate Worlds is a 32-bit Windows game (Unreal Engine 3, Direct3D 9).
-There is no Mac client. On a Mac you run the Windows game, and the Cimmeria
-launcher, inside Wine. Nothing on the server changes: a Mac player connects to
-the same Cimmeria server as everyone else.
+There is no Mac client. The Cimmeria launcher for macOS is a Mac app that
+installs the Windows game and runs it inside Wine for you, so you don't set up
+Wine yourself. Nothing on the server changes: a Mac player connects to the same
+Cimmeria server as everyone else.
 
-**Status: experimental.** The Wine setup below is based on a community guide
-that runs this client on Apple Silicon for another fan server
-([pavlista.cz/stargate](https://www.pavlista.cz/stargate/), by Michael
-Pavlista). Nobody has confirmed it with *our* launcher yet. Follow the steps
-in order and report what happens at each checkpoint.
+**Status: experimental.** The macOS launcher is built and published by the
+release pipeline, but no player has yet confirmed the whole path from a fresh
+Mac to the game world with it. Follow the steps in order and report what
+happens at each checkpoint.
 
-Why run our launcher and not the game directly: the launcher installs the
-game, applies the Cimmeria patches, points the client at our server, loads
-the client patches (the Black Market window needs them) and, if you opt in,
-sends telemetry that lets us see what went wrong without asking you for logs.
-
-What that guide found, and why this page uses WoWSilicon:
-
-- A virtual machine (VMware Fusion) crashed on larger maps.
-- CrossOver ran, but slowly. Old 32-bit games use x87 floating-point
-  instructions, which Rosetta 2 translates slowly.
-- [WoWSilicon](https://wowsilicon.github.io/) bundles Wine, DXVK and a
-  faster x87 translation ("rosettax87 JIT"), and runs the game well.
-- The other server's launcher shows only a black screen under Wine because it
-  is built on WebView2. The Cimmeria launcher does not use WebView2, so this
-  should not happen with ours, but it is untested.
+This page replaces the earlier setup, which ran the old Windows launcher
+(`sgw-launcher.exe`) inside a WoWSilicon profile. That launcher was retired on
+2026-10-11. You no longer need WoWSilicon or CrossOver: the Mac app downloads
+the Wine runtime it needs on its own.
 
 ## What you need
 
-- An Apple Silicon Mac (M1 or later) on macOS 15 or newer.
-- Rosetta 2. In Terminal: `softwareupdate --install-rosetta`
-- [WoWSilicon](https://wowsilicon.github.io/) **3.0.2 or newer**, installed in
-  `/Applications`. Older versions cannot make the HTTPS connections the
-  launcher needs to download the game and its patches.
-- About 20 GB of free disk space. The installer download is 4.1 GB and the
-  install needs about 14 GB while it unpacks.
+- An Apple Silicon Mac (M1 or later) on macOS 12 or newer. There is no Intel
+  Mac build.
+- Rosetta 2, which runs the 32-bit Windows game. If it is not installed yet, in
+  Terminal: `softwareupdate --install-rosetta`
+- About 20 GB of free disk space. The game download is 4.1 GB and the install
+  needs about 14 GB while it unpacks, plus a Wine runtime of about 64 MB.
 - A Cimmeria account. Accounts are created by the server owner; ask for one.
 
-## Step 1: make a WoWSilicon profile
+## Step 1: download and open the launcher
 
-1. Download the newest `sgw-launcher-macos-wine-launcher-<date>-<commit>.exe` from the
-   project's [GitHub Releases](https://github.com/SandboxServers/Cimmeria/releases)
-   (the release marked **Latest** whose name starts with "Launcher"). Put it in
-   a folder of its own; the launcher keeps its settings next to itself. It no
-   longer updates itself: download the newest one again when a release is out,
-   until the macOS desktop launcher replaces it.
-2. In WoWSilicon, create a **Non-WoW game (32-bit D3D9)** profile.
-3. Point the profile at the launcher `.exe`.
-4. Set the graphics backend to **d9vk** and leave x87 translation on
-   **rosettax87 JIT**.
-5. Press **Patch**, then **Play**.
+1. Download
+   [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip).
+   This link always holds the newest release.
+2. Double-click the zip to unzip it, then drag **Stargate Worlds Launcher** into
+   **Applications** in Finder. Run it from there, not from Downloads: macOS
+   runs apps opened straight from Downloads from a hidden read-only copy.
+3. Open it. macOS refuses the first time, because the app is not notarized by
+   Apple (it is signed ad hoc only). Close the message without moving the app
+   to the Trash.
+4. Open **System Settings → Privacy & Security**, scroll down to the message
+   about "Stargate Worlds Launcher", click **Open Anyway** and enter your password.
+   You do this once; after that the app opens normally.
 
-**Checkpoint A.** The "Stargate Worlds Launcher" window opens, shows
-`Launcher launcher-<date>-<commit>` under the title, and after a few seconds
-lists the manifest ("Manifest schema 1, seed … N patch(es) declared").
-If the window stays on "Fetching manifest…", move the mouse over it once.
-A black or empty window here is important to report.
+**Checkpoint A.** The launcher window opens with the **Play** and **Patch
+Notes** tabs. Open **Settings** (the ⚙ button): the line under the **Game
+settings** heading shows the launcher version. A black or empty window here is
+important to report.
 
 ## Step 2: install the game
 
-1. Leave **Install dir** as it is (inside the Wine prefix, the prefix's own
-   `AppData\Local\Stargate Worlds`).
-2. Click **Turn on telemetry** in the "Help us fix bugs?" box. This is what
-   lets us diagnose a Mac problem remotely.
-3. Click **Install / Update** and wait. It downloads the original 2009 client
-   from archive.org, unpacks it and applies the Cimmeria patches. You do not
-   need to run the old `SetupQA.exe` installer yourself.
+1. In **Settings**, **Local install directory** shows where the game goes.
+   Leave it, or click **Choose folder…** and pick an empty folder.
+2. Turn on **Send game diagnostics while playing**. This is what lets us see a
+   Mac problem remotely without asking you for logs. It is off by default.
+3. Click **Install Stargate Worlds** and wait. The launcher downloads the Wine
+   runtime once, then the original 2009 client from archive.org, unpacks it with
+   Wine and applies the Cimmeria patches. When the content is in place it goes
+   on to the compatibility setup the game needs (PhysX under Wine). If you close
+   the launcher in between, it offers **Continue installation** next time.
 
-**Checkpoint B.** The launcher shows **"✔ Install is up to date"**. Note how
-long it took. If it stops with an error, copy the red status text. The unpack
-step uses Windows' cabinet code, which Wine provides; a failure here is one
-of the things we want to know about.
+**Checkpoint B.** The progress bar is gone and **Play** is enabled. Note how
+long it took.
+If it stops with an error, copy the status text exactly.
+
+macOS may ask whether the launcher can access a folder (Documents, or the folder
+you install into). Allow it. Because the app is signed ad hoc, macOS asks again
+after every new launcher version.
 
 ## Step 3: start the game
 
-1. Click **Launch SGW.exe**. Keep **Load client patches** ticked.
+1. Click **Play**. Keep **Settings → Client patches → Load client patches** on.
 2. The first start can take a minute; shaders are compiled on every start on
    macOS. There is an intro, then the gate courtyard, and after about 20
    seconds the login box.
 
-**Checkpoint C.** The login box appears over the gate. Report instead: a
-crash or error box (copy its text), a black or garbled screen, or the
-courtyard with no login box after a minute.
+**Checkpoint C.** The login box appears over the gate. Report instead: a crash
+or error box (copy its text), a black or garbled screen, or the courtyard with
+no login box after a minute.
 
-If the picture is black or wrong, the likely cause is that the game did not
-pick up DXVK's `d3d9.dll`. The community launcher copies that file into the
-game's `Working\binaries` folder before starting it; ours does not yet. Tell
-us, and we will add that step (see "Known unknowns").
+The launcher runs the game with stock Rosetta 2. It does not carry the faster
+x87 translator ("rosettax87") that WoWSilicon offers, so frame rates in busy
+areas may be lower than under WoWSilicon. Tell us how it feels.
 
 ## Step 4: log in and play
 
@@ -124,6 +117,27 @@ behave differently under Wine.
 only a chat line appears ("The auctioneer opens the Black Market. (No
 window? …)"), the client patches did not load: say so.
 
+## Updating the launcher
+
+macOS updates are manual. The **Launcher updates** section in Settings shows
+**Disabled** on a Mac. When a new launcher is released, download the zip from
+the same link again, quit the launcher, and replace the app in Applications
+with the new one. Your settings and the installed game stay. Expect the
+folder-access question again after each new version.
+
+## Coming from the old launcher under WoWSilicon
+
+If you installed the game with the old Windows launcher inside a WoWSilicon
+profile, you can install fresh (simplest), or bring that install over:
+**Settings → Import legacy launcher settings → Select legacy folders…** asks
+first for the folder that held the old launcher `.exe`, then for its game
+folder (both are inside the WoWSilicon profile's Wine prefix). After
+**Confirm settings import**, **Verified copy adoption** makes a verified copy of
+the game in a new folder; your original stays untouched. An adopted copy plays
+without the game diagnostics module for now, so testers should install fresh.
+The details are in
+the [migration contract](../../crates/launcher/desktop/docs/migration.md#verified-copy-adoption-in-settings).
+
 ## What to report
 
 Copy this, fill it in, and send it to the server owner:
@@ -131,14 +145,12 @@ Copy this, fill it in, and send it to the server owner:
 ```text
 Mac model / RAM:
 macOS version:
-WoWSilicon version:
-Profile type / graphics / x87:  Non-WoW 32-bit D3D9 / d9vk / rosettax87 JIT
-Launcher version (under the title):
-Telemetry turned on:          yes / no
+Launcher version (under the Game settings heading):
+Game diagnostics turned on:   yes / no
 Date and time of each attempt (with time zone):
 
-A launcher opens and lists the manifest:   pass / fail  -
-B install finishes:                         pass / fail  - minutes:
+A launcher opens:                           pass / fail  -
+B install and setup finish:                 pass / fail  - minutes:
 C login box appears:                        pass / fail  -
 D in the world, HUD and characters drawn:   pass / fail  - fps feel:
 E Black Market window opens:                pass / fail  -
@@ -147,22 +159,14 @@ Error texts (copied exactly):
 Anything else odd:
 ```
 
-Also attach `install.json` from the launcher's folder (it holds only this
-install's random id, which lets us find your telemetry).
-
-## Fallback: CrossOver
-
-If WoWSilicon will not run the launcher at all, try
-[CrossOver](https://www.codeweavers.com/crossover) (free trial): make a
-Windows 10 64-bit bottle, run the launcher `.exe` in it with **Run Command…**,
-and follow the same checkpoints. Expect lower frame rates: CrossOver has no
-fast x87 translation. Try its DXVK graphics option if the picture is wrong,
-and report which settings you used.
+With game diagnostics on, also send your install id: it is the `install_id`
+value in `~/Library/Application Support/app.cimmeria.launcher.desktop/state/game-telemetry.json`
+(in Finder, **Go → Go to Folder…** and paste the folder path). It is a random
+id that lets us find your diagnostics, nothing else.
 
 ## For the server owner: finding a Mac tester's telemetry
 
-With the tester's `install_id` (from `install.json`) and the times they
-reported, query SigNoz:
+With the tester's `install_id` and the times they reported, query SigNoz:
 
 ```text
 service.name = 'cimmeria-client' AND install_id = '<install_id>'
@@ -177,20 +181,16 @@ for the full list.
 
 ## Known unknowns
 
-- **The launcher window under Wine.** It is drawn with OpenGL (egui), not
-  WebView2, so the community guide's black-screen problem should not apply.
-  Untested.
-- **DXVK's `d3d9.dll`.** The community launcher copies it into
-  `Working\binaries`. If the game only renders with that file present, the
-  launcher should do the same when it detects Wine.
-- **Loading the client patches.** The launcher starts the game suspended and
-  injects its DLLs with a small 32-bit helper (`sgw-start32.exe`). Wine
-  normally supports this, but it has not been tried here, nor under the x87
-  translator.
-- **Shadow resolution.** The community guide reports the client writing a
-  corrupted shadow-resolution value under DXVK (its launcher has a checkbox
-  that fixes it). The Cimmeria launcher does not correct this yet. Report it
-  if shadows look wrong or the game stalls; the client's shadow settings are
+- **The packaged app on a fresh Mac.** The release job builds, signs and checks
+  the app, but nobody has yet downloaded it on a Mac that never ran it and gone
+  from Open Anyway to the world (acceptance step 13 of the
+  [launcher consolidation](../analysis/launcher-consolidation/README.md)).
+- **Frame rate without rosettax87.** See Step 3.
+- **Shadow resolution.** A community guide for another fan server reports the
+  client writing a corrupted shadow-resolution value under DXVK. Report it if
+  shadows look wrong or the game stalls; the client's shadow settings are
   mapped in [render-thread shadow options RE](../reverse-engineering/README.md).
-- **Launcher self-update.** Replacing the launcher `.exe` while it runs should
-  work inside Wine, but is untested there.
+- **Resetting client state.** **Reset client cache** and **Reset all client
+  state…** are not built for macOS yet: the Wine client keeps its settings
+  inside the launcher's Wine prefix, and the buttons say the client's folder
+  could not be found.

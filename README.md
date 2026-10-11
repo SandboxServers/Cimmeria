@@ -31,11 +31,18 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Download the launcher
 
-Players on Windows download the launcher from one stable link, which always
-holds the newest release:
-[`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
-Unzip it anywhere and run `cimmeria-launcher-desktop.exe`. The old
-`sgw-launcher.exe` no longer updates itself on Windows. See the
+Players download the launcher from a stable link, which always holds the
+newest release:
+
+- **Windows:** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
+  Unzip it into a folder of its own and run `cimmeria-launcher-desktop.exe`,
+  keeping the `windows` and `graphics` folders beside it. It updates itself
+  from Settings.
+- **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip).
+  See [Playing on a Mac](docs/guides/macos.md).
+
+The old `sgw-launcher.exe` was retired and no longer updates itself; the new
+launcher can import its settings and adopt the game it installed. See the
 [launcher guide](docs/client/launcher-guide.md).
 
 ## Tests & CI

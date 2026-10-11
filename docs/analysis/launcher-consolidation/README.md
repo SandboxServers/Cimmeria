@@ -1,7 +1,7 @@
 # Launcher Consolidation
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and maintainers.
-> Updated: 2026-10-11. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
+> Updated: 2026-10-11. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [announcement text (D-LX2)](announcement.md), [player guide](../../client/launcher-guide.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -92,7 +92,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | Review (this PR) |
 | LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | Review (this PR) |
-| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Ready |
+| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Review (this PR) |
 | LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
 | LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |
 | LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Done ([#1357](https://github.com/SandboxServers/Cimmeria/pull/1357)) |

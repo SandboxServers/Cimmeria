@@ -287,21 +287,21 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 ### The game shows the gate backdrop but never the login screen
 
-**Symptom.** A client installed with the SGW launcher (`sgw-launcher.exe`) starts, shows the gate backdrop, and never shows the EULA or login screen. The client log has `SGWResourceProvider: 'EULA.lua' does not exist in group lua`.
+**Symptom.** A client installed with the old SGW launcher (`sgw-launcher.exe`, since retired) starts, shows the gate backdrop, and never shows the EULA or login screen. The client log has `SGWResourceProvider: 'EULA.lua' does not exist in group lua`.
 
-**Root cause.** The launcher released on 2026-09-29 (`launcher-20260929-f518b57`) renamed the stock `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to `eula.lua` while applying the `005-login-delay` patch, and the game looks that file up case-sensitively.
+**Root cause.** The old launcher released on 2026-09-29 (`launcher-20260929-f518b57`) renamed the stock `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to `eula.lua` while applying the `005-login-delay` patch, and the game looks that file up case-sensitively.
 
-**Fix.** Update the launcher: it renames the file back before every launch. By hand, rename `eula.lua` to `EULA.lua` in that folder. Details: [launcher guide troubleshooting](client/launcher-guide.md#the-game-shows-the-gate-backdrop-but-never-the-login-screen).
+**Fix.** Play from the current launcher: it renames the file back before every launch. By hand, rename `eula.lua` to `EULA.lua` in that folder. Details: [launcher guide troubleshooting](client/launcher-guide.md#the-game-shows-the-gate-backdrop-but-never-the-login-screen).
 
 ---
 
-### The launcher's self-update fails, or the launcher is gone after "Update now"
+### The launcher's self-update fails, or the launcher is gone after "Apply and restart"
 
-**Symptom.** The banner says `Launcher update failed: …`, or no launcher window comes back after **Update now**.
+**Symptom.** **Settings → Launcher updates** says **Failed**, or no launcher window comes back after **Apply and restart**.
 
-**Root cause.** Usually a folder the launcher cannot write to (`C:\Program Files`), a damaged download (it is deleted), or antivirus quarantining the new, unsigned exe.
+**Root cause.** Usually a folder the launcher cannot write to (`C:\Program Files`), a download that failed its signature check (it is not kept), or antivirus quarantining the new, unsigned exe.
 
-**Fix.** Follow the message's advice, or download the release from the linked page by hand. If the launcher's own file is missing, rename `<launcher>.exe.old` beside it back. Details: [launcher guide troubleshooting](client/launcher-guide.md#launcher-update-failed-).
+**Fix.** A failed update puts the old files back; click **Check for updates** to try again, or download the zip from the stable link and unzip it over the launcher's folder. If `cimmeria-launcher-desktop.exe` is missing, rename `cimmeria-launcher-desktop.exe.old` beside it back, and any `.old` file in its `windows` and `graphics` folders the same way. Details: [launcher guide troubleshooting](client/launcher-guide.md#a-launcher-update-failed-or-the-launcher-is-gone-after-an-update).
 
 ---
 
@@ -311,7 +311,7 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 **Root cause.** AtreaRL is the **original** SGW runtime patcher (`AtreaRL.dll`) loaded by AtreaLoader. We don't ship it; you need a SGW client installation that already has it.
 
-**Fix.** See [`game/sgw/README.md`](../game/sgw/README.md) for client installation. The Cimmeria-authored launcher (`crates/launcher/`, the egui native one) is separate and not the same thing.
+**Fix.** See [`game/sgw/README.md`](../game/sgw/README.md) for client installation. The Cimmeria launcher (`crates/launcher/desktop/`) is separate and not the same thing.
 
 ---
 

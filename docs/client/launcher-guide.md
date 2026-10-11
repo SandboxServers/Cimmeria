@@ -2,65 +2,54 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-04
+last_updated: 2026-10-11
+companion_docs:
+  - ../guides/macos.md
+  - ../../crates/launcher/desktop/README.md
+  - launcher-self-update.md
+  - launcher-distribution-setup.md
 ---
 
 # Launcher Guide
 
-How the Stargate Worlds launcher works from the user's seat, and how
-operators prepare and publish patches for it to consume.
+How to get the Stargate Worlds launcher, install the game with it and keep
+both up to date, and how operators publish the game patches it installs.
 
-This is the practical, day-to-day doc. For architecture and rationale
-see [sgw-launcher.md](sgw-launcher.md). For the one-time operator
-backend setup (GitHub Releases for content, manifest signing keypair,
-Azure Blob SAS for log uploads) see
-[launcher-distribution-setup.md](launcher-distribution-setup.md).
-
-## Play and Repair in the desktop replacement
-
-The development Tauri launcher enables **Play** after installation and compatibility
-checks when its bundled helper, client patches and Mac graphics resource verify.
-It reports process start and exit separately from login or world entry. After a
-lost reply, recheck status; an unknown game lifecycle keeps conflicting operations
-blocked. See the [launch contract](../../crates/launcher/desktop/docs/launch.md).
-
-It provides **Settings → Repair game** for its recorded
-installation. Confirm the displayed installed directory: Repair reconstructs the
-saved authenticated release and replaces modifications inside `game`. Changing
-the selected folder does not redirect Repair.
-
-Cancel is available before replacement begins. After a lost reply, use **Recheck
-status**. Recovery and abandonment require separate confirmation and may be refused
-when native evidence is insufficient. Removing the old backup is a separate
-permanent-deletion action. See the [repair contract](../../crates/launcher/desktop/docs/repair.md)
-for boundaries. Original-client and platform release validation remain open.
-
-The desktop Settings updater supports signed download, Apply and restart when
-native release configuration is enabled. Ordinary development builds leave it
-disabled. A started installer is pending until the expected launcher version
-reopens; packaged Mac and Windows upgrade validation remain open. See the
-[desktop updater contract](../../crates/launcher/desktop/docs/updater.md).
+There is one launcher: the **Stargate Worlds Launcher**, a desktop app for
+Windows and for Apple silicon Macs. It replaced the old single-file launcher,
+`sgw-launcher.exe`, which was retired on 2026-10-11 and no longer updates
+itself. If you still use that one, read
+[Coming from the old launcher](#coming-from-the-old-launcher).
 
 > **Audience split:**
-> [Part 1 — Players](#part-1--for-players) is for anyone running the
-> launcher to install and play the game.
-> [Part 2 — Operators](#part-2--for-operators-publishing-patches) is for
-> whoever publishes patches to the Azure container that players' launchers
-> pull from. Skip the one that isn't you.
+> [Part 1 — Players](#part-1--for-players) is for anyone installing and
+> playing the game. [Part 2 — Operators](#part-2--for-operators-publishing-patches)
+> is for whoever publishes the game patches that every launcher installs.
+> Skip the one that isn't you. On a Mac, follow
+> [Playing on a Mac](../guides/macos.md) instead of the Windows steps below.
+
+How the launcher is built and released is in the
+[desktop launcher README](../../crates/launcher/desktop/README.md) and its
+[release guide](../../crates/launcher/desktop/docs/release.md). The one-time
+operator setup (content releases, the three signing keys, the log-upload
+storage) is [launcher-distribution-setup.md](launcher-distribution-setup.md).
 
 ---
 
 ## Contents
 
 - [Part 1 — For players](#part-1--for-players)
-  - [What it does (end-to-end)](#what-it-does-end-to-end)
-  - [State files](#state-files)
-  - [What "Install / Update" does internally](#what-install--update-does-internally)
+  - [Download the launcher](#download-the-launcher)
+  - [First start on Windows](#first-start-on-windows)
+  - [Install the game](#install-the-game)
+  - [Install PhysX](#install-physx)
+  - [Play](#play)
+  - [Coming from the old launcher](#coming-from-the-old-launcher)
+  - [Settings](#settings)
+  - [Launcher updates](#launcher-updates)
+  - [Where your files are](#where-your-files-are)
   - [How the client finds its server](#how-the-client-finds-its-server)
   - [Install layout](#install-layout)
-  - [The launch buttons](#the-launch-buttons)
-  - [Uploading debug logs](#uploading-debug-logs)
-  - [Launcher updates](#launcher-updates)
 - [Part 2 — For operators (publishing patches)](#part-2--for-operators-publishing-patches)
   - [Step 1 — Build the seed](#step-1--build-the-seed)
   - [Step 2 — Build a patch zip](#step-2--build-a-patch-zip)
@@ -76,151 +65,254 @@ reopens; packaged Mac and Windows upgrade validation remain open. See the
 
 ## Part 1 — For players
 
-### What it does (end-to-end)
+### Download the launcher
+
+Download the newest launcher from its stable link. The link never changes and
+always holds the newest release:
+
+- **Windows (64-bit):** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip)
+- **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip),
+  set up as [Playing on a Mac](../guides/macos.md) describes.
+
+Each zip has a `.sha256` file beside it on the same release if you want to
+check your download.
+
+Unzip the Windows zip into a folder of its own that you can write to, such as
+`%LOCALAPPDATA%\Stargate Worlds Launcher`. Not `C:\Program Files`: the
+launcher updates itself by replacing its own files, which needs a folder it
+can write without admin rights. The zip holds:
 
 ```text
-1. Run sgw-launcher.exe (single ~5 MB file).
-2. Window appears with three editable fields:
-     - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
-     - Login servers  (default: Cimmeria = http://play.cimmeria.app:8081),
-                      one `Name = URL` per line — written into the client's
-                      LoginInternal.lua, the list on the login screen
-     - Manifest URL   (default: the GitHub Release `content-current` tag,
-                      https://github.com/SandboxServers/Cimmeria/releases/
-                      download/content-current/manifest.json)
-3. Launcher auto-fetches manifest.json on startup.
-4. It compares the manifest against <install_dir>/launcher-installed.json:
-     a. If seed hash differs → seed not installed → "Install / Update" enabled
-     b. If any declared patch is missing → button enabled
-     c. If everything matches → "✔ Install is up to date"
-5. Click "Install / Update":
-     - Download the seed (resumable via HTTP Range) → verify sha256 → unpack.
-       The seed is a zip, or the archive.org client RAR, whose installer
-       cabinets are expanded straight into the installed layout
-     - For each missing patch in declared order: download → verify → unpack
-       (overlay files, and/or deltas rebuilt from your own stock files)
-     - Client setup: restore stock file names (EULA.lua), write
-       LoginInternal.lua, switch ASLR off in SGW.exe (also done before
-       every launch)
-6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
-   "Fix ASLR" if those files are present in the install directory).
-   Telemetry is off unless you turn it on.
-7. After playing, click "Upload Debug Logs" to zip+upload logs in one shot.
+cimmeria-launcher-desktop.exe   the launcher; start this one
+windows\                        the launch helper and the two DLLs Play loads into the game
+graphics\                       a graphics resource the launcher carries
 ```
 
-### State files
+Keep the `windows` and `graphics` folders beside the exe. At **Play** the
+launcher reads its helper and DLLs from `windows\` and refuses any file whose
+checksum is not the one compiled into it, so an exe copied somewhere on its
+own cannot start the game. Make a shortcut to the exe instead of moving it.
 
-Four JSON files persist across runs:
+### First start on Windows
 
-| File | Lives | Contents |
-|------|-------|----------|
-| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, and a `telemetry` object (`opted_in`, `prompt_answered`, `auth_url`; `auth_url` defaults to the public server's login port, `http://play.cimmeria.app:8081/api`). An old `server_host` field is ignored. Schema 2 moved that default: a schema-1 file whose `auth_url` is exactly the old `http://localhost:8443/api` is rewritten to the new default once. |
-| `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-dialog-portraits", …]`, `seed_adopted`. An old `patched_host` field is ignored. |
-| `<exe>/uploaded.json` | next to `launcher.exe` | `[{sha256, blob_name, uploaded_at}, …]` — log-upload dedupe ledger |
-| `<exe>/telemetry-state.json` | next to `launcher.exe` | per-session telemetry runtime state, kept separate from the config so config rewrites don't churn it |
+The launcher is not code-signed (that is deferred), so Windows may stop the
+first start:
 
-Putting the installed-state file **inside the game directory** is
-deliberate: reinstall the launcher and your install is still recognized;
-copy the game directory to another machine and it's still recognized.
+- **SmartScreen, "Windows protected your PC":** choose **More info → Run
+  anyway**. Only do this for a launcher you downloaded from the stable link
+  above.
+- **"The Microsoft Edge WebView2 Runtime is needed to run the launcher":**
+  the launcher draws its window with WebView2. Windows 11 has it, and Windows
+  10 usually does. Answer **Yes** to open Microsoft's download page, install
+  the runtime, then start the launcher again.
+- **Defender quarantines a file:** see
+  [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
 
-### What "Install / Update" does internally
+The window has two tabs, **Play** and **Patch Notes**, and a gear button
+(⚙, "Game settings") that opens **Settings**. The buttons for installing and
+playing are along the bottom.
 
-Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/install.rs)::`install_all()`:
+### Install the game
 
-```text
-1. Load <install>/launcher-installed.json (or default if absent).
+The launcher installs the original 2009 client (build 0.8348.1.4046) from
+archive.org, then applies Cimmeria's patches to it. You don't need the old
+`SetupQA.exe` installer.
 
-2. If state.seed_sha256 != manifest.seed.sha256:
-     - GET <manifest_base>/<manifest.seed.blob>, sending HTTP `Range: bytes=N-`
-       when a .tmp file from a previous attempt exists.
-     - Stream the body into <install>/.tmp-seed-<sha-prefix>.download.
-       A 416 reply for a full-length file means it is already downloaded.
-     - SHA-256 verify against manifest.seed.sha256. On mismatch, delete the
-       download and bail (a kept bad file would fail every retry).
-     - Unpack into <install>/ (overwrites colliding files), picking the
-       format from the file's magic bytes:
-         zip → extract directly.
-         RAR → extract into <install>/.tmp-unpack/. If that holds a MakeCAB
-               set (an .INF with a [cabinet list], e.g. Data\DATA.INF +
-               DATA1-4.CAB), expand the cabinets into <install>/ with
-               Windows' cabinet.dll; otherwise move the files across.
-               Then delete .tmp-unpack/.
-       Every extracted file keeps the modified time the archive records
-       for it (the cabinets date the client 2009-06-30), the way the stock
-       installer does. See "Your ini file is outdated" under
-       Troubleshooting for why that matters.
-       Hashing and unpacking run on a blocking thread.
-     - state.seed_sha256 = manifest.seed.sha256
-     - state.applied_patches = []   ← reseeding invalidates patch history
-     - Persist state.
+1. Open **Settings** (⚙). **Local install directory** shows where the game
+   goes. On first start it is a `Stargate Worlds` folder under
+   `%LOCALAPPDATA%\app.cimmeria.launcher.desktop`. To use another place,
+   click **Choose folder…** and pick an empty folder, or a new folder inside
+   one that exists. The launcher refuses a folder that already has files in
+   it.
+2. Click **Install Stargate Worlds**. A progress bar shows the download and
+   the unpacking. The download is 4.1 GB, and the install drive needs about
+   14 GB free while it unpacks.
+3. When it finishes, the game is in a `game` folder inside the folder you
+   chose.
 
-3. Rename Working\SGWGame\Cache.en-US to SourceCache.en-us, unless a
-   SourceCache.en-us already exists (see "Install layout"). Runs every
-   time, so adopted installs get it too.
+**Cancel installation** stops the attempt. To start again, click **Remove
+partial installation…**, confirm with **Remove partial files**, and install
+again; that also deletes what was downloaded so far. If the launcher or the PC
+stopped part-way instead, the launcher offers **Resume installation**, which
+continues from where it stopped. Nothing is ever retried without you asking.
 
-4. For each patch in manifest.patches (declared order):
-     - Skip if patch.id is already in state.applied_patches.
-     - GET <manifest_base>/<patch.blob> → tmp → SHA-256 verify → unpack.
-       A patch zip with a cimmeria-patch.json recipe is a patch set: see
-       "Patch sets" below.
-     - Append patch.id to state.applied_patches.
-     - Persist state after every patch (survives mid-update crash).
+The **Patch Notes** tab lists the patches the current release applies, read
+from the signed release manifest. **Refresh patch notes** reads it again.
 
-5. Client setup (crates/launcher/src/client_setup/), when SGW.exe exists:
-     - Rename any file a patch set writes back to its stock spelling if
-       only its case differs (eula.lua -> EULA.lua).
-     - Write Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua
-       from the login-server list, if its content changed.
-     - Clear IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE in SGW.exe's PE
-       header (one byte, 0x186 in the 0.8348 build), if set.
-```
+### Install PhysX
+
+Stargate Worlds needs AGEIA PhysX System Software 2.6.3 to start its physics
+engine. On Windows, **Settings → PhysX System Software** says whether it is
+installed. When it is missing:
+
+1. Click **Install PhysX**. The launcher runs the PhysX installer that came
+   with the game, after checking it is the expected file.
+2. Accept the Windows permission prompt and finish the installer.
+3. If it says "Restart Windows before you play", restart.
+
+While PhysX is missing, the Play area shows "PhysX System Software is missing,
+so the game may not start. Install it under Settings." Play is not blocked.
+
+### Play
+
+Click **Play**. The launcher writes the login server list into the client,
+loads the client patches (and, if you turned it on, the diagnostics module),
+and starts `SGW.exe`. The line under the button then says "Game process
+started. Login and world entry are not verified": the launcher sees the game
+start and exit, not whether you logged in.
+
+On the login screen, pick the server in the list and log in with your account.
+Accounts are created by the server owner; ask for one.
+
+If the line says "Update the launcher before playing this release", the
+server's operator requires a newer launcher. See
+[Launcher updates](#launcher-updates).
+
+### Coming from the old launcher
+
+The old launcher (`sgw-launcher.exe`) no longer receives updates. The new
+launcher can take over its settings and the game it installed, without
+downloading the game again.
+
+**1. Import the old launcher's settings.** In **Settings → Import legacy
+launcher settings**, click **Select legacy folders…**. Two folder dialogs open
+one after the other:
+
+1. the folder that holds `sgw-launcher.exe` (its `launcher-config.json` is
+   there);
+2. the game folder the old launcher installed into (by default
+   `%LOCALAPPDATA%\Stargate Worlds`; its `launcher-installed.json` is there).
+
+Close the old launcher first; while it runs, the import is refused. Check the
+review and click **Confirm settings import**. The launcher keeps a copy of the
+old launcher's settings, including your login servers and the client-patches
+setting, and the folder you adopt next plays with them. Nothing in either
+folder changes.
+
+**2. Adopt the game folder.** After the import, **Settings → Adopt existing
+installation** offers **Verify and adopt this folder…**. The launcher
+downloads the signed game files once (into a private folder, not yours) and
+compares every game file in your folder with them. The review lists any file
+that is modified, missing or somewhere else; a folder with such files cannot
+be adopted. If it is clean, tick the confirmations and click **Adopt this
+folder**.
+
+Before you confirm, know what adoption changes:
+
+- `SGW.exe` and every other game file move into a new `game` folder inside
+  your game folder. Desktop shortcuts to `SGW.exe` and the old launcher stop
+  working. Start the game from this launcher from now on, and don't run the old
+  launcher on this folder again: it may download the whole game a second time.
+- Files you added inside the game folders yourself, such as PAKs placed by hand
+  in `SourceCache.en-us`, stay where they are, and the game no longer uses
+  them.
+- Your game settings and the client cache live in `Documents` and are not
+  affected.
+- An adopted folder plays without the game diagnostics module for now, even
+  with **Send game diagnostics while playing** on. A fresh install has it.
+
+The old launcher must have finished installing every current patch. If the
+review says the folder is out of date, either let the old launcher run
+**Install / Update** once more and then adopt, or install fresh into a new
+empty folder instead. A folder whose install path pointed straight at
+`Working` or `Binaries` cannot be adopted; install fresh.
+
+If adoption stops part-way (the PC turns off), the launcher offers **Recover
+adoption…** to finish it or, while only file moves have happened, **Abandon
+adoption…** to put every file back. Neither runs on its own. The full rules
+are in the [migration contract](../../crates/launcher/desktop/docs/migration.md#in-place-adoption-on-windows).
+
+After adoption, the folder is the launcher's own: **Play**, **Repair game**,
+game updates and **Uninstall…** work on it as on a fresh install. Uninstall
+removes only what the launcher manages there and leaves your own files.
+
+### Settings
+
+Everything below is in **Settings** (⚙). Every button shows a status line as
+soon as you press it.
+
+| Section | What it does |
+|---|---|
+| **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. |
+| **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
+| **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
+| **Share setup diagnostics** | Off by default. This build sends nothing either way. |
+| **Send game diagnostics while playing** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. |
+| **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
+| **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. An adopted folder keeps the setting it was adopted with. |
+| **Debug logs** | **Upload debug logs** zips the game's `SGWDebugLog` files and session logs and uploads them once for the developers. Uploading the same logs again sends nothing ("Nothing new to upload"). Builds without an upload address hide the button. |
+| **Client cache and settings** | **Reset client cache** clears the game's downloaded data cache in `Documents\My Games\Firesky\SGWGame\Cache.en-US`; the game refills it from the server at your next login. **Reset all client state…** deletes the whole `Documents\My Games\Firesky` folder (your game settings, key bindings and cache) after you confirm with **Delete all client state**. Your characters on the server are not affected. Both refuse while the game runs. |
+| **Changes to your client** | Read-only. Every change the launcher makes to the stock client: the setup steps, each applied patch, the DLLs Play loads, and what the server sends while you play. |
+| **PhysX System Software** | Windows only. See [Install PhysX](#install-physx). |
+| **Game updates** | **Check for game updates** looks for a newer signed release of the game patches; **Update game…** applies one after you confirm. The update is built beside your install and swapped in, so a failed update leaves the old one working. |
+| **Launcher updates** | See [Launcher updates](#launcher-updates). |
+| **Import legacy launcher settings** and **Adopt existing installation** | See [Coming from the old launcher](#coming-from-the-old-launcher). |
+
+The **Settings** heading also shows the launcher's version and release tag.
+
+### Launcher updates
+
+The Windows launcher updates itself from the signed release feed on the
+stable link. It does not check by itself:
+
+1. In **Settings → Launcher updates**, click **Check for updates**. When a
+   newer release exists, the section shows its version and notes.
+2. Click **Download update**. The launcher downloads the new zip and checks its
+   signature and version before it saves it. A download that fails the check
+   is not kept.
+3. Click **Apply and restart**. The launcher puts the new files in place,
+   keeping each file it replaces as `<name>.old`, starts the new launcher and
+   closes. The new launcher confirms its version and then deletes the `.old`
+   files.
+
+If anything fails before the new launcher starts, the old files are put back
+and the section says **Failed**. Update between game sessions: the launcher
+refuses to update while the game, an install, a repair or a game update is
+running.
+
+macOS updates are manual: download the new zip from the stable link and
+replace the app. The **Launcher updates** section shows **Disabled** there,
+and in any launcher you built yourself.
+
+How the update is verified and swapped is in
+[launcher-self-update.md](launcher-self-update.md).
+
+### Where your files are
+
+| What | Where (Windows) |
+|---|---|
+| The launcher | The folder you unzipped it to |
+| Launcher settings and state | `%APPDATA%\app.cimmeria.launcher.desktop\state` |
+| The game, by default | `%LOCALAPPDATA%\app.cimmeria.launcher.desktop\Stargate Worlds\game` |
+| Your game settings and the client cache | `Documents\My Games\Firesky\SGWGame` |
+| Game logs | `game\Working\Binaries\SGWDebugLog.log` and `game\Working\Binaries\sessions\` |
+
+Uninstalling the game or deleting the launcher folder leaves the launcher
+settings. Delete the state folder too if you want the launcher to start fresh.
 
 ### How the client finds its server
 
-The client's login screen lists the servers `LoginMod.loadServerSystems()`
-defines in `LoginInternal.lua`. The stock file points at CME's dead QA and
-production login servers; the launcher replaces it with the configured
-list, CRLF and ASCII like the rest of the client's UI Lua, at the end of
-every install, on **Save**, and before every launch. Names and URLs may not
-contain quotes or backslashes, so a setting can't break out of the Lua
-string. A Cimmeria auth server listens on `http://<host>:8081`.
+The client's login screen lists the servers `LoginInternal.lua` defines. The
+stock file points at the original developers' long-dead servers, so the
+launcher writes the **Login servers** list into it before every Play. Edit the
+list in Settings, not the file: Play rewrites it. A Cimmeria login server
+listens on `http://<host>:8081`.
 
-Earlier launcher builds instead byte-patched `www.stargateworlds.com` in
-`SGW.exe`'s `.rdata`. That string is only the SOAP namespace
-`http://www.stargateworlds.com/xml/sgwlogin`, so the patch redirected
-nothing and would have broken the namespace the auth server expects. It is
-gone; no released launcher ever ran it.
-
-ASLR is switched off because the client-patches DLL and every RE address
-in `docs/` assume `SGW.exe` loads at `0x00400000`. The stock exe with that
-one byte cleared is byte-identical to a known-good QA client's.
-
-Hitting **Cancel** flips a `CancellationToken` that the download stream
-checks on every chunk, and the unpack steps check between files. A
-cancelled install leaves the `.tmp-*.download` file on disk, so
-re-clicking Install / Update picks up where it stopped via
-`Range: bytes=N-`.
-
-Installing from the archive.org client RAR needs roughly 14 GB free on
-the install drive at its peak: the 4.1 GB download, the 4.1 GB staged
-installer, and the expanded client.
+Play also switches off ASLR in `SGW.exe` (one byte in its header), because the
+client patches and the project's reverse-engineering notes assume `SGW.exe`
+loads at `0x00400000`. The stock exe with that byte cleared is byte-identical
+to a known-good QA client's.
 
 ### Install layout
 
-A full install has the original installer's layout:
+A full install has the original installer's layout, inside the `game` folder:
 
 ```text
-<install>\Common\...
-<install>\Resources\...
-<install>\Working\Binaries\SGW.exe   (plus its DLLs, SGWDebugLog.log, sessions\)
-<install>\Working\SGWGame\...
+<install>\game\Common\...
+<install>\game\Resources\...
+<install>\game\Working\Binaries\SGW.exe   (plus its DLLs, SGWDebugLog.log, sessions\)
+<install>\game\Working\SGWGame\...
 ```
-
-[`crates/launcher/src/install_layout.rs`](../../crates/launcher/src/install_layout.rs)::`binaries_dir`
-finds the directory holding `SGW.exe`, and every launch, the hostname
-patch, adoption and the log upload go through it. It also accepts an
-install path that points straight at `Binaries` (holds `SGW.exe`) or at
-`Working`, so configs from before this layout keep working.
 
 The client reads cooked data (`Cooked*.pak`, `TextStrings.pak`, …) from
 two tiers, set in `Working\Engine\Config\GameplayEngine.ini`:
@@ -228,163 +320,15 @@ two tiers, set in `Working\Engine\Config\GameplayEngine.ini`:
 | Tier | INI key | Where it is | Who writes it |
 |---|---|---|---|
 | Writable | `CachePath=..\SGWGame\Cache` | `Documents\My Games\Firesky\SGWGame\Cache.en-US` | The server's version push, on every connect |
-| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime. The client copies a PAK from it over the writable one when its version is newer (`client.cooked_cache.write` with `tier = source_cache`) |
+| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `Working\SGWGame\SourceCache.en-us` | Nothing at runtime. The client copies a PAK from it over the writable one when its version is newer (`client.cooked_cache.write` with `tier = source_cache`) |
 
-The 2009 cabinets put the bundled PAKs in
-`Working\SGWGame\Cache.en-US`, which is neither path. A stock install
-logs this once per cooked-data category in `SGWDebugLog.log`:
-
-```text
-WARN common - Non-existent source archive directory: <install>\Working\SGWGame\SourceCache.en-US
-```
-
-So after the seed is unpacked, the launcher renames that folder to
-`SourceCache.en-us`, which silences the warning. Testers had already
-done the same by hand, and their `SourceCache.en-us` PAKs are
-byte-identical to the cabinets' `Cache.en-US`. It is also why a PAK
-placed by hand in `SourceCache.en-us` stays put, while one placed in the
-Documents `Cache.en-US` is rewritten the next time the client connects.
-The launcher's **Reset client cache** button wipes only the Documents
-tier.
-
-### The launch buttons
-
-Four buttons, each enabled only when the relevant files exist in the
-binaries directory (see [`crates/launcher/src/app/view.rs`](../../crates/launcher/src/app/view.rs)::`show_launch_panel`):
-
-| Button | Enabled when | What it runs |
-|--------|------------|--------------|
-| **Launch SGW.exe** | `SGW.exe` exists | Starts `<binaries>/SGW.exe` (cwd = binaries dir) with the client patches loaded, unless you turned them off. With telemetry on, a telemetry session follows the game |
-| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
-| **Launch + Telemetry** | Atera available **and** you opted into telemetry **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
-| **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
-
-Under the buttons, **Load client patches (restores the Black Market
-window)** controls `cimmeria-client-patches.dll`, which the launcher
-loads into the game on **Launch SGW.exe**. It is on by default and has
-nothing to do with the telemetry setting. Turn it off only to rule the
-patches out when something misbehaves; the Black Market window will not
-open without them. The status log says on every launch when the patches
-were not loaded, and why. Atera debug launches never load them.
-
-Beside it, **Send telemetry (opt-in)** is off until you turn it on. On,
-the launcher uploads the client's log files while you play, and loads a
-small telemetry module (`cimmeria-client-telemetry.dll`) into the game
-after the client patches, which records in-game events such as the game
-messages the client handles and interface errors. Both go to the
-Cimmeria server with this install's random id, so crashes and bugs can
-be traced. Telemetry goes to the server's login port, the same address
-the game logs in to, so it needs no setup. The module changes nothing
-in the game. If the launcher
-cannot reach the telemetry server, or the module is missing, the status
-log says so and the game starts without it. The launcher also asks once,
-at the top of the window; either answer is remembered, and a change
-applies from your next launch.
-
-### What the launcher changes in your client
-
-Stargate Worlds needs the stock 2009 client, and Cimmeria changes it.
-The **Changes to your client** section lists every change: the login
-servers, ASLR flag and stock file names it sets before every launch, the
-folder it renames
-at install, each patch from the manifest and whether it is applied yet,
-what it adds to `SGW.exe` at launch, and what the server sends while you
-play. The same list applies whether the launcher downloaded the client
-or you adopted your own copy. Details are in
-[sgw-launcher.md](sgw-launcher.md#changes-to-your-client).
-
-The Atera files are **not** shipped by the launcher or any of its
-patches. Developers and modders drop the Atera tarball into the install
-directory themselves; the launcher detects the files and surfaces the
-buttons.
-
-The Atera debug build requires ASLR disabled on `SGW.exe`. Click
-**Fix ASLR** once after a fresh install, then the debug bat works on
-every subsequent launch.
-
-For what Atera actually does at runtime see
-[../technical/atrealoader-exe.md](../technical/atrealoader-exe.md) and
-[../technical/atrealoader-config.md](../technical/atrealoader-config.md).
-
-### Uploading debug logs
-
-The **Upload Debug Logs** button collects:
-
-- `<binaries>/sgwdebuglog*`, matched case-blind (the client writes
-  `SGWDebugLog.log`) — BigWorld Mercury unicode log
-- `<binaries>/sessions/**` — per-session logs
-
-The zip stores them under `Binaries/` whatever the directory is called
-on disk.
-
-Zips them in memory and PUTs the zip in a single HTTP request to the
-Azure storage account, named `logs/<hostname>-<utc>-<digest12>.zip`.
-
-Three rules to keep storage costs minimal:
-
-1. **One PUT per click**, never one-per-file. The whole zip goes up in
-   one request.
-2. **Content-digest dedupe**: the launcher hashes the *input files*
-   (sorted filename + bytes), not the zip itself, and records the hash
-   in `<exe>/uploaded.json`. Already-uploaded digest → zero HTTP
-   requests, button reports "Already uploaded".
-3. **Never automatic**: only fires on explicit button click.
-
-If the launcher you're running has no upload SAS baked in (i.e. it was
-built from a PR or a local dev build), the button is disabled with a
-friendly note. Only the official release pipeline injects the SAS.
-
-### Launcher updates
-
-The launcher updates itself. At startup it asks GitHub once, in the
-background, whether a newer launcher release exists; the window opens
-straight away. Under the title, a small line shows the running version
-(`Launcher launcher-YYYYMMDD-<sha>`) and a **Check for updates** button.
-
-When a newer release exists, a banner at the top of the window reads
-**Launcher update available (launcher-…)** with an **Update now** button
-and a link to the release notes. One click:
-
-1. Downloads the new launcher into the launcher's own folder, with a
-   progress bar in the banner.
-2. Checks the download against the size and the SHA-256 published in
-   the same GitHub release. A download that does not match is deleted
-   and nothing else changes.
-3. Renames the running launcher to `<its name>.old`, puts the new one at
-   the old name, and starts it with the same arguments. If the new one
-   cannot be put in place or will not start, the old one is renamed back.
-4. Closes the old launcher as soon as the new one has started, without
-   waiting for you to touch its window. The new launcher's status log
-   says `Launcher updated from … to …`, and it deletes the `.old` file.
-
-The launcher keeps its file name, whatever you renamed it to, and the
-settings files beside it (`launcher-config.json` and the rest) are left
-alone. **Update now** is off while an install is running. Updating closes
-the launcher, so if a game launched with telemetry is still running, that
-telemetry session ends; update between sessions.
-
-A launcher you built yourself (or from a pull request) never updates: the
-version line reads `development build — updates disabled`.
-
-The check is one request to the GitHub API, which allows 60 anonymous
-requests an hour per address. When you are offline or over that limit,
-the status log says `Could not check for launcher updates: …` and the
-launcher carries on; the next start checks again.
-
-> **This launcher no longer gets updates on Windows.** Releases now ship
-> the desktop launcher instead, and `launcher-20260929-f518b57` and older
-> never had an updater. Download
-> [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip)
-> by hand once, unzip it anywhere and run `cimmeria-launcher-desktop.exe`,
-> keeping the `windows` and `graphics` folders beside it. It updates
-> itself from then on.
-
-**Required updates.** The server's operator can require a minimum
-launcher version (the manifest's
-[`min_launcher`](#minimum-launcher-version-min_launcher)). When yours is
-older, a red line under the title says so, **Install / Update** and the
-launch buttons are off, and the banner offers the update. When the update
-check could not run, it links to the releases page instead.
+The 2009 cabinets put the bundled PAKs in `Working\SGWGame\Cache.en-US`,
+which is neither path, and a stock install logs a
+`Non-existent source archive directory` warning for each cooked-data category.
+So after unpacking, the installer renames that folder to `SourceCache.en-us`.
+It is also why a PAK placed by hand in `SourceCache.en-us` stays put, while
+one placed in the Documents `Cache.en-US` is rewritten the next time the client
+connects. **Reset client cache** wipes only the Documents tier.
 
 ---
 
@@ -392,7 +336,9 @@ check could not run, it links to the releases page instead.
 
 The launcher doesn't generate patches — it consumes them. Operators own
 the publishing pipeline. There's no automation yet; this section
-describes the manual procedure.
+describes the manual procedure. The manifest code every launcher uses is
+[`crates/launcher-core/src/manifest.rs`](../../crates/launcher-core/src/manifest.rs)
+(crate `cimmeria-launcher-core`).
 
 ### Step 1 — Build the seed
 
@@ -407,7 +353,7 @@ and `Data\DATA1.CAB`..`DATA4.CAB` (5,983 files). The launcher expands
 the cabinets straight into the installed layout, so the installer never
 runs. Point the manifest's seed at the archive.org URL (an absolute
 `blob` URL is used as-is), and nothing has to be rehosted. archive.org
-serves `Range` requests, so the 4.1 GB download resumes.
+serves `Range` requests, so an interrupted download resumes.
 
 | Field | Value |
 |---|---|
@@ -425,7 +371,12 @@ that bundles content fixes you don't want to ship as separate patches.
 
 Either way the seed contains the stock `SGW.exe` and stock
 `LoginInternal.lua`: the launcher's client setup (login servers, ASLR)
-runs at the end of `install_all`, after all manifest patches.
+runs after all manifest patches, and again before every Play.
+
+Every extracted file keeps the modified time the archive records for it (the
+cabinets date the client 2009-06-30), as the original installer does. See
+["Your ini file is outdated"](#your-ini-sgwgameconfigsgweditorini-file-is-outdated)
+for why that matters.
 
 Compute the seed file's SHA-256 — it becomes `manifest.seed.sha256`.
 
@@ -452,9 +403,9 @@ cargo run -p cimmeria-patchset -- build data/client-patches/<id>/patch.json \
 Give the spec a `title` and a one- or two-sentence `description` of
 what the patch changes, in words a player understands; the tool copies
 both into the manifest entry, and the launcher shows them in its
-**Changes to your client** list. Add the same text to the launcher's
-`builtin_description` in `crates/launcher/src/client_changes.rs`: a
-test checks the two match.
+**Changes to your client** list. Add the same text to `builtin_description`
+in [`crates/launcher-core/src/client_changes.rs`](../../crates/launcher-core/src/client_changes.rs):
+a test checks the two match.
 
 It prints the manifest entry. Each recipe op pins the SHA-256 of every
 source and of the result; the launcher refuses a source that isn't stock,
@@ -476,9 +427,9 @@ exactly as they go into the install directory:
             └── mercury.xml    ← the file you changed
 ```
 
-The launcher extracts the patch zip over the install directory using
-`zip::ZipArchive`. Existing files at the same paths are **overwritten**;
-files not present in the patch are left alone.
+The launcher extracts the patch zip over the install directory.
+Existing files at the same paths are **overwritten**; files not present
+in the patch are left alone.
 
 Three properties fall out of this simple model:
 
@@ -525,8 +476,8 @@ zip's SHA-256.
 }
 ```
 
-Rules the launcher enforces (see
-[`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`validate`):
+Rules the launcher enforces (`Manifest::validate` in
+[`crates/launcher-core/src/manifest.rs`](../../crates/launcher-core/src/manifest.rs)):
 
 - `schema` must be `1`. Bumping it invalidates every launcher binary
   built before the bump — serve a legacy manifest at the old URL during
@@ -557,17 +508,14 @@ supported.
 **Compatibility model:**
 
 The launcher bails on any schema that isn't `1` — the check is a literal
-`if self.schema != 1` in `Manifest::validate`
-([`crates/launcher/src/manifest.rs:176`](../../crates/launcher/src/manifest.rs)),
-not a named constant. There is no multi-schema support today. Bumping the
-schema is therefore a hard cutover that requires every player to be on a
-launcher build that understands the new schema, and the bump means editing
-that literal.
+`if self.schema != 1` in `Manifest::validate`, not a named constant.
+There is no multi-schema support today. Bumping the schema is therefore a
+hard cutover that requires every player to be on a launcher build that
+understands the new schema, and the bump means editing that literal.
 
 The recommended bump procedure:
 
-1. Cut a new launcher release whose `SUPPORTED_SCHEMA` is the new
-   number. The new launcher must accept *both* schemas during the
+1. Cut a new launcher release that accepts *both* schemas during the
    transition (temporarily relax the validate check).
 2. Wait at least one full release-cadence window for players to update.
 3. Publish a manifest at the new schema version.
@@ -588,14 +536,12 @@ the field ignores it):
 { "schema": 1, "min_launcher": "launcher-20261002-bbbbbbb", "seed": { … }, "patches": [ … ] }
 ```
 
-A launcher release older than this tag turns off **Install / Update** and
-the launch buttons and shows a mandatory update banner. Order: a
-different day decides by the tag's date. On the same day, the required
-release is newer when it was published after the running launcher was
-built; the launcher looks the tag up in the release list it just
-fetched, and lets the player through when it could not fetch it. A value
-that is not a launcher tag is ignored, with a WARN in the launcher's log.
-Development builds are never gated.
+A launcher release older than this tag refuses to play that release and
+says "Update the launcher before playing this release". Order: a different
+day decides by the tag's date. On the same day, the required release is
+newer when it was published after the running launcher was built; when
+the launcher cannot tell, it lets the player through. A value that is not
+a launcher tag is ignored. Development builds are never gated.
 
 Publish the launcher release first, then the manifest that requires it.
 The field is signed with the rest of the manifest.
@@ -619,10 +565,9 @@ content-2026-05-20-002
 
 The manifest references the immutable tag's assets by **absolute URL**,
 e.g. `https://github.com/<org>/<repo>/releases/download/content-2026-05-20-001/seed.zip`.
-The launcher's [`blob_url`](../../crates/launcher/src/manifest.rs)
-passes absolute URLs through unchanged; relative `blob` fields still
-work (resolved against the manifest URL's container) for legacy / mixed
-hosting setups.
+The launcher's `blob_url` (in `manifest.rs`) passes absolute URLs through
+unchanged; relative `blob` fields still work (resolved against the manifest
+URL's container) for legacy / mixed hosting setups.
 
 A rough operator workflow using PowerShell + `gh`:
 
@@ -669,8 +614,7 @@ that fetches `manifest.json` between the two would see an entry
 referencing a blob that doesn't exist yet and fail with a 404.
 
 The launcher verifies the signature against the compile-time-embedded
-`MANIFEST_SIGNING_PUBKEY`
-([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`).
+`MANIFEST_SIGNING_PUBKEY` (`verify_manifest_signature` in `manifest.rs`).
 `cimmeria-patchset pubkey --key <file>` prints the public key for a key
 file, to check it matches the secret.
 
@@ -686,7 +630,7 @@ Once you publish a patch, **never mutate it**:
   old path would refetch).
 - Don't change its `sha256` (a launcher mid-rerun would see a hash
   mismatch and refuse the install).
-- Don't change its `id` (the installed-state file uses ids to know what
+- Don't change its `id` (the installed-state ledger uses ids to know what
   it already applied).
 
 **To fix a broken patch, publish a new patch that overwrites the
@@ -724,61 +668,72 @@ Signing stays offline.
 
 ## Troubleshooting
 
-Common issues players hit, with first-line diagnostic steps. Every
-error message also lands in the launcher's status panel — copy-paste
-that into a bug report if first-line fixes don't help.
+Common problems, with first steps. Every action in the launcher reports a
+status line under its button; copy that text into a bug report if the steps
+here don't help.
 
-### "Manifest error: …"
+### Windows Defender or SmartScreen blocks the launcher
 
-The launcher couldn't fetch or parse `manifest.json`.
+Launcher releases are not code-signed, so Windows may warn about the launcher
+or quarantine a file in its `windows` folder. The launch helper there,
+`cimmeria-launch-worker.exe`, starts `SGW.exe` and loads the client patches
+into it, which is what antivirus heuristics look for in an unsigned program.
 
-- **`error sending request` / DNS failures**: check your internet
-  connection. Verify the **Manifest URL** field in the launcher matches
-  what your server operator published.
-- **HTTP 404**: the manifest URL is wrong, or the release asset it
-  points at was never uploaded. Operators: confirm `manifest.json` is
-  attached to the `content-current` release tag, and that the tag
-  itself exists.
-- **HTTP 403**: the release or repository isn't publicly readable.
-  Operators: content is served from GitHub Releases, so a private
-  repository will 403 anonymous fetches.
-- **JSON parse error**: the manifest is malformed. Operators: validate
-  the file with `jq . manifest.json` before uploading.
-- **"Unsupported manifest schema N"**: this launcher binary is older
-  than the manifest. Download a newer launcher release.
+- **SmartScreen ("Windows protected your PC")** on
+  `cimmeria-launcher-desktop.exe`: choose **More info → Run anyway**. Only do
+  this for a launcher you downloaded from the stable link.
+- **Defender removed a file from `windows\`:** the Play area then says "Play
+  unavailable: this build is missing verified game launch resources". Restore the file from
+  **Windows Security → Virus & threat protection → Protection history**, then
+  add an exclusion for the launcher's folder (**Virus & threat protection
+  settings → Exclusions → Add an exclusion → Folder**). The file names stay
+  the same across launcher updates, so the exclusion keeps working. From an
+  elevated PowerShell:
 
-### "Install failed: Hash mismatch for seed/patch …"
+  ```powershell
+  Add-MpPreference -ExclusionPath "C:\path\to\the\launcher\folder"
+  ```
 
-The download completed but the file's SHA-256 didn't match the manifest.
+  If you would rather not add an exclusion, download the zip again and unzip
+  it over the folder.
 
-- Click **Install / Update** again — the launcher resumes from the
-  partial `.tmp-*.zip` file and may correct a transient corruption.
-- If it persists: the CDN or the manifest is out of sync. Operators
-  should re-publish the affected blob and verify the manifest hash
-  matches.
+Code signing would remove the need for this; it is deferred for now.
 
-### "Install failed: Unexpected HTTP &lt;status&gt; for …"
+### A launcher update failed, or the launcher is gone after an update
 
-The seed or patch blob URL returned a non-success status (anything outside
-`2xx` plus the explicit resume case of `206 Partial Content`).
+If **Apply and restart** fails before the new launcher starts, the launcher
+puts its old files back and the section says **Failed**. Click **Recheck
+update status**, then **Check for updates** to try again. A download that
+failed its signature check was not installed; check again for a fresh offer.
 
-- **404**: a manifest entry references a blob that wasn't uploaded.
-  Operators should verify the upload order (patch blob first, then
-  manifest — see the storage runbook).
-- **403**: blob exists but isn't public.
-- **5xx**: Azure transient error. Retry; if it sticks, check the Azure
-  status page.
+Two cases need a hand fix, because no launcher is left to fix them:
 
-### "Launch failed: File not found"
+- **The launcher exe is missing** (the PC turned off mid-update, or antivirus
+  quarantined the new exe). Rename `cimmeria-launcher-desktop.exe.old` back
+  to `cimmeria-launcher-desktop.exe`, and do the same for any `.old` file in
+  the `windows` and `graphics` folders. The next start rolls back the rest.
+- **The updated launcher closes as soon as it starts.** Delete the new
+  `cimmeria-launcher-desktop.exe`, then rename the `.old` files back as above.
 
-The launcher tried to launch SGW.exe / a batch file that isn't actually
-on disk.
+Or download the zip from the stable link and unzip it over the folder. A
+leftover `.old` file next to a working launcher is safe to delete; the
+launcher deletes them itself at its next start.
 
-- Verify the **Install dir** field matches where the game is installed.
-- Click **Install / Update** to ensure the install is complete.
-- For Atera-debug launches: confirm `AteraLoader.exe` and
-  `AtreaGameDebug.bat` are both in the install dir alongside SGW.exe.
-  These files are not shipped by the launcher.
+### "Another launcher is using these settings"
+
+A second copy of the launcher is open. Starting the launcher again normally
+brings the open window to the front instead. Close the other window and try
+again.
+
+### Install fails or stops
+
+- **Not enough space:** the install needs about 14 GB free on the install
+  drive while it unpacks.
+- **A download or checksum error:** remove the partial installation
+  (**Remove partial installation…**) and install again. If it keeps failing on
+  the same file, the release or archive.org may be out of step; report it.
+- **The folder is refused:** pick an empty folder, or a new folder inside an
+  existing one.
 
 ### "Your ini (..\SGWGame\Config\SGWEditor.ini) file is outdated"
 
@@ -790,12 +745,11 @@ ran. Unreal Engine 3 builds your own settings files in
 `[INIVersion]` section. A different timestamp looks like a newer
 `Default*.ini`.
 
-Launchers released before this fix wrote every client file with the
-install time instead of the 2009-06-30 date in the installer cabinets.
-If you had run SGW on this PC before, from any install, the first launch
-after such an install shows this dialog. A launcher with the fix keeps
-the cabinets' dates, as the original installer does, so the dialog does
-not appear after a fresh install.
+Old launchers released before a fix wrote every client file with the install
+time instead of the 2009-06-30 date in the installer cabinets. If you had run
+SGW on this PC before, from any install, the first launch after such an
+install shows this dialog. The current launcher keeps the cabinets' dates, as
+the original installer does.
 
 - **Yes** (or **Yes to all**) is safe. The game rebuilds the
   `SGW*.ini` files from the `Default*.ini` files and records the new
@@ -803,131 +757,10 @@ not appear after a fresh install.
   files (resolution, keys, audio) to the defaults.
 - **No** keeps your settings, and the game asks again on the next
   launch.
-- To stop the dialog without losing settings, reinstall with a fixed
-  launcher: **Wipe → Client**, then **Install / Update**. The files get
-  their 2009 dates back and match what your `SGW*.ini` files recorded.
-  If you already answered **Yes** after an older launcher's install,
-  your `SGW*.ini` files recorded that install's dates instead, so the
-  first launch after the reinstall asks once more.
-
-### "Launcher update failed: …"
-
-The update stopped before it changed anything, or it put the old
-launcher back. The message says why:
-
-- **`… is not writable …`**: the launcher is in a folder you cannot write
-  to without admin rights, such as `C:\Program Files`. Move the launcher
-  (and the files beside it) to a folder of your own, such as
-  `%LOCALAPPDATA%\Stargate Worlds Launcher`, or download the new version
-  from the linked release page.
-- **`… does not match the release's SHA-256 …`** or **`… bytes, the
-  release lists …`**: the download was damaged or cut short, and it was
-  deleted. Click **Try again**.
-- **`… untrusted address …`** or **`… does not trust …`**: the download
-  was sent somewhere other than GitHub, so it was refused. Download by
-  hand from the release page.
-- **`… could not remove the previous update's leftover …`**: an old
-  `<launcher>.exe.old` is locked, usually by antivirus scanning it. Wait
-  a minute, or delete the `.old` file by hand, then try again.
-- **`the new launcher would not start …`**: the old launcher was put
-  back. Antivirus usually quarantined the new one; see the next entry.
-
-The link under the message opens the release page, where you can
-download the new exe by hand and replace yours with it.
-
-### "Another Stargate Worlds Launcher instance appears to be running" right after an update
-
-Updating **from** `launcher-20260929-676f314` can show this box once. That
-launcher did not close its window by itself after starting the new one,
-so the new launcher found it still running. The update itself worked:
-click **OK** and start the launcher again. It shows the new version and
-deletes the leftover `.old` file. Updates from later launchers close the
-old launcher straight away, and a new launcher started by an update ends
-a previous launcher that stays open too long instead of showing this
-box.
-
-If you see **"The launcher was updated, but the previous launcher window
-is still open"**, close the old launcher window (or end
-`sgw-launcher…exe` in Task Manager), then start the launcher again.
-
-Outside an update, this box means what it says: a launcher is already
-open. Switch to it, or close it and retry.
-
-### Antivirus or SmartScreen after a launcher update
-
-Every launcher release is a new unsigned exe. Windows may warn about it
-the first time the updated launcher runs, and Defender may scan or
-quarantine it. If no launcher window comes back after **Update now**,
-look in **Windows Security → Virus & threat protection → Protection
-history**, restore the file, and add the folder exclusion described in
-[Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
-If the launcher's own name is missing from its folder, rename
-`<launcher>.exe.old` back to it. A leftover `.old` file next to a
-working launcher is safe to delete; the launcher also deletes it at its
-next start.
-
-The desktop launcher (`cimmeria-launcher-desktop.exe`) updates from a zip
-and keeps every file it replaces as `<file>.old` until the updated launcher
-starts. If its exe is missing after an update, or the updated launcher
-closes as soon as it starts, delete the broken exe if there is one and
-rename `cimmeria-launcher-desktop.exe.old` back to
-`cimmeria-launcher-desktop.exe`, and any `.old` file in its `windows` and
-`graphics` folders the same way.
-
-### Windows Defender or SmartScreen blocks the launcher
-
-Launcher releases are not code-signed, so Windows may warn about the launcher or
-quarantine `sgw-start32.exe`. That small helper sits beside
-`sgw-launcher.exe` and loads the client patches into the game. It starts
-`SGW.exe` and writes into it, which is what antivirus heuristics look
-for in an unsigned program.
-
-- **SmartScreen ("Windows protected your PC")** on `sgw-launcher.exe`:
-  choose **More info → Run anyway**. Only do this for a launcher you
-  downloaded from the project's GitHub Releases page.
-- **Defender removed or blocked `sgw-start32.exe`**: the status log shows
-  `Client patches: not loaded (… sgw-start32.exe …)` and the game starts
-  without them. Restore it from **Windows Security → Virus & threat
-  protection → Protection history**, then add an exclusion for the
-  folder that holds the launcher (**Virus & threat protection settings →
-  Exclusions → Add an exclusion → Folder**). The helper keeps one fixed
-  name in that folder across launcher updates, so the exclusion keeps
-  working. The launcher never writes it to a temporary folder. From an
-  elevated PowerShell:
-
-  ```powershell
-  Add-MpPreference -ExclusionPath "C:\path\to\the\launcher\folder"
-  ```
-
-Code signing would remove the need for this; it is deferred for now.
-
-### The Black Market window does not open
-
-The Black Market window needs the client patches. Check the status log
-from the launch:
-
-- **`Client patches: off (launcher setting)`**: tick **Load client
-  patches** and launch again.
-- **`Client patches: unavailable: …`**: this launcher build has no DLL
-  bundled (a dev build) and there is no `cimmeria-client-patches.dll`
-  beside it. Use a released launcher.
-- **`Client patches: not loaded (… sgw-start32.exe …)`**: the launcher
-  could not run its 32-bit helper, `sgw-start32.exe`, which loads the
-  patches into the 32-bit game. A dev build has none unless it sits
-  beside the launcher; a released launcher carries it. If security
-  software removed it, see
-  [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
-- **`Client patches: not loaded (… remote_load_failed …)`**: the helper
-  ran but the DLL did not load into the game. Include the status log in
-  a bug report.
-- **No such line**: the patches were loaded. They write
-  `cimmeria-client-patches.log` next to `SGW.exe`; a line ending
-  `nothing installed` there means this `SGW.exe` is not the build the
-  patches know. Include that file in a bug report.
 
 ### The game shows the gate backdrop but never the login screen
 
-The launcher released on 2026-09-29 (`launcher-20260929-f518b57`)
+The old launcher released on 2026-09-29 (`launcher-20260929-f518b57`)
 renamed `Working\SGWGame\Content\UI\Startup\EULA\EULA.lua` to
 `eula.lua` while applying the `005-login-delay` patch. The game looks
 that file up case-sensitively, so the EULA screen never loads, and the
@@ -935,60 +768,63 @@ login screen comes after it. The client log (and telemetry's
 `client.ui.cegui_log`) shows `SGWResourceProvider: 'EULA.lua' does not
 exist in group lua`.
 
-- **Fix**: update the launcher. Before every launch, and after every
-  **Install / Update**, it renames the file back; the status log says
-  "Renamed ... eula.lua back to its stock name EULA.lua".
+- **Fix**: play from the current launcher. Before every Play it renames the
+  file back to its stock name.
 - **By hand**: rename `eula.lua` to `EULA.lua` in that folder. Keep the
   file; it is the patched one.
 
 Patch sets now keep the on-disk name of every file they change, so a new
 install is not affected.
 
-### SGW.exe launches but can't reach the server
+### The Black Market window does not open
 
-- Check the **Login servers** list: one `Name = http://host:8081` line
-  per server, with your operator's host. Click **Save**; the status log
-  says "Wrote the login server list" when the file changed.
-- Open `Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua` and
-  check it lists your server. The launcher rewrites it before every
-  launch, so edit the list in the launcher, not the file.
-- Pick the right server in the login screen's dropdown.
+The Black Market window needs the client patches.
 
-### "Log upload failed: 4xx/5xx"
+- Check **Settings → Client patches**: **Load client patches** must be on.
+- Check **Settings → Changes to your client**: it lists the DLLs Play loads.
+- If Defender removed a file from the launcher's `windows` folder, see
+  [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
+- The patches write `cimmeria-client-patches.log` next to `SGW.exe`. A line
+  ending `nothing installed` there means this `SGW.exe` is not the build the
+  patches know. Include that file in a bug report.
 
-- **403 AuthorizationFailure**: the SAS in the launcher binary has
-  expired. Players need to download a newer launcher release.
-- **403 AuthenticationFailed**: the SAS was malformed. Operators should
-  rotate (see storage runbook).
-- **413 RequestBodyTooLarge**: the log zip exceeded Azure's 256 MB
-  single-PUT block-blob limit. Should not happen in practice (sessions
-  rarely produce >100 MB of logs); if it does, report it.
+### SGW.exe starts but can't reach the server
 
-### "Log upload skipped: Already uploaded this exact log set"
+- Check **Settings → Login servers**: one `Name = http://host:8081` line per
+  server, with your operator's host, then **Save servers**.
+- Pick the right server in the login screen's list.
+- Don't edit `LoginInternal.lua` by hand: Play rewrites it from the saved
+  list.
 
-This is **not an error** — it means the launcher detected via local
-ledger that the same log contents were already uploaded. To force a
-re-upload, edit `<launcher.exe dir>/uploaded.json` and remove the
-relevant entry, or play a new session to generate fresh logs.
+### The game shows old or missing content after a server change
+
+Click **Settings → Reset client cache**, then log in again; the server sends
+its data again. If the game will not start at all or its settings are broken,
+**Reset all client state…** starts the client fresh. See also
+[A cooked-data category went empty](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server).
+
+### Log upload problems
+
+- **"Nothing new to upload"** is not an error: these exact logs were already
+  uploaded. Play a new session to make new ones.
+- **"The log store refused the upload"**: the upload address in your launcher
+  may have expired. Update the launcher.
+- **"Uploaded the newest logs. Older logs were left out…"**: the logs were
+  over 64 MiB, so only the newest went up.
 
 ### Where to find logs to share
 
-When asking for support:
-
-- Launcher's own status panel — copy the relevant lines.
-- `<launcher.exe dir>/launcher-config.json` — your install path, server
-  host, and manifest URL (the relevant config the launcher is using).
-- `<install_dir>/launcher-installed.json` — what the launcher thinks is
-  installed (seed sha + applied patches).
-- For game crashes (not launcher issues): use the **Upload Debug Logs**
-  button. Logs land at `logs/<host>-<utc>-<digest>.zip` in the
-  operator's storage container.
+- The status line under the button you pressed.
+- **Settings → Debug logs → Upload debug logs** for the game's own logs.
+- `game\Working\Binaries\SGWDebugLog.log` in your install folder.
 
 ---
 
 ## Cross-references
 
-- [sgw-launcher.md](sgw-launcher.md) — full design and architecture rationale
-- [launcher-distribution-setup.md](launcher-distribution-setup.md) — operator setup: GH Releases publishing, manifest signing key, Azure Blob SAS
-- [`crates/launcher/`](../../crates/launcher/) — source code
-- [.github/workflows/launcher-release.yml](../../.github/workflows/launcher-release.yml) — release pipeline
+- [Playing on a Mac](../guides/macos.md) — the macOS launcher
+- [Desktop launcher README](../../crates/launcher/desktop/README.md) — how the launcher works, for contributors
+- [launcher-self-update.md](launcher-self-update.md) — how launcher updates are signed, verified and swapped
+- [launcher-distribution-setup.md](launcher-distribution-setup.md) — operator setup: content releases, the signing keys, the log-upload storage
+- [Desktop launcher release](../../crates/launcher/desktop/docs/release.md) — what `/release-launcher` publishes
+- [sgw-launcher.md](sgw-launcher.md) — the retired old launcher's design, kept for history
