@@ -899,6 +899,18 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
 
+## Leave and invisible send failures (TG-AOI-08)
+
+`cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
+
+| `reason` | Meaning |
+|---|---|
+| `entity_to_addr_miss` | The witness has no `entity_to_addr` mapping; `addr_resolved = false` |
+| `client_disconnected` | The witness's client state is gone |
+| `send_error` | The transport refused the packet |
+
+Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
