@@ -21,6 +21,7 @@ pub mod manifest;
 pub mod overlay_meta;
 pub mod overlay_pack;
 pub mod patch_dest;
+pub mod seed_source;
 pub mod state;
 pub mod telemetry;
 pub mod unpack;

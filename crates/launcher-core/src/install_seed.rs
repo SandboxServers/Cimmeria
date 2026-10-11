@@ -1,6 +1,7 @@
 //! Seed-only extraction seam for native platform adapters. Patch overlay stays native.
 use super::*;
 use crate::manifest::SeedEntry;
+use crate::seed_source::VerifiedLocalSeed;
 use std::{future::Future, pin::Pin};
 
 /// Native-owned cache is separate from content staging, so the helper can
@@ -41,9 +42,59 @@ pub(super) async fn apply(
         .map_or(ctx.install_dir, |backend| backend.cache_directory);
     std::fs::create_dir_all(download_dir)?;
     let archive = download_dir.join(format!(".tmp-seed-{short_hash}.download"));
+    // The player's own verified archive, when they chose one, replaces the
+    // cache check and the download.
+    match ctx.seed_source.current() {
+        Some(local) => copy_local(ctx, &local, &archive).await?,
+        None => fetch_seed(ctx, &url, seed, &archive).await?,
+    }
+    info!("Unpacking seed into {}", ctx.install_dir.display());
+    let Some(backend) = backend else {
+        return verify_and_unpack(ctx, &archive, ctx.install_dir, &seed.sha256, "seed").await;
+    };
+    // Authenticate before platform code sees the archive. The helper also
+    // authenticates through its own open handle before writing output.
+    let file = archive.clone();
+    let expected = seed.sha256.clone();
+    tokio::task::spawn_blocking(move || {
+        let result = verify_sha256(&file, &expected, "seed");
+        if matches!(result, Err(InstallError::HashMismatch { .. })) {
+            let _ = std::fs::remove_file(file);
+        }
+        result
+    })
+    .await
+    .map_err(|_| InstallError::Io(std::io::Error::other("seed verification task failed")))??;
+    if ctx.cancel.is_cancelled() {
+        return Err(InstallError::Cancelled);
+    }
+    backend
+        .extractor
+        .extract(SeedExtraction {
+            archive: &archive,
+            destination: ctx.install_dir,
+            sha256: &seed.sha256,
+            cancel: ctx.cancel.clone(),
+            progress: ctx.progress.clone(),
+        })
+        .await?;
+    // Retain authenticated input on failure/uncertainty for explicit recovery.
+    let _ = std::fs::remove_file(archive);
+    Ok(())
+}
+
+/// Leaves the seed in `archive`: the complete cache when there is one, else a
+/// download. If the player switches to a local archive mid-download, the
+/// partial file is removed and the local copy is used instead.
+async fn fetch_seed(
+    ctx: &InstallContext<'_>,
+    url: &str,
+    seed: &SeedEntry,
+    archive: &Path,
+) -> Result<(), InstallError> {
     // A complete, authenticated cache can survive an interrupted attempt.
     // Reuse it even when the archive host is unavailable; extraction rechecks it.
-    let cached = archive.clone();
+    let cached = archive.to_path_buf();
     let expected = seed.sha256.clone();
     let size = seed.size;
     let cancel = ctx.cancel.clone();
@@ -81,50 +132,49 @@ pub(super) async fn apply(
     if ctx.cancel.is_cancelled() {
         return Err(InstallError::Cancelled);
     }
-    if !complete {
-        download_to_file(
-            ctx.http,
-            &url,
-            &archive,
-            ctx.cancel.clone(),
-            seed.size,
-            "seed",
-            &ctx.progress,
-        )
-        .await?;
+    if complete {
+        return Ok(());
     }
-    info!("Unpacking seed into {}", ctx.install_dir.display());
-    let Some(backend) = backend else {
-        return verify_and_unpack(ctx, &archive, ctx.install_dir, &seed.sha256, "seed").await;
-    };
-    // Authenticate before platform code sees the archive. The helper also
-    // authenticates through its own open handle before writing output.
-    let file = archive.clone();
-    let expected = seed.sha256.clone();
-    tokio::task::spawn_blocking(move || {
-        let result = verify_sha256(&file, &expected, "seed");
-        if matches!(result, Err(InstallError::HashMismatch { .. })) {
-            let _ = std::fs::remove_file(file);
-        }
-        result
-    })
+    let switch = ctx.seed_source.switched();
+    match download_to_file(
+        ctx.http,
+        url,
+        archive,
+        ctx.cancel.clone(),
+        switch,
+        seed.size,
+        "seed",
+        &ctx.progress,
+    )
     .await
-    .map_err(|_| InstallError::Io(std::io::Error::other("seed verification task failed")))??;
-    if ctx.cancel.is_cancelled() {
-        return Err(InstallError::Cancelled);
+    {
+        Err(InstallError::SeedSwitched) => {
+            let _ = std::fs::remove_file(archive);
+            let local = ctx
+                .seed_source
+                .current()
+                .ok_or(InstallError::SeedSwitched)?;
+            copy_local(ctx, &local, archive).await
+        }
+        other => other,
     }
-    backend
-        .extractor
-        .extract(SeedExtraction {
-            archive: &archive,
-            destination: ctx.install_dir,
-            sha256: &seed.sha256,
-            cancel: ctx.cancel.clone(),
-            progress: ctx.progress.clone(),
-        })
-        .await?;
-    // Retain authenticated input on failure/uncertainty for explicit recovery.
-    let _ = std::fs::remove_file(archive);
+}
+
+/// Copies the player's verified archive to `archive`. The copy is checked
+/// again on the way (identity, size, hash), so a file changed since the pick
+/// is refused here.
+async fn copy_local(
+    ctx: &InstallContext<'_>,
+    local: &VerifiedLocalSeed,
+    archive: &Path,
+) -> Result<(), InstallError> {
+    let local = local.clone();
+    let dest = archive.to_path_buf();
+    let cancel = ctx.cancel.clone();
+    let progress = ctx.progress.clone();
+    tokio::task::spawn_blocking(move || local.copy_into(&dest, &cancel, &progress))
+        .await
+        .map_err(|_| InstallError::Io(std::io::Error::other("local seed copy task failed")))??;
     Ok(())
 }
 
