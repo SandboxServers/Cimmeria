@@ -11,6 +11,26 @@ use crate::uat::evidence::{
 use crate::uat::spec::Source;
 use crate::uat::tier::Tier;
 
+/// The FS-P3 window of the Praxis capture (GD-02's fixture).
+pub fn fs_p3_tap() -> Value {
+    serde_json::from_str(include_str!("fixtures/fs_p3_tap.json")).unwrap()
+}
+
+/// The synthetic entity snapshot for [`fs_p3_tap`].
+pub fn fs_p3_entities() -> Value {
+    serde_json::from_str(include_str!("fixtures/fs_p3_entities.json")).unwrap()
+}
+
+/// The window samples for [`fs_p3_tap`].
+pub fn fs_p3_windows() -> Value {
+    serde_json::from_str(include_str!("fixtures/fs_p3_windows.json")).unwrap()
+}
+
+/// A tap body's message list, for tests that edit a record.
+pub fn tap_messages(tap: &mut Value) -> &mut Vec<Value> {
+    tap["tap"]["messages"].as_array_mut().unwrap()
+}
+
 /// A row's evidence with only its id, result and clauses set; every other
 /// field is empty or zero. Clauses are `(id, source, required, verdict)`.
 pub fn row_evidence(
