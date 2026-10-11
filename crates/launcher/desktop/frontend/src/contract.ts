@@ -93,6 +93,36 @@ export const ClientChangesStatus = Schema.Struct({
 export type ClientChangesStatus = typeof ClientChangesStatus.Type;
 export type ClientChangesError = ScaffoldError;
 
+// `physx_command` (engine `storage/runtime_setup/windows_physx/`, LX-12). Native Windows only.
+export type PhysxCommand = {command: "inspect"; schema_version: 1} | {command: "install"; schema_version: 1};
+export const PhysxResult = Schema.Union([
+  Schema.Struct({state: Schema.Literal("installed"), restart_required: Schema.Boolean}),
+  Schema.Struct({state: Schema.Literal("cancelled_at_uac")}),
+  Schema.Struct({state: Schema.Literal("cancelled_in_installer")}),
+  Schema.Struct({state: Schema.Literal("failed"), exit_code: Schema.Int}),
+  Schema.Struct({state: Schema.Literal("not_detected"), exit_code: Schema.Int}),
+  Schema.Struct({state: Schema.Literal("other_version_blocks")}),
+  Schema.Struct({state: Schema.Literal("start_failed"), win32_error: Schema.Int}),
+]);
+export type PhysxResult = typeof PhysxResult.Type;
+export const PhysxStatus = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  supported: Schema.Boolean,
+  // `core_present` is `<PhysXCore Path>\v2.6.3\PhysXCore.dll`, the file the game's loader opens.
+  detection: Schema.NullOr(Schema.Struct({core_registered: Schema.Boolean, core_present: Schema.Boolean})),
+  installer_available: Schema.Boolean,
+  installing: Schema.Boolean,
+  last_result: Schema.NullOr(PhysxResult),
+});
+export type PhysxStatus = typeof PhysxStatus.Type;
+export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch";
+export const decodePhysxStatus = (value: unknown) =>
+  Schema.decodeUnknownEffect(PhysxStatus, {onExcessProperty: "error"})(value);
+/** A `physx_command` rejection, or `"transport"` for anything else it could be. */
+export function physxFailure(error: unknown): PhysxError | "transport" {
+  return error === "installer_unavailable" || error === "package_mismatch" ? error : scaffoldFailure(error);
+}
+
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{
   readonly code: "transport" | "schema" | "in_use" | "io" | "corrupt" | "unsupported_schema" |
     "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" |

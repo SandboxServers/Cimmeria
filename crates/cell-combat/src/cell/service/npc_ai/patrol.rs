@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::dispatch::admit_leg_row;
 use super::record_decision_outcome;
 
 /// NPC patrol behavior: walk a waypoint loop with arrival-based
@@ -157,15 +158,18 @@ pub(super) async fn npc_ai_patrol(
                     let secs = delay_secs.max(0.5);
                     npc.patrol_dwell_until = Some(now + std::time::Duration::from_secs_f32(secs));
                 }
-                tracing::debug!(
-                    target: "npc_ai",
-                    event = "patrol_arrived",
-                    npc_id,
-                    npc_name = space_mgr.entity_label(npc_id),
-                    target_index,
-                    delay_secs,
-                    "NPC AI: patrol → arrived, dwelling"
-                );
+                if let Some(suppressed) = admit_leg_row(space_mgr, npc_id, "patrol_arrived") {
+                    tracing::debug!(
+                        target: "npc_ai",
+                        event = "patrol_arrived",
+                        npc_id,
+                        npc_name = space_mgr.entity_label(npc_id),
+                        target_index,
+                        delay_secs,
+                        suppressed,
+                        "NPC AI: patrol → arrived, dwelling"
+                    );
+                }
             }
             Some(deadline) if now < deadline => {
                 // Still dwelling — no-op.
@@ -265,16 +269,19 @@ pub(super) async fn npc_ai_patrol(
         // already carries npc_id + ai_state; the discriminator field
         // names the sub-state (patrol_waypoint_set).
         record_decision_outcome("patrol_continue");
-        tracing::debug!(
-            target: "npc_ai",
-            event = "patrol_waypoint_set",
-            npc_id,
-            npc_name = space_mgr.entity_label(npc_id),
-            target_index,
-            wp_x = waypoint.x,
-            wp_y = waypoint.y,
-            wp_z = waypoint.z,
-            "NPC AI: patrol → next waypoint queued"
-        );
+        if let Some(suppressed) = admit_leg_row(space_mgr, npc_id, "patrol_waypoint_set") {
+            tracing::debug!(
+                target: "npc_ai",
+                event = "patrol_waypoint_set",
+                npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
+                target_index,
+                wp_x = waypoint.x,
+                wp_y = waypoint.y,
+                wp_z = waypoint.z,
+                suppressed,
+                "NPC AI: patrol → next waypoint queued"
+            );
+        }
     }
 }

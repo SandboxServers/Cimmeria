@@ -125,9 +125,19 @@ pub(super) async fn start_minigame(
             tracing::warn!(
                 entity_id,
                 entity_name = player_label,
+                %game_name,
+                reason = "register_refused",
                 "Failed to register minigame session (duplicate?)"
             );
         }
+    } else {
+        tracing::warn!(
+            entity_id,
+            entity_name = player_label,
+            %game_name,
+            reason = "minigame_server_disabled",
+            "Minigame not started: the minigame server is disabled"
+        );
     }
 }
 
@@ -142,11 +152,13 @@ pub(super) async fn minigame_result(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
+    let entity_name = entity_name_for(connected, entity_to_addr, entity_id);
+    let result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code);
     tracing::info!(
         entity_id,
-        entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+        entity_name,
         result_code,
-        result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
+        result,
         "Minigame result received"
     );
     // Send onEndMinigame to client
@@ -162,14 +174,39 @@ pub(super) async fn minigame_result(
     )
     .await;
     // Forward to CellApp for victory chain processing
+    let chain_count = on_victory_chains.len();
     if let Some(cell_tx) = cell_tx {
-        let _ = cell_tx
+        // A dropped receiver means the cell task is gone and the victory
+        // chains for this result will never run.
+        if let Err(e) = cell_tx
             .send(BaseToCellMsg::MinigameResult {
                 entity_id,
                 result_code,
                 on_victory_chains,
             })
-            .await;
+            .await
+        {
+            tracing::error!(
+                entity_id,
+                entity_name,
+                result_code,
+                result,
+                chain_count,
+                error = %e,
+                reason = "cell_channel_closed",
+                "Minigame result lost: the cell channel is closed, victory chains will not run"
+            );
+        }
+    } else {
+        tracing::warn!(
+            entity_id,
+            entity_name,
+            result_code,
+            result,
+            chain_count,
+            reason = "no_cell_channel",
+            "Minigame result lost: no cell channel, victory chains will not run"
+        );
     }
 }
 

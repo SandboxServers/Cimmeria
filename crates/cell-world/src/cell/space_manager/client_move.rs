@@ -289,33 +289,45 @@ impl SpaceManager {
                 // the audit trail for a privileged player standing somewhere an
                 // ordinary player is snapped back from.
                 let id = self.player_identity(entity_id);
-                // `world`, like every other `movement.validation` row
-                // whose space id resolves: a dashboard filtered by world
-                // must not silently drop the GM allowance rows, which
-                // are the audit trail for a privileged player standing
-                // where an ordinary one is snapped back from.
-                let world = self.world_name_for_space(space_id);
-                tracing::warn!(
-                    target: "movement.validation",
-                    entity_id,
-                    entity_name = id.player_name,
-                    account_id = id.account_id,
-                    account_name = id.account_name,
-                    player_id = id.player_id,
-                    player_name = id.player_name,
-                    space_id,
-                    world,
-                    client_x = position[0],
-                    client_y = position[1],
-                    client_z = position[2],
-                    reason = "navmesh_gm_bypass",
-                    "movement.navmesh_gm_bypass: off-navmesh position accepted for a \
-                     GM caller (warn-only — ordinary players are snapped back)"
-                );
+                // The counter sees every packet; only the row is throttled.
                 cimmeria_observability::counter!(
                     "movement_validation_warns_total",
                     "reason" => "navmesh_gm_bypass",
                 );
+                // INFO, not WARN: a GM standing off-mesh is intended, so the
+                // row is an audit trail. One per GM per window; `suppressed`
+                // counts the packets in between.
+                if let Some(suppressed) = self.movement_telemetry.gm_bypass_log.admit(
+                    entity_id,
+                    "navmesh_gm_bypass",
+                    now,
+                    super::movement_telemetry::GM_BYPASS_LOG_INTERVAL,
+                ) {
+                    // `world`, like every other `movement.validation` row
+                    // whose space id resolves: a dashboard filtered by world
+                    // must not silently drop the GM allowance rows, which
+                    // are the audit trail for a privileged player standing
+                    // where an ordinary one is snapped back from.
+                    let world = self.world_name_for_space(space_id);
+                    tracing::info!(
+                        target: "movement.validation",
+                        entity_id,
+                        entity_name = id.player_name,
+                        account_id = id.account_id,
+                        account_name = id.account_name,
+                        player_id = id.player_id,
+                        player_name = id.player_name,
+                        space_id,
+                        world,
+                        client_x = position[0],
+                        client_y = position[1],
+                        client_z = position[2],
+                        reason = "navmesh_gm_bypass",
+                        suppressed,
+                        "movement.navmesh_gm_bypass: off-navmesh position accepted for a \
+                         GM caller (ordinary players are snapped back)"
+                    );
+                }
             } else {
                 return self.reject_outcome(
                     entity_id,

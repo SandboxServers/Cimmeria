@@ -19,7 +19,13 @@ CREATE TABLE account (
     -- Accounts start at 1 and flip to 2 on first plaintext login.
     password_algo smallint DEFAULT 1 NOT NULL,
     accesslevel integer DEFAULT 0 NOT NULL,
-    enabled boolean DEFAULT true NOT NULL
+    enabled boolean DEFAULT true NOT NULL,
+    -- Test account (TG-NET-16, D-TG13): true for accounts that automation
+    -- drives (the live research lab). Phase 3 copies it into the session as
+    -- `session_kind` ("lab" when true, "player" otherwise), so telemetry can
+    -- tell lab runs from real players. Set only in the seed; never trusted
+    -- from the client.
+    test_account boolean DEFAULT false NOT NULL
 );
 
 --
