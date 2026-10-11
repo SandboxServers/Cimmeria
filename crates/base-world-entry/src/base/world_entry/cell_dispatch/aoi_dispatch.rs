@@ -250,7 +250,7 @@ pub(super) async fn entered_aoi(
                 outcome = "deferred_not_ready",
                 "AoI introduce: witness pre-onClientReady, buffering entity introduction"
             );
-            deferred_aoi::push_deferred(
+            let outcome = deferred_aoi::push_deferred(
                 connected,
                 addr,
                 deferred_aoi::DeferredAoiMsg::EnteredAoI {
@@ -263,6 +263,16 @@ pub(super) async fn entered_aoi(
                     player_data,
                 },
             );
+            if outcome == deferred_aoi::DeferOutcome::SessionGone {
+                tracing::debug!(
+                    %addr,
+                    event = "deferred_dropped",
+                    reason = "session_gone",
+                    kind = "entered",
+                    entity_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+                    "AoI introduce: session gone before its entity introduction could be buffered"
+                );
+            }
             return;
         }
     } else {
@@ -333,11 +343,21 @@ pub(super) async fn left_aoi(
         .and_then(|m| m.get(&witness_id).copied());
     if let Some(addr) = witness_addr {
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
-            deferred_aoi::push_deferred(
+            let outcome = deferred_aoi::push_deferred(
                 connected,
                 addr,
                 deferred_aoi::DeferredAoiMsg::LeftAoI { entity_id },
             );
+            if outcome == deferred_aoi::DeferOutcome::SessionGone {
+                tracing::debug!(
+                    %addr,
+                    event = "deferred_dropped",
+                    reason = "session_gone",
+                    kind = "left",
+                    entity_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+                    "AoI leave: session gone before its entity departure could be buffered"
+                );
+            }
             return;
         }
     }

@@ -938,6 +938,17 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Deferred-AoI cap drops (TG-AOI-01)
+
+A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI traffic (`push_deferred` in `base-session/src/base/deferred_aoi.rs`). At the cap the message is dropped, and the drop names it. `kind` is `entered`, `left`, `method`, `witness_method` or `invisible`; an `entity_id` is absent for `method`, which names no entity, rather than a placeholder. The entered and left paths in `aoi_dispatch.rs` (`cell_dispatch`, `cimmeria-base-world-entry`) keep the `DeferOutcome`, so a buffer write that finds the session already gone is logged too.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "deferred_dropped"`, `reason = "buffer_full"`, `kind`, `entity_id`, `witness_name` (when set), `buffered` | The witness's buffer is at the cap; the message is dropped |
+| DEBUG | `event = "deferred_dropped"`, `reason = "session_gone"`, `kind`, `entity_id` | An entered or left AoI message found no session to buffer it |
+
+Guard: `push_deferred_drops_at_cap` (`base-session`) captures the WARN and asserts `event`, `entity_id` and `kind`.
+
 ## Base-to-cell send seam (TG-MER-05)
 
 Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/connect_loop/cell_send.rs`): the cell-method arms and the `EntityMove` relay.
