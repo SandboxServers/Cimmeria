@@ -110,6 +110,26 @@ test('disposing during pending IPC removes controls without claiming a saved res
   assert.equal(calls,1);
 });
 
+test('a refresh asked for during an inspect resolves only after a fresh inspect, coalesced', {timeout:5000}, async () => {
+  const ui = dom(); const answers:((snapshot:NativeSnapshot)=>void)[] = [];
+  const app = mountLauncher(ui.document, async (command,args) => {
+    if(command !== 'launcher_command' || (args!.request as Command).command !== 'inspect') return null;
+    return new Promise(resolve => answers.push(resolve));
+  });
+  try {
+    await flush(); assert.equal(answers.length,1);
+    let firstDone=false; let secondDone=false;
+    // Both asked while the opening inspect is in flight: a post-save refresh must not get it.
+    void app.refresh().then(() => {firstDone=true;}); void app.refresh().then(() => {secondDone=true;});
+    answers[0]!(initial()); await flush(); await flush();
+    assert.equal(answers.length,2, 'one queued inspect starts after the in-flight one');
+    assert.equal(firstDone,false); assert.equal(secondDone,false);
+    answers[1]!({...initial(),preferences:{...initial().preferences,revision:1}}); await flush(); await flush();
+    assert.equal(firstDone,true); assert.equal(secondDone,true);
+    assert.equal(answers.length,2, 'the two refreshes shared one inspect');
+  } finally { await app.dispose(); }
+});
+
 test('native Launch ownership gates directory changes until observed exit',async()=>{
  const ui=dom();let status:NativeSnapshot={...initial(),operation:{schema_version:1,revision:1,operation:{id:'launch',kind:'launch',state:'running',intent_digest:Array(32).fill(0)}}};
  const app=mountLauncher(ui.document,async()=>status);

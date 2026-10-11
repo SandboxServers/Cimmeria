@@ -81,6 +81,15 @@ test('a failed reload keeps the saved choice on screen without claiming it reloa
  await m.app.dispose();
 });
 
+test('a refresh that brings no newer snapshot keeps the saved choice and says it could not reload',async()=>{
+ // The refresh resolves with the pre-save snapshot (revision 3) still current.
+ const m=mounted(async()=>null,async()=>{m.feed.publish(snapshot(3,true));});
+ m.toggle();await m.app.settled();
+ assert.equal(m.text('client-patches-status'),'Saved, but the launcher could not reload settings. Restart the launcher to see the saved setting.');
+ assert.equal(m.box.checked,false,'the old snapshot does not put the previous value back');assert.equal(m.box.disabled,false);
+ await m.app.dispose();
+});
+
 test('an adopted copy says it keeps its adopted setting, and a save says so',async()=>{
  const adopted=(revision:number,on:boolean)=>({...snapshot(revision,on),adopted_login_servers:[{name:'Reviewed',url:'http://reviewed.example:8081'}]});
  const m=mounted(async()=>null,async()=>{m.feed.publish(adopted(4,false));},adopted(3,true));

@@ -49,9 +49,11 @@ export function mountClientPatches(document:Document,invoke:Invoke,context:Panel
    login_servers:snapshot.preferences.login_servers,client_patches_enabled:enabled};
   let unconfirmed=false;
   mutation=invoke('launcher_command',{request}).then(async()=>{
-   const reloaded=await context.refresh().then(()=>true,()=>false);
+   const refreshed=await context.refresh().then(()=>true,()=>false);
    if(disposed)return;
-   // The old snapshot must not put the previous value back over what was saved.
+   // The old snapshot must not put the previous value back over what was saved: a refresh that
+   // brought no snapshot newer than the one this save was based on did not reload it.
+   const reloaded=refreshed&&(context.snapshot()?.preferences.revision??-1)>request.expected_revision;
    if(!reloaded){unconfirmed=true;status.textContent='Saved, but the launcher could not reload settings. Restart the launcher to see the saved setting.';return;}
    status.textContent=adopted()?'Saved, but this copy keeps the client-patches setting it was adopted with.'
     :enabled?'Saved. The next Play loads client patches.':'Saved. The next Play starts the game without client patches.';

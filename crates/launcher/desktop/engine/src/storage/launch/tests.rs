@@ -396,3 +396,66 @@ fn a_lab_build_of_the_telemetry_dll_is_refused_even_with_consent() {
         Err(IntentError::Storage(StorageError::UnsafeFile))
     ));
 }
+#[test]
+fn a_retry_after_turning_client_patches_off_mid_play_returns_the_admitted_plan() {
+    let (root, mut state, installation) = runtime_setup::tests::fixture_with_runtime([7; 32]);
+    let directory = root.path().canonicalize().unwrap();
+    let plan = Plan {
+        id: Uuid::new_v4(),
+        installation,
+        runtime: None,
+        resources: Resources {
+            helper: artifact(&directory, "helper.exe"),
+            client_patches: Some(artifact(&directory, "patches.dll")),
+            client_telemetry: None,
+            graphics: None,
+        },
+    };
+    state
+        .write_launch(&format!("launch-plan-{}.json", plan.id), &plan)
+        .unwrap();
+    let revision = state.operations.snapshot().revision;
+    state
+        .operations_mut()
+        .unwrap()
+        .begin(
+            plan.id,
+            OperationKind::Launch,
+            plan.digest().unwrap(),
+            revision,
+        )
+        .unwrap();
+    // The player turns "Load client patches" off while the game runs; the host's
+    // retry now resolves resources without the patches DLL.
+    let preferences = state.preferences().revision;
+    state
+        .save_client_options(vec![], false, preferences)
+        .unwrap();
+    let resolved = Resources {
+        client_patches: None,
+        ..plan.resources.clone()
+    };
+    let retry = state
+        .admit_launch(plan.id, 0, plan.installation.operation_id, resolved.clone())
+        .unwrap();
+    assert!(!retry.dispatch);
+    assert_eq!(
+        retry.plan, plan,
+        "the retry gets the plan that was admitted"
+    );
+    // Identity still binds a retry: a different helper is a conflict.
+    assert_eq!(
+        state
+            .admit_launch(
+                plan.id,
+                0,
+                plan.installation.operation_id,
+                Resources {
+                    helper: artifact(&directory, "other.exe"),
+                    ..resolved
+                }
+            )
+            .unwrap_err(),
+        IntentError::Operation(ContractError::IdentityConflict)
+    );
+}
