@@ -79,6 +79,9 @@ pub struct Sim {
     pub buttons: Vec<(usize, bool)>,
     /// Clicks reach the game but do nothing (to exercise the fallback).
     pub clicks_do_nothing: bool,
+    /// Scales the gains the camera readout reports (1.0 is exact), so a
+    /// closed loop's first look misses and its correction has to run.
+    pub readout_gain_scale: f64,
 }
 
 impl Sim {
@@ -113,6 +116,7 @@ impl Sim {
             target_unit_calls: 0,
             buttons: Vec::new(),
             clicks_do_nothing: false,
+            readout_gain_scale: 1.0,
         }
     }
 
@@ -337,14 +341,14 @@ impl WorldIo for Sim {
         // Rotator units per mouse count: 65536 per turn over the sim's gain.
         // The readout's pitch rises with +dy, as the live camera's does.
         let units = 65536.0 / std::f64::consts::TAU;
-        let gain = units / self.gain.abs();
+        let gain = units / self.gain.abs() * self.readout_gain_scale;
         Ok(json!({
             "zoom": self.zoom,
             "yaw_offset_deg": 0.0,
             "pitch_offset_deg": -self.cam_pitch.to_degrees(),
             "gain": gain,
             "pitch_gain": gain,
-            "yaw_gain": units / self.gain,
+            "yaw_gain": units / self.gain * self.readout_gain_scale,
         }))
     }
 

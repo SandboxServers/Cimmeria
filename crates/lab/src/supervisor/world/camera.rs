@@ -242,12 +242,15 @@ async fn abs_pitch<W: WorldIo>(
 ) -> Result<Value, WorldError> {
     let t0 = io.now_ms();
     let mut looks = 0;
+    // The last look's start pitch and counts, to learn the real gain from.
+    let mut last: Option<(f64, i32)> = None;
+    let mut learned: Option<f64> = None;
     loop {
         let r = io
             .camera_readout()
             .await
             .map_err(|e| steps.fail(io.now_ms(), "abs_pitch", e))?;
-        let (Some(got), Some(gain)) = (
+        let (Some(got), Some(read_gain)) = (
             r["pitch_offset_deg"].as_f64(),
             r["pitch_gain"].as_f64().filter(|g| usable_gain(*g)),
         ) else {
@@ -272,16 +275,36 @@ async fn abs_pitch<W: WorldIo>(
                 r,
             ));
         }
+        // Rotator units per count as measured by the last look, when it moved
+        // the camera the way the readout's gain says (else the readout's gain).
+        if let Some((from, sent)) = last {
+            let units = (got - from) * 65536.0 / 360.0;
+            let g = units / f64::from(sent);
+            if (got - from).abs() > 0.05 && usable_gain(g) && g.signum() == read_gain.signum() {
+                learned = Some(g);
+            }
+        }
+        let gain = learned.unwrap_or(read_gain);
         // Rotator units: the readout's degrees, so the clamp sees the same offset.
         let pitch = (got * 65536.0 / 360.0) as i32;
         let counts = (err * 65536.0 / 360.0 / gain).round() as f32;
         let counts = memory::clamped_pitch_counts(pitch, gain as f32, counts).round() as i32;
+        if counts == 0 {
+            // The pitch limit allows no further move; more looks would not help.
+            return Err(steps.fail_with(
+                io.now_ms(),
+                "abs_pitch",
+                format!("the camera stopped at {got:.2} deg at its pitch limit, not {want} deg"),
+                r,
+            ));
+        }
         let level = io
             .look(0, counts, 0)
             .await
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
         steps.used(level);
         looks += 1;
+        last = Some((got, counts));
         io.sleep(LOOK_SETTLE_MS).await;
     }
 }
@@ -294,6 +317,11 @@ async fn abs_yaw<W: WorldIo>(
     want: f64,
 ) -> Result<Value, WorldError> {
     let t0 = io.now_ms();
+    if want.abs() <= ABS_TOLERANCE_DEG {
+        let out = json!({ "want": want, "got": 0.0, "looks": 0 });
+        steps.record("abs_yaw", t0, io.now_ms(), out.clone());
+        return Ok(out);
+    }
     let r = io
         .camera_readout()
         .await

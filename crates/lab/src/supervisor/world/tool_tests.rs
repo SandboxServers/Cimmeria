@@ -601,6 +601,85 @@ async fn a_yaw_offset_past_half_a_turn_is_refused() {
 }
 
 #[tokio::test]
+async fn absolute_pitch_corrects_a_wrong_readout_gain() {
+    // The readout claims 0.7x the true gain: the first look misses, and only
+    // the closed loop's correction lands it.
+    let mut sim = camera_at_pitch(10.0);
+    sim.readout_gain_scale = 0.7;
+    let out = camera::run(
+        &mut sim,
+        CameraRequest {
+            pitch_deg: Some(-28.8),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    let pitch = &out["absolute"]["pitch"];
+    assert!(
+        (pitch["got"].as_f64().unwrap() + 28.8).abs() <= 0.5,
+        "{out}"
+    );
+    let looks = pitch["looks"].as_u64().unwrap();
+    assert!((2..=4).contains(&looks), "{out}");
+}
+
+#[tokio::test]
+async fn absolute_yaw_corrects_a_wrong_readout_gain() {
+    let mut sim = room();
+    sim.readout_gain_scale = 0.7;
+    let before = sim.cam_yaw;
+    let out = camera::run(
+        &mut sim,
+        CameraRequest {
+            yaw_offset_deg: Some(-40.0),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    let turned = wrap_pi(sim.cam_yaw - before).to_degrees();
+    assert!((turned + 40.0).abs() <= 0.5, "{turned}: {out}");
+    assert!(
+        out["absolute"]["yaw"]["looks"].as_u64().unwrap() >= 2,
+        "{out}"
+    );
+}
+
+#[tokio::test]
+async fn an_unreachable_pitch_fails_at_the_limit_without_idle_looks() {
+    let mut sim = camera_at_pitch(0.0);
+    let e = camera::run(
+        &mut sim,
+        CameraRequest {
+            pitch_deg: Some(-85.0),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "abs_pitch");
+    // One clamped look, then the limit is recognised; never a (0, 0, 0) look.
+    assert!(sim.looks.len() <= 2, "{:?}", sim.looks);
+    assert!(sim.looks.iter().all(|l| *l != (0, 0, 0)), "{:?}", sim.looks);
+}
+
+#[tokio::test]
+async fn a_zero_yaw_offset_sends_no_look() {
+    let mut sim = room();
+    camera::run(
+        &mut sim,
+        CameraRequest {
+            yaw_offset_deg: Some(0.0),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(sim.looks.is_empty(), "{:?}", sim.looks);
+}
+
+#[tokio::test]
 async fn a_zero_readout_gain_fails_instead_of_spinning() {
     // A camera read before the game loads its settings reports gain 0.
     let mut sim = room();
