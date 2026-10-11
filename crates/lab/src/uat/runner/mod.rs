@@ -20,6 +20,7 @@ mod drive;
 mod fingerprint;
 mod fixture;
 mod fixture_verify;
+mod heal;
 mod lab_commands;
 mod packet;
 mod players;
@@ -115,6 +116,14 @@ pub enum FixtureMode {
     Never,
 }
 
+/// A pose click that missed, named so `-Heal` can recalibrate the pose
+/// (SV-11, README F15): the pose id and the world step that failed.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HealHint {
+    pub pose: String,
+    pub step: String,
+}
+
 /// A finished row, as the tool reports it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RowSummary {
@@ -122,6 +131,9 @@ pub struct RowSummary {
     pub row: String,
     pub result: String,
     pub reasons: Vec<String>,
+    /// Set on a non-PASS row whose first failed step is a pose click miss.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heal: Option<HealHint>,
 }
 
 /// What a run returns.
@@ -331,6 +343,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     row: r.row_id.clone(),
                     result: r.result.as_str().to_string(),
                     reasons: r.reasons.clone(),
+                    heal: if r.result == super::evidence::RowResult::Pass {
+                        None
+                    } else {
+                        heal::heal_hint(r)
+                    },
                 })
                 .collect(),
             ledger: done

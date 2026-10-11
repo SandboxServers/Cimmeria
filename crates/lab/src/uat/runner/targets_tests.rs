@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use super::targets::{STAND_POLL, STAND_TIMEOUT};
 use super::test_server::FakeServer;
 use super::tests::{request, Fake};
-use super::Runner;
+use super::{HealHint, RunOutcome, Runner};
 use crate::uat::evidence::{ActionRecord, RowEvidence, RowResult, RunDir};
 use crate::uat::invoke::ServerInvoker;
 use crate::uat::tier::Role;
@@ -63,6 +63,9 @@ const FROST_POSE: &str = r#"pose = [
   { id = "torso", tag = "ArmYourself_FrostBody", radius_m = 4.16, bearing_deg = 322.5, aim = "point", aim_dy_m = 0.28 },
 ]"#;
 
+/// The frost click as a step: the pose resolved and the click typed.
+const CLICK_FROST: &str = r#"{ tool = "@world_click", args = { pose = "frost" }, label = "go" }"#;
+
 /// One row with the two poses and `step`, graded by a chat line the fake
 /// always shows.
 fn row(step: &str) -> String {
@@ -96,6 +99,17 @@ async fn run(fake: &Fake, server: Option<&FakeServer>, step: &str) -> RowEvidenc
         .rows()
         .unwrap()
         .remove(0)
+}
+
+/// The run's summaries for the one row `text` holds.
+async fn outcome(fake: &Fake, server: Option<&FakeServer>, text: &str) -> RunOutcome {
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let server = server.map(|s| s as &dyn ServerInvoker);
+    Runner::new(fake, server, request(&tmp, text))
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap()
 }
 
 fn step_action(row: &RowEvidence) -> &ActionRecord {
@@ -396,6 +410,45 @@ async fn a_capped_reply_without_the_tag_says_so() {
     .await;
     let want = format!("no entity with tag {FROST_TAG} in space {SPACE} (the reply was capped)");
     assert_eq!(step_action(&ev).error.as_deref(), Some(want.as_str()));
+}
+
+#[tokio::test]
+async fn a_pose_click_miss_puts_the_heal_hint_in_the_summary() {
+    let srv = server(vec![body(100_751, Some(FROST_TAG))]);
+    let fake = client(vec![player_at([0.0; 3])]).answer(
+        "client_world_click",
+        vec![json!({ "__error": "pose missed", "__data": { "step": "hover" } })],
+    );
+    let out = outcome(&fake, Some(&srv), &row(CLICK_FROST)).await;
+    let summary = &out.rows[0];
+    assert_ne!(summary.result, "PASS", "{:?}", summary.reasons);
+    assert_eq!(
+        summary.heal,
+        Some(HealHint {
+            pose: "frost".into(),
+            step: "hover".into(),
+        })
+    );
+    let json = serde_json::to_value(summary).unwrap();
+    assert_eq!(json["heal"], json!({ "pose": "frost", "step": "hover" }));
+}
+
+#[tokio::test]
+async fn a_passing_row_summary_has_no_heal_key() {
+    let srv = server(vec![body(100_751, Some(FROST_TAG))]);
+    let fake = client(vec![player_at([0.0; 3])]);
+    // A lua clause the fake answers (its `results` hold "40"), since the
+    // chat clause of `row` needs a line this fake never shows.
+    let text = format!(
+        "[[row]]\nid = \"SV-T\"\ntitle = \"targets\"\nexpected = \"Reaches the tagged body.\"\n{FROST_POSE}\nstep = [{CLICK_FROST}]\n\
+         [[row.expect]]\nid = \"c\"\ntext = \"t\"\nsource = \"lua\"\nchunk = \"return 40\"\nop = \"gte\"\nvalue = 1\n"
+    );
+    let out = outcome(&fake, Some(&srv), &text).await;
+    let summary = &out.rows[0];
+    assert_eq!(summary.result, "PASS", "{:?}", summary.reasons);
+    assert!(summary.heal.is_none());
+    let json = serde_json::to_value(summary).unwrap();
+    assert!(json.get("heal").is_none(), "{json}");
 }
 
 /// Where the frost pose stands (README F20): `/gmgotoxyz -325.00 73.60 -212.80`.
