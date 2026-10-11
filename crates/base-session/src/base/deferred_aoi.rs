@@ -220,6 +220,8 @@ pub fn push_deferred(
             %addr,
             kind,
             entity_id,
+            // An NPC's `name_id` text, no lock; a player is left off.
+            entity_name = deferred_npc_name(&msg),
             witness_name = state.player_name.as_deref(),
             buffered = state.deferred_aoi_msgs.len(),
             "Deferred-AoI buffer at cap; dropping message (session stuck pre-onClientReady?)"
@@ -245,6 +247,18 @@ fn msg_kind_and_entity(msg: &DeferredAoiMsg) -> (&'static str, Option<u32>) {
         }
         DeferredAoiMsg::EntityInvisible { entity_id } => ("invisible", Some(*entity_id)),
     }
+}
+
+/// The name of the NPC an `EnteredAoI` is about, from the `name_id` it
+/// carries. The base holds no other NPC names, and naming a player observee
+/// would mean scanning the `connected` map under its lock, so every other
+/// message gets `None` and the row omits `entity_name`.
+fn deferred_npc_name(msg: &DeferredAoiMsg) -> Option<&'static str> {
+    let DeferredAoiMsg::EnteredAoI { npc_data, .. } = msg else {
+        return None;
+    };
+    let name_id = npc_data.as_deref()?.name_id?;
+    cimmeria_entity::name_intern::intern_opt(cimmeria_names::book().text(name_id))
 }
 
 /// What [`push_deferred`] did with one message.
@@ -584,5 +598,51 @@ mod tests {
         assert!(drop.has_field("event", "deferred_dropped"));
         assert!(drop.has_field("entity_id", "999999"));
         assert!(drop.has_field("kind", "left"));
+    }
+
+    /// A dropped NPC `EnteredAoI` names the NPC from the `name_id` it carries
+    /// (Rule 6), so the cap WARN reads without an id lookup.
+    #[test]
+    fn push_deferred_cap_drop_names_the_npc() {
+        use crate::test_support::LogCapture;
+
+        // An id no seed row uses, so the global NameBook can't collide.
+        const NAME_ID: i32 = 990_301;
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(cimmeria_names::Table::Texts, NAME_ID.into(), "TG Cap Jaffa");
+        cimmeria_names::global().store(book);
+
+        let (addr, connected) = make_state_and_connected();
+        for i in 0..MAX_DEFERRED_AOI_MSGS as u32 {
+            push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: i });
+        }
+        let capture = LogCapture::install();
+        let outcome = push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::EnteredAoI {
+                entity_id: 888_888,
+                class_id: 0,
+                position: [0.0; 3],
+                direction: [0.0; 3],
+                level: 1,
+                npc_data: Some(Box::new(NpcAoIData {
+                    name_id: Some(NAME_ID),
+                    ..NpcAoIData::default()
+                })),
+                player_data: None,
+            },
+        );
+        assert_eq!(outcome, DeferOutcome::BufferFull);
+        let drop = capture
+            .find_event(
+                tracing::Level::WARN,
+                "Deferred-AoI buffer at cap",
+                "buffer_full",
+            )
+            .expect("cap drop logs a WARN with reason=buffer_full");
+        assert!(drop.has_field("kind", "entered"));
+        assert!(drop.has_field("entity_id", "888888"));
+        assert!(drop.has_field("entity_name", "TG Cap Jaffa"));
     }
 }
