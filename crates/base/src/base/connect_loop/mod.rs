@@ -29,6 +29,7 @@ use super::ConnectedClientState;
 
 mod account_arms;
 mod cell_arms;
+mod cell_send;
 mod encrypted;
 #[cfg(test)]
 mod relaunch_tests;
