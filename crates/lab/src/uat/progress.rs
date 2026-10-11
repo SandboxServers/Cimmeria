@@ -15,16 +15,27 @@ use super::runner::{now_ms, utc_of, Runner};
 /// One instance's running `lab_uat_run`, as `/status` shows it (D-LW1).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct RunProgress {
+    /// The run's id, as in its run directory's name.
     pub run_id: String,
+    /// The run directory, where its screenshots and evidence land.
     pub run_dir: String,
+    /// When the run began (RFC 3339, UTC).
     pub started_at: String,
+    /// The rows this run selected, across its sections.
     pub rows_total: usize,
+    /// The rows finished so far.
     pub rows_done: usize,
+    /// The section of the row being driven, or of the last one.
     pub section: Option<String>,
+    /// The row being driven; `None` between rows.
     pub current_row: Option<String>,
+    /// `current_row`'s 1-based place among the selected rows.
     pub row_index: Option<usize>,
+    /// When `current_row` started (RFC 3339, UTC).
     pub row_started_at: Option<String>,
+    /// The row finished last.
     pub last_row: Option<String>,
+    /// Its result (`PASS`, `FAIL`, `BLOCKED`, ...).
     pub last_result: Option<String>,
 }
 
@@ -80,6 +91,7 @@ impl ProgressCell {
         }
     }
 
+    /// The run's progress now, or `None` when the instance runs no UAT.
     pub fn snapshot(&self) -> Option<RunProgress> {
         self.slot().clone()
     }

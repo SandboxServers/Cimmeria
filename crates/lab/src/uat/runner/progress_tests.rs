@@ -102,6 +102,32 @@ async fn progress_names_the_row_being_driven_and_clears_after_the_run() {
     assert_eq!(cell.snapshot(), None);
 }
 
+/// `rows_total` counts only the rows a `rows` filter selects, so a
+/// `-Rows R2` run reads `1/1`, not `1/2`. Fails if the total counts every
+/// row of the section.
+#[tokio::test]
+async fn rows_total_counts_only_the_filtered_rows() {
+    let fake = Fake::new(&[(".who", &["Players online: 1"])]);
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let cell = ProgressCell::default();
+    let spy = Spy {
+        inner: &fake,
+        cell: cell.clone(),
+        seen: Mutex::new(vec![]),
+    };
+    let mut req = request(&tmp, ROWS);
+    req.rows = Some(vec!["R2".into()]);
+    let runner = Runner::new(&spy, None, req)
+        .unwrap()
+        .with_progress(cell.clone());
+    runner.run_all().await.unwrap();
+
+    let who = seen_while_typing(&spy.seen, ".who");
+    assert_eq!(who.current_row.as_deref(), Some("R2"));
+    assert_eq!(who.row_index, Some(1));
+    assert_eq!(who.rows_total, 1);
+}
+
 /// A plan drives nothing, so it never begins progress, even with a cell.
 #[tokio::test]
 async fn a_plan_only_run_never_begins_progress() {
