@@ -31,16 +31,27 @@
 #   itself; there is no `.bug` anchor (it needs `state = "in_world"`).
 # - The graded proof of progress is the server's own record, sgw_mission
 #   and sgw_player, read with server_db_query (status 1 active, 2
-#   completed). That needs CIMMERIA_LAB_MCP_URL/_TOKEN; without them those
-#   clauses are UNVERIFIED, never a false PASS.
+#   completed). That needs CIMMERIA_LAB_MCP_URL/_TOKEN. Without them the
+#   pose and wait_server rows (FS-P2, FS-P3, FS-P4, FS-S2 to FS-S6) are
+#   BLOCKED naming the server lab MCP, since their tags and the hold-release
+#   line live on the server; the other rows run, and their server clauses
+#   are UNVERIFIED, never a false PASS.
 # - Each interaction row names its target by spawn tag in a `pose` line
 #   (one line per pose; `lab calibrate` rewrites those lines and nothing
 #   else). Setup makes the player immune with /gmsetgodmode 1 and `@stand`s
-#   at the pose: a /gmgotoxyz (tier G) to the stand point, then a poll until
-#   the server has the player there (5 s at most), so no teleport sleep.
+#   at the pose: a /gmgotoxyz (tier G) to the stand point, then a poll of
+#   the client's own reported server position until it is there (5 s at
+#   most), so no teleport sleep. Nothing waits on the target entity
+#   reaching the client, though, and no tool can wait on an entity id yet,
+#   so a 1500 ms sleep follows each `@stand` before the camera and the
+#   click address the target by entity id.
 #   `@camera { pose }` faces the target and sets the pose's absolute pitch,
 #   yaw and zoom; `@world_click { pose }` clicks it with rotate_camera =
 #   false. The step is one real click: no player walking, no NPC pathing.
+#   The SGU rows pass rotate_camera = true (an explicit argument beats the
+#   pose's default) and keep the click tool's own rotation until SV-15
+#   calibrates their poses: with no pitch or yaw the target may sit behind
+#   the avatar, and an unrotated click would hit the player.
 #   The interact range is 5 m and every stand point is 3.3-4.5 m off.
 # - The stand point is D-SV3: the target's live server position plus
 #   radius_m along bearing_deg (0 = +x, 90 = +z) and dy_m up. Each one
@@ -52,6 +63,15 @@
 #   rows continue the chain without their fixture, so `@stand` stays in
 #   every interaction row: it is what puts the player at the pose either
 #   way.
+# - #1341 (the client drops the first-login entity batch): a real #1341
+#   still logs the hold release, so FS-P2/FS-S2 fail on the `movie-over`
+#   clause and `lab uat` tags the run #1341 as before. A wait that expires
+#   instead (no release line, or one for another witness_id) fails the
+#   `movie-over` step, which the known-issue table does not match: that is
+#   reported untagged on purpose, since it is not #1341.
+# - FS-P5's 3000 ms after the equip and FS-S6's 3000 ms before the teardown
+#   dialog close guard UI flows nothing polls yet; they stay until SV-15
+#   proves them removable.
 # - The server's own records are read with `timeout_ms`: the clause is
 #   re-read every 250 ms until it passes, instead of sleeping first.
 # - FS-99 deletes both characters.
@@ -279,6 +299,10 @@ setup = [
   { tool = "@finish_dialog", args = {}, optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
   { tool = "@stand", args = { pose = "frost" } },
+  # @stand waits for the player only; give the client time to introduce
+  # Frost before the camera and the click address him by entity id (no tool
+  # waits on an entity id yet).
+  { wait_ms = 1500 },
 ]
 step = [
   # Face Frost, then the pose's absolute pitch (-28.8), yaw (+25.3 from the
@@ -379,6 +403,8 @@ pose = [
 setup = [
   { chat = "/gmsetgodmode 1", tier = "G" },
   { tool = "@stand", args = { pose = "guard" } },
+  # The target's introduction, as in FS-P3.
+  { wait_ms = 1500 },
 ]
 step = [
   # Same aim as FS-P3, on the body's aim point.
@@ -461,6 +487,9 @@ setup = [
 step = [
   { tool = "@inventory", args = { containers = ["Main"] }, label = "read-pack" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
+  # Lets the equip and its door sequence settle before the bag key; kept
+  # until SV-15 proves it removable.
+  { wait_ms = 3000 },
   # item_action opened the bag; close it so the next row starts clean.
   { tool = "@key", args = { key = "b" }, label = "close-bag" },
   { tool = "@wait_for", args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 3000 } },
@@ -580,11 +609,14 @@ setup = [
   { tool = "@finish_dialog", args = {}, optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
   { tool = "@stand", args = { pose = "hammond" } },
+  # The target's introduction, as in FS-P3.
+  { wait_ms = 1500 },
 ]
 step = [
-  # Uncalibrated (no pitch, yaw or zoom): the camera only faces.
+  # Uncalibrated (no pitch, yaw or zoom): the camera only faces, so the
+  # click keeps its own rotation (rotate_camera = true) until SV-15.
   { tool = "@camera", args = { pose = "hammond" }, label = "aim" },
-  { tool = "@world_click", args = { pose = "hammond", button = "right", expect = "window" }, label = "hammond" },
+  { tool = "@world_click", args = { pose = "hammond", button = "right", expect = "window", rotate_camera = true }, label = "hammond" },
   { tool = "@finish_dialog", args = {}, label = "close" },
 ]
 [[row.expect]]
@@ -608,10 +640,11 @@ pose = [
 ]
 setup = [
   { tool = "@stand", args = { pose = "tealc" } },
+  { wait_ms = 1500 },
 ]
 step = [
   { tool = "@camera", args = { pose = "tealc" }, label = "aim" },
-  { tool = "@world_click", args = { pose = "tealc", button = "right", expect = "window" }, label = "tealc" },
+  { tool = "@world_click", args = { pose = "tealc", button = "right", expect = "window", rotate_camera = true }, label = "tealc" },
   { tool = "@finish_dialog", args = {}, label = "close" },
 ]
 [[row.expect]]
@@ -635,10 +668,11 @@ pose = [
 ]
 setup = [
   { tool = "@stand", args = { pose = "elevator" } },
+  { wait_ms = 1500 },
 ]
 step = [
   { tool = "@camera", args = { pose = "elevator" }, label = "aim" },
-  { tool = "@world_click", args = { pose = "elevator", button = "right", expect = "window" }, label = "elevator" },
+  { tool = "@world_click", args = { pose = "elevator", button = "right", expect = "window", rotate_camera = true }, label = "elevator" },
   { tool = "@finish_dialog", args = {}, label = "close" },
 ]
 [[row.expect]]
@@ -674,10 +708,14 @@ pose = [
 ]
 setup = [
   { tool = "@stand", args = { pose = "firearm" } },
+  { wait_ms = 1500 },
 ]
 step = [
   { tool = "@camera", args = { pose = "firearm" }, label = "aim" },
-  { tool = "@world_click", args = { pose = "firearm", button = "right", expect = "any" }, label = "firearm" },
+  { tool = "@world_click", args = { pose = "firearm", button = "right", expect = "any", rotate_camera = true }, label = "firearm" },
+  # Lets dialog 5358 open before the teardown closes it; kept until SV-15
+  # proves it removable.
+  { wait_ms = 3000 },
 ]
 teardown = [
   { tool = "@finish_dialog", args = {}, optional = true },
