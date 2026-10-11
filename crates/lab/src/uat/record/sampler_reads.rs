@@ -31,7 +31,7 @@ pub fn snapshot_sql(player_id: i32) -> [String; 3] {
     [
         format!("SELECT mission_id, status, current_step_id AS step, repeats FROM sgw_mission WHERE player_id = {p} ORDER BY mission_id"),
         format!("SELECT level, exp, naquadah, world_location FROM sgw_player WHERE player_id = {p}"),
-        format!("SELECT i.type_id, i.container_id, coalesce(sum(coalesce(i.stack_size,1)),0)::int AS count, min(t.name) AS name FROM sgw_inventory i LEFT JOIN items t ON t.item_id = i.type_id WHERE i.character_id = {p} GROUP BY i.type_id, i.container_id ORDER BY 1, 2"),
+        format!("SELECT i.type_id, i.container_id, coalesce(sum(coalesce(i.stack_size,1)),0)::int AS count, min(t.name) AS name FROM sgw_inventory i LEFT JOIN resources.items t ON t.item_id = i.type_id WHERE i.character_id = {p} GROUP BY i.type_id, i.container_id ORDER BY 1, 2"),
     ]
 }
 
