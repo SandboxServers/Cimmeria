@@ -624,8 +624,12 @@ $refused = & {
     function Close-McpSession($Session) { }
     function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) { $script:sentArgs = $Arguments; throw 'stub: no run' }
     Invoke-LabUat
-} 2>$null 6>$null
+} 6>$null
 Check ($refused -eq 2 -and $null -eq $script:sentArgs) 'a real run with -Chaos exits 2 and sends nothing until CH-08'
+$out = @(& $pwshExe -NoProfile -File $uatScript 'first-session' -Chaos cpu -Json 2>$null)
+$code = $LASTEXITCODE
+$obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
+Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -like '-Chaos is not wired*') "-Chaos -Json exits 2 with the refusal ($code)"
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'
