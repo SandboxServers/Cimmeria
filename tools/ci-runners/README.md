@@ -17,7 +17,7 @@ Linux jobs, stay on GitHub-hosted runners.
 
 ## Known blocker: colo egress to Azure 57.150.x
 
-As of 2026-10-11 jobs on these runners run every step and then hang: the runner uploads step logs to Azure blob storage at 57.150.x, which times out from both nodes (colo egress 47.45.19.x) and works from other networks. The repository variable `CI_LINUX_RUNNER` is set to `hosted` until that is fixed; remove it to turn the runners back on. Check with:
+As of 2026-10-11 jobs on these runners run every step and then hang: the runner uploads step logs to Azure blob storage at 57.150.x, which times out from both nodes and works from other networks. The repository variable `CI_LINUX_RUNNER` is set to `hosted` until that is fixed; remove it to turn the runners back on. Check with:
 
 ```bash
 ssh cimmeria-node2 'timeout 5 bash -c \"</dev/tcp/57.150.86.161/443\" && echo ok || echo blocked'
