@@ -290,7 +290,7 @@ async fn extraction_checkpoint_cancellation_persists_cancelled_and_retains_parti
         id,
         cancel: cancel.clone(),
     }));
-    let result = install_owned(
+    let (result, _) = install_owned(
         &intent,
         &root.path().join("state"),
         &release,

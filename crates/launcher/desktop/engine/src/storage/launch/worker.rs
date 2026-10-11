@@ -1,4 +1,5 @@
 use super::*;
+use crate::game_telemetry::patch_events;
 use futures_util::FutureExt;
 use std::{panic::AssertUnwindSafe, sync::Mutex};
 use tokio::sync::watch;
@@ -161,7 +162,7 @@ async fn execute(
             },
         );
     }
-    {
+    let injection = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         if cancel.is_cancelled() {
             return Ok(Observation::Cancelled);
@@ -169,7 +170,14 @@ async fn execute(
         owner
             .operations_mut()?
             .observe(plan.id, OperationState::Running)?;
-    }
+        patch_events::injection(
+            plan.resources.client_patches.is_some(),
+            owner.preferences().client_patches_enabled,
+        )
+    };
+    // TODO(LX-08b): poll these from the session loop; until then the boot
+    // verdict and the final counts are queued once the game exits.
+    let mut patches = patch_events::PatchEvents::new(&spec.directory, injection);
     let outcome = supervisor::run(spec, request, cancel, |observation| {
         state
             .lock()
@@ -179,6 +187,13 @@ async fn execute(
         Ok(())
     })
     .await;
+    // A game that never started has no client-patches log to report on.
+    if matches!(
+        outcome,
+        Observation::ProcessExited { .. } | Observation::Unknown
+    ) {
+        patch_events::queue_at_exit(&state, &mut patches);
+    }
     Ok(outcome)
 }
 /// The login servers this Play writes, resolved before a telemetry session is
