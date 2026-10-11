@@ -10,19 +10,23 @@ use super::log::{CameraSample, EntitySample};
 pub enum PoseError {
     /// The player stands closer than 1 m or farther than 8 m from the target.
     RadiusOutOfRange(f64),
-    /// The target has no `spawnlist` tag to name it by.
+    /// The player stands more than 3 m above or below the target's origin
+    /// (outside SV-03's `dy_m` range; clamping would replay it elsewhere).
+    DyOutOfRange(f64),
+    /// The target has no `spawnlist` tag, or one the spec validator rejects
+    /// (not `[A-Za-z0-9_.]+`).
     NoTag,
-    /// No camera readout was recorded for the click. Never built here: a
-    /// missing camera is `None`, not an error. Kept because the spec names it.
-    #[allow(dead_code)]
+    /// The camera readout holds a non-finite value. A camera that was not
+    /// read at all is not an error: its fields are `None`.
     NoCamera,
     /// A position is missing or not finite.
     NoPosition,
 }
 
 /// The pose `@stand` + `@camera { pose }` would reproduce (D-SV3, D-SV4).
-/// Values are rounded to the precision `PoseSpec::to_inline_toml` writes, so
-/// the returned struct equals the line that is written.
+/// Values are rounded to the precision `PoseSpec::to_inline_toml` writes and
+/// the camera fields clamped to the ranges it clamps to, so the returned
+/// struct equals the line that is written (`a_derived_pose_survives_the_inline_toml_round_trip`).
 pub fn derive_pose(
     id: &str,
     target: &EntitySample,
@@ -33,12 +37,24 @@ pub fn derive_pose(
     if !(target.pos.iter().chain(&player.pos)).all(|v| v.is_finite()) {
         return Err(PoseError::NoPosition);
     }
-    let tag = target.tag.clone().ok_or(PoseError::NoTag)?;
+    let tag = target
+        .tag
+        .clone()
+        .filter(|t| {
+            !t.is_empty()
+                && t.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        })
+        .ok_or(PoseError::NoTag)?;
     let dx = player.pos[0] - target.pos[0];
     let dz = player.pos[2] - target.pos[2];
     let radius = dx.hypot(dz);
-    if !(1.0..=8.0).contains(&radius) {
+    if !(1.0..=8.0).contains(&round_to(radius, 2)) {
         return Err(PoseError::RadiusOutOfRange(radius));
+    }
+    let dy = round_to(player.pos[1] - target.pos[1], 2);
+    if !(-3.0..=3.0).contains(&dy) {
+        return Err(PoseError::DyOutOfRange(player.pos[1] - target.pos[1]));
     }
     let bearing = match round_to(dz.atan2(dx).to_degrees().rem_euclid(360.0), 1) {
         b if b >= 360.0 => 0.0,
@@ -46,14 +62,23 @@ pub fn derive_pose(
     };
     let (pitch_deg, yaw_offset_deg, zoom) = match camera {
         Some(cam) => {
+            let finite = cam.pos.iter().all(|v| v.is_finite())
+                && [cam.yaw_deg, cam.pitch_deg, cam.zoom, cam.yaw_gain]
+                    .iter()
+                    .all(|v| v.is_finite());
+            if !finite {
+                return Err(PoseError::NoCamera);
+            }
             let cam_at = server_to_client(server_vec(cam.pos));
             let target_at = server_to_client(server_vec(target.pos));
             let error = yaw_error(cam_at, cam.yaw_deg.to_radians(), target_at).to_degrees();
             let offset = if cam.yaw_gain < 0.0 { error } else { -error };
             (
-                Some(round_to(cam.pitch_deg, 1)),
-                Some(round_to(offset, 1)),
-                Some(round_to(cam.zoom, 1)),
+                // The same clamps `to_inline_toml` applies (the readout's
+                // pitch limit -78.75 rounds to -78.8, which would not load).
+                Some(round_to(cam.pitch_deg, 1).clamp(-78.7, 78.7)),
+                Some(round_to(offset, 1).clamp(-180.0, 180.0)),
+                Some(round_to(cam.zoom, 1).clamp(100.0, 775.0)),
             )
         }
         None => (None, None, None),
@@ -63,7 +88,7 @@ pub fn derive_pose(
         tag,
         radius_m: round_to(radius, 2),
         bearing_deg: bearing,
-        dy_m: round_to(player.pos[1] - target.pos[1], 2),
+        dy_m: dy,
         pitch_deg,
         yaw_offset_deg,
         zoom,
@@ -79,9 +104,11 @@ fn server_vec(p: [f64; 3]) -> Vec3 {
 }
 
 /// `v` rounded to `places` decimals, the value a `{:.N}` pose field holds.
+/// Mirrors the private `round_to` in `uat/spec.rs`; the round-trip test
+/// catches drift. `+ 0.0` turns `-0.0` into `0.0` so no `-0.00` is written.
 fn round_to(v: f64, places: i32) -> f64 {
     let k = 10f64.powi(places);
-    (v * k).round() / k
+    (v * k).round() / k + 0.0
 }
 
 #[cfg(test)]
@@ -159,5 +186,87 @@ mod tests {
             matches!(err, PoseError::RadiusOutOfRange(r) if (r - 9.3).abs() < 1e-9),
             "{err:?}"
         );
+    }
+
+    /// `pose` with the player moved to `radius` metres along +x of the target.
+    fn at_radius(radius: f64) -> Result<PoseSpec, PoseError> {
+        let (target, mut player, camera) = fs_p3();
+        player.pos[0] = target.pos[0] + radius;
+        player.pos[2] = target.pos[2];
+        derive_pose("frost", &target, &player, Some(&camera), "2026-10-12")
+    }
+
+    #[test]
+    fn the_radius_range_is_one_to_eight_metres_inclusive() {
+        assert!(matches!(
+            at_radius(0.5),
+            Err(PoseError::RadiusOutOfRange(_))
+        ));
+        assert_eq!(at_radius(1.0).unwrap().radius_m, 1.0);
+        assert_eq!(at_radius(8.0).unwrap().radius_m, 8.0);
+    }
+
+    #[test]
+    fn a_bearing_that_rounds_to_360_is_written_as_zero() {
+        let (target, mut player, camera) = fs_p3();
+        player.pos[0] = target.pos[0] + 4.0;
+        player.pos[2] = target.pos[2] - 1e-4;
+        let pose = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap();
+        assert_eq!(pose.bearing_deg, 0.0);
+    }
+
+    #[test]
+    fn a_missing_or_unloadable_tag_is_no_tag() {
+        let (mut target, player, camera) = fs_p3();
+        for tag in [None, Some(""), Some("Frost Body"), Some("a\"b")] {
+            target.tag = tag.map(str::to_string);
+            let err = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap_err();
+            assert_eq!(err, PoseError::NoTag, "{tag:?}");
+        }
+    }
+
+    #[test]
+    fn non_finite_positions_and_cameras_are_errors() {
+        let (target, mut player, mut camera) = fs_p3();
+        camera.zoom = f64::NAN;
+        let err = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap_err();
+        assert_eq!(err, PoseError::NoCamera);
+        player.pos[1] = f64::INFINITY;
+        let err = derive_pose("frost", &target, &player, None, "d").unwrap_err();
+        assert_eq!(err, PoseError::NoPosition);
+    }
+
+    #[test]
+    fn a_player_more_than_three_metres_up_is_dy_out_of_range() {
+        let (target, mut player, camera) = fs_p3();
+        player.pos[1] = target.pos[1] + 3.5;
+        let err = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap_err();
+        assert!(
+            matches!(err, PoseError::DyOutOfRange(d) if (d - 3.5).abs() < 1e-9),
+            "{err:?}"
+        );
+    }
+
+    /// Parse one `to_inline_toml` line back into a `PoseSpec`.
+    fn reparse(line: &str) -> PoseSpec {
+        let table: toml::Table = toml::from_str(&format!("p = {line}")).unwrap();
+        table["p"].clone().try_into().unwrap()
+    }
+
+    #[test]
+    fn a_derived_pose_survives_the_inline_toml_round_trip() {
+        let (target, mut player, mut camera) = fs_p3();
+        let pose = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap();
+        assert_eq!(reparse(&pose.to_inline_toml()), pose);
+        // Edges the emitter clamps or rounds: pitch at the readout limit, a
+        // zoom past the range, a dy that rounds to -0.00.
+        camera.pitch_deg = -78.75;
+        camera.zoom = 900.0;
+        player.pos[1] = target.pos[1] - 0.004;
+        let pose = derive_pose("frost", &target, &player, Some(&camera), "d").unwrap();
+        assert_eq!(pose.pitch_deg, Some(-78.7));
+        assert_eq!(pose.zoom, Some(775.0));
+        assert!(pose.dy_m.is_sign_positive(), "dy {}", pose.dy_m);
+        assert_eq!(reparse(&pose.to_inline_toml()), pose);
     }
 }
