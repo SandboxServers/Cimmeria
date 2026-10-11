@@ -106,6 +106,10 @@ pub struct ActionRecord {
     /// `p2` when the second lab client ran it (two-player rows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client: Option<String>,
+    /// The spec marked the action `optional`: its failure neither stops
+    /// the row nor decides the heal hint (SV-11).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
 }
 
 /// One expected clause's outcome.
