@@ -208,11 +208,52 @@ Five inline hooks in `cimmeria-client-telemetry` (`inline_hooks/mercury_recv.rs`
 
 **Static versus live.** Everything in the layout, footer and rule sections is read from decompile and disassembly and is unit-tested against synthetic memory built to those layouts. **Not yet confirmed live**: that the four-word argument list of `queueAckForPacket` is `(out, packet, seq, seq)` in that order (the hook does not depend on it: it reads the channel only and pairs with the filter's own parse); that `ClientIncomingMessage+0x10 -> +4` is the head packet on the assembled path as well as the single-packet one (read from `processOrderedPacket`'s decompile, `*(*(param_1 + 0x10) + 4)`); and that the header-straddle rule is what the server's encoder violates in the failing logins (a hypothesis until a `client.mercury.bundle` end event with `fault = header_does_not_fit_packet` shows it).
 
+## Receive limits (CL-02, 2026-10-11; static)
+
+Four questions from the client-limits campaign, answered from headless Ghidra decompiles and disassembly of `SGW.exe` (read-only; nothing run live). Grades follow the campaign rule: **static** is read from the binary, **inferred** is read from code shape.
+
+### 1. What the bundle loop can copy, and how long a chain it walks
+
+* **`Bundle::iterator::data()` (`0x01579a50`) allocates per message, sized to the message.** When a body straddles a packet boundary it calls `FUN_00418e30(bodyLength)` (a `scalable_malloc` wrapper that throws `bad_alloc` on failure), stores the pointer in the iterator at `+0x10`, then copies chunk by chunk with `memcpy`. There is no fixed temporary buffer and no size cap in `data()`. The chunk size is a 16-bit packet remainder (at most one datagram), and the tail chunk is `min(remaining, chunk)`, so the 16-bit casts cannot truncate a long body. `next()` (`0x01579cd0`) frees the temporary at the start of the following step, so at most one temporary is live at a time.
+* **The largest body is whatever the length field says.** `InterfaceElement::expandLength` (`0x0158b2d0`) assembles the length from up to four bytes (loop to shift `0x20`) and returns `-1` on overflow ("Received a message longer than normal length", `0x01b19990`). The practical bound is the assembled bundle in memory, not a constant. The largest bundle seen on the wire is 18,367 bytes (15 fragments).
+* **No cap on the number of packets in the chain.** Between `Nub::processPacket` (`0x0157fd20`) and `processOrderedPacket` (`0x0157c820`) the chain is a linked list (`Packet+8`) built by sorted insertion and ended by the `remaining` counter; the only per-channel state is the single group slot at `Channel+0x124`. The message loop in `0x0157c820` has no iteration counter: it ends on end-of-chain (a null next packet in `next()`) or on one of the two error results. The "64 fragments" limit exists only on the server (`MAX_FRAGMENTS`).
+
+### 2. The client's own resend of its reliable packets
+
+The client has **no retry counter**. Its resend timer is a time test on every unacked packet, run once per network-thread pass.
+
+* **Driver.** `FUN_0157bf90` walks the channel list (`Nub+0xd4`) and calls `UnAckedHandler::checkResendTimers` (`0x0158c420`) on each; the network-thread loop `FUN_01583bf0` calls it every pass.
+* **RTO = max(2.5 x smoothed RTT, 50 ms).** In `checkResendTimers` the threshold is the 64-bit TSC value at `+0x64` converted through x87 and multiplied by the double `2.5` at `0x01a7bdc0` (bytes `00 00 00 00 00 00 04 40`). The result is compared with the 64-bit floor at `+0x74`; the larger one wins. The floor is written in the `ChannelInternal` constructor (`0x0158c7b0`, store at `0x0158c877`) as `stampsPerSecond x arg`, where the float argument is `0.05` (`0x01e91e04`, bytes `cd cc 4c 3d`, pushed at the only call site `0x0157ea0b` in `Nub::` channel creation). `stampsPerSecond` is a TSC calibration (`FUN_015a3f90`, one `Sleep(500)` against `QueryPerformanceCounter`, cached by `0x015a4060`). So the floor is 50 ms.
+* **The smoothed RTT starts at one second.** `resetLocalPart` (`0x0158c5d0`) and the constructor both store `stampsPerSecond` at `+0x64`, so the first RTO is 2.5 s. `FUN_0158cac0` (an ACK received from the server) updates it as `rtt = (9 x rtt + (now - sentStamp)) / 10` (`__allmul` by 9, `__aulldiv` by 10), and only for a packet whose resent flag (`entry+0xc`) is clear. A resent packet never feeds the estimate and the RTO is not doubled on a resend: there is no back-off.
+* **A packet is resent when its age passes the RTO** (strict `>`), measured from the entry's last-send TSC (`entry+4/+8`), which `FUN_0158be30` refreshes on every resend. **A packet that was never resent and sits behind the highest acked sequence (`+0x60`, test `(seq - +0x60) & 0xfffffff >= 0x8000001`) is resent in the next pass without waiting for the RTO**: this is a gap-triggered fast resend. A packet already resent always waits for the RTO.
+* **Per-pass budget: six resends.** `local_20` counts successful resends and the loop returns when `5.0f` (`0x01e91e00`) is less than that count, so the sixth resend ends the pass for that channel. This is a throughput throttle, not a lifetime cap (the draft's "5 per tick" is the same constant read as "more than 5").
+* **What happens at a cap: there is none to reach.** `FUN_0158be30` increments a statistic at `+0x7c` and calls the send routine `FUN_015816a0`; only a nonzero return (a send failure) aborts: `checkResendTimers` logs "Aborting due to failed resend for #%d" (`0x01b19dd8`, a no-op log stub in this build) and returns the reason code. An unacked packet whose sends succeed is resent every RTO until it is acked or the channel dies. The channel dies on **inactivity**: `ChannelInternal` vfunc `FUN_0158bed0` (vtable slot at `0x01b1a13c`) pushes a `NubException` with code `0xfffffff9` onto the game-thread queue (`Nub+0x138`) when `now - lastReceived` (`+0x170`/`+0x174`) passes the period at `+0x160`/`+0x164`. That period is `0` after the constructor; the code that sets it was not traced (open question below).
+* **ACK flush.** The same vfunc sends an empty reliable bundle (`FUN_0158bbc0`, `sendAckBundle2`) when `now - lastSend` (`+0x58`) passes `+0x168`, which the constructor sets to `min(stampsPerSecond x 0.05, stampsPerSecond x 1.5)` (`0x01e91dfc` holds `1.5f`): pending ACKs wait at most 50 ms for something to ride on.
+
+The "700 ms / 20 retries" in the older Mercury docs are the **server's** constants (`ACK_TIMEOUT_MS`, `MAX_RETRIES`); they were never read from `SGW.exe`.
+
+### 3. The socket buffer
+
+**The client never sets a buffer size on its game socket; the Windows default applies.** The Mercury sockets are made in exactly three places, each `socket(AF_INET, SOCK_DGRAM, 0)`: `Nub::addListeningSocket` (`0x01583440`, the game socket), `FUN_01589f80` and `BaseNub::queryMachinedInterface` (`0x01577310`, both short-lived discovery sockets). `addListeningSocket` hands the socket to `recreateListeningSocket` (`0x01577b80`), which binds a port range (`FUN_01584870`, the `bind` thunk), reads the port with `getsockname`, and switches the socket to non-blocking with `ioctlsocket(FIONBIO)`. No `setsockopt` follows.
+
+All 19 call sites of the `setsockopt` thunk (`0x012f3d68`) and the one direct read of its IAT slot (`0x017eff50` at `0x013b30c7`) were listed. In the Mercury range the only call is `Mercury_MachineGuard` (`0x015898c0`, at `0x0158990c`): `setsockopt(s, SOL_SOCKET, SO_BROADCAST)` on the discovery socket. Every `SO_RCVBUF`/`SO_SNDBUF` constant push (`0x1002`/`0x1001`) found by an instruction scan belongs to UE3's `FSocketWin` (`0x0047cfd0`, `0x0047d030`), the bundled gSOAP code (`0x00a40a30`, `0x00a3ff..`), or code outside the networking range. The numeric default size was not measured here.
+
+The socket reader `FUN_0158a200` is unchanged from the section above: a 1472-byte `recvfrom` buffer.
+
+### 4. The per-tick drain
+
+**The game thread drains the whole queue every frame; there is no fixed count and no time budget.** The per-frame update `FUN_00c6edf0` calls `FUN_00dd8780` (`0x00c6ee97`, `0x00dd87b2`), which calls `FUN_0157e850` on the `ServerConnection`'s `Nub` (`+400`). That function reads the `Nub+0x138` queue size once (`concurrent_queue_base_v3::internal_size`) and pops that many `ClientIncomingMessage`s, calling vtable slot 1 on each (`FUN_0158d3f0`, then `processOrderedPacket`). Messages pushed while it runs wait for the next frame. A second caller is the `ServerConnection` update thunk `BW_common_servconn_5` (`0x00de10b0`, case 1, call at `0x00de10dd`).
+
+Each popped bundle is processed completely: the message loop has no per-bundle message budget. The queue is a `tbb::concurrent_queue` constructed in `Nub::Nub` (`0x015841d0`) with no capacity set (inferred unbounded). A frame hitch therefore grows the queue and lengthens the next drain; it does not drop anything.
+
+**The network thread has its own limits.** `Nub::Nub` is called by the `ServerConnection` constructor `FUN_00de00e0` with `(idleSleepMs = 10, readsPerPass = 0x40)`, stored at `Nub+0xbc` and `Nub+0xe0`. Each pass of `FUN_01583bf0` pops its own queue (`Nub+0x150`), runs the resend scan, then for each socket calls `Nub_11` (`0x01581ab0`), which reads up to **64 datagrams per pass** and stops early on `WSAEWOULDBLOCK` (`0x2733`). A pass with no work waits `+0xbc` = 10 ms (timed-wait wrapper `FUN_00a78b90`/`FUN_00a78bc0`, not decompiled: inferred); a pass that read a full 64 loops again at once.
+
 ## Open questions
 
 * The size of the interface table at `Nub+0xc` (an id at or above it goes through `_invalid_parameter_noinfo`, not a clean drop). Expected 256; not verified.
 * `0x0158cac0` (ACKs received from the server) and the piggyback branch were read only for their footer handling.
 * Whether any path enqueues a second `ClientIncomingMessage` for the same reliable stream out of order (the game-thread queue is FIFO; a fragmented bundle is queued at its last fragment, interleaved non-fragment packets earlier).
+* Receive limits (CL-02): the code that sets the channel inactivity period (`ChannelInternal+0x160`) was not traced; the numeric Windows default UDP receive buffer was not measured; the `FUN_00a78b90` timed-wait wrapper (idle sleep) was not decompiled.
 
 ## The iterator's next-request offset is never initialized (confirmed live, 2026-09-29)
 
