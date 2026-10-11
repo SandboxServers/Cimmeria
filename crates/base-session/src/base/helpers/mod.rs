@@ -562,6 +562,7 @@ pub async fn send_bundle_to_witness_reliable(
         witness_id,
         bundle,
         "witness_bundle",
+        &[],
     )
     .await
 }
@@ -572,6 +573,10 @@ pub async fn send_bundle_to_witness_reliable(
 /// `aoi_flush_create_base` for a deferred-flush phase-1 bundle). It rides on
 /// the `AoI bundle: flushed` row and on each registered fragment, so a
 /// stalled fragment names its source. The send itself is identical.
+///
+/// `manifest` lists each appended message (see [`BundleManifest`]); an
+/// `aoi_flush_*` bundle of more than one message logs it on
+/// `aoi.bundle_manifest`. Pass `&[]` when there is none.
 pub async fn send_bundle_to_witness_reliable_kind(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -579,6 +584,7 @@ pub async fn send_bundle_to_witness_reliable_kind(
     witness_id: u32,
     bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
     kind: &'static str,
+    manifest: &[BundleManifestEntry],
 ) -> BundleSendOutcome {
     // Read addr + map_size in one lock scope; see the unreliable
     // variant for the deadlock-on-re-lock rationale and the
@@ -598,9 +604,14 @@ pub async fn send_bundle_to_witness_reliable_kind(
         );
         return BundleSendOutcome::AddrUnresolved;
     };
-    reliable_fit::send_bundle_reliable_to_addr(transport, connected, addr, witness_id, bundle, kind)
-        .await
+    reliable_fit::send_bundle_reliable_to_addr(
+        transport, connected, addr, witness_id, bundle, kind, manifest,
+    )
+    .await
 }
+
+mod bundle_manifest;
+pub use bundle_manifest::{BundleManifest, BundleManifestEntry, BUNDLE_MANIFEST_CAP};
 
 mod reliable_fit;
 pub use reliable_fit::send_reliable_to_addr;

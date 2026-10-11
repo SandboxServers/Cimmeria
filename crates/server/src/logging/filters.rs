@@ -356,6 +356,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.create_emit=debug,\
                 aoi.introduce=debug,\
                 aoi.appearance=debug,\
+                aoi.bundle_manifest=debug,\
                 base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
