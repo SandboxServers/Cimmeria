@@ -890,6 +890,18 @@ The cell's boot check of effect `script_name`s (`cell/service/startup.rs`) names
 
 Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `cimmeria-cell-world`) pins the skip; `every_seeded_script_name_is_registered` (`cell/effects/registry.rs` in `cimmeria-cell-effect-scripts`) pins an empty missing list on the seed.
 
+## Instance population summary and unknown-world skips (TG-NPC-06)
+
+`spawn_npcs_from_records` (`space_manager/npc_population.rs` in `cimmeria-cell-world`) used to skip a record whose `world_name` has no startup space without a word. It now WARNs once per world whose name is absent from spaces.xml (`space_mgr.worlds`), with the count of records it skipped. A record for a known instanced world (such as Castle_CellBlock) is skipped by design and does not WARN; those skips are counted in one DEBUG row per call. `spawn_instance_npcs_from_records` writes one INFO summary per instanced space, with `record_count` counting only that instance's world.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `spawner`, `event = "spawn_world_unknown"`, `world`, `records` | A DB spawn record names a world absent from spaces.xml; the records are skipped (once per world per boot) |
+| DEBUG | target `spawner`, `event = "spawn_instanced_skipped"`, `records` | DB spawn records name a known instanced world, which spawns per instance; the records are skipped (once per call, only when nonzero) |
+| INFO | target `spawner`, `event = "instance_populated"`, `world`, `space_id`, `record_count`, `spawned`, `failed` | Once per instanced space after its NPCs spawn |
+
+Guards: `spawn_unknown_world_warns_once_per_world`, `spawn_instanced_world_skips_without_warn`, `spawn_instance_summary_row_counts_spawned_and_failed` and `spawn_instance_summary_row_counts_failed_spawn` (`spawner_tests/spawn_records.rs` in `cimmeria-cell-world`) pin the WARN, the instanced skip and the summary fields.
+
 ## UDP connection-reset throttle (TG-MER-10)
 
 On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WSAECONNRESET (10054). That error is per destination, not a socket failure, and the receive loop carries on. `log_connreset()` in `base/connect_loop/mod.rs` throttles it (Pattern D). The first reset writes at once. The resets inside the next 10 s are counted, and the next row carries them in `suppressed`. The throttle is process-wide, not keyed by entity or peer. Every reset, written or counted, bumps `udp_connreset_total`.
@@ -910,6 +922,20 @@ Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/c
 | WARN | `event = "cell_channel_backpressure"`, `waited_ms`, `queue_free`, `msg_kind`, `suppressed` | A send waited 50 ms or more on a full cell queue. Pattern D: one row per 5 s for the whole channel; `base_cell_channel_stalls_total` counts every stall |
 
 Guards: `dropped_receiver_logs_cell_channel_closed`, `stalled_send_logs_backpressure_row`, `second_stall_in_window_is_suppressed` in `cell_send.rs`.
+
+## Inline move refusals (TG-ITM-04)
+
+The player-bag move path (`inventory/move_/`) refuses a move in five places that used to write a bare WARN. Each now writes one row under `target: "inventory"` with `event = "move_rejected"` and a `reason`, the identity pair (`account_id`, `account_name`, `player_id`, `player_name`) and the item and container ids with their names. The vault refusals keep their own `bank` rows (BV-01).
+
+| Level | `reason` | When |
+|---|---|---|
+| WARN | `invalid_slot` | Target container or slot outside the container's range (`move_/mod.rs`) |
+| WARN | `source_not_found` | The instance id has no row for the player (`move_/mod.rs`) |
+| WARN | `over_stack` | Quantity above the source stack; adds `quantity`, `stack_size`, source container (`move_/mod.rs`) |
+| WARN | `not_allowed_in_container` | The type's `container_sets` excludes the target; adds both containers (`move_/finish.rs`) |
+| WARN | `split_onto_occupied` | A partial stack dropped on an occupied slot; adds both containers (`choose_shape` in `move_/finish.rs`, also reached from the org path) |
+
+Guards: the `live_db_move_refusal_*` tests in `move_/named_log_tests.rs`, one per reason, each asserting the WARN level, target, `event`, `reason`, account and player identity and the item id.
 
 ## Minigame session end (TG-MG-03)
 
