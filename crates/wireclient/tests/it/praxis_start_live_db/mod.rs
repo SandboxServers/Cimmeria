@@ -381,9 +381,8 @@ async fn praxis_start_completes_mission_622_live_db() {
     // ── 9: drag the pistol to the bandolier ──────────────────────────────
     // Pin the mission's completion to the move: nothing so far may have
     // opened the door or completed 622 (a regression completing it on a
-    // dialog close would otherwise pass the ordered wait below). The
-    // script's cursor cannot be moved to the send (ScriptSession has no
-    // setter), so this check is what ties the answers to the move.
+    // dialog close would otherwise pass the ordered wait below), and the
+    // ordered wait starts at the send, so only answers logged after it count.
     if let Some(early) = script
         .log()
         .iter()
@@ -395,6 +394,7 @@ async fn praxis_start_completes_mission_622_live_db() {
         );
     }
     let move_from = script.log().len();
+    script.skip_to_end();
     send(
         &mut script,
         GameSession::move_item(
