@@ -241,13 +241,14 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 - **Docs:** `crates/launcher/desktop/docs/updater.md` Windows section.
 - **Commit:** `feat(launcher-desktop): Windows self-update by zip swap (LX-13)`.
 
-### LX-14: move `pack-client-overlay`
+### LX-14: move `pack-client-overlay` into `cimmeria-launcher-core`
 
-- **Agent:** packet-coder. **Depends on:** LX-01 (`overlay_pack.rs` uses `manifest` and `overlay_meta`, which LX-01 moves into `cimmeria-launcher-core`). **Files:** `crates/launcher/src/bin/pack-client-overlay.rs`, `crates/launcher/src/overlay_pack.rs`, `crates/launcher/Cargo.toml`, `crates/patchset/Cargo.toml`, `crates/patchset/src/`, `tools/launcher-release/build.sh` (edit the `overlay` stage's `cargo run -p` line only).
-- **Do:** `git mv` both into `crates/patchset/` as `src/bin/pack-client-overlay.rs` and `src/overlay_pack.rs`, with its tests. `cimmeria-patchset` depends on `cimmeria-launcher-core` for `manifest` and `overlay_meta`; replace the binary's `#[path]` includes with `use` of the core crate. The binary name stays `pack-client-overlay`. Remove the `[[bin]]` from the egui `Cargo.toml`. Run `cargo hakari generate` and `manage-deps` through the lane.
-- **Tests:** the moved tests run under `-p cimmeria-patchset`.
-- **Checks:** R1 for `cimmeria-patchset` and `sgw-launcher`.
-- **Commit:** `refactor(patchset): pack-client-overlay moves out of the egui launcher (LX-14)`.
+- **Agent:** packet-coder. **Depends on:** LX-01. **Files:** `crates/launcher/src/bin/pack-client-overlay.rs`, `crates/launcher/src/overlay_pack.rs`, `crates/launcher/Cargo.toml`, `crates/launcher-core/Cargo.toml`, `crates/launcher-core/src/lib.rs`, `tools/launcher-release/build.sh` (the `overlay` stage's `cargo run -p` line only).
+- **Target changed 2026-10-10:** the ledger first said `cimmeria-patchset`, but `cimmeria-launcher-core` already depends on `cimmeria-patchset` (its unpacker applies patch recipes), and `overlay_pack.rs` needs core's `manifest` and `overlay_meta`, so patchset → core would be a cycle. The tool goes into core instead.
+- **Do:** `git mv` both into `crates/launcher-core/` as `src/bin/pack-client-overlay.rs` and `src/overlay_pack.rs`, with their tests; `pub mod overlay_pack;` in core's `lib.rs`. The binary name stays `pack-client-overlay`. Remove the `[[bin]]` from the egui `Cargo.toml`. Run `cargo hakari generate` and `manage-deps` through the lane.
+- **Tests:** the moved tests run under `-p cimmeria-launcher-core`.
+- **Checks:** R1 for `cimmeria-launcher-core` and `sgw-launcher`.
+- **Commit:** `refactor(launcher-core): pack-client-overlay moves out of the egui launcher (LX-14)`.
 
 ### LX-19: delete `tools/SGWLauncher/` and the prototypes
 

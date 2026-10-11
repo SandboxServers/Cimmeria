@@ -1,6 +1,6 @@
 ---
 name: reference_lab_cli_powershell_traps_2026_10_10
-description: PowerShell traps the lab CLI campaign hit (2026-10-10) - one-element unroll before splatting, StrictMode $LASTEXITCODE, REG_SZ from SetEnvironmentVariable, squash merges vs ancestor tests, -Value:-x, ship.py --retire "Permission denied"
+description: PowerShell traps the lab CLI campaign hit (2026-10-10) - one-element unroll before splatting, StrictMode $LASTEXITCODE, REG_SZ from SetEnvironmentVariable, squash merges vs ancestor tests, -Value:-x, ship.py --retire "Permission denied", Set-Location vs the .NET process directory
 metadata:
   type: reference
 ---
@@ -13,5 +13,6 @@ Found while building the `lab` command (campaign `docs/analysis/lab-cli/`, PRs #
 - **Squash merges defeat ancestor checks.** PRs here are squash-merged, so a worktree commit is never an ancestor of `origin/main`, even after its PR merges. "Is the installed copy current?" must compare content: `git diff --quiet <sha> origin/main -- <path>` (`lab doctor`'s last check).
 - **A value starting with `-`.** `lab env set KEY -x` binds `-x` as a parameter name. Write `-Value:-x`; the colon form binds it as the value.
 - **`ship.py merge --retire` fails with "Permission denied"** when any shell, the coordinator's own included, has its working directory inside the worktree being retired: Windows won't delete a directory a process stands in. Run the merge from the main checkout, and move every shell (and worker) out of the worktree first.
+- **`Set-Location` does not move the process directory** (launcher consolidation, 2026-10-10). .NET keeps its own `[Environment]::CurrentDirectory`, which stays where the PowerShell process started. So `[IO.File]::WriteAllText('docs/x.md', ...)` after `Set-Location <other worktree>` writes into the *previous* worktree: one packet's doc edit landed in another packet's branch that way. The same process directory is what holds a worktree open against `--retire` (the trap above), and the retire then half-completes: unregistered, folder left behind. Give `[IO.File]` absolute paths, and set both `Set-Location` and `[Environment]::CurrentDirectory` to the main checkout before `ship.py merge --retire`.
 
 Graduated to `docs/guides/live-research-lab.md` ("The `lab` command") where it is lab behaviour; the PowerShell traps stay here. Related: [[reference_lab_mcp_token_cost_2026_10_10]], [[project_live_research_lab]].
