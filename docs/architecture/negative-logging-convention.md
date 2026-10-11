@@ -675,6 +675,7 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 | DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
 
 The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
