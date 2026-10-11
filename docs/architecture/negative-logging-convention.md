@@ -139,6 +139,7 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `triggerClientHintedGenericRegion refused` | `region_tag` | `region_name` (left off when the region is unknown) | NT-28a |
 | `interact: no items_event_sets binding` (`event = weapon_unbound`) | `item_id` (held the weapon's design id) | `item_type_id` + `item_name` | NT-28a |
 | `setRingTransporterDestination` | `destination_id` | `destination_region_id` + `destination_region_name` | NT-28a |
+| `PersistPosition` rows (`cell_dispatch/position.rs`) | `position` (the coordinate array, `?position`) | `x`, `y`, `z` (floats) | TG-DB-04 |
 | `useItem` and `UseInventoryItem send to base failed` | `target_id` (the client's raw target) | `wire_target_id` + `wire_target_name` | NT-28a |
 | `friction: server sees the player inside a region…` (`signal = region_dwell_no_hint`) | `region_tag` | `region_name` | NT-28a |
 
@@ -662,6 +663,18 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Logout position persistence (TG-DB-04)
+
+`PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
+
+| Level | Message | Meaning |
+|---|---|---|
+| INFO | `PersistPosition: persisted` | The row was written (`account_id`, `account_name`, `player_id`, `player_name`, `world`, `x`, `y`, `z`) |
+| WARN | `PersistPosition: no rows updated (player row missing?)` | Zero rows matched: `rows_affected = 0`, `expected = 1`, `reason = "player_row_missing"` (Pattern B counts) |
+| WARN | `PersistPosition: DB write failed (next login will use the previous position)` | The UPDATE failed: `reason = "db_write_failed"`, `error = %e` |
+| DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
+
+The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
