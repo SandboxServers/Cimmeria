@@ -1,7 +1,8 @@
 import type {Invoke} from './view';
+import type {PanelContext} from './panel-context';
 /** Settings panel, scaffold (LX-02): LX-03 replaces this body and talks to `launcher_command` (`save_client_options`). */
 export const serverListUnavailable='Login servers are not available in this build yet.';
-export function mountServerList(document:Document,_invoke:Invoke) {
+export function mountServerList(document:Document,_invoke:Invoke,_context:PanelContext) {
  const panel=document.getElementById('server-list-panel');
  if(!panel)throw new Error('Missing launcher element server-list-panel');
  const heading=document.createElement('h3');heading.id='server-list-title';heading.textContent='Login servers';

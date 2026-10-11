@@ -19,7 +19,9 @@ fn scaffold_is_unavailable_and_rejects_unknown_fields_and_versions() {
     }
     assert_eq!(
         state.client_maintenance(ClientMaintenanceCommand::ResetCache { schema_version: 2 }),
-        Err(ClientMaintenanceError::UnsupportedSchema)
+        Err(ClientMaintenanceError::Storage(
+            StorageError::UnsupportedSchema
+        ))
     );
     assert!(serde_json::from_str::<ClientMaintenanceCommand>(
         r#"{"command":"reset_all_client_state","schema_version":1,"confirmed":true,"path":"/other"}"#
@@ -30,4 +32,21 @@ fn scaffold_is_unavailable_and_rejects_unknown_fields_and_versions() {
         r#"{"command":"reset_all_client_state","schema_version":1}"#
     )
     .is_err());
+}
+
+#[test]
+fn errors_serialize_as_the_flat_codes_the_bridge_accepts() {
+    for (error, code) in [
+        (ClientMaintenanceError::Unavailable, "unavailable"),
+        (ClientMaintenanceError::Storage(StorageError::Busy), "busy"),
+        (
+            ClientMaintenanceError::Storage(StorageError::UnsupportedSchema),
+            "unsupported_schema",
+        ),
+    ] {
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            serde_json::json!(code)
+        );
+    }
 }

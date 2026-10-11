@@ -1,7 +1,8 @@
 import type {Invoke} from './view';
+import type {PanelContext} from './panel-context';
 /** Settings panel, scaffold (LX-02): LX-06 replaces this body and talks to `client_maintenance_command`. */
 export const clientMaintenanceUnavailable='Client cache and settings are not available in this build yet.';
-export function mountClientMaintenance(document:Document,_invoke:Invoke) {
+export function mountClientMaintenance(document:Document,_invoke:Invoke,_context:PanelContext) {
  const panel=document.getElementById('client-maintenance-panel');
  if(!panel)throw new Error('Missing launcher element client-maintenance-panel');
  const heading=document.createElement('h3');heading.id='client-maintenance-title';heading.textContent='Client cache and settings';

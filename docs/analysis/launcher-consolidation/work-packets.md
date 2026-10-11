@@ -88,7 +88,9 @@ Each is a `#[tauri::command]` in `shell/src/main.rs`, registered in `generate_ha
 | `client_maintenance_command` | `host/client_maintenance.rs` | `storage/client_maintenance/` | `Inspect`, `ResetCache`, `ResetAllClientState { confirmed: bool }` | LX-06 |
 | `client_changes_command` | `host/client_changes.rs` | `storage/client_changes/` | `Inspect` | LX-07 |
 
-Every new operation that writes to disk calls `ensure_updater_idle()` before its first write and refuses while an install, Play, Repair or update is nonterminal (`docs/updater.md`, "New mutation paths must preserve this rule").
+Every new operation that writes to disk calls `ensure_updater_idle()` before its first write and refuses while an install, Play, Repair or update is nonterminal (`docs/updater.md`, "New mutation paths must preserve this rule"). LX-02 provides that gate as `DesktopState::ensure_no_active_operation()`; `Upload` and both resets call it. `SaveClientOptions` is the one exception: it refuses during updater work and any nonterminal operation except Play, which reads the options only at launch.
+
+Each `<Name>Error` serializes as one flat code string, like `StorageError` and `JobError`: `"unavailable"`, or the wrapped `StorageError` code (`"busy"`, `"unsupported_schema"`, ...) through an untagged `Storage(StorageError)` variant. New variants a packet adds serialize the same way, as distinct snake_case strings. `contract.ts` reads them with `scaffoldFailure`.
 
 ### New frontend files (LX-02)
 
@@ -103,6 +105,8 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 | `client-changes-view.ts` | `client-changes-view.test.ts` | `uat:client-changes` | LX-07 |
 
 `contract.ts` gains the TypeScript mirrors of every request and status type above.
+
+Each panel mounts as `mount<Name>(document, invoke, context)`. `context` is the `PanelContext` in `panel-context.ts`: `snapshot()` (the latest `NativeSnapshot`, with the preferences revision a save needs), `onSnapshot(listener)` (returns the unsubscribe) and `refresh()` (re-inspect after a save, so every view sees the new revision). `view.ts` feeds it; panels do not edit `view.ts` to get state.
 
 ### Release names (LX-15)
 

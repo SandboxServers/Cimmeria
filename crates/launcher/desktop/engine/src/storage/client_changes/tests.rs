@@ -10,10 +10,27 @@ fn scaffold_is_unavailable_and_rejects_unknown_fields_and_versions() {
     );
     assert_eq!(
         state.client_changes(ClientChangesCommand::Inspect { schema_version: 2 }),
-        Err(ClientChangesError::UnsupportedSchema)
+        Err(ClientChangesError::Storage(StorageError::UnsupportedSchema))
     );
     assert!(serde_json::from_str::<ClientChangesCommand>(
         r#"{"command":"inspect","schema_version":1,"path":"/other"}"#
     )
     .is_err());
+}
+
+#[test]
+fn errors_serialize_as_the_flat_codes_the_bridge_accepts() {
+    for (error, code) in [
+        (ClientChangesError::Unavailable, "unavailable"),
+        (ClientChangesError::Storage(StorageError::Io), "io"),
+        (
+            ClientChangesError::Storage(StorageError::UnsupportedSchema),
+            "unsupported_schema",
+        ),
+    ] {
+        assert_eq!(
+            serde_json::to_value(error).unwrap(),
+            serde_json::json!(code)
+        );
+    }
 }

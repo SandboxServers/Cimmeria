@@ -6,7 +6,7 @@ import {parseHTML} from 'linkedom';
 import {mountClientPatches,clientPatchesUnavailable} from './.test-build/client-patches-view.mjs';
 const {document}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const calls=[];
-const app=mountClientPatches(document,async command=>{calls.push(command);return null;});
+const app=mountClientPatches(document,async command=>{calls.push(command);return null;},{snapshot:()=>undefined,onSnapshot:()=>()=>{},refresh:async()=>{}});
 try {
  await app.ready;
  const panel=document.getElementById('client-patches-panel');

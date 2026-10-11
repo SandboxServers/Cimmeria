@@ -5,6 +5,7 @@ use cimmeria_launcher_engine::log_upload::{LogUploadCommand, LogUploadError, Log
 use cimmeria_launcher_engine::StorageError;
 
 impl NativeHost {
+    /// Run one log-upload request on the shared state, under its mutex.
     pub fn log_upload_command(
         &self,
         request: LogUploadCommand,

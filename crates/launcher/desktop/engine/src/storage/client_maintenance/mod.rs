@@ -5,16 +5,15 @@ use super::*;
 #[cfg(test)]
 mod tests;
 
+/// A `client_maintenance_command` request from the webview. It names no
+/// folder: native code resolves the player's Documents itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientMaintenanceCommand {
-    Inspect {
-        schema_version: u32,
-    },
+    /// Report what each reset would remove.
+    Inspect { schema_version: u32 },
     /// `Firesky\SGWGame\Cache.en-US` only.
-    ResetCache {
-        schema_version: u32,
-    },
+    ResetCache { schema_version: u32 },
     /// The whole `Firesky` tree. Refused unless `confirmed`.
     ResetAllClientState {
         schema_version: u32,
@@ -37,13 +36,16 @@ pub struct ClientMaintenanceStatus {
     pub schema_version: u32,
 }
 
+/// Serializes as one flat code string, like `StorageError`: `"unavailable"`,
+/// or the storage code itself (`"busy"`, `"unsupported_schema"`, ...).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientMaintenanceError {
-    Storage(StorageError),
-    UnsupportedSchema,
     /// This build cannot do it yet.
     Unavailable,
+    /// Admission or state-directory failure, including an unknown schema.
+    #[serde(untagged)]
+    Storage(StorageError),
 }
 impl From<StorageError> for ClientMaintenanceError {
     fn from(value: StorageError) -> Self {
@@ -52,12 +54,14 @@ impl From<StorageError> for ClientMaintenanceError {
 }
 
 impl DesktopState {
+    /// Answer one maintenance request. Both resets take the full mutation
+    /// admission (`ensure_no_active_operation`) before anything is deleted.
     pub fn client_maintenance(
         &mut self,
         request: ClientMaintenanceCommand,
     ) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
         if request.schema_version() != 1 {
-            return Err(ClientMaintenanceError::UnsupportedSchema);
+            return Err(StorageError::UnsupportedSchema.into());
         }
         match request {
             ClientMaintenanceCommand::Inspect { .. } => Err(ClientMaintenanceError::Unavailable),

@@ -8,6 +8,7 @@ use cimmeria_launcher_engine::client_maintenance::{
 use cimmeria_launcher_engine::StorageError;
 
 impl NativeHost {
+    /// Run one maintenance request on the shared state, under its mutex.
     pub fn client_maintenance_command(
         &self,
         request: ClientMaintenanceCommand,

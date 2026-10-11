@@ -30,6 +30,8 @@ pub use install_intent::{
     AdmissionRequest, ExtractionBackend, InstallAdmission, InstallIntent, IntentError,
 };
 #[cfg(test)]
+mod admission_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::{ContractError, Journal, Operations, Snapshot};
@@ -135,6 +137,42 @@ impl TryFrom<StoredPreferences> for Preferences {
             login_servers,
             client_patches_enabled,
         })
+    }
+}
+
+/// The bytes a record digest covers for one `Preferences` value. A schema-1
+/// build digested the four v1 fields only, and an adoption plan it wrote can
+/// still be in flight after the upgrade. Preferences whose client options are
+/// still the defaults therefore digest in exactly that v1 shape; any other
+/// value digests in full, so a change to a v2 field still changes the digest.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum PreferencesDigest<'a> {
+    V1 {
+        schema_version: u32,
+        revision: u64,
+        install_directory: &'a Option<PathBuf>,
+        launcher_summary_consent: bool,
+    },
+    Current(&'a Preferences),
+}
+
+impl Preferences {
+    /// Use this, never the value itself, inside anything that is digested.
+    pub(crate) fn digest_form(&self) -> PreferencesDigest<'_> {
+        if self.schema_version == PREFERENCES_SCHEMA
+            && self.login_servers.is_empty()
+            && self.client_patches_enabled
+        {
+            PreferencesDigest::V1 {
+                schema_version: 1,
+                revision: self.revision,
+                install_directory: &self.install_directory,
+                launcher_summary_consent: self.launcher_summary_consent,
+            }
+        } else {
+            PreferencesDigest::Current(self)
+        }
     }
 }
 
@@ -364,7 +402,20 @@ impl DesktopState {
         write: impl FnOnce(&Path, &Preferences) -> Result<(), StorageError>,
     ) -> Result<Preferences, StorageError> {
         self.finalize_summaries();
-        self.ensure_no_active_operation()?;
+        // Like consent, the client options may change while the game runs:
+        // Play reads them only at launch. Every other operation (an adoption
+        // compares the whole preferences value at recovery) and the launcher
+        // updater refuse the save.
+        self.ensure_updater_idle()?;
+        if self
+            .operations
+            .snapshot()
+            .operation
+            .as_ref()
+            .is_some_and(|op| !op.state.terminal() && op.kind != crate::OperationKind::Launch)
+        {
+            return Err(StorageError::Busy);
+        }
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }

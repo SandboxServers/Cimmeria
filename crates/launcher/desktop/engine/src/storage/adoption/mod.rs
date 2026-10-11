@@ -18,6 +18,9 @@ pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewW
 mod artifacts_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod cab_fixture;
+// Every platform: it needs no copy, only a persisted plan and its journal.
+#[cfg(test)]
+mod digest_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod preparation_tests;
 #[cfg(all(test, target_os = "macos"))]

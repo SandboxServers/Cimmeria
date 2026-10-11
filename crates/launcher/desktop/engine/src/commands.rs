@@ -109,7 +109,7 @@ mod tests {
             expected_revision,
             login_servers: vec![LoginServer {
                 name: "Local".into(),
-                url: "http://127.0.0.1:8081".into(),
+                url: "http://login.example:8081".into(),
             }],
             client_patches_enabled: false,
         };

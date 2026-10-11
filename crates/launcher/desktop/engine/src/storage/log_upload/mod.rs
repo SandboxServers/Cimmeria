@@ -5,10 +5,14 @@ use super::*;
 #[cfg(test)]
 mod tests;
 
+/// A `log_upload_command` request from the webview. It names no file, folder
+/// or URL: native code chooses all three.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LogUploadCommand {
+    /// Report what an upload would send and the last upload's result.
     Inspect { schema_version: u32 },
+    /// Zip and send the logs now.
     Upload { schema_version: u32 },
 }
 impl LogUploadCommand {
@@ -25,13 +29,16 @@ pub struct LogUploadStatus {
     pub schema_version: u32,
 }
 
+/// Serializes as one flat code string, like `StorageError`: `"unavailable"`,
+/// or the storage code itself (`"busy"`, `"unsupported_schema"`, ...).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LogUploadError {
-    Storage(StorageError),
-    UnsupportedSchema,
     /// This build cannot do it yet.
     Unavailable,
+    /// Admission or state-directory failure, including an unknown schema.
+    #[serde(untagged)]
+    Storage(StorageError),
 }
 impl From<StorageError> for LogUploadError {
     fn from(value: StorageError) -> Self {
@@ -40,12 +47,14 @@ impl From<StorageError> for LogUploadError {
 }
 
 impl DesktopState {
+    /// Answer one log-upload request. `Upload` takes the full mutation
+    /// admission (`ensure_no_active_operation`) before anything is written.
     pub fn log_upload(
         &mut self,
         request: LogUploadCommand,
     ) -> Result<LogUploadStatus, LogUploadError> {
         if request.schema_version() != 1 {
-            return Err(LogUploadError::UnsupportedSchema);
+            return Err(StorageError::UnsupportedSchema.into());
         }
         match request {
             LogUploadCommand::Inspect { .. } => Err(LogUploadError::Unavailable),

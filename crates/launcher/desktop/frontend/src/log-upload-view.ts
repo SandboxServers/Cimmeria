@@ -1,7 +1,8 @@
 import type {Invoke} from './view';
+import type {PanelContext} from './panel-context';
 /** Settings panel, scaffold (LX-02): LX-05 replaces this body and talks to `log_upload_command`. */
 export const logUploadUnavailable='Debug logs are not available in this build yet.';
-export function mountLogUpload(document:Document,_invoke:Invoke) {
+export function mountLogUpload(document:Document,_invoke:Invoke,_context:PanelContext) {
  const panel=document.getElementById('log-upload-panel');
  if(!panel)throw new Error('Missing launcher element log-upload-panel');
  const heading=document.createElement('h3');heading.id='log-upload-title';heading.textContent='Debug logs';

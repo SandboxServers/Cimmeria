@@ -104,8 +104,52 @@ impl Plan {
             .destination
             .join(format!(".cimmeria-adopt-{}", self.provenance.work_id))
     }
+    /// The operation's intent digest. Preferences go through `digest_form`,
+    /// so a plan a schema-1 build wrote (and journaled) before the upgrade
+    /// still hashes to the digest that build recorded.
     pub(super) fn digest(&self) -> Result<[u8; 32], Error> {
-        digest(self)
+        // Destructured so a new Plan field cannot silently fall out of the
+        // digest. Field names and order are the serialized Plan's.
+        let Plan {
+            schema_version,
+            installation,
+            provenance,
+            imported,
+            before,
+            after,
+            report,
+            choices,
+            source_digest,
+            stage_identity,
+            destination_identity,
+        } = self;
+        #[derive(Serialize)]
+        struct Digested<'a> {
+            schema_version: &'a u32,
+            installation: &'a InstallIntent,
+            provenance: &'a Provenance,
+            imported: &'a migration::LegacyImport,
+            before: PreferencesDigest<'a>,
+            after: PreferencesDigest<'a>,
+            report: &'a Report,
+            choices: &'a Choices,
+            source_digest: &'a [u8; 32],
+            stage_identity: &'a inventory::Identity,
+            destination_identity: &'a inventory::Identity,
+        }
+        digest(&Digested {
+            schema_version,
+            installation,
+            provenance,
+            imported,
+            before: before.digest_form(),
+            after: after.digest_form(),
+            report,
+            choices,
+            source_digest,
+            stage_identity,
+            destination_identity,
+        })
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

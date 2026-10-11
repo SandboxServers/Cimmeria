@@ -35,8 +35,8 @@ export type Command = {command: "inspect"; schema_version: 1} | {
 // Native storage codes as `StorageError` serializes them.
 export type StorageCode = "in_use" | "io" | "corrupt" | "unsupported_schema" | "too_large" | "unsafe_file" |
   "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain";
-/** The error shape the three scaffold commands share (LX-02). */
-export type ScaffoldError = "unsupported_schema" | "unavailable" | {storage: StorageCode};
+/** The three scaffold commands (LX-02) fail with one flat code string: a storage code or `"unavailable"`. */
+export type ScaffoldError = StorageCode | "unavailable";
 
 // `log_upload_command` (engine `storage/log_upload/`, filled by LX-05).
 export type LogUploadCommand = {command: "inspect"; schema_version: 1} | {command: "upload"; schema_version: 1};
@@ -68,6 +68,10 @@ const nativeCodes = new Set(["in_use", "io", "corrupt", "unsupported_schema", "t
 export function safeFailure(error: unknown): BridgeFailure {
   return new BridgeFailure({code: typeof error === "string" && nativeCodes.has(error)
     ? error as BridgeFailure["code"] : "transport"});
+}
+/** A scaffold command's rejection, or `"transport"` for anything else it could be. */
+export function scaffoldFailure(error: unknown): ScaffoldError | "transport" {
+  return error === "unavailable" ? error : safeFailure(error).code as StorageCode | "transport";
 }
 
 export const decodeSnapshot = (value: unknown) => Schema.decodeUnknownEffect(NativeSnapshot,

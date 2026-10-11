@@ -77,14 +77,17 @@ fields do not match its version is corrupt and is left untouched.
 `engine/src/commands.rs` exposes versioned `inspect`, `save_preferences` and
 `save_client_options` commands. `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
-launcher updater or any operation is running; it leaves the install path and
-consent alone. No command lets frontend callers set native operation outcomes or
+launcher updater or any operation other than Play is running (Play reads them
+only at launch, so a save during Play applies to the next one); it leaves the
+install path and consent alone. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.
 
 Three further Tauri commands are scaffolds that answer `unavailable` until their
-packets land. Each takes a versioned request with no free-form fields, has its
+packets land. Each fails with one flat code string, `unavailable` or a storage
+code such as `busy`, the same shape `safeFailure` reads. Each takes a versioned
+request with no free-form fields, has its
 engine half in `engine/src/storage/<name>/` and its host half in
 `shell/src/host/<name>.rs`, and has a Settings panel in
 `frontend/src/<name>-view.ts`:

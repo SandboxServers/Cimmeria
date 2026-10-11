@@ -49,10 +49,11 @@ mutex. Updater admission rejects every nonterminal game/setup operation,
 including reconciliation-required. Install, Play, Repair, uninstall, runtime setup, legacy import and failed-install
 cleanup call `ensure_updater_idle()` before preparatory writes. Repair-backup
 cleanup uses the same gate. Directory changes are blocked while updates run;
-summary consent remains editable. Client-option saves, log upload and client
-maintenance go through `ensure_no_active_operation()`, which calls
-`ensure_updater_idle()` and also refuses while any operation is nonterminal.
-New mutation paths must preserve this rule. A dropped
+summary consent remains editable. Log upload and client maintenance go through
+`ensure_no_active_operation()`, which calls `ensure_updater_idle()` and also
+refuses while any operation, Play included, is nonterminal. Client-option saves
+call `ensure_updater_idle()` and refuse any nonterminal operation except Play,
+which reads them only at launch. New mutation paths must preserve this rule. A dropped
 renderer request does not cancel the native task. An interrupted process is not
 a successful update: reopen changes interrupted downloads to failed/interrupted,
 and installing/restart states to reconciliation-required while retaining ownership.

@@ -6,7 +6,7 @@ import {parseHTML} from 'linkedom';
 import {mountClientMaintenance,clientMaintenanceUnavailable} from './.test-build/client-maintenance-view.mjs';
 const {document}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const calls=[];
-const app=mountClientMaintenance(document,async command=>{calls.push(command);return null;});
+const app=mountClientMaintenance(document,async command=>{calls.push(command);return null;},{snapshot:()=>undefined,onSnapshot:()=>()=>{},refresh:async()=>{}});
 try {
  await app.ready;
  const panel=document.getElementById('client-maintenance-panel');

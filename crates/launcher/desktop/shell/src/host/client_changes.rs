@@ -7,6 +7,7 @@ use cimmeria_launcher_engine::client_changes::{
 use cimmeria_launcher_engine::StorageError;
 
 impl NativeHost {
+    /// Run one read-only client-changes request on the shared state.
     pub fn client_changes_command(
         &self,
         request: ClientChangesCommand,

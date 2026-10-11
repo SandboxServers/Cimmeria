@@ -6,7 +6,7 @@ import {parseHTML} from 'linkedom';
 import {mountLogUpload,logUploadUnavailable} from './.test-build/log-upload-view.mjs';
 const {document}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const calls=[];
-const app=mountLogUpload(document,async command=>{calls.push(command);return null;});
+const app=mountLogUpload(document,async command=>{calls.push(command);return null;},{snapshot:()=>undefined,onSnapshot:()=>()=>{},refresh:async()=>{}});
 try {
  await app.ready;
  const panel=document.getElementById('log-upload-panel');
