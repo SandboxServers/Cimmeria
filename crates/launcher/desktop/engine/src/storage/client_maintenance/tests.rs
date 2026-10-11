@@ -392,6 +392,14 @@ fn capture_logs<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
         }
     }
     impl tracing::Subscriber for Capture {
+        // sometimes, not the default lways: another test may already have cached
+        // a callsite as uninteresting while no subscriber was set.
+        fn register_callsite(
+            &self,
+            _: &'static Metadata<'static>,
+        ) -> tracing::subscriber::Interest {
+            tracing::subscriber::Interest::sometimes()
+        }
         fn enabled(&self, _: &Metadata<'_>) -> bool {
             true
         }
@@ -409,7 +417,17 @@ fn capture_logs<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
         fn exit(&self, _: &span::Id) {}
     }
     let lines = Arc::new(Mutex::new(Vec::new()));
-    let value = tracing::subscriber::with_default(Capture(lines.clone()), run);
+    // With one live Dispatch, tracing-core takes a new callsite's interest from
+    // whichever thread hits it first, often another test's with no subscriber.
+    // A second live Dispatch keeps interest per-dispatcher (see agent memory
+    // tracing-capture-single-dispatcher-trap).
+    let _second = tracing::Dispatch::new(Capture(Arc::new(Mutex::new(Vec::new()))));
+    let value = tracing::subscriber::with_default(Capture(lines.clone()), || {
+        // Callsite interest is cached process-wide; recompute it with this capture
+        // installed, or an event first hit by an earlier test stays silent.
+        tracing::callsite::rebuild_interest_cache();
+        run()
+    });
     let lines = lines.lock().unwrap().clone();
     (value, lines)
 }
