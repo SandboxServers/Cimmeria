@@ -59,6 +59,7 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | F16 | The ADR's Phase 7 plan, a profile that serialises the suite because "parallel runs would corrupt shared state", is out of date. nextest runs each test in its own process (so the `chdir` and globals are per test), every port is ephemeral with retry, and the `live-db` test group gives each running test its own database clone. | D-WC6, WC-03 |
 | F17 | #1341's own evidence: the first-login flush packs one 11-byte `CREATE_ENTITY` plus one 26-byte avatar update per NPC into an 889-byte single-packet bundle. Any wire guard of the form "no quest-critical introduction after an avatar update in the first packet" fails on today's server, so the guard can land only with #1341's mitigation. The wire client itself cannot be fooled by the residue (it parses each message from its own header), which is why it needs a packet-level recorder, not a decoder change, to see the hazard. | D-WC8, WC-15 |
 | F18 | The ADR's TL;DR says the wire client drives the protocol "the way the original Flash client would have". The SGW client is Unreal Engine 3 with CEGUI; only the minigames are Flash. Wording only. | WC-17 |
+| F19 | #1371: three tests in `two_client_castle_visibility_chaos.rs` have failed since #1007 put 28 NPCs, some wandering, in the AoI of `CASTLE_BASE_POS`. There are two harness causes. (1) `LossyTransport` sleeps for the latency inside `send_to`/`recv_from`, and the base routes every cell message from one task, so at 80 ms the base drained about 10 messages a second while `EntityMoved` relays arrived far faster: the 256-slot channel stayed full, and B's `EntityCreated` reached the base 45 s late. (2) An idle `GameSession` never ACKs (ACKs ride only its own sends), so the server resent all 56 introduction packets on RTO (the burst test's targeted drop hit a retransmit, not B's create) and could resend only the 32-packet TX window (in the lossy test a loss past seq 41 was never resent, and B's create waited behind it). Neither affects real players: production sends never wait on the network, and the real client acks about six times a second. No aggro or combat traffic was involved. | WC-18 |
 
 ## Decisions
 
@@ -98,6 +99,7 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
 | WC-17 | Close-out: ADR, TESTING.md, status docs, #281 | documentation-writer | M | 8 | all | BlockedDependency |
+| WC-18 | Chaos tests vs a populated Castle (#1371): pipelined `LossyTransport` latency, keep-alive ACKs in the test waits | packet-coder | M | any | none | Ready |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
 
@@ -111,6 +113,8 @@ Waves (packets in one wave touch disjoint files and run in parallel):
 6. WC-14.
 7. WC-15 (when #1341 has decided), WC-16.
 8. WC-17.
+
+WC-18 touches no other packet's files and can run in any wave.
 
 ## Dispatch rules
 
