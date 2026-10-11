@@ -347,6 +347,19 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+`session.end` also carries end-cause hints (TG-NET-02), so one row says
+how the session ended without joining other rows:
+
+| Field | Meaning |
+|---|---|
+| `logoff_requested` | `true` when the client asked for a full exit (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`) before the session ended. A full exit keeps the session until the client disconnects or the 60 s reap fires, so `disconnect_reason` stays the real mechanism (`client_disconnect`, `inactivity_timeout`) and this flag says the player meant to leave. `inactivity_timeout` with `logoff_requested=true` is a clean quit whose disconnect never arrived, not a crash. |
+| `idle_ms` | Milliseconds since the last fresh datagram from the client (`last_recv`) when the session ended. |
+| `in_world` | The character was listed online (past `onClientReady`) when the session ended: `false` for a drop during world entry, and after a `logOff` already took the character out of the world. |
+| `world` | The world name; absent when the session had none. |
+
+`Client entities cleaned up` carries `player_id` and `player_name` beside
+the numeric `player_entity_id` (it used to ship as `"Some(n)"`).
+
 Only a login whose ticket is already consumed reaches
 `login_retry_on_channel`. A plaintext `baseAppLogin` with a fresh ticket
 on an established channel is a client killed and relaunched on its fixed
