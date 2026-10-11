@@ -319,15 +319,27 @@ mod tests {
             .iter()
             .find(|c| c.what == "item 3730 in container 2")
             .expect("container check for item 3730");
-        assert!(in_mission.sql.contains("i.type_id = 3730"), "{}", in_mission.sql);
-        assert!(in_mission.sql.contains("i.container_id = 2"), "{}", in_mission.sql);
+        assert!(
+            in_mission.sql.contains("i.type_id = 3730"),
+            "{}",
+            in_mission.sql
+        );
+        assert!(
+            in_mission.sql.contains("i.container_id = 2"),
+            "{}",
+            in_mission.sql
+        );
         assert_eq!(in_mission.pointer, "/rows/0/n");
         assert_eq!(in_mission.want, json!(0));
         let in_main = checks
             .iter()
             .find(|c| c.what == "item 55 in container 1")
             .expect("container check for item 55");
-        assert!(in_main.sql.contains("i.container_id = 1"), "{}", in_main.sql);
+        assert!(
+            in_main.sql.contains("i.container_id = 1"),
+            "{}",
+            in_main.sql
+        );
     }
 
     #[test]
