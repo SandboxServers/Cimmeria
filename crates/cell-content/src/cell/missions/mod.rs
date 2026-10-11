@@ -11,11 +11,14 @@
 //! - [`progression`] — advance step, complete objective, complete direct.
 //! - [`persist`] — serialize the live instance into the base-side
 //!   `MissionUpdate` that UPSERTs `sgw_mission`.
+//! - [`state_lock`] — the unreadable-saved-missions lock (TG-DB-12): every
+//!   mutation and persist above refuses while it holds.
 
 mod lifecycle;
 mod persist;
 mod progression;
 mod resend;
+pub mod state_lock;
 
 #[cfg(test)]
 mod abandon_persist_tests;

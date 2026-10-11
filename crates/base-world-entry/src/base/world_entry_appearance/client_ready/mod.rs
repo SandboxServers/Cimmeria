@@ -25,6 +25,7 @@ use super::builders::build_on_client_ready_burst_bundle;
 use super::cinematic::send_cinematic;
 use super::cinematic_aoi_hold;
 
+mod mission_lock;
 mod player_init_row;
 
 /// Finalize world entry after the client sends `SGWPlayer.onClientReady`.
@@ -187,9 +188,16 @@ pub async fn handle_on_client_ready(
         "SGWPlayer.onClientReady received -- finalizing world entry"
     );
 
-    // Query saved missions from DB before sending InitPlayerState
-    let saved_missions =
-        super::super::world_entry::methods::query_saved_missions(db_pool, pending.player_id).await;
+    // Query saved missions from DB before sending InitPlayerState. An
+    // unreadable read locks the missions instead of loading none (TG-DB-12).
+    let saved_missions = mission_lock::load_or_lock(
+        db_pool,
+        cell_tx,
+        entity_to_addr,
+        pending.player_id,
+        entity_id,
+    )
+    .await;
 
     // Query player abilities from DB
     let abilities: Vec<i32> = if let Some(pool) = db_pool {

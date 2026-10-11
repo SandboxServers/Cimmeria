@@ -152,13 +152,43 @@ impl MissionInstance {
 pub struct MissionManager {
     /// Active missions keyed by mission_id.
     missions: HashMap<i32, MissionInstance>,
+    /// The saved missions could not be read at world entry (TG-DB-12,
+    /// D-TG18). While set, the tracker is not the player's real state, so
+    /// the cell refuses every accept and advance and persists nothing;
+    /// otherwise a re-accept would overwrite completed progress (#411).
+    state_unknown: bool,
 }
 
 impl MissionManager {
     pub fn new() -> Self {
         Self {
             missions: HashMap::new(),
+            state_unknown: false,
         }
+    }
+
+    /// Whether the saved missions are unreadable (TG-DB-12): see the field.
+    pub fn is_state_unknown(&self) -> bool {
+        self.state_unknown
+    }
+
+    /// Lock the tracker: the saved missions could not be read.
+    pub fn mark_state_unknown(&mut self) {
+        self.state_unknown = true;
+    }
+
+    /// Unlock the tracker with the saved missions read late. Returns
+    /// `false`, and changes nothing, when the tracker was not locked: a
+    /// second recovery must not overwrite progress made since the first.
+    pub fn recover_state(&mut self, restored: Vec<MissionInstance>) -> bool {
+        if !self.state_unknown {
+            return false;
+        }
+        for mission in restored {
+            self.add_mission(mission);
+        }
+        self.state_unknown = false;
+        true
     }
 
     /// Add a new active mission.

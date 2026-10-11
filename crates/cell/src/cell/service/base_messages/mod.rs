@@ -306,6 +306,23 @@ pub(super) async fn handle_base_message(
                 .await;
         }
 
+        // TG-DB-12: the saved missions were unreadable at world entry. The
+        // lock arrives before `InitPlayerState`, so no `player_loaded` chain
+        // runs against the empty tracker unlocked.
+        BaseToCellMsg::MissionStateUnknown { entity_id } => {
+            crate::cell::missions::state_lock::mark_state_unknown(entity_id, space_mgr);
+        }
+
+        BaseToCellMsg::SavedMissionsRecovered {
+            entity_id,
+            saved_missions,
+        } => {
+            let restored =
+                player_init::mission_restore::build_restored_missions(&saved_missions, space_mgr);
+            crate::cell::missions::state_lock::recover_state(entity_id, restored, tx, space_mgr)
+                .await;
+        }
+
         BaseToCellMsg::AdvanceRingDestination {
             entity_id,
             region_id,

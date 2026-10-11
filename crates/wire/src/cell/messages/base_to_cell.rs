@@ -213,6 +213,20 @@ pub enum BaseToCellMsg {
         shown_tutorials: Vec<i32>,
     },
 
+    /// The saved missions could not be read at world entry (TG-DB-12,
+    /// D-TG18). Sent just before `InitPlayerState`, whose `saved_missions`
+    /// is then empty, so the cell locks the tracker before any
+    /// `player_loaded` chain runs: every accept and advance is refused and
+    /// nothing is saved until `SavedMissionsRecovered` arrives.
+    MissionStateUnknown { entity_id: u32 },
+
+    /// A background read of the saved missions succeeded after
+    /// `MissionStateUnknown` (TG-DB-12): restore them and unlock.
+    SavedMissionsRecovered {
+        entity_id: u32,
+        saved_missions: Vec<SavedMission>,
+    },
+
     /// Update one bandolier slot after a runtime item grant.
     ///
     /// BaseApp persists inventory changes and sends the client inventory update,
