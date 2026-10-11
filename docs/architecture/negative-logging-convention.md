@@ -1149,6 +1149,17 @@ The start-profile check (`start_profile.rs`, `resolve_start`) logs nothing itsel
 
 Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
 
+## Catch-all handler warnings (TG-MER-11)
+
+Two catch-alls carry the owning player's identity now. Both are WARN.
+
+| Row | Fields | When |
+|---|---|---|
+| WARN `Datagram handler error` in `base/connect_loop/mod.rs` | `reason = "handler_error"`, `error` (a field, not in the message), `addr`, and the identity from `identity_for_addr` | A datagram handler returned an error; the identity is empty for an address with no session |
+| WARN `Unhandled cell method call` in `cell/dispatch/router.rs` | `entity_id` + `entity_name`, `account_id` + `account_name`, `player_id` + `player_name` (from `SpaceManager::player_identity`), `method_index`, `method_name`, `args_len` | A cell method index has no registered handler |
+
+Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dispatch/router.rs` sets an account id on the test entity and asserts `account_id = 77` on the WARN row.
+
 ## Death and revive rows (TG-CMB-06)
 
 `death/mod.rs` in `cimmeria-cell-combat` writes `target_killed` with the Rule 5 identity keys: `attacker_id` + `attacker_name`, `target_id` + `target_name`, and the player-side identity quartet (the attacker when it is a player, otherwise the target). `ability_id` is `Option<i32>` and is left out when unknown, never `-1`. `death/side_effects.rs` writes `player.death` with `killer_id`, `killer_name` (left out for an environment kill, never `""`), `world` as a bare name, and the identity quartet. `cell_methods/player/combat` gives `callForAid` and `player revived` the identity quartet and `world`.
