@@ -696,6 +696,18 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Bandolier ammo flush (TG-ITM-11)
+
+`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs` sends one `BandolierAmmoUpdate` per dirty bandolier slot. It is called from world transitions, respawn, ring transport and logout (`flush_dirty_bandolier_ammo_at_logout`, from `lifecycle.rs`).
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "bandolier_slot_dropped"`, `reason = "no_item"`, identity, `slot_id` | A dirty slot has no item any more (swapped out first): its ammo marker is dropped, nothing is persisted |
+| WARN | `BandolierAmmoUpdate send failed; leaving slot dirty for retry`, `error`, item pair, `current_ammo`, `account_id`, `account_name`, `unsent`; on the logout path also `reason = "ammo_lost_at_logout"` | The base channel refused the update. Elsewhere the next flush retries; at logout the entity is destroyed next, so that ammo is lost |
+| DEBUG | module-path target, `event = "bandolier_flush"`, identity, `sent`, `dropped`, `unsent`, `at_logout` | Once per flush with a non-empty dirty set |
+
+Guards: `active_slot_flush_tests::bandolier_flush_reports_dropped_and_unsent` and `bandolier_flush_at_logout_warns_ammo_lost`.
+
 ## Character delete cascade (TG-SOC-02)
 
 Target `org`, `character.delete_cascade`, emitted by `delete_character` after its commit: WARN when held cash, mail attachments, listings or mail cash were lost (the player can feel it), else DEBUG. Fields: `player_id`, `player_name`, `account_id`, `account_name`, and the counts `auctions_destroyed` (listings the character sold), `held_cash_destroyed` and `bids_held_lost` (open bids the character stood on), `mail_destroyed`, `mail_attachments_destroyed` (escrowed items), `cod_mails` (unpaid COD mail), `mail_cash_destroyed` (cash on non-COD mail) and `bid_history_rows` (`sgw_auction_bid` rows the character placed). Restorable detail, so an operator can restore by hand: `auction_sequence_ids`, `auction_item_ids`, `held_bid_auction_ids` with `held_bid_amounts` (same order), `mail_ids` and `mail_attachment_item_ids`, each comma-joined and capped at 50 entries, with `truncated = true` when any list was capped. The other cascades (inventory, missions, abilities, cooldowns, contacts, expertise) are not itemised. The counts are read inside the delete transaction, at READ COMMITTED before the DELETE, before the cascade and the Black Market trigger run; they can differ slightly from what the cascade removes when mail expires concurrently. A failed count is logged at WARN as `character.delete_cascade_count_failed` and the delete goes on without the counts. This row is the only record of what a delete destroys (D-TG9). Guard: `base-session` `organization/persistence/tests/delete_cascade.rs`, `live_db_character_delete_logs_cascade_counts`, `live_db_character_delete_with_nothing_logs_debug`, `live_db_character_delete_seller_with_bidder_refunds_bidder`.
