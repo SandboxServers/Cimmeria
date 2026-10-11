@@ -7,7 +7,7 @@ import { Command, NativeSnapshot } from './contract';
 
 const html = await readFile(new URL('../ui/index.html', import.meta.url), 'utf8');
 const initial = (): NativeSnapshot => ({schema_version:1, operation:{schema_version:1, revision:0, operation:null},
-  preferences:{schema_version:2, revision:0, install_directory:null, launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}, requires_reopen:false,adopted_login_servers:null});
+  preferences:{schema_version:2, revision:0, install_directory:null, launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}, requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null}});
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 
 function dom() {
@@ -44,6 +44,24 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
+});
+
+test('Settings shows the compiled version, with the release tag or "development build"', {timeout:5000}, async () => {
+  for (const [launcher, about, badge] of [
+    [{version:'2026.10.11', tag:'launcher-20261011-abc1234'},
+      'Stargate Worlds Launcher 2026.10.11 · release launcher-20261011-abc1234', 'Version 2026.10.11'],
+    [{version:'0.1.0', tag:null}, 'Stargate Worlds Launcher 0.1.0 · development build', 'Development build'],
+  ] as const) {
+    const ui = dom();
+    assert.equal(ui.get('build-badge').textContent, '', 'no build kind is claimed before the snapshot');
+    const app = mountLauncher(ui.document, async () => ({...initial(), launcher}));
+    try {
+      await app.ready; await flush();
+      assert.equal(ui.get('about').textContent, about);
+      assert.equal(ui.get('about').closest('section'), ui.get('gear'), 'the About line is in Settings');
+      assert.equal(ui.get('build-badge').textContent, badge);
+    } finally { await app.dispose(); }
+  }
 });
 
 test('consent waits for native acknowledgement and rolls back on failed save', {timeout:5000}, async () => {

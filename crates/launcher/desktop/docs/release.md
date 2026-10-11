@@ -49,6 +49,7 @@ A release build also sets, on the build step only:
 | `CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH` | the release's tag and stamp time | The same identity as the original launcher of that release, for a manifest's `min_launcher` |
 | `CIMMERIA_BUILD_BRANCH`, `CIMMERIA_BUILD_GIT_SHA` | `main`, the commit | Recorded in a game-telemetry session |
 | `LAUNCHER_LOG_SAS_URL` | a write-only SAS URL for the log container, `https://<account>.blob.core.windows.net/<container>?<sas>` | Where Settings' "Upload debug logs" PUTs the zip. Unset, the button is hidden. It is compiled in with `option_env!`, so anyone holding the exe can extract it. Give it create permission only (`sp=c`) on that one container, with an expiry: create cannot overwrite an existing blob, and every upload's name is unique (host, time and digest), so a leaked SAS can add blobs but never replace other players' logs. Write (`w`) would let it overwrite them |
+| `CIMMERIA_LAUNCHER_VERSION` | `YYYY.M.D`, or `YYYY.M.D-N` for a same-day rebuild (D-LX8); not set by the workflow until LX-15 | The compiled version the updater compares and Settings shows. `shell/build.rs` refuses a value that is not SemVer and merges it over `tauri.conf.json`'s `version` through `TAURI_CONFIG`. Unset, the version is `0.1.0` |
 
 ## What the preview does not have
 
@@ -62,7 +63,11 @@ A release build also sets, on the build step only:
 - **The WebView2 runtime.** Windows 11 has it and Windows 10 usually does.
   Nothing here installs it. When it is missing, the launcher says so at start
   and offers Microsoft's download page instead of exiting silently.
-- **A release name.** The window title and the UI still say "development".
+- **A dated version.** A tagged build titles its window "Stargate Worlds"
+  and shows the version and tag on the About line in Settings; an untagged
+  one keeps "development" in the title and says "development build" there.
+  The workflow does not set `CIMMERIA_LAUNCHER_VERSION` yet (LX-15), so a
+  release still reports version `0.1.0`.
 - **Broad testing.** One native Windows machine ran a debug build on
   2026-10-04: Install, Play, login and character select. Repair, uninstall,
   game Update and adopting an existing copy were not run on Windows. The

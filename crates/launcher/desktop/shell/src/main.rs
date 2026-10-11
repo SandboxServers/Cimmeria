@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
 mod updater_restart;
+#[cfg(test)]
+mod release_version;
 mod webview2;
 
 use cimmeria_launcher_engine::client_changes::{
@@ -15,7 +17,7 @@ use cimmeria_launcher_engine::log_upload::{
 use cimmeria_launcher_engine::runtime_setup::windows_physx::{
     PhysxCommand, PhysxError, PhysxStatus,
 };
-use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
+use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, StorageError};
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
@@ -422,6 +424,11 @@ async fn choose_legacy_source(
     }).await.map_err(|_| StorageError::Io)?
 }
 
+/// tauri.conf.json carries the release title, so only a development build
+/// (no release tag and stamp) changes it, and a failed change never makes a
+/// release say "development".
+const DEVELOPMENT_TITLE: &str = "Stargate Worlds \u{2014} development";
+
 fn main() {
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
@@ -453,6 +460,11 @@ fn main() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            if LauncherBuild::current().tag.is_none() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_title(DEVELOPMENT_TITLE);
+                }
+            }
             let app_data = app.path().app_data_dir()?;
             let host = NativeHost::new(app_data.join("state")).with_default_install_directory(
                 app.path().app_local_data_dir()?.join("Stargate Worlds"),

@@ -1,4 +1,5 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
+use crate::launcher_compatibility::Identity;
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,25 @@ pub struct NativeSnapshot {
     /// The reviewed list an adopted copy keeps at Play (`null` otherwise):
     /// saving `login_servers` does not change what that copy logs in to.
     pub adopted_login_servers: Option<Vec<LoginServer>>,
+    /// The running build, for the About line in Settings.
+    pub launcher: LauncherBuild,
+}
+
+/// Compiled release identity. `tag` is `null` for a development build: one
+/// without a well-formed release tag and build stamp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LauncherBuild {
+    pub version: String,
+    pub tag: Option<String>,
+}
+impl LauncherBuild {
+    pub fn current() -> Self {
+        let identity = Identity::current();
+        Self {
+            version: identity.desktop_version,
+            tag: identity.compatibility_tag,
+        }
+    }
 }
 
 impl DesktopState {
@@ -44,6 +64,7 @@ impl DesktopState {
             preferences: self.preferences().clone(),
             requires_reopen: self.requires_reopen(),
             adopted_login_servers: self.adopted_login_servers(),
+            launcher: LauncherBuild::current(),
         }
     }
 

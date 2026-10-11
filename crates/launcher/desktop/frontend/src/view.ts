@@ -9,6 +9,7 @@ import { mountClientMaintenance } from "./client-maintenance-view";
 import { mountClientChanges } from "./client-changes-view";
 import { mountPhysx } from "./physx-view";
 import { makePanelContext } from "./panel-context";
+import { aboutText, buildBadge } from "./about";
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 class Launcher extends Context.Service<Launcher, Effect.Success<typeof makeLauncher>>()('launcher/Application') {}
@@ -79,6 +80,8 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     get('retry').hidden = !failure || native?.requires_reopen === true;
     get<HTMLButtonElement>('retry').disabled = !!active || current.busy;
     get('gear').setAttribute('aria-busy', String(!!active || current.busy));
+    get('about').textContent = aboutText(native?.launcher ?? null);
+    get('build-badge').textContent = buildBadge(native?.launcher ?? null);
   };
   const watcher = runtime.runFork(Effect.flatMap(Launcher, launcher => Stream.runForEach(launcher.changes,
     next => Effect.sync(() => { current = next; render(); if (!disposed && next.native) panelFeed.publish(next.native); }))));
