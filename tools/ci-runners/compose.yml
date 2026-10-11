@@ -122,6 +122,9 @@ services:
       RUNNER_LABELS: cimmeria-linux,${NODE}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      # Parallel compiles per job. deploy.ps1 always sets it (a node's Jobs, else its
+      # core count); never empty, which cargo rejects and every job would inherit.
+      CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-16}
       CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
@@ -155,6 +158,9 @@ services:
       RUNNER_LABELS: cimmeria-linux,${NODE}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      # Parallel compiles per job. deploy.ps1 always sets it (a node's Jobs, else its
+      # core count); never empty, which cargo rejects and every job would inherit.
+      CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-16}
       CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
@@ -188,6 +194,9 @@ services:
       RUNNER_LABELS: cimmeria-linux,${NODE}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      # Parallel compiles per job. deploy.ps1 always sets it (a node's Jobs, else its
+      # core count); never empty, which cargo rejects and every job would inherit.
+      CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-16}
       CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
@@ -221,6 +230,9 @@ services:
       RUNNER_LABELS: cimmeria-linux,${NODE}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      # Parallel compiles per job. deploy.ps1 always sets it (a node's Jobs, else its
+      # core count); never empty, which cargo rejects and every job would inherit.
+      CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-16}
       CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
@@ -254,6 +266,9 @@ services:
       RUNNER_LABELS: cimmeria-linux,${NODE}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      # Parallel compiles per job. deploy.ps1 always sets it (a node's Jobs, else its
+      # core count); never empty, which cargo rejects and every job would inherit.
+      CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-16}
       CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128

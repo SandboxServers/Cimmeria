@@ -64,6 +64,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # No debug info in CI builds; see test.yml.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
   # Pinned to match test.yml and setup.ps1 (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1).
   RECAST_VERSION: "1.6.0"
 

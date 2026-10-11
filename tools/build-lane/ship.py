@@ -48,7 +48,10 @@ HERE = Path(__file__).resolve().parent
 GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
 RM_WORKTREE = str(HERE / ("rm-worktree.ps1" if os.name == "nt" else "rm-worktree.sh"))
-GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace, no DB)")
+GATING = ("cargo fmt --check", "cargo clippy -D warnings", "cargo build + nextest (workspace + live DB)")
+# A renamed gating job's old check name, counted as the new one: a PR whose last CI
+# ran before the rename still reports the old name until it is pushed again.
+RENAMED = {"cargo build + nextest (workspace, no DB)": "cargo build + nextest (workspace + live DB)"}
 # Path-filtered jobs (lab.yml, build-lane-scripts.yml) that gate only when the
 # PR's changes made them run: present means required, absent means not run.
 CONDITIONAL = (
@@ -302,7 +305,7 @@ def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
             checks = []   # "no checks reported" yet
         buckets = {}
         for c in checks:
-            buckets.setdefault(c["name"], []).append(c["bucket"])
+            buckets.setdefault(RENAMED.get(c["name"], c["name"]), []).append(c["bucket"])
         gating = always + [g for g in conditional if g in buckets and g not in always]
         failed = [g for g in gating if any(b in ("fail", "cancel") for b in buckets.get(g, []))]
         if failed:

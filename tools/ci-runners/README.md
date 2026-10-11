@@ -120,6 +120,7 @@ is baked in again.
   GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the
   colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps
   10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2, node1).
+- **Parallel compiles per job.** `CARGO_BUILD_JOBS` comes from `deploy.ps1`: a node's `Jobs` if it has one, else its core count (never empty, which cargo rejects). Five jobs each running one compile per core oversubscribe a 16-core node five times over; on 2026-10-11 node1 spent about 19% of its CPU in the kernel under that load. node1 runs `Jobs = 8` as an experiment: compare its job durations with node2's and node5's in `status.ps1` before changing the others.
 - **sccache instead of rust-cache.** Self-hosted jobs skip `Swatinem/rust-cache`
   (`if: runner.environment == 'github-hosted'`); downloading a multi-GB cache from GitHub
   is slower than a shared sccache hit. Every runner builds in the same path, so cache

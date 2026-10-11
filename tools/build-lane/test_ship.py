@@ -324,6 +324,25 @@ class MergeTests(MergeCase):
         self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", "cargo clippy -D warnings"))
         self.assertEqual(self.calls(["pr", "merge"]), [])
 
+    def test_a_renamed_gate_reported_under_its_old_name_counts(self):
+        # A PR whose last CI ran before the build-and-test rename reports the old name.
+        old, new = next(iter(ship.RENAMED.items()))
+        checks = {g: "pass" for g in ship.GATING if g != new}
+        checks[old] = "pass"
+        self.add_pr(["src.rs"], checks=[checks])
+        code, f, line = self.merge()
+        self.assertEqual(code, 0, line)
+        self.assertEqual(self.calls(["pr", "merge"]), [["pr", "merge", "7", "--squash"]])
+
+    def test_a_failure_under_a_renamed_gates_old_name_stops_the_merge(self):
+        old, new = next(iter(ship.RENAMED.items()))
+        checks = {g: "pass" for g in ship.GATING if g != new}
+        checks[old] = "fail"
+        self.add_pr(["src.rs"], checks=[checks])
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", new))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
     def test_a_path_filtered_lab_check_that_ran_gates_the_merge(self):
         lab = ship.CONDITIONAL[1]
         self.add_pr(["crates/lab/src/x.rs"], checks=[dict(GREEN, **{lab: "fail"})])

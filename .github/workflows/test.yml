@@ -22,6 +22,14 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  # No debug info in CI's dev/test builds (Cargo.toml keeps line tables for local
+  # builds). Every test binary is a crate sccache can't cache, so each one is
+  # compiled and linked on every run; without debug info that is cheaper. A
+  # panic still prints its file:line (that comes from the panic location, not
+  # debug info); only multi-frame backtraces lose line numbers. Release builds
+  # (docker/Dockerfile) are unaffected.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
   # Tauri / GTK-using members of the workspace pull in heavy GUI deps and
   # have their own Linux-build prerequisites; keep them out of CI builds.
   WORKSPACE_EXCLUDES: >-
@@ -44,7 +52,7 @@ jobs:
   # code, because cimmeria-patch-wire's tests read the dispatch tables there,
   # and so does tools/token-profile/, whose contract tests read its Markdown.
   # The generated weapon-requirement audit doc counts as code: the
-  # test-live-db job's `--check` is what catches a hand edit to it.
+  # build-and-test job's `--check` is what catches a hand edit to it.
   # Pushes to main always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
   changes:
@@ -140,8 +148,8 @@ jobs:
   #
   # cargo nextest (no DB): live-DB tests use test_support::require_db_or_skip!
   # and self-skip when DATABASE_URL is unset, so this covers the unit + non-DB
-  # integration tests across the whole workspace. The live-DB suite runs in
-  # the dedicated `test-live-db` job below.
+  # integration tests across the whole workspace. The live-DB suite follows in
+  # the same job (see below).
   #
   # nextest emits JUnit XML at target/nextest/ci/junit.xml (configured in
   # .config/nextest.toml); the upload step feeds it to Codecov Test
@@ -151,14 +159,66 @@ jobs:
   # so they run separately via `cargo test --doc` after the main pass. Only
   # cimmeria-commands has runnable doctests today; the rest of the workspace
   # uses ```text / ```ignore fences that don't compile.
+  #
+  # The live-DB suite runs in this job too, after the no-DB pass, on the same
+  # test binaries. It used to be a separate job that compiled them again, and
+  # test binaries are the part of a build sccache can't cache. Schema is loaded
+  # from db/database.sql (which `\ir`-includes everything in db/sgw and
+  # db/resources, including seed data). tools/test-live-db.sh holds the list of
+  # crates with live-DB tests and runs all of them in one nextest invocation,
+  # so a crate split out of cimmeria-services cannot silently drop out (#615).
+  # The schema loads into `sgw` in the background while the workspace compiles
+  # (tools/live-db-schema-load.sh). tools/test-live-db.sh then clones `sgw` into
+  # sgw_0 .. sgw_<N-1> (N = the `live-db` test group's max-threads in
+  # .config/nextest.toml), and the `ci-live-db` profile runs the tests whose
+  # name contains `live_db` up to N at once, each on its group slot's own
+  # clone. Some live-DB tests share sentinel id ranges in resources.* and would
+  # collide in one database, so DATABASE_URL is set on the live-DB steps only:
+  # the no-DB pass must not see it, or every live-DB test would run against the
+  # one template database. Guard tests in cimmeria-test-support fail when a
+  # test that reaches require_db_or_skip! lacks the `live_db` marker, or when
+  # test code reads DATABASE_URL around the slot resolver.
   build-and-test:
-    name: cargo build + nextest (workspace, no DB)
+    name: cargo build + nextest (workspace + live DB)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
-    timeout-minutes: 60
+    timeout-minutes: 75
+    services:
+      postgres:
+        # Match the bundled local Postgres in external/postgresql_server/.
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: w-testing
+          POSTGRES_PASSWORD: w-testing
+          POSTGRES_DB: sgw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
+      # The generated effect NVP blocks in db/resources/Effects/Seed/ match
+      # what the ability-mechanics generator writes (D-AB06), the CS-07
+      # weapon-requirement audit doc matches the seeds, and their tests pass.
+      # Stock Python; runs before the seed this job loads.
+      - name: ability-mechanics generators (unit tests + --check)
+        run: |
+          python3 -m unittest discover -s tools/ability_mechanics -p "test_*.py"
+          python3 tools/ability_mechanics/effect_nvps_from_desc.py --check
+          python3 tools/ability_mechanics/weapon_requirement_audit.py --check
+      - name: install clang + mold + psql
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
+      - name: start schema + seeds load (background)
+        # Loads db/database.sql into `sgw`, the template of the per-slot
+        # clones, while the steps below compile. It outlives this step; the
+        # wait step below fails the job, printing psql's log, if it failed.
+        run: bash tools/live-db-schema-load.sh start
+        env:
+          DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
       - name: build-lane job log tests
         run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
       - name: docs-gen tests
@@ -193,8 +253,6 @@ jobs:
           cargo hakari generate --diff
           cargo hakari manage-deps --dry-run
           cargo hakari verify
-      - name: install clang + mold
-        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold || exit 1; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -216,6 +274,18 @@ jobs:
         run: cargo nextest run --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
       - name: cargo test --doc (cimmeria-commands)
         run: cargo test --doc -p cimmeria-commands
+      # The live-DB suite, on the test binaries built above (the build-only
+      # pass only compiles what `-p` feature resolution changes, if anything).
+      - name: build live-DB test binaries
+        run: bash tools/test-live-db.sh --build-only
+        env:
+          DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
+      - name: wait for schema + seeds load
+        run: bash tools/live-db-schema-load.sh wait 300
+      - name: cargo nextest run (live DB)
+        run: bash tools/test-live-db.sh
+        env:
+          DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
       - name: upload test results to Codecov
         # `!cancelled()` runs this step on both success and failure (but not
         # on cancellation), so failing tests still get their JUnit uploaded
@@ -227,6 +297,15 @@ jobs:
           files: target/nextest/ci/junit.xml
           report_type: test_results
           flags: workspace
+          fail_ci_if_error: false
+      - name: upload live-DB test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/nextest/ci-live-db/junit.xml
+          report_type: test_results
+          flags: live-db
           fail_ci_if_error: false
 
   # Logic UAT for the client UI overlay (BM-05): loads the patched
@@ -263,121 +342,25 @@ jobs:
       - name: check the generated GM slash command XML is current
         run: python3 tools/client-patches/gm_slash_commands.py --check
 
-  # cargo nextest against a live Postgres. Schema is loaded from
-  # db/database.sql (which `\ir`-includes everything in db/sgw and
-  # db/resources, including seed data). The live-DB regression guards
-  # we've written for vendor / inventory / progression / mail / missions
-  # actually fire in this job — the prior `test` job's
-  # require_db_or_skip! short-circuits without DATABASE_URL.
-  #
-  # tools/test-live-db.sh holds the list of crates with live-DB tests and
-  # runs all of them in one nextest invocation, so a crate split out of
-  # cimmeria-services cannot silently drop out of this job (#615). The job
-  # name still says `-p cimmeria-services` so a required status check keyed
-  # on it keeps matching; the split's final wave renames it.
-  #
-  # The schema loads into `sgw` in the background while the test binaries
-  # compile (tools/live-db-schema-load.sh, then test-live-db.sh
-  # --build-only). tools/test-live-db.sh then clones `sgw` into sgw_0 ..
-  # sgw_<N-1> (N = the `live-db` test group's max-threads in
-  # .config/nextest.toml), and the `ci-live-db` profile runs the tests whose
-  # name contains `live_db` up to N at once, each on its group slot's own
-  # clone, and every other test in parallel. Some live-DB tests share
-  # sentinel id ranges in resources.* and would collide in one database;
-  # that's a fixture-design constraint, not a bug in the handlers. Guard
-  # tests in cimmeria-test-support fail when a test that reaches
-  # require_db_or_skip! lacks the `live_db` marker, or when test code reads
-  # DATABASE_URL around the slot resolver.
-  test-live-db:
-    name: cargo nextest -p cimmeria-services (live DB)
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
-    timeout-minutes: 60
-    services:
-      postgres:
-        # Match the bundled local Postgres in external/postgresql_server/.
-        image: postgres:17.9
-        env:
-          POSTGRES_USER: w-testing
-          POSTGRES_PASSWORD: w-testing
-          POSTGRES_DB: sgw
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
-    steps:
-      - uses: actions/checkout@v7
-      # The generated effect NVP blocks in db/resources/Effects/Seed/ match
-      # what the ability-mechanics generator writes (D-AB06), the CS-07
-      # weapon-requirement audit doc matches the seeds, and their tests pass.
-      # Stock Python; runs before the seed this job loads.
-      - name: ability-mechanics generators (unit tests + --check)
-        run: |
-          python3 -m unittest discover -s tools/ability_mechanics -p "test_*.py"
-          python3 tools/ability_mechanics/effect_nvps_from_desc.py --check
-          python3 tools/ability_mechanics/weapon_requirement_audit.py --check
-      - uses: ./.github/actions/rust-toolchain
-      - name: install clang + mold + psql
-        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
-      - name: start schema + seeds load (background)
-        # Loads db/database.sql into `sgw`, the template of the per-slot
-        # clones, while the steps below compile. It outlives this step; the
-        # wait step below fails the job, printing psql's log, if it failed.
-        run: bash tools/live-db-schema-load.sh start
-      - name: install nextest
-        uses: taiki-e/install-action@nextest
-      - name: hydrate external/recast
-        run: |
-          mkdir -p external
-          curl -sL --retry 3 \
-            -o /tmp/recast.zip \
-            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
-          unzip -q /tmp/recast.zip -d /tmp/recast_extract
-          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
-          test -f external/recast/Detour/Source/DetourAssert.cpp
-      - uses: Swatinem/rust-cache@v2
-        # Self-hosted runners keep a warm sccache instead (tools/ci-runners/).
-        if: runner.environment == 'github-hosted'
-        with:
-          shared-key: test-live-db
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: build live-DB test binaries
-        run: bash tools/test-live-db.sh --build-only
-      - name: wait for schema + seeds load
-        run: bash tools/live-db-schema-load.sh wait 300
-      - name: cargo nextest run (live DB)
-        run: bash tools/test-live-db.sh
-      - name: upload test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: target/nextest/ci-live-db/junit.xml
-          report_type: test_results
-          flags: live-db
-          fail_ci_if_error: false
-
   # Coverage, in two jobs that run at the same time: the workspace pass
   # without a DB, and the live-DB crates' lib tests (tools/test-live-db.sh
   # --llvm-cov) against a live Postgres. Most of each job is compiling
   # instrumented code, so splitting further would repeat that compile for
   # little gain. Each job renders and uploads its own report; Codecov merges
   # the two uploads for the commit. JUnit upload stays with the
-  # build-and-test/test-live-db jobs to avoid double-counting in Test
-  # Analytics.
+  # build-and-test job to avoid double-counting in Test Analytics.
   #
   # Non-blocking: continue-on-error so a coverage-tool flake doesn't gate
   # merges. The artifacts and summaries are advisory.
+  #
+  # Pushes to main only (and workflow_dispatch), not PRs: each job rebuilds the
+  # workspace instrumented, two full builds per push for a report that never
+  # gates a merge. A PR that wants its own report gets the `coverage` label;
+  # add it, then push, because a re-run reuses the labels the run started with.
   coverage-workspace:
     name: cargo llvm-cov (workspace, no DB)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
@@ -444,7 +427,7 @@ jobs:
   coverage-live-db:
     name: cargo llvm-cov (live DB)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage'))
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted') && 'ubuntu-latest' || 'cimmeria-linux' }}
     timeout-minutes: 75
     continue-on-error: true
@@ -472,7 +455,7 @@ jobs:
       - name: install clang + mold + psql
         run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client || exit 1; break; }; done
       - name: start schema + seeds load (background)
-        # As in test-live-db: `sgw` loads while the instrumented build runs.
+        # As in build-and-test: `sgw` loads while the instrumented build runs.
         run: bash tools/live-db-schema-load.sh start
       - name: hydrate external/recast
         run: |

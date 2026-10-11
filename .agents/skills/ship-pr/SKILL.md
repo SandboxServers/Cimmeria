@@ -27,7 +27,7 @@ PR and whenever a check fails. Every compiling command goes through the lane (se
 `lane-build` skill).
 
 - Blocking on every PR that touches more than Markdown, `.claude/` or doc images: `fmt`,
-  `clippy`, `build-and-test`, `test-live-db`.
+  `clippy`, `build-and-test` (it runs the live-DB tier too).
 - Blocking only when figures or `docs/drafts/spec/` chapters change: `figure-sources-in-sync`,
   `figure-style-lint`.
 - Warn-only: `markdownlint`, `spec-lint`.

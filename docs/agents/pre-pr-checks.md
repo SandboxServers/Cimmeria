@@ -13,7 +13,7 @@ Not every check blocks a merge. Here's what each one is actually worth:
 
 | Check | Workflow | Blocking? | Runs when |
 |---|---|---|---|
-| `fmt`, `clippy`, `build-and-test`, `test-live-db` | [test.yml](../../.github/workflows/test.yml) | **Yes** — four gating jobs | Every PR that changes more than Markdown, `.claude/` or images under `docs/` (those skip and report as passed; `docs/protocol/` always runs) |
+| `fmt`, `clippy`, `build-and-test` (no-DB and live-DB tiers in one job, so the test binaries compile once) | [test.yml](../../.github/workflows/test.yml) | **Yes** — three gating jobs | Every PR that changes more than Markdown, `.claude/` or images under `docs/` (those skip and report as passed; `docs/protocol/` always runs) |
 | `figure-sources-in-sync` | [figure-sources.yml](../../.github/workflows/figure-sources.yml) | **Yes** | Only when `docs/drafts/spec/figures/**` changes |
 | `figure-style-lint` | [figure-style.yml](../../.github/workflows/figure-style.yml) | **Yes** | Only when figures or `docs/drafts/spec/**.md` change |
 | `cargo clippy -D warnings (cimmeria-lab)`, `cargo nextest (cimmeria-lab, UAT specs)`, `lab CLI PowerShell tests` | [lab.yml](../../.github/workflows/lab.yml) | **Yes** when they run, enforced by `ship.py merge` (not branch protection: a manual `gh pr merge` ignores them) | `crates/lab/**`, `crates/client-launch/**`, `docs/guides/uat-specs/**`, `tools/lab/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`. The lab supervisor is excluded from the workspace jobs, so this is its only build-and-test |
@@ -24,7 +24,7 @@ Not every check blocks a merge. Here's what each one is actually worth:
 
 The `test.yml`, `wireclient.yml` and `pr-container.yml` jobs run on the self-hosted `cimmeria-linux` runners (five each on node5, node2 and node1), except fork PRs and Dependabot PRs, which get GitHub-hosted `ubuntu-latest`. Setting the repository variable `CI_LINUX_RUNNER=hosted` sends them all back to GitHub-hosted. Those runners use sccache instead of the rust-cache step. See [tools/ci-runners/README.md](../../tools/ci-runners/README.md).
 
-Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, run at the same time, upload to Codecov (which merges them) and do not gate. Only runs on `main` save the Rust caches, and PRs restore them (see [build-system.md §12](../architecture/build-system.md#12-ci-caches-are-saved-from-main-only)). After a merge, [regen-docs.yml](../../.github/workflows/regen-docs.yml) reruns `tools/docs-gen/regen.py` on `main` and commits any generated doc blocks that changed; nothing in a PR checks them. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
+Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, run at the same time on pushes to `main` (not on PRs: each rebuilds the workspace instrumented), upload to Codecov (which merges them) and do not gate. A PR that wants its own coverage report gets the `coverage` label, then a push. Only runs on `main` save the Rust caches, and PRs restore them (see [build-system.md §12](../architecture/build-system.md#12-ci-caches-are-saved-from-main-only)). After a merge, [regen-docs.yml](../../.github/workflows/regen-docs.yml) reruns `tools/docs-gen/regen.py` on `main` and commits any generated doc blocks that changed; nothing in a PR checks them. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
 ## Desktop launcher workspace
 
@@ -77,7 +77,7 @@ tools/build-lane/live-db-test.sh <test-name filter>
 
 # Effect NVP generator and weapon-requirement audit (when db/resources/
 # seeds or tools/ability_mechanics/ change; CI runs all three in the
-# test-live-db job). --check fails when a generated block or the audit doc
+# build-and-test job). --check fails when a generated block or the audit doc
 # differs from what the tool writes:
 python tools/ability_mechanics/effect_nvps_from_desc.py --check
 python tools/ability_mechanics/weapon_requirement_audit.py --check
