@@ -350,7 +350,14 @@ async fn live_db_purchase_rejected_when_player_cannot_afford() {
     // Less than PURE_CASH_PRICE — purchase must fail.
     insert_account_and_player(&pool, account_id, player_id, PURE_CASH_PRICE - 1).await;
 
-    let (transport, e2a, conn) = make_state(entity_id as u32);
+    // A player in the world, so the refusal line has somewhere to go.
+    let test_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = test_transport.clone();
+    let addr: SocketAddr = "127.0.0.1:54620".parse().unwrap();
+    let mut state = crate::test_support::test_default_connected_client_state();
+    state.player_entity_id = Some(entity_id as u32);
+    let conn = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let e2a = Arc::new(Mutex::new(HashMap::from([(entity_id as u32, addr)])));
     let db_pool = Some(Arc::new(pool.clone()));
     let capture = crate::test_support::LogCapture::install();
 
@@ -392,6 +399,17 @@ async fn live_db_purchase_rejected_when_player_cannot_afford() {
     assert!(row.has_field("price", &PURE_CASH_PRICE.to_string()));
     assert!(row.has_field("cash", &(PURE_CASH_PRICE - 1).to_string()));
     assert!(row.has_field("item_type_id", &PURE_CASH_DESIGN_ID.to_string()));
+    // Owner rule: the press is answered. Before 2026-10-10 the base only
+    // logged this refusal and the player saw nothing.
+    assert_eq!(
+        super::super::telemetry::feedback_sent(
+            &test_transport,
+            addr,
+            "You do not have enough naquadah."
+        ),
+        1,
+        "an unaffordable purchase sends exactly one feedback line"
+    );
 
     cleanup(&pool, entity_id, account_id, player_id).await;
 }

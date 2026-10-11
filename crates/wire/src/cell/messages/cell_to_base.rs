@@ -10,6 +10,7 @@ use super::item_use::ConsumeItemForUse;
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use super::plugin_msg::PluginMsg;
+use super::shutdown_flush::ShutdownFlushRequest;
 use crate::cell::vault::VaultAccess;
 
 /// Messages sent from CellApp to BaseApp.
@@ -384,20 +385,24 @@ pub enum CellToBaseMsg {
         repair_ratio: f32,
     },
 
-    /// Fully repair owned inventory item instances.
+    /// Fully repair owned inventory item instances at the open vendor, for
+    /// payment. `vendor_template_id` is the server's (the player's vendor
+    /// session); there is no free repair (CAT-E-01).
     RepairInventoryItems {
         entity_id: u32,
         player_id: i32,
         item_ids: Vec<i32>,
-        vendor_template_id: Option<i32>,
+        vendor_template_id: i32,
     },
 
-    /// Fully recharge owned inventory item instances.
+    /// Fully recharge owned inventory item instances at the open vendor,
+    /// for payment. `vendor_template_id` is the server's; there is no free
+    /// recharge (CAT-E-01).
     RechargeInventoryItems {
         entity_id: u32,
         player_id: i32,
         item_ids: Vec<i32>,
-        vendor_template_id: Option<i32>,
+        vendor_template_id: i32,
     },
 
     /// Persist the player's last known world + position when the session
@@ -415,6 +420,13 @@ pub enum CellToBaseMsg {
         world_name: String,
         position: [f32; 3],
     },
+
+    /// Server shutdown (TG-DB-02): persist every in-world player's position
+    /// and dirty bandolier ammo in parallel, by the request's deadline, and
+    /// answer with the players saved. Sent once, from the cell loop's
+    /// shutdown arm; the base handles it inline, so every message queued
+    /// before it has already been handled when the answer comes back.
+    ShutdownFlush(ShutdownFlushRequest),
 
     /// Persist the player's active bandolier slot.
     ///

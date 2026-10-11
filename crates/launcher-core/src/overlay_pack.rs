@@ -13,8 +13,8 @@
 //! The zip is deterministic (sorted entries, fixed timestamps), so the same
 //! overlay always packs to the same bytes and the same id.
 //!
-//! Compiled into the `pack-client-overlay` tool, and into the launcher only
-//! for its tests.
+//! Compiled into the `pack-client-overlay` tool, and into this crate's own
+//! library for its tests.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -35,24 +35,35 @@ const TEST_DIR: &str = "test/";
 
 pub use crate::overlay_meta::{DEFAULT_ID_PREFIX, OVERLAY_DESCRIPTION, OVERLAY_TITLE};
 
+/// Why an overlay could not be packed or merged into the manifest.
 #[derive(Debug, Error)]
 pub enum PackError {
+    /// A `MANIFEST.txt` line is not a usable relative path.
     #[error("{LIST_FILE} line {line}: {reason}: {path:?}")]
     BadPath {
+        /// 1-based line number in `MANIFEST.txt`.
         line: usize,
+        /// The line as written.
         path: String,
+        /// What is wrong with it.
         reason: &'static str,
     },
+    /// `MANIFEST.txt` lists the same path twice (case-insensitively).
     #[error("{LIST_FILE} lists {0:?} twice")]
     Duplicate(String),
+    /// A listed path is not a file in the overlay directory.
     #[error("{LIST_FILE} lists {0:?}, which is not a file in the overlay directory")]
     Missing(String),
+    /// A file in the overlay directory is not listed.
     #[error("{0:?} is in the overlay directory but not in {LIST_FILE}; list it or remove it")]
     Unlisted(String),
+    /// Reading the overlay directory failed.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// Writing the zip failed.
     #[error("zip error: {0}")]
     Zip(#[from] zip::result::ZipError),
+    /// The manifest with the overlay entry merged in does not validate.
     #[error("the merged manifest is invalid: {0}")]
     Manifest(#[from] ManifestError),
 }
@@ -101,9 +112,13 @@ pub fn parse_list(text: &str) -> Result<Vec<String>, PackError> {
 /// A packed overlay.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packed {
+    /// The patch id for the manifest entry: the id prefix and the first 12 hex digits of `sha256`.
     pub id: String,
+    /// The zip archive's bytes.
     pub zip: Vec<u8>,
+    /// Lower-case hex SHA-256 of `zip`.
     pub sha256: String,
+    /// The listed paths, sorted.
     pub files: Vec<String>,
 }
 

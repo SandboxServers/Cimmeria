@@ -13,9 +13,7 @@
 //! Against a spawned `Orchestrator`, over real SOAP auth and Mercury UDP.
 //! Not in CI's live-DB job (see `docs/architecture/wireclient.md`). Run:
 //! ```text
-//! bash tools/build-lane/reload-db.sh
-//! DATABASE_URL=<printed url> bash tools/build-lane/lane.sh \
-//!   cargo test -p cimmeria-wireclient --test it two_client_command_invite -- --test-threads=1
+//! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_command_invite
 //! ```
 
 use std::time::Duration;
@@ -23,8 +21,8 @@ use std::time::Duration;
 use cimmeria_wireclient::session::GameSession;
 
 use crate::support::{
-    self, credentials_for, insert_castle_character, insert_sentinel_account, live_db_pool_or_skip,
-    start_server, wait_for, wait_for_recording, CASTLE_BASE_POS,
+    self, credentials_for, insert_castle_character, insert_sentinel_account, start_server,
+    wait_for, wait_for_recording, CASTLE_BASE_POS,
 };
 
 // ORG-07's wireclient sentinels (`0x7000_53F0..=0x7000_53FF`).
@@ -123,11 +121,8 @@ async fn seed_command(pool: &sqlx::PgPool) -> i32 {
 
 #[tokio::test]
 async fn two_clients_invite_into_a_command() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&crate::support::db_url()).await;
     cleanup(&pool).await;
     insert_sentinel_account(&pool, ALPHA_ACCOUNT, "org07_alpha").await;
     insert_sentinel_account(&pool, BRAVO_ACCOUNT, "org07_bravo").await;

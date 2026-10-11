@@ -37,6 +37,11 @@ services:
     # changes on every watchtower swap.
     hostname: cimmeria-colo
     restart: unless-stopped
+    # A stop saves every in-world player's position and ammo for up to
+    # 10 s (TG-DB-02, D-TG15), then the server shuts down. Docker's default
+    # of 10 s would kill it mid-save. Watchtower uses its own timeout
+    # (WATCHTOWER_TIMEOUT below), so a deploy needs both.
+    stop_grace_period: 45s
     ports:
       - "32832:32832/udp"    # BaseApp — game traffic after login
       - "8081:8081"          # SOAP login (TCP); also launcher telemetry ingest
@@ -150,6 +155,10 @@ services:
       # the host, including other projects'.
       WATCHTOWER_LABEL_ENABLE: "true"
       WATCHTOWER_INCLUDE_RESTARTING: "true"
+      # How long watchtower lets the old container stop before killing it.
+      # Its default is 10 s; the server's shutdown save needs up to 10 s
+      # plus the rest of the shutdown (TG-DB-02).
+      WATCHTOWER_TIMEOUT: "45s"
       # Docker 29+ refuses watchtower's default API version (1.25), and
       # watchtower then fails every poll.
       DOCKER_API_VERSION: "1.44"

@@ -441,7 +441,8 @@ Files:
      `row.golden.skip`.
    - `fp_start`: one window sample `start`; if the tap bound, the `bind`
      entity snapshot (`server_entity_get` on the player for `space_id`, then
-     `server_entity_query { space_id }`, trimmed to the contract's fields);
+     `server_entity_query { space_id }`, trimmed to the contract's fields:
+     `entity_id`, `is_player`, `tag`, `spawn_id`, `template_id`);
      `unavailable` when `self.server` is `None`.
    - `fp_after_action(after, ctx)`: one window sample; then, while the tap
      has no entity and a server is configured, try to bind silently:

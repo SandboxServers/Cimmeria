@@ -6,17 +6,17 @@
 //!
 //! Live-DB only: needs real seeded accounts (`test`, and sentinel non-GM
 //! accounts each test inserts) and real `sgw_player` character rows each
-//! test inserts directly into Castle (world 8). Skips (does not fail)
-//! when `DATABASE_URL` is unset, matching
-//! `crate::test_support::require_db_or_skip!`'s contract in
-//! `cimmeria-services` (this crate can't reach that private macro, so the
-//! same skip-vs-fail shape is reimplemented here).
+//! test inserts directly into Castle (world 8). The skip-vs-fail gate is
+//! `cimmeria_test_support`'s: each test calls `require_db_or_skip!()`, which
+//! skips when `DATABASE_URL` is unset and fails when it is set but
+//! unreachable, and `db_url()` gives the slot's database URL.
 
 use std::net::TcpListener as StdTcpListener;
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use std::time::Duration;
 
 use sqlx::PgPool;
+use tracing_subscriber::EnvFilter;
 
 use cimmeria_common::ServerConfig;
 use cimmeria_mercury::transport::BidirectionalTransport;
@@ -43,37 +43,31 @@ pub const CASTLE_BASE_POS: [f32; 3] = [411.349, 70.111, 987.685];
 /// tests insert share SHA-1("test").
 pub const TEST_PASSWORD_SHA1: &str = "a94a8fe5ccb19ba61c4c0873d391e987982fbbd3";
 
-// ── Live-DB gate ─────────────────────────────────────────────────────────
+// ── Live-DB slot and logging ─────────────────────────────────────────────
 
-pub async fn live_db_pool_or_skip() -> Option<PgPool> {
-    let url = match std::env::var("DATABASE_URL") {
-        Ok(u) if !u.is_empty() => u,
-        _ => {
-            eprintln!(
-                "two_client_castle_visibility: DATABASE_URL not set -- skipping (see reload-db.sh)"
-            );
-            return None;
-        }
-    };
-    match sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .acquire_timeout(Duration::from_secs(5))
-        .connect(&url)
-        .await
-    {
-        Ok(pool) => Some(pool),
-        Err(e) => panic!(
-            "DATABASE_URL is set but unreachable ({e}) -- a configured DB is a request to \
-             run the live-DB tier, so this is a failure, not a skip (see #615)"
-        ),
-    }
+/// The database URL this test talks to: its nextest slot's clone inside the
+/// `live-db` group, the template otherwise. Call it only after
+/// `require_db_or_skip!()` has returned a pool; that call is what resolves
+/// the slot.
+pub fn db_url() -> String {
+    cimmeria_test_support::database_url().expect("called after require_db_or_skip!")
 }
 
-// No macro here: `require_db_or_skip!`'s defining feature (an early
-// `return` out of the *caller's* function) doesn't survive being called
-// through a plain function, so the helper returns an `Option` and each
-// test just inlines:
-// `let pool = match support::live_db_pool_or_skip().await { Some(p) => p, None => return };`
+/// Install a `tracing` subscriber that writes through the test harness, so
+/// nextest prints a failing test's captured log lines. Runs once per process;
+/// a `try_init` error (another test may have installed one) is ignored.
+pub fn init_test_logging() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            EnvFilter::new("warn,aoi.cinematic_hold=info,cimmeria_wireclient=debug")
+        });
+        let _ = tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_env_filter(filter)
+            .try_init();
+    });
+}
 
 // ── Sentinel account / character fixtures ───────────────────────────────
 
@@ -223,9 +217,8 @@ pub struct RunningServer {
 /// because it always lands on the same absolute directory and none of
 /// the other modules resolves a CWD-relative path (`trace_load` finds
 /// its fixture through `CARGO_MANIFEST_DIR`, and `auth_smoke`'s
-/// `AuthService` runs with TLS off, so it reads no files). The live-DB
-/// modules also run serialised (`--test-threads=1` under `cargo test`,
-/// a process per test under nextest).
+/// `AuthService` runs with TLS off, so it reads no files). Under nextest
+/// each test is its own process, so the `chdir` is per test anyway.
 pub fn chdir_to_repo_root_for_entities_xml() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir
@@ -258,6 +251,7 @@ fn base_config(db_url: &str, base_port: u16) -> ServerConfig {
 /// account onto the same fabricated identity and defeat the GM/non-GM
 /// distinction these tests need.
 pub async fn start_server(db_url: &str) -> RunningServer {
+    init_test_logging();
     chdir_to_repo_root_for_entities_xml();
     const MAX_ATTEMPTS: usize = 5;
     let mut last_err = None;
@@ -301,6 +295,7 @@ pub async fn start_server_with_base_transport(
     base_port: u16,
     transport: Arc<dyn BidirectionalTransport>,
 ) -> RunningServer {
+    init_test_logging();
     chdir_to_repo_root_for_entities_xml();
     let config = base_config(db_url, base_port);
     let auth_url = format!("http://127.0.0.1:{}", config.logon_port);

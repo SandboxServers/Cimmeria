@@ -57,20 +57,22 @@ pub async fn handle_purchase_vendor_items(
         player_id,
         Some(vendor_entity_id),
         Some(vendor_template_id),
+        transport,
         connected,
         entity_to_addr,
     );
     let pool = match db_pool {
         Some(pool) => pool,
         None => {
-            tel.failed("no_database", VendorItem::default(), &"no database pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool")
+                .await;
             return;
         }
     };
 
     let items = normalize_item_quantities(items, true);
     if items.is_empty() {
-        tel.refused("empty_request", VendorItem::default());
+        tel.refused("empty_request", VendorItem::default()).await;
         return;
     }
     // The single line a one-item purchase names, for the rows below.
@@ -80,7 +82,7 @@ pub async fn handle_purchase_vendor_items(
     };
 
     let Some(lines) = load_vendor_purchase_lines(pool, vendor_template_id, &items).await else {
-        tel.refused("not_on_vendor_list", only);
+        tel.refused("not_on_vendor_list", only).await;
         return;
     };
     let only = match lines.as_slice() {
@@ -93,7 +95,7 @@ pub async fn handle_purchase_vendor_items(
     };
 
     if lines.iter().any(|line| line.cash_cost < 0) {
-        tel.refused("negative_price", only);
+        tel.refused("negative_price", only).await;
         return;
     }
 
@@ -103,11 +105,11 @@ pub async fn handle_purchase_vendor_items(
     {
         Some(total) if total >= 0 => total,
         Some(total) => {
-            tel.refused("negative_price", only.price(total));
+            tel.refused("negative_price", only.price(total)).await;
             return;
         }
         None => {
-            tel.refused("price_overflow", only);
+            tel.refused("price_overflow", only).await;
             return;
         }
     };
@@ -116,7 +118,7 @@ pub async fn handle_purchase_vendor_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -133,7 +135,7 @@ pub async fn handle_purchase_vendor_items(
         .await
     {
         let _ = tx.rollback().await;
-        tel.failed("inventory_lock_failed", only, &e);
+        tel.failed("inventory_lock_failed", only, &e).await;
         return;
     }
 
@@ -154,7 +156,8 @@ pub async fn handle_purchase_vendor_items(
                     tel.refused(
                         "missing_item_cost",
                         VendorItem::design(*design_id).quantity(*quantity),
-                    );
+                    )
+                    .await;
                     return;
                 }
                 Err(e) => {
@@ -163,7 +166,8 @@ pub async fn handle_purchase_vendor_items(
                         "db_error",
                         VendorItem::design(*design_id).quantity(*quantity),
                         &e,
-                    );
+                    )
+                    .await;
                     return;
                 }
             }
@@ -179,20 +183,21 @@ pub async fn handle_purchase_vendor_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tel.failed("player_missing", only, &"no sgw_player row");
+        tel.failed("player_missing", only, &"no sgw_player row")
+            .await;
         return;
     };
 
     if balance < total_cash_cost {
         let _ = tx.rollback().await;
-        tel.refused("insufficient_cash", only.cash(balance));
+        tel.refused("insufficient_cash", only.cash(balance)).await;
         return;
     }
 
@@ -208,12 +213,12 @@ pub async fn handle_purchase_vendor_items(
             Ok(Some(total)) => total,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tel.failed("player_missing", only, &"player row gone before the cash update");
+                tel.failed("player_missing", only, &"player row gone before the cash update").await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         }
@@ -226,7 +231,7 @@ pub async fn handle_purchase_vendor_items(
         Ok(p) => p,
         Err(e) => {
             let _ = tx.rollback().await;
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -235,12 +240,12 @@ pub async fn handle_purchase_vendor_items(
             Ok(Some(slots)) => slots,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tel.refused("bags_full", only);
+                tel.refused("bags_full", only).await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         };
@@ -280,12 +285,14 @@ pub async fn handle_purchase_vendor_items(
                     "design_missing",
                     VendorItem::design(line.design_id),
                     &"no resources.items row",
-                );
+                )
+                .await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", VendorItem::design(line.design_id), &e);
+                tel.failed("db_error", VendorItem::design(line.design_id), &e)
+                    .await;
                 return;
             }
         }
@@ -307,14 +314,15 @@ pub async fn handle_purchase_vendor_items(
             Ok(id) => outbox_pending.push((id, payload)),
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("outbox_enqueue_failed", VendorItem::design(*design_id), &e);
+                tel.failed("outbox_enqueue_failed", VendorItem::design(*design_id), &e)
+                    .await;
                 return;
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tel.failed("commit_failed", only, &e);
+        tel.failed("commit_failed", only, &e).await;
         return;
     }
     tel.completed(

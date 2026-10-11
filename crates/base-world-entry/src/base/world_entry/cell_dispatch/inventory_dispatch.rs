@@ -228,7 +228,9 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                         cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
                     })
             });
-            position::persist_position(player_id, player_name, &world_name, pos, ctx.db_pool).await
+            let _saved =
+                position::persist_position(player_id, player_name, &world_name, pos, ctx.db_pool)
+                    .await;
         }
         CellToBaseMsg::RefreshAppearance {
             entity_id,
@@ -455,15 +457,13 @@ pub(super) async fn repair_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Route through the wrapper so the `None` (free repair) path is
-    // reachable. The wrapper dispatches to handle_paid_repair when a
-    // template id is supplied and to the free-repair UPDATE otherwise.
+    // Always paid: the cell supplies the open vendor's template (CAT-E-01).
     handle_repair_inventory_items(
         entity_id,
         player_id,
@@ -482,15 +482,13 @@ pub(super) async fn recharge_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Route through the wrapper so the `None` (free recharge) path is
-    // reachable. The wrapper dispatches to handle_paid_recharge when a
-    // template id is supplied and to the free-recharge UPDATE otherwise.
+    // Always paid: the cell supplies the open vendor's template (CAT-E-01).
     handle_recharge_inventory_items(
         entity_id,
         player_id,
@@ -572,7 +570,7 @@ pub(super) async fn bandolier_ammo_update(
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
 ) {
-    bandolier::bandolier_ammo_update(
+    let _saved = bandolier::bandolier_ammo_update(
         player_id,
         slot_id,
         expected_instance_id,

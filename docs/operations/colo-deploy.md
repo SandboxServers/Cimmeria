@@ -33,12 +33,13 @@ The game container reaches the collector as `otel-collector:4317` on the externa
 | `30000/tcp` | Minigame SmartFoxServer. Capped at 256 connections, 8 per source address, 30 s to log in, 4 KiB frames, 30 min idle ([limits](../gameplay/minigame-system.md#connection-limits)) | Players | all interfaces |
 | `8443/tcp` | Admin REST API. **No authentication** (#439) | Operators only | `ADMIN_PUBLISH`, default `127.0.0.1` |
 | `8444/tcp` | Live Research Lab endpoint (overlay) | The owner's dev box over the VPN | `CIMMERIA_WG_IP` only |
-| `8080/tcp` | SigNoz UI and query API | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
+| `8082/tcp` | SigNoz UI and query API (container port 8080) | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
+| `8080/tcp`, `2022/tcp` | **Not Cimmeria:** the Wisp game-panel daemon and its SFTP, which share the colo host. Never publish a Cimmeria or SigNoz port on them | The wisp.gg panel | `/var/lib/wisp/docker-compose.yml`, run by `wisp.service` |
 | `4317/tcp`, `4318/tcp` | OTLP gRPC / HTTP into the collector. **No authentication** | Exporters outside Docker on the private network (a native server, workstation Claude Code telemetry) | `OTLP_BIND`, default `127.0.0.1` |
 
 Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. Docker-published ports bypass the host's `INPUT` firewall chain, so the network edge (the router or the provider's firewall) is what keeps the rest private. Ports `13001` and `50000/udp` appear in the image's `EXPOSE` list, but nothing binds them; don't publish or forward them.
 
-**How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8080` nor `4317`/`4318` needs to be reachable from the internet.
+**How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8082` nor `4317`/`4318` needs to be reachable from the internet.
 
 ### Files on the host
 
@@ -96,7 +97,7 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
    docker compose up -d
    ```
 
-   Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8080` (or tunnel to it: `ssh -L 8080:127.0.0.1:8080 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
+   Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8082` (or tunnel to it: `ssh -L 8082:127.0.0.1:8082 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
 
 4. **Start the game server:**
 
@@ -123,6 +124,8 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
 Watchtower checks `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` every five minutes. When the digest changes, it pulls the new image, stops and removes the `cimmeria` container, starts a replacement with the same settings, and deletes the old image. Downtime is about 30 seconds.
 
 It touches nothing else. `WATCHTOWER_LABEL_ENABLE=true` limits it to containers labelled `com.centurylinklabs.watchtower.enable=true`, which only the `cimmeria` service is. Never run a watchtower without that or a `WATCHTOWER_SCOPE`: it would update every container on the host. `DOCKER_API_VERSION=1.44` is required on Docker 29 and later, which refuses watchtower's default API version, and watchtower then fails every poll.
+
+Stopping the old container saves every in-world player's position and ammo first, for up to 10 s (TG-DB-02). Two settings in `compose.yml` give it the time: `stop_grace_period: 45s` on `cimmeria` (for `docker compose` stops) and `WATCHTOWER_TIMEOUT: 45s` on watchtower (for swaps). Both defaults are 10 s, which kills the server mid-save. Inside the image, s6 waits for the server to exit before stopping postgres, and the Dockerfile raises s6-overlay's `S6_KILL_GRACETIME` and `S6_SERVICES_GRACETIME` from their 3 s defaults to 25 s and 20 s, so s6 never cuts the save short either. A miss shows as `player_state_not_persisted` in the old build's last rows. Both arrived with the TG-DB-02 compose change, so run `docker compose up -d` once after pulling it.
 
 **Edits to the compose files or `.env` don't reach the running container until you run `docker compose up -d`.** Watchtower builds each replacement from the *old container's* settings, not from the files. Get into the habit: edit, then `docker compose up -d`, then check `docker inspect cimmeria` shows the change.
 

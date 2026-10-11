@@ -1,0 +1,15 @@
+{
+  "player": 8,
+  "space_id": 65563,
+  "snapshots": [
+    {
+      "at": "bind",
+      "capped": false,
+      "entities": [
+        { "entity_id": 8, "is_player": true },
+        { "entity_id": 100751, "is_player": false, "tag": "ArmYourself_FrostBody", "template_id": 14 },
+        { "entity_id": 100748, "is_player": false, "tag": "ArmYourself_GuardBody" }
+      ]
+    }
+  ]
+}

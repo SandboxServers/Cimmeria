@@ -68,11 +68,38 @@ does not establish installation ownership or safe deletion. The flag gates
 [launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
 send in flight. This build configures no endpoint, so nothing is tracked, queued or sent.
 
-`engine/src/commands.rs` exposes versioned `inspect` and `save_preferences`
-commands. No command lets frontend callers set native operation outcomes or
+Preferences are `schema_version: 2`. They also hold the client options: the
+`login_servers` list (empty means the built-in default list) and
+`client_patches_enabled` (default on). A version 1 file reads as version 2 with
+those defaults and is written back as version 2 by the next save. A file whose
+fields do not match its version is corrupt and is left untouched.
+
+`engine/src/commands.rs` exposes versioned `inspect`, `save_preferences` and
+`save_client_options` commands. `save_client_options` replaces both client
+options at once, needs the current preference revision, and is refused while the
+launcher updater or any operation other than Play is running (Play reads them
+only at launch, so a save during Play applies to the next one); it leaves the
+install path and consent alone. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.
+
+Three further Tauri commands are scaffolds that answer `unavailable` until their
+packets land. Each fails with one flat code string, `unavailable` or a storage
+code such as `busy`, the same shape `safeFailure` reads. Each takes a versioned
+request with no free-form fields, has its
+engine half in `engine/src/storage/<name>/` and its host half in
+`shell/src/host/<name>.rs`, and has a Settings panel in
+`frontend/src/<name>-view.ts`:
+
+| Command | Requests | Settings panel | Filled by |
+|---|---|---|---|
+| `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 |
+| `client_maintenance_command` | `inspect`, `reset_cache`, `reset_all_client_state` | `client-maintenance-view.ts` | LX-06 |
+| `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
+
+The login-server and client-patches panels (`server-list-view.ts`,
+`client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.
 
 ## Effect workflows
 

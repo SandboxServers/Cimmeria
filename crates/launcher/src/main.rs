@@ -7,10 +7,6 @@ mod client_telemetry_dll;
 mod config;
 mod identity;
 mod instance_lock;
-// The `pack-client-overlay` tool's logic; the launcher compiles it only to
-// run its tests next to the manifest types it shares.
-#[cfg(test)]
-mod overlay_pack;
 mod self_update;
 mod start32_helper;
 mod worker;
@@ -18,8 +14,6 @@ mod worker;
 // The launcher logic the desktop launcher shares lives in
 // `cimmeria-launcher-core` (LX-01). Importing each module at the crate
 // root keeps every `crate::manifest::…`-style path resolving unchanged.
-#[cfg(test)]
-use cimmeria_launcher_core::overlay_meta;
 use cimmeria_launcher_core::{
     client_changes, client_paths, client_setup, install, install_layout, logs, manifest, state,
     telemetry,

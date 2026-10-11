@@ -114,7 +114,7 @@ cimmeria-server (container `cimmeria`, or native)
    │                              signoz-clickhouse
    │                                       │
    │                                       ▼
-   │                              signoz (UI + query API) :8080
+   │                              signoz (UI + query API) :8080 (host :8082)
 ```
 
 Player telemetry does not take a separate path into SigNoz. Opted-in
@@ -152,7 +152,7 @@ docker compose up -d
 
 Allow about two minutes for the first boot: `init-clickhouse` downloads
 a ClickHouse function from GitHub and the migrator creates the schema.
-Then open the UI on `${SIGNOZ_UI_BIND}:8080` and create the admin
+Then open the UI on `${SIGNOZ_UI_BIND}:8082` and create the admin
 account. The first visitor creates it, so do it straight away.
 
 ### Verify the wire path
@@ -184,7 +184,7 @@ docker compose up -d
 ```
 
 The defaults publish OTLP on `localhost:4317` (gRPC) and
-`localhost:4318` (HTTP), and the UI on `http://localhost:8080`, where
+`localhost:4318` (HTTP), and the UI on `http://localhost:8082`, where
 the first visit asks you to create the admin account. Then run the
 server natively with the OTLP endpoint pointed at the collector:
 
@@ -270,13 +270,15 @@ touch git.
 
 ### Security
 
-- The UI and query API on `8080` have their own login. Session tokens
+- The UI and query API on host port `8082` have their own login. Session tokens
   are signed with `SIGNOZ_JWT_SECRET` from `docker/signoz/.env`.
   Upstream ships the literal `secret`, which is why the vendored
-  compose refuses to start without a value. Publish `8080` on
+  compose refuses to start without a value. Publish `8082` on
   `127.0.0.1` (the default) or a LAN/VPN address via `SIGNOZ_UI_BIND`.
-  As of 2026-10-04 the colo's network edge forwards `8080` from the
-  internet; nothing a player runs needs it.
+  As of 2026-10-04 the colo's network edge forwarded `8080`, where the
+  UI was then published, from the internet; nothing a player runs
+  needs it. Since 2026-10-10 the UI is on `8082` and host `8080` is the
+  Wisp game-panel daemon's; whether the edge forwards `8082` is unchecked.
 - The OTLP collector (`4317`/`4318`) accepts unauthenticated ingest
   from anyone who can reach it. The vendored compose publishes it on
   `OTLP_BIND`, default `127.0.0.1`; set a LAN/VPN address only for

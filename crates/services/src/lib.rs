@@ -110,6 +110,11 @@ pub(crate) mod test_support;
 #[cfg(test)]
 mod resource_versions_live_db_tests;
 
+/// The shutdown flush end to end (TG-DB-02): `start_all`, a player in the
+/// world, `stop_all`, the live position in `sgw_player`. Test-only.
+#[cfg(test)]
+mod shutdown_flush_live_db_tests;
+
 // Guards `tools/test-live-db.{sh,ps1}`: every crate with a
 // `cimmeria-test-support` dev-dependency must be in the live-DB crate list.
 #[cfg(test)]

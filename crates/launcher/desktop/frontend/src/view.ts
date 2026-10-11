@@ -2,6 +2,12 @@ import { mountPatchNotes } from "./patch-notes";
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
 import { BridgeFailure, safeFailure } from "./contract";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
+import { mountServerList } from "./server-list-view";
+import { mountClientPatches } from "./client-patches-view";
+import { mountLogUpload } from "./log-upload-view";
+import { mountClientMaintenance } from "./client-maintenance-view";
+import { mountClientChanges } from "./client-changes-view";
+import { makePanelContext } from "./panel-context";
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 class Launcher extends Context.Service<Launcher, Effect.Success<typeof makeLauncher>>()('launcher/Application') {}
@@ -32,6 +38,16 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     return value as T;
   };
   const patchNotes = mountPatchNotes(document, () => invoke('fetch_patch_notes'));
+  // Settings panels, one file each (LX-02 scaffold; LX-03 to LX-07 fill them).
+  // One line per panel so parallel packets change separate lines.
+  const panelFeed = makePanelContext(() => refresh());
+  const panels: {settled: () => Promise<unknown>; dispose: () => Promise<void>}[] = [
+    mountServerList(document, invoke, panelFeed.context),
+    mountClientPatches(document, invoke, panelFeed.context),
+    mountLogUpload(document, invoke, panelFeed.context),
+    mountClientMaintenance(document, invoke, panelFeed.context),
+    mountClientChanges(document, invoke, panelFeed.context),
+  ];
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');
   const abort = new AbortController();
@@ -61,7 +77,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     get('gear').setAttribute('aria-busy', String(!!active || current.busy));
   };
   const watcher = runtime.runFork(Effect.flatMap(Launcher, launcher => Stream.runForEach(launcher.changes,
-    next => Effect.sync(() => { current = next; render(); }))));
+    next => Effect.sync(() => { current = next; render(); if (!disposed && next.native) panelFeed.publish(next.native); }))));
 
   const run = (effect: Effect.Effect<unknown, BridgeFailure, Launcher>, activity: string, success: string) => {
     if (disposed || active) return;
@@ -133,16 +149,18 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   });
   run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Opening launcher…', 'Settings loaded.');
   const ready = settled;
+  const refresh = () => { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; };
   return {
     ready,
-    refresh: () => { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; },
-    settled: () => Promise.all([settled, patchNotes.settled()]),
+    refresh,
+    settled: () => Promise.all([settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
     dispose: async () => {
       if (disposed) return;
       disposed = true; abort.abort(); listeners.forEach(remove => remove());
       await Effect.runPromise(Fiber.interrupt(watcher));
       await settled;
       await patchNotes.dispose();
+      await Promise.all(panels.map(panel => panel.dispose()));
       await runtime.dispose();
     },
   };

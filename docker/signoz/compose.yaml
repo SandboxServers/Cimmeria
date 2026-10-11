@@ -144,7 +144,9 @@ services:
       # enters through the game server's login port and reaches the
       # collector over signoz-net. Widen SIGNOZ_UI_BIND only to an address
       # your operators reach privately (LAN / VPN).
-      - "${SIGNOZ_UI_BIND:-127.0.0.1}:8080:8080"
+      # Host port 8082: on the colo, host 8080 belongs to the Wisp
+      # game-panel daemon. Inside signoz-net the UI is still signoz:8080.
+      - "${SIGNOZ_UI_BIND:-127.0.0.1}:8082:8080"
     volumes:
       - sqlite:/var/lib/signoz/
     environment:

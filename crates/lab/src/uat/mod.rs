@@ -11,6 +11,7 @@
 //! - [`runner`] — executes rows; [`invoke`] is its by-name action layer.
 //! - [`clause`] / [`grade`] — pure evaluation and grading rules.
 //! - [`evidence`] — the bundle layout; [`ledger`] — the paste-ready text.
+//! - [`golden`] — run fingerprints, golden agreement and diffs.
 //! - [`attest`] — SigNoz rows, human answers and the build, after the run.
 //!
 //! How to run it: `docs/guides/automated-uat.md`.
@@ -18,6 +19,7 @@
 pub mod attest;
 pub mod clause;
 pub mod evidence;
+pub mod golden;
 pub mod grade;
 pub mod invoke;
 pub mod lab_commands;

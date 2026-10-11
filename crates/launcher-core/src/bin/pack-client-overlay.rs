@@ -14,20 +14,15 @@
 //! (docs/client/launcher-distribution-setup.md). With nothing to pack (no
 //! overlay directory, or an empty `MANIFEST.txt`) it says so and exits 0.
 //!
-//! The pack logic is the launcher's own `overlay_pack` module, and the
-//! entry is the launcher's own `PatchEntry`, so the tool and the reader
-//! cannot disagree on the schema.
+//! The pack logic is the library's `overlay_pack` module, and the entry is
+//! the library's `PatchEntry`, so the tool and the reader cannot disagree on
+//! the schema.
 
-// The manifest types and overlay names are `cimmeria-launcher-core`'s; the
-// pack logic is still the launcher's own file.
-use cimmeria_launcher_core::{manifest, overlay_meta};
-#[path = "../overlay_pack.rs"]
-mod overlay_pack;
+use cimmeria_launcher_core::manifest;
+use cimmeria_launcher_core::overlay_pack::{entry, merge, pack, Merged, DEFAULT_ID_PREFIX};
 
 use std::path::PathBuf;
 use std::process::ExitCode;
-
-use overlay_pack::{entry, merge, pack, Merged, DEFAULT_ID_PREFIX};
 
 #[derive(Debug, Default)]
 struct Args {

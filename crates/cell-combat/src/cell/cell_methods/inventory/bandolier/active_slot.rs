@@ -16,11 +16,33 @@ use super::weapon_abilities::swap_weapon_granted_abilities_for_slot;
 /// slot. Used by the logout / world-transition flush paths.
 ///
 /// Slots that are dirty but no longer have a `BandolierItem` (e.g. swapped out
-/// before logout) are silently dropped — there's nothing to persist for them.
+/// before logout) are dropped with a WARN `bandolier_slot_dropped`.
+///
+/// Ends with a DEBUG `bandolier_flush` summary (`sent`, `dropped`, `unsent`).
 pub async fn flush_dirty_bandolier_ammo(
     entity: &mut CellEntity,
     player_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    flush_dirty_bandolier_ammo_inner(entity, player_id, tx, false).await;
+}
+
+/// Logout variant of [`flush_dirty_bandolier_ammo`]. The entity is destroyed
+/// right after this flush, so a slot whose send fails is never retried: that
+/// row is logged as WARN `reason = "ammo_lost_at_logout"`.
+pub async fn flush_dirty_bandolier_ammo_at_logout(
+    entity: &mut CellEntity,
+    player_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    flush_dirty_bandolier_ammo_inner(entity, player_id, tx, true).await;
+}
+
+async fn flush_dirty_bandolier_ammo_inner(
+    entity: &mut CellEntity,
+    player_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    at_logout: bool,
 ) {
     if entity.bandolier_ammo_dirty.is_empty() {
         return;
@@ -29,6 +51,9 @@ pub async fn flush_dirty_bandolier_ammo(
     // after its send succeeds, so a transient channel failure leaves the
     // marker in place and the next flush retries it.
     let dirty: Vec<i32> = entity.bandolier_ammo_dirty.iter().copied().collect();
+    let total = dirty.len();
+    let mut sent = 0usize;
+    let mut dropped = 0usize;
     for slot_id in dirty {
         // `instance_id` is the persist TOCTOU guard (`sgw_inventory.item_id` PK);
         // `item_id` (design id) is kept only for log context here.
@@ -42,7 +67,18 @@ pub async fn flush_dirty_bandolier_ammo(
                 ),
                 None => {
                     // Dirty slot with no item -- nothing to persist. Drop marker.
+                    tracing::warn!(
+                        event = "bandolier_slot_dropped",
+                        reason = "no_item",
+                        player_id,
+                        player_name = entity.log_names.player_name,
+                        account_id = entity.account_id,
+                        account_name = entity.log_names.account_name,
+                        slot_id, // nt:id-only bandolier slot index, not a named object
+                        "dirty bandolier slot has no item; dropping its ammo marker"
+                    );
                     entity.bandolier_ammo_dirty.remove(&slot_id);
+                    dropped += 1;
                     continue;
                 }
             };
@@ -58,8 +94,11 @@ pub async fn flush_dirty_bandolier_ammo(
         {
             Ok(()) => {
                 entity.bandolier_ammo_dirty.remove(&slot_id);
+                sent += 1;
             }
             Err(e) => {
+                // `reason` is only set on the logout path; `None` records nothing.
+                let reason = at_logout.then_some("ammo_lost_at_logout");
                 tracing::warn!(
                     player_id,
                     player_name = entity.log_names.player_name,
@@ -69,6 +108,10 @@ pub async fn flush_dirty_bandolier_ammo(
                     item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
                     current_ammo,
                     cur_ammo_type,
+                    account_id = entity.account_id,
+                    account_name = entity.log_names.account_name,
+                    unsent = total - sent - dropped,
+                    reason,
                     error = %e,
                     "BandolierAmmoUpdate send failed; leaving slot dirty for retry"
                 );
@@ -78,6 +121,20 @@ pub async fn flush_dirty_bandolier_ammo(
             }
         }
     }
+    // Every dirty slot is either sent, dropped (no item) or left unsent after
+    // the break; the three counts add up to the snapshot size.
+    tracing::debug!(
+        event = "bandolier_flush",
+        player_id,
+        player_name = entity.log_names.player_name,
+        account_id = entity.account_id,
+        account_name = entity.log_names.account_name,
+        sent,
+        dropped,
+        unsent = total - sent - dropped,
+        at_logout,
+        "bandolier ammo flush finished"
+    );
 }
 
 #[tracing::instrument(

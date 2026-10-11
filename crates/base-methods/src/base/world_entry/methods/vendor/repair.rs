@@ -8,7 +8,6 @@ use sqlx::PgPool;
 
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
-use super::super::inventory::grant::normalize_item_ids;
 
 /// Containers that can be operated on by the vendor stack — main bag, bandolier,
 /// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
@@ -114,121 +113,35 @@ pub async fn handle_repair_inventory_item(
     }
 }
 
-#[tracing::instrument(
-    name = "vendor.repair_items",
-    level = "info",
-    skip_all,
-    fields(entity_id, player_id, ?vendor_template_id, item_count = item_ids.len()),
-)]
+/// `repairItems` (cell method 81): repair the items at the vendor the player
+/// has open, for payment.
+///
+/// `vendor_template_id` is always the server's: the cell takes it from the
+/// player's vendor session and refuses the request when there is none
+/// (`store_ops.rs`). There is no free path: until 2026-10-10 a request
+/// without a template set `durability = 100` with no price, no debit and no
+/// vendor check (security audit CAT-E-01).
 pub async fn handle_repair_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
-    vendor_template_id: Option<i32>,
+    vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    if let Some(vendor_template_id) = vendor_template_id {
-        super::paid_repair::handle_paid_repair_inventory_items(
-            entity_id,
-            player_id,
-            item_ids,
-            vendor_template_id,
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-        return;
-    }
-
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::debug!(
-                player_id,
-                player_name = known_names::player_name(player_id),
-                "RepairInventoryItems: no DB pool"
-            );
-            return;
-        }
-    };
-
-    let item_ids = normalize_item_ids(item_ids);
-    if item_ids.is_empty() {
-        tracing::debug!(
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            "RepairInventoryItems: empty item list"
-        );
-        return;
-    }
-
-    let result = sqlx::query(
-        "UPDATE sgw_inventory \
-         SET durability = 100 \
-         WHERE character_id = $1 \
-           AND item_id = ANY($2) \
-           AND container_id = ANY($3) \
-           AND stack_size = 1 \
-           AND durability >= 0 \
-           AND durability < 100",
+    super::paid_repair::handle_paid_repair_inventory_items(
+        entity_id,
+        player_id,
+        item_ids,
+        vendor_template_id,
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
     )
-    .bind(player_id)
-    .bind(&item_ids)
-    .bind(VENDOR_FILTER_BAGS.as_slice())
-    .execute(pool.as_ref())
     .await;
-
-    match result {
-        Ok(r) if r.rows_affected() > 0 => {
-            let total_items = send_full_inventory_update(
-                entity_id,
-                player_id,
-                pool,
-                transport,
-                connected,
-                entity_to_addr,
-            )
-            .await;
-            tracing::debug!(
-                entity_id,
-                entity_name = known_names::player_name(player_id),
-                player_id,
-                player_name = known_names::player_name(player_id),
-                item_count = item_ids.len(),
-                repaired = r.rows_affected(),
-                total_items,
-                "Inventory items repaired"
-            );
-        }
-        Ok(_) => {
-            tracing::debug!(
-                entity_id,
-                entity_name = known_names::player_name(player_id),
-                player_id,
-                player_name = known_names::player_name(player_id),
-                item_count = item_ids.len(),
-                "RepairInventoryItems: no repairable items changed"
-            );
-        }
-        Err(e) => {
-            let player_label = known_names::player_name(player_id);
-            tracing::error!(
-                entity_id,
-                entity_name = player_label,
-                player_id,
-                player_name = player_label,
-                item_count = item_ids.len(),
-                "RepairInventoryItems: update failed: {e}"
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -418,20 +331,51 @@ mod tests {
         cleanup(&pool, account_id, player_id).await;
     }
 
-    /// Free-repair (vendor_template_id = None) sets durability to exactly 100
-    /// for damaged items, but the WHERE clause's `durability < 100` filter
-    /// must skip already-full items so a stack of full + damaged repairs
-    /// only the damaged one. Tests both invariants in a single call.
+    /// A template with no repair list (any NPC that is not a repairer).
+    async fn pick_template_without_repair_list(pool: &PgPool) -> i32 {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT template_id FROM resources.entity_templates \
+             WHERE repair_item_list IS NULL ORDER BY template_id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .expect("a template without a repair list")
+    }
+
+    async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
+        sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    /// A repair the vendor cannot price (a vendor with no repair list)
+    /// changes neither durability nor cash.
+    ///
+    /// This is not the CAT-E-01 guard: it passes a template, so on the old
+    /// `Option<i32>` it took the paid path too. The free path needed an open
+    /// vendor session plus a payload with no trailing template. What closes
+    /// it is the type: `RepairInventoryItems.vendor_template_id` is a plain
+    /// `i32`, so no message can ask for "no template", and the cell fills it
+    /// from the vendor session (pinned by
+    /// `store_ops_tests::stock_repair_of_one_item_is_priced_by_the_open_vendor`
+    /// and `stock_recharge_is_priced_by_the_open_vendor`).
     #[tokio::test]
-    async fn live_db_free_repair_sets_damaged_to_full_and_skips_already_full() {
+    async fn live_db_repair_at_a_vendor_without_a_repair_list_is_refused() {
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id).await;
+        sqlx::query("UPDATE sgw_player SET naquadah = 1000 WHERE player_id = $1")
+            .bind(player_id)
+            .execute(&pool)
+            .await
+            .unwrap();
         let type_id = pick_main_bag_type_id(&pool).await;
         let damaged = insert_item_with_durability(&pool, player_id, type_id, 0, 30).await;
-        let full = insert_item_with_durability(&pool, player_id, type_id, 1, 100).await;
+        let template = pick_template_without_repair_list(&pool).await;
 
         let (transport, e2a, conn) = make_state(0x7000_0603);
         let db_pool = Some(Arc::new(pool.clone()));
@@ -439,8 +383,8 @@ mod tests {
         handle_repair_inventory_items(
             0x7000_0603,
             player_id,
-            vec![damaged, full],
-            None, // free repair
+            vec![damaged],
+            template,
             &db_pool,
             &transport,
             &conn,
@@ -450,14 +394,10 @@ mod tests {
 
         assert_eq!(
             durability_of(&pool, player_id, damaged).await,
-            100,
-            "free repair sets damaged item to 100"
+            30,
+            "a repair no vendor priced must not restore durability"
         );
-        assert_eq!(
-            durability_of(&pool, player_id, full).await,
-            100,
-            "already-full item must stay at 100 (the < 100 WHERE filter skips it)"
-        );
+        assert_eq!(naquadah_of(&pool, player_id).await, 1000, "no debit");
 
         cleanup(&pool, account_id, player_id).await;
     }

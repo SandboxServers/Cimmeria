@@ -58,20 +58,22 @@ pub async fn handle_buyback_vendor_items(
         player_id,
         Some(vendor_entity_id),
         Some(vendor_template_id),
+        transport,
         connected,
         entity_to_addr,
     );
     let pool = match db_pool {
         Some(pool) => pool,
         None => {
-            tel.failed("no_database", VendorItem::default(), &"no database pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool")
+                .await;
             return;
         }
     };
 
     let items = normalize_item_quantities(items, false);
     if items.is_empty() {
-        tel.refused("empty_request", VendorItem::default());
+        tel.refused("empty_request", VendorItem::default()).await;
         return;
     }
     // The single item a one-line buyback names, for the rows below.
@@ -84,7 +86,7 @@ pub async fn handle_buyback_vendor_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -100,7 +102,7 @@ pub async fn handle_buyback_vendor_items(
     // for the player row.
     if let Err(e) = take_inventory_locks(&mut tx, player_id, &[INV_MAIN, INV_BUYBACK]).await {
         let _ = tx.rollback().await;
-        tel.failed("inventory_lock_failed", only, &e);
+        tel.failed("inventory_lock_failed", only, &e).await;
         return;
     }
 
@@ -122,7 +124,7 @@ pub async fn handle_buyback_vendor_items(
         Ok(rows) => rows,
         Err(e) => {
             let _ = tx.rollback().await;
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -133,12 +135,12 @@ pub async fn handle_buyback_vendor_items(
             Ok(Some(slots)) => slots.into_iter(),
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tel.refused("bags_full", only);
+                tel.refused("bags_full", only).await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         };
@@ -152,14 +154,15 @@ pub async fn handle_buyback_vendor_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tel.failed("player_missing", only, &"no sgw_player row");
+        tel.failed("player_missing", only, &"no sgw_player row")
+            .await;
         return;
     };
 
@@ -175,7 +178,8 @@ pub async fn handle_buyback_vendor_items(
             tel.refused(
                 "not_in_buyback",
                 VendorItem::row(*item_id).quantity(*quantity),
-            );
+            )
+            .await;
             return;
         };
 
@@ -184,7 +188,8 @@ pub async fn handle_buyback_vendor_items(
             tel.refused(
                 "quantity_exceeds_stack",
                 VendorItem::row(*item_id).quantity(*quantity),
-            );
+            )
+            .await;
             return;
         }
 
@@ -193,7 +198,8 @@ pub async fn handle_buyback_vendor_items(
             tel.refused(
                 "price_overflow",
                 VendorItem::row(*item_id).quantity(*quantity),
-            );
+            )
+            .await;
             return;
         };
 
@@ -201,7 +207,7 @@ pub async fn handle_buyback_vendor_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tel.refused("price_overflow", only);
+                tel.refused("price_overflow", only).await;
                 return;
             }
         };
@@ -212,7 +218,8 @@ pub async fn handle_buyback_vendor_items(
         tel.refused(
             "insufficient_cash",
             only.price(total_cash_cost).cash(balance),
-        );
+        )
+        .await;
         return;
     }
 
@@ -233,12 +240,13 @@ pub async fn handle_buyback_vendor_items(
                     "player_missing",
                     only,
                     &"player row gone before the cash update",
-                );
+                )
+                .await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         }
@@ -257,7 +265,8 @@ pub async fn handle_buyback_vendor_items(
                 "main_slot_exhausted",
                 VendorItem::row(*item_id),
                 &"slot reservation ran out",
-            );
+            )
+            .await;
             return;
         };
 
@@ -338,12 +347,13 @@ pub async fn handle_buyback_vendor_items(
                         "rows_affected_zero",
                         VendorItem::row(*item_id),
                         &"main-inventory copy wrote no row",
-                    );
+                    )
+                    .await;
                     return;
                 }
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    tel.failed("db_error", VendorItem::row(*item_id), &e);
+                    tel.failed("db_error", VendorItem::row(*item_id), &e).await;
                     return;
                 }
             }
@@ -357,19 +367,20 @@ pub async fn handle_buyback_vendor_items(
                     "rows_affected_zero",
                     VendorItem::row(*item_id),
                     &"inventory update changed no row",
-                );
+                )
+                .await;
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", VendorItem::row(*item_id), &e);
+                tel.failed("db_error", VendorItem::row(*item_id), &e).await;
                 return;
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tel.failed("commit_failed", only, &e);
+        tel.failed("commit_failed", only, &e).await;
         return;
     }
     tel.completed(

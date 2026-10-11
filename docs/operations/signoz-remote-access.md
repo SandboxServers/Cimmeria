@@ -6,7 +6,8 @@
 > reaching it without the VPN; the commands below are untested on the
 > colo.
 
-The SigNoz UI and query API speak plain HTTP on port 8080 (the
+The SigNoz UI and query API speak plain HTTP on container port 8080,
+published on host port 8082 (the
 `signoz` service in [`docker/signoz/compose.yaml`](../../docker/signoz/compose.yaml)).
 SigNoz has its own login, but publishing that port to the internet
 still puts the whole query API one password (or one leaked JWT
@@ -151,7 +152,7 @@ routable. Hit `https://signoz.<your-domain>` —
 Cloudflare Access prompts for auth, then proxies you to the SigNoz
 login page.
 
-Once this works, the edge no longer needs to forward `8080`; set
+Once this works, the edge no longer needs to forward `8082`; set
 `SIGNOZ_UI_BIND` back to `127.0.0.1` or the LAN/VPN address.
 
 ## How browser auth works
@@ -241,5 +242,5 @@ docker rm -f cimmeria-cloudflared
 ```
 
 The UI stays reachable on its `SIGNOZ_UI_BIND` address, or through an
-SSH tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`, then
-`http://localhost:8080`).
+SSH tunnel (`ssh -L 8082:127.0.0.1:8082 <host>`, then
+`http://localhost:8082`).

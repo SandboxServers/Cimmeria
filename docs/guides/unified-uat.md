@@ -48,6 +48,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Consumables](#consumables) | This section (not a campaign; the design is [consumables.md](../gameplay/consumables.md)) |
 | [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
 | [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
+| [Shutdown save](#shutdown-save) | This section (telemetry-gaps packet TG-DB-02) |
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
@@ -982,6 +983,30 @@ When your client's cached copy of a game-data category (worlds, missions, dialog
 **Things only a human can check:** that the worlds, dialogs and sciences are really there (CD2, CD4, CD6); that Play never waits noticeably (CD1, CD4).
 
 Source: this section; design in [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#how-the-handshake-works).
+
+## Shutdown save
+
+When the server stops (every colo deploy), it now saves where each in-world player stands, and any ammo a weapon has fired since its last save, before it goes down (TG-DB-02). Before this, a deploy put you back at your last logout, gate arrival or creation point.
+
+**Status:** Ready once TG-DB-02 is in the colo build.
+
+**Prerequisites:** a character you can play on the colo, and the owner's word on when the next deploy happens.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| SD1 | Shortly before a deploy, walk somewhere you will recognise, away from where you last logged out or arrived. Fire a few shots without reloading. Stay in the world until the server drops you. | The client disconnects when the deploy stops the server. | The stop takes up to about 11 s longer than before while it saves |
+| SD2 | After the deploy, log in and play the same character. | You appear where you stood when the server stopped, and the weapon shows the ammo it had left. | If you appear at your old point, report it with the time of the deploy |
+
+**SigNoz** (`service.name = 'cimmeria-server'`, the old build's rows around the stop):
+
+| Question | Filter |
+|---|---|
+| Did the save run, and how long it took (SD1) | `event IN ('shutdown_flush_started','shutdown_flush_finished')`: `players_in_world`, `saved`, `missed`, `elapsed_ms` |
+| Was your character saved (SD2) | `body CONTAINS 'PersistPosition: persisted' AND player_id = <id>` at the stop; a miss is `event = 'player_state_not_persisted' AND player_id = <id>` |
+
+**Things only a human can check:** that you are really standing where you stopped (SD2).
+
+Source: [telemetry-gaps work packets, TG-DB-02](../analysis/telemetry-gaps/work-packets.md#tg-db-02-flush-positions-and-ammo-on-shutdown); stop order in [service-architecture.md](../architecture/service-architecture.md#rust-server-stop-order).
 
 ## Special ammo
 
