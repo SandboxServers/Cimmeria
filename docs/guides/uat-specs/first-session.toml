@@ -18,9 +18,12 @@
 #     Chains 3001-3008 in db/resources/Content/Seed/sgc_w1_chains.sql.
 #
 # How the rows are built:
-# - Rows run in file order and build on each other: FS-01 boots, FS-02
-#   logs in, the P and S rows each make, enter and play one character.
-#   Run the whole section in one call, or pass the same run_dir.
+# - FS-01, FS-02, FS-P1 and FS-P2 are a chain (FS-P2 is the fresh-login
+#   row). FS-P3, FS-P4 and FS-P5 carry fixtures: in a full run they
+#   continue the chain and check parity, and run alone (or after a failed
+#   row) they start from their fixture in their own session on the
+#   instance's reusable `Fxpraxis...` character (`lab uat first-session
+#   -Rows FS-P4 -RunsPerLease 20`). The SGU rows are still a chain.
 # - The rows make their own characters (Px<run id> and Sx<run id>) rather
 #   than using `character = "fresh"`: the runner names a fresh character
 #   from the run id alone, so two fresh sections in one run would collide.
@@ -75,23 +78,6 @@
 #                                                     tutorial's Next. Its title-bar X closes it
 #                                                     from any page.
 #   equip                    by name                  the item id is only known at grading time.
-#
-# Resuming a run that stopped part-way:
-# - Pass the stopped run's `run_dir`: run.json keeps the run id, so the
-#   rows still name Px<run id> and Sx<run id>.
-# - The rows are not idempotent: progress is in sgw_mission, so a stage
-#   that already passed fails when rerun (its step has moved on). Resume
-#   from the first row that did not pass, never from the top.
-# - A row assumes the client is in world as its faction's character. After
-#   a client restart or relog, rerun FS-01, FS-02 and the faction's enter
-#   row (FS-P2 or FS-S2) first; skip FS-P1/FS-S1, which would fail with
-#   the name taken. Then `rows: [<the failed row>, ...]`.
-# - FS-P4 starts from FS-P3's camera, and a relog levels it. Resuming at
-#   FS-P4 after a relog, call `client_camera {pitch_counts: 200}` once
-#   first, so FS-P4's own face starts tilted as in a full run; from level
-#   it stops at about -19 deg and FS-P4's `pitch` clause fails.
-# - To start over instead, run FS-99 on the old run_dir (it deletes both
-#   characters), then a fresh run.
 
 schema = 1
 
@@ -102,6 +88,13 @@ guide = "docs/guides/unified-uat.md#first-session-smoke"
 ledger = "docs/guides/automated-uat.md#spec-coverage"
 account = "gm"
 character = "lab"
+
+# The fixture character for FS-P3, FS-P4 and FS-P5 (see the header).
+[section.profiles.praxis]
+alignment = "praxis"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
 
 # ================================================================ Boot and login
 
@@ -265,7 +258,7 @@ title = "Search Cpl. Frost's corpse"
 expected = "Dialog 3995 opens; Frost's Letter is granted (mission 1360 accepted); 622 advances to step 80623."
 state = "any"
 setup = [
-  { tool = "@finish_dialog", args = {} },
+  { tool = "@finish_dialog", args = {}, optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
   { chat = "/gmgotoxyz -325.0 73.6 -212.8", tier = "G" },
   { wait_ms = 2500 },
@@ -288,6 +281,11 @@ step = [
   { tool = "@finish_dialog", args = {}, label = "close" },
   { wait_ms = 2000 },
 ]
+[row.fixture]
+character = "praxis"
+world = "Castle_CellBlock"
+missions = [{ id = 622, step = 2113 }, { id = 1360, state = "not_active" }]
+items = [{ id = 3730, count = 0, container = "mission" }, { id = 55, count = 0 }]
 [[row.expect]]
 id = "pitch"
 text = "the camera is tilted 22 deg down at the default zoom"
@@ -356,7 +354,7 @@ id = "step-80623"
 text = "sgw_mission: 622 on step 80623"
 source = "server"
 tool = "server_db_query"
-args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '% ${fixture_character}' AND m.mission_id = 622" }
 pointer = "/rows/0/current_step_id"
 op = "eq"
 value = 80623
@@ -365,7 +363,7 @@ id = "letter-1360"
 text = "sgw_mission: 1360 (Frost's Letter) active"
 source = "server"
 tool = "server_db_query"
-args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 1360" }
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '% ${fixture_character}' AND m.mission_id = 1360" }
 pointer = "/rows/0/status"
 op = "eq"
 value = 1
@@ -378,6 +376,7 @@ state = "any"
 known_issues = ["K5"]
 notes = "The Guard corpse has no display name, so the click goes to its spawn point. K5: if it is invisible, the click finds nothing and the row fails on step-80622."
 setup = [
+  { chat = "/gmsetgodmode 1", tier = "G" },
   { chat = "/gmgotoxyz -319.0 73.6 -212.5", tier = "G" },
   { wait_ms = 2500 },
 ]
@@ -397,9 +396,15 @@ step = [
   { tool = "@finish_dialog", args = {}, label = "close" },
   { wait_ms = 1500 },
 ]
+[row.fixture]
+character = "praxis"
+world = "Castle_CellBlock"
+missions = [{ id = 622, step = 80623 }, { id = 1360, step = 4037 }]
+items = [{ id = 55, count = 0 }]
+tutorials_unseen = [5882]
 [[row.expect]]
 id = "pitch"
-text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a relog) the face stops at about -19 and the click is unproven: resume per the header"
+text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a fixture session always starts level) the face stops at about -19 and the click is unproven until lab-fixtures FX-12 calibrates the fixture path or lab-spec-vocab's absolute camera lands"
 source = "tool"
 at = "aim"
 tool = "@camera"
@@ -424,7 +429,7 @@ id = "step-80622"
 text = "sgw_mission: 622 on step 80622 (equip the pistol)"
 source = "server"
 tool = "server_db_query"
-args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+args = { sql = "SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '% ${fixture_character}' AND m.mission_id = 622" }
 pointer = "/rows/0/current_step_id"
 op = "eq"
 value = 80622
@@ -462,6 +467,11 @@ step = [
   { tool = "@key", args = { key = "b" }, label = "close-bag" },
   { tool = "@wait_for", args = { lua_condition = "InventoryWin == nil or not InventoryWin:isVisible()", timeout_ms = 3000 } },
 ]
+[row.fixture]
+character = "praxis"
+world = "Castle_CellBlock"
+missions = [{ id = 622, step = 80622 }]
+items = [{ id = 55, count = 1 }]
 [[row.expect]]
 id = "pistol-id"
 text = "the looted pistol's id is read from the backpack"
@@ -476,7 +486,7 @@ id = "complete-622"
 text = "sgw_mission: 622 completed (status 2)"
 source = "server"
 tool = "server_db_query"
-args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '%px${run_id}%' AND m.mission_id = 622" }
+args = { sql = "SELECT m.status FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name ILIKE '% ${fixture_character}' AND m.mission_id = 622" }
 pointer = "/rows/0/status"
 op = "eq"
 value = 2
