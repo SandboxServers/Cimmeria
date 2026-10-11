@@ -348,7 +348,7 @@ W3 · low · packet-coder · Ready · crates `cimmeria-server` · docs: obs
 ### TG-MOV-01 Truthful, joinable forced-position row
 
 W3 · high · packet-coder · Ready · crates `cimmeria-base-world-entry` · docs: neg
-- **Change:** `crates/base-world-entry/src/base/world_entry/teleport.rs` (`handle_teleport_player`): bind the `BundleSendOutcome` (:118); read `player_class_id` in the lock at :68. `wire.out.forced_position` gains `send`, `base_seq`, `packets`, `client_class` (`SGWPlayer|SGWGmPlayer|unknown`), `streaming_hint = "method_116"`, `player_id`, `player_name`. Not sent → WARN `reason = "send_failed"` with identity, and no "sent" row.
+- **Change:** `crates/base-world-entry/src/base/world_entry/teleport.rs` (`handle_teleport_player`): bind the `BundleSendOutcome` (:118); read `player_class_id` in the lock at :68. `wire.out.forced_position` gains `send`, `base_seq`, `packets`, `client_class` (`SGWPlayer|SGWGmPlayer|unknown`), `streaming_hint = "method_116"` (relabelled `method_116_unbound` by TG-MOV-09, D-TG17), `player_id`, `player_name`. Not sent → WARN `reason = "send_failed"` with identity, and no "sent" row.
 - **Test:** LogCapture beside `teleport_early_returns_*`: GM-class client gives `client_class=SGWGmPlayer send=sent`; a gone client gives the WARN and no "sent" row. **Ship:** `telemetry-gaps/TG-MOV-01-forced-position-row` · `tg-mov-01` · `fix(base-world-entry): TG-MOV-01 forced-position row reports the real send outcome`
 
 ### TG-MOV-02 `movement.teleport` row for every server-authoritative move
@@ -391,7 +391,8 @@ W3 · med · packet-coder · Ready · crates `cimmeria-cell-content` · docs: nt
 
 W3 · med · `needs-domain-agent: game-archaeology-specialist` + movement-teleport-advisor · Ready (RE) then D-TG17 · crates `cimmeria-base-world-entry` · docs: RE finding
 - **Change:** RE why `SGWGmPlayer` drops `onPlayerTeleport` (195 of 200 `method_dropped` rows) and whether the streaming pre-load is lost; then either skip 116 for class 0x03 (`streaming_hint = "skipped_gm_class"`) or route the hint differently. TG-MOV-01's `client_class` classifies the drop meanwhile.
-- **Test:** per the decision, a wire-format test that a GM-class teleport bundle omits or keeps 116. **Ship:** `telemetry-gaps/TG-MOV-09-method-116-gm` · `tg-mov-09` · `fix(base-world-entry): TG-MOV-09 method 116 policy for GM-class clients`
+- **Decided (D-TG17, option A, 2026-10-11):** the RE ([method-116-on-teleport.md](../../reverse-engineering/findings/method-116-on-teleport.md)) found 116 bound on no class, so the GM framing was wrong. The wire is unchanged (116 still goes to every class); the forced-position row says `streaming_hint = "method_116_unbound"`; the admin-api ingest replays a dropped `onPlayerTeleport` at INFO with `drop_class = "known_unbound"` instead of WARN.
+- **Test:** per the decision, a wire-format test that a GM-class teleport bundle omits or keeps 116. Under option A: the LogCapture `teleport_forced_position_row_reports_sent_and_gm_class` pins the relabelled hint, and `a_dropped_on_player_teleport_is_known_unbound_not_a_warn` (admin-api) pins the INFO replay. **Ship:** `telemetry-gaps/TG-MOV-09-method-116-gm` · `tg-mov-09` · `fix(base-world-entry): TG-MOV-09 method 116 policy for GM-class clients`
 
 ### TG-MOV-12 `navmesh_missing` counter by world
 

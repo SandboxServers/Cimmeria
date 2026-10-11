@@ -153,6 +153,40 @@ fn an_unknown_level_is_replayed_at_info_with_the_raw_string() {
     assert_eq!(rows[0].fields["client_level"], "verbose");
 }
 
+/// D-TG17 option A: a dropped `onPlayerTeleport` (116), with or without the
+/// entity type, is a known-unbound drop: replayed at INFO, the DLL's `warn`
+/// kept in `client_level`, `drop_class = "known_unbound"` in the bag. A drop
+/// of any other method (117 here) stays a WARN with no class. Removing 116
+/// from the known-unbound list, or the level demotion, fails this.
+#[test]
+fn a_dropped_on_player_teleport_is_known_unbound_not_a_warn() {
+    for f in [
+        json!({ "method_index": 116, "type_id": 3, "entity_id": 7 }),
+        json!({ "method_index": 116, "type_id": 2 }),
+        json!({ "method_index": 116 }),
+    ] {
+        let rows = capture(|| replay_client_native(&claims(None), native("warn", f.clone())));
+        let r = &rows[0];
+        assert_eq!(r.level, tracing::Level::INFO, "{f}: must not WARN");
+        assert_eq!(r.fields["method_name"], "onPlayerTeleport", "{f}");
+        assert_eq!(r.fields["client_level"], "warn", "{f}");
+        assert!(
+            r.fields["fields"].contains("\"drop_class\":\"known_unbound\""),
+            "{f}: {:?}",
+            r.fields["fields"]
+        );
+    }
+
+    let rows = capture(|| {
+        replay_client_native(
+            &claims(None),
+            native("warn", json!({ "method_index": 117, "type_id": 3 })),
+        )
+    });
+    assert_eq!(rows[0].level, tracing::Level::WARN);
+    assert!(!rows[0].fields["fields"].contains("drop_class"));
+}
+
 /// Lifting takes each key only at its JSON type: a string `ability_id`
 /// is not guessed into a number, and a 0 or negative entity ID means none.
 #[test]

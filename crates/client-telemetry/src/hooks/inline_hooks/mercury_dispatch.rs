@@ -105,7 +105,12 @@ pub(super) unsafe fn install_entity_method_not_found(producer: &Producer) {
 /// Known-expected drops today: BlackMarket `onBM*` (method 90-95)
 /// are parsed and flagged Exposed but were never bound into the
 /// handler map, so they always land here until the runtime patch
-/// in `black-market-client-window-patch.md` is applied.
+/// in `black-market-client-window-patch.md` is applied. `onPlayerTeleport`
+/// (116) is bound on no class at all and rides every teleport (D-TG17
+/// option A); the DLL still emits it at `warn`, and the server's ingest
+/// replays it at INFO as `drop_class = "known_unbound"` (admin-api
+/// `replay_native::KNOWN_UNBOUND_CLIENT_METHODS`), so installed DLLs need
+/// no update.
 ///
 /// **Hot-path discipline:** network thread. Non-blocking end to
 /// end: the event builder heap-allocates (target string + field
