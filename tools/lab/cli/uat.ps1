@@ -142,14 +142,18 @@ function Invoke-LabUat {
 
     $started = Get-Date
     $batchDir = Join-Path (Get-UatRoot) "batch-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
     $jsonl = Join-Path $batchDir 'batch.jsonl'
-    # plan.json before any lane starts, so a watcher never sees runs without a plan.
-    Write-UatPlan (Join-Path $batchDir 'plan.json') ([ordered]@{
-        schema = 1; section = $Section; rows = $rowIds
-        lanes = @($plan.Lanes | ForEach-Object { [ordered]@{ lane = $_.Lane; instance = $_.Instance } })
-        runs_per_lease = $RunsPerLease; started = $started.ToUniversalTime().ToString('o'); pid = $PID
-    })
+    try {
+        New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
+        # plan.json before any lane starts, so a watcher never sees runs without a plan.
+        Write-UatPlan (Join-Path $batchDir 'plan.json') ([ordered]@{
+            schema = 1; section = $Section; rows = $rowIds
+            lanes = @($plan.Lanes | ForEach-Object { [ordered]@{ lane = $_.Lane; instance = $_.Instance } })
+            runs_per_lease = $RunsPerLease; started = $started.ToUniversalTime().ToString('o'); pid = $PID
+        })
+    } catch {
+        return Stop-Uat 3 "cannot write the batch folder ${batchDir}: $(($_.Exception.Message -split "`n")[0])"
+    }
     $lib = Join-Path $PSScriptRoot 'uat-lib.ps1'
     $common = Join-Path $PSScriptRoot 'common.ps1'
 
