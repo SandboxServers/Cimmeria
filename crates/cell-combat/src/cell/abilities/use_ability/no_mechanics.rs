@@ -73,7 +73,7 @@ pub(crate) fn is_passive_ability(space_mgr: &SpaceManager, def: &AbilityDef) -> 
 ///   unregistered `script_name` does not count; heal and stat NVPs count
 ///   through the script that reads them, and the cover stance 1451 runs one);
 /// - it is Reload (596): the reload pipeline runs it, not an effect script
-///   (its effect 658 names the unregistered `Reload`);
+///   (its effect 658 names `Reload`, a native name that needs no script);
 /// - it summons a pet (`pet_summons`) or acts on the owner's pet (an
 ///   owner-pet script, PT-08);
 /// - it places a deployable (`deployables`);

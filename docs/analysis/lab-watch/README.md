@@ -7,9 +7,10 @@
 > [lab-cli](../lab-cli/README.md) (`lab status`, `GET /status`) and
 > [lab-parallel-clients](../lab-parallel-clients/README.md) (lanes).
 >
-> **Campaign status (2026-10-10): LW-02 being written** by the lab-golden
-> coordinator (D-LW4 and D-LW5 decided). LW-01 can start now. The live
-> acceptance (LW-05) needs the user's OK (D-LW7).
+> **Campaign status (2026-10-11): waves 1 and 2 in progress.** LW-02 merged
+> (#1395, by the lab-golden coordinator). D-LW1 to D-LW6 decided; LW-01 and
+> LW-03 being written in parallel. The live acceptance (LW-05) waits on the
+> user (D-LW7), deferred until LW-01 to LW-04 merge.
 
 ## Purpose
 
@@ -59,21 +60,21 @@ Against `main` @ `6996c9403`, plus one real batch on this workstation
 
 | ID | Status | Decision | Reason |
 |---|---|---|---|
-| D-LW1 | PROPOSED (coordinator; the handoff allows it when the current row needs it) | **`/status` gains one field per instance, `uat`:** the instance's running `lab_uat_run` (run id, run directory, rows done and total, the current section and row with its start time, the last finished row and result), or `null`. The runner keeps it in a `ProgressCell` on the instance's `Supervisor`, set at each row start and finish and cleared by a guard when the run ends on any path. No new endpoint, no lease data in it. | F5, F6. Every CLI-only way to get the current row (parsing the lease purpose, scanning run directories by account) is a guess that breaks on two lanes with the same section. The runner already knows; the field costs one mutex and changes nothing else on `/status`. |
-| D-LW2 | PROPOSED (coordinator). Recommended: **(a)** | **The live renderer.** (a) Plain PowerShell 7: a pure function builds the frame as lines; the loop switches to the alternate screen buffer (`ESC[?1049h`), hides the cursor, and each tick moves home (`ESC[H`), writes each line cut to the window width with `ESC[K`, then `ESC[J`; `finally` restores the screen and cursor, so Ctrl+C leaves the terminal clean. With output redirected it behaves as `-Once`. (b) The PwshSpectreConsole module. (c) A Rust TUI (ratatui) in `crates/lab`. | (a) needs nothing installed, keeps every rule in the testable pure function, and Windows Terminal and conhost on Windows 11 both honour these sequences. (b) is a new module dependency with its own version pinning, absent on CI and other machines. (c) needs a new binary built and installed for a few panels whose data the PowerShell libraries already read. |
-| D-LW3 | PROPOSED (coordinator) | **Read-only and redacted.** `lab watch` reads `GET /status`, the batch folder, the run directory's file times and the tail of `labd.log`, and lists `SGW` processes. It takes no lease and calls no MCP tool. Every string it prints from a lease, a record or a log line goes through `Hide-LeaseIds`; log lines go through `Select-LabLogLine`'s token masking. | The handoff's "read-only, no inference". Lease purposes are free text an agent writes, so a lease id can turn up in one. |
+| D-LW1 | **Decided** (user, 2026-10-11, as proposed) | **`/status` gains one field per instance, `uat`:** the instance's running `lab_uat_run` (run id, run directory, rows done and total, the current section and row with its start time, the last finished row and result), or `null`. The runner keeps it in a `ProgressCell` on the instance's `Supervisor`, set at each row start and finish and cleared by a guard when the run ends on any path. No new endpoint, no lease data in it. | F5, F6. Every CLI-only way to get the current row (parsing the lease purpose, scanning run directories by account) is a guess that breaks on two lanes with the same section. The runner already knows; the field costs one mutex and changes nothing else on `/status`. |
+| D-LW2 | **Decided** (user, 2026-10-11): **(a)** | **The live renderer.** (a) Plain PowerShell 7: a pure function builds the frame as lines; the loop switches to the alternate screen buffer (`ESC[?1049h`), hides the cursor, and each tick moves home (`ESC[H`), writes each line cut to the window width with `ESC[K`, then `ESC[J`; `finally` restores the screen and cursor, so Ctrl+C leaves the terminal clean. With output redirected it behaves as `-Once`. (b) The PwshSpectreConsole module. (c) A Rust TUI (ratatui) in `crates/lab`. | (a) needs nothing installed, keeps every rule in the testable pure function, and Windows Terminal and conhost on Windows 11 both honour these sequences. (b) is a new module dependency with its own version pinning, absent on CI and other machines. (c) needs a new binary built and installed for a few panels whose data the PowerShell libraries already read. |
+| D-LW3 | **Decided** (user, 2026-10-11, as proposed; an opt-in lease probe is a follow-up) | **Read-only and redacted.** `lab watch` reads `GET /status`, the batch folder, the run directory's file times and the tail of `labd.log`, and lists `SGW` processes. It takes no lease and calls no MCP tool. Every string it prints from a lease, a record or a log line goes through `Hide-LeaseIds`; log lines go through `Select-LabLogLine`'s token masking. | The handoff's "read-only, no inference". Lease purposes are free text an agent writes, so a lease id can turn up in one. |
 | D-LW4 | **Decided** (user, 2026-10-10, as proposed) | **One known-issue table.** `$script:UatKnownIssues` in `uat-lib.ps1` stays the only list, behind a new `Get-UatKnownIssue`; LW-02 adds #1343. The watch re-classifies every failed record from the table (a record's own `Issue` is used only when the table finds nothing), so an issue added later also tags old batches. #1342 is not a run signature: the watch shows an `SGW.exe` that no instance owns as `orphan SGW.exe: <pid> (#1342?)`, and counts the watchdog's relaunch lines per instance since the batch started. #1343's retry lines are counted as `login retries`, even when the retry worked. | F8. One table means `lab uat`'s summary and `lab watch` never disagree on what is known. |
 | D-LW5 | **Decided** (user, 2026-10-10, as proposed) | **Batch files for watchers.** `lab uat` writes `plan.json` (section, rows, lanes, runs per lease, start time, its own pid) when the batch folder is made, and every record gains `Started` and `Ended` (UTC ISO 8601). A batch is `done` when `batch.json` exists, `live` when `plan.json`'s pid is alive, `interrupted` when it isn't, and `unknown` for a batch from before LW-02 (no `plan.json`, no `batch.json`). `lab watch` follows the newest `batch-*` folder by name, or `-Batch <folder>`. | F1. The pid check costs nothing and tells a killed batch from a slow one. Folder names are timestamps (`batch-yyyyMMdd-HHmmss`), so the name order is the time order and file times don't matter. |
-| D-LW6 | PROPOSED (coordinator) | **The JSON budget.** `-Once -Json` prints one object with no nulls or empty values: a two-lane batch is under 500 characters, and the worst five-lane case under 700. The failure reason is cut at 72 characters, each lane is one short string (`"2/3 FS-P3 42s shot 5s"`), orphans are capped at 3 pids, and relaunches and login retries are single totals. Failures use `lab uat`'s shape, `{"ok":false,"exit":N,"error":"..."}`. | The handoff's output budget and acceptance line. Per-lane objects would not fit five lanes. |
-| D-LW7 | **BlockedDecision** (user) | **The live acceptance (LW-05).** It reinstalls the lab daemon from `main` (`lab install`, `lab restart`, which closes the lab clients) and runs a `-Leases 2 -RunsPerLease 3` batch on the shared lab. | The lab is shared: ask before any lab use, and wait until it's free. |
+| D-LW6 | **Decided** (user, 2026-10-11, as proposed) | **The JSON budget.** `-Once -Json` prints one object with no nulls or empty values: a two-lane batch is under 500 characters, and the worst five-lane case under 700. The failure reason is cut at 72 characters, each lane is one short string (`"2/3 FS-P3 42s shot 5s"`), orphans are capped at 3 pids, and relaunches and login retries are single totals. Failures use `lab uat`'s shape, `{"ok":false,"exit":N,"error":"..."}`. | The handoff's output budget and acceptance line. Per-lane objects would not fit five lanes. |
+| D-LW7 | **BlockedDecision** (user; deferred 2026-10-11 until LW-01 to LW-04 merge) | **The live acceptance (LW-05).** It reinstalls the lab daemon from `main` (`lab install`, `lab restart`, which closes the lab clients) and runs a `-Leases 2 -RunsPerLease 3` batch on the shared lab. | The lab is shared: ask before any lab use, and wait until it's free. |
 
 ## Packets
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Ready |
-| LW-02 | `lab uat`: `plan.json`, record times, shared progress line and known issues, two moves into libraries | packet-coder | S | 1 | D-LW4, D-LW5 | Writing (run by the [lab-golden](../lab-golden/README.md) coordinator; GD-08 needs it) |
-| LW-03 | `watch-lib.ps1`: snapshot model, text and JSON, recorded fixtures, `test-watch.ps1` | packet-coder | M | 2 | LW-02 (and LW-01's contract, not its code) | BlockedDependency |
+| LW-01 | Daemon: per-instance UAT progress on `/status` | packet-coder | M | 1 | D-LW1 | Writing |
+| LW-02 | `lab uat`: `plan.json`, record times, shared progress line and known issues, two moves into libraries | packet-coder | S | 1 | D-LW4, D-LW5 | Integrated (#1395, run by the [lab-golden](../lab-golden/README.md) coordinator) |
+| LW-03 | `watch-lib.ps1`: snapshot model, text and JSON, recorded fixtures, `test-watch.ps1` | packet-coder | M | 2 | LW-02 (and LW-01's contract, not its code) | Writing |
 | LW-04 | `lab watch` command, live redraw, docs | packet-coder | S | 3 | LW-03 | BlockedDependency |
 | LW-05 | Live acceptance: a `-Leases 2 -RunsPerLease 3` batch watched | coordinator | S | 4 | LW-01 to LW-04 merged, D-LW7 | BlockedDecision |
 | LW-06 | Close-out: ledger, UAT guide, memory, board | documentation-writer | S | 5 | LW-05 | BlockedDependency |
@@ -126,6 +127,10 @@ Waves (packets in one wave touch disjoint files):
   show it.
 - **p2 progress for two-player rows** (F13): the runner could mark the hosted
   p2's cell as `driven by <instance>`.
+- **Opt-in lease probe** (D-LW3): a `lab watch -Probe` that leases only
+  instances `/status` shows `free`, runs one read-only `client_batch` and
+  releases at once. It never touches an instance a batch holds. The user
+  asked for lease use on 2026-10-11 and chose to defer it here.
 - **Screenshot attribution outside runs** (F7): an instance label in saved
   screenshot names would let the panel age agent-driven captures too.
 

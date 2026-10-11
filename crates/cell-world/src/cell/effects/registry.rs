@@ -34,6 +34,17 @@ use cimmeria_entity::abilities::EffectDef;
 use super::EffectScript;
 use crate::cell::space_manager::SpaceManager;
 
+/// `script_name`s the engine answers without a registered script. `Reload`
+/// runs through the reload pipeline (effect 658), so it is not a missing
+/// registration.
+pub const NATIVE_EFFECT_NAMES: [&str; 1] = ["Reload"];
+
+/// Whether an effect row's `script_name` needs no registered script: the
+/// blank name, or one of [`NATIVE_EFFECT_NAMES`].
+pub fn needs_no_script(name: &str) -> bool {
+    name.is_empty() || NATIVE_EFFECT_NAMES.contains(&name)
+}
+
 /// Why an effect-script table did not build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectScriptError {
@@ -134,7 +145,9 @@ impl EffectScripts {
     /// The `script_name`s `effect_defs` carry that no registered script
     /// answers, each with the effect ids that name it (both sorted, so the
     /// startup log is stable). Such an effect falls back to the legacy NVP
-    /// path at dispatch, with an `effect_script_unknown` WARN per call.
+    /// path at dispatch, with an `effect_script_unknown` WARN per call. A
+    /// blank name or a [`NATIVE_EFFECT_NAMES`] entry is not listed
+    /// ([`needs_no_script`]).
     pub fn unregistered<'a>(
         &self,
         effect_defs: impl IntoIterator<Item = &'a EffectDef>,
@@ -142,7 +155,7 @@ impl EffectScripts {
         let mut missing: BTreeMap<&str, Vec<i32>> = BTreeMap::new();
         for def in effect_defs {
             if let Some(name) = def.script_name.as_deref() {
-                if !self.contains(name) {
+                if !needs_no_script(name) && !self.contains(name) {
                     missing.entry(name).or_default().push(def.effect_id);
                 }
             }
@@ -304,5 +317,21 @@ mod tests {
         .unwrap()
         .unregistered(&defs)
         .is_empty());
+    }
+
+    /// #962 test rule: a blank name and a native name are not missing
+    /// registrations. Defs `""`, `Reload` and `Bogus` list only `Bogus`.
+    #[test]
+    fn unregistered_skips_blank_and_native() {
+        let def = |effect_id: i32, script: &str| EffectDef {
+            effect_id,
+            script_name: Some(script.to_string()),
+            ..Default::default()
+        };
+        let defs = [def(1, ""), def(2, "Reload"), def(3, "Bogus")];
+        assert_eq!(
+            EffectScripts::empty().unregistered(&defs),
+            vec![("Bogus".to_string(), vec![3])]
+        );
     }
 }
