@@ -358,6 +358,19 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+`session.end` also carries end-cause hints (TG-NET-02), so one row says
+how the session ended without joining other rows:
+
+| Field | Meaning |
+|---|---|
+| `logoff_requested` | `true` when the client asked for a full exit (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`) before the session ended. A full exit keeps the session until the client disconnects or the 60 s reap fires, so `disconnect_reason` stays the real mechanism (`client_disconnect`, `inactivity_timeout`) and this flag says the player meant to leave. `inactivity_timeout` with `logoff_requested=true` is a clean quit whose disconnect never arrived, not a crash. |
+| `idle_ms` | Milliseconds since the last fresh datagram from the client (`last_recv`) when the session ended. |
+| `in_world` | The character was listed online (past `onClientReady`) when the session ended: `false` for a drop during world entry, and after a `logOff` already took the character out of the world. |
+| `world` | The world name; absent when the session had none. |
+
+`Client entities cleaned up` carries `player_id` and `player_name` beside
+the numeric `player_entity_id` (it used to ship as `"Some(n)"`).
+
 Only a login whose ticket is already consumed reaches
 `login_retry_on_channel`. A plaintext `baseAppLogin` with a fresh ticket
 on an established channel is a client killed and relaunched on its fixed
@@ -815,6 +828,17 @@ Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, 
 
 `player_state_not_persisted` is conservative: it can over-report. A save the base aborts at the deadline may already have committed its write, and a write that lands after the cell stopped waiting still counts as missed, so a player it names may in fact be saved. It never under-reports. While the cell waits for the base's answer it does not drain base-to-cell messages; anything the base sends the cell in that window is handled (or dropped) by the shutdown that follows.
 
+### Sessions open at stop (TG-NET-10)
+
+After the cell's flush, `BaseService::stop` (`crates/base/src/base/service.rs`) ends the session row of every session still holding a player entity. It only logs; nothing is torn down, and it adds no await to the stop.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | target `session.end`, `disconnect_reason = "server_shutdown"`, identity, `entity_id`, `entity_name`, `addr`, `session_secs` | Once per session with a player entity. Without it, a stop left those sessions with a `session.start` and no end |
+| INFO | `sessions_open_at_stop` (every session in the map, account-only ones included), `sessions_ended` | Once per stop |
+
+Guard: `service.rs` `tests::stop_ends_each_live_session`.
+
 ## Logout position persistence (TG-DB-04)
 
 `PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
@@ -934,6 +958,16 @@ Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_log
 | WARN | `event = "wire_send_failed"`, `method = "onEndAidWait"`, `reason = "base_channel_closed"`, `error` | The cell-to-base send of `onEndAidWait` failed | identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id`, `entity_name` |
 
 Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tests/respawn_send_failures.rs` (a dropped receiver gives the WARN with `reason`).
+
+## Minigame victory for an unknown entity (TG-MG-09)
+
+`cell/service/base_messages/minigame.rs`, `handle_minigame_result`. A victory whose `entity_id` is not in the cell's space manager still fires its `on_victory_chains` with player 0, as it always has; the WARN row says the player those chains name is not there. The entity has no name to give, so `entity_id` is `// nt:id-only`.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| WARN | `entity_missing` | `MinigameResult` with `result_code` 1 and `get_entity` misses; the chains fire for player 0 | `entity_id`, `chain_count`, `result` |
+
+Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
 
 ## Leave and invisible send failures (TG-AOI-08)
 
