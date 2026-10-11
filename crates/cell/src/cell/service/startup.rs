@@ -351,10 +351,10 @@ impl CellService {
                         .unregistered(space_mgr.effect_defs.values());
                     let mut native: BTreeMap<&str, Vec<i32>> = BTreeMap::new();
                     for def in space_mgr.effect_defs.values() {
-                        if let Some(name) = def.script_name.as_deref() {
-                            if needs_no_script(name) {
-                                native.entry(name).or_default().push(def.effect_id);
-                            }
+                        if let Some(name) =
+                            def.script_name.as_deref().filter(|n| needs_no_script(n))
+                        {
+                            native.entry(name).or_default().push(def.effect_id);
                         }
                     }
                     for ids in native.values_mut() {

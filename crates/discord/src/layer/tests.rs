@@ -190,6 +190,14 @@ async fn signoz_only_events_are_filtered() {
         gate = "horizontal",
         "spawner: NPC spawned outside find_path's +-0.5 start box -- every path              it requests will fail with no_start_poly"
     );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        calls.lock().await.is_empty(),
+        "SIGNOZ_ONLY_EVENTS rows must never post to Discord"
+    );
+
+    // A real missing effect registration is not SigNoz-only (TG-CMB-04): it
+    // posts, so a misspelled seed script shows up in Discord.
     tracing::warn!(
         target: "abilities",
         event = "effect_script_unregistered",
@@ -198,9 +206,10 @@ async fn signoz_only_events_are_filtered() {
         "effect rows name a script no registered script answers"
     );
     tokio::time::sleep(Duration::from_millis(50)).await;
-    assert!(
-        calls.lock().await.is_empty(),
-        "SIGNOZ_ONLY_EVENTS rows must never post to Discord"
+    assert_eq!(
+        calls.lock().await.len(),
+        1,
+        "effect_script_unregistered posts to Discord"
     );
 
     // Same targets, other events: still ops alerts.
@@ -213,7 +222,7 @@ async fn signoz_only_events_are_filtered() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(
         calls.lock().await.len(),
-        2,
+        3,
         "the filter is per (target, event), not per target"
     );
 }
