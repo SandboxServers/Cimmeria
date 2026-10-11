@@ -386,32 +386,64 @@ impl SpaceManager {
             // p99.9 before the speed layer is ever promoted to snap-back.
             let id = self.player_identity(entity_id);
             let world = self.world_name_for_space(space_id);
-            tracing::warn!(
-                target: "movement.validation",
-                entity_id,
-                entity_name = id.player_name,
-                account_id = id.account_id,
-                account_name = id.account_name,
-                player_id = id.player_id,
-                player_name = id.player_name,
-                space_id,
-                world,
-                client_x = position[0],
-                client_y = position[1],
-                client_z = position[2],
-                distance = sample.distance,
-                dt_secs = sample.dt_secs,
-                implied_speed = sample.implied_speed,
-                top_speed = sample.top_speed,
-                ratio = sample.implied_speed / sample.top_speed,
-                reason = "speed",
-                "movement.speed_warning: client move exceeded speed tolerance \
-                 (warn-only — accepted; calibrate before enforcing)"
-            );
-            cimmeria_observability::counter!(
-                "movement_validation_warns_total",
-                "reason" => "speed",
-            );
+            if sample.dt_secs <= 1e-4 || !sample.implied_speed.is_finite() {
+                // Two packets on one clock instant: the implied speed is
+                // infinite, so there is no speed to judge and no finite
+                // ratio. That is bunching, not speed, so it is DEBUG and
+                // counted under its own reason.
+                tracing::debug!(
+                    target: "movement.validation",
+                    entity_id,
+                    entity_name = id.player_name,
+                    account_id = id.account_id,
+                    account_name = id.account_name,
+                    player_id = id.player_id,
+                    player_name = id.player_name,
+                    space_id,
+                    world,
+                    client_x = position[0],
+                    client_y = position[1],
+                    client_z = position[2],
+                    distance = sample.distance,
+                    dt_secs = sample.dt_secs,
+                    implied_speed = sample.implied_speed,
+                    top_speed = sample.top_speed,
+                    reason = "speed_bunched",
+                    "movement.speed_bunched: client packets share a clock instant; \
+                     no speed judgement made"
+                );
+                cimmeria_observability::counter!(
+                    "movement_validation_warns_total",
+                    "reason" => "speed_bunched",
+                );
+            } else {
+                tracing::warn!(
+                    target: "movement.validation",
+                    entity_id,
+                    entity_name = id.player_name,
+                    account_id = id.account_id,
+                    account_name = id.account_name,
+                    player_id = id.player_id,
+                    player_name = id.player_name,
+                    space_id,
+                    world,
+                    client_x = position[0],
+                    client_y = position[1],
+                    client_z = position[2],
+                    distance = sample.distance,
+                    dt_secs = sample.dt_secs,
+                    implied_speed = sample.implied_speed,
+                    top_speed = sample.top_speed,
+                    ratio = sample.implied_speed / sample.top_speed,
+                    reason = "speed",
+                    "movement.speed_warning: client move exceeded speed tolerance \
+                     (warn-only — accepted; calibrate before enforcing)"
+                );
+                cimmeria_observability::counter!(
+                    "movement_validation_warns_total",
+                    "reason" => "speed",
+                );
+            }
         }
 
         self.accept(now, entity_id, position, direction, velocity)

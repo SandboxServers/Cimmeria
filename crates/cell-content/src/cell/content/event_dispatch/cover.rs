@@ -88,8 +88,16 @@ pub async fn fire_cover_entered(
             actions = resolved.actions.len(),
             "fire_cover_entered: matched"
         );
-    } else {
+    } else if engine.chains_for_trigger(&TriggerType::PlayerEnteredCover) > 0 {
         tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
+            "fire_cover_entered: no chains matched"
+        );
+    } else {
+        tracing::trace!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
@@ -145,8 +153,16 @@ pub async fn fire_cover_left(
             actions = resolved.actions.len(),
             "fire_cover_left: matched"
         );
-    } else {
+    } else if engine.chains_for_trigger(&TriggerType::PlayerLeftCover) > 0 {
         tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
+            "fire_cover_left: no chains matched"
+        );
+    } else {
+        tracing::trace!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
@@ -206,8 +222,17 @@ pub async fn fire_cover_duration(
             actions = resolved.actions.len(),
             "fire_cover_duration: matched"
         );
-    } else {
+    } else if engine.chains_for_trigger(&TriggerType::PlayerInCoverDuration) > 0 {
         tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
+            seconds,
+            "fire_cover_duration: no chains matched"
+        );
+    } else {
+        tracing::trace!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
@@ -266,15 +291,27 @@ pub async fn fire_npc_flanked(
         );
     } else {
         let npc = space_mgr.entity_names(npc_entity_id);
-        tracing::debug!(
-            npc_entity_id,
-            npc_entity_name = npc.entity_name,
-            template_id = npc.template_id,
-            template_name = npc.template_name,
-            threat_entity_id,
-            threat_entity_name = space_mgr.entity_label(threat_entity_id),
-            "fire_npc_flanked: no chains matched"
-        );
+        if engine.chains_for_trigger(&TriggerType::NpcFlanked) > 0 {
+            tracing::debug!(
+                npc_entity_id,
+                npc_entity_name = npc.entity_name,
+                template_id = npc.template_id,
+                template_name = npc.template_name,
+                threat_entity_id,
+                threat_entity_name = space_mgr.entity_label(threat_entity_id),
+                "fire_npc_flanked: no chains matched"
+            );
+        } else {
+            tracing::trace!(
+                npc_entity_id,
+                npc_entity_name = npc.entity_name,
+                template_id = npc.template_id,
+                template_name = npc.template_name,
+                threat_entity_id,
+                threat_entity_name = space_mgr.entity_label(threat_entity_id),
+                "fire_npc_flanked: no chains matched"
+            );
+        }
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -359,15 +396,27 @@ pub async fn fire_player_flanked_npc(
         );
     } else {
         let npc = space_mgr.entity_names(npc_entity_id);
-        tracing::debug!(
-            player_entity_id,
-            player_entity_name = space_mgr.entity_label(player_entity_id),
-            npc_entity_id,
-            npc_entity_name = npc.entity_name,
-            template_id = npc.template_id,
-            template_name = npc.template_name,
-            "fire_player_flanked_npc: no chains matched"
-        );
+        if engine.chains_for_trigger(&TriggerType::PlayerFlankedNpc) > 0 {
+            tracing::debug!(
+                player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
+                npc_entity_id,
+                npc_entity_name = npc.entity_name,
+                template_id = npc.template_id,
+                template_name = npc.template_name,
+                "fire_player_flanked_npc: no chains matched"
+            );
+        } else {
+            tracing::trace!(
+                player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
+                npc_entity_id,
+                npc_entity_name = npc.entity_name,
+                template_id = npc.template_id,
+                template_name = npc.template_name,
+                "fire_player_flanked_npc: no chains matched"
+            );
+        }
     }
     cimmeria_observability::counter!(
         "cover_detection_events_total",
@@ -382,4 +431,39 @@ pub async fn fire_player_flanked_npc(
         engine,
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{make_space_manager, LogCapture};
+    use tracing::Level;
+
+    /// TG-MIS-12: a cover event with an empty engine (no chain for its
+    /// trigger type) logs the no-match row at TRACE, never DEBUG. Reverting
+    /// the `chains_for_trigger` gate puts it back at DEBUG and trips this.
+    #[tokio::test]
+    async fn cover_no_match_with_empty_engine_is_not_debug() {
+        let capture = LogCapture::install();
+        let engine = ChainEngine::new();
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let (tx, _rx) = mpsc::channel(8);
+
+        fire_cover_entered(1, 42, 7, "high", "good", &engine, &tx, &mut mgr).await;
+
+        assert!(
+            capture
+                .find_message(Level::DEBUG, "fire_cover_entered: no chains matched")
+                .is_none(),
+            "empty engine must not log a DEBUG no-match row: {:#?}",
+            capture.all()
+        );
+        assert!(
+            capture
+                .find_message(Level::TRACE, "fire_cover_entered: no chains matched")
+                .is_some(),
+            "empty engine must log the no-match row at TRACE"
+        );
+    }
 }

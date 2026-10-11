@@ -22,6 +22,10 @@ const NPC_STEP_LOG_SAMPLE: u32 = 10;
 /// The first N steps of every leg are always logged: leg starts are where
 /// facing and grounding go wrong, and a 1-in-10 sample usually misses them.
 const NPC_LEG_HEAD_STEPS: u32 = 5;
+/// An unwitnessed NPC's step rows are sampled to one per this window per
+/// NPC. Nobody can see the movement, so the rows only describe the NPC.
+const NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(60);
 static NPC_LEG_STEPS: std::sync::Mutex<Option<std::collections::HashMap<u32, (usize, u32)>>> =
     std::sync::Mutex::new(None);
 
@@ -258,10 +262,29 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 npc_id,
                 space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len()),
             );
-            let sampled = NPC_STEP_LOG_COUNTER
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                .is_multiple_of(NPC_STEP_LOG_SAMPLE);
-            if leg_step <= NPC_LEG_HEAD_STEPS || sampled {
+            // A witnessed NPC keeps the leg-head rows and the global sample,
+            // and its rows carry no `suppressed`: that field only means
+            // something for the unwitnessed rate limit. An unwitnessed NPC
+            // nobody can see writes at most one step row per
+            // [`NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL`]; `suppressed` counts
+            // the steps skipped since the last row.
+            let log_step: Option<Option<u32>> = if space_mgr.has_witness(npc_id) {
+                let sampled = NPC_STEP_LOG_COUNTER
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    .is_multiple_of(NPC_STEP_LOG_SAMPLE);
+                (leg_step <= NPC_LEG_HEAD_STEPS || sampled).then_some(None)
+            } else {
+                space_mgr
+                    .npc_detectors
+                    .admit_sample(
+                        npc_id,
+                        "unwitnessed_step",
+                        std::time::Instant::now(),
+                        NPC_UNWITNESSED_STEP_SAMPLE_INTERVAL,
+                    )
+                    .map(Some)
+            };
+            if let Some(suppressed) = log_step {
                 // The clamp's own reading; `None` = the step kept the lerp.
                 let ground_y = (y_source == YSource::Clamp).then_some(new_y);
                 tracing::debug!(
@@ -280,6 +303,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                     lerp_y,
                     ?ground_y,
                     y_offset_from_ground = ?ground_y.map(|g| new_y - g),
+                    suppressed,
                     "NPC movement step (sampled)"
                 );
             }

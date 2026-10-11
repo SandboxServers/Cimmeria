@@ -25,12 +25,19 @@
 //! naming its target, fails that test.
 
 mod emit;
-mod sampler;
 #[cfg(test)]
 mod tests;
 
 pub use emit::{log_decrypt_ok, log_entity_moved, log_udp_in, EntityMovedRow};
-pub use sampler::FirehoseSampler;
+// The sampler sits in `cimmeria-observability` and the transport's
+// per-datagram firehose in `cimmeria-mercury`: the transport emits it and is
+// below this crate. Re-exported so every firehose is reachable from here.
+pub use cimmeria_mercury::firehose::{
+    log_mercury_packet, MERCURY_PACKET_SAMPLE_EVERY, MERCURY_PACKET_SAMPLE_TARGET,
+    MERCURY_PACKET_TARGET,
+};
+pub use cimmeria_mercury::instrumentation::Direction;
+pub use cimmeria_observability::FirehoseSampler;
 
 /// Prefix of every full-fidelity firehose target. The OTLP filters turn this
 /// prefix off; the file layers name each target under it.
@@ -118,5 +125,13 @@ pub const FIREHOSES: &[Firehose] = &[
         sample_target: AOI_POSITION_SAMPLE_TARGET,
         sample_level: tracing::Level::DEBUG,
         every: AOI_POSITION_SAMPLE_EVERY,
+    },
+    // TG-MER-09: the transport's per-datagram row. The sample keeps the
+    // `mercury.packet` INFO target `cimmeria-network` always indexed.
+    Firehose {
+        full_target: MERCURY_PACKET_TARGET,
+        sample_target: MERCURY_PACKET_SAMPLE_TARGET,
+        sample_level: tracing::Level::INFO,
+        every: MERCURY_PACKET_SAMPLE_EVERY,
     },
 ];
