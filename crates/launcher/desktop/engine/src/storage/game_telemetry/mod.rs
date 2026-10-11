@@ -8,6 +8,7 @@ mod session;
 pub use session::{passthrough_environment, start, Session};
 #[cfg(test)]
 mod tests;
+pub mod transport;
 
 const NAME: &str = "game-telemetry.json";
 const STATUS: &str = "game-telemetry-status.json";

@@ -77,7 +77,50 @@ pub struct Telemetry {
 /// be and still count as this session's in the bundle.
 const SESSION_FILE_SLACK_MS: i64 = 10_000;
 
+/// Everything a [`Telemetry`] holds besides the minted token, for a
+/// caller that minted the session itself ([`Telemetry::from_minted`]).
+#[derive(Debug, Clone)]
+pub struct SessionContext {
+    /// The base the mint went to; refreshes go to `<base>/auth/dev-session/refresh`.
+    pub auth_base_url: String,
+    /// The game installation whose session files the bundle carries.
+    pub install_dir: PathBuf,
+    pub install_id: String,
+    pub machine_id: String,
+    pub launcher_version: String,
+    /// When the session was minted, ms since the epoch.
+    pub session_started_at_ms: i64,
+    pub endpoint_policy: endpoint::EndpointPolicy,
+    /// The directory holding `telemetry-queue.jsonl`.
+    pub queue_dir: PathBuf,
+}
+
 impl Telemetry {
+    /// A live handle for a session the caller minted (the desktop launcher
+    /// mints with its own bounded client and writes the DLL's marker
+    /// itself). Nothing is sent and nothing is written; the upload endpoint
+    /// is checked against `ctx.endpoint_policy` like a mint's.
+    pub fn from_minted(
+        resp: DevSessionResponse,
+        ctx: SessionContext,
+    ) -> Result<Self, TelemetryError> {
+        ctx.endpoint_policy.check(&resp.upload_endpoint)?;
+        Ok(Self {
+            session: tokio::sync::RwLock::new(resp),
+            auth_base_url: ctx.auth_base_url,
+            install_dir: ctx.install_dir,
+            install_id: ctx.install_id,
+            machine_id: ctx.machine_id,
+            launcher_version: ctx.launcher_version,
+            session_started_at_ms: ctx.session_started_at_ms,
+            endpoint_policy: ctx.endpoint_policy,
+            issued_at_ms: std::sync::atomic::AtomicI64::new(ctx.session_started_at_ms),
+            queue: DiskQueue::new(&ctx.queue_dir),
+            seq: Arc::new(Mutex::new(0)),
+            retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
+        })
+    }
+
     /// One-call session bootstrap: handshake with `auth_base_url`,
     /// write `current-session.json`, return a live `Telemetry`
     /// handle. Callers feed events through [`Telemetry::enqueue`] and
@@ -122,20 +165,19 @@ impl Telemetry {
             tags: req.tags.clone(),
         };
         session::write_current_session(install_dir, &current)?;
-        Ok(Self {
-            session: tokio::sync::RwLock::new(resp),
-            auth_base_url: auth_base_url.to_string(),
-            install_dir: install_dir.to_path_buf(),
-            install_id: req.install_id,
-            machine_id: req.machine_id,
-            launcher_version: launcher_version.to_string(),
-            session_started_at_ms: now_ms,
-            endpoint_policy,
-            issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
-            queue: DiskQueue::new(queue_dir),
-            seq: Arc::new(Mutex::new(0)),
-            retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
-        })
+        Self::from_minted(
+            resp,
+            SessionContext {
+                auth_base_url: auth_base_url.to_string(),
+                install_dir: install_dir.to_path_buf(),
+                install_id: req.install_id,
+                machine_id: req.machine_id,
+                launcher_version: launcher_version.to_string(),
+                session_started_at_ms: now_ms,
+                endpoint_policy,
+                queue_dir: queue_dir.to_path_buf(),
+            },
+        )
     }
 
     /// Stamp `ts_ms` + `seq` onto an event and persist it to the
@@ -230,21 +272,37 @@ impl Telemetry {
     /// refresh fired and the in-memory token was rotated; `Ok(false)`
     /// when the current token still has ample lifetime.
     pub async fn refresh_if_due(&self, http: &reqwest::Client) -> Result<bool, TelemetryError> {
-        let (expires_at_ms, current_token) = {
-            let s = self.session.read().await;
-            (s.expires_at_ms, s.token.clone())
-        };
+        let expires_at_ms = self.session.read().await.expires_at_ms;
         let now_ms = chrono::Utc::now().timestamp_millis();
         let issued_at_ms = self.issued_at_ms.load(std::sync::atomic::Ordering::Relaxed);
         if !auth::should_refresh(expires_at_ms, now_ms, issued_at_ms) {
             return Ok(false);
         }
-        let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
-        self.endpoint_policy.check(&new_resp.upload_endpoint)?;
-        self.issued_at_ms
-            .store(now_ms, std::sync::atomic::Ordering::Relaxed);
-        *self.session.write().await = new_resp;
+        self.refresh_now(http).await?;
         Ok(true)
+    }
+
+    /// Refresh the token whatever its age: what a 401 from an upload
+    /// calls for. The server refuses an expired token (401) and a chain
+    /// past its session cap; the caller then mints a new session and
+    /// hands it to [`Telemetry::replace_session`].
+    pub async fn refresh_now(&self, http: &reqwest::Client) -> Result<(), TelemetryError> {
+        let current_token = self.session.read().await.token.clone();
+        let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
+        self.replace_session(new_resp).await
+    }
+
+    /// Swap in a newly minted or refreshed session: the token, endpoint and
+    /// chunking defaults. The upload endpoint passes the session's policy
+    /// first; the queue, `seq` counter and back-off clock carry over.
+    pub async fn replace_session(&self, resp: DevSessionResponse) -> Result<(), TelemetryError> {
+        self.endpoint_policy.check(&resp.upload_endpoint)?;
+        self.issued_at_ms.store(
+            chrono::Utc::now().timestamp_millis(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        *self.session.write().await = resp;
+        Ok(())
     }
 }
 
@@ -547,5 +605,60 @@ mod tests {
         .expect("must refuse");
         assert!(matches!(err, TelemetryError::Endpoint(_)), "{err}");
         assert!(!session::current_session_path(dir.path()).exists());
+    }
+
+    fn minted(upload_endpoint: &str) -> DevSessionResponse {
+        DevSessionResponse {
+            session_id: "sid-1".into(),
+            token: "tok".into(),
+            expires_at_ms: 1_700_028_800_000,
+            upload_endpoint: upload_endpoint.into(),
+            chunk_max_bytes: 1_048_576,
+            flush_interval_ms: 2_000,
+        }
+    }
+
+    fn context(dir: &Path) -> SessionContext {
+        SessionContext {
+            auth_base_url: "http://localhost:8081/api".into(),
+            install_dir: dir.to_path_buf(),
+            install_id: "i".into(),
+            machine_id: "m".into(),
+            launcher_version: "0.1.0".into(),
+            session_started_at_ms: 1_700_000_000_000,
+            endpoint_policy: endpoint::EndpointPolicy::default(),
+            queue_dir: dir.to_path_buf(),
+        }
+    }
+
+    /// A session minted elsewhere is held to the same address rule, both
+    /// when adopted and when a later refresh or re-mint replaces it, and
+    /// adopting it writes no marker.
+    #[tokio::test]
+    async fn an_adopted_session_is_held_to_the_endpoint_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            Telemetry::from_minted(
+                minted("http://uploads.example.org/api"),
+                context(dir.path())
+            ),
+            Err(TelemetryError::Endpoint(_))
+        ));
+        let tel = Telemetry::from_minted(minted("http://localhost:8081/api"), context(dir.path()))
+            .unwrap();
+        assert!(!session::current_session_path(dir.path()).exists());
+        assert!(matches!(
+            tel.replace_session(minted("http://uploads.example.org/api"))
+                .await,
+            Err(TelemetryError::Endpoint(_))
+        ));
+        assert_eq!(
+            tel.session.read().await.upload_endpoint,
+            "http://localhost:8081/api"
+        );
+        let mut next = minted("https://uploads.example.org/api");
+        next.token = "tok-2".into();
+        tel.replace_session(next).await.unwrap();
+        assert_eq!(tel.session.read().await.token, "tok-2");
     }
 }
