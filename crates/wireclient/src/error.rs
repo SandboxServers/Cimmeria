@@ -109,6 +109,12 @@ pub enum Error {
     #[error("Mercury parse: {0}")]
     MercuryParse(String),
 
+    /// A server→client bundle failed strict decode: an unknown msg id or a
+    /// frame that runs past the end. Only `bundle::decode_bundle_strict`
+    /// produces it; the lenient decoder returns the prefix instead.
+    #[error("bundle decode: {0}")]
+    Decode(#[from] crate::bundle::DecodeError),
+
     // ── World entry ─────────────────────────────────────────────────────────
     /// A world-entry step got no reply, or a reply without what it needs
     /// (`GameSession::enter_world`).
