@@ -299,6 +299,11 @@ tests should run without the release-manifest key override. For a different
 helper revision, obtain its expected digest from that trusted build and update
 both staging and compilation; do not derive trust from the staged receipt.
 
+The release does the same in CI for all five Windows pieces, in release
+profile, and signs the app ad hoc: `tools/launcher-release/build-desktop-macos.sh`,
+run by `launcher-release.yml`'s `desktop-macos` job and dry-run on every
+desktop-launcher PR ([release](release.md#what-the-macos-job-builds)).
+
 The development `.app` was built and its embedded helper matched the expected
 hash. The app was not opened. A staged-resource resolver/Wine-admission/cancel
 fixture passed in 1.961 seconds, but does not prove actual Tauri-window routing
