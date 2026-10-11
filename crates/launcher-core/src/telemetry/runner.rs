@@ -226,14 +226,14 @@ async fn tick_once(
 /// True for the client's BigWorld debug log. The client (and patch
 /// `004-log-config`) writes `SGWDebugLog.log`; the match ignores case,
 /// since a lowercase-only match never tailed it.
-fn is_debug_log(file_name: &str) -> bool {
+pub fn is_debug_log(file_name: &str) -> bool {
     file_name.to_ascii_lowercase().starts_with("sgwdebuglog")
 }
 
 /// Convert a [`TailedLine`] to a [`TelemetryEvent`]. `sgwdebuglog*`
 /// goes to `DebugLog`; everything else is treated as an Atera client
 /// log line and run through [`parse_client_log_line`].
-fn line_to_event(tl: TailedLine) -> TelemetryEvent {
+pub fn line_to_event(tl: TailedLine) -> TelemetryEvent {
     if is_debug_log(&tl.source_file) {
         TelemetryEvent::DebugLog(DebugLogEvent {
             ts_ms: 0,

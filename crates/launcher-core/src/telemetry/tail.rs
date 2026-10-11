@@ -68,6 +68,19 @@ impl Tailer {
     /// log on first tick — the legacy data goes into the end-of-
     /// session bundle instead.
     pub fn refresh(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool) {
+        self.scan(root, predicate, true);
+    }
+
+    /// Like [`Tailer::refresh`], except that a newly-discovered file is
+    /// read from its *start*. For a session whose pre-existing files were
+    /// already taken in by a `refresh` before the game started: any file
+    /// that appears after that was written by this session, so its first
+    /// lines belong in the stream too.
+    pub fn follow(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool) {
+        self.scan(root, predicate, false);
+    }
+
+    fn scan(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool, start_at_end: bool) {
         let walker = match walkdir::WalkDir::new(root)
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
@@ -86,7 +99,11 @@ impl Tailer {
             }
             seen.insert(path.clone());
             self.files.entry(path.clone()).or_insert_with(|| {
-                let len = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                let len = if start_at_end {
+                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+                } else {
+                    0
+                };
                 TailedFile::fresh(len)
             });
         }
@@ -299,6 +316,30 @@ mod tests {
         let mut messages: Vec<_> = lines.iter().map(|l| l.line.as_str()).collect();
         messages.sort();
         assert_eq!(messages, vec!["later in first file", "line in rolled file"]);
+    }
+
+    // A file that appears after the baseline is this session's: `follow`
+    // ships it from its first line, and a file already tracked keeps its
+    // offset (the baseline's pre-existing content stays unsent).
+    #[test]
+    fn follow_reads_a_new_file_from_its_start_and_keeps_known_offsets() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("before.log");
+        append(&old, "from an earlier session\n");
+        let mut t = Tailer::new();
+        t.refresh(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        let new = dir.path().join("during.log");
+        append(&new, "first line of the session\n");
+        append(&old, "appended this session\n");
+        t.follow(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        let mut messages: Vec<_> = t.tick().into_iter().map(|l| l.line).collect();
+        messages.sort();
+        assert_eq!(
+            messages,
+            vec!["appended this session", "first line of the session"]
+        );
+        t.follow(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        assert!(t.tick().is_empty(), "nothing ships twice");
     }
 
     #[test]

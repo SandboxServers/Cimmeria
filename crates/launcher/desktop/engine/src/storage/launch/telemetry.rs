@@ -1,6 +1,8 @@
 //! The launch side of opt-in game telemetry: one server session per Play, and
 //! the DLL joins the injection list only once that session's marker is on disk.
 use super::*;
+use crate::game_telemetry::session_loop::{GameExit, SessionLoop};
+use crate::game_telemetry::transport::{Consent, Transport};
 use crate::game_telemetry::{self, Outcome, Session};
 use std::sync::Mutex;
 
@@ -43,6 +45,46 @@ pub(super) fn injected<'a>(plan: &'a Plan, session: Option<&Session>) -> Option<
     preparation::contained(&game, &marker).ok()?;
     crate::telemetry_session::write_current_session(&game, session?.marker()).ok()?;
     Some(artifact)
+}
+
+/// Start the launcher's half of the session (log tailing, exit, bundle) on
+/// the session Play minted, before the game is spawned. The choice is read
+/// again under the lock; a transport that cannot be opened costs only the
+/// telemetry, never the launch.
+pub(super) fn begin_session(
+    state: &Arc<Mutex<DesktopState>>,
+    plan: &Plan,
+    session: &Session,
+    servers: &[LoginServer],
+) -> Option<SessionLoop> {
+    let consent = Consent::read(&*state.lock().ok()?).ok().flatten()?;
+    let game = plan.installation.destination.join("game");
+    match Transport::open(consent, session, servers, &game) {
+        Ok(transport) => Some(SessionLoop::begin(transport, &game)),
+        Err(code) => {
+            tracing::warn!(operation = %plan.id, ?code, "game telemetry session not started");
+            None
+        }
+    }
+}
+
+/// The supervisor's last observation, as the session records it. Only an
+/// exit the helper reported carries a code; any other ending has none.
+pub(super) fn game_exit(observation: Observation) -> Option<GameExit> {
+    match observation {
+        Observation::ProcessExited {
+            host_pid,
+            guest_pid,
+            code,
+            early,
+        } => Some(GameExit {
+            host_pid,
+            guest_pid,
+            code,
+            early,
+        }),
+        _ => None,
+    }
 }
 
 /// Best effort: a status that cannot be saved must not change what Play does.

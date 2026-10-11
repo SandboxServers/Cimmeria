@@ -391,6 +391,30 @@ disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
 `cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
 for those.
 
+**The launcher's half of the session** (`game_telemetry/session_loop/`). With a
+session minted, the launcher also uploads, as the Windows launcher's runner
+does, through its own queue (`telemetry-queue.jsonl` in the state directory):
+
+- Before the helper spawns the game, every tailed file already on disk is taken
+  in at its end, so an earlier session's lines never go again. A file that
+  appears later is read from its first line.
+- On the server's flush cadence it sends each new complete line of
+  `Binaries/SGWDebugLog*` (as `debug_log`) and `Binaries/sessions/*.log` and
+  `*.txt` (as `client_log`), with the Windows launcher's fields, then flushes.
+- The supervisor's exit observation ends it: a `session_meta` event of kind
+  `game_exited` with `exit_code`, `pid` (the game's), `host_pid` (the helper's)
+  and `early`, then the end-of-session bundle, then a last flush bounded to 30
+  seconds. It runs after the launch result is recorded and never delays it. An
+  ending the supervisor did not observe sends no `game_exited`.
+- Closing the launcher while the game runs ends the session there. What was
+  queued stays on disk and goes with the next session's first flush. Offsets
+  are not saved: a restarted launcher does not resume the session, and the next
+  Play's baseline means nothing is sent twice.
+- Opting out while the game runs stops it at once: the transport checks the
+  choice before and after each queue write and send, nothing more is sent, no
+  bundle goes, and no queue is left behind. A chunk already being posted at
+  that moment completes.
+
 A plan that does not carry the DLL serializes without a `client_telemetry` key,
 so plans written before this field existed keep their digests.
 
@@ -426,8 +450,8 @@ with the next session's first flush.
   is reported as unavailable, as before.
 - The session token is minted once per Play and is not refreshed. A session
   that outlives the token stops uploading.
-- The launcher does not tail `SGWDebugLog.log` or upload bundles, as the
-  Windows launcher's own telemetry runner does.
+- Lines the game writes after the launcher closed are not streamed, and that
+  session's bundle is not sent (see below).
 
 ## Headless integration checks
 

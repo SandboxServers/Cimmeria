@@ -171,6 +171,9 @@ impl NativeHost {
                     state.save_preferences(Some(directory.clone()), consent, 0)?;
                 }
             }
+            // Before any Play can queue: an opted-in player's queue is kept for
+            // the next session, an opted-out player's deleted unsent.
+            let _ = cimmeria_launcher_engine::game_telemetry::transport::recover_now(&state);
             let state = Arc::new(Mutex::new(state));
             summary::start(&state);
             *guard = Some(state);
