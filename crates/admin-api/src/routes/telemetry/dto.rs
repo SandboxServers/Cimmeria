@@ -131,9 +131,10 @@ pub(super) enum IngestError {
     /// The request body failed part-way (broken framing, a peer that left).
     #[error("request body could not be read")]
     Body,
-    /// Every upload slot of the route is in use.
+    /// A pool of upload slots is in use: `pool` is `peer_share` (the
+    /// address's share) or `route` (the route's slots), and `limit` its size.
     #[error("Telemetry ingest is busy, retry shortly")]
-    Busy,
+    Busy { pool: &'static str, limit: usize },
 }
 
 impl IngestError {
@@ -159,7 +160,7 @@ impl IngestError {
             IngestError::Multipart(_) => "bad_multipart",
             IngestError::OverBudget { .. } => "over_budget",
             IngestError::Body => "body_read_failed",
-            IngestError::Busy => "busy",
+            IngestError::Busy { .. } => "busy",
         }
     }
 
@@ -172,11 +173,21 @@ impl IngestError {
         }
     }
 
-    /// The limit a refusal hit, for its log row.
+    /// The limit a refusal hit, for its log row: the budget, or the size of
+    /// the busy pool.
     pub(super) fn limit(&self) -> Option<u64> {
         match self {
             IngestError::OverBudget { limit, .. } => Some(*limit),
             IngestError::TooLarge(_, cap) => Some(*cap as u64),
+            IngestError::Busy { limit, .. } => Some(*limit as u64),
+            _ => None,
+        }
+    }
+
+    /// The busy pool a refusal names, for its log row.
+    pub(super) fn pool(&self) -> Option<&'static str> {
+        match self {
+            IngestError::Busy { pool, .. } => Some(pool),
             _ => None,
         }
     }
@@ -193,7 +204,7 @@ impl IntoResponse for IngestError {
             }
             IngestError::OverBudget { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             IngestError::Body => StatusCode::BAD_REQUEST,
-            IngestError::Busy => {
+            IngestError::Busy { .. } => {
                 let mut resp = (StatusCode::SERVICE_UNAVAILABLE, self.to_string()).into_response();
                 resp.headers_mut().insert(
                     axum::http::header::RETRY_AFTER,

@@ -248,6 +248,8 @@ pub(super) struct Uploader {
     pub peer: IpAddr,
     pub session_id: Option<String>,
     pub install_id: Option<String>,
+    /// The token's `kind` (`player` or `lab`), once it verifies.
+    pub session_kind: Option<String>,
 }
 
 impl Uploader {
@@ -256,6 +258,7 @@ impl Uploader {
             peer,
             session_id: None,
             install_id: None,
+            session_kind: None,
         }
     }
 }
@@ -289,8 +292,9 @@ pub(super) fn admit(
     let claims = verify_bearer(headers)?;
     who.session_id = Some(claims.sid.clone());
     who.install_id = Some(claims.sub.clone());
+    who.session_kind = Some(claims.session_kind().to_string());
 
-    let (session_table, ip_table, per_session, per_ip, window, slots) = match route {
+    let (session_table, ip_table, per_session, per_ip, window, slots, pool_size) = match route {
         Route::Chunk => (
             &state.chunk_session,
             &state.chunk_ip,
@@ -298,6 +302,7 @@ pub(super) fn admit(
             policy.chunk_per_ip,
             CHUNK_QUOTA_WINDOW,
             &state.chunk_slots,
+            state.limits.chunk_slots,
         ),
         Route::Bundle => (
             &state.bundle_session,
@@ -306,6 +311,7 @@ pub(super) fn admit(
             policy.bundle_per_ip,
             BUNDLE_QUOTA_WINDOW,
             &state.bundle_slots,
+            state.limits.bundle_slots,
         ),
     };
     // `install_key` is a seeded hash of any caller string; the session id
@@ -329,8 +335,18 @@ pub(super) fn admit(
         Route::Chunk => state.limits.chunk_slots_per_peer,
         Route::Bundle => state.limits.bundle_slots_per_peer,
     };
-    let slot = take_slot(&state.peer_slots, slots, route, ip_key(who.peer), per_peer)
-        .ok_or(IngestError::Busy)?;
+    let slot = take_slot(
+        &state.peer_slots,
+        slots,
+        route,
+        ip_key(who.peer),
+        per_peer,
+        pool_size,
+    )
+    .map_err(|busy| IngestError::Busy {
+        pool: busy.name(),
+        limit: busy.limit(),
+    })?;
     Ok(Admitted { claims, slot })
 }
 
