@@ -339,6 +339,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
                 aoi.introduce=debug,\
+                aoi.appearance=debug,\
                 base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
@@ -362,7 +363,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.movement_type=debug,\
                 movement.position_sample=debug,\
                 movement.validation=debug,\
-                player.journal=debug,\
+                player.journal=debug,player.respawn=debug,\
                 trade.atomic_swap=debug,\
                 org=debug,squad=debug,\
                 chat=debug,rate_limit=debug,online_index=debug,\
