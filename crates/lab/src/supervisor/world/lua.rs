@@ -12,8 +12,12 @@
 //! holds one subscription per event (`Options.lua` unsubscribes by event
 //! alone), which is why the lab chains instead of adding a second one.
 
+use serde_json::Value;
+
 use super::geometry::{Screen, Vec3};
 use crate::supervisor::flows::widgets::lua_quote;
+use crate::supervisor::ui::lua_json;
+use crate::supervisor::ui::window_read::WALK_FN;
 
 /// Stock `(window, module)` pairs whose PreRender the lab can chain, in
 /// order of preference. SCT is loaded for the whole in-world session.
@@ -258,6 +262,59 @@ pub fn parse_window_list(r: &[String]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Lua body (after the JSON prelude) returning the root's rect and
+/// `{name, rect}` for each visible top-level window, rects as
+/// `getUnclippedPixelRect` gives them (`left, top, right, bottom`), the same
+/// read `client_window_click` uses to aim.
+pub fn window_rects_chunk() -> String {
+    format!(
+        r#"{WALK_FN}
+local root = __lab_find('Root')
+if root == nil then return __jenc({{ error = 'no Root window' }}) end
+local rr = __jcall(function() return root:getUnclippedPixelRect() end)
+local out = {{}}
+local n = __jcall(function() return root:getChildCount() end) or 0
+for i = 0, n - 1 do
+  local w = __jcall(function() return root:getChildAtIdx(i) end)
+  if w and __jcall(function() return w:isVisible() end) then
+    local r = __jcall(function() return w:getUnclippedPixelRect() end)
+    if r then out[#out + 1] = {{ name = __jcall(function() return w:getName() end), rect = {{ r.left, r.top, r.right, r.bottom }} }} end
+  end
+end
+return __jenc({{ root = rr and {{ rr.left, rr.top, rr.right, rr.bottom }}, windows = out }})"#
+    )
+}
+
+/// A window covering this share of the root or more is the root itself or a
+/// full-screen backdrop: it never hides the 3D view from the cursor.
+pub const BACKDROP_AREA_SHARE: f64 = 0.9;
+
+/// The window rects from [`window_rects_chunk`]'s JSON, without backdrops.
+pub fn parse_window_rects(v: &Value) -> Result<Vec<(String, [f64; 4])>, String> {
+    if let Some(e) = v.get("error").and_then(Value::as_str) {
+        return Err(e.to_string());
+    }
+    let rect = |r: &Value| -> Option<[f64; 4]> {
+        let a = r.as_array()?;
+        let mut out = [0.0; 4];
+        for (o, x) in out.iter_mut().zip(a) {
+            *o = x.as_f64()?;
+        }
+        (a.len() == 4).then_some(out)
+    };
+    let area = |r: [f64; 4]| (r[2] - r[0]).max(0.0) * (r[3] - r[1]).max(0.0);
+    let root = rect(&v["root"]).ok_or("the root window has no rect")?;
+    let full = area(root);
+    Ok(lua_json::list(&v["windows"])
+        .iter()
+        .filter_map(|w| {
+            let r = rect(&w["rect"])?;
+            let name = w["name"].as_str().unwrap_or("?").to_string();
+            (full <= 0.0 || area(r) < BACKDROP_AREA_SHARE * full).then_some((name, r))
+        })
+        .collect())
+}
+
 /// The stock UI's own targeting call on a pinned slot (the N3 fallback).
 pub fn target_unit_chunk(slot: i32) -> String {
     format!("targetUnit({slot}) return 'ok'")
@@ -304,6 +361,30 @@ mod tests {
         let c = unit_info_chunk(&[7700, 7701]);
         assert!(c.contains("ipairs({7700,7701})"));
         assert!(c.contains("unitHostilityToPlayer"));
+    }
+
+    /// The root and a full-screen backdrop never count as covering the view.
+    #[test]
+    fn window_rects_drop_the_root_and_backdrops() {
+        let v = serde_json::json!({
+            "root": [0, 0, 1000, 800],
+            "windows": [
+                { "name": "LoadingBackdrop", "rect": [0, 0, 1000, 800] },
+                { "name": "NearlyFull", "rect": [0, 0, 960, 760] },
+                { "name": "QuickBar", "rect": [300, 700, 700, 780] },
+            ],
+        });
+        let got = parse_window_rects(&v).unwrap();
+        assert_eq!(
+            got,
+            vec![("QuickBar".to_string(), [300.0, 700.0, 700.0, 780.0])]
+        );
+        // The encoder writes an empty window list as `{}`.
+        let empty = serde_json::json!({ "root": [0, 0, 1000, 800], "windows": {} });
+        assert!(parse_window_rects(&empty).unwrap().is_empty());
+        let none = serde_json::json!({ "error": "no Root window" });
+        assert_eq!(parse_window_rects(&none).unwrap_err(), "no Root window");
+        assert!(window_rects_chunk().contains("getUnclippedPixelRect"));
     }
 
     #[test]

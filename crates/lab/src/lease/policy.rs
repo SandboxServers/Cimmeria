@@ -114,6 +114,8 @@ pub const LEASED: &[&str] = &[
     "client_target",
     "client_move_to",
     "client_camera",
+    // Moves the shared cursor (never clicks).
+    "client_hover_probe",
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",

@@ -82,6 +82,12 @@ pub struct Sim {
     /// Scales the gains the camera readout reports (1.0 is exact), so a
     /// closed loop's first look misses and its correction has to run.
     pub readout_gain_scale: f64,
+    /// What `window_rects` reports (empty: nothing over the 3D view).
+    pub window_rects: Vec<(String, [f64; 4])>,
+    /// Mouse-over is the player within this many pixels of the player's
+    /// projected body. The camera sits at the head, so the avatar projects
+    /// only when the camera pitches down (negative `cam_pitch`).
+    pub avatar_radius_px: Option<f64>,
 }
 
 impl Sim {
@@ -117,6 +123,8 @@ impl Sim {
             buttons: Vec::new(),
             clicks_do_nothing: false,
             readout_gain_scale: 1.0,
+            window_rects: Vec::new(),
+            avatar_radius_px: None,
         }
     }
 
@@ -159,9 +167,19 @@ impl Sim {
         Some((cx + right / fwd * focal, cyy - up / fwd * focal))
     }
 
-    /// The nearest rendered entity within 25 px of the cursor.
+    /// The nearest rendered entity within 25 px of the cursor; the player
+    /// first (nearest of all) when `avatar_radius_px` is set and covers it.
     fn under_cursor(&self) -> u32 {
         let (x, y) = (self.cursor.0 as f64, self.cursor.1 as f64);
+        if let Some(r) = self.avatar_radius_px {
+            let covered = [-40.0, 0.0, 50.0, 90.0].iter().any(|dz| {
+                self.project_point(Vec3::new(self.pos.x, self.pos.y, self.pos.z + dz))
+                    .is_some_and(|(px, py)| ((px - x).powi(2) + (py - y).powi(2)).sqrt() <= r)
+            });
+            if covered {
+                return PLAYER_ID;
+            }
+        }
         let mut best: Option<(f64, u32)> = None;
         for e in self.entities.iter().filter(|e| e.rendered) {
             for dz in [-40.0, 0.0, 50.0, 90.0] {
@@ -392,6 +410,14 @@ impl WorldIo for Sim {
 
     async fn visible_windows(&mut self) -> Result<Vec<String>, String> {
         Ok(self.windows.clone())
+    }
+
+    async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
+        Ok(self.window_rects.clone())
+    }
+
+    async fn cursor(&mut self) -> Result<(i32, i32), String> {
+        Ok(self.cursor)
     }
 
     async fn target_unit(&mut self, slot: i32) -> Result<(), String> {
