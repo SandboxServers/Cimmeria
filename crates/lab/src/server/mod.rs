@@ -32,6 +32,7 @@ mod combat;
 pub(crate) mod compact;
 mod composite;
 mod flows;
+mod golden;
 mod handler;
 mod instances;
 mod lease;
@@ -273,6 +274,7 @@ impl LabServer {
                 + Self::world_router()
                 + Self::combat_router()
                 + Self::uat_router()
+                + Self::golden_router()
                 + Self::ui_router()
                 + Self::composite_router()
                 + Self::lease_router(),

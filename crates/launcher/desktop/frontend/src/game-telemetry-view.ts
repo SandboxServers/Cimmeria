@@ -1,4 +1,4 @@
-import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
+import {Context,Effect,Fiber,Layer,ManagedRuntime,Result,Stream} from 'effect';
 import {gameTelemetryBridgeLayer,GameTelemetryState,makeGameTelemetryWorkflow} from './game-telemetry-workflow';
 import type {Invoke} from './view';
 class GameTelemetry extends Context.Service<GameTelemetry,Effect.Success<typeof makeGameTelemetryWorkflow>>()('launcher/GameTelemetry') {}
@@ -17,7 +17,8 @@ export function gameTelemetryText(s:GameTelemetryState,saving:boolean|null=null)
  if(last==='session_not_written')return 'On, but the session could not be saved beside the game for the last Play, so it started without diagnostics.';
  return 'On. The next Play loads the diagnostics module into the game and sends game events and logs to your login server.';
 }
-export function mountGameTelemetry(document:Document,invoke:Invoke) {
+/** `onSaved` runs after native code confirms a changed choice. */
+export function mountGameTelemetry(document:Document,invoke:Invoke,onSaved:()=>void=()=>{}) {
  const runtime=ManagedRuntime.make(Layer.effect(GameTelemetry,makeGameTelemetryWorkflow).pipe(Layer.provide(gameTelemetryBridgeLayer(request=>invoke('game_telemetry_command',{request})))));
  const checkbox=document.getElementById('game-telemetry') as HTMLInputElement;
  const recheck=document.getElementById('inspect-game-telemetry') as HTMLButtonElement;
@@ -32,7 +33,7 @@ export function mountGameTelemetry(document:Document,invoke:Invoke) {
   recheck.disabled=busy;recheck.hidden=!current.error&&!current.uncertain;};
  const watcher=runtime.runFork(Effect.flatMap(GameTelemetry,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();}))));
  const run=(choice:boolean|null)=>{if(disposed||pending)return mutation;pending=true;saving=choice;render();
-  mutation=runtime.runPromise(Effect.flatMap(GameTelemetry,s=>Effect.result(choice===null?s.inspect:s.set(choice)))).then(()=>{}).finally(()=>{pending=false;saving=null;render();});return mutation;};
+  mutation=runtime.runPromise(Effect.flatMap(GameTelemetry,s=>Effect.result(choice===null?s.inspect:s.set(choice)))).then(result=>{if(choice!==null&&Result.isSuccess(result)&&!disposed)onSaved();}).finally(()=>{pending=false;saving=null;render();});return mutation;};
  const change=()=>{if(checkbox.disabled){render();return;}void run(checkbox.checked);};const check=()=>{if(!recheck.disabled)void run(null);};
  checkbox.addEventListener('change',change);recheck.addEventListener('click',check);
  const ready=run(null);

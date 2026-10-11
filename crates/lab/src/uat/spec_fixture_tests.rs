@@ -123,8 +123,24 @@ fn an_empty_profile_field_is_a_spec_error() {
 }
 
 #[test]
+fn a_profile_key_is_one_to_eight_lowercase_letters() {
+    // The key becomes part of the fixture character name, so it is checked
+    // on the profile itself, not on a row.
+    for key in ["commando1", "averylongname", "Praxis"] {
+        let text = with_fixture(FIRST_SESSION).replace("praxis", key);
+        let e = parse(&text).unwrap_err();
+        assert!(
+            e.contains(&format!("section.profiles.{key}: the key must be")),
+            "{e}"
+        );
+    }
+    let text = with_fixture(FIRST_SESSION).replace("praxis", "commando");
+    assert!(parse(&text).is_ok());
+}
+
+#[test]
 fn fixture_spec_errors_name_the_row() {
-    let cases: [(String, &str); 18] = [
+    let cases: [(String, &str); 19] = [
         (
             with_fixture(&FIRST_SESSION.replace("praxis", "bard")),
             "no [section.profiles.bard]",
@@ -140,6 +156,10 @@ fn fixture_spec_errors_name_the_row() {
         (
             with_fixture("character = \"praxis\"\nmissions = [{ id = 622 }]"),
             "needs a step or a state",
+        ),
+        (
+            with_fixture("character = \"praxis\"\nmissions = [{ id = 622, state = \"active\" }]"),
+            "mission 622: active needs a step",
         ),
         (
             with_fixture("character = \"praxis\"\nitems = [{ id = 55, count = 11 }]"),

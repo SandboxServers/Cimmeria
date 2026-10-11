@@ -118,7 +118,12 @@ pub fn is_read_only(tool: &str) -> bool {
             | "lab_crash_report"
             | "lab_timeline"
     ) || tool.starts_with("server_")
-        && !matches!(tool, "server_console_exec" | "server_content_reload")
+        // Server tools that write: a GM command, a content reload, and a
+        // staged fixture (it changes the character at its next login).
+        && !matches!(
+            tool,
+            "server_console_exec" | "server_content_reload" | "server_stage_fixture"
+        )
         || super::tools::lookup(tool).is_some_and(|c| c.floor.is_none())
 }
 
@@ -261,6 +266,22 @@ mod tests {
             resolve_tool("server_console_exec", None).unwrap().tier,
             Tier::X
         );
+    }
+
+    /// Server tools that change server state are not reads, so a spec
+    /// cannot slip one in as untiered evidence.
+    #[test]
+    fn server_writes_are_not_read_only() {
+        assert!(is_read_only("server_sessions"));
+        assert!(is_read_only("server_db_query"));
+        for t in [
+            "server_console_exec",
+            "server_content_reload",
+            "server_stage_fixture",
+        ] {
+            assert!(!is_read_only(t), "{t}");
+        }
+        assert!(resolve_tool("server_stage_fixture", None).is_err());
     }
 
     #[test]
