@@ -30,6 +30,7 @@ x-runner: &runner
   mem_limit: ${RUNNER_MEM_LIMIT:-20g}
   pids_limit: 16384
   shm_size: 2g
+  # Hooks are read per job, so deploy.ps1 updates them without recreating a runner.
 
 services:
   dind1:
@@ -56,6 +57,7 @@ services:
       - sccache1:/home/runner/sccache
       - cargo-registry1:/home/runner/.cargo/registry
       - cargo-git1:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
   dind2:
     <<: *dind
     volumes:
@@ -80,6 +82,7 @@ services:
       - sccache2:/home/runner/sccache
       - cargo-registry2:/home/runner/.cargo/registry
       - cargo-git2:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
   dind3:
     <<: *dind
     volumes:
@@ -104,6 +107,7 @@ services:
       - sccache3:/home/runner/sccache
       - cargo-registry3:/home/runner/.cargo/registry
       - cargo-git3:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
   dind4:
     <<: *dind
     volumes:
@@ -128,6 +132,7 @@ services:
       - sccache4:/home/runner/sccache
       - cargo-registry4:/home/runner/.cargo/registry
       - cargo-git4:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
   dind5:
     <<: *dind
     volumes:
@@ -152,6 +157,7 @@ services:
       - sccache5:/home/runner/sccache
       - cargo-registry5:/home/runner/.cargo/registry
       - cargo-git5:/home/runner/.cargo/git
+      - ./hooks:/home/runner/hooks:ro
 volumes:
   dind1:
   work1:

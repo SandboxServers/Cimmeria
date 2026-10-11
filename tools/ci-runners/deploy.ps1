@@ -42,6 +42,7 @@ foreach ($node in $Nodes) {
     if ($LASTEXITCODE -ne 0) { throw "${node}: could not create $dir" }
     scp -q "$src/Dockerfile" "$src/compose.yml" "$src/entrypoint.sh" "${ssh}:$dir/"
     scp -q "$src/hooks/job-started.sh" "$src/hooks/job-completed.sh" "${ssh}:$dir/hooks/"
+    ssh $ssh "chmod 0755 /hooks/*.sh"
     if ($LASTEXITCODE -ne 0) { throw "${node}: scp failed" }
     $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`n"
     $envFile | ssh $ssh "cat > $dir/.env && sed -i 's/\r$//' $dir/entrypoint.sh $dir/hooks/*.sh"

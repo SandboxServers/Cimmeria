@@ -12,7 +12,22 @@ Linux jobs, stay on GitHub-hosted runners.
 | `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps |
 | `entrypoint.sh` | Registers on first start, restores the registration afterwards, writes the job environment, waits for dind |
 | `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report and cleanup |
+| `status.ps1` | Cache and disk report from every runner's job log |
 | `deploy.ps1` | Copies the files to a node, mints a registration token with `gh`, builds and starts the stack |
+
+## Known blocker: colo egress to Azure 57.150.x
+
+As of 2026-10-11 jobs on these runners run every step and then hang: the runner uploads step logs to Azure blob storage at 57.150.x, which times out from both nodes (colo egress 47.45.19.x) and works from other networks. The repository variable `CI_LINUX_RUNNER` is set to `hosted` until that is fixed; remove it to turn the runners back on. Check with:
+
+```bash
+ssh cimmeria-node2 'timeout 5 bash -c \"</dev/tcp/57.150.86.161/443\" && echo ok || echo blocked'
+```
+
+## Cache and disk report
+
+```powershell
+pwsh tools/ci-runners/status.ps1   # per job: sccache hit rate, target/ size, sccache size, free space; volume totals per node
+```
 
 ## Deploy or update
 
