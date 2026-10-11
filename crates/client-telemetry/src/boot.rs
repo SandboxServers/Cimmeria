@@ -315,6 +315,9 @@ fn bootstrap_phase2() {
         "host_exe",
         serde_json::Value::String(host_exe.display().to_string()),
     );
+    // The process id of this launch. Matches the `X-Cimmeria-Client-Pid`
+    // header on every chunk this process uploads.
+    builder = builder.field("pid", serde_json::json!(std::process::id()));
     // The DLL's own build. The server lifts it into a `dll_version`
     // attribute on the `cimmeria-client` row, so a SigNoz query can tell
     // which DLL build a session ran.
