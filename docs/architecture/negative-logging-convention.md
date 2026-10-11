@@ -1167,6 +1167,12 @@ Guard: `unhandled_cell_method_warns_with_method_index_and_args_len` in `cell/dis
 
 Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
 
+## Datagrams from unknown addresses (TG-NET-12)
+
+`connect_loop/mod.rs` in `cimmeria-base`. A datagram from an address with no session used to be a TRACE row. Internet scanners hit that path, and it was invisible at the exported level. It now logs INFO `event = "unknown_peer_datagram"` with `addr`, `flags` (the first byte) and `suppressed`, under the constant message "Datagram from unknown address". The rate is Pattern D, per address: the first datagram logs at once, then at most one row per 60 s with the swallowed count in `suppressed`. At most 256 addresses are tracked; past that, the one whose window opened longest ago is evicted.
+
+Guards: `unknown_peer_burst_writes_one_row_per_window` and `unknown_peer_addresses_are_throttled_independently`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
