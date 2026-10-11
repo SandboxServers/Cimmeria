@@ -13,7 +13,7 @@ use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::lab_commands;
 use crate::uat::spec::{ActionKind, ActionSpec, RowSpec};
 use crate::uat::tier::{self, Role};
-use crate::uat::tools::TARGET_PLAYER_TOOL;
+use crate::uat::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
 
 /// The press tool whose result carries the ability and the event seq the
 /// cast-id capture starts from.
@@ -214,6 +214,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if let Some(v) = unresolved(&args.to_string()) {
             return fail(rec, format!("unresolved variable {v}"));
         }
+        // lab-spec-vocab (SV-07): `@stand`, and tag targets resolved by the
+        // runner (D-SV1); the record shows the arguments the tool got.
+        if name == STAND_TOOL {
+            return self.exec_stand(who, &args, ctx, rec).await;
+        }
+        let args = match self.expand_target_args(who, &name, args, ctx, rec).await {
+            Ok(a) => a,
+            Err(e) => return fail(rec, e),
+        };
+        rec.args = args.clone();
+        // end lab-spec-vocab
         // `@dummy`, `@cooldowns_reset`, `@clear_effects`: typed dot commands.
         match lab_commands::build(&name, &args) {
             Ok(Some(cmd)) => return self.exec_lab_command(cmd, who, ctx, rec).await,
