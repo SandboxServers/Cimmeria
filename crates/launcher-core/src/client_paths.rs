@@ -1,7 +1,7 @@
 //! User-data paths the SGW client writes to outside the install directory.
 //!
 //! The 2009 client unconditionally writes its mutable runtime state under
-//! `%USERPROFILE%\Documents\My Games\Firesky\SGWGame\`. The
+//! `<Documents>\My Games\Firesky\SGWGame\`. The
 //! `Cache.en-US/` subdirectory holds **server-pushed PAK overrides** —
 //! and crucially the client consults that cache *before* the bundled
 //! PAKs in the install directory ([`docs/architecture/mission-pak-overrides.md`]).
@@ -22,9 +22,12 @@
 //! "already clean" (`Ok(WipeReport::default())`), not an error. IO
 //! failures bubble up so the UI can surface what went wrong.
 //!
-//! The full path is computed from `USERPROFILE` (Windows) or `HOME`
-//! (Unix). The Unix fallback is for unit tests on the CI Ubuntu runner
-//! and Linux dev hosts; the real client only ever runs on Windows.
+//! `Documents` is the folder the client itself asks the shell for
+//! (`SHGetFolderPathW(CSIDL_PERSONAL)`), so a redirected (OneDrive)
+//! Documents is followed. `USERPROFILE\Documents` and then
+//! `$HOME/Documents` are fallbacks only; off Windows nothing else exists,
+//! and the desktop launcher refuses to act there (the Wine client writes
+//! inside its prefix).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -40,45 +43,129 @@ pub const FIRESKY_SUBPATH: &str = "My Games/Firesky";
 /// runtime cache the server pushes PAK overrides into.
 const SGWGAME_CACHE_SUBPATH: &str = "SGWGame/Cache.en-US";
 
-/// Resolve `%USERPROFILE%\Documents\My Games\Firesky` (Windows) or
-/// `$HOME/Documents/My Games/Firesky` (Unix fallback for tests).
+/// Resolve `<Documents>\My Games\Firesky`, `<Documents>` being the
+/// folder [`user_documents`] finds.
 ///
-/// Returns `None` only when neither `USERPROFILE` nor `HOME` is set —
-/// extremely degenerate, but possible in restricted CI environments. The
-/// caller should surface "couldn't find your user profile" rather than
-/// blindly wipe `Documents/My Games/Firesky` relative to the cwd.
+/// Returns `None` only when no Documents folder can be found — extremely
+/// degenerate, but possible in restricted CI environments. The caller
+/// should surface "couldn't find your user profile" rather than blindly
+/// wipe `Documents/My Games/Firesky` relative to the cwd.
 pub fn firesky_root() -> Option<PathBuf> {
     user_documents().map(|d| d.join(FIRESKY_SUBPATH))
 }
 
 /// Resolve the writable PAK-override cache directory the server pushes
-/// into:
-/// `%USERPROFILE%\Documents\My Games\Firesky\SGWGame\Cache.en-US`.
+/// into: `<Documents>\My Games\Firesky\SGWGame\Cache.en-US`.
 pub fn cache_dir() -> Option<PathBuf> {
     firesky_root().map(|r| r.join(SGWGAME_CACHE_SUBPATH))
 }
 
-/// Resolve the per-user `Documents` directory.
+/// Resolve the per-user `Documents` directory the client writes under.
 ///
-/// Windows: `%USERPROFILE%\Documents`. We deliberately don't go through
-/// `SHGetKnownFolderPath(FOLDERID_Documents)` here because the 2009
-/// client itself uses the simpler `USERPROFILE + Documents` path
-/// ([`docs/reverse-engineering/binaries/launcher-exe.md`]) — matching
-/// that exactly is the whole point of this module, even if the user
-/// has redirected their Documents folder elsewhere via the Shell API.
-/// If the client is writing to `%USERPROFILE%\Documents\...` and the
-/// launcher wipes `<redirected>\...`, we wipe the wrong tree.
+/// SGW.exe asks the shell: `SHGetFolderPathW(CSIDL_PERSONAL)`
+/// ([`docs/reverse-engineering/findings/multi-client-lab.md`]), which
+/// follows a Documents folder redirected elsewhere (OneDrive does this).
+/// Joining `%USERPROFILE%\Documents` instead would wipe a tree the client
+/// never reads on such a machine, so that join is only the fallback for
+/// when the shell call fails.
 fn user_documents() -> Option<PathBuf> {
+    #[cfg(any(test, feature = "test-fixtures"))]
+    if let Some(documents) = test_documents::current() {
+        return documents;
+    }
+    resolve_documents(shell_documents(), |name| std::env::var(name).ok())
+}
+
+/// [`user_documents`] with its two sources passed in: the shell's answer
+/// (`None` when it failed, or off Windows) and the environment.
+fn resolve_documents(
+    shell: Option<PathBuf>,
+    env: impl Fn(&str) -> Option<String>,
+) -> Option<PathBuf> {
+    if let Some(documents) = shell.filter(|path| !path.as_os_str().is_empty()) {
+        return Some(documents);
+    }
     // Treat empty values as unset — an empty USERPROFILE would join
     // to "Documents" relative to cwd and the wipe commands would
     // target the wrong tree.
-    if let Some(profile) = std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(profile).join("Documents"));
+    ["USERPROFILE", "HOME"]
+        .into_iter()
+        .find_map(|name| env(name).filter(|value| !value.is_empty()))
+        .map(|profile| PathBuf::from(profile).join("Documents"))
+}
+
+/// The client's own lookup: `SHGetFolderPathW(CSIDL_PERSONAL,
+/// SHGFP_TYPE_CURRENT)`.
+#[cfg(windows)]
+fn shell_documents() -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::MAX_PATH;
+    use windows_sys::Win32::UI::Shell::{SHGetFolderPathW, CSIDL_PERSONAL, SHGFP_TYPE_CURRENT};
+    let mut buffer = [0u16; MAX_PATH as usize];
+    // SAFETY: `buffer` holds MAX_PATH UTF-16 units, the size the call
+    // requires; the window and token handles may be null.
+    let hr = unsafe {
+        SHGetFolderPathW(
+            std::ptr::null_mut(),
+            CSIDL_PERSONAL as i32,
+            std::ptr::null_mut(),
+            SHGFP_TYPE_CURRENT as u32,
+            buffer.as_mut_ptr(),
+        )
+    };
+    if hr < 0 {
+        tracing::warn!(
+            hr,
+            "SHGetFolderPathW(CSIDL_PERSONAL) failed; using USERPROFILE"
+        );
+        return None;
     }
-    if let Some(home) = std::env::var("HOME").ok().filter(|s| !s.is_empty()) {
-        return Some(PathBuf::from(home).join("Documents"));
-    }
+    let len = buffer
+        .iter()
+        .position(|&unit| unit == 0)
+        .unwrap_or(buffer.len());
+    Some(PathBuf::from(std::ffi::OsString::from_wide(&buffer[..len])))
+}
+
+#[cfg(not(windows))]
+fn shell_documents() -> Option<PathBuf> {
     None
+}
+
+/// Replace [`user_documents`]' answer in tests, so a test that wipes the
+/// client folder never reaches the player's real Documents (the shell call
+/// ignores `USERPROFILE` on a redirected machine).
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_documents {
+    use std::path::PathBuf;
+    use std::sync::{Mutex, MutexGuard};
+
+    static DOCUMENTS: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
+
+    /// While held, [`super::firesky_root`] resolves under `documents`, or to
+    /// `None` when `documents` is `None`. Holds [`super::env_test_lock`], so
+    /// two such tests never overlap.
+    pub struct Override {
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    pub fn set(documents: Option<PathBuf>) -> Override {
+        let lock = super::env_test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *DOCUMENTS.lock().unwrap_or_else(|p| p.into_inner()) = Some(documents);
+        Override { _lock: lock }
+    }
+
+    impl Drop for Override {
+        fn drop(&mut self) {
+            *DOCUMENTS.lock().unwrap_or_else(|p| p.into_inner()) = None;
+        }
+    }
+
+    pub(super) fn current() -> Option<Option<PathBuf>> {
+        DOCUMENTS.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
 }
 
 /// Summary of a wipe operation: how many top-level entries were removed
@@ -143,8 +230,8 @@ fn dir_size_best_effort(path: &Path) -> u64 {
 /// Process-wide serialization for tests that mutate `USERPROFILE` /
 /// `HOME` — `std::env::set_var` is process-global and cargo runs tests
 /// multi-threaded by default, so without this lock two env-mutating
-/// tests can trash each other's expected values mid-assertion. Shared
-/// between the unit tests in this file and `worker::tests::spawn_wipe_*`.
+/// tests can trash each other's expected values mid-assertion.
+/// [`test_documents::set`] holds it for as long as its override lasts.
 ///
 /// Test-only so it doesn't leak into release builds; the `test-fixtures`
 /// feature exposes it to the egui launcher's tests, which take it too.
@@ -194,77 +281,92 @@ mod tests {
         assert_eq!(report, WipeReport::default());
     }
 
-    // Resolution path: with USERPROFILE set, firesky_root + cache_dir
-    // must compose to the exact tree the 2009 client writes
-    // (Documents\My Games\Firesky\SGWGame\Cache.en-US).
+    /// An environment holding only the given variables.
+    fn env<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.to_string())
+        }
+    }
+
+    // A redirected Documents (OneDrive) is where the client writes, so the
+    // shell's answer wins over USERPROFILE\Documents.
     #[test]
-    fn firesky_root_uses_userprofile_when_set() {
-        let _g = env_test_lock().lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", dir.path());
-        // Force the USERPROFILE branch even on Unix CI by removing HOME.
-        std::env::remove_var("HOME");
-
-        let root = firesky_root().expect("USERPROFILE was set");
-        assert!(
-            root.ends_with("Documents/My Games/Firesky")
-                || root.ends_with("Documents\\My Games\\Firesky")
+    fn a_redirected_documents_folder_wins_over_userprofile() {
+        let redirected = PathBuf::from("D:/OneDrive/Documents");
+        assert_eq!(
+            resolve_documents(
+                Some(redirected.clone()),
+                env(&[("USERPROFILE", "C:/Users/player"), ("HOME", "/home/player")]),
+            ),
+            Some(redirected)
         );
-        let cache = cache_dir().expect("USERPROFILE was set");
-        assert!(cache.ends_with("Cache.en-US"));
+    }
 
-        // Restore.
-        match prev {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
+    // Read-only: the FFI call answers with a real folder. Nothing is
+    // deleted under it.
+    #[cfg(windows)]
+    #[test]
+    fn the_shell_names_an_absolute_documents_folder() {
+        let documents = shell_documents().expect("SHGetFolderPathW(CSIDL_PERSONAL)");
+        assert!(documents.is_absolute(), "{documents:?}");
+    }
+
+    // The shell call failing (or off Windows) falls back to USERPROFILE,
+    // then HOME.
+    #[test]
+    fn without_the_shell_answer_userprofile_then_home_is_used() {
+        assert_eq!(
+            resolve_documents(
+                None,
+                env(&[("USERPROFILE", "C:/Users/player"), ("HOME", "/h")])
+            ),
+            Some(PathBuf::from("C:/Users/player").join("Documents"))
+        );
+        assert_eq!(
+            resolve_documents(None, env(&[("USERPROFILE", ""), ("HOME", "/h")])),
+            Some(PathBuf::from("/h").join("Documents"))
+        );
+        assert_eq!(
+            resolve_documents(Some(PathBuf::new()), env(&[("HOME", "/h")])),
+            Some(PathBuf::from("/h").join("Documents"))
+        );
     }
 
     // Empty USERPROFILE / HOME must be treated as unset — otherwise
     // user_documents would join "Documents" relative to cwd and the
     // wipe commands would target the wrong tree.
     #[test]
-    fn firesky_root_returns_none_when_both_env_vars_empty() {
-        let _g = env_test_lock().lock().unwrap();
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", "");
-        std::env::set_var("HOME", "");
-        assert!(firesky_root().is_none());
-        match prev_profile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        match prev_home {
-            Some(v) => std::env::set_var("HOME", v),
-            None => std::env::remove_var("HOME"),
-        }
+    fn no_documents_when_nothing_names_one() {
+        assert_eq!(
+            resolve_documents(None, env(&[("USERPROFILE", ""), ("HOME", "")])),
+            None
+        );
+        assert_eq!(resolve_documents(None, env(&[])), None);
     }
 
+    // firesky_root + cache_dir compose to the exact tree the 2009 client
+    // writes (Documents\My Games\Firesky\SGWGame\Cache.en-US).
     #[test]
-    fn firesky_root_falls_back_to_home_when_userprofile_unset() {
-        let _g = env_test_lock().lock().unwrap();
+    fn firesky_root_and_cache_dir_compose_under_documents() {
         let dir = tempfile::tempdir().unwrap();
-        let prev_userprofile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::remove_var("USERPROFILE");
-        std::env::set_var("HOME", dir.path());
-
-        let root = firesky_root().expect("HOME was set");
-        assert!(root.starts_with(dir.path()));
-
-        match prev_userprofile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        match prev_home {
-            Some(v) => std::env::set_var("HOME", v),
-            None => std::env::remove_var("HOME"),
-        }
+        let documents = test_documents::set(Some(dir.path().join("Documents")));
+        assert_eq!(
+            firesky_root(),
+            Some(dir.path().join("Documents").join(FIRESKY_SUBPATH))
+        );
+        assert_eq!(
+            cache_dir(),
+            Some(
+                dir.path()
+                    .join("Documents")
+                    .join(FIRESKY_SUBPATH)
+                    .join(SGWGAME_CACHE_SUBPATH)
+            )
+        );
+        drop(documents);
+        let _none = test_documents::set(None);
+        assert_eq!(firesky_root(), None);
     }
 }

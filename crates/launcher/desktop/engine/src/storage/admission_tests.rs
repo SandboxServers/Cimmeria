@@ -77,6 +77,13 @@ fn resets_and_upload_are_busy_while_any_operation_or_the_updater_runs() {
     for blocker in BLOCKERS {
         let (root, mut state, _ticket) = blocked(blocker);
         let before = files(root.path());
+        // A temp profile, never the player's: the refusal is what is under
+        // test, and a broken gate must not reach a real deletion.
+        let profile = tempfile::tempdir().unwrap();
+        let firesky = profile.path().join("Documents/My Games/Firesky");
+        let marker = firesky.join("SGWGame/Cache.en-US/marker.pak");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, b"keep").unwrap();
         for request in [
             ClientMaintenanceCommand::ResetCache { schema_version: 1 },
             ClientMaintenanceCommand::ResetAllClientState {
@@ -85,10 +92,11 @@ fn resets_and_upload_are_busy_while_any_operation_or_the_updater_runs() {
             },
         ] {
             assert_eq!(
-                state.client_maintenance(request),
+                state.client_maintenance_in(request, &firesky),
                 Err(ClientMaintenanceError::Storage(StorageError::Busy)),
                 "{request:?} during {blocker:?}"
             );
+            assert!(marker.exists(), "{request:?} during {blocker:?}");
         }
         assert_eq!(
             state.log_upload(LogUploadCommand::Upload { schema_version: 1 }),

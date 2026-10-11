@@ -194,9 +194,10 @@ pub(crate) async fn apply_staged_fixture(pool: &PgPool, account_id: i32, f: &Sta
 // missions.rs (FX-02; checks in the precheck, writes after it)
 pub(crate) async fn plan_missions(pool: &PgPool, missions: &[StagedMission]) -> Result<Vec<MissionRow>, String>;
 pub(crate) async fn write_missions(pool: &PgPool, player_id: i32, rows: &[MissionRow]) -> Result<usize, String>;
-// items.rs (FX-03; FX-02 leaves a version that returns Err for a non-empty list,
-// and the precheck refuses a non-empty list first: FX-03 removes that refusal)
-pub(crate) async fn apply_items(pool: &PgPool, player_id: i32, items: &[StagedItem]) -> Result<(u64, u64), String>;
+// items.rs (FX-03; split like the missions: the checks and a rolled-back dry
+// run of the write in the precheck, then one transaction; worknotes/FX-03.md)
+pub(crate) async fn plan_items(pool: &PgPool, player_id: i32, items: &[StagedItem]) -> Result<Vec<ItemPlan>, String>;
+pub(crate) async fn write_items(pool: &PgPool, player_id: i32, plans: &[ItemPlan]) -> Result<(u64, u64), String>;
 // tutorials.rs and position.rs (FX-02)
 pub(crate) async fn forget_tutorials(pool: &PgPool, player_id: i32, ids: &[i32]) -> Result<u64, String>;
 pub(crate) async fn move_player(pool: &PgPool, player_id: i32, world: Option<&str>, position: Option<[f32; 3]>) -> Result<bool, String>;

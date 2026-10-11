@@ -14,6 +14,10 @@
 //! - `client_move_to` ([`movement`]): hold the forward key and steer with
 //!   mouse-look, closed loop on the player's actor position.
 //! - `client_camera` ([`camera`]): raw mouse-look/zoom, or face a point.
+//! - `client_hover_probe` ([`hover`]): put the cursor on an entity or a
+//!   point and on a ring around it, without clicking, and score the pose:
+//!   the client's mouse-over, HUD windows, distance from the avatar and the
+//!   screen edge. For calibrating spec poses.
 //!
 //! **Native level.** Every result carries `native_level` so a UAT runner
 //! can refuse shortcuts: `real_input` (N1: keys, mouse-look, clicks) >
@@ -25,6 +29,7 @@ pub mod camera;
 pub mod click;
 pub mod find;
 pub mod geometry;
+pub mod hover;
 pub mod io;
 pub mod lua;
 pub mod memory;
