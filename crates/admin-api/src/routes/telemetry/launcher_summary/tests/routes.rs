@@ -342,7 +342,9 @@ async fn the_admin_request_span_holds_the_path_alone() {
         "{lines:#?}"
     );
     assert_eq!(count(&format!("uri={PATH}")), 2, "{lines:#?}");
-    assert_eq!(count("method=POST"), 2, "{lines:#?}");
+    // Two request spans, and the `admin.request` row each request writes
+    // (it carries its own `method` field).
+    assert_eq!(count("method=POST"), 4, "{lines:#?}");
     if wrote_rows {
         assert_eq!(count(&format!("event={EVENT_SUMMARY}")), 1, "{lines:#?}");
     }

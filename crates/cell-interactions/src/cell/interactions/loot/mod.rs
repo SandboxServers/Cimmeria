@@ -45,13 +45,24 @@ pub(super) async fn send_loot_display(
         initial,
         "Sending onLootDisplay"
     );
-    let _ = tx
+    let sent = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
             args,
         })
         .await;
+    if sent.is_err() {
+        tracing::warn!(
+            entity_id = player_id,
+            entity_name = space_mgr.entity_label(player_id),
+            npc_entity_id,
+            npc_entity_name = space_mgr.entity_label(npc_entity_id as u32),
+            event = "loot_display_lost",
+            reason = "base_channel_closed",
+            "onLootDisplay: the send to the base failed; the loot window is not refreshed"
+        );
+    }
 }
 
 /// Handle `lootItem(index)` cell method call.
@@ -184,6 +195,25 @@ pub async fn handle_loot_item(
             }
         };
         let Some(target) = space_mgr.get_entity(target_eid) else {
+            // The item left the corpse list and has nowhere to go.
+            let names = cimmeria_names::book();
+            let identity = space_mgr.player_identity(entity_id);
+            tracing::warn!(
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id,
+                player_name = identity.player_name,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                target_eid,
+                index,
+                item_id = item.design_id,
+                item_name = item.design_id.and_then(|d| names.item(d)),
+                quantity = item.quantity,
+                event = "loot_item_lost",
+                reason = "entity_missing",
+                "lootItem: the corpse is gone after the item was taken; the item is lost"
+            );
             return;
         };
         let source = LootGrantSource {
@@ -264,7 +294,7 @@ pub async fn handle_loot_item(
         }
     } else {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
-        let _ = tx
+        let sent = tx
             .send(CellToBaseMsg::GrantCash {
                 entity_id,
                 player_id,
@@ -273,6 +303,24 @@ pub async fn handle_loot_item(
                 gm_feedback_to: None,
             })
             .await;
+        if sent.is_err() {
+            // The base never saw the grant, so the cash is gone from the corpse
+            // and not in the player's purse.
+            tracing::warn!(
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id,
+                player_name = identity.player_name,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                target_eid,
+                index,
+                amount = removed_item.quantity,
+                event = "loot_cash_lost",
+                reason = "base_channel_closed",
+                "lootItem: the cash grant could not reach the base; the cash is lost"
+            );
+        }
     }
 
     // Check if loot is now empty
