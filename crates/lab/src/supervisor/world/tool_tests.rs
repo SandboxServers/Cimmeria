@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::camera::{self, CameraRequest};
 use super::click::{self, ClickRequest, Expect};
 use super::find::{self, FindRequest};
-use super::geometry::Vec3;
+use super::geometry::{wrap_pi, Vec3};
 use super::movement::{self, MoveRequest};
 use super::sim::{Sim, SimEntity, UNITS};
 use super::{PointArg, Space};
@@ -195,13 +195,12 @@ async fn an_occluder_stops_the_click() {
         .fold((0, 0), |a, r| (a.0 + r.0, a.1 + r.1));
     assert_eq!((dx, dy), (0, 0), "the retries end where they began");
     // Regression guard (review of #1309): a failed retry run zooms back out.
+    // The pitch the sim's clamp cut off is taken back in the same look (the
+    // readout now reports it), so the view ends level.
     let zoom: i32 = click::VIEW_RETRIES.iter().map(|r| r.2).sum();
-    assert_eq!(
-        sim.looks.last(),
-        Some(&(0, 0, -zoom * 120)),
-        "{:?}",
-        sim.looks
-    );
+    let last = sim.looks.last().unwrap();
+    assert_eq!((last.0, last.2), (0, -zoom * 120), "{:?}", sim.looks);
+    assert!(sim.cam_pitch.abs() < 0.01, "pitch {}", sim.cam_pitch);
     assert!(state.contains("\"view_restored\":true"), "{state}");
 }
 
@@ -450,4 +449,126 @@ async fn camera_raw_look_and_zoom_are_passed_through() {
     .unwrap();
     assert_eq!(sim.looks, vec![(200, 0, -240)]);
     assert_eq!(out["native_level"], "real_input");
+}
+
+/// Level camera, or one whose readout pitch is `pitch_deg` (the readout
+/// rises when the camera looks up, so the sim's pitch is its negative).
+fn camera_at_pitch(pitch_deg: f64) -> Sim {
+    let mut sim = room();
+    sim.cam_pitch = (-pitch_deg).to_radians();
+    sim
+}
+
+#[tokio::test]
+async fn absolute_pitch_lands_from_any_start() {
+    for start in [0.0, 30.0, -40.0] {
+        let mut sim = camera_at_pitch(start);
+        let out = camera::run(
+            &mut sim,
+            CameraRequest {
+                pitch_deg: Some(-28.8),
+                ..CameraRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        let pitch = &out["absolute"]["pitch"];
+        let got = pitch["got"].as_f64().unwrap();
+        assert!((got + 28.8).abs() <= 0.5, "from {start}: {out}");
+        assert!(pitch["looks"].as_u64().unwrap() <= 4, "from {start}: {out}");
+    }
+}
+
+/// Face a floor point, optionally then hold an absolute pitch.
+async fn face_floor(start_deg: f64, pitch_deg: Option<f64>) -> Value {
+    let mut sim = camera_at_pitch(start_deg);
+    camera::run(
+        &mut sim,
+        CameraRequest {
+            face_point: Some(client_point(1000.0, 0.0, 0.0)),
+            pitch_deg,
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn face_then_absolute_pitch_is_start_independent() {
+    let level = face_floor(0.0, Some(-28.8)).await;
+    let raised = face_floor(22.0, Some(-28.8)).await;
+    let a = level["absolute"]["pitch"]["got"].as_f64().unwrap();
+    let b = raised["absolute"]["pitch"]["got"].as_f64().unwrap();
+    assert!((a - b).abs() <= 0.5, "{a} vs {b}");
+
+    // Without the field the two faces end at different pitches.
+    let level = face_floor(0.0, None).await;
+    let raised = face_floor(22.0, None).await;
+    let a = level["view_after"]["pitch_offset_deg"].as_f64().unwrap();
+    let b = raised["view_after"]["pitch_offset_deg"].as_f64().unwrap();
+    assert!((a - b).abs() > 0.5, "{a} vs {b}");
+}
+
+#[tokio::test]
+async fn yaw_offset_turns_relative_to_the_face() {
+    let mut sim = room();
+    camera::run(
+        &mut sim,
+        CameraRequest {
+            face_entity_id: Some(10),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    let before = sim.cam_yaw;
+    let out = camera::run(
+        &mut sim,
+        CameraRequest {
+            yaw_offset_deg: Some(25.3),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    let turned = wrap_pi(sim.cam_yaw - before).to_degrees();
+    assert!((turned - 25.3).abs() <= 0.5, "{turned}: {out}");
+    // The last look's yaw counts turn the camera the way they point.
+    let (dx, _, _) = *sim.looks.last().unwrap();
+    assert_eq!(dx > 0, turned > 0.0);
+    assert_eq!(out["absolute"]["yaw"]["open_loop"], Value::Null);
+}
+
+#[tokio::test]
+async fn zoom_and_zoom_to_together_is_refused() {
+    let mut sim = Sim::new();
+    let e = camera::run(
+        &mut sim,
+        CameraRequest {
+            zoom: Some(300.0),
+            zoom_to: Some(300.0),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "arguments");
+    assert!(sim.looks.is_empty());
+}
+
+#[tokio::test]
+async fn zoom_moves_the_camera_like_zoom_to() {
+    let mut sim = Sim::new();
+    camera::run(
+        &mut sim,
+        CameraRequest {
+            zoom: Some(400.0),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(sim.looks, vec![(0, 0, -600)]);
+    assert!((sim.zoom - 400.0).abs() < 1e-6);
 }

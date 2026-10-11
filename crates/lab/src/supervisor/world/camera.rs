@@ -5,6 +5,10 @@
 //! point projects near the screen centre, closed loop on the game's own
 //! `worldToPixel`, so it needs no knowledge of the camera's field of view
 //! or the mouse sensitivity (both learned while turning).
+//!
+//! After any face, an absolute pitch (`pitch_deg`) and yaw
+//! (`yaw_offset_deg`) are closed loops on the camera readout and the camera
+//! actor's yaw, so a spec lands on the same pose from any start.
 
 use rmcp::schemars;
 use serde_json::{json, Value};
@@ -22,6 +26,10 @@ pub const LOOK_SETTLE_MS: u64 = 120;
 pub const DEFAULT_FACE_STEPS: u32 = 10;
 /// Wheel units per notch.
 pub const WHEEL_NOTCH: i32 = 120;
+/// How close an absolute pitch or yaw must land, degrees.
+pub const ABS_TOLERANCE_DEG: f64 = 0.5;
+/// Looks an absolute pitch or yaw may take before it fails.
+pub const ABS_MAX_LOOKS: u32 = 4;
 
 /// `client_camera` arguments.
 #[derive(Debug, Clone, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -51,6 +59,15 @@ pub struct CameraRequest {
     /// Max look iterations while facing (default 10).
     #[serde(default)]
     pub max_steps: Option<u32>,
+    /// Absolute pitch after any face, readout degrees (D-SV4).
+    #[serde(default)]
+    pub pitch_deg: Option<f64>,
+    /// Yaw after any face, degrees in the +yaw_counts direction.
+    #[serde(default)]
+    pub yaw_offset_deg: Option<f64>,
+    /// Camera distance; the same as `zoom_to` (an error to give both).
+    #[serde(default)]
+    pub zoom: Option<f32>,
 }
 
 /// What a face run did.
@@ -210,9 +227,137 @@ pub async fn resolve_aim<W: WorldIo>(
     ))
 }
 
+/// Closed loop on the readout's pitch_offset_deg (D-SV4).
+async fn abs_pitch<W: WorldIo>(
+    io: &mut W,
+    steps: &mut Steps,
+    want: f64,
+) -> Result<Value, WorldError> {
+    let t0 = io.now_ms();
+    let mut looks = 0;
+    loop {
+        let r = io
+            .camera_readout()
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "abs_pitch", e))?;
+        let (Some(got), Some(gain)) = (r["pitch_offset_deg"].as_f64(), r["pitch_gain"].as_f64())
+        else {
+            return Err(steps.fail_with(
+                io.now_ms(),
+                "abs_pitch",
+                "camera readout has no pitch_offset_deg or pitch_gain",
+                r,
+            ));
+        };
+        let err = want - got;
+        if err.abs() <= ABS_TOLERANCE_DEG {
+            let out = json!({ "want": want, "got": got, "looks": looks });
+            steps.record("abs_pitch", t0, io.now_ms(), out.clone());
+            return Ok(out);
+        }
+        if looks == ABS_MAX_LOOKS {
+            return Err(steps.fail_with(
+                io.now_ms(),
+                "abs_pitch",
+                format!("the camera stopped at {got:.2} deg, not {want} deg, after {looks} looks"),
+                r,
+            ));
+        }
+        // Rotator units: the readout's degrees, so the clamp sees the same offset.
+        let pitch = (got * 65536.0 / 360.0) as i32;
+        let counts = (err * 65536.0 / 360.0 / gain).round() as f32;
+        let counts = memory::clamped_pitch_counts(pitch, gain as f32, counts).round() as i32;
+        let level = io
+            .look(0, counts, 0)
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
+        steps.used(level);
+        looks += 1;
+        io.sleep(LOOK_SETTLE_MS).await;
+    }
+}
+
+/// Closed loop on the camera actor's world yaw (D-SV4). Without a camera
+/// pose the first look is the whole move, reported as `open_loop`.
+async fn abs_yaw<W: WorldIo>(
+    io: &mut W,
+    steps: &mut Steps,
+    want: f64,
+) -> Result<Value, WorldError> {
+    let t0 = io.now_ms();
+    let r = io
+        .camera_readout()
+        .await
+        .map_err(|e| steps.fail(io.now_ms(), "abs_yaw", e))?;
+    let Some(gain) = r["yaw_gain"].as_f64() else {
+        return Err(steps.fail_with(io.now_ms(), "abs_yaw", "camera readout has no yaw_gain", r));
+    };
+    let y0 = io.camera_pose().await.ok().map(|p| p.yaw);
+    // Signed gain: an inverted camera (0x4) turns the other way.
+    let mut counts = (want * 65536.0 / 360.0 / gain).round() as i32;
+    let mut sent = 0;
+    let mut looks = 0;
+    let mut got = None;
+    let open_loop = loop {
+        let level = io
+            .look(counts, 0, 0)
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
+        steps.used(level);
+        looks += 1;
+        sent += counts;
+        io.sleep(LOOK_SETTLE_MS).await;
+        let turned = match y0 {
+            Some(y0) => io
+                .camera_pose()
+                .await
+                .ok()
+                .map(|p| wrap_pi(p.yaw - y0).to_degrees()),
+            None => None,
+        };
+        let Some(d) = turned else {
+            break true;
+        };
+        got = Some(d);
+        let err = want - d;
+        if err.abs() <= ABS_TOLERANCE_DEG {
+            break false;
+        }
+        if looks == ABS_MAX_LOOKS {
+            return Err(steps.fail_with(
+                io.now_ms(),
+                "abs_yaw",
+                format!("the camera stopped at {d:.2} deg, not {want} deg, after {looks} looks"),
+                json!({ "want": want, "got": d, "looks": looks }),
+            ));
+        }
+        // Scale the counts sent so far by the measured turn; the readout's
+        // gain while the camera has not moved.
+        counts = if d != 0.0 {
+            (err * f64::from(sent) / d).round() as i32
+        } else {
+            (err * 65536.0 / 360.0 / gain).round() as i32
+        };
+    };
+    let mut out = json!({
+        "want": want,
+        "got": got,
+        "looks": looks,
+    });
+    if open_loop {
+        out["open_loop"] = json!(true);
+    }
+    steps.record("abs_yaw", t0, io.now_ms(), out.clone());
+    Ok(out)
+}
+
 /// `client_camera`.
 pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, WorldError> {
     let mut steps = Steps::new("client_camera", io.now_ms());
+    if req.zoom.is_some() && req.zoom_to.is_some() {
+        return Err(steps.fail(io.now_ms(), "arguments", "give zoom or zoom_to, not both"));
+    }
+    let zoom_to = req.zoom_to.or(req.zoom);
     let target = TargetArg {
         entity_id: req.face_entity_id,
         name: req.face_name.clone(),
@@ -226,7 +371,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     let readout_before = io.camera_readout().await;
 
     let (dx, dy) = (req.yaw_counts.unwrap_or(0), req.pitch_counts.unwrap_or(0));
-    let notches = match (req.zoom_to, &readout_before) {
+    let notches = match (zoom_to, &readout_before) {
         (Some(to), Ok(r)) => r["zoom"]
             .as_f64()
             .map(|from| memory::zoom_notches(from as f32, to))
@@ -283,9 +428,17 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         face_json = rep.to_json();
     }
 
+    let mut absolute = serde_json::Map::new();
+    if let Some(want) = req.pitch_deg {
+        absolute.insert("pitch".into(), abs_pitch(io, &mut steps, want).await?);
+    }
+    if let Some(want) = req.yaw_offset_deg {
+        absolute.insert("yaw".into(), abs_yaw(io, &mut steps, want).await?);
+    }
+
     let camera_after = io.camera_pose().await.ok();
     let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
-    let out = json!({
+    let mut out = json!({
         "camera_before": camera_before.map(|p| p.to_json()),
         "camera_after": camera_after.map(|p| p.to_json()),
         "view_before": readout(readout_before),
@@ -293,5 +446,8 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         "target": resolved,
         "face": face_json,
     });
+    if !absolute.is_empty() {
+        out["absolute"] = Value::Object(absolute);
+    }
     Ok(steps.finish(io.now_ms(), out))
 }
