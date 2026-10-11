@@ -138,7 +138,8 @@ impl Worker {
                 git_sha: cfg.git_sha,
                 launcher_version: cfg.launcher_version.clone(),
                 tags: cfg.tags,
-                // TODO(TG-NET-18 launcher release): no game account known yet.
+                // TG-NET-18: no account before the game logs in; world entry
+                // joins on `machine_id` and the request's address.
                 account_name: None,
             };
             let telemetry = match Telemetry::start_session(

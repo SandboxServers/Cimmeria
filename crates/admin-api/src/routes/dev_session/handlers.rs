@@ -68,17 +68,18 @@ pub struct DevSessionRequest {
     #[serde(default)]
     pub session_kind: Option<String>,
     /// The game account the player logs in with (TG-NET-18, owner decision
-    /// D-TG14). Signed into the token as `acct` and recorded so world entry
-    /// can say whether this account has a client telemetry stream. Absent
-    /// from every launcher before it, which still mints: its player's world
-    /// entry just says `absent`. Blank counts as absent.
+    /// D-TG14), when the launcher knows it. Signed into the token as `acct`;
+    /// a stream naming the account wins world entry's join over the machine
+    /// and address match. No launcher sends it today (they mint before the
+    /// game logs in). Blank counts as absent.
     #[serde(default)]
     pub account_name: Option<String>,
 }
 
-/// The longest `account_name` a mint takes. Game account names are far
-/// shorter; this only bounds what an unauthenticated caller can store.
-pub const MAX_ACCOUNT_NAME_LEN: usize = 64;
+/// The longest `account_name` a mint takes: the game login's own cap
+/// (`cimmeria_auth::auth::handlers`, 3 to 20 bytes), so a name the game
+/// would refuse is never stored.
+pub const MAX_ACCOUNT_NAME_LEN: usize = 20;
 
 /// The `acct` claim for a requested account name: `None` when absent or
 /// blank (the token then has the bytes it had before the claim existed),
@@ -91,7 +92,7 @@ pub(super) fn account_claim(requested: Option<&str>) -> Result<Option<String>, A
     if name.len() > MAX_ACCOUNT_NAME_LEN {
         return Err(AuthError::BadField {
             field: "account_name",
-            reason: "exceeds 64 bytes",
+            reason: "exceeds 20 bytes",
         });
     }
     if name.chars().any(char::is_control) {
@@ -282,9 +283,14 @@ pub(super) fn mint_inner(
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
         kind,
         acct,
+        // Every launcher already sends its hashed machine id; signing it
+        // lets a refresh, which sees only the token, re-record the stream.
+        mid: Some(req.machine_id.trim())
+            .filter(|m| !m.is_empty())
+            .map(str::to_string),
     };
     let token = encode_token(&claims, &secret)?;
-    record_stream(&claims);
+    record_stream(&claims, peer_ip);
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines. The token itself
     // is never logged.
@@ -390,9 +396,11 @@ pub(super) fn refresh_inner(
         kind: claims.kind,
         // ...and keeps its account, so world entry still finds the stream.
         acct: claims.acct,
+        // ...and its machine, so the join still finds it by machine.
+        mid: claims.mid,
     };
     let token = encode_token(&new_claims, &secret)?;
-    record_stream(&new_claims);
+    record_stream(&new_claims, peer_ip);
     tracing::info!(
         session_id = %new_claims.sid, // nt:id-only generated UUID, nothing to name
         account_name = new_claims.acct.as_deref(),
@@ -411,18 +419,20 @@ pub(super) fn refresh_inner(
     })
 }
 
-/// Record the stream under its `acct` claim for world entry's
-/// `client_telemetry` field (TG-NET-18); a token without one records
-/// nothing. Called after the token is signed, so a refused mint or refresh
-/// leaves no stream behind.
-fn record_stream(claims: &TokenClaims) {
-    if let Some(acct) = claims.acct.as_deref() {
-        cimmeria_services::auth::client_telemetry::record_client_telemetry_stream(
-            acct,
-            &claims.sid,
-            claims.exp,
-        );
-    }
+/// Record the stream under its `mid` and `acct` claims and the request's
+/// address, for world entry's `client_telemetry` field (TG-NET-18). A
+/// refresh records the address it came from, the launcher's latest. Called
+/// after the token is signed, so a refused mint or refresh leaves no stream
+/// behind.
+fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
+    use cimmeria_services::auth::client_telemetry::{record_client_telemetry_stream, StreamRecord};
+    record_client_telemetry_stream(StreamRecord {
+        session_id: &claims.sid,
+        expires_at_unix: claims.exp,
+        machine_id: claims.mid.as_deref(),
+        account_name: claims.acct.as_deref(),
+        peer_ip: Some(peer_ip),
+    });
 }
 
 /// Every refusal the operator can act on leaves a row with its `reason`

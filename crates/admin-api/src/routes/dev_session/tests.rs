@@ -294,6 +294,7 @@ fn token_minted_at(iat: i64, exp: i64) -> String {
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
         kind: None,
         acct: None,
+        mid: None,
     };
     encode_token(&claims, &secret()).unwrap()
 }

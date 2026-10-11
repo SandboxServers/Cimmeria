@@ -79,15 +79,14 @@ async fn world_entry_complete_names_the_account_the_character_and_the_world() {
     assert!(entered.has_field("world", "Agnos"), "{entered:#?}");
 }
 
-/// Run `mapLoaded` for a session logged in as `account_name` and return the
-/// `World entry complete` line.
+/// Run `mapLoaded` for a session logged in as `account_name` from `addr` and
+/// return the `World entry complete` line.
 async fn world_entry_complete_for(
     capture: &LogCaptureGuard,
     account_name: &str,
-    port: u16,
+    addr: SocketAddr,
 ) -> Captured {
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
-    let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], port));
     let mut client = test_default_connected_client_state();
     client.account_id = 0x2418;
     client.account_name = Some(account_name.into());
@@ -133,36 +132,94 @@ async fn world_entry_complete_for(
         })
 }
 
-/// TG-NET-18 (D-TG14): world entry says whether the account's launcher
-/// minted a client telemetry stream, and names the stream's `session_id`,
-/// the join key to the replayed client rows. An account with no stream says
-/// `absent` and carries no session id. Removing the two fields from the
-/// `World entry complete` line fails both halves.
+/// TG-NET-18 (D-TG14): world entry says whether the session's launcher
+/// minted a client telemetry stream, joined on the launcher's machine id and
+/// this session's address (an account match wins), and names the stream's
+/// `session_id`, the join key to the replayed client rows. Each of the four
+/// values is checked with the fields it carries and the ones it must not;
+/// removing a field from the `World entry complete` line fails its step.
+///
+/// One test, in order, because `unknown` means nothing has been recorded in
+/// this process yet: no other test in this crate records a stream.
 #[tokio::test]
-async fn world_entry_complete_says_whether_the_account_has_client_telemetry() {
-    use cimmeria_auth::auth::client_telemetry::record_client_telemetry_stream;
+async fn world_entry_complete_says_whether_the_session_has_client_telemetry() {
+    use cimmeria_auth::auth::client_telemetry::{record_client_telemetry_stream, StreamRecord};
 
     let capture = LogCapture::install();
-    // The registry is process-wide: these names are this test's own.
-    record_client_telemetry_stream("tg18_with_stream", "tg18-stream-sid", i64::MAX);
+    let at = |last: u8| SocketAddr::from(([10, 18, 0, last], 55612));
+    let record = |sid, mid, acct, last| {
+        record_client_telemetry_stream(StreamRecord {
+            session_id: sid,
+            expires_at_unix: i64::MAX,
+            machine_id: Some(mid),
+            account_name: acct,
+            peer_ip: Some(at(last).ip()),
+        })
+    };
+    let no_join_fields = |row: &Captured| {
+        for f in [
+            "client_telemetry_session_id",
+            "client_machine_id",
+            "client_telemetry_candidates",
+        ] {
+            assert!(!row.fields.contains_key(f), "{f}: {row:#?}");
+        }
+    };
 
-    let present = world_entry_complete_for(&capture, "tg18_with_stream", 55612).await;
+    // No launcher has minted since boot.
+    let unknown = world_entry_complete_for(&capture, "tg18_before_any", at(1)).await;
+    assert!(
+        unknown.has_field("client_telemetry", "unknown"),
+        "{unknown:#?}"
+    );
+    no_join_fields(&unknown);
+
+    // One machine on the session's address.
+    record("tg18-sid-a", "tg18machine0000a", None, 2);
+    let present = world_entry_complete_for(&capture, "tg18_one_machine", at(2)).await;
     assert!(
         present.has_field("client_telemetry", "present"),
         "{present:#?}"
     );
     assert!(
-        present.has_field("client_telemetry_session_id", "tg18-stream-sid"),
+        present.has_field("client_telemetry_session_id", "tg18-sid-a"),
+        "{present:#?}"
+    );
+    assert!(
+        present.has_field("client_machine_id", "tg18machine0000a"),
         "{present:#?}"
     );
 
-    let absent = world_entry_complete_for(&capture, "tg18_without_stream", 55613).await;
+    // Two machines behind one NAT.
+    record("tg18-sid-b", "tg18machine0000b", None, 3);
+    record("tg18-sid-c", "tg18machine0000c", None, 3);
+    let ambiguous = world_entry_complete_for(&capture, "tg18_behind_nat", at(3)).await;
+    assert!(
+        ambiguous.has_field("client_telemetry", "ambiguous"),
+        "{ambiguous:#?}"
+    );
+    assert!(
+        ambiguous.has_field("client_telemetry_candidates", "2"),
+        "{ambiguous:#?}"
+    );
+    assert!(
+        !ambiguous.fields.contains_key("client_telemetry_session_id"),
+        "{ambiguous:#?}"
+    );
+
+    // Launchers have minted, none from this address.
+    let absent = world_entry_complete_for(&capture, "tg18_no_stream", at(4)).await;
     assert!(
         absent.has_field("client_telemetry", "absent"),
         "{absent:#?}"
     );
+    no_join_fields(&absent);
+
+    // A stream naming the account wins over the ambiguous address.
+    record("tg18-sid-d", "tg18machine0000d", Some("tg18_named_acct"), 9);
+    let named = world_entry_complete_for(&capture, "tg18_named_acct", at(3)).await;
     assert!(
-        !absent.fields.contains_key("client_telemetry_session_id"),
-        "{absent:#?}"
+        named.has_field("client_telemetry_session_id", "tg18-sid-d"),
+        "{named:#?}"
     );
 }

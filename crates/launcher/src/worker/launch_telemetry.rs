@@ -58,8 +58,9 @@ pub(super) async fn start_player_session(
         git_sha: cfg.git_sha,
         launcher_version: cfg.launcher_version.clone(),
         tags: cfg.tags,
-        // TODO(TG-NET-18 launcher release): the launcher does not know the
-        // game account yet; until it does, world entry says `absent`.
+        // TG-NET-18: the launcher mints before the game logs in, so it does
+        // not know the account; world entry joins on `machine_id` and the
+        // request's address instead.
         account_name: None,
     };
     let started = tokio::time::timeout(

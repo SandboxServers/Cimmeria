@@ -8,14 +8,16 @@
 //! Token shape:
 //!
 //! ```text
-//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct]})
+//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct], [mid]})
 //! sig     = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
 //!
-//! A mint whose request names the game account (`account_name`, TG-NET-18)
-//! signs it in as `acct` and records the stream in
-//! `cimmeria_auth::auth::client_telemetry`, where world entry looks it up.
+//! A mint signs the request's hashed `machine_id` in as `mid` (and an
+//! `account_name`, when sent, as `acct`), and the mint and every refresh
+//! record the stream with the request's address in
+//! `cimmeria_auth::auth::client_telemetry`, where world entry looks it up
+//! (TG-NET-18).
 //!
 //! # Trust model
 //!

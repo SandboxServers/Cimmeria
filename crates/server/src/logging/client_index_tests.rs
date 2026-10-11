@@ -101,6 +101,7 @@ fn lab_claims() -> TokenClaims {
         scope: vec!["telemetry.write".into()],
         kind: Some("lab".into()),
         acct: None,
+        mid: None,
     }
 }
 

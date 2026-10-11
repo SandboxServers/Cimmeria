@@ -1,7 +1,7 @@
 //! Dev-session token format: claims, HMAC encode/decode, secret loading.
 //!
 //! ```text
-//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct]})
+//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct], [mid]})
 //! sig    = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
@@ -57,6 +57,13 @@ pub struct TokenClaims {
     /// its old bytes. Like `kind`, a signed label, not proof of identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acct: Option<String>,
+    /// The launcher's hashed machine id (its request's `machine_id`; the raw
+    /// Windows `MachineGuid` never leaves the machine), the key world entry
+    /// joins on together with the request's address (TG-NET-18). Omitted
+    /// when the request's `machine_id` is blank, and absent from tokens
+    /// minted before it, which still decode. A signed label, not proof.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid: Option<String>,
 }
 
 impl TokenClaims {
@@ -280,6 +287,7 @@ mod tests {
             scope: vec!["telemetry.write".into()],
             kind: None,
             acct: None,
+            mid: None,
         }
     }
 
@@ -300,6 +308,24 @@ mod tests {
         let token = encode_token(&claims, &test_secret()).unwrap();
         let back = decode_token(&token, &test_secret()).unwrap();
         assert_eq!(back.acct.as_deref(), Some("sgc_login"));
+    }
+
+    /// A token without a machine id carries no `mid` key, one minted before
+    /// the claim existed decodes with none, and a machine id survives the
+    /// signed round trip. Reverting `skip_serializing_if` fails the first.
+    #[test]
+    fn mid_claim_is_omitted_when_absent_and_round_trips_when_present() {
+        let json = serde_json::to_string(&fake_claims()).unwrap();
+        assert!(!json.contains("mid"), "{json}");
+        let old = r#"{"iss":"cimmeria-server","sub":"i","sid":"s","iat":1,"exp":2,"scope":["telemetry.write"]}"#;
+        assert_eq!(serde_json::from_str::<TokenClaims>(old).unwrap().mid, None);
+        let claims = TokenClaims {
+            mid: Some("0123456789abcdef".into()),
+            ..fake_claims()
+        };
+        let token = encode_token(&claims, &test_secret()).unwrap();
+        let back = decode_token(&token, &test_secret()).unwrap();
+        assert_eq!(back.mid.as_deref(), Some("0123456789abcdef"));
     }
 
     /// A player token carries no `kind` key at all, so its bytes are what
