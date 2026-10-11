@@ -33,7 +33,7 @@ Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, ru
 
 - **A merge queue.** PRs land by squash, in groups of up to 5, with up to 5 groups building at once. Only the head of a group has to pass: its run builds the merged result of every PR in the group.
 - **One required check, `ci gate`.** It is `test.yml`'s aggregate of `cargo fmt --check`, `cargo clippy -D warnings` and `cargo build + nextest (workspace + live DB)`: it always runs, and passes only when the `changes` job succeeded and each of the three succeeded or was skipped by design. Requiring the three directly would not be safe: a job whose dependency failed is skipped, and a skipped required check passes, so a failed `changes` job would have let a group land untested. In the queue it runs on the merged result, which is the code that actually lands.
-- **No direct pushes to `main`.** The GitHub Actions app may bypass the merge-queue ruleset, and only `regen-docs` uses that. Repository admins may bypass it, through a PR, for emergencies only. A second ruleset forbids force-pushing or deleting `main`, with no bypass at all.
+- **No direct pushes to `main`.** Deploy keys may bypass the merge-queue ruleset, and the only one is `regen-docs`' write key (secret `REGEN_DOCS_DEPLOY_KEY`; a repository ruleset can't name the GitHub Actions app). Adding another write deploy key would give it the same bypass. Repository admins may bypass it, through a PR, for emergencies only. A second ruleset forbids force-pushing or deleting `main`, with no bypass at all.
 - **Head branches are deleted on merge**, which makes GitHub retarget PRs stacked on a merged branch to `main`.
 
 What that means for you:
