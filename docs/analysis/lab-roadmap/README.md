@@ -17,7 +17,7 @@ inference.
 
 | Effort | Campaign | Prefix | Packets | Can start now | Ledger |
 |---|---|---|---|---|---|
-| 1 | Spec vocabulary and self-calibration | `SV-` | 16 | SV-01, SV-02, SV-03, SV-05 | [lab-spec-vocab](../lab-spec-vocab/README.md) |
+| 1 | Spec vocabulary and self-calibration | `SV-` | 16 | Closed out 2026-10-11; only SV-15 (live acceptance) is left, paused | [lab-spec-vocab](../lab-spec-vocab/README.md) |
 | 2 | Row fixtures and rewind | `FX-` | 13 | After D-FX1 to D-FX3 | [lab-fixtures](../lab-fixtures/README.md) |
 | 3 | Golden runs and run diffing | `GD-` | 11 | GD-01 to GD-05 (pure code) | [lab-golden](../lab-golden/README.md) |
 | 4 | `lab record` and `.bug spec` | `LR-` | 17 | After SV- and GD- contracts land | [lab-record](../lab-record/README.md) |

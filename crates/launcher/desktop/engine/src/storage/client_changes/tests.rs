@@ -198,8 +198,8 @@ fn full_bundle(root: &Path) -> Resources {
 
 /// The launch rows must say what `resolve_play_resources` would load, in every
 /// setting the player can change and for a bundle missing either DLL. The
-/// patches preference is flipped too: a panel that read it directly would
-/// disagree with Play, which (until LX-04) ignores it on a fresh install.
+/// patches preference is flipped too: Play honours it on a fresh install, so a
+/// row that ignored it would disagree with Play.
 #[test]
 fn dll_rows_match_what_play_would_inject() {
     let (root, mut state) = installed();

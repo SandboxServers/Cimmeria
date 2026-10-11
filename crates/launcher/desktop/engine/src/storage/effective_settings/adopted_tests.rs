@@ -129,6 +129,32 @@ fn an_adopted_copy_plays_with_its_reviewed_login_servers_not_the_saved_list() {
 }
 
 #[test]
+fn an_adopted_copy_keeps_its_reviewed_patch_choice_whatever_the_preference() {
+    for (reviewed, telemetry) in [(false, true), (true, false)] {
+        let a = adopted(reviewed, telemetry);
+        let directory = a.legacy.root.path().canonicalize().unwrap();
+        let mut state = DesktopState::open(&a.legacy.state_root()).unwrap();
+        for preference in [!reviewed, reviewed] {
+            let revision = state.preferences().revision;
+            state
+                .save_client_options(vec![], preference, revision)
+                .unwrap();
+            let case = format!("reviewed {reviewed}, preference {preference}");
+            assert_eq!(
+                state.injection_policy().unwrap().client_patches,
+                reviewed,
+                "{case}"
+            );
+            let play = state
+                .resolve_play_resources(bundle(&directory, true))
+                .unwrap()
+                .expect("the patches DLL is bundled");
+            assert_eq!(play.client_patches.is_some(), reviewed, "{case}");
+        }
+    }
+}
+
+#[test]
 fn reopened_adoption_keeps_reviewed_settings_identity_consent_and_source() {
     let a = adopted(false, true);
     let state = DesktopState::open(&a.legacy.state_root()).unwrap();

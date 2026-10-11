@@ -13,6 +13,8 @@ mod reload_on_activate;
 #[cfg(test)]
 mod relog_mission_resurrection;
 #[cfg(test)]
+mod session_start_cause;
+#[cfg(test)]
 mod system_options_assignment;
 #[cfg(test)]
 mod weapon_grant_at_entry;

@@ -67,6 +67,46 @@ fn udp_in_is_complete_on_disk_and_sampled_in_signoz() {
     assert_eq!((file, sampled), (n, n.div_ceil(53)));
 }
 
+/// TG-MER-09: the transport's per-datagram row. Every datagram in
+/// protocol.log, a 1-in-53 `mercury.packet` INFO sample in
+/// `cimmeria-network`, and the samples' counts add back up. Dropping the
+/// `admit()` gate in `log_mercury_packet` fails the sample count (1,000 vs
+/// 19); dropping the file layer's `wire.firehose.mercury_packet=trace` fails
+/// the on-disk count.
+#[test]
+fn mercury_packet_is_complete_on_disk_and_sampled_in_signoz() {
+    let s = firehose::FirehoseSampler::new(firehose::MERCURY_PACKET_SAMPLE_EVERY);
+    let n = 1_000;
+    let (file, sampled, sum) =
+        run_firehose(n, "protocol.log", firehose::MERCURY_PACKET_TARGET, || {
+            firehose::log_mercury_packet(&s, firehose::Direction::Out, 48, addr(), None);
+        });
+    assert_eq!(file, n);
+    assert_eq!(sampled, n.div_ceil(53));
+    assert_eq!(sum, (sampled - 1) * 53 + 1);
+}
+
+/// A failed send is an anomaly: every one reaches `cimmeria-network`,
+/// whatever the sampler says (D-TG7).
+#[test]
+fn failed_mercury_send_is_exported_unsampled() {
+    let s = firehose::FirehoseSampler::new(firehose::MERCURY_PACKET_SAMPLE_EVERY);
+    let err = std::io::Error::other("no route");
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    tracing::dispatcher::with_default(&dispatch, || {
+        for _ in 0..10 {
+            firehose::log_mercury_packet(&s, firehose::Direction::Out, 48, addr(), Some(&err));
+        }
+    });
+    let hits = hits.lock().unwrap();
+    let exported = hits
+        .iter()
+        .filter(|h| h.sink == "otlp:cimmeria-network" && h.target == "mercury.packet")
+        .count();
+    // 10 failure rows plus the one sample the first datagram takes.
+    assert_eq!(exported, 11);
+}
+
 /// The AoI relay: every row in world_entry.log, a 1-in-101
 /// `wire.out.avatar_update` DEBUG sample in `cimmeria-server`.
 #[test]

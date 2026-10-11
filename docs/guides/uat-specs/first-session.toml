@@ -155,6 +155,9 @@ tool = "lab_client_status"
 pointer = "/heartbeat/state"
 op = "eq"
 value = "alive"
+# SV-15 (2026-10-11): the bridge can come up after lab_client_start returns
+# (it read "unreachable" 5 s later, then "alive"), so poll for it (SV-08).
+timeout_ms = 60000
 
 [[row]]
 id = "FS-02"

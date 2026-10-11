@@ -84,8 +84,10 @@ export function mountServerList(document:Document,invoke:Invoke,context:PanelCon
    login_servers:parsed.servers,client_patches_enabled:snapshot.preferences.client_patches_enabled};
   mutation=invoke('launcher_command',{request}).then(async()=>{
    // Until the reload lands the box keeps the player's text: the old snapshot must not overwrite what was saved.
-   const reloaded=await context.refresh().then(()=>true,()=>false);
+   const refreshed=await context.refresh().then(()=>true,()=>false);
    if(disposed)return;
+   // A refresh that brought no snapshot newer than the one this save was based on did not reload it.
+   const reloaded=refreshed&&(context.snapshot()?.preferences.revision??-1)>request.expected_revision;
    if(!reloaded){dirty=true;status.textContent='Saved, but the launcher could not reload settings. Restart the launcher to see the saved list.';return;}
    dirty=false;
    status.textContent=adopted()!==null?'Saved, but this copy keeps the servers it was adopted with.'

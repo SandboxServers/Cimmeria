@@ -151,11 +151,21 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   });
   run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Opening launcher…', 'Settings loaded.');
   const ready = settled;
-  const refresh = () => { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; };
+  // A refresh resolves only after an inspect that started after the call. While any run is in
+  // flight, every refresh asked for joins one queued inspect after it: returning the in-flight
+  // run would hand a panel's post-save refresh a snapshot read before its save committed.
+  let queuedRefresh: Promise<void> | null = null;
+  const refresh = (): Promise<void> => {
+    if (disposed) return settled;
+    if (!active) { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; }
+    // Re-entering refresh (not run) queues again if another run took the slot first.
+    queuedRefresh ??= settled.then(() => { queuedRefresh = null; return refresh(); });
+    return queuedRefresh;
+  };
   return {
     ready,
     refresh,
-    settled: () => Promise.all([settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
+    settled: () => Promise.all([queuedRefresh ?? settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
     dispose: async () => {
       if (disposed) return;
       disposed = true; abort.abort(); listeners.forEach(remove => remove());

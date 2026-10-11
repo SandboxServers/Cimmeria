@@ -2,7 +2,7 @@
 title: "Gap Analysis: Systems New Since the Original Audit (§31-§37)"
 type: explanation
 audience: engineers
-last_updated: 2026-10-05
+last_updated: 2026-10-11
 companion_docs:
   - ../gap-analysis.md
   - ../project-status.md
@@ -124,7 +124,7 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 - **Rust code**: [`crates/admin-api/`](../../crates/admin-api/) (axum REST + WS, 5,217 lines); `src-tauri/` (admin panel app, `cimmeria-app`); [`tools/ContentEditor`](../../tools/ContentEditor/), [`tools/SceneEditor`](../../tools/SceneEditor/) (Tauri); [`crates/launcher/`](../../crates/launcher/) (sgw-launcher, egui, 7,252 lines); [`crates/upk/`](../../crates/upk/) (4,724 lines, incl. `patcher/` + `upk_patch` CLI); live research lab: [`crates/lab/`](../../crates/lab/), [`crates/lab-mcp/`](../../crates/lab-mcp/) (1,187), [`crates/client-launch/`](../../crates/client-launch/) (6,606 lines together), plus the `lab-bridge` feature of `crates/client-telemetry`
 - **Recent PRs**: **#724 (admin API binds 127.0.0.1 by default until JWT lands, #439)**, **#740 (dev-session mint quota)**, **#751 / #753 (UPK append-only patcher + Kismet rig cloning, ring transport Phases 0-1)**, **#692 / #696 / #706 / #693 / #695 / #703 (live research lab 1-6/6)**
 - **Path forward**: JWT middleware and login (#439, #25). Entity WebSocket stream (#27). Entity, player, content and config endpoints still return "not implemented" in places (#26/#28/#29). Tighten CORS from `Any`. Live validation of the research lab exit criteria. Ring transport Phase 1 in-client test. Three.js space viewer.
-- **Development tooling, not counted in the matrix**: the token profiler, [`tools/token-profile/`](../../tools/token-profile/README.md) (token-usage campaign, #1122 to #1140, closed 2026-10-03). It ingests local Claude Code transcripts, reports cost, context and attribution per PR and campaign, reconciles against Claude Code's own totals, and posts one stats comment on every merged PR (backfilled over 406 PRs). It runs on a developer workstation, never in the server, so it has no feature row. How-to: [guides/token-profiling.md](../guides/token-profiling.md); ledger: [analysis/token-usage/](../analysis/token-usage/README.md).
+- **Development tooling, not counted in the matrix**: the token profiler, [`tools/token-profile/`](../../tools/token-profile/README.md) (token-usage campaign, #1122 to #1140, closed 2026-10-03). It ingests local Claude Code transcripts, reports cost, context and attribution per PR and campaign, reconciles against Claude Code's own totals, and posts one stats comment on every merged PR (backfilled over 406 PRs). It runs on a developer workstation, never in the server, so it has no feature row. How-to: [guides/token-profiling.md](../guides/token-profiling.md); ledger: [analysis/token-usage/](../analysis/token-usage/README.md). Also the lab's UAT spec vocabulary (lab-spec-vocab, #1391 to #1466, released 2026-10-11): spec steps target entities by spawn tag, stand at poses, set an absolute camera and wait on server log lines, and `lab calibrate` / `lab uat -Heal` propose pose fixes as spec diffs. Its server additions are read-only lab-MCP arguments (an entity query by tag, `server_log_tail` filters), so the live-research-lab rows below keep their status; the calibrated live acceptance run (SV-15) is paused. Ledger: [analysis/lab-spec-vocab/](../analysis/lab-spec-vocab/README.md).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|

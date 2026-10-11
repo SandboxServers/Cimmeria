@@ -79,15 +79,17 @@ pub(super) fn reconstruct(
     let prepared = parent.join("prepared");
     std::fs::create_dir(&prepared)?;
     for (path, entry) in &raw_index {
-        inventory::copy(&raw.join(path), &prepared.join(path), entry, cancel)?;
+        inventory::copy(
+            &inventory::native(&raw, path),
+            &inventory::native(&prepared, path),
+            entry,
+            cancel,
+        )?;
     }
     crate::client_setup::prepare(&prepared, servers)?;
-    let ledger = crate::state::InstalledState {
-        seed_sha256: Some(manifest.seed.sha256.clone()),
-        seed_adopted: false,
-        applied_patches: manifest.patches.iter().map(|p| p.state_key()).collect(),
-    };
-    ledger.save(&prepared).map_err(|_| StorageError::Io)?;
+    ledger(release)
+        .save(&prepared)
+        .map_err(|_| StorageError::Io)?;
     if !super::super::install_worker::content_valid(&prepared, release) {
         return Err(Error::InvalidArtifact);
     }
@@ -97,6 +99,16 @@ pub(super) fn reconstruct(
         raw: raw_index,
         index,
     })
+}
+/// The ledger an adopted tree carries: the signed release, fully applied. It is
+/// synthesized, never carried over from the old launcher.
+pub(super) fn ledger(release: &VerifiedRelease) -> crate::state::InstalledState {
+    let manifest = release.manifest();
+    crate::state::InstalledState {
+        seed_sha256: Some(manifest.seed.sha256.clone()),
+        seed_adopted: false,
+        applied_patches: manifest.patches.iter().map(|p| p.state_key()).collect(),
+    }
 }
 fn extract(
     source: &Path,
@@ -144,8 +156,9 @@ fn strict_zip(path: &Path) -> Result<(), Error> {
     let mut total = 0u64;
     for i in 0..zip.len() {
         let entry = zip.by_index(i).map_err(|_| Error::InvalidArtifact)?;
-        let path = entry.enclosed_name().ok_or(Error::InvalidArtifact)?;
-        let original = path.to_str().ok_or(Error::InvalidArtifact)?;
+        entry.enclosed_name().ok_or(Error::InvalidArtifact)?;
+        // The stored name, not `enclosed_name`, which uses `\` on Windows.
+        let original = entry.name();
         let name = if entry.is_dir() {
             original.trim_end_matches('/')
         } else {

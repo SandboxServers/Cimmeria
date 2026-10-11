@@ -149,9 +149,9 @@ Three pools:
 
 | Pool | Jobs | Where |
 | --- | --- | --- |
-| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container | Five per node |
-| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt`, `overlay-lua` | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
-| `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow and anything sent there by a variable | GitHub-hosted |
+| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, launcher coverage, spec-lint | Five per node, plus three on the operator's desktop |
+| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, launcher, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
+| `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell) | GitHub-hosted |
 
 GitHub has no overflow between pools (a job waits for a runner with its label), so
 `test.yml`'s `changes` job decides: it counts idle, online `cimmeria-linux` runners
@@ -163,8 +163,8 @@ Without the secret, or if the call fails, they stay self-hosted.
 Repository variables (Settings, Secrets and variables, Actions, Variables):
 
 - `CI_LINUX_RUNNER=hosted`: every routed job to GitHub-hosted runners, e.g. while the nodes are down.
-- `CI_HOSTED_JOBS`: comma-separated job ids (e.g. `coverage-workspace,e2e`) that always run GitHub-hosted.
-- `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow.
+- `CI_HOSTED_JOBS`: comma-separated job ids (e.g. `coverage-workspace,e2e`) that always run GitHub-hosted. It matches the job id, not the workflow: `lint` covers markdownlint's, figure-style's and spec-lint's `lint` jobs, and `fmt` covers every `fmt` job.
+- `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow; `0` turns overflow off. Set to 0 on 2026-10-11: GitHub's hosted pool (shared with the Windows jobs) was as full as ours, so overflowed build jobs queued there while our runners sat idle. The decision is made once per run and never revisited.
 
 ## Security
 

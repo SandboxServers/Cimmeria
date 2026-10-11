@@ -3,16 +3,75 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {makePanelContext} from './panel-context';
-import {mountLogUpload,logUploadUnavailable} from './log-upload-view';
+import {mountLogUpload,logUploadErrorText,logUploadText,logUploadUploading} from './log-upload-view';
 const html=readFileSync('ui/index.html','utf8');
+type Request={command:string;schema_version:number};
+/** A fake native host: `answers` maps each command to a status state or a thrown code. */
+function mount(answers:Record<string,{state?:string;error?:string}>) {
+ const {document,window}=parseHTML(html);const calls:Request[]=[];let release:()=>void=()=>{};
+ const gate=new Promise<void>(resolve=>{release=resolve;});
+ const invoke=async(command:string,args?:Record<string,unknown>)=>{assert.equal(command,'log_upload_command');const request=args!.request as Request;calls.push(request);
+  if(request.command==='upload')await gate;const answer=answers[request.command]!;if(answer.error)throw answer.error;return {schema_version:1,state:answer.state};};
+ const app=mountLogUpload(document as unknown as Document,invoke,makePanelContext().context);
+ const button=()=>document.getElementById('log-upload-button') as HTMLButtonElement;
+ return {document,app,calls,release,button,press:()=>button().dispatchEvent(new window.Event('click')),text:()=>document.getElementById('log-upload-status')!.textContent??''};
+}
 
-// Scaffold (LX-02): LX-05 replaces this with the panel's real behaviour.
-test('the log-upload panel renders its heading and says it is unavailable, without calling native code',async()=>{
- const {document}=parseHTML(html);const calls:string[]=[];
- const app=mountLogUpload(document as unknown as Document,async command=>{calls.push(command);return null;},makePanelContext().context);
- await app.ready;
- assert.equal(document.getElementById('log-upload-title')!.textContent,'Debug logs');
- assert.equal(document.getElementById('log-upload-status')!.textContent,logUploadUnavailable);
- assert.deepEqual(calls,[]);
- await app.dispose();assert.equal(document.getElementById('log-upload-title'),null);
+test('the first press shows Uploading at once, sends one upload, then says Uploaded',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{state:'uploaded'}});await ui.app.ready;
+ assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,false);
+ ui.press();ui.press();
+ assert.equal(ui.text(),logUploadUploading);assert.equal(ui.button().disabled,true);assert.equal(ui.button().getAttribute('aria-busy'),'true');
+ ui.release();await ui.app.settled();
+ assert.equal(ui.text(),'Uploaded');assert.equal(ui.button().disabled,false);
+ assert.deepEqual(ui.calls,[{command:'inspect',schema_version:1},{command:'upload',schema_version:1}]);
+ await ui.app.dispose();assert.equal(ui.document.getElementById('log-upload-title'),null);
+});
+
+test('a repeat of the same logs says there is nothing new',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{state:'nothing_new'}});await ui.app.ready;
+ ui.press();ui.release();await ui.app.settled();
+ assert.equal(ui.text(),'Nothing new to upload');await ui.app.dispose();
+});
+
+test('a build with no log store hides the button and sends no upload',async()=>{
+ const ui=mount({inspect:{state:'disabled'},upload:{state:'uploaded'}});await ui.app.ready;
+ assert.equal(ui.button().hidden,true);ui.press();ui.release();await ui.app.settled();
+ assert.deepEqual(ui.calls.map(c=>c.command),['inspect']);await ui.app.dispose();
+});
+
+test('a busy refusal tells the player to finish or reconcile the running operation',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{error:'busy'}});await ui.app.ready;
+ ui.press();ui.release();await ui.app.settled();
+ assert.equal(ui.text(),logUploadErrorText.busy);assert.match(ui.text(),/Finish or reconcile it first/);
+ assert.equal(ui.button().disabled,false);await ui.app.dispose();
+});
+
+test('a finished operation re-inspects, other snapshots do not',async()=>{
+ const {document}=parseHTML(html);const feed=makePanelContext();let state='not_installed';const calls:string[]=[];
+ const app=mountLogUpload(document as unknown as Document,async(_c,args)=>{calls.push((args!.request as Request).command);return {schema_version:1,state};},feed.context);
+ await app.ready;const button=document.getElementById('log-upload-button') as HTMLButtonElement;assert.equal(button.disabled,true);
+ const snapshot=(op:string|null)=>({operation:{operation:op?{id:'install',state:op}:null}}) as unknown as Parameters<typeof feed.publish>[0];
+ feed.publish(snapshot('running'));feed.publish(snapshot('running'));assert.equal(calls.length,1);
+ state='ready';feed.publish(snapshot('succeeded'));await app.settled();
+ assert.equal(calls.length,2);assert.equal(button.disabled,false);await app.dispose();
+});
+
+test('a network failure is shown, and an unknown rejection is a transport failure',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{error:'network'}});await ui.app.ready;
+ ui.press();ui.release();await ui.app.settled();assert.equal(ui.text(),logUploadErrorText.network);await ui.app.dispose();
+ const odd=mount({inspect:{error:'https://store.example/c?sig=secret'},upload:{state:'uploaded'}});await odd.app.ready;
+ assert.equal(odd.text(),logUploadErrorText.transport);await odd.app.dispose();
+});
+
+test('a later re-inspect keeps the result while ready, and replaces it when the state changes',async()=>{
+ const answers:Record<string,{state?:string;error?:string}>={inspect:{state:'ready'},upload:{state:'uploaded_newest'}};
+ const ui=mount(answers);await ui.app.ready;ui.press();ui.release();await ui.app.settled();
+ assert.equal(ui.text(),logUploadText.uploaded_newest);assert.match(ui.text(),/Older logs were left out/);
+ await ui.app.refresh();assert.equal(ui.text(),logUploadText.uploaded_newest);
+ answers.inspect={state:'not_installed'};await ui.app.refresh();
+ assert.equal(ui.text(),logUploadText.not_installed);assert.equal(ui.button().disabled,true);
+ answers.inspect={state:'ready'};await ui.app.refresh();assert.equal(ui.text(),logUploadText.ready);
+ answers.inspect={error:'busy'};ui.press();await ui.app.settled();await ui.app.refresh();
+ assert.equal(ui.text(),logUploadErrorText.busy);await ui.app.dispose();
 });

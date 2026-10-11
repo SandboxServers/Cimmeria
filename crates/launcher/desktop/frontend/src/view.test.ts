@@ -39,8 +39,9 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get('gear').hidden, true);
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
-    // The changes panel reads its list once, on the first snapshot (LX-07).
-    assert.deepEqual(calls, ['launcher_command', 'client_changes_command', 'fetch_patch_notes']);
+    // The debug-log panel asks once at mount whether an upload can run (LX-05);
+    // the changes panel reads its list once, on the first snapshot (LX-07).
+    assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });
@@ -102,12 +103,33 @@ test('disposing during pending IPC removes controls without claiming a saved res
   const ui = dom(); let calls=0;
   const app = mountLauncher(ui.document, async () => { calls++; return new Promise(() => {}); });
   await flush();
-  assert.equal(calls,1);
+  // Launcher inspect plus the debug-log panel's inspect (LX-05).
+  assert.equal(calls,2);
   await app.dispose();
   ui.click('settings');
   assert.equal(ui.get('gear').hidden,true);
   assert.equal(ui.get<HTMLInputElement>('telemetry').disabled,true);
-  assert.equal(calls,1);
+  assert.equal(calls,2);
+});
+
+test('a refresh asked for during an inspect resolves only after a fresh inspect, coalesced', {timeout:5000}, async () => {
+  const ui = dom(); const answers:((snapshot:NativeSnapshot)=>void)[] = [];
+  const app = mountLauncher(ui.document, async (command,args) => {
+    if(command !== 'launcher_command' || (args!.request as Command).command !== 'inspect') return null;
+    return new Promise(resolve => answers.push(resolve));
+  });
+  try {
+    await flush(); assert.equal(answers.length,1);
+    let firstDone=false; let secondDone=false;
+    // Both asked while the opening inspect is in flight: a post-save refresh must not get it.
+    void app.refresh().then(() => {firstDone=true;}); void app.refresh().then(() => {secondDone=true;});
+    answers[0]!(initial()); await flush(); await flush();
+    assert.equal(answers.length,2, 'one queued inspect starts after the in-flight one');
+    assert.equal(firstDone,false); assert.equal(secondDone,false);
+    answers[1]!({...initial(),preferences:{...initial().preferences,revision:1}}); await flush(); await flush();
+    assert.equal(firstDone,true); assert.equal(secondDone,true);
+    assert.equal(answers.length,2, 'the two refreshes shared one inspect');
+  } finally { await app.dispose(); }
 });
 
 test('native Launch ownership gates directory changes until observed exit',async()=>{
