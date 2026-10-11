@@ -35,7 +35,7 @@ fn shape_entity_get(reply: LabQueryReply, book: &NameBook) -> Result<Value, Stri
     }
 }
 
-/// Filtered entity query. `space_id` / `template_id` / `class_id` are
+/// Filtered entity query. `space_id` / `template_id` / `class_id` / `tag` are
 /// AND-combined; if `radius` is set it must be paired with a center
 /// (`around_entity` or `around_point`).
 #[allow(clippy::too_many_arguments)]
@@ -44,6 +44,7 @@ pub async fn entity_query(
     space_id: Option<u32>,
     template_id: Option<i32>,
     class_id: Option<u8>,
+    tag: Option<String>,
     radius: Option<f32>,
     around_entity: Option<u32>,
     around_point: Option<[f32; 3]>,
@@ -69,6 +70,7 @@ pub async fn entity_query(
         template_id,
         class_id,
         radius,
+        tag,
     };
 
     let reply = state.lab_query(LabQuery::EntityQuery { filter }).await?;

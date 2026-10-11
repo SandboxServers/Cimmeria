@@ -360,10 +360,39 @@ async fn choose_legacy_source(
     }).await.map_err(|_| StorageError::Io)?
 }
 
+/// Whether this process is the launcher an update restarted. The updater starts the
+/// new launcher without waiting for the old one to exit, so the two overlap: the
+/// restarted one must not register as a second instance, or it would exit at once
+/// and the update would never come back up. It waits for the state lock instead
+/// (`NativeHost::store` retries `InUse` for this argument).
+///
+/// Known limit: the restarted launcher stays unguarded for its whole session, so the
+/// first manual launch after an update reaches the state lock and reports it in use
+/// instead of focusing this window. LX-13 removes it: the restart will carry the old
+/// process id, and this process waits for it to exit and then registers the guard.
+fn is_updater_restart(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
+    args.into_iter()
+        .any(|arg| arg == "--launcher-update-restart")
+}
+
 fn main() {
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // First, so a second launch never reaches setup or the state lock. The plugin
+    // exits the second process with status 0 after this callback focuses the first.
+    let builder = if is_updater_restart(std::env::args_os()) {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+    };
+    builder
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data = app.path().app_data_dir()?;
@@ -399,4 +428,18 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");
+}
+
+#[cfg(test)]
+mod single_instance_tests {
+    use super::is_updater_restart;
+
+    #[test]
+    fn only_the_updater_restart_skips_the_single_instance_guard() {
+        assert!(!is_updater_restart(["launcher.exe".into()]));
+        assert!(is_updater_restart([
+            "launcher.exe".into(),
+            "--launcher-update-restart".into()
+        ]));
+    }
 }

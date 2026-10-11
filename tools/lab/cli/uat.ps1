@@ -22,20 +22,40 @@
     Output: one progress line per run, then a summary (pass rate per row and
     per lane, failures grouped by their first failing row, known issues
     tagged). -Json prints only one compact JSON object (on failure too:
-    {"ok":false,"exit":N,"error":...}), for agents. Every batch writes
-    batch.jsonl (one line per run, as each finishes), then batch.json and
-    summary.md, under uat-runs\batch-<time>\ next to the runs' own evidence
-    folders. Ctrl+C starts no new run and still writes the summary of the
+    {"ok":false,"exit":N,"error":...}), for agents. -ProgressToStderr writes
+    the progress lines to stderr, under -Json too (lab golden uses it to show
+    a long batch live). Every batch writes
+    plan.json first, then batch.jsonl (one line per run, as each finishes),
+    then batch.json and summary.md, under uat-runs\batch-<time>\ next to the
+    runs' own evidence folders. Ctrl+C starts no new run and still writes the summary of the
     runs that finished; a run under way finishes on the daemon and releases
     its lease.
 
+    -Fixtures auto|always|never sets when a row's [row.fixture] is applied
+    (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
+    continues a passing chain and starts from its fixture otherwise).
+
+    -DiffGolden compares every passing run with the section's committed
+    golden (<specs>/golden/<section>.json, made by lab golden record): the
+    runs are fingerprinted, lab_golden_diff is called for each passing run's
+    folder, and each gets a `golden` value: match, the first divergence as
+    one line, or error: <why>. A failed run is not compared. Rows' verdicts
+    do not change. Without a golden, or with one that cannot be read, it
+    stops before anything is driven (exit 2).
+
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
-    or plan failed (nothing was driven); 4 a lane stopped early on its brake.
+    or plan failed (nothing was driven); 4 a lane stopped early on its brake;
+    5 every run passed but -DiffGolden did not match on one (a divergence, or
+    a run it could not compare); 8 a heal proposal was written (SV-12),
+    which wins over every other code, 5 included.
 
 .EXAMPLE
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
     lab uat first-session -Instance p2 -PlanOnly
+    lab uat first-session -Rows FS-P4 -RunsPerLease 20
+    lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
+    lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
     lab uat first-session -Leases 3 -RunsPerLease 10 -Json
 #>
 [CmdletBinding()]
@@ -52,6 +72,12 @@ param(
     [int]$StaggerSeconds = 20,
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
+    [string]$Fixtures,
+    [switch]$DiffGolden,
+    # Used by lab golden: runs capture what a golden fingerprint needs.
+    [switch]$Fingerprint,
+    # Used by lab golden: progress lines go to stderr, even under -Json.
+    [switch]$ProgressToStderr,
     [switch]$Json,
     [switch]$Quiet
 )
@@ -61,32 +87,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
-
-# The daemon's MCP URL, from labd.pid's bind (as Get-LabStatus reads it).
-function Get-LabMcpUrl {
-    $bind = '127.0.0.1:8779'
-    $info = Get-DaemonInfo
-    if ($info -and $info.PSObject.Properties.Name -contains 'bind' -and $info.bind) { $bind = [string]$info.bind }
-    return "http://$bind/mcp"
-}
-
-# The repo's spec folder when this runs from a checkout, else $null (the
-# daemon then uses its own default).
-function Get-DefaultSpecsDir {
-    $dir = Join-Path $PSScriptRoot '..\..\..\docs\guides\uat-specs'
-    if (Test-Path -LiteralPath $dir) { return (Resolve-Path -LiteralPath $dir).Path }
-    return $null
-}
-
-# Where the daemon writes run evidence (CIMMERIA_LAB_UAT_DIR, else the lab
-# home's uat-runs), so a batch folder sits next to its runs.
-function Get-UatRoot {
-    $map = Get-LabdEnv
-    foreach ($raw in @($map['CIMMERIA_LAB_UAT_DIR'], $env:CIMMERIA_LAB_UAT_DIR)) {
-        if ("$raw".Trim()) { return "$raw".Trim() }
-    }
-    return Join-Path (Get-LabHome) 'uat-runs'
-}
+. (Join-Path $PSScriptRoot 'golden-lib.ps1')
 
 # A usage or pre-flight failure: plain text on stderr, or under -Json one
 # object on stdout. Returns the exit code.
@@ -101,14 +102,25 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
-    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures
+    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
     if ($shape) { return Stop-Uat 2 $shape }
+    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
+    # A diff needs a golden: without one, stop before anything is driven.
+    if ($DiffGolden) {
+        if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
+        $goldenPath = Get-GoldenPath $specs $Section
+        if (-not (Test-Path -LiteralPath $goldenPath)) {
+            return Stop-Uat 2 "no golden for $Section; record one with lab golden record"
+        }
+        $unreadable = Test-UatGoldenFile $goldenPath
+        if ($unreadable) { return Stop-Uat 2 "golden for $Section cannot be read: $unreadable" }
+    }
     $requested = @(ConvertTo-UatRowIds $Rows)
-    $quiet = $Quiet -or $Json
-    $say = { param($m) if (-not $quiet) { Write-Host $m } }
+    $progress = Get-UatProgressMode $Json $Quiet $ProgressToStderr
+    $say = { param($m) Write-UatProgress $progress $m }
 
     # Pre-flight: daemon, instances, leases, foreign clients.
     $token = Get-LabToken
@@ -132,11 +144,14 @@ function Invoke-LabUat {
     }
 
     $url = Get-LabMcpUrl
-    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     $baseArgs = @{ sections = @($Section) }
     if ($requested.Count) { $baseArgs.rows = $requested }
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
+    if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
+    if ($Fingerprint -or $DiffGolden) { $baseArgs.fingerprint = $true }
+    # lab_golden_diff's arguments less run_dir, or $null without -DiffGolden.
+    $diffArgs = if ($DiffGolden) { @{ section = $Section; specs_dir = $specs } } else { $null }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.
@@ -166,19 +181,29 @@ function Invoke-LabUat {
     $total = $plan.Lanes.Count * $RunsPerLease
     & $say "lab uat $Section`: $($plan.Lanes.Count) lease(s) x $RunsPerLease run(s) = $total run(s) on $(@($plan.Lanes.Instance) -join ', '); rows $($rowIds -join ', ')"
 
+    $started = Get-Date
     $batchDir = Join-Path (Get-UatRoot) "batch-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
     $jsonl = Join-Path $batchDir 'batch.jsonl'
+    try {
+        New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
+        # plan.json before any lane starts, so a watcher never sees runs without a plan.
+        Write-UatPlan (Join-Path $batchDir 'plan.json') ([ordered]@{
+            schema = 1; section = $Section; rows = $rowIds
+            lanes = @($plan.Lanes | ForEach-Object { [ordered]@{ lane = $_.Lane; instance = $_.Instance } })
+            runs_per_lease = $RunsPerLease; started = $started.ToUniversalTime().ToString('o'); pid = $PID
+        })
+    } catch {
+        return Stop-Uat 3 "cannot write the batch folder ${batchDir}: $(($_.Exception.Message -split "`n")[0])"
+    }
     $lib = Join-Path $PSScriptRoot 'uat-lib.ps1'
     $common = Join-Path $PSScriptRoot 'common.ps1'
-    $started = Get-Date
 
     try {
         $plan.Lanes | ForEach-Object -ThrottleLimit $plan.Lanes.Count -Parallel {
             . $using:common
             . $using:lib
             $lane = $_
-            $quietL = $using:quiet
+            $progressL = $using:progress
             $n = $using:RunsPerLease
             $outcomes = @()
             try {
@@ -186,7 +211,8 @@ function Invoke-LabUat {
                 for ($i = 1; $i -le $n; $i++) {
                     $t0 = Get-Date
                     $rec = [ordered]@{ Lane = $lane.Lane; Instance = $lane.Instance; Index = $i; Ok = $false; Rows = @()
-                                       Verdict = $null; RunDir = $null; Error = $null; Seconds = 0; Braked = $false }
+                                       Verdict = $null; RunDir = $null; Error = $null; Seconds = 0; Braked = $false
+                                       Started = $t0.ToUniversalTime().ToString('o'); Ended = $null }
                     $timedOut = $false
                     try {
                         $s = New-McpSession $using:url $using:token
@@ -202,6 +228,15 @@ function Invoke-LabUat {
                         $rec.Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = $rec.Error; Issue = $null }
                     }
                     $rec.Seconds = [int]((Get-Date) - $t0).TotalSeconds
+                    # -DiffGolden: compare a passing run's folder with the
+                    # golden. The run's verdict stays as it is (README D-GD7).
+                    $urlL = $using:url; $tokenL = $using:token
+                    $golden = Get-UatRunGolden $rec $using:diffArgs {
+                        param($ga)
+                        $gs = New-McpSession $urlL $tokenL
+                        try { Invoke-McpTool $gs 'lab_golden_diff' $ga 120 } finally { Close-McpSession $gs }
+                    }
+                    if ($null -ne $golden) { $rec.Golden = $golden }
                     $outcomes += $rec.Ok
                     # A run cut short here may still hold its lease on the
                     # daemon: wait for it, or the next run collides with it.
@@ -209,22 +244,20 @@ function Invoke-LabUat {
                     if ($timedOut) { $stuck = -not (Wait-UatLeaseFree $lane.Instance 600) }
                     $brake = Test-UatStopLane $i $n $outcomes $using:MaxConsecutiveFailures
                     $rec.Braked = $brake -or $stuck
+                    $rec.Ended = (Get-Date).ToUniversalTime().ToString('o')
                     Add-UatRecord $using:jsonl $rec
-                    if (-not $quietL) {
-                        $what = if ($rec.Ok) { 'PASS' } elseif ($rec.Error) { "ERROR $($rec.Error)" } else {
-                            "FAIL $($rec.Verdict.Row): $($rec.Verdict.Reason)$(if ($rec.Verdict.Issue) { " [known $($rec.Verdict.Issue)]" })" }
-                        Write-Host ("[{0} {1}/{2}] {3} ({4}s)" -f $lane.Instance, $i, $n, $what, $rec.Seconds)
-                        if ($stuck) { Write-Host "[$($lane.Instance)] its lease did not clear after the timeout; lane stopped" }
-                        elseif ($brake) { Write-Host "[$($lane.Instance)] stopped after $($using:MaxConsecutiveFailures) failed runs in a row" }
-                    }
+                    Write-UatProgress $progressL (Format-UatProgressLine $rec $n)
+                    if ($stuck) { Write-UatProgress $progressL "[$($lane.Instance)] its lease did not clear after the timeout; lane stopped" }
+                    elseif ($brake) { Write-UatProgress $progressL "[$($lane.Instance)] stopped after $($using:MaxConsecutiveFailures) failed runs in a row" }
                     if ($rec.Braked) { break }
                 }
             } catch {
                 # A lane that dies outside a run still leaves a record, so the batch reports it.
                 $err = Hide-LeaseIds (($_.Exception.Message -split "`n")[0])
+                $at = (Get-Date).ToUniversalTime().ToString('o')
                 Add-UatRecord $using:jsonl ([ordered]@{ Lane = $lane.Lane; Instance = $lane.Instance; Index = 0; Ok = $false
                     Rows = @(); Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = $err; Issue = $null }
-                    RunDir = $null; Error = "lane: $err"; Seconds = 0; Braked = $true })
+                    RunDir = $null; Error = "lane: $err"; Seconds = 0; Braked = $true; Started = $at; Ended = $at })
             }
         }
     } finally {

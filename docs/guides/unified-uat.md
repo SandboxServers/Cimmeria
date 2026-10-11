@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-04
+last_updated: 2026-10-11
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-04. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-11. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -234,6 +234,16 @@ What every new player does in their first ten minutes, once per faction. Run it 
 | FS-S5 | Use the Elevator Controls; finish the dialog | Dialog 5357; objectives 5353 and 5358 done; you are moved to the armory | |
 | FS-S6 | Search the body holding the firearm | 1559 completes; a pistol in the backpack; dialog 5358 | |
 | FS-99 | Delete both characters | Both gone | |
+
+**Golden diff (lab only, once the golden exists).** After a server change, run `lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden`. Expect `golden: match` on every passing run. A divergence line (exit 5) does not fail a row: it names the first message, transition or window where the run stopped matching the recorded good runs. How to read it: [automated-uat.md, Golden runs](automated-uat.md#golden-runs).
+
+**Still to run: GD-10, record the first-session golden (owner or coordinator agent).** Not before lab-spec-vocab SV-13 (the spec migration) and SV-15 (its recalibration) have merged, or the golden is stale on arrival. Then, with the owner's OK and the lab free for about 25 minutes:
+
+1. Reinstall the lab from the merged `main`: `lab install -From <checkout>` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
+2. From the `gd10` worktree: `lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Runs 5 -ServerVersion <sha>`, where `<sha>` is the server build the lab runs against.
+3. Then `lab uat first-session -Rows <the same rows> -DiffGolden` once: it must report `golden: match`.
+
+The rules for a disagreement (exit 6) or an FS-P2 #1341 failure, and what to commit and record, are in [GD-10](../analysis/lab-golden/work-packets-2.md#gd-10-live-acceptance).
 
 **SigNoz:** search `body CONTAINS 'accepting mission'` and `body CONTAINS 'completing mission'` with the mission id (622, 1559) around the row's time; chain matching is `scope_name = 'content.resolve'`.
 
@@ -1176,6 +1186,20 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 
+## Mission data lock
+
+When the server cannot read a character's saved missions at login, it locks their missions instead of treating them as never taken (TG-DB-12, D-TG18). Background: [mission-system.md](../gameplay/mission-system.md#unreadable-saved-missions-tg-db-12).
+
+**Status:** Ready to test on a local server only; not yet run by a person. The automated guard is `live_db_unreadable_missions_block_reaccept`.
+
+**Prerequisites:** an operator with `psql` on a local server, and a character with at least one completed mission that a chain or NPC would offer again (for example a finished Cellblock mission). The lock needs the read to fail, so the operator breaks it on purpose: `REVOKE SELECT ON sgw_mission FROM "<server role>";` before the login and `GRANT SELECT ON sgw_mission TO "<server role>";` to end it. Never do this on the colo.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| ML-01 | Revoke the read, then log the character in | Login takes about 1.5 s longer and finishes; the journal is empty. SigNoz: `player_load_degraded` with `reason = missions_query_failed` and `attempts = 4`, then `mission_state_locked` | |
+| ML-02 | Talk to the NPC or walk into the volume that offers the completed mission; try to accept it | "Mission data unavailable, try again shortly." on the first press; nothing is accepted. Pressing again within 5 s shows no second line. SigNoz: WARN `mission_state_unknown`, `reason = saved_missions_unreadable`, with `suppressed` on the next row | The completed row in `sgw_mission` is unchanged |
+| ML-03 | Grant the read back and wait up to 30 s | "Mission data restored."; the journal fills with your active missions. SigNoz: `mission_state_recovered`, then `player_loaded_replayed` if a login chain was dropped | A login (`player_loaded`) chain dropped during the lock re-fires now; any other refused chain does not: trigger it again |
+| ML-04 | Retry ML-02's offer | The offer guard judges it as normal: a completed, non-repeatable mission is not offered again | |
 ## Recording results
 
 Copy this block once per step you run, fill it in, and send it to the owner (or paste it on the campaign's tracking issue). Keep failures and passes both: a pass is evidence too.

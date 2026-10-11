@@ -154,6 +154,71 @@ async fn entity_query_filters_by_class_and_radius() {
     assert_eq!(ids, vec![200], "only the near NPC is within radius 50");
 }
 
+/// `EntityQuery` honours the spawn-tag filter: exact and case sensitive.
+#[tokio::test]
+async fn lab_query_filters_by_tag() {
+    let mut mgr = make_manager();
+    mgr.create_entity(300, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(300) {
+        e.class_id = 0x04;
+        e.tag = Some("A_Body".to_string());
+    }
+    mgr.create_entity(301, "Agnos", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(301) {
+        e.class_id = 0x04;
+        e.tag = Some("B_Body".to_string());
+    }
+    // An untagged entity must never match a tag filter.
+    mgr.create_entity(302, "Agnos", [8.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(302) {
+        e.class_id = 0x04;
+        e.tag = None;
+    }
+
+    let reply = query(
+        &mut mgr,
+        LabQuery::EntityQuery {
+            filter: LabEntityFilter {
+                tag: Some("A_Body".to_string()),
+                ..Default::default()
+            },
+        },
+    )
+    .await
+    .unwrap();
+    let LabQueryReply::Entities {
+        entities,
+        total_matched,
+        ..
+    } = reply
+    else {
+        panic!("expected Entities reply");
+    };
+    assert_eq!(total_matched, 1, "only A_Body matches its tag");
+    assert_eq!(entities.len(), 1);
+    assert_eq!(entities[0].entity_id, 300);
+    assert_eq!(entities[0].tag.as_deref(), Some("A_Body"));
+
+    let reply = query(
+        &mut mgr,
+        LabQuery::EntityQuery {
+            filter: LabEntityFilter {
+                tag: Some("a_body".to_string()),
+                ..Default::default()
+            },
+        },
+    )
+    .await
+    .unwrap();
+    let LabQueryReply::Entities { total_matched, .. } = reply else {
+        panic!("expected Entities reply");
+    };
+    assert_eq!(total_matched, 0, "tag match is case sensitive");
+}
+
 /// A radius centered on a non-existent anchor fails the query rather than
 /// silently matching nothing.
 #[tokio::test]

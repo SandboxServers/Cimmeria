@@ -11,9 +11,10 @@ use super::LabServer;
 use crate::supervisor::world::camera::CameraRequest;
 use crate::supervisor::world::click::{ClickRequest, Expect};
 use crate::supervisor::world::find::FindRequest;
+use crate::supervisor::world::hover::HoverRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
-use crate::supervisor::world::{camera, click, find, movement, WorldError};
+use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
 
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
@@ -62,7 +63,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel). Reports the camera actor's pose before and after."
+        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after."
     )]
     async fn client_camera(
         &self,
@@ -70,6 +71,17 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         let mut io = LiveWorld::new(&self.supervisor);
         world_result(camera::run(&mut io, a).await)
+    }
+
+    #[tool(
+        description = "Hover a target or a world point with the cursor, without clicking, and score it: whether the client's mouse-over (and no HUD window) is right at the aim pixel and at 8 points around it, and how far the pixel is from the avatar and the screen edge. For calibrating spec poses."
+    )]
+    async fn client_hover_probe(
+        &self,
+        Parameters(a): Parameters<HoverRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut io = LiveWorld::new(&self.supervisor);
+        world_result(hover::run(&mut io, a).await)
     }
 }
 
@@ -113,6 +125,7 @@ mod tests {
             "client_target",
             "client_move_to",
             "client_camera",
+            "client_hover_probe",
         ] {
             let t = s
                 .tool_router

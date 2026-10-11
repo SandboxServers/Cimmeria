@@ -13,7 +13,7 @@ use super::{RowCtx, Runner};
 use crate::uat::invoke::ToolInvoker;
 use crate::uat::spec::{ActionSpec, RowSpec};
 use crate::uat::tier::Role;
-use crate::uat::tools::TARGET_PLAYER_TOOL;
+use crate::uat::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
 
 /// The `client` value that selects the second player.
 pub const P2: &str = "p2";
@@ -90,12 +90,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         // The ability lab commands are typed chat, confirmed from the chat
         // box: they need a chat sender and the chat reader.
         if crate::uat::lab_commands::is_lab_command(tool) {
-            let inv = self.on(who);
-            let send = inv.has_tool(super::actions::CHAT_SEND_TOOL)
-                || super::actions::CHAT_MACRO_TOOLS
-                    .iter()
-                    .all(|t| inv.has_tool(t));
-            return send && inv.has_tool(super::actions::CHAT_READ_TOOL);
+            return self.can_send_chat(who)
+                && self.on(who).has_tool(super::actions::CHAT_READ_TOOL);
+        }
+        // lab-spec-vocab (SV-03): `@stand` is typed chat (`/gmgotoxyz`).
+        if tool == STAND_TOOL {
+            return self.can_send_chat(who);
         }
         let tool = if tool == TARGET_PLAYER_TOOL {
             "client_target"
@@ -103,6 +103,15 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             tool
         };
         self.on(who).has_tool(tool)
+    }
+
+    /// Whether `who` can type a chat line: the chat sender, or the macro set.
+    fn can_send_chat(&self, who: Who) -> bool {
+        let inv = self.on(who);
+        inv.has_tool(super::actions::CHAT_SEND_TOOL)
+            || super::actions::CHAT_MACRO_TOOLS
+                .iter()
+                .all(|t| inv.has_tool(t))
     }
 
     /// Why this row cannot have the players it needs, found before

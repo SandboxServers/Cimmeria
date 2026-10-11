@@ -21,6 +21,8 @@ export const NativeSnapshot = Schema.Struct({
     login_servers: Schema.Array(LoginServer), client_patches_enabled: Schema.Boolean,
   }),
   requires_reopen: Schema.Boolean,
+  // An adopted copy plays with the list its adoption reviewed, whatever is saved above.
+  adopted_login_servers: Schema.NullOr(Schema.Array(LoginServer)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
@@ -34,7 +36,7 @@ export type Command = {command: "inspect"; schema_version: 1} | {
 
 // Native storage codes as `StorageError` serializes them.
 export type StorageCode = "in_use" | "io" | "corrupt" | "unsupported_schema" | "too_large" | "unsafe_file" |
-  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain";
+  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" | "invalid_server_list";
 /** The three scaffold commands (LX-02) fail with one flat code string: a storage code or `"unavailable"`. */
 export type ScaffoldError = StorageCode | "unavailable";
 
@@ -44,27 +46,56 @@ export const LogUploadStatus = Schema.Struct({schema_version: Schema.Literal(1)}
 export type LogUploadStatus = typeof LogUploadStatus.Type;
 export type LogUploadError = ScaffoldError;
 
-// `client_maintenance_command` (engine `storage/client_maintenance/`, filled by LX-06).
+// `client_maintenance_command` (engine `storage/client_maintenance/`, LX-06).
 export type ClientMaintenanceCommand = {command: "inspect"; schema_version: 1} |
   {command: "reset_cache"; schema_version: 1} |
   {command: "reset_all_client_state"; schema_version: 1; confirmed: boolean};
-export const ClientMaintenanceStatus = Schema.Struct({schema_version: Schema.Literal(1)});
+/** One folder the client writes: shown to the player, never sent back. */
+const TreeStatus = Schema.Struct({path: Schema.String, exists: Schema.Boolean});
+export const ClientMaintenanceStatus = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  /** `Firesky\SGWGame\Cache.en-US`. */
+  cache: TreeStatus,
+  /** The whole `Firesky` tree. */
+  client_state: TreeStatus,
+  /** Whether the reset removed anything; null for `inspect`. */
+  removed: Schema.NullOr(Schema.Boolean),
+});
 export type ClientMaintenanceStatus = typeof ClientMaintenanceStatus.Type;
-export type ClientMaintenanceError = ScaffoldError;
+/** `ClientMaintenanceError`: a storage code or one of its own flat codes. */
+export type ClientMaintenanceError = StorageCode | "confirmation_required" | "profile_unavailable" | "unsafe_path";
+const clientMaintenanceCodes = new Set(["confirmation_required", "profile_unavailable", "unsafe_path"]);
+export function clientMaintenanceFailure(error: unknown): ClientMaintenanceError | "transport" {
+  return typeof error === "string" && clientMaintenanceCodes.has(error)
+    ? error as ClientMaintenanceError : safeFailure(error).code as StorageCode | "transport";
+}
+export const decodeClientMaintenanceStatus = (value: unknown) => Schema.decodeUnknownEffect(ClientMaintenanceStatus,
+  {onExcessProperty: "error"})(value).pipe(Effect.mapError(() => new BridgeFailure({code: "schema"})));
 
 // `client_changes_command` (engine `storage/client_changes/`, filled by LX-07).
 export type ClientChangesCommand = {command: "inspect"; schema_version: 1};
-export const ClientChangesStatus = Schema.Struct({schema_version: Schema.Literal(1)});
+export const ClientChangeRow = Schema.Struct({
+  group: Schema.Literals(["setup", "patch", "launch", "server"]), heading: Schema.String,
+  title: Schema.String, description: Schema.String,
+  status: Schema.Literals(["every_launch", "at_install", "applied", "pending", "on_launch", "off", "during_play", "missing"]),
+  status_label: Schema.String, patch_id: Schema.NullOr(Schema.String),
+});
+export type ClientChangeRow = typeof ClientChangeRow.Type;
+export const ClientChangesStatus = Schema.Struct({
+  schema_version: Schema.Literal(1), installed: Schema.Boolean, changes: Schema.Array(ClientChangeRow),
+  install_record_unreadable: Schema.Boolean,
+});
 export type ClientChangesStatus = typeof ClientChangesStatus.Type;
 export type ClientChangesError = ScaffoldError;
 
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{
   readonly code: "transport" | "schema" | "in_use" | "io" | "corrupt" | "unsupported_schema" |
-    "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain";
+    "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" |
+    "invalid_server_list";
 }> {}
 
 const nativeCodes = new Set(["in_use", "io", "corrupt", "unsupported_schema", "too_large", "unsafe_file",
-  "invalid_directory", "stale_revision", "busy", "persistence_uncertain"]);
+  "invalid_directory", "stale_revision", "busy", "persistence_uncertain", "invalid_server_list"]);
 export function safeFailure(error: unknown): BridgeFailure {
   return new BridgeFailure({code: typeof error === "string" && nativeCodes.has(error)
     ? error as BridgeFailure["code"] : "transport"});

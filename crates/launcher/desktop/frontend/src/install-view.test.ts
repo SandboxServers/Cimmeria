@@ -7,7 +7,7 @@ import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
 const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
-  requires_reopen:false,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
+  requires_reopen:false,adopted_login_servers:null,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
 function dom(){const {document,window}=parseHTML(html);return {document:document as unknown as Document,
@@ -266,5 +266,23 @@ test('minimum-version rejection preserves state and reports update requirement',
  const app=mountInstall(ui.document,async(_,{request}:any)=>{if(request.command==='install'){installs++;throw 'launcher_too_old';}return status;});
  try{await app.ready;await flush();ui.click('install');ui.click('install');await app.settled();await flush();
  assert.equal(installs,1);assert.match(ui.get('install-status').textContent!,/Update the launcher/);assert.deepEqual(status,initial());
+ }finally{await app.dispose();}
+});
+
+test('a finished operation is reported once, so Settings can re-read; one finished before mount is not',{timeout:5000},async()=>{
+ const ui=dom();let status=initial();let finished=0;
+ const done=(opId:string,kind:'install'|'uninstall'):InstallStatus=>({...status,native:{...status.native,
+   operation:{schema_version:1 as const,revision:status.native.operation.revision+1,operation:{id:opId,kind,intent_digest:Array(32).fill(0),state:'succeeded' as const}}}});
+ status=done('0d1f4a52-27b7-4f5b-9a1c-2b6e1f0c9a11','install');
+ const app=mountInstall(ui.document,async(_command,args)=>{
+   if((args!.request as InstallRequest).command==='uninstall')status=done(id,'uninstall');
+   return status;
+ },()=>id,()=>{finished++;});
+ try{await app.ready;await flush();assert.equal(finished,0,'already finished at startup');
+   await app.refresh();await flush();assert.equal(finished,0);
+   status={...status,uninstall:{installation_id:'i',directory:'/fixture',recovery:false}} as InstallStatus;await app.refresh();await flush();
+   ui.click('uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
+   assert.equal(finished,1);
+   await app.refresh();await flush();assert.equal(finished,1,'a re-read of the same result is not a new finish');
  }finally{await app.dispose();}
 });

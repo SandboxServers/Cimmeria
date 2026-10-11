@@ -23,6 +23,7 @@ pub use cimmeria_base_methods::base::world_entry::methods;
 pub(crate) mod cell_dispatch;
 mod enable_entities;
 mod gate_travel;
+mod lab_fixture;
 pub(crate) mod looted_containers;
 mod map_loaded;
 mod map_loaded_wire_rows;

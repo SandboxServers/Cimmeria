@@ -7,7 +7,7 @@ import { Command, NativeSnapshot } from './contract';
 
 const html = await readFile(new URL('../ui/index.html', import.meta.url), 'utf8');
 const initial = (): NativeSnapshot => ({schema_version:1, operation:{schema_version:1, revision:0, operation:null},
-  preferences:{schema_version:2, revision:0, install_directory:null, launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}, requires_reopen:false});
+  preferences:{schema_version:2, revision:0, install_directory:null, launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}, requires_reopen:false,adopted_login_servers:null});
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 
 function dom() {
@@ -39,7 +39,8 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get('gear').hidden, true);
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
-    assert.deepEqual(calls, ['launcher_command', 'fetch_patch_notes']);
+    // The changes panel reads its list once, on the first snapshot (LX-07).
+    assert.deepEqual(calls, ['launcher_command', 'client_changes_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });

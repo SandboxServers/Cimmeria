@@ -125,9 +125,12 @@ impl From<StorageError> for JobError {
         match error {
             StorageError::InUse | StorageError::Busy => Self::Busy,
             StorageError::Io => Self::Io,
-            StorageError::Corrupt | StorageError::TooLarge | StorageError::UnsafeFile => {
-                Self::CorruptState
-            }
+            // Play refuses a saved server list that fails validation before
+            // anything is written; to a job that is a damaged state.
+            StorageError::Corrupt
+            | StorageError::TooLarge
+            | StorageError::UnsafeFile
+            | StorageError::InvalidServerList => Self::CorruptState,
             StorageError::UnsupportedSchema => Self::UnsupportedSchema,
             StorageError::InvalidDirectory => Self::InvalidDirectory,
             StorageError::StaleRevision => Self::StaleRevision,

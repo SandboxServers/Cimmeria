@@ -35,6 +35,9 @@ try {
     Check ((Format-Ago 3599) -eq '59m') 'Format-Ago 3599 is 59m'
     Check ((Format-Ago 5400) -eq '1h 30m') 'Format-Ago 5400 is 1h 30m'
 
+    # --- Select-LabLogLine: the log filter lives here, so any command can dot-source it ---
+    Check ($null -ne (Get-Command Select-LabLogLine -CommandType Function -ErrorAction SilentlyContinue)) 'Select-LabLogLine is defined by common.ps1 alone'
+
     # --- lab.ps1: named arguments reach the command, exit codes pass through ---
     # A copy of the dispatcher with two fake commands, run the way lab.cmd runs it.
     $disp = Join-Path $tmp 'dispatch'

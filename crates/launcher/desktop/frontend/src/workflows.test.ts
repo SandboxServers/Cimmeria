@@ -8,7 +8,7 @@ import { bridgeLayer, makeLauncher } from "./workflows";
 const initial = (): NativeSnapshot => ({schema_version: 1,
   operation: {schema_version: 1, revision: 0, operation: null},
   preferences: {schema_version: 2, revision: 0, install_directory: null, launcher_summary_consent: false,login_servers:[],client_patches_enabled:true},
-  requires_reopen: false});
+  requires_reopen: false, adopted_login_servers: null});
 
 function failureCode(result: Result.Result<unknown, {code: string}>) {
   assert.ok(Result.isFailure(result));

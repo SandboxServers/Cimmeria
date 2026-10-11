@@ -35,6 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Reference
 
 - [reference_self_hosted_runners_2026_10_10.md](reference_self_hosted_runners_2026_10_10.md) — 10 dockerized cimmeria-linux runners (node5/node2), one dind each via unix socket; dind-entrypoint 2375 trap; fork approval = all outside contributors
+- [reference_lab_golden_fingerprints_2026_10_11.md](reference_lab_golden_fingerprints_2026_10_11.md) — lab golden rules: offline from the bundle, tap names, entity labels, key-arg allowlist, 5 all-PASS runs agree, diff under the golden's variance, fresh-run rebless, grade-neutral capture
 - [reference_lab_cli_powershell_traps_2026_10_10.md](reference_lab_cli_powershell_traps_2026_10_10.md) — lab CLI traps: one-element unroll before splat, StrictMode $LASTEXITCODE, REG_SZ PATH, squash vs ancestor, -Value:-x, --retire cwd, Set-Location vs [IO.File] process dir
 
 - [reference_first_session_lab_calibration_2026_10_10.md](reference_first_session_lab_calibration_2026_10_10.md) — first-session Praxis rows calibrated live (16 s movie hold, pitch +200/yaw +230 floor clicks, tutorial X before dialog); Haiku runs them in one `lab_uat_run` call; never lend Haiku a lease

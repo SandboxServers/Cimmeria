@@ -79,7 +79,13 @@ fields do not match its version is corrupt and is left untouched.
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the
-install path and consent alone. No command lets frontend callers set native operation outcomes or
+install path and consent alone. A non-empty login-server list must pass the core
+parser's rules or the save fails with `invalid_server_list` and writes nothing;
+an empty list means the default server. Play writes the saved list (or the
+default) into `LoginInternal.lua` and checks it again first; an adopted copy
+keeps the list its adoption reviewed, and every snapshot carries that list as
+`adopted_login_servers` (`null` otherwise) so Settings can say so. The opt-in
+telemetry session is minted from the same list Play writes. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.
@@ -100,6 +106,19 @@ engine half in `engine/src/storage/<name>/` and its host half in
 
 The login-server and client-patches panels (`server-list-view.ts`,
 `client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.
+
+`client_maintenance_command` is filled (LX-06). `reset_cache` removes
+`Documents\My Games\Firesky\SGWGame\Cache.en-US`; `reset_all_client_state`
+removes the whole `Firesky` tree and is refused with `confirmation_required`
+unless `confirmed: true`, which the panel sends only from its confirm step.
+Both refuse with `busy` while the updater or any operation, Play included, is
+running. Removal never follows a link: a link inside the tree is removed as
+itself, and either reset is refused with `unsafe_path` when `My Games` or
+`Firesky` (or, for the cache, `SGWGame`) is a link. `Documents` is the folder
+the client asks the shell for (`SHGetFolderPathW(CSIDL_PERSONAL)`), so a
+redirected (OneDrive) Documents is followed. On macOS every request answers
+`profile_unavailable`: the Wine client writes inside its prefix, not under
+`$HOME/Documents`, and resetting there is not built yet. The other code is `io`.
 
 ## Effect workflows
 

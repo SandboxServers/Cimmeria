@@ -46,6 +46,7 @@ pub use event_dispatch::{
     fire_item_equipped, fire_item_use, fire_npc_flanked, fire_pending_combat_entries,
     fire_pending_health_below, fire_player_entered_combat, fire_player_flanked_npc,
     fire_player_loaded, fire_stargate_crossed, fire_stargate_dialed, fire_teleport_in,
+    replay_deferred_player_loaded,
 };
 // Cell-tick drain for `content_actions.delay_ms > 0` (C08a) — called once
 // per tick from `cell::service::message_loop`, same flat depth as the

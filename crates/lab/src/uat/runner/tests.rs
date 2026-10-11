@@ -3,7 +3,7 @@
 //! flows report an in-world client. Each test pins one grading rule the
 //! bundle must never get wrong.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use serde_json::{json, Map, Value};
@@ -16,7 +16,7 @@ use crate::uat::spec;
 
 /// A pretend client.
 pub(super) struct Fake {
-    tools: HashSet<String>,
+    pub(super) tools: HashSet<String>,
     /// Typed chat line → lines the "server" answers with.
     replies: HashMap<String, Vec<String>>,
     chat: Mutex<Vec<String>>,
@@ -26,16 +26,53 @@ pub(super) struct Fake {
     /// Every call with its arguments (the two-player tests read these).
     pub(super) log: Mutex<Vec<(String, Value)>>,
     /// The flows' client state: running, and the login screen reached.
-    running: Mutex<bool>,
-    login: Mutex<String>,
+    pub(super) running: Mutex<bool>,
+    pub(super) login: Mutex<String>,
     /// The character `client_player_state` reports.
-    name: String,
+    pub(super) name: String,
     /// The lab event store (`client_wait_event`), and the events a tool
     /// call or typed line adds to it (see `ability_tests`).
     pub(super) events: Mutex<Vec<Value>>,
     pub(super) triggers: Mutex<Vec<(String, String, Value)>>,
     /// How long after the call the fake press "goes out" (`press_ms`).
     pub(super) press_delay_ms: Mutex<i64>,
+    /// Scripted replies per tool, popped in order (see `answer`).
+    canned: Mutex<HashMap<String, VecDeque<Value>>>,
+    /// Tools that take effect and then report this error (`fail_after`).
+    fail_after: Mutex<HashMap<String, String>>,
+}
+
+/// The next scripted reply for `name`: the front of its queue, or the last
+/// one again once only that is left. `None` when nothing was scripted.
+pub(super) fn next_canned(
+    canned: &Mutex<HashMap<String, VecDeque<Value>>>,
+    name: &str,
+) -> Option<Value> {
+    let mut map = canned.lock().unwrap();
+    let queue = map.get_mut(name)?;
+    if queue.len() > 1 {
+        queue.pop_front()
+    } else {
+        queue.front().cloned()
+    }
+}
+
+/// A canned reply `{ "__error": msg, "__data": data }` fails the call with
+/// that error and data; any other reply is the call's result.
+pub(super) fn canned_outcome(reply: Value) -> ToolOutcome {
+    match reply.get("__error").and_then(Value::as_str) {
+        Some(msg) => ToolOutcome {
+            ok: false,
+            error: Some(msg.to_string()),
+            error_data: reply.get("__data").cloned(),
+            ..Default::default()
+        },
+        None => ToolOutcome {
+            ok: true,
+            json: reply,
+            ..Default::default()
+        },
+    }
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -69,7 +106,28 @@ impl Fake {
             events: Mutex::new(vec![]),
             triggers: Mutex::new(vec![]),
             press_delay_ms: Mutex::new(0),
+            canned: Mutex::new(HashMap::new()),
+            fail_after: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// `tool` changes the fake's state as usual, then fails with `err`
+    /// (a Play that reached the world and timed out waiting for a window).
+    pub(super) fn fail_after(self, tool: &str, err: &str) -> Self {
+        self.fail_after
+            .lock()
+            .unwrap()
+            .insert(tool.to_string(), err.to_string());
+        self
+    }
+
+    /// Script the replies `tool` gives, in order; the last one repeats.
+    pub(super) fn answer(self, tool: &str, replies: Vec<Value>) -> Self {
+        self.canned
+            .lock()
+            .unwrap()
+            .insert(tool.to_string(), VecDeque::from(replies));
+        self
     }
 
     /// A client that is not running yet, playing `name` once in world.
@@ -90,7 +148,7 @@ impl Fake {
         self.calls.lock().unwrap().clone()
     }
 
-    fn without(mut self, tool: &str) -> Self {
+    pub(super) fn without(mut self, tool: &str) -> Self {
         self.tools.remove(tool);
         self
     }
@@ -122,12 +180,16 @@ impl ToolInvoker for Fake {
             .lock()
             .unwrap()
             .push((name.to_string(), args.clone()));
+        if let Some(reply) = next_canned(&self.canned, name) {
+            return canned_outcome(reply);
+        }
         let ok = |json: Value| ToolOutcome {
             ok: true,
             json,
             ..Default::default()
         };
-        match name {
+        let fail_after = self.fail_after.lock().unwrap().get(name).cloned();
+        let out = match name {
             "lab_client_status" => ok(json!({
                 "running": *self.running.lock().unwrap(),
                 "login_state": *self.login.lock().unwrap(),
@@ -135,6 +197,11 @@ impl ToolInvoker for Fake {
             "lab_client_start" => {
                 *self.running.lock().unwrap() = true;
                 ok(json!({ "pid": 1 }))
+            }
+            "lab_client_stop" => {
+                *self.running.lock().unwrap() = false;
+                *self.login.lock().unwrap() = "not_started".into();
+                ok(json!({ "stopped": true }))
             }
             "lab_login" | "lab_logout" => {
                 *self.login.lock().unwrap() = "character_select".into();
@@ -193,6 +260,11 @@ impl ToolInvoker for Fake {
                 ..Default::default()
             },
             _ => ok(json!({})),
+        };
+        // The call took effect (state above changed) and then failed.
+        match fail_after {
+            Some(e) => ToolOutcome::err(e),
+            None => out,
         }
     }
 }
@@ -569,7 +641,7 @@ async fn plan_only_drives_nothing() {
 /// The tools the router exposes on `main` today: a live `run.json` from
 /// 2026-09-29, the #1099 world tools, the item tools and
 /// `client_window_click`.
-const MAIN_TOOLS: &str =
+pub(super) const MAIN_TOOLS: &str =
     "client_call_native client_console client_cursor_move client_entity_table \
 client_events_read client_hook_install client_hook_list client_hook_remove client_input_focus \
 client_input_key client_input_mouse client_input_release client_input_status client_lua_eval \
@@ -689,17 +761,8 @@ async fn committed_specs_plan_against_main_tools() {
             None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
         }
     }
-    // First session (the smoke run): every row plans as ready, so a row
-    // that picks up an unrouted tool or a standing reason fails here.
-    let first_session: Vec<_> = out
-        .rows
-        .iter()
-        .filter(|r| r.section == "first-session")
-        .collect();
-    assert_eq!(first_session.len(), 14, "the section lost or gained rows");
-    for r in first_session {
-        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
-    }
+    // First session (the smoke run) is planned with and without a server
+    // in `first_session_plan_tests.rs`.
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");
@@ -820,4 +883,25 @@ async fn the_caster_dummy_rows_are_ready_once_unblocked() {
     for r in &out.rows {
         assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
     }
+}
+
+/// A scripted reply pops in order and the last one repeats; a `__error`
+/// reply fails its call with the error and data it carries.
+#[tokio::test]
+async fn a_scripted_reply_pops_then_repeats() {
+    let fake = Fake::new(&[]).answer(
+        "client_lua_eval",
+        vec![
+            json!({ "ok": false }),
+            json!({ "__error": "lua failed", "__data": { "line": 3 } }),
+        ],
+    );
+    let first = fake.call("client_lua_eval", json!({})).await;
+    assert_eq!(first.json, json!({ "ok": false }));
+    let second = fake.call("client_lua_eval", json!({})).await;
+    assert!(!second.ok);
+    assert_eq!(second.error.as_deref(), Some("lua failed"));
+    assert_eq!(second.error_data, Some(json!({ "line": 3 })));
+    assert!(!fake.call("client_lua_eval", json!({})).await.ok);
+    assert_eq!(fake.names().len(), 3, "every call is logged");
 }

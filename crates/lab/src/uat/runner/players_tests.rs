@@ -301,3 +301,86 @@ async fn m1_2_summons_p2_before_targeting() {
         .expect("p1 targets p2");
     assert!(summon < find && find < target, "{summon} {find} {target}");
 }
+
+// lab-spec-vocab (SV-03): `@stand` is routed when p1 can type chat, and a
+// `wait_server` step needs the server lab MCP (SV-08 waits over it).
+
+const STAND_ROW: &str = r#"
+[[row]]
+id = "SV-S"
+title = "stand"
+expected = "Routed."
+pose = [{ id = "p", tag = "T", radius_m = 4.0, bearing_deg = 0.0, dy_m = 0.0 }]
+step = [{ tool = "@stand", args = { pose = "p" } }]
+[[row.expect]]
+id = "c"
+text = "t"
+source = "chat"
+contains = "x"
+"#;
+
+#[test]
+fn stand_is_routed_only_when_p1_can_type_chat() {
+    use super::actions::CHAT_SEND_TOOL;
+    use super::players::Who;
+    use crate::uat::tools::STAND_TOOL;
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let chat = Fake::new(&[]).with(CHAT_SEND_TOOL);
+    let runner = Runner::new(&chat, None, request(&tmp, STAND_ROW)).unwrap();
+    assert!(runner.routed(Who::P1, STAND_TOOL));
+    let bare = super::actions::CHAT_MACRO_TOOLS
+        .iter()
+        .fold(Fake::new(&[]), |f, t| f.without(t));
+    let runner = Runner::new(&bare, None, request(&tmp, STAND_ROW)).unwrap();
+    assert!(!runner.routed(Who::P1, STAND_TOOL));
+}
+
+const WAIT_ROW: &str = r#"
+[[row]]
+id = "SV-W"
+title = "wait"
+expected = "Waits."
+step = [{ wait_server = { log = "hold released" } }]
+[[row.expect]]
+id = "c"
+text = "t"
+source = "chat"
+contains = "x"
+"#;
+
+#[tokio::test]
+async fn wait_server_blocks_without_the_server_mcp_and_fails_when_it_cannot_read_logs() {
+    let fake = Fake::new(&[]).with("client_ui_state");
+    let row = run(&fake, Err("one player".into()), WAIT_ROW).await;
+    assert_eq!(row.result, RowResult::Blocked, "{:?}", row.reasons);
+    assert!(
+        row.reasons
+            .iter()
+            .any(|r| r.contains("needs the server lab MCP")),
+        "{:?}",
+        row.reasons
+    );
+
+    // This fake server has no `server_log_tail`: the wait fails at once
+    // (a read error does not heal by polling for 30 s).
+    let server = super::test_server::FakeServer::new(serde_json::json!({}));
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let out = Runner::new(&fake, Some(&server), request(&tmp, WAIT_ROW))
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    let row = RunDir::open(std::path::Path::new(&out.run_dir))
+        .unwrap()
+        .rows()
+        .unwrap()
+        .remove(0);
+    assert_eq!(row.result, RowResult::Fail, "{:?}", row.reasons);
+    assert!(
+        row.reasons
+            .iter()
+            .any(|r| r.contains("server_log_tail") && r.contains("unknown tool")),
+        "{:?}",
+        row.reasons
+    );
+}

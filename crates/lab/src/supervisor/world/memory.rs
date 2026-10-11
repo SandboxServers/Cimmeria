@@ -313,6 +313,16 @@ impl CameraState {
         }
     }
 
+    /// Rotator units the yaw handler adds per count: `gain * inv`, where
+    /// `inv` is -1 when the yaw-invert flag (0x4) is set.
+    pub fn yaw_gain(self) -> f32 {
+        if self.flags & 0x4 != 0 {
+            -self.gain
+        } else {
+            self.gain
+        }
+    }
+
     pub fn to_json(self) -> serde_json::Value {
         serde_json::json!({
             "zoom": self.distance,
@@ -320,6 +330,7 @@ impl CameraState {
             "pitch_offset_deg": f64::from(self.pitch) * 360.0 / 65536.0,
             "gain": self.gain,
             "pitch_gain": self.pitch_gain(),
+            "yaw_gain": self.yaw_gain(),
         })
     }
 }
@@ -471,6 +482,8 @@ mod tests {
         assert_eq!(s.flags, 0x8);
         assert_eq!(s.pitch_gain(), -20.0);
         assert_eq!(CameraState { flags: 0x3, ..s }.pitch_gain(), 20.0);
+        assert_eq!(s.yaw_gain(), 20.0);
+        assert_eq!(CameraState { flags: 0x4, ..s }.yaw_gain(), -20.0);
 
         // A camera pointer that is not an ASGWCamera_Player is refused.
         m.insert(cam, words(&[0xdead]));

@@ -25,25 +25,57 @@ $script:UatMaxRunsPerLease = 20
 $script:UatKnownIssues = @(
     @{ Issue = '#1341'; Rows = '^FS-[PS]2$'; Reason = 'movie-over'
        Note = 'client dropped the first-login entity batch (iterator residue)' }
+    @{ Issue = '#1343'; Rows = '.'; Reason = 'Login_PasswordEdit holds 0 characters'
+       Note = 'login password box read back empty on a slow-booting client' }
 )
 
+# The lab home's UAT folder for batches and runs (CIMMERIA_LAB_UAT_DIR, else the
+# lab home's uat-runs), so a batch folder sits next to its runs. Needs common.ps1.
+function Get-UatRoot {
+    $map = Get-LabdEnv
+    foreach ($raw in @($map['CIMMERIA_LAB_UAT_DIR'], $env:CIMMERIA_LAB_UAT_DIR)) {
+        if ("$raw".Trim()) { return "$raw".Trim() }
+    }
+    return Join-Path (Get-LabHome) 'uat-runs'
+}
+
+# The daemon's MCP URL, from labd.pid's bind (as Get-LabStatus reads it).
+function Get-LabMcpUrl {
+    $bind = '127.0.0.1:8779'
+    $info = Get-DaemonInfo
+    if ($info -and $info.PSObject.Properties.Name -contains 'bind' -and $info.bind) { $bind = [string]$info.bind }
+    return "http://$bind/mcp"
+}
+
+# The repo's spec folder when this runs from a checkout, else $null (the
+# daemon then uses its own default).
+function Get-DefaultSpecsDir {
+    $dir = Join-Path $PSScriptRoot '..\..\..\docs\guides\uat-specs'
+    if (Test-Path -LiteralPath $dir) { return (Resolve-Path -LiteralPath $dir).Path }
+    return $null
+}
+
 # A property of an object, or $null when it has none (strict mode throws on a missing one).
+# A dictionary (the lane's ordered records) is read by key.
 function Get-UatField($Object, [string]$Name) {
     if ($null -eq $Object) { return $null }
-    if ($Object -is [hashtable]) { return $Object[$Name] }
+    if ($Object -is [System.Collections.IDictionary]) { return $Object[$Name] }
     if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
     return $null
 }
 
 # The argument checks that need no daemon: an error message, or $null.
 function Test-UatArguments([int]$Leases, [int]$RunsPerLease, [string]$Instance,
-                           [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3) {
+                           [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3,
+                           [string]$Fixtures = '') {
     if ($Leases -lt 1 -or $Leases -gt $script:UatMaxLeases) { return "-Leases must be 1 to $script:UatMaxLeases" }
     if ($RunsPerLease -lt 1 -or $RunsPerLease -gt $script:UatMaxRunsPerLease) { return "-RunsPerLease must be 1 to $script:UatMaxRunsPerLease" }
     if ($Instance -and $Leases -ne 1) { return '-Instance runs one lane; drop -Leases or -Instance' }
     if ($StaggerSeconds -lt 0 -or $StaggerSeconds -gt 300) { return '-StaggerSeconds must be 0 to 300' }
     if ($RunTimeoutMinutes -lt 1 -or $RunTimeoutMinutes -gt 120) { return '-RunTimeoutMinutes must be 1 to 120' }
     if ($MaxConsecutiveFailures -lt 0 -or $MaxConsecutiveFailures -gt 20) { return '-MaxConsecutiveFailures must be 0 to 20' }
+    # lab-fixtures D-FX10: when a row's fixture is applied (lab_uat_run `fixtures`).
+    if ($Fixtures -and @('auto', 'always', 'never') -cnotcontains $Fixtures) { return '-Fixtures must be auto, always or never' }
     return $null
 }
 
@@ -185,6 +217,26 @@ function Read-UatRecords([string]$Path) {
     return @($out)
 }
 
+# The batch's plan.json, written once before any run starts: UTF-8 without a BOM.
+function Write-UatPlan([string]$Path, $Plan) {
+    [IO.File]::WriteAllText($Path, ($Plan | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
+}
+
+# A batch's plan.json as an object, or $null when it is missing or not JSON.
+function Read-UatPlan([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try { return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json } catch { return $null }
+}
+
+# The known issue (its Issue, '#1341') for a failing row and reason: the first
+# entry whose Rows and Reason patterns both match, else $null.
+function Get-UatKnownIssue([string]$Row, [string]$Reason) {
+    foreach ($k in $script:UatKnownIssues) {
+        if ($Row -match $k.Rows -and $Reason -match $k.Reason) { return $k.Issue }
+    }
+    return $null
+}
+
 # One run's verdict from lab_uat_run's rows: Ok (every row PASS, or SKIPPED on a
 # plan), the first failing row and reason, and the known issue it matches.
 # Expected: the planned row ids; a run that reports fewer fails.
@@ -201,10 +253,7 @@ function Get-UatRunVerdict($Rows, [string[]]$Expected = @()) {
     if (-not $first) { return @{ Ok = $true; Row = $null; Result = $null; Reason = $null; Issue = $null } }
     $reason = Hide-LeaseIds ([string](@(Get-UatField $first 'reasons')[0]))
     $row = [string](Get-UatField $first 'row')
-    $issue = $null
-    foreach ($k in $script:UatKnownIssues) {
-        if ($row -match $k.Rows -and $reason -match $k.Reason) { $issue = $k.Issue; break }
-    }
+    $issue = Get-UatKnownIssue $row $reason
     return @{ Ok = $false; Row = $row; Result = [string](Get-UatField $first 'result'); Reason = $reason; Issue = $issue }
 }
 
@@ -256,19 +305,108 @@ function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
     }
     $passed = @($Runs | Where-Object { $_.Ok }).Count
     $known = @($Runs | Where-Object { -not $_.Ok -and -not $_.Error -and $_.Verdict.Issue }).Count
-    return [ordered]@{
+    $out = [ordered]@{
         ok = ($Runs.Count -gt 0 -and $passed -eq $Runs.Count)
         runs = $Runs.Count; passed = $passed; failed = $Runs.Count - $passed
         failed_known = $known; failed_new = $Runs.Count - $passed - $known
         rows = $rowStats; lanes = @($laneStats); failures = @($groups.Values)
     }
+    $golden = Merge-UatGolden $Runs
+    if ($golden) { $out.golden = $golden }
+    return $out
 }
 
-# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake.
+# The value -DiffGolden stores in a run's Golden field (README D-GD7) from a
+# lab_golden_diff reply, or the message of a call that threw: 'match', the
+# first divergence line (it starts 'row '), or 'error: <why>'. A refusal
+# (no_golden, cannot_diff) or a reply without a verdict is an error, never a
+# match. Lease ids are hidden and the value is cut to 300 characters.
+function Get-UatGoldenValue($Reply, [string]$CallError) {
+    $match = Get-UatField $Reply 'match'
+    $first = [string](Get-UatField $Reply 'first')
+    $v = if ($CallError) { "error: $CallError" }
+    elseif (-not [bool](Get-UatField $Reply 'ok')) {
+        $code = [string](Get-UatField $Reply 'code')
+        "error: $(if ($code) { "${code}: " })$(Get-UatField $Reply 'error')"
+    }
+    elseif ($match -eq $true) { 'match' }
+    elseif ($match -eq $false -and $first) { $first }
+    else { 'error: lab_golden_diff gave no verdict' }
+    $v = Hide-LeaseIds ("$v" -replace '[\r\n]+', ' ')
+    if ($v.Length -gt 300) { $v = $v.Substring(0, 297) + '...' }
+    return $v
+}
+
+# The Golden value -DiffGolden gives one finished run, or $null for none: no
+# -DiffGolden ($DiffArgs is $null) or a run that did not pass (only passing
+# runs are compared). $DiffArgs are lab_golden_diff's arguments less run_dir;
+# $Invoke is the call itself, { param($Arguments) <reply> }, so the lane loop
+# passes the MCP call and the tests pass a stub.
+function Get-UatRunGolden($Rec, $DiffArgs, [scriptblock]$Invoke) {
+    if ($null -eq $DiffArgs -or -not [bool](Get-UatField $Rec 'Ok')) { return $null }
+    $runDir = [string](Get-UatField $Rec 'RunDir')
+    if (-not $runDir) { return 'error: the run named no run folder' }
+    $a = $DiffArgs.Clone(); $a.run_dir = $runDir
+    $reply = $null; $callError = $null
+    try { $reply = & $Invoke $a } catch { $callError = ($_.Exception.Message -split "`n")[0] }
+    return Get-UatGoldenValue $reply $callError
+}
+
+# Why a committed golden file cannot be used, or $null when it reads as JSON
+# with schema, section and fingerprint. -DiffGolden checks it before driving
+# anything, so a broken golden never costs a batch.
+function Test-UatGoldenFile([string]$Path) {
+    try { $g = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+    catch { return ($_.Exception.Message -split "`n")[0] }
+    if ($null -eq $g -or $g -isnot [pscustomobject]) { return 'it is not a JSON object' }
+    $missing = @('schema', 'section', 'fingerprint' | Where-Object { $null -eq (Get-UatField $g $_) })
+    if ($missing) { return "it has no $($missing -join ', ')" }
+    return $null
+}
+
+# The golden comparison of the runs that carry a Golden field: match and
+# diverged counts, errors (a diff that could not be made), and every
+# non-match line grouped with its count and up to 5 run refs, most common
+# first. $null when no run has one (a batch without -DiffGolden).
+function Merge-UatGolden($Runs) {
+    $withGolden = @(@($Runs) | Where-Object { Get-UatField $_ 'Golden' })
+    if (-not $withGolden.Count) { return $null }
+    $groups = [ordered]@{}
+    $match = 0; $diverged = 0; $errors = 0
+    foreach ($run in $withGolden) {
+        $line = [string](Get-UatField $run 'Golden')
+        if ($line -ceq 'match') { $match++; continue }
+        if ($line.StartsWith('error: ')) { $errors++ } else { $diverged++ }
+        if (-not $groups.Contains($line)) { $groups[$line] = [ordered]@{ line = $line; count = 0; runs = @() } }
+        $groups[$line].count++
+        if (@($groups[$line].runs).Count -lt 5) { $groups[$line].runs += "$(Get-UatField $run 'Instance')#$(Get-UatField $run 'Index')" }
+    }
+    return [ordered]@{
+        match = $match; diverged = $diverged; errors = $errors
+        groups = @($groups.Values | Sort-Object -Stable { $_.count } -Descending)
+    }
+}
+
+# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake, 5
+# every run passed but the golden comparison did not match on one (a
+# divergence, or a diff that could not be made; README D-GD7), 8 a heal
+# proposal was written (lab-spec-vocab SV-12's summary `heal`). 8 wins over
+# every other code, because a heal proposal needs action first.
 function Get-UatExitCode($Summary) {
-    if ($Summary.ok) { return 0 }
+    if (@(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ }).Count) { return 8 }
+    if ($Summary.ok) {
+        $g = Get-UatField $Summary 'golden'
+        if ($g -and ($g.diverged + $g.errors) -gt 0) { return 5 }
+        return 0
+    }
     if (@($Summary.lanes | Where-Object { $_.braked }).Count) { return 4 }
     return 1
+}
+
+# Text cut to $Max characters, ending '...' when cut.
+function Limit-UatText([string]$Text, [int]$Max) {
+    if ($Text.Length -le $Max) { return $Text }
+    return $Text.Substring(0, $Max - 3) + '...'
 }
 
 # The summary as compact JSON for an agent: no nulls, failures capped at
@@ -297,6 +435,20 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     })
     if ($shown) { $out.failures = @($shown) }
     if ($fails.Count -gt $MaxFailures) { $out.more_failure_groups = $fails.Count - $MaxFailures }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        $go = [ordered]@{ match = $g.match; diverged = $g.diverged }
+        if ($g.errors) { $go.errors = $g.errors }
+        # first: the most common divergence, never an error line; error: the
+        # most common error, only when no run diverged. Both short enough
+        # that a batch with divergences stays a few hundred characters.
+        $lines = @(@($g.groups) | ForEach-Object { [string]$_.line })
+        $div = @($lines | Where-Object { -not $_.StartsWith('error: ') }) | Select-Object -First 1
+        $err = @($lines | Where-Object { $_.StartsWith('error: ') }) | Select-Object -First 1
+        if ($div) { $go.first = Limit-UatText $div 120 }
+        elseif ($err) { $go.error = Limit-UatText $err 120 }
+        $out.golden = $go
+    }
     $out.batch = $BatchDir
     return $out | ConvertTo-Json -Depth 6 -Compress
 }
@@ -327,7 +479,51 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
             [void]$sb.AppendLine("- $($f.count)x $($f.signature)$tag; runs: $(@($f.runs) -join ', ')")
         }
     }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        [void]$sb.AppendLine('')
+        $err = if ($g.errors) { ", $($g.errors) could not be compared" } else { '' }
+        [void]$sb.AppendLine("Golden: $($g.match) match, $($g.diverged) diverged$err")
+        foreach ($l in @($g.groups)) {
+            [void]$sb.AppendLine("- $($l.count)x $($l.line); runs: $(@($l.runs) -join ', ')")
+        }
+    }
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("Batch: $BatchDir")
     return $sb.ToString()
+}
+
+# The progress line lab uat prints for one finished run (Record: Instance, Index,
+# Ok, Error, Verdict, Seconds, and Golden under -DiffGolden), with Total runs per lease.
+function Format-UatProgressLine($Record, [int]$Total) {
+    $verdict = Get-UatField $Record 'Verdict'
+    $runError = Get-UatField $Record 'Error'
+    if ([bool](Get-UatField $Record 'Ok')) { $what = 'PASS' }
+    elseif ($runError) { $what = "ERROR $runError" }
+    else {
+        $issue = Get-UatField $verdict 'Issue'
+        $tag = if ($issue) { " [known $issue]" } else { '' }
+        $what = "FAIL $(Get-UatField $verdict 'Row'): $(Get-UatField $verdict 'Reason')$tag"
+    }
+    $line = "[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds')
+    $golden = Get-UatField $Record 'Golden'
+    if ($golden) { $line += "; golden: $golden" }
+    return $line
+}
+
+# Where lab uat's progress lines go: 'stderr' with -ProgressToStderr (even
+# under -Json, so lab golden can show a long batch live and still read one
+# JSON line from stdout), 'none' under -Quiet or -Json, else 'host'.
+function Get-UatProgressMode([bool]$Json, [bool]$Quiet, [bool]$ProgressToStderr) {
+    if ($ProgressToStderr) { return 'stderr' }
+    if ($Json -or $Quiet) { return 'none' }
+    return 'host'
+}
+
+# One progress line to where Get-UatProgressMode says.
+function Write-UatProgress([string]$Mode, [string]$Message) {
+    switch ($Mode) {
+        'stderr' { [Console]::Error.WriteLine($Message) }
+        'host' { Write-Host $Message }
+    }
 }

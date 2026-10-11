@@ -273,6 +273,10 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             entity.missions.add_mission(mission);
         }
         entity.saved_missions_loaded = true;
+        // TG-DB-12: the load outcome is known now (a `MissionStateUnknown`
+        // before this message keeps the tracker locked), so lift the
+        // `CreateEntity` hold before `player_loaded` fires below.
+        entity.missions.mark_loaded();
 
         // Reset all ability cooldowns on world entry. Original server
         // behavior was that cooldowns wiped on relog; we match that here

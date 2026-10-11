@@ -137,13 +137,15 @@ async fn execute(
     {
         return Ok(Observation::NotStarted);
     }
-    // A session that cannot be had costs a bounded wait, never the launch.
-    let session = telemetry::session(&state, plan).await;
+    let Some((servers, session)) = servers_and_session(&state, plan).await? else {
+        return Ok(Observation::NotStarted);
+    };
     let minted = session.is_some();
     let prepared = plan.clone();
-    let setup = tokio::task::spawn_blocking(move || prepare(&prepared, &root, session.as_ref()))
-        .await
-        .map_err(|_| StorageError::Io)?;
+    let setup =
+        tokio::task::spawn_blocking(move || prepare(&prepared, &root, session.as_ref(), &servers))
+            .await
+            .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup else {
         return Ok(Observation::NotStarted);
     };
@@ -179,6 +181,27 @@ async fn execute(
     .await;
     Ok(outcome)
 }
+/// The login servers this Play writes, resolved before a telemetry session is
+/// minted so both use the same list. `None` is a refused list: nothing starts.
+async fn servers_and_session(
+    state: &Arc<Mutex<DesktopState>>,
+    plan: &Plan,
+) -> Result<Option<(Vec<LoginServer>, Option<crate::game_telemetry::Session>)>, IntentError> {
+    let resolved = state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .launch_login_servers(&plan.installation);
+    let servers = match resolved {
+        Ok(servers) => servers,
+        Err(error) => {
+            tracing::warn!(operation = %plan.id, ?error, "launch login servers refused; Play not started");
+            return Ok(None);
+        }
+    };
+    // A session that cannot be had costs a bounded wait, never the launch.
+    let session = telemetry::session(state, plan, &servers).await;
+    Ok(Some((servers, session)))
+}
 // Guards live through the helper's full guest lifetime, preventing Repair/uninstall.
 enum Ownership {
     Native {
@@ -193,6 +216,7 @@ fn prepare(
     plan: &Plan,
     root: &Path,
     session: Option<&crate::game_telemetry::Session>,
+    servers: &[LoginServer],
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -204,7 +228,7 @@ fn prepare(
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
         {
-            let (spec, request, resources) = wine::prepare(plan, root, session)?;
+            let (spec, request, resources) = wine::prepare(plan, root, session, servers)?;
             return Ok((
                 spec,
                 request,
@@ -220,11 +244,12 @@ fn prepare(
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan, session)
+    prepare_native(plan, session, servers)
 }
 fn prepare_native(
     plan: &Plan,
     session: Option<&crate::game_telemetry::Session>,
+    servers: &[LoginServer],
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -245,7 +270,7 @@ fn prepare_native(
     if saved != plan.installation {
         return Err(StorageError::Corrupt.into());
     }
-    let directory = preparation::prepare(plan)?;
+    let directory = preparation::prepare(plan, servers)?;
     let telemetry = telemetry::injected(plan, session);
     let request = cimmeria_runtime_probe::game_launch::Request {
         schema_version: 1,
@@ -321,13 +346,15 @@ mod tests {
         let marker = game.join("Working/Binaries/sessions/current-session.json");
 
         // No session (the server gave none): the DLL stays out and nothing is written.
-        let (_, request, ownership) = prepare_native(&plan, None).unwrap();
+        let (_, request, ownership) =
+            prepare_native(&plan, None, &plan.installation.login_servers).unwrap();
         assert_eq!(request.dlls, [patches.path()]);
         assert!(!marker.exists());
         drop(ownership);
 
         let session = crate::game_telemetry::Session::fixture();
-        let (_, request, ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        let (_, request, ownership) =
+            prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
         assert_eq!(request.dlls, [patches.path(), telemetry.path()]);
         let written: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&marker).unwrap()).unwrap();
@@ -339,7 +366,8 @@ mod tests {
         // A plan that does not carry the DLL ignores a session it is handed.
         plan.resources.client_telemetry = None;
         std::fs::remove_file(&marker).unwrap();
-        let (_, request, _ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        let (_, request, _ownership) =
+            prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
         assert_eq!(request.dlls, [patches.path()]);
         assert!(!marker.exists());
     }
@@ -357,7 +385,8 @@ mod tests {
         std::fs::create_dir(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, game.join("Working/Binaries/sessions")).unwrap();
         let session = crate::game_telemetry::Session::fixture();
-        let (_, request, _ownership) = prepare_native(&plan, Some(&session)).unwrap();
+        let (_, request, _ownership) =
+            prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
         assert!(request.dlls.is_empty(), "no marker, so no DLL");
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
     }
@@ -372,9 +401,9 @@ mod tests {
         // Windows exercises the dispatch preparation entry point; other hosts
         // exercise the same native preparation without enabling native dispatch.
         let prepared = if cfg!(windows) {
-            prepare(&plan, root.path(), None)
+            prepare(&plan, root.path(), None, &plan.installation.login_servers)
         } else {
-            prepare_native(&plan, None)
+            prepare_native(&plan, None, &plan.installation.login_servers)
         };
         let (command, request, ownership) = prepared.unwrap();
         assert_eq!(request.operation_id, plan.id);
@@ -391,5 +420,104 @@ mod tests {
         assert!(competitor.try_lock().is_err(), "ownership must stay locked");
         drop(ownership);
         competitor.try_lock().unwrap();
+    }
+
+    #[test]
+    fn play_writes_the_saved_login_servers_and_not_the_default() {
+        let (_root, mut state, plan) = super::super::tests::fixture();
+        let game = plan.installation.destination.join("game");
+        inert_client(&game.join("Working/Binaries/SGW.exe"));
+        // The install was admitted with the default list; the player's saved
+        // list must win over it at Play.
+        assert_eq!(
+            plan.installation.login_servers,
+            crate::client_setup::login_servers::default_servers()
+        );
+        let saved = vec![
+            LoginServer {
+                name: "Home".into(),
+                url: "http://home.example:8081".into(),
+            },
+            LoginServer {
+                name: "Lab".into(),
+                url: "https://lab.example:8081".into(),
+            },
+        ];
+        let revision = state.preferences().revision;
+        state
+            .save_client_options(saved.clone(), true, revision)
+            .unwrap();
+        let servers = state.launch_login_servers(&plan.installation).unwrap();
+        assert_eq!(servers, saved);
+        // Not adopted, so the settings view is not told of a kept list.
+        assert_eq!(state.inspect().adopted_login_servers, None);
+        let (_, _, _ownership) = prepare_native(&plan, None, &servers).unwrap();
+        let written =
+            std::fs::read_to_string(crate::client_setup::login_servers::path(&game)).unwrap();
+        assert!(written.contains(r#"LoginMod.servers["Home"] = "http://home.example:8081""#));
+        assert!(written.contains(r#"LoginMod.servers["Lab"] = "https://lab.example:8081""#));
+        assert!(!written.contains("play.cimmeria.app"), "{written}");
+    }
+
+    #[tokio::test]
+    async fn the_telemetry_session_is_minted_from_the_saved_servers_not_the_install_list() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/auth/dev-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "session_id": "saved", "token": "payload.sig", "expires_at_ms": 1_700_028_800_000i64,
+                "upload_endpoint": format!("{}/api/telemetry", server.uri()),
+                "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (root, mut state, mut plan) = super::super::tests::fixture();
+        let directory = root.path().canonicalize().unwrap();
+        plan.resources.client_telemetry =
+            Some(super::super::tests::artifact(&directory, "telemetry.dll"));
+        state.set_game_telemetry(true).unwrap();
+        // Installed with the default list; the player saved the mock server.
+        assert_ne!(plan.installation.login_servers[0].url, server.uri());
+        let saved = vec![LoginServer {
+            name: "Home".into(),
+            url: server.uri(),
+        }];
+        let revision = state.preferences().revision;
+        state
+            .save_client_options(saved.clone(), true, revision)
+            .unwrap();
+        let state = Arc::new(Mutex::new(state));
+
+        let (servers, session) = servers_and_session(&state, &plan).await.unwrap().unwrap();
+        assert_eq!(servers, saved);
+        assert_eq!(
+            session
+                .expect("minted by the saved server")
+                .marker()
+                .session_id,
+            "saved"
+        );
+    }
+
+    #[test]
+    fn an_empty_list_means_the_defaults_and_an_invalid_one_never_reaches_the_client() {
+        let (_root, mut state, plan) = super::super::tests::fixture();
+        assert_eq!(
+            state.launch_login_servers(&plan.installation),
+            Ok(crate::client_setup::login_servers::default_servers())
+        );
+        // preferences.json is not checked for a valid list on load, so Play
+        // checks again before it writes anything.
+        state.preferences.login_servers = vec![LoginServer {
+            name: "Old".into(),
+            url: "ftp://old.example".into(),
+        }];
+        assert_eq!(
+            state.launch_login_servers(&plan.installation),
+            Err(IntentError::Storage(StorageError::InvalidServerList))
+        );
     }
 }
