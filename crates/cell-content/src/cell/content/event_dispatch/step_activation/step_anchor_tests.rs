@@ -29,9 +29,9 @@ const MISSION: i32 = 1360;
 const STEP_ONE: i32 = 4037;
 const STEP_TWO: i32 = 4038;
 const OBJ: i32 = 7001;
-/// The reserved `0x7000_xxxx` test range; `0x7005_3xxx` is this packet's.
-const FIRING_CHAIN: i64 = 0x7005_3000;
-const ADVANCER: i64 = 0x7005_3001;
+/// The reserved `0x7000_xxxx` test range; `0x7005_5xxx` is this packet's.
+const FIRING_CHAIN: i64 = 0x7005_5000;
+const ADVANCER: i64 = 0x7005_5001;
 
 /// One world, the player on the mission's first step, and (when
 /// `with_anchor`) a tagged NPC 3 m away that the player's client already sees.
