@@ -59,6 +59,8 @@ param(
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
+    # Used by lab golden: runs capture what a golden fingerprint needs.
+    [switch]$Fingerprint,
     [switch]$Json,
     [switch]$Quiet
 )
@@ -119,6 +121,7 @@ function Invoke-LabUat {
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
     if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
+    if ($Fingerprint) { $baseArgs.fingerprint = $true }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.
