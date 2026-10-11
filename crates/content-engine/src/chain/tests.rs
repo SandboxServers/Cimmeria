@@ -8,7 +8,7 @@ use super::*;
 use crate::triggers::TriggerType;
 
 /// Helper to build a simple chain with no conditions.
-fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) -> Chain {
+pub(super) fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) -> Chain {
     Chain {
         id,
         name: format!("test_chain_{}", id),
@@ -605,114 +605,4 @@ fn chain_label_drops_blank_and_placeholder_descriptions() {
         chain.name = none.to_string();
         assert_eq!(chain.label(), None, "{none:?} is not a chain name");
     }
-}
-
-/// TG-MIS-03: a step's advancers are the enabled chains gated on that step
-/// that move its mission forward; their triggers name the anchors. A chain
-/// gated on another step, one that only shows a dialog, and a disabled one
-/// are not advancers, and a step nothing gates (step 4037's shape) has none.
-#[test]
-fn step_anchors() {
-    use crate::conditions::{ComparisonOp, StepStatusValue};
-    let gate = |step_id| Condition::StepStatus {
-        mission_id: 1360,
-        step_id,
-        operator: ComparisonOp::Eq,
-        expected_status: StepStatusValue::Active,
-    };
-    let gated = |id, trigger, step, actions| {
-        let mut c = make_chain(id, trigger, actions, 0);
-        c.conditions = vec![gate(step)];
-        c
-    };
-    let advance = Action::AdvanceStep {
-        mission_id: 1360,
-        step_id: 4039,
-    };
-    let complete = Action::CompleteObjective {
-        mission_id: 1360,
-        objective_id: 7001,
-    };
-    let mut engine = ChainEngine::new();
-    engine.register_chain(gated(
-        10,
-        Trigger::OnInteractTag {
-            entity_tag: "Frost_Terminal".into(),
-        },
-        4038,
-        vec![complete.clone()],
-    ));
-    engine.register_chain(gated(
-        11,
-        Trigger::OnInteractTemplate {
-            template_name: "Colonel Frost".into(),
-        },
-        4038,
-        vec![advance.clone()],
-    ));
-    engine.register_chain(gated(
-        12,
-        Trigger::OnDialogChoice { dialog_id: 6110 },
-        4038,
-        vec![advance.clone()],
-    ));
-    // The same anchor twice is one anchor.
-    engine.register_chain(gated(
-        13,
-        Trigger::OnInteractTag {
-            entity_tag: "Frost_Terminal".into(),
-        },
-        4038,
-        vec![advance.clone()],
-    ));
-    // Gated on the step, but moves nothing.
-    engine.register_chain(gated(
-        14,
-        Trigger::OnInteractTag {
-            entity_tag: "Chatter".into(),
-        },
-        4038,
-        vec![Action::DisplayDialog { dialog_id: 1 }],
-    ));
-    // Moves the mission, but gated on another step.
-    engine.register_chain(gated(
-        15,
-        Trigger::OnInteractTag {
-            entity_tag: "Later".into(),
-        },
-        4039,
-        vec![advance.clone()],
-    ));
-    let mut disabled = gated(
-        16,
-        Trigger::OnInteractTag {
-            entity_tag: "Off".into(),
-        },
-        4038,
-        vec![advance.clone()],
-    );
-    disabled.enabled = false;
-    engine.register_chain(disabled);
-    // An `OnMissionStep` trigger gates on its step without a condition.
-    engine.register_chain(make_chain(
-        17,
-        Trigger::OnMissionStep {
-            mission_id: 1360,
-            step: 4038,
-        },
-        vec![complete],
-        0,
-    ));
-
-    let anchors = engine.step_anchors(1360, 4038);
-    assert_eq!(anchors.advancers, vec![10, 11, 12, 13, 17]);
-    assert_eq!(anchors.tags, vec!["Frost_Terminal".to_string()]);
-    assert_eq!(anchors.templates, vec!["Colonel Frost".to_string()]);
-    assert_eq!(anchors.dialog_ids, vec![6110]);
-
-    assert_eq!(
-        engine.step_anchors(1360, 4037),
-        StepAnchors::default(),
-        "a step no chain gates has no advancers and no anchors"
-    );
 }

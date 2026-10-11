@@ -17,10 +17,11 @@ use crate::triggers::Trigger;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct StepAnchors {
     /// Ids of the enabled chains that can move this step forward: gated on
-    /// the step (a `step_status <mission>/<step> eq active` condition, or an
-    /// `OnMissionStep` trigger for it) **and** carrying an action that
-    /// progresses the same mission (`advance_step`, `advance_mission`,
-    /// `complete_objective` or `complete_mission`).
+    /// the step by a `step_status <mission>/<step> eq active` condition,
+    /// **and** carrying an action that progresses the same mission
+    /// (`advance_step`, `advance_mission`, `complete_objective` or
+    /// `complete_mission`), **and** not held to another world by a `world`
+    /// condition.
     pub advancers: Vec<i64>,
     /// Spawn tags the advancers' triggers name (`interact_tag`,
     /// `entity_dead_tag`, `entity_health_below`).
@@ -35,18 +36,28 @@ pub struct StepAnchors {
 }
 
 impl ChainEngine {
-    /// The [`StepAnchors`] of `step_id` of `mission_id`.
+    /// The [`StepAnchors`] of `step_id` of `mission_id`, for a player in
+    /// world `world_id` (`resources.worlds.world_id`; `None` when unknown).
     ///
     /// A scan of every registered chain, so call it on a step activation,
-    /// never per tick. A chain that reaches the step only through another
-    /// chain (`trigger_chain`) or through an objective gate is not counted:
-    /// the authored idiom gates the advancing chain on `step_status` itself.
-    pub fn step_anchors(&self, mission_id: i32, step_id: i32) -> StepAnchors {
+    /// never per tick. Only the `step_status` gate counts. A step that
+    /// advances through `trigger_chain` from another chain, or through an
+    /// objective-only gate (the castle cellblock chains 1141/1142), shows
+    /// `advancers = 0` here although it can finish. `OnMissionStep` triggers
+    /// are not counted either: the loader never builds one and nothing
+    /// dispatches it.
+    pub fn step_anchors(
+        &self,
+        mission_id: i32,
+        step_id: i32,
+        world_id: Option<i32>,
+    ) -> StepAnchors {
         let mut out = StepAnchors::default();
         for chain in self.chains_by_trigger.values().flatten() {
             if !chain.enabled
                 || !gates_on_step(chain, mission_id, step_id)
                 || !progresses_mission(chain, mission_id)
+                || !runs_in_world(chain, world_id)
             {
                 continue;
             }
@@ -85,12 +96,6 @@ impl ChainEngine {
 
 /// Does `chain` run only while `step_id` of `mission_id` is the active step?
 fn gates_on_step(chain: &Chain, mission_id: i32, step_id: i32) -> bool {
-    if matches!(
-        chain.trigger,
-        Trigger::OnMissionStep { mission_id: m, step: s } if m == mission_id && s == step_id
-    ) {
-        return true;
-    }
     chain.conditions.iter().any(|c| {
         matches!(
             c,
@@ -112,5 +117,22 @@ fn progresses_mission(chain: &Chain, mission_id: i32) -> bool {
         | Action::CompleteObjective { mission_id: m, .. }
         | Action::CompleteMission { mission_id: m } => *m == mission_id,
         _ => false,
+    })
+}
+
+/// Can `chain` fire for a player in `world_id`? Every `world` condition must
+/// hold, read as `Condition::World` reads it: fail-closed on an unknown world
+/// and on any operator but `eq` / `neq`.
+fn runs_in_world(chain: &Chain, world_id: Option<i32>) -> bool {
+    chain.conditions.iter().all(|c| match c {
+        Condition::World {
+            operator,
+            world_id: want,
+        } => match (world_id, operator) {
+            (Some(w), ComparisonOp::Eq) => w == *want,
+            (Some(w), ComparisonOp::Neq) => w != *want,
+            _ => false,
+        },
+        _ => true,
     })
 }

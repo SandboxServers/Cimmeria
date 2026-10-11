@@ -15,9 +15,12 @@ use cimmeria_content_engine::conditions::{ComparisonOp, Condition, StepStatusVal
 use cimmeria_content_engine::triggers::Trigger;
 use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
 
-use super::step_anchor::TARGET;
 use super::*;
 use crate::test_support::{LogCapture, LogCaptureGuard};
+
+/// Spelled out here because the emitter writes it as a literal (so the
+/// server's target scanner sees it); a rename has to change both.
+const TARGET: &str = "mission.step_anchor";
 
 const PLAYER_EID: u32 = 1;
 const ANCHOR_EID: u32 = 2;
@@ -124,6 +127,11 @@ fn anchor_row(capture: &LogCaptureGuard) -> HashMap<String, String> {
         "one step activation logs exactly one {TARGET} row; captured: {:#?}",
         capture.all()
     );
+    assert_eq!(
+        rows[0].level,
+        tracing::Level::INFO,
+        "{TARGET} is an INFO row; OTEL_FILTER pins it at info"
+    );
     rows[0].fields.clone()
 }
 
@@ -171,6 +179,16 @@ async fn advancer_anchor_resolves_or_is_listed_unresolved() {
         Some("true")
     );
     assert_eq!(row.get("anchor_distance").map(String::as_str), Some("3.0"));
+    assert_eq!(
+        row.get("advancer_chain_ids").map(String::as_str),
+        Some(ADVANCER.to_string().as_str())
+    );
+    // A test-range chain id has no seed name, so its slot is the placeholder.
+    assert_eq!(
+        row.get("advancer_chain_names").map(String::as_str),
+        Some("-")
+    );
+    assert_eq!(row.get("unresolved_count").map(String::as_str), Some("0"));
     assert_eq!(row.get("unresolved_anchors").map(String::as_str), Some(""));
 
     // The same advancer, but nothing in the space carries its tag.
@@ -185,6 +203,7 @@ async fn advancer_anchor_resolves_or_is_listed_unresolved() {
     let row = anchor_row(&capture);
     assert_eq!(row.get("advancers").map(String::as_str), Some("1"));
     assert_eq!(row.get("anchors").map(String::as_str), Some("0"));
+    assert_eq!(row.get("unresolved_count").map(String::as_str), Some("1"));
     assert_eq!(
         row.get("unresolved_anchors").map(String::as_str),
         Some("Never_Spawned")

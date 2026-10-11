@@ -6,22 +6,23 @@
 //! own space. It answers "can this step finish at all?" at the moment the
 //! step starts, instead of after a playtester stalls:
 //!
-//! - `advancers = 0`: no chain moves the step forward (Frost's Letter step
-//!   4037). Expected only for a turn-in step a `complete_mission` elsewhere
-//!   closes.
-//! - `unresolved_anchors` non-empty: a tag or template an advancer waits on
-//!   has no entity in the space (#1341, an anchor that was never spawned).
+//! - `advancers = 0`: no chain gated on the step moves it forward (Frost's
+//!   Letter step 4037). Not always a stall: a `complete_mission` elsewhere,
+//!   a `trigger_chain` from another chain or an objective-only gate (castle
+//!   cellblock chains 1141/1142) can still finish it.
+//! - `unresolved_count > 0`: a tag or template an advancer waits on has no
+//!   entity in the space (#1341, an anchor that was never spawned).
 //! - `anchor_in_witness_set = false`: the entity exists but the player's
 //!   client has not been told about it yet.
+//!
+//! The target is written as a literal at the call site, not a `const`, so
+//! the server's target scanner sees it (pinned in `OTEL_FILTER`, catalogued
+//! in `observability-target-catalog.md`).
 
 use cimmeria_common::EntityId;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::space_manager::SpaceManager;
-
-/// The hand-named target (pinned in `OTEL_FILTER`, catalogued in
-/// `observability-target-catalog.md`).
-pub(crate) const TARGET: &str = "mission.step_anchor";
 
 /// How many anchors and ids a row lists; the counts are always whole.
 pub(crate) const MAX_LISTED: usize = 5;
@@ -57,7 +58,13 @@ pub(crate) fn log_step_anchors(
     let Some(player) = space_mgr.get_entity(entity_id).filter(|e| e.is_player) else {
         return;
     };
-    let wanted = engine.step_anchors(mission_id, step_id);
+    // World-gated advancers for another world cannot fire here, so they
+    // neither count nor contribute anchors.
+    let wanted = engine.step_anchors(
+        mission_id,
+        step_id,
+        space_mgr.get_entity_world_id(entity_id),
+    );
 
     let mut anchors: Vec<Anchor> = Vec::new();
     let mut unresolved: Vec<&str> = Vec::new();
@@ -106,7 +113,7 @@ pub(crate) fn log_step_anchors(
     let who = space_mgr.player_identity(entity_id);
     let world = space_mgr.get_entity_world_name(entity_id);
     tracing::info!(
-        target: TARGET,
+        target: "mission.step_anchor",
         event = "step_anchor",
         account_id = who.account_id,
         account_name = who.account_name,
@@ -121,6 +128,12 @@ pub(crate) fn log_step_anchors(
         step_name = names.mission_step(step_id),
         advancers = wanted.advancers.len(),
         advancer_chain_ids = %join(&wanted.advancers),
+        advancer_chain_names = %join(
+            wanted
+                .advancers
+                .iter()
+                .map(|&id| names.chain(id).unwrap_or("-"))
+        ),
         anchors = anchors.len(),
         anchor_ids = %join(anchors.iter().map(|a| a.entity_id)),
         anchor_names = %join(
@@ -131,6 +144,7 @@ pub(crate) fn log_step_anchors(
         anchor_tags = %join(anchors.iter().map(|a| a.key.as_str())),
         anchor_in_witness_set = %join(anchors.iter().map(|a| a.in_witness_set)),
         anchor_distance = %join(anchors.iter().map(|a| format!("{:.1}", a.distance))),
+        unresolved_count = unresolved.len(),
         unresolved_anchors = %join(unresolved),
         dialog_anchors = %join(&wanted.dialog_ids),
         "mission step activated: its advancers and anchors"

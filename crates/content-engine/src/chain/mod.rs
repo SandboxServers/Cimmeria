@@ -22,6 +22,8 @@ use crate::triggers::{Trigger, TriggerEvent, TriggerType};
 
 mod step_anchors;
 #[cfg(test)]
+mod step_anchors_tests;
+#[cfg(test)]
 mod tests;
 
 pub use step_anchors::StepAnchors;
