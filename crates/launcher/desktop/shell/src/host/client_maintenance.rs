@@ -1,6 +1,6 @@
-//! Reset the client cache or all client state. Scaffold (LX-02): the engine
-//! half answers `unavailable` until LX-06. The webview names no folder;
-//! native code resolves the player's Documents itself.
+//! Reset the client cache or all client state (`engine` `client_maintenance`).
+//! The webview names no folder; native code resolves the player's Documents
+//! itself.
 use super::NativeHost;
 use cimmeria_launcher_engine::client_maintenance::{
     ClientMaintenanceCommand, ClientMaintenanceError, ClientMaintenanceStatus,
@@ -24,14 +24,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_command_reaches_the_engine_scaffold() {
+    fn an_unconfirmed_reset_all_reaches_the_engine_and_is_refused() {
+        // Refused before any deletion, so this never touches the real
+        // profile.
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
-        let request =
-            serde_json::from_str(r#"{"command":"reset_cache","schema_version":1}"#).unwrap();
+        let request = serde_json::from_str(
+            r#"{"command":"reset_all_client_state","schema_version":1,"confirmed":false}"#,
+        )
+        .unwrap();
         assert_eq!(
             host.client_maintenance_command(request),
-            Err(ClientMaintenanceError::Unavailable)
+            Err(ClientMaintenanceError::ConfirmationRequired)
         );
     }
 }
