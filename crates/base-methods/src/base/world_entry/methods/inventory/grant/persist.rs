@@ -302,7 +302,7 @@ pub(super) async fn persist_grant(
                 Some(s) => s,
                 None => {
                     let _ = db_tx.rollback().await;
-                    tracing::warn!(
+                    tracing::debug!(
                         player_id,
                         player_name = known_names::player_name(player_id),
                         item_id,
@@ -316,7 +316,7 @@ pub(super) async fn persist_grant(
             },
             Ok(None) => {
                 let _ = db_tx.rollback().await;
-                tracing::warn!(
+                tracing::debug!(
                     player_id,
                     player_name = known_names::player_name(player_id),
                     item_id,
