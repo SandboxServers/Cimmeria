@@ -89,10 +89,10 @@ new Praxis character on 2026-10-10.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | BlockedDependency |
+| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Integrated |
 | GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
-| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | packet-coder | M | 2 | GD-01, GD-02 | BlockedDependency |
-| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | packet-coder | M | 3 | GD-03 | BlockedDependency |
+| GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | rust-gameserver-dev (Haiku ran out of context) | M | 2 | GD-01, GD-02 | Integrated |
+| GD-04 | Agreement and first-divergence diff, with the test-only acceptance | rust-gameserver-dev | M | 3 | GD-03 | BlockedDependency |
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | BlockedDependency |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | BlockedDependency |
@@ -187,3 +187,28 @@ then the reference, not the spec.
   The committed-golden guard also checks the file sits at
   `golden_path(section)` and the on-disk byte size, and its logic is tested
   against a temporary folder of bad goldens.
+- **GD-01.** `GoldenSpec` and both `golden` fields sit in `// lab-golden
+  (GD-01)` ... `// end lab-golden` blocks, outside SV-03's marked blocks. A
+  glob is bad when empty or holding any whitespace. Validation checks
+  overlap within one table only: a section `ignore` and a row
+  `allow_unordered` naming the same glob both pass, so **GD-03's `resolve`
+  must decide; `ignore` wins** (drop the glob from `allow_unordered` after
+  merging). The guide states that the built-in `ignore` defaults always
+  apply and that a row's `key_args` entry replaces the section's.
+- **GD-03.** Implemented by `rust-gameserver-dev`: the Haiku `packet-coder`
+  ran out of context reading the M-size spec and the merged code, so the
+  remaining M packets (GD-04, GD-07) go to `rust-gameserver-dev` too. A core
+  `normalise_tap` returns `Normalised { events, unordered, transitions }`;
+  `events_from_tap` keeps the contract signature as a wrapper. Tests live in
+  `normalise_tests.rs` and `build_tests.rs`. Run variables (`RUN_VARS`) are
+  substituted in the JSON string leaves before `render_json`. Labelling is
+  two-pass: ordered events number their unknown ids first, in tap order; the
+  `allow_unordered` records are then sorted by a rendering against frozen
+  labels (unnumbered ids as `?`) and labelled in that order, so their arrival
+  order cannot renumber anything. Known limit (TODO in the code): two tied
+  unordered events that share an unnumbered id still number by arrival. The
+  late-bind cut starts at the first record with a `ts_ms`. A window sample
+  with neither `error` nor `windows` counts as failed. A missing ID or
+  Status field on a mission, step or objective update drops the transition
+  with a `tracing::debug!`. A tap body with no `coverage` key reads as
+  `full` (bundles from before fingerprint mode).

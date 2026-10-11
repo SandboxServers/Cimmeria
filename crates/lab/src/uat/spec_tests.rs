@@ -407,3 +407,110 @@ fn a_server_clause_timeout_is_capped() {
         .contains("at most 60000"));
     assert!(parse(&server_clause(60000)).is_ok());
 }
+
+const GOLDEN: &str = r#"
+schema = 1
+[section]
+id = "gm-parity"
+system = "GM console command parity"
+guide = "unified-uat.md#gm-console-command-parity"
+ledger = "legacy-command-parity/README.md"
+
+[section.golden]
+allow_unordered = ["onEffectResults"]
+
+[[row]]
+id = "M1-1"
+title = "help answers"
+expected = "Each answers in chat."
+step = [{ chat = ".help", label = "help" }]
+
+[[row.expect]]
+id = "help"
+text = ".help lists commands"
+source = "chat"
+since = "help"
+contains = "help"
+
+[[row]]
+id = "M1-9"
+title = "cleanup"
+expected = "Nothing is left behind."
+blocked = "cleanup only"
+
+[row.golden]
+skip = true
+"#;
+
+#[test]
+fn golden_tables_parse_on_the_section_and_the_row() {
+    let s = parse(GOLDEN).unwrap();
+    let section = s.section.golden.as_ref().unwrap();
+    assert_eq!(section.allow_unordered, ["onEffectResults"]);
+    assert!(s.rows[0].golden.is_none());
+    let row = s.rows[1].golden.as_ref().unwrap();
+    assert!(row.skip);
+    assert!(!section.skip);
+}
+
+#[test]
+fn an_unknown_golden_key_is_rejected() {
+    let bad = GOLDEN.replace(
+        "allow_unordered = [\"onEffectResults\"]",
+        "ignored = [\"onEffectResults\"]",
+    );
+    let e = parse(&bad).unwrap_err();
+    assert!(e.contains("ignored"), "{e}");
+}
+
+#[test]
+fn section_skip_and_overlapping_globs_are_rejected() {
+    let skip = GOLDEN.replace("[section.golden]\n", "[section.golden]\nskip = true\n");
+    let e = parse(&skip).unwrap_err();
+    assert!(e.contains("[section.golden]: skip is row-only"), "{e}");
+
+    let empty = GOLDEN.replace("[\"onEffectResults\"]", "[\"\"]");
+    let e = parse(&empty).unwrap_err();
+    assert!(e.contains("[section.golden]: bad glob \"\""), "{e}");
+
+    let spaced = GOLDEN.replace("[\"onEffectResults\"]", "[\"on Effect\"]");
+    let e = parse(&spaced).unwrap_err();
+    assert!(e.contains("bad glob \"on Effect\""), "{e}");
+
+    let both = GOLDEN.replace(
+        "allow_unordered = [\"onEffectResults\"]",
+        "ignore = [\"onEffectResults\"]\nallow_unordered = [\"onEffectResults\"]",
+    );
+    let e = parse(&both).unwrap_err();
+    assert!(
+        e.contains("\"onEffectResults\" is both ignored and unordered"),
+        "{e}"
+    );
+
+    let no_fields = GOLDEN.replace(
+        "allow_unordered = [\"onEffectResults\"]",
+        "allow_unordered = [\"onEffectResults\"]\nkey_args = { onMissionUpdate = [] }",
+    );
+    let e = parse(&no_fields).unwrap_err();
+    assert!(
+        e.contains("[section.golden]: key_args \"onMissionUpdate\""),
+        "{e}"
+    );
+
+    let row_glob = GOLDEN.replace(
+        "[row.golden]\nskip = true",
+        "[row.golden]\nignore = [\" \"]",
+    );
+    let e = parse(&row_glob).unwrap_err();
+    assert!(e.contains("M1-9/golden: bad glob \" \""), "{e}");
+
+    // Every glob list is checked, not only the first two.
+    for key in ["collapse", "ignore_windows"] {
+        let bad = GOLDEN.replace(
+            "[row.golden]\nskip = true",
+            &format!("[row.golden]\n{key} = [\"\"]"),
+        );
+        let e = parse(&bad).unwrap_err();
+        assert!(e.contains("M1-9/golden: bad glob \"\""), "{key}: {e}");
+    }
+}

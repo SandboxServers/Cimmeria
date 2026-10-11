@@ -152,6 +152,9 @@ pub struct StagedItem { pub type_id: i32, pub count: u32, pub container_id: i32 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StagedFixture {
     pub player_id: i32,
+    /// The account that owns `player_id` (`sgw_player.account_id`), filled
+    /// by the stager. Only a session of this account takes the fixture.
+    pub account_id: i32,
     /// For logs (Rule 6).
     pub player_name: String,
     /// A `sgw_player.world_location` value (a world name).
@@ -163,11 +166,16 @@ pub struct StagedFixture {
 }
 
 /// Stage `f` for its player, replacing any earlier one. Returns true when
-/// one was replaced.
+/// one was replaced. For the lab endpoint only (FX-04 owns the GM and
+/// offline gates, and fills `account_id`).
 pub fn stage_fixture(f: StagedFixture) -> bool;
-/// Remove and return the player's fixture; None when none is staged or it
-/// is older than `STAGED_FIXTURE_TTL` (an expired one is dropped with a WARN).
-pub fn take_fixture(player_id: i32) -> Option<StagedFixture>;
+/// Remove and return the player's fixture when it was staged for
+/// `account_id` (the playing session's account); None when none is staged,
+/// it is older than `STAGED_FIXTURE_TTL` (dropped with a WARN), or it is
+/// another account's (left staged, WARN `reason = "account_mismatch"`).
+/// FX-02 review: replaced `take_fixture(player_id)`, which let any account
+/// burn another character's fixture through `playCharacter(victim_id)`.
+pub fn take_fixture_for(player_id: i32, account_id: i32) -> Option<StagedFixture>;
 /// True while one is staged and not expired (the tool's reply, tests).
 pub fn fixture_pending(player_id: i32) -> bool;
 ```
@@ -180,10 +188,14 @@ pub fn fixture_pending(player_id: i32) -> bool;
 pub struct FixtureApplied { pub missions: usize, pub items_removed: u64, pub items_granted: u64, pub tutorials_forgotten: u64, pub moved: bool }
 /// Write `f` for `player_id` (owned by `account_id`). Called from
 /// `handle_play_character` before `query_world_entry`.
-pub(crate) async fn apply_staged_fixture(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<FixtureApplied, String>;
-// missions.rs (FX-02)
-pub(crate) async fn apply_missions(pool: &PgPool, player_id: i32, missions: &[StagedMission]) -> Result<usize, String>;
-// items.rs (FX-03; FX-02 leaves a version that returns Err for a non-empty list)
+/// (FX-02 review: the error is `ApplyError::{Precheck, Write}(String)`, so
+/// the "not applied" ERROR carries `reason` precheck_refused / write_failed.)
+pub(crate) async fn apply_staged_fixture(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<FixtureApplied, ApplyError>;
+// missions.rs (FX-02; checks in the precheck, writes after it)
+pub(crate) async fn plan_missions(pool: &PgPool, missions: &[StagedMission]) -> Result<Vec<MissionRow>, String>;
+pub(crate) async fn write_missions(pool: &PgPool, player_id: i32, rows: &[MissionRow]) -> Result<usize, String>;
+// items.rs (FX-03; FX-02 leaves a version that returns Err for a non-empty list,
+// and the precheck refuses a non-empty list first: FX-03 removes that refusal)
 pub(crate) async fn apply_items(pool: &PgPool, player_id: i32, items: &[StagedItem]) -> Result<(u64, u64), String>;
 // tutorials.rs and position.rs (FX-02)
 pub(crate) async fn forget_tutorials(pool: &PgPool, player_id: i32, ids: &[i32]) -> Result<u64, String>;
@@ -504,7 +516,8 @@ Files:
       its mission (`resources.mission_steps`); items: `count <= 10`,
       `container` `main` or `mission`, design id exists; tutorial ids > 0;
       `position` finite. Refuse on the first failure, naming the field.
-   6. Build the `StagedFixture` and `stage_fixture` it; reply per the
+   6. Build the `StagedFixture` (`account_id` = the resolved row's
+      `sgw_player.account_id`) and `stage_fixture` it; reply per the
       contract. Log one `info` `"lab fixture staged"` with
       `player_id`, `player_name` and the counts.
 2. `crates/lab-mcp/src/tools/mod.rs`: register the tool next to
