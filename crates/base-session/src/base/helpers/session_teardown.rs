@@ -59,6 +59,10 @@ pub struct SessionEndRow<'a> {
     pub in_world: bool,
     /// The world the character was in, by name; absent when none.
     pub world: Option<&'a str>,
+    /// `"lab"` or `"player"` from the account's `test_account` flag
+    /// (TG-NET-16), as `cimmeria.session_kind`; absent before Phase 3
+    /// resolved the account (TG-NET-17).
+    pub session_kind: Option<&'static str>,
 }
 
 /// Milliseconds since `state`'s last fresh datagram, for
@@ -89,6 +93,7 @@ pub fn log_session_end(row: &SessionEndRow<'_>) {
         idle_ms = row.idle_ms,
         in_world = row.in_world,
         world = row.world,
+        cimmeria.session_kind = row.session_kind,
         "player session ended"
     );
 }
@@ -206,6 +211,7 @@ struct EndHints {
     idle_ms: u64,
     in_world: bool,
     world: Option<String>,
+    session_kind: Option<&'static str>,
 }
 
 /// The body of both teardown entry points. `false` when nothing was torn
@@ -285,6 +291,7 @@ fn teardown_session(
             idle_ms: session_idle_ms(c),
             in_world: c.listed_online,
             world: c.world_name.clone(),
+            session_kind: c.session_kind,
         };
         // Snapshot before `remove`: a character still in the world is
         // announced offline once (a `logOff` already unlisted and announced).
@@ -351,6 +358,7 @@ fn teardown_session(
             idle_ms: hints.idle_ms,
             in_world: hints.in_world,
             world: hints.world.as_deref(),
+            session_kind: hints.session_kind,
         });
 
         // Remove from entity->addr reverse index, and record the witness as
@@ -454,6 +462,7 @@ fn teardown_session(
         player_name = identity.player_name,
         player_entity_id = player_eid,
         player_entity_name = identity.player_name,
+        cimmeria.session_kind = hints.session_kind,
         "Client entities cleaned up"
     );
 
