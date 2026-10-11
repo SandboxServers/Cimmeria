@@ -376,7 +376,7 @@ pub(super) async fn handle_base_message(
             // TG-AOI-02: the base-built appearance (equip, holster) reached
             // `witness_count` observers. Zero means nobody saw the change.
             let who = space_mgr.player_identity(entity_id);
-            tracing::info!(
+            tracing::debug!(
                 target: "aoi.appearance",
                 event = "appearance_rebroadcast",
                 entity_id,
