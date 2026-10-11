@@ -162,6 +162,15 @@ pub(in crate::cell::content::executor) async fn move_waypoint(
     space_mgr: &mut SpaceManager,
 ) {
     let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            reason = "entity_missing",
+            "Content: move waypoint skipped, no entity carries the tag"
+        );
         return;
     };
     let tn = space_mgr.entity_names(target_id);

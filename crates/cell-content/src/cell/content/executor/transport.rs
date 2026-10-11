@@ -68,6 +68,10 @@ pub(super) async fn teleport(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             requested = space_id,
             current = ?current_space,
             chain_id,
@@ -126,7 +130,7 @@ pub(super) async fn teleport(
             player_name = who.player_name,
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
-            reason = "cell_to_base_closed",
+            reason = "base_channel_closed",
             error = %e,
             "Content: teleport snap not sent; pets left in place"
         );
@@ -227,7 +231,7 @@ pub(super) async fn cross_world_teleport(
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             error = %e,
-            reason = "cell_to_base_closed",
+            reason = "base_channel_closed",
             "CrossWorldTeleport: cell→base GateTravel send failed -- player and pets left in place"
         );
         return;
