@@ -12,7 +12,7 @@
 # need no token.
 [CmdletBinding()]
 param(
-    [string[]]$Nodes = @('node5', 'node2'),
+    [string[]]$Nodes = @('node5', 'node2', 'node1'),
     [string]$Repo = 'SandboxServers/Cimmeria',
     # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty
     # keeps the value already in the node's .env.
@@ -25,6 +25,7 @@ $ErrorActionPreference = 'Stop'
 # ssh host alias and where the compose project lives (both on the NVMe volume).
 $targets = @{
     node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g'; Cache = '12gb'; BuildkitMb = 50000 }
+    node1 = @{ Ssh = 'cimmeria-node1'; Dir = '/var/lib/gha-runners'; Mem = '16g'; Cache = '16gb'; BuildkitMb = 80000 }
     node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g'; Cache = '24gb'; BuildkitMb = 80000 }
 }
 

@@ -6,7 +6,7 @@
 #   pwsh tools/ci-runners/status.ps1 -Last 30
 [CmdletBinding()]
 param(
-    [string[]]$Nodes = @('node5', 'node2'),
+    [string[]]$Nodes = @('node5', 'node2', 'node1'),
     [int]$Last = 10
 )
 Set-StrictMode -Version Latest
@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 $targets = @{
     node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners' }
     node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners' }
+    node1 = @{ Ssh = 'cimmeria-node1'; Dir = '/var/lib/gha-runners' }
 }
 
 foreach ($node in $Nodes) {

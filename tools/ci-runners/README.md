@@ -1,6 +1,6 @@
 # Self-hosted CI runners
 
-Ten GitHub Actions runners for Cimmeria's Linux CI: five on node5, five on node2. Each
+Fifteen GitHub Actions runners for Cimmeria's Linux CI: five each on node5, node2 and node1. Each
 runs in its own container, paired with its own docker-in-docker daemon. Every
 `test.yml` job routes to them through the `cimmeria-linux` label, except that fork PRs
 always get GitHub-hosted runners. Windows and macOS jobs, and the other workflows' light
