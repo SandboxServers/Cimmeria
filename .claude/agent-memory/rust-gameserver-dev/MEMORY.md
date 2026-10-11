@@ -141,6 +141,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [client-telemetry-governor-classify-table](client-telemetry-governor-classify-table.md) — every DLL event passes the governor; new targets default to Budgeted; must-keep rows need a server priority prefix too.
 - [telemetry-ingest-naming-traps](telemetry-ingest-naming-traps.md) — replay: 32-field event cap, no router state (global cell sender), docs/ not in the image, lane log-dir race.
 
+- [otel-log-redaction-wrap-provider](otel-log-redaction-wrap-provider.md) — redact OTLP log fields by wrapping the bridge's LoggerProvider (LogProcessor can't edit attrs); event names hold registry paths.
 - [rule6-name-pairing-patterns](rule6-name-pairing-patterns.md) — tracing field exprs are lazy (inline names are free); book() guard in closures fails E0515.
 
 ## Testing patterns
