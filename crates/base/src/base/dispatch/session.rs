@@ -73,7 +73,12 @@ pub(super) async fn handle_log_off(
                 };
                 // The end-cause hints for this handler's own `session.end`
                 // (TG-NET-02), taken before the flag and the world clear.
-                let end_hints = (session_idle_ms(c), c.listed_online, c.world_name.clone());
+                let end_hints = (
+                    session_idle_ms(c),
+                    c.listed_online,
+                    c.world_name.clone(),
+                    c.session_kind,
+                );
                 c.listed_online = false;
                 // A full exit keeps the session until the client disconnects
                 // or times out: mark it so that later `session.end` says the
@@ -134,7 +139,7 @@ pub(super) async fn handle_log_off(
                 Default::default(),
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
                 0,
-                (0, false, None),
+                (0, false, None, None),
             ),
         }
     };
@@ -161,6 +166,7 @@ pub(super) async fn handle_log_off(
             idle_ms: end_hints.0,
             in_world: end_hints.1,
             world: end_hints.2.as_deref(),
+            session_kind: end_hints.3,
         });
     }
 

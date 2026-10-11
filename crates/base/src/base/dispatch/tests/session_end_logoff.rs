@@ -91,6 +91,33 @@ async fn logoff_to_character_select_ends_the_session() {
     );
 }
 
+/// TG-NET-17: the logOff(0) row carries the session's lab/player kind, so a
+/// lab run's return to character select filters out with the rest of the
+/// run. Fails with `session_kind` dropped from the handler's end hints.
+#[tokio::test]
+async fn logoff_row_carries_session_kind() {
+    let addr: SocketAddr = "127.0.0.1:54808".parse().unwrap();
+    let connected = in_world_session(addr, true);
+    connected
+        .lock()
+        .unwrap()
+        .get_mut(&addr)
+        .unwrap()
+        .session_kind = Some("lab");
+    let (tx, _rx) = mpsc::channel::<BaseToCellMsg>(8);
+    let capture = LogCapture::install();
+
+    log_off(0, addr, &connected, tx).await;
+
+    let ends = session_ends(&capture);
+    assert_eq!(ends.len(), 1, "one session.end row: {:#?}", capture.all());
+    assert!(
+        ends[0].has_field("cimmeria.session_kind", "lab"),
+        "the logOff row lacks the session kind: {:#?}",
+        ends[0]
+    );
+}
+
 /// `listed_online` is set only in `onClientReady`; a logOff(0) before it
 /// still ends a session the cell's `player_init` started.
 #[tokio::test]

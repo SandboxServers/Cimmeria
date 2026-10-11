@@ -44,6 +44,7 @@ impl CellEntity {
             player_id: None,
             account_id: None,
             log_names: super::LogNames::default(),
+            session_kind: None,
             created_at: std::time::SystemTime::now(),
             archetype_id: None,
             access_level: 0,

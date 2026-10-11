@@ -87,6 +87,7 @@ async fn world_entry_applies_a_known_passive() {
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
             entry_cause: crate::cell::messages::WorldEntryCause::Login,
+            session_kind: None,
         },
     )
     .await;

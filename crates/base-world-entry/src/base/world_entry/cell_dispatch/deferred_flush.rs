@@ -16,7 +16,7 @@ use crate::mercury::compose_create_entity_base_body;
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::deferred_aoi_lifecycle::lifecycle_segments;
-use super::super::super::helpers::{send_bundle_to_witness_reliable, BundleSendOutcome};
+use super::super::super::helpers::{send_bundle_to_witness_reliable_kind, BundleSendOutcome};
 use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 use super::aoi::{entity_invisible, entity_method_call, left_aoi, witness_entity_method};
@@ -346,12 +346,13 @@ async fn dispatch_segment(
             phase1_packets = phase1.estimated_packet_count(),
             "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
         );
-        let outcome = send_bundle_to_witness_reliable(
+        let outcome = send_bundle_to_witness_reliable_kind(
             transport,
             connected,
             entity_to_addr,
             witness_id,
             phase1,
+            "aoi_flush_create_base",
         )
         .await;
         log_bundle_emit(
@@ -371,12 +372,13 @@ async fn dispatch_segment(
             phase2_packets = phase2.estimated_packet_count(),
             "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
         );
-        let outcome = send_bundle_to_witness_reliable(
+        let outcome = send_bundle_to_witness_reliable_kind(
             transport,
             connected,
             entity_to_addr,
             witness_id,
             phase2,
+            "aoi_flush_cascade",
         )
         .await;
         log_bundle_emit(witness_id, witness_name, entered_count, "cascade", outcome);
