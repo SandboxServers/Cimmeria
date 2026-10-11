@@ -19,6 +19,7 @@ use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
 
 use super::helpers::{destroy_client_entities, to_hex};
+use super::session_identity;
 use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
 
@@ -62,7 +63,9 @@ pub(crate) async fn handle_login(
     };
     let Some(peeked) = peeked else {
         tracing::warn!(
+            %addr,
             ticket_prefix = %CredentialPrefix(ticket),
+            reason = "ticket_unknown",
             "Unknown or already-consumed ticket"
         );
         return Ok(());
@@ -100,7 +103,9 @@ pub(crate) async fn handle_login(
         Some(l) => l,
         None => {
             tracing::warn!(
+                %addr,
                 ticket_prefix = %CredentialPrefix(ticket),
+                reason = "ticket_unknown",
                 "Unknown or already-consumed ticket"
             );
             return Ok(());
@@ -177,6 +182,7 @@ pub(crate) async fn handle_login(
     }
 
     tracing::info!(
+        %addr,
         account_id = login.account_id,
         account_name = %login.account_name,
         "Phase 3 authenticated; sending reply and time-sync"
@@ -284,7 +290,12 @@ pub(crate) async fn handle_login(
         arcs
     };
 
-    tracing::info!(%addr, "Phase 3 complete -- channel registered, starting tick-sync");
+    tracing::info!(
+        %addr,
+        account_id = login.account_id,
+        account_name = %login.account_name,
+        "Phase 3 complete -- channel registered, starting tick-sync"
+    );
 
     // Discord auth-channel ping. Character isn't selected yet at Phase 3
     // (that happens at playCharacter), so the name is `None` here — the
@@ -580,7 +591,14 @@ pub(crate) async fn handle_log_off(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing::info!(%addr, "Client requests logOff -- sending LOGGED_OFF and cleaning up");
+    // The account pair is read before the session is removed below.
+    let identity = session_identity::identity_for_addr(connected, addr);
+    tracing::info!(
+        %addr,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        "Client requests logOff -- sending LOGGED_OFF and cleaning up"
+    );
 
     // Signal the tick-sync loop to stop and grab seq/acks for the final packet.
     // Snapshot the identity + session duration here too, before

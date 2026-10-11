@@ -120,7 +120,12 @@ pub(super) async fn dispatch_base_method(
             .await?;
         }
         0xC3 => {
-            tracing::info!(%addr, "Client requests createCharacter");
+            tracing::info!(
+                %addr,
+                account_id,
+                account_name = session_identity::identity_for_addr(connected, addr).account_name,
+                "Client requests createCharacter"
+            );
             handle_create_character(
                 transport, addr, key, account_id, payload, connected, db_pool,
             )
@@ -134,6 +139,8 @@ pub(super) async fn dispatch_base_method(
             };
             tracing::info!(
                 %addr,
+                account_id,
+                account_name = session_identity::identity_for_addr(connected, addr).account_name,
                 player_id, // nt:id-only requested character; play_character names it once loaded
                 "Client requests playCharacter"
             );
@@ -173,6 +180,8 @@ pub(super) async fn dispatch_base_method(
             };
             tracing::info!(
                 %addr,
+                account_id,
+                account_name = session_identity::identity_for_addr(connected, addr).account_name,
                 player_id, // nt:id-only requested character; the delete handler names it from the row
                 "Client requests deleteCharacter"
             );
@@ -291,4 +300,53 @@ async fn hold_play_character(
         Err(action) => action().await,
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+    use tracing::Level;
+
+    /// Rule 6 guard for the character-select rows: `createCharacter` names the
+    /// account next to its ID. Fails with `account_id` or `account_name`
+    /// removed from the arm's INFO.
+    #[tokio::test]
+    async fn create_character_dispatch_names_the_account() {
+        let capture = LogCapture::install();
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let addr: SocketAddr = "127.0.0.1:55583".parse().unwrap();
+        let mut state = test_default_connected_client_state();
+        state.account_id = 0x7000_2501;
+        state.account_name = Some("acct_create".to_string());
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+
+        // The refusal of an empty payload is not under test; only the INFO row.
+        let _ = dispatch_base_method(
+            0xC3,
+            &[],
+            addr,
+            &transport,
+            [0u8; 32],
+            0x7000_2501,
+            &connected,
+            &None,
+            &entity_manager,
+            &None,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        let line = capture
+            .find_message(Level::INFO, "Client requests createCharacter")
+            .unwrap_or_else(|| panic!("no createCharacter line: {:#?}", capture.all()));
+        assert!(
+            line.has_field("account_id", &0x7000_2501u32.to_string()),
+            "{line:#?}"
+        );
+        assert!(line.has_field("account_name", "acct_create"), "{line:#?}");
+    }
 }
