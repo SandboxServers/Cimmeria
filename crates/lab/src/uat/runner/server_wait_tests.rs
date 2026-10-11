@@ -10,8 +10,8 @@ use tokio::time::Instant;
 use super::test_server::FakeServer;
 use super::tests::{request, Fake};
 use super::Runner;
-use crate::uat::evidence::{ActionRecord, ClauseResult, RowEvidence, RunDir, Verdict};
-use crate::uat::invoke::{BoxedOutcome, ServerInvoker};
+use crate::uat::evidence::{ActionRecord, ClauseResult, RowEvidence, RunDir};
+use crate::uat::invoke::{BoxedOutcome, ServerInvoker, ToolOutcome};
 
 /// A server that notes when (on the paused clock) each call was made.
 struct Timed<'a> {
@@ -56,8 +56,121 @@ impl ServerInvoker for Timed<'_> {
     }
 }
 
+/// When a [`Ring`] line is in the server's log ring.
+#[derive(Clone, Copy)]
+enum When {
+    Always,
+    /// Once the client has typed this chat line.
+    Typed(&'static str),
+    /// From this many ms on the paused clock.
+    At(u64),
+}
+
+/// A server whose log ring fills as the row runs, read the way
+/// `server_log_tail` reads it: `newest_ms` over the whole ring, then
+/// `contains`, `target` and `since_ms`, then the newest `limit` lines.
+struct Ring<'a> {
+    fake: &'a Fake,
+    t0: Instant,
+    /// In push order.
+    lines: Vec<(When, Value)>,
+}
+
+impl<'a> Ring<'a> {
+    fn new(fake: &'a Fake, lines: Vec<(When, Value)>) -> Self {
+        Self {
+            fake,
+            t0: Instant::now(),
+            lines,
+        }
+    }
+
+    fn logged(&self, when: When) -> bool {
+        match when {
+            When::Always => true,
+            When::At(ms) => self.t0.elapsed().as_millis() as u64 >= ms,
+            When::Typed(text) => self
+                .fake
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(n, a)| n == "client_type_text" && a["text"] == text),
+        }
+    }
+
+    fn tail(&self, args: &Value) -> Value {
+        let ring: Vec<&Value> = self
+            .lines
+            .iter()
+            .filter(|(w, _)| self.logged(*w))
+            .map(|(_, l)| l)
+            .collect();
+        let newest = ring.iter().filter_map(|l| l["timestamp_ms"].as_u64()).max();
+        let matched: Vec<Value> = ring
+            .into_iter()
+            .filter(|l| {
+                args["contains"]
+                    .as_str()
+                    .is_none_or(|c| l["message"].as_str().unwrap().contains(c))
+                    && args["target"].as_str().is_none_or(|t| l["target"] == t)
+                    && args["since_ms"]
+                        .as_u64()
+                        .is_none_or(|s| l["timestamp_ms"].as_u64().unwrap() > s)
+            })
+            .cloned()
+            .collect();
+        let limit = args["limit"].as_u64().unwrap_or(100) as usize;
+        let entries = matched[matched.len().saturating_sub(limit)..].to_vec();
+        json!({ "count": entries.len(), "total_buffered": matched.len(), "newest_ms": newest, "entries": entries })
+    }
+}
+
+impl ServerInvoker for Ring<'_> {
+    fn url(&self) -> &str {
+        "http://127.0.0.1:1/mcp"
+    }
+
+    fn call<'b>(&'b self, name: &'b str, args: Value) -> BoxedOutcome<'b> {
+        let out = match name {
+            "server_log_tail" => ToolOutcome {
+                ok: true,
+                json: self.tail(&args),
+                ..Default::default()
+            },
+            _ => ToolOutcome::err(format!("unknown tool {name}")),
+        };
+        Box::pin(async move { out })
+    }
+}
+
+/// A server whose calls to `tool` after the first `after` never return.
+pub(super) struct Stall<'a> {
+    pub(super) inner: &'a FakeServer,
+    pub(super) tool: &'static str,
+    pub(super) after: usize,
+    pub(super) n: Mutex<usize>,
+}
+
+impl ServerInvoker for Stall<'_> {
+    fn url(&self) -> &str {
+        self.inner.url()
+    }
+
+    fn call<'b>(&'b self, name: &'b str, args: Value) -> BoxedOutcome<'b> {
+        if name == self.tool {
+            let mut n = self.n.lock().unwrap();
+            *n += 1;
+            if *n > self.after {
+                return Box::pin(std::future::pending());
+            }
+        }
+        self.inner.call(name, args)
+    }
+}
+
 /// Run the one row; also return how long it took on the paused clock.
-async fn run(fake: &Fake, server: &dyn ServerInvoker, rows: &str) -> (RowEvidence, u64) {
+pub(super) async fn run(fake: &Fake, server: &dyn ServerInvoker, rows: &str) -> (RowEvidence, u64) {
     let tmp = tempfile::tempdir().unwrap().keep();
     let t0 = Instant::now();
     let out = Runner::new(fake, Some(server), request(&tmp, rows))
@@ -81,7 +194,7 @@ fn wait_action(row: &RowEvidence) -> &ActionRecord {
         .expect("the wait ran")
 }
 
-fn clause<'r>(row: &'r RowEvidence, id: &str) -> &'r ClauseResult {
+pub(super) fn clause<'r>(row: &'r RowEvidence, id: &str) -> &'r ClauseResult {
     row.clauses.iter().find(|c| c.id == id).expect("clause ran")
 }
 
@@ -162,9 +275,9 @@ async fn a_wait_passes_on_the_release_for_this_player() {
     assert_eq!(calls[0].1, 0);
     assert!(calls[0].0.get("since_ms").is_none());
     assert_eq!(calls[0].0["contains"], "hold released");
-    // The first poll reads from the mark's millisecond on.
+    // The first poll reads from a millisecond before the mark on.
     assert_eq!(calls[1].1, 300);
-    assert_eq!(calls[1].0["since_ms"], 99);
+    assert_eq!(calls[1].0["since_ms"], 98);
     assert_eq!(calls[1].0["target"], HOLD);
     assert_eq!(ms, 300);
 }
@@ -226,7 +339,7 @@ async fn a_line_in_the_marks_own_millisecond_is_still_seen() {
     // Not the line that was already there when the mark was read.
     assert_eq!(a.result["matched"]["message"], "hold released now");
     assert_eq!(a.result["matched"]["timestamp_ms"], 100);
-    assert_eq!(timed.calls_to("server_log_tail")[1].0["since_ms"], 99);
+    assert_eq!(timed.calls_to("server_log_tail")[1].0["since_ms"], 98);
 }
 
 #[tokio::test(start_paused = true)]
@@ -299,110 +412,212 @@ async fn a_string_number_matches_a_number() {
     assert_eq!(a.result["matched"]["fields"]["witness_id"], "8");
 }
 
-/// A server clause on the mission step, with an optional `timeout_ms`.
-fn step_row(timeout: &str) -> String {
+/// A row with `setup`, then `steps`, then a chat clause.
+fn row_with(setup: &str, steps: &str) -> String {
     format!(
         r#"
 [[row]]
-id = "SV-P"
-title = "poll"
-expected = "Reads the server."
-step = [{{ chat = ".help" }}]
+id = "SV-W"
+title = "wait"
+expected = "Waits."
+setup = [{setup}]
+step = [{steps}]
 [[row.expect]]
-id = "db"
-text = "a row reaches step 80623"
-source = "server"
-tool = "server_db_query"
-args = {{ sql = "SELECT 1" }}
-pointer = "/rows/0/current_step_id"
-op = "eq"
-value = 80623
-{timeout}
+id = "c"
+text = "t"
+source = "chat"
+contains = "x"
 "#
     )
 }
 
-fn at_step(step: u32) -> Value {
-    json!({ "rows": [{ "current_step_id": step }] })
+/// The ring's first line: something older than anything a wait is for.
+fn boot() -> (When, Value) {
+    (When::Always, line(100, "cell.boot", "boot", json!({})))
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_server_clause_polls_until_it_passes() {
-    let fake = Fake::new(&[]);
-    let persisted = || {
-        FakeServer::new(json!({})).answer(
-            "server_db_query",
-            vec![at_step(80622), at_step(80622), at_step(80623)],
-        )
+async fn a_first_step_wait_sees_the_line_its_setup_caused() {
+    let fake = client();
+    // The NPC is logged while the setup's chat line is sent.
+    let spawned = line(105, "cell.npc", "npc spawned", json!({ "id": 3 }));
+    let server = Ring::new(&fake, vec![boot(), (When::Typed(".summon"), spawned)]);
+    let rows = row_with(
+        r#"{ chat = ".summon" }"#,
+        r#"{ wait_server = { log = "spawned", timeout_ms = 1000 } }"#,
+    );
+    let (row, _) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert!(a.ok, "{:?}", a.error);
+    assert_eq!(a.result["matched"]["timestamp_ms"], 105);
+    // The mark was read before the setup action, not after it.
+    assert_eq!(a.calls[0]["mark_ms"], 100);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_wait_finds_its_line_among_the_oldest_of_sixty() {
+    let fake = client();
+    let mut lines = vec![boot()];
+    for n in 0..60u64 {
+        let l = line(101 + n, "cell.burst", "burst", json!({ "n": n }));
+        lines.push((When::At(100), l));
+    }
+    let server = Ring::new(&fake, lines);
+    let rows = wait_row(
+        "{ wait_ms = 300 }, ",
+        r#"{ log = "burst", fields = { n = 2 }, timeout_ms = 1000 }"#,
+    );
+    let (row, ms) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert!(a.ok, "{:?}", a.error);
+    assert_eq!(a.result["matched"]["timestamp_ms"], 103);
+    assert_eq!(ms, 300);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_line_stamped_before_the_mark_but_pushed_after_it_is_seen() {
+    let fake = client();
+    // Stamped 99, a millisecond before the mark's newest line, but in the
+    // ring only after the mark was read.
+    let late = line(99, HOLD, "hold released", json!({}));
+    let server = Ring::new(&fake, vec![boot(), (When::At(200), late)]);
+    let rows = wait_row(
+        "{ wait_ms = 300 }, ",
+        r#"{ log = "hold released", timeout_ms = 1000 }"#,
+    );
+    let (row, _) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert!(a.ok, "{:?}", a.error);
+    assert_eq!(a.result["matched"]["timestamp_ms"], 99);
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_second_of_two_waits_waits_from_before_the_first() {
+    let fake = client();
+    // The second wait's line lands while the first one is still waiting.
+    let server = Ring::new(
+        &fake,
+        vec![
+            boot(),
+            (When::At(100), line(105, "cell.t", "second done", json!({}))),
+            (When::At(200), line(110, "cell.t", "first done", json!({}))),
+        ],
+    );
+    let rows = row_with(
+        "",
+        r#"{ wait_server = { log = "first done", timeout_ms = 1000 } }, { wait_server = { log = "second done", timeout_ms = 1000 } }"#,
+    );
+    let (row, ms) = run(&fake, &server, &rows).await;
+    let waits: Vec<&ActionRecord> = row
+        .actions
+        .iter()
+        .filter(|a| a.kind == "wait_server")
+        .collect();
+    assert_eq!(waits.len(), 2);
+    assert!(waits[0].ok, "{:?}", waits[0].error);
+    assert!(waits[1].ok, "{:?}", waits[1].error);
+    assert_eq!(waits[1].result["matched"]["timestamp_ms"], 105);
+    assert_eq!(waits[1].calls[0]["mark_ms"], 100);
+    assert_eq!(ms, 250);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_text_field_that_parses_as_nan_still_matches() {
+    let fake = client();
+    let named = line(105, HOLD, "named", json!({ "player_name": "Nan" }));
+    let server = FakeServer::new(json!({})).answer(
+        "server_log_tail",
+        vec![tail(100, vec![]), tail(105, vec![named])],
+    );
+    let rows = wait_row(
+        "",
+        r#"{ log = "named", fields = { player_name = "Nan" }, timeout_ms = 1000 }"#,
+    );
+    let (row, _) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert!(a.ok, "{:?}", a.error);
+    assert_eq!(a.result["matched"]["fields"]["player_name"], "Nan");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_pre_action_mark_is_recorded() {
+    let fake = client();
+    let server = FakeServer::new(json!({})).answer(
+        "server_log_tail",
+        vec![
+            json!({ "__error": "lab-mcp: boom" }),
+            tail(100, vec![]),
+            tail(105, vec![line(105, HOLD, "hold released", json!({}))]),
+        ],
+    );
+    let rows = wait_row(
+        "{ wait_ms = 300 }, ",
+        r#"{ log = "hold released", timeout_ms = 1000 }"#,
+    );
+    let (row, _) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert!(a.ok, "{:?}", a.error);
+    assert_eq!(
+        a.calls[0]["pre_action_mark"],
+        "server_log_tail: lab-mcp: boom"
+    );
+    assert_eq!(a.calls[1]["mark_ms"], 100);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_unset_var_in_the_log_text_fails_at_once() {
+    let fake = client();
+    let server = FakeServer::new(json!({})).answer("server_log_tail", vec![tail(100, vec![])]);
+    let rows = wait_row("", r#"{ log = "spawned ${npc}", timeout_ms = 1000 }"#);
+    let (row, ms) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert_eq!(a.error.as_deref(), Some("unresolved variable ${npc}"));
+    assert!(!server.names().iter().any(|n| n == "server_log_tail"));
+    assert_eq!(ms, 0);
+
+    let rows = wait_row(
+        "",
+        r#"{ log = "spawned", target = "${tgt}", timeout_ms = 1000 }"#,
+    );
+    let (row, _) = run(&fake, &server, &rows).await;
+    assert_eq!(
+        wait_action(&row).error.as_deref(),
+        Some("unresolved variable ${tgt}")
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_log_read_while_polling_fails_the_wait_at_once() {
+    let fake = client();
+    let server = FakeServer::new(json!({})).answer(
+        "server_log_tail",
+        vec![tail(100, vec![]), json!({ "__error": "lab-mcp: boom" })],
+    );
+    let rows = wait_row("", r#"{ log = "hold released", timeout_ms = 1000 }"#);
+    let (row, ms) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert_eq!(a.error.as_deref(), Some("server_log_tail: lab-mcp: boom"));
+    assert_eq!(a.calls.last().unwrap()["ok"], false);
+    assert_eq!(ms, 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_poll_that_never_returns_expires_at_the_deadline() {
+    let fake = client();
+    let inner = FakeServer::new(json!({})).answer("server_log_tail", vec![tail(100, vec![])]);
+    // The mark is read; the first poll hangs.
+    let server = Stall {
+        inner: &inner,
+        tool: "server_log_tail",
+        after: 1,
+        n: Mutex::new(0),
     };
-    // README F9: the step is persisted a moment after the action.
-    let server = persisted();
-    let (row, ms) = run(&fake, &server, &step_row("timeout_ms = 2000")).await;
-    let c = clause(&row, "db");
-    assert_eq!(c.verdict, Verdict::Pass, "{:?}", c.detail);
-    assert_eq!(c.detail.as_deref(), Some("polls: 3"));
-    assert_eq!(c.observed, json!(80623));
-    let reads = server
-        .names()
-        .iter()
-        .filter(|n| *n == "server_db_query")
-        .count();
-    assert_eq!(reads, 3);
-    assert_eq!(ms, 500);
-
-    // Without timeout_ms the clause is read once, and fails.
-    let server = persisted();
-    let (row, ms) = run(&fake, &server, &step_row("")).await;
-    let c = clause(&row, "db");
-    assert_eq!(c.verdict, Verdict::Fail);
-    assert!(c.detail.is_none());
-    let reads = server
-        .names()
-        .iter()
-        .filter(|n| *n == "server_db_query")
-        .count();
-    assert_eq!(reads, 1);
-    assert_eq!(ms, 0);
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_polled_clause_that_never_passes_fails_at_its_timeout() {
-    let fake = Fake::new(&[]);
-    let server = FakeServer::new(json!({})).answer("server_db_query", vec![at_step(80622)]);
-    let (row, ms) = run(&fake, &server, &step_row("timeout_ms = 1000")).await;
-    let c = clause(&row, "db");
-    assert_eq!(c.id, "db");
-    assert_eq!(c.verdict, Verdict::Fail);
-    // Reads at 0, 250, 500, 750 and 1000.
-    assert_eq!(c.detail.as_deref(), Some("polls: 5"));
+    let rows = wait_row("", r#"{ log = "hold released", timeout_ms = 1000 }"#);
+    let (row, ms) = run(&fake, &server, &rows).await;
+    let a = wait_action(&row);
+    assert_eq!(
+        a.error.as_deref(),
+        Some("no server log 'hold released' within 1000 ms")
+    );
     assert_eq!(ms, 1000);
-    assert!(
-        row.reasons
-            .iter()
-            .any(|r| r.starts_with("clause db failed")),
-        "{:?}",
-        row.reasons
-    );
-}
-
-#[tokio::test(start_paused = true)]
-async fn an_unverified_server_clause_does_not_poll() {
-    let fake = Fake::new(&[]);
-    let mut server = FakeServer::new(json!({}));
-    server.unreachable = true;
-    let (row, ms) = run(&fake, &server, &step_row("timeout_ms = 2000")).await;
-    let c = clause(&row, "db");
-    assert_eq!(c.verdict, Verdict::Unverified);
-    assert!(
-        c.detail.as_deref().unwrap_or_default().contains("403"),
-        "{:?}",
-        c.detail
-    );
-    let reads = server
-        .names()
-        .iter()
-        .filter(|n| *n == "server_db_query")
-        .count();
-    assert_eq!(reads, 1);
-    assert_eq!(ms, 0);
 }

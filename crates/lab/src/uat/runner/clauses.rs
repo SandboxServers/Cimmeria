@@ -142,7 +142,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
     /// every 250 ms until it passes or the time is up (README F9: a value
     /// persisted a moment after the step). Only FAIL repeats: UNVERIFIED,
     /// BLOCKED and a read that did not reach the tool end the loop, so
-    /// polling can never turn them into a PASS.
+    /// polling can never turn them into a PASS. Each read is bounded by
+    /// the deadline too: one that has not returned by then is a FAIL.
     async fn eval_polled(
         &mut self,
         who: Who,
@@ -159,14 +160,32 @@ impl<I: ToolInvoker> Runner<'_, I> {
             r.verdict = Verdict::Unverified;
             r.observed = Value::Null;
             r.detail = None;
-            if c.source == Source::Server {
-                self.eval_server(c, ctx, r).await;
-            } else {
-                let tool = c.tool.clone().unwrap_or_default();
-                let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-                self.eval_read(who, &tool, args, c, r).await;
+            r.evaluated_ms = now_ms();
+            let read = async {
+                if c.source == Source::Server {
+                    self.eval_server(c, ctx, r).await;
+                } else {
+                    let tool = c.tool.clone().unwrap_or_default();
+                    let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    self.eval_read(who, &tool, args, c, r).await;
+                }
+            };
+            let Some(deadline) = deadline else {
+                read.await;
+                break;
+            };
+            if tokio::time::timeout_at(deadline, read).await.is_err() {
+                r.verdict = Verdict::Fail;
+                r.observed = Value::Null;
+                r.detail = Some(format!(
+                    "the read did not return within {} ms",
+                    c.timeout_ms.unwrap_or_default()
+                ));
+                tracing::warn!(target: "lab.uat", event = "clause_read_timed_out",
+                    clause = %c.id, tool = c.tool.as_deref().unwrap_or_default(), polls,
+                    "a polled clause read did not return before its timeout");
+                break;
             }
-            let Some(deadline) = deadline else { break };
             let now = tokio::time::Instant::now();
             if r.verdict != Verdict::Fail || now >= deadline {
                 break;

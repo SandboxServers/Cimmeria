@@ -187,8 +187,9 @@ pub(crate) struct RowCtx {
     /// The row's poses, for `pose = "<id>"` arguments ([`targets`]).
     pub poses: Vec<PoseSpec>,
     /// lab-spec-vocab (SV-08): the server log watermark the next
-    /// `wait_server` waits from, read before the action in front of it.
-    pub log_mark: Option<server_wait::LogMark>,
+    /// `wait_server` waits from, read before the action in front of it,
+    /// or why that read failed (the wait then reads a late one itself).
+    pub log_mark: Option<Result<server_wait::LogMark, String>>,
 }
 
 /// The last row the run finished, for fixture mode `auto` (D-FX10).
@@ -509,6 +510,8 @@ mod fixture_verify_tests;
 mod packet_tests;
 #[cfg(test)]
 mod players_tests;
+#[cfg(test)]
+mod polled_clause_tests;
 #[cfg(test)]
 mod revocation_tests;
 #[cfg(test)]
