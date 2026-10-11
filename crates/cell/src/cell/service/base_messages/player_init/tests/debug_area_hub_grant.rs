@@ -87,6 +87,7 @@ async fn init_with_book(
         body_set: None,
         looted_containers: vec![],
         shown_tutorials: Vec::new(),
+        entry_cause: crate::cell::messages::WorldEntryCause::Login,
     };
     super::super::super::handle_base_message(msg, &tx, mgr, &engine, &[]).await;
     let mut granted = Vec::new();

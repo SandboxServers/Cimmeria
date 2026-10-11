@@ -17,6 +17,8 @@ mod packet_tap;
 mod sessions;
 mod witnesses;
 
+use std::time::Instant;
+
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig};
@@ -141,8 +143,9 @@ impl LabTools {
     /// Enumerate every `.`-console command with its arg/target contract.
     #[tool(description = "List all server dot-console commands (name, arg counts, target, help).")]
     async fn server_console_list(&self) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let v = console::list_commands();
-        audit::emit("server_console_list", &json!({}), OUTCOME_OK);
+        audit::emit("server_console_list", &json!({}), OUTCOME_OK, None, started);
         ok(v)
     }
 
@@ -154,14 +157,27 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<ConsoleExecArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id, "line": args.line });
         match console::exec_console(&self.state, args.entity_id, args.line.clone()).await {
             Ok(v) => {
-                audit::emit("server_console_exec", &audit_args, OUTCOME_OK);
+                audit::emit(
+                    "server_console_exec",
+                    &audit_args,
+                    OUTCOME_OK,
+                    None,
+                    started,
+                );
                 ok(v)
             }
             Err(e) => {
-                audit::emit("server_console_exec", &audit_args, OUTCOME_ERROR);
+                audit::emit(
+                    "server_console_exec",
+                    &audit_args,
+                    OUTCOME_ERROR,
+                    Some(e.as_str()),
+                    started,
+                );
                 err(e)
             }
         }
@@ -172,8 +188,9 @@ impl LabTools {
         description = "List connected players: entity id, name, archetype, level, zone, status."
     )]
     async fn server_sessions(&self) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let v = sessions::list_sessions(&self.state).await;
-        audit::emit("server_sessions", &json!({}), OUTCOME_OK);
+        audit::emit("server_sessions", &json!({}), OUTCOME_OK, None, started);
         ok(v)
     }
 
@@ -185,6 +202,7 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<LogTailArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let limit = args.limit.unwrap_or(logs::DEFAULT_LIMIT);
         let audit_args = json!({
             "limit": limit,
@@ -200,20 +218,33 @@ impl LabTools {
             since_ms: args.since_ms,
         };
         let v = logs::log_tail(&self.state, &filter, limit);
-        audit::emit("server_log_tail", &audit_args, OUTCOME_OK);
+        audit::emit("server_log_tail", &audit_args, OUTCOME_OK, None, started);
         ok(v)
     }
 
     /// Hot-reload the content engine from the database.
     #[tool(description = "Trigger a content-engine hot reload from the database.")]
     async fn server_content_reload(&self) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         match content::reload_content(&self.state).await {
             Ok(v) => {
-                audit::emit("server_content_reload", &json!({}), OUTCOME_OK);
+                audit::emit(
+                    "server_content_reload",
+                    &json!({}),
+                    OUTCOME_OK,
+                    None,
+                    started,
+                );
                 ok(v)
             }
             Err(e) => {
-                audit::emit("server_content_reload", &json!({}), OUTCOME_ERROR);
+                audit::emit(
+                    "server_content_reload",
+                    &json!({}),
+                    OUTCOME_ERROR,
+                    Some(e.as_str()),
+                    started,
+                );
                 err(e)
             }
         }
@@ -227,14 +258,21 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<DbQueryArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "sql": args.sql });
         match db::db_query(&self.state, args.sql.clone()).await {
             Ok(v) => {
-                audit::emit("server_db_query", &audit_args, OUTCOME_OK);
+                audit::emit("server_db_query", &audit_args, OUTCOME_OK, None, started);
                 ok(v)
             }
             Err(e) => {
-                audit::emit("server_db_query", &audit_args, OUTCOME_ERROR);
+                audit::emit(
+                    "server_db_query",
+                    &audit_args,
+                    OUTCOME_ERROR,
+                    Some(e.as_str()),
+                    started,
+                );
                 err(e)
             }
         }
@@ -249,14 +287,27 @@ impl LabTools {
         &self,
         Parameters(call): Parameters<fixture::StageFixtureCall>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = call.0.clone();
         match fixture::stage_fixture(&self.state, call).await {
             Ok(v) => {
-                audit::emit("server_stage_fixture", &audit_args, OUTCOME_OK);
+                audit::emit(
+                    "server_stage_fixture",
+                    &audit_args,
+                    OUTCOME_OK,
+                    None,
+                    started,
+                );
                 ok(v)
             }
             Err(e) => {
-                audit::emit("server_stage_fixture", &audit_args, OUTCOME_ERROR);
+                audit::emit(
+                    "server_stage_fixture",
+                    &audit_args,
+                    OUTCOME_ERROR,
+                    Some(e.message.as_str()),
+                    started,
+                );
                 // The FX contract: a refusal is a protocol-level
                 // invalid_params error, unlike the other tools' error results.
                 // A database failure is the server's, not the caller's.
@@ -277,10 +328,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<EntityGetArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id });
         emit_result(
             "server_entity_get",
             &audit_args,
+            started,
             entities::entity_get(&self.state, args.entity_id).await,
         )
     }
@@ -293,6 +346,7 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<EntityQueryArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({
             "space_id": args.space_id,
             "template_id": args.template_id,
@@ -305,6 +359,7 @@ impl LabTools {
         emit_result(
             "server_entity_query",
             &audit_args,
+            started,
             entities::entity_query(
                 &self.state,
                 args.space_id,
@@ -327,10 +382,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<AbilityStateArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id });
         emit_result(
             "server_ability_state",
             &audit_args,
+            started,
             abilities::ability_state(&self.state, args.entity_id).await,
         )
     }
@@ -343,10 +400,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<WitnessesArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id });
         emit_result(
             "server_witnesses",
             &audit_args,
+            started,
             witnesses::witnesses(&self.state, args.entity_id).await,
         )
     }
@@ -359,10 +418,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<PacketTapStartArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id, "capacity": args.capacity });
         emit_result(
             "server_packet_tap_start",
             &audit_args,
+            started,
             packet_tap::tap_start(&self.state, args.entity_id, args.capacity).await,
         )
     }
@@ -375,10 +436,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<PacketTapArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id });
         emit_result(
             "server_packet_tap_read",
             &audit_args,
+            started,
             packet_tap::tap_read(args.entity_id),
         )
     }
@@ -389,10 +452,12 @@ impl LabTools {
         &self,
         Parameters(args): Parameters<PacketTapArgs>,
     ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
         let audit_args = json!({ "entity_id": args.entity_id });
         emit_result(
             "server_packet_tap_stop",
             &audit_args,
+            started,
             packet_tap::tap_stop(args.entity_id),
         )
     }
@@ -420,15 +485,16 @@ impl ServerHandler for LabTools {
 fn emit_result(
     tool: &str,
     audit_args: &Value,
+    started: Instant,
     result: Result<Value, String>,
 ) -> Result<CallToolResult, ErrorData> {
     match result {
         Ok(v) => {
-            audit::emit(tool, audit_args, OUTCOME_OK);
+            audit::emit(tool, audit_args, OUTCOME_OK, None, started);
             ok(v)
         }
         Err(e) => {
-            audit::emit(tool, audit_args, OUTCOME_ERROR);
+            audit::emit(tool, audit_args, OUTCOME_ERROR, Some(e.as_str()), started);
             err(e)
         }
     }
@@ -443,4 +509,52 @@ fn ok(v: Value) -> Result<CallToolResult, ErrorData> {
 /// not a protocol error).
 fn err(msg: String) -> Result<CallToolResult, ErrorData> {
     Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use cimmeria_admin_api::ws::broadcast_layer::LogBuffer;
+    use cimmeria_services::orchestrator::Orchestrator;
+    use tracing::Level;
+
+    use super::*;
+    use crate::test_support::LogCapture;
+
+    /// A bad or failed SQL call leaves one WARN `lab.tool_call` row carrying
+    /// `error` and `duration_ms`. No database is connected here, so the call
+    /// fails on the pool check, which takes the same error path as bad SQL.
+    #[tokio::test]
+    async fn bad_sql_audit_row_has_error() {
+        let capture = LogCapture::install();
+        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
+        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
+        let result = tools
+            .server_db_query(Parameters(DbQueryArgs {
+                sql: "SELEC nonsense".to_string(),
+            }))
+            .await;
+        assert!(
+            result.is_ok(),
+            "a failed query is a tool-level error result"
+        );
+
+        let event = capture
+            .find_message(Level::WARN, "lab MCP tool call")
+            .expect("an error outcome logs at WARN");
+        assert!(event
+            .fields
+            .get("tool")
+            .is_some_and(|t| t.contains("server_db_query")));
+        assert!(event
+            .fields
+            .get("outcome")
+            .is_some_and(|o| o.contains("error")));
+        assert!(event.fields.contains_key("duration_ms"));
+        assert!(event
+            .fields
+            .get("error")
+            .is_some_and(|e| e.contains("database not connected")));
+    }
 }

@@ -46,6 +46,11 @@ pub struct Review {
     pub requires_normalization: bool,
     pub requires_telemetry_acceptance: bool,
     pub user_data_remains_in_source: bool,
+    /// The folder itself is adopted; nothing is copied.
+    pub in_place: bool,
+    /// Release files that keep the folder from verifying, so it cannot be
+    /// adopted in place until they are restored. Bounded like `differences`.
+    pub blocked_files: Vec<String>,
 }
 impl Review {
     pub(super) fn of(
@@ -108,6 +113,12 @@ impl Review {
             requires_normalization: preview.requires_normalization(),
             requires_telemetry_acceptance: preview.requires_telemetry_acceptance(),
             user_data_remains_in_source: report.user_data_remains_in_source,
+            in_place: report.in_place(),
+            blocked_files: report
+                .blocking()
+                .take(LISTED)
+                .map(|file| file.path.clone())
+                .collect(),
         }
     }
 }
