@@ -31,7 +31,7 @@ pub enum ChannelState {
 /// peer address, so the service copies the session's identity in through
 /// [`Channel::set_log_identity`](super::Channel::set_log_identity) and the
 /// channel stamps it on the rows it writes (`mercury.retransmit`,
-/// `mercury.backpressure`).
+/// `mercury.backpressure`, `mercury.tx_hole`, `mercury.rx_order`).
 ///
 /// Every field is `Option` and starts `None`: before Phase 3 resolves the
 /// account the channel has no one to name, and an unknown field is left off

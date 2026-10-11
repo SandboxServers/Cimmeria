@@ -190,11 +190,18 @@ impl Channel {
                 bundle_seqs.push(bundle_seq(&pkt));
             }
         }
+        // Whose session the packet came from (TG-MER-04): synced onto the
+        // channel by the service's tick, absent until then.
+        let identity = self.log_identity;
         match outcome {
             RxOutcome::Buffered => tracing::debug!(
                 target: "mercury.rx_order",
                 event = "buffered",
                 peer = %self.remote_addr,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id = identity.player_id,
+                player_name = identity.player_name,
                 seq,
                 expected = self.expected_rx_seq,
                 "reliable packet ahead of a gap -- holding it until the gap fills"
@@ -203,6 +210,10 @@ impl Channel {
                 target: "mercury.rx_order",
                 event = "duplicate",
                 peer = %self.remote_addr,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id = identity.player_id,
+                player_name = identity.player_name,
                 seq,
                 expected = self.expected_rx_seq,
                 "reliable packet already seen -- dropped, still acked"
@@ -212,6 +223,10 @@ impl Channel {
                 event = "out_of_window",
                 reason = "beyond_rx_window",
                 peer = %self.remote_addr,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id = identity.player_id,
+                player_name = identity.player_name,
                 seq,
                 expected = self.expected_rx_seq,
                 window = consts::RX_WINDOW_SIZE,
@@ -380,11 +395,16 @@ impl Channel {
             depth: self.rx_window.len(),
             first_warning,
         };
+        let identity = self.log_identity;
         tracing::warn!(
             target: "mercury.rx_order",
             event = "rx_stall",
             reason = "reliable_gap_unfilled",
             peer = %self.remote_addr,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
             expected = stall.expected,
             first_buffered = stall.first_buffered,
             last_buffered = stall.last_buffered,

@@ -659,3 +659,6 @@ mod session_end_names_tests;
 
 #[cfg(test)]
 mod session_teardown_tests;
+
+#[cfg(test)]
+mod tx_hole_row_tests;
