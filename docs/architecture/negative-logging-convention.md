@@ -662,6 +662,16 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Bandolier ammo writeback seam (TG-ITM-06)
+
+Target `inventory`. The bandolier ammo writeback (`update_bandolier_ammo`, `base-methods` `inventory/ammo.rs`) is a write guard keyed on the slot's instance id. A zero-row result means the slot is empty or its item was swapped, so the ammo the cell computed for that slot is dropped. That is a loss the player can feel, so it is a WARN, not a DEBUG.
+
+| `event` | Level | `reason` | Fields |
+|---|---|---|---|
+| `ammo_writeback_stale` | WARN | `slot_empty_or_instance_swapped` | `player_id`, `player_name`, `rows_affected` (0), `expected` (1), `slot_id`, `expected_instance_id`, `current_ammo`, `cur_ammo_type` |
+
+Guard: `live_db_update_no_op_when_slot_holds_different_type` in `inventory/ammo.rs` pins the level, the event, both counts and the reason.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
