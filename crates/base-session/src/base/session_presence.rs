@@ -48,6 +48,7 @@ pub async fn announce_session_end(
     if let Some(name) = &ended.player_name {
         super::contact_list::handlers::fanout_login_status(
             name,
+            ended.player_id,
             false,
             db_pool,
             transport,

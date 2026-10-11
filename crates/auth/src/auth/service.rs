@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use axum::serve::{Listener as _, ListenerExt as _};
 use axum::{routing::post, Router};
@@ -14,12 +15,14 @@ use tokio::sync::broadcast;
 use cimmeria_common::ServerConfig;
 
 use crate::audit::{LoginEvent, LoginEventBuffer};
+use crate::credential_redaction::CredentialPrefix;
 
 use super::cert_watcher::spawn_cert_watcher;
 use super::handlers::{handle_server_selection, handle_user_auth};
 use super::tls::{hsts_layer, tls_marker_layer, TlsCertStore, TlsListener};
 use super::{
-    AuthError, HandlerState, PendingLogin, ShardInfo, REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
+    AuthError, HandlerState, PendingLogin, SessionRecord, ShardInfo, REAPER_INTERVAL, SESSION_TTL,
+    TICKET_TTL,
 };
 
 // ── AuthService ──────────────────────────────────────────────────────────────
@@ -204,19 +207,8 @@ impl AuthService {
                 loop {
                     tokio::time::sleep(REAPER_INTERVAL).await;
                     let now = std::time::Instant::now();
-
-                    let expired_sessions = {
-                        let mut map = sessions.lock().unwrap();
-                        let before = map.len();
-                        map.retain(|_, s| now.duration_since(s.created) < SESSION_TTL);
-                        before - map.len()
-                    };
-                    let expired_tickets = {
-                        let mut map = pending.lock().unwrap();
-                        let before = map.len();
-                        map.retain(|_, p| now.duration_since(p.created) < TICKET_TTL);
-                        before - map.len()
-                    };
+                    let (expired_sessions, expired_tickets) =
+                        reap_expired(&sessions, &pending, now);
                     if expired_sessions > 0 || expired_tickets > 0 {
                         tracing::debug!(
                             expired_sessions,
@@ -390,9 +382,147 @@ impl AuthService {
     }
 }
 
+/// Drop every session and ticket older than its TTL as of `now`, logging one
+/// INFO row per unconsumed entry. Returns `(sessions, tickets)` dropped.
+fn reap_expired(
+    sessions: &Mutex<HashMap<String, SessionRecord>>,
+    pending: &Mutex<HashMap<String, PendingLogin>>,
+    now: Instant,
+) -> (usize, usize) {
+    let expired_sessions: Vec<(String, SessionRecord)> = {
+        let mut map = sessions.lock().unwrap();
+        let keys: Vec<String> = map
+            .iter()
+            .filter(|(_, s)| now.duration_since(s.created) >= SESSION_TTL)
+            .map(|(k, _)| k.clone())
+            .collect();
+        keys.into_iter()
+            .filter_map(|k| map.remove(&k).map(|s| (k, s)))
+            .collect()
+    };
+    for (sid, s) in &expired_sessions {
+        tracing::info!(
+            reason = "sid_unconsumed",
+            account_id = s.account_id,
+            account_name = %s.account_name,
+            issued_ip = %s.client_ip,
+            age_ms = now.duration_since(s.created).as_millis(),
+            sid_prefix = %CredentialPrefix(sid),
+            "Auth SID expired before it was used"
+        );
+    }
+
+    let expired_tickets: Vec<PendingLogin> = {
+        let mut map = pending.lock().unwrap();
+        let keys: Vec<String> = map
+            .iter()
+            .filter(|(_, p)| now.duration_since(p.created) >= TICKET_TTL)
+            .map(|(k, _)| k.clone())
+            .collect();
+        keys.iter().filter_map(|k| map.remove(k)).collect()
+    };
+    for p in &expired_tickets {
+        tracing::info!(
+            reason = "ticket_unconsumed",
+            account_id = p.account_id,
+            account_name = %p.account_name,
+            issued_ip = %p.client_ip,
+            age_ms = now.duration_since(p.created).as_millis(),
+            ticket_prefix = %CredentialPrefix(&p.ticket),
+            "Auth ticket expired before BaseApp consumed it"
+        );
+    }
+
+    (expired_sessions.len(), expired_tickets.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An expired SID and an expired ticket are each dropped with one INFO
+    /// row carrying their account pair and a redacted prefix, a young ticket
+    /// survives, and no captured event holds a full SID or ticket.
+    #[test]
+    fn reap_expired_logs_unconsumed_ticket_with_account() {
+        use crate::test_support::LogCapture;
+        use std::net::Ipv4Addr;
+        use std::time::Duration;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+        let sessions = Mutex::new(HashMap::new());
+        let pending = Mutex::new(HashMap::new());
+        // Anchor every entry to `base` and reap at `base + SESSION_TTL + 1s`,
+        // so no `now - duration` subtraction can underflow the clock on Windows.
+        let base = Instant::now();
+        let now = base + SESSION_TTL + Duration::from_secs(1);
+
+        let sid = "SIDQRSTUV0123456789W".to_string();
+        sessions.lock().unwrap().insert(
+            sid.clone(),
+            SessionRecord {
+                account_id: 7,
+                access_level: 0,
+                test_account: false,
+                account_name: "reaper-sid".to_string(),
+                client_ip: Ipv4Addr::LOCALHOST.into(),
+                created: base,
+            },
+        );
+
+        let expired_ticket = "ABCDEF0123456789ABCD".to_string();
+        let young_ticket = "ZYXWVU9876543210TSRQ".to_string();
+        for (ticket, created) in [
+            (expired_ticket.clone(), base),
+            (young_ticket.clone(), base + SESSION_TTL),
+        ] {
+            pending.lock().unwrap().insert(
+                ticket.clone(),
+                PendingLogin {
+                    account_id: 42,
+                    account_name: "reaper-user".to_string(),
+                    access_level: 0,
+                    test_account: false,
+                    ticket,
+                    session_key: String::new(),
+                    client_ip: Ipv4Addr::LOCALHOST.into(),
+                    created,
+                },
+            );
+        }
+
+        let (sessions_dropped, tickets_dropped) = reap_expired(&sessions, &pending, now);
+
+        assert_eq!((sessions_dropped, tickets_dropped), (1, 1));
+        assert!(sessions.lock().unwrap().is_empty());
+        {
+            let map = pending.lock().unwrap();
+            assert_eq!(map.len(), 1, "only the young ticket may survive");
+            assert!(map.contains_key(&young_ticket));
+        }
+
+        let sid_row = capture
+            .find_event(Level::INFO, "expired before it was used", "sid_unconsumed")
+            .expect("expired SID must log an INFO row with reason `sid_unconsumed`");
+        assert!(sid_row.has_field("account_id", "7"));
+        assert!(sid_row.has_field("sid_prefix", &CredentialPrefix(&sid).to_string()));
+
+        let ticket_row = capture
+            .find_message(Level::INFO, "expired before BaseApp consumed")
+            .expect("expired ticket must log an INFO row");
+        assert!(ticket_row.has_field("account_id", "42"));
+        assert!(ticket_row.has_field("reason", "ticket_unconsumed"));
+        assert!(ticket_row.has_field("ticket_prefix", "ABCDEF…"));
+
+        for event in capture.all() {
+            for secret in [sid.as_str(), expired_ticket.as_str()] {
+                let leaked = event.message.as_deref().is_some_and(|m| m.contains(secret))
+                    || event.fields.values().any(|v| v.contains(secret));
+                assert!(!leaked, "full secret leaked into event: {event:?}");
+            }
+        }
+    }
 
     #[test]
     fn new_service_is_not_running() {

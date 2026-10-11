@@ -2,10 +2,10 @@
 //! read fresh from `resources.char_creation` for each creation, checked, and
 //! refused loudly when unusable (lock L3).
 
-use std::net::SocketAddr;
-
 use cimmeria_resources::base::start_profiles::{self, DebugKit, StartProfile};
 use sqlx::PgPool;
+
+use super::refusal_log::Reason;
 
 /// `ERROR_CharacterCreationInvalidCharacterType` (ErrorStrings 10001): the
 /// code a client gets when its char_def's start profile cannot be used.
@@ -22,18 +22,48 @@ pub(super) struct ResolvedStart {
     pub(super) debug_kit: Option<DebugKit>,
 }
 
+/// Why a start could not be resolved. Not logged here: the caller writes
+/// the one `character_create_failed` row from it (TG-DB-08), so a
+/// start-profile refusal is one row, not two.
+#[derive(Debug)]
+pub(super) struct StartRefusal {
+    pub(super) reason: Reason,
+    /// The `onCharacterCreateFailed` code to send.
+    pub(super) code: i32,
+    /// The database or load error, when there is one.
+    pub(super) error: Option<String>,
+    /// The refused profile's key and world, once a profile was found.
+    pub(super) profile_id: Option<String>,
+    pub(super) world: Option<String>,
+    /// Every problem of the profile, for the row's `detail`.
+    pub(super) problems: Option<String>,
+}
+
+impl StartRefusal {
+    fn new(reason: Reason, code: i32, profile: Option<&StartProfile>) -> Self {
+        Self {
+            reason,
+            code,
+            error: None,
+            profile_id: profile.map(|p| p.profile_id.clone()),
+            world: profile.map(|p| p.world.clone()),
+            problems: None,
+        }
+    }
+}
+
 /// Load and check the start profile of `char_def_id`. `force_debug_kit` is
 /// the test-only override the seed-drift test uses (never access level, L2).
 ///
-/// Refused, with an ERROR naming the reason, when: no profile row; the
-/// profile has a problem; its world is not in `resources.worlds`; or the cell
-/// announced no space for it. Returns the client error code on refusal.
+/// Refused when: the profiles can't be read; no profile row; the profile has
+/// a problem; its world is not in `resources.worlds` (or the lookup fails);
+/// or the cell announced no space for it. Every refusal is ERROR-level
+/// ([`Reason::level`]); the caller logs it.
 pub(super) async fn resolve_start(
     pool: &PgPool,
-    addr: SocketAddr,
     char_def_id: i32,
     force_debug_kit: bool,
-) -> Result<ResolvedStart, i32> {
+) -> Result<ResolvedStart, Box<StartRefusal>> {
     let loaded = match pool.acquire().await {
         Ok(mut conn) => start_profiles::load_all(&mut conn).await,
         Err(e) => Err(start_profiles::LoadError::Db(e)),
@@ -41,40 +71,24 @@ pub(super) async fn resolve_start(
     let profiles = match loaded {
         Ok(p) => p,
         Err(e) => {
-            tracing::error!(
-                event = "character_create_failed",
-                reason = "start_profiles_load_failed",
-                %addr,
-                char_def_id, // nt:id-only char_def rows carry no name column
-                error = %e,
-                "character_create: could not read the start profiles"
-            );
-            return Err(ERR_DB);
+            return Err(Box::new(StartRefusal {
+                error: Some(e.to_string()),
+                ..StartRefusal::new(Reason::StartProfilesLoadFailed, ERR_DB, None)
+            }));
         }
     };
-    let refuse = |reason: &'static str, profile: Option<&StartProfile>, detail: String| {
-        tracing::error!(
-            event = "character_create_failed",
-            reason,
-            %addr,
-            char_def_id, // nt:id-only char_def rows carry the profile id below
-            profile_id = profile.map(|p| p.profile_id.as_str()), // nt:id-only profile key has no display name
-            world = profile.map(|p| p.world.as_str()),
-            detail = %detail,
-            "character_create: start profile unusable; creation refused"
-        );
-        ERR_PROFILE_UNUSABLE
+    let unusable = |reason: Reason, profile: Option<&StartProfile>| {
+        StartRefusal::new(reason, ERR_PROFILE_UNUSABLE, profile)
     };
     let Some(profile) = profiles.by_char_def(char_def_id) else {
-        return Err(refuse("no_start_profile", None, String::new()));
+        return Err(Box::new(unusable(Reason::NoStartProfile, None)));
     };
     let problems = profile.problems();
     if let Some(first) = problems.first() {
-        return Err(refuse(
-            first.reason(),
-            Some(profile),
-            format!("{problems:?}"),
-        ));
+        return Err(Box::new(StartRefusal {
+            problems: Some(format!("{problems:?}")),
+            ..unusable(Reason::StartProfileProblem(first.reason()), Some(profile))
+        }));
     }
     let world_id: Option<i32> =
         match sqlx::query_scalar("SELECT world_id FROM resources.worlds WHERE world = $1")
@@ -84,27 +98,21 @@ pub(super) async fn resolve_start(
         {
             Ok(v) => v,
             Err(e) => {
-                tracing::error!(
-                    event = "character_create_failed",
-                    reason = "db_error",
-                    %addr,
-                    world = %profile.world,
-                    error = %e,
-                    "character_create: world_id lookup failed"
-                );
-                return Err(ERR_DB);
+                return Err(Box::new(StartRefusal {
+                    error: Some(e.to_string()),
+                    ..StartRefusal::new(Reason::DbError, ERR_DB, Some(profile))
+                }));
             }
         };
     let Some(world_id) = world_id else {
-        return Err(refuse("start_world_unknown", Some(profile), String::new()));
+        return Err(Box::new(unusable(Reason::StartWorldUnknown, Some(profile))));
     };
     if !cimmeria_base_session::base::world_entry::space_registry::is_world_enterable(&profile.world)
     {
-        return Err(refuse(
-            "start_world_not_loaded",
+        return Err(Box::new(unusable(
+            Reason::StartWorldNotLoaded,
             Some(profile),
-            String::new(),
-        ));
+        )));
     }
     let debug_kit = (profile.debug_kit || force_debug_kit).then(|| profiles.debug_kit().clone());
     Ok(ResolvedStart {

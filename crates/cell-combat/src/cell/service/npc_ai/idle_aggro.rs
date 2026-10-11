@@ -141,6 +141,7 @@ pub(super) async fn npc_ai_idle_auto_aggro(
     let Some(((target_id, dist), is_player)) = target else {
         return false;
     };
+    super::record_decision_outcome("aggro_acquired");
 
     if is_player {
         tracing::info!(

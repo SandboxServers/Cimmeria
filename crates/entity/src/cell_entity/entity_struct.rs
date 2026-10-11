@@ -159,6 +159,13 @@ pub struct CellEntity {
     /// lookups (`find_online_player_by_name`) are unchanged by NT-02.
     pub log_names: super::LogNames,
 
+    /// `"lab"` or `"player"` for a player entity, from the account's
+    /// `test_account` flag (TG-NET-16) carried on `InitPlayerState`; `None`
+    /// for NPCs and before world entry. Log-only: the cell's
+    /// `cimmeria.session_kind` on `session.start` and `playtest.friction`
+    /// (TG-NET-17), so SigNoz can filter lab runs out of player data.
+    pub session_kind: Option<&'static str>,
+
     /// Wall-clock time this entity was created in its space. Entity IDs are
     /// recycled slots, so naming an ID at a past time (a delayed client
     /// telemetry row) has to check the time against this before trusting
