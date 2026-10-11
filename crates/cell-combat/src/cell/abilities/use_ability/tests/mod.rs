@@ -37,6 +37,7 @@ mod min_range;
 mod named_rows;
 mod no_mechanics;
 mod no_mechanics_live_db;
+mod npc_only_rows;
 mod npc_timer_routing;
 mod passive_cast;
 mod pet_kill_credit;
