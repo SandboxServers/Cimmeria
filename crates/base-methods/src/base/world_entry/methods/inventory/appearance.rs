@@ -86,6 +86,8 @@ pub async fn refresh_player_appearance(
                 event = "appearance_refresh_degraded",
                 cause = "player_load_failed",
                 entity_id,
+                // The player's own entity: its name is the player's.
+                entity_name = known_names::player_name(player_id),
                 account_id = identity.account_id,
                 account_name = identity.account_name,
                 player_id,
@@ -97,6 +99,8 @@ pub async fn refresh_player_appearance(
                 event = "appearance_refresh_degraded",
                 cause = "player_load_failed",
                 entity_id,
+                // The player's own entity: its name is the player's.
+                entity_name = known_names::player_name(player_id),
                 account_id = identity.account_id,
                 account_name = identity.account_name,
                 player_id,
@@ -171,6 +175,7 @@ pub async fn refresh_player_appearance(
     tracing::debug!(
         event = "appearance_refreshed",
         entity_id,
+        entity_name = known_names::player_name(player_id),
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
@@ -439,6 +444,9 @@ mod tests {
         use std::time::Duration;
         use tracing::Level;
 
+        // A player id no other test uses, so the global name cache can't collide.
+        const PLAYER: i32 = 0x7A10_0100;
+        known_names::remember_player(PLAYER, "TgItm01Player");
         let capture = LogCapture::install();
         let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55702".parse().unwrap();
@@ -461,7 +469,7 @@ mod tests {
         let errors_before = errors();
         refresh_player_appearance(
             42,
-            100,
+            PLAYER,
             &None,
             &transport,
             &connected,
@@ -472,8 +480,9 @@ mod tests {
         assert!(
             capture
                 .find_message(Level::DEBUG, "sending default appearance")
-                .is_some(),
-            "an offline load must log appearance_refresh_degraded at DEBUG. Captured: {:#?}",
+                .is_some_and(|c| c.has_field("entity_name", "TgItm01Player")),
+            "an offline load must log appearance_refresh_degraded at DEBUG, naming the \
+             entity. Captured: {:#?}",
             capture.all()
         );
         assert_eq!(
@@ -501,7 +510,7 @@ mod tests {
         );
         refresh_player_appearance(
             42,
-            100,
+            PLAYER,
             &Some(pool),
             &transport,
             &connected,
@@ -512,7 +521,7 @@ mod tests {
         assert!(
             capture
                 .find_message(Level::ERROR, "player load failed")
-                .is_some(),
+                .is_some_and(|c| c.has_field("entity_name", "TgItm01Player")),
             "a failed player load must log appearance_refresh_degraded at ERROR. Captured: {:#?}",
             capture.all()
         );
@@ -520,7 +529,8 @@ mod tests {
         assert!(
             capture
                 .find_message(Level::DEBUG, "appearance refreshed")
-                .is_some_and(|c| c.fields.get("degraded").map(String::as_str) == Some("true")),
+                .is_some_and(|c| c.fields.get("degraded").map(String::as_str) == Some("true")
+                    && c.has_field("entity_name", "TgItm01Player")),
             "a degraded refresh must log appearance_refreshed with degraded = true. Captured: {:#?}",
             capture.all()
         );
