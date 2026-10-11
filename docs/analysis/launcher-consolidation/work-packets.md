@@ -206,10 +206,10 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 - **Checks:** D1-D3 for `cimmeria-launcher-desktop`.
 - **Commit:** `feat(launcher-desktop): a second launch focuses the running launcher (LX-09)`.
 
-### LX-10: Windows in-place adoption (BlockedDecision D-LX12)
+### LX-10: Windows in-place adoption (D-LX12 approved)
 
 - **Agent:** rust-gameserver-dev, reviewed by `testing-validation-engineer`.
-- **Do once D-LX12 is approved:** a Windows adoption backend in `engine/src/storage/adoption/` that adopts the chosen folder in place. Verify stock files and applied patches against the signed release, using `launcher-installed.json` to know which patches the egui launcher applied. Write the owner marker. Uninstall of an adopted folder removes only release-listed files. Update the adoption view so Windows no longer says "no adoption backend".
+- **Do (D-LX12):** a Windows adoption backend in `engine/src/storage/adoption/` that adopts the chosen folder in place. Verify stock files and applied patches against the signed release, using `launcher-installed.json` to know which patches the egui launcher applied. Write the owner marker. Uninstall of an adopted folder removes only release-listed files. Update the adoption view so Windows no longer says "no adoption backend".
 - **Tests:** fixture install directory with a fake `launcher-installed.json`: adopt succeeds; one modified stock file makes it fail with the file named; uninstall leaves an unlisted user file in place.
 - **Checks:** D1-D3, F1, `npm run uat:adoption`.
 - **Commit:** `feat(launcher-desktop): adopt an existing Windows install in place (LX-10)`.
@@ -243,8 +243,8 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 
 ### LX-14: move `pack-client-overlay`
 
-- **Agent:** packet-coder. **Files:** `crates/launcher/src/bin/pack-client-overlay.rs`, `crates/launcher/src/overlay_pack.rs`, `crates/launcher/Cargo.toml`, `crates/patchset/Cargo.toml`, `crates/patchset/src/`, `tools/launcher-release/build.sh` (edit the `overlay` stage's `cargo run -p` line only).
-- **Do:** `git mv` both into `crates/patchset/` as `src/bin/pack-client-overlay.rs` and `src/overlay_pack.rs`, with its tests. The binary name stays `pack-client-overlay`. Remove the `[[bin]]` from the egui `Cargo.toml`.
+- **Agent:** packet-coder. **Depends on:** LX-01 (`overlay_pack.rs` uses `manifest` and `overlay_meta`, which LX-01 moves into `cimmeria-launcher-core`). **Files:** `crates/launcher/src/bin/pack-client-overlay.rs`, `crates/launcher/src/overlay_pack.rs`, `crates/launcher/Cargo.toml`, `crates/patchset/Cargo.toml`, `crates/patchset/src/`, `tools/launcher-release/build.sh` (edit the `overlay` stage's `cargo run -p` line only).
+- **Do:** `git mv` both into `crates/patchset/` as `src/bin/pack-client-overlay.rs` and `src/overlay_pack.rs`, with its tests. `cimmeria-patchset` depends on `cimmeria-launcher-core` for `manifest` and `overlay_meta`; replace the binary's `#[path]` includes with `use` of the core crate. The binary name stays `pack-client-overlay`. Remove the `[[bin]]` from the egui `Cargo.toml`. Run `cargo hakari generate` and `manage-deps` through the lane.
 - **Tests:** the moved tests run under `-p cimmeria-patchset`.
 - **Checks:** R1 for `cimmeria-patchset` and `sgw-launcher`.
 - **Commit:** `refactor(patchset): pack-client-overlay moves out of the egui launcher (LX-14)`.
@@ -256,6 +256,12 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 - **Do not touch the repo-root `src-tauri/`.** That is `cimmeria-app`, the Cimmeria Admin desktop app, not a launcher. Only `tools/SGWLauncher/src-tauri` goes, and only its line in the root `Cargo.toml` `exclude` list; the `"src-tauri"` member line stays.
 - **Checks:** `cargo metadata --format-version 1 --no-deps` succeeds; `pwsh tools/lint-md.ps1` on the touched docs.
 - **Commit:** `chore(launcher): remove the dead Tauri prototype and the packaging prototypes (LX-19)`.
+
+### LX-29: native Windows test proofs (G-13)
+
+- **Agent:** coordinator. **Worktree:** none unless a fix is needed.
+- **Do:** dispatch `launcher-desktop.yml` on `main` and confirm the native Windows job executes the engine tests (run 37223140800 executed none). Then, locally through the lane on Windows, prove the owner-lock guard fails on revert: swap `read_open` for `read` as the [lock-fix worknote](../playtests/2026-10-03-macos-wine/worknotes/launcher-launch-lock-fix.md) describes, run `native_preparation_reads_locked_owner_and_retains_exclusion` and see it fail, then restore. Revalidate the `native_uat` import guard named in the [updater hand-off worknote](../playtests/2026-10-03-macos-wine/worknotes/updater-handoff-fix.md). Record the run ids and results in `acceptance.md` G-13.
+- **Commit (only if a fix or a record is needed):** `docs(launcher): native Windows test proofs for the desktop launcher (LX-29)`.
 
 ## Wave 2
 
@@ -281,6 +287,15 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 - **Tests:** `launcher-desktop.yml`'s dry run covers the build. Add a step that verifies the produced `latest.json` against a throwaway Minisign key generated in the job.
 - **Commit:** `ci(launcher-release): publish the desktop launcher as a signed zip with a stable download link (LX-15)`.
 
+### LX-28: macOS release, ad-hoc signed (D-LX14)
+
+- **Agent:** rust-gameserver-dev. **Depends on:** LX-15. First a redistribution check, then the CI job.
+- **Check first:** for each third-party piece the Mac bundle carries (the Wine runtime, the D3D9 layer and the x87 accelerator; the list is in `crates/launcher/desktop/docs/wine-validation.md`), record its licence and whether a binary may be redistributed in a public zip. Anything that may not stays out of the zip, and the launcher downloads it at first run from its upstream with a pinned hash, using the same verified download the prerequisites already use. Write the result to `worknotes/lx-28-redistribution.md` and stop for the coordinator if a piece can be neither shipped nor fetched.
+- **Do:** a `desktop-macos` job in `launcher-release.yml` on a `macos-14` (arm64) runner. It takes the Windows-built helpers and DLLs from the `desktop-windows` job as an artifact, stages them as `wine-validation.md` "Packaged helper staging and Mac build" describes, builds the app, signs it ad hoc (`codesign --force --deep -s -`, hardened runtime off), and uploads `StargateWorlds-Launcher-macos-arm64.zip` and `.sha256` to the dated release and to `launcher-current`. The updater feed gains `darwin-aarch64` only if the zip-swap updater (LX-13) supports macOS; otherwise macOS updates are manual and the docs say so.
+- **Tests:** `launcher-desktop.yml` gains the same job as a dry run on PRs that touch the desktop launcher. Owner UAT: a Mac that has never run the app downloads the zip, uses Open Anyway once, installs and reaches character select (add as an LX-26 row).
+- **Docs:** `crates/launcher/desktop/docs/release.md` replaces "macOS is deferred"; `docs/guides/macos.md` moves to the desktop app in LX-22.
+- **Commit:** `ci(launcher-release): publish the desktop launcher for macOS, ad-hoc signed (LX-28)`.
+
 ### LX-17: window title, version stamp, About
 
 - **Agent:** packet-coder.
@@ -288,7 +303,7 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 - **Tests:** frontend unit on the About line.
 - **Commit:** `feat(launcher-desktop): release title and version in Settings (LX-17)`.
 
-## Wave 3 (after D-LX1 sign-off and D-LX14)
+## Wave 3 (after D-LX1 sign-off and LX-28)
 
 ### LX-18: delete the egui launcher
 
@@ -320,7 +335,7 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 ### LX-22: player docs and announcement
 
 - **Agent:** documentation-writer. **Depends on:** LX-15.
-- **Do:** rewrite `docs/client/launcher-guide.md` around the zip: the stable download link, unzip anywhere and keep `windows/` beside the exe, first run (WebView2, PhysX, SmartScreen), adopting an existing install, settings import from the old launcher, troubleshooting. README download section. `docs/guides/macos.md` per D-LX14. Write `docs/analysis/launcher-consolidation/announcement.md`, the Discord and release-notes text for D-LX2.
+- **Do:** rewrite `docs/client/launcher-guide.md` around the zip: the stable download link, unzip anywhere and keep `windows/` beside the exe, first run (WebView2, PhysX, SmartScreen), adopting an existing install, settings import from the old launcher, troubleshooting. README download section. `docs/guides/macos.md` for the ad-hoc signed macOS app (LX-28, D-LX14). Write `docs/analysis/launcher-consolidation/announcement.md`, the Discord and release-notes text for D-LX2.
 - **Commit:** `docs(launcher): player guide for the zipped launcher (LX-22)`.
 
 ### LX-23: developer and operator docs
@@ -341,18 +356,19 @@ Under `crates/launcher/desktop/frontend/src/`, each a stub that renders a headin
 
 Owner-run, on a Windows machine with no launcher state, from the `launcher-current` download. Each row records pass or fail in `acceptance.md`. Play rows can also run through the lab (`lab-uat` skill, ask the user first).
 
-1. Download and unzip from the stable link; first run with WebView2 present, and once on a machine or VM without it (LX-11).
-2. Fresh install from the archive.org RAR; Play reaches character select.
+1. Download and unzip from the stable link. First run with WebView2 present; close it, disconnect the network and open it again (it opens and says it is offline). Once more on a machine or VM without WebView2 (LX-11).
+2. Fresh install from the archive.org RAR. Cancel it once part-way and start it again. Open the patch-notes view. Play reaches character select and enters the world.
 3. PhysX missing: setup offers and installs it (LX-12).
 4. Adopt an existing egui install in place; Play works without a reinstall (LX-10).
 5. Import egui settings; the server list carries over (LX-03).
-6. Server list edit, client-patches toggle off and on, both visible in "Changes to your client" (LX-03, LX-04, LX-07).
+6. Server list edit, client-patches toggle off and on, both visible in "Changes to your client" (LX-03, LX-04, LX-07). Go through every new Settings view with the keyboard only (Tab, Shift+Tab, Enter, Space; focus always visible). Make `preferences.json` read-only, save once, see the error, undo the read-only flag, then restart the launcher and see the last good settings.
 7. Reset cache; reset all with confirm (LX-06).
 8. Upload logs twice; the second says nothing new (LX-05).
 9. Telemetry opted in: a session shows in SigNoz with tailed log lines and exit code (LX-08).
 10. Second launch focuses the first (LX-09).
-11. Self-update from release N-1 to N; then a forced failed update rolls back (LX-13).
-12. Repair, game Update and Uninstall on Windows (desktop ledger gates moved by LX-25).
+11. Self-update from release N-1 to N, disconnecting the network once during the download (it resumes or restarts and still verifies). After the relaunch the patch-notes view refreshes. Then a forced failed update rolls back (LX-13).
+12. Repair, game Update and Uninstall on Windows, each on a fresh install and on the step 4 adopted folder. Uninstalling the adopted folder leaves a user file the release does not list (desktop ledger gates moved by LX-25).
+13. On a Mac that has never run the app: download the macOS zip from `launcher-current`, use Open Anyway once, install and reach character select (LX-28).
 
 ### LX-27: close-out
 

@@ -11,6 +11,9 @@
 MacBook testing is stopped; native adoption and SGW computer-use acceptance remain
 open. Preserve the interrupted preparation state.
 
+Launcher Windows acceptance work now lives in the
+[launcher consolidation acceptance ledger](../../launcher-consolidation/acceptance.md);
+the macOS-only gates stay in [launcher-acceptance.md](launcher-acceptance.md).
 
 For the later Tauri work, use the [implementation plan](launcher-implementation-plan.md),
 [delivery ledger](launcher-implementation-ledger.md), and
