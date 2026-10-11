@@ -157,6 +157,45 @@ async fn assert_non_victory_result_fires_no_chains(result_code: u8) {
     );
 }
 
+/// TG-MG-09: a victory for an entity the cell does not hold still fires its
+/// chains (player 0, unchanged), but the WARN row says the entity is missing.
+#[tokio::test]
+async fn minigame_victory_for_unknown_entity_warns() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let (tx, _rx) = mpsc::channel(8);
+    handle_base_message(
+        BaseToCellMsg::MinigameResult {
+            entity_id: 77,
+            result_code: 1, // victory, but entity 77 was never created
+            on_victory_chains: vec![9999, 9998],
+        },
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+        &[],
+    )
+    .await;
+
+    let warn = capture
+        .find_message(Level::WARN, "entity the cell does not hold")
+        .expect("a victory for a missing entity must log a WARN row");
+    for (key, want) in [
+        ("reason", "entity_missing"),
+        ("entity_id", "77"),
+        ("chain_count", "2"),
+        ("result", "victory"),
+    ] {
+        assert!(
+            warn.has_field(key, want),
+            "the missing-entity row must carry {key}={want}; got {warn:#?}"
+        );
+    }
+}
+
 /// Rule 5 + Rule 6: the cell's "Minigame result" row, the one a reader
 /// checks first when a hack or bypass "did nothing", names the player, not
 /// only the entity slot it happened to hold.
