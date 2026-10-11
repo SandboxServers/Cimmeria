@@ -84,12 +84,16 @@ pub(super) async fn after_commit(
         player_name = player_label,
         item_id,
         item_name = cimmeria_names::book().item(type_id),
+        source_container_id,
+        target_container_id,
+        swapped_item_id,
+        source_deleted,
         total_items,
         "Inventory move persisted"
     );
 
     if let Some(cell_tx) = cell_tx {
-        let _ = cell_tx
+        let sent = cell_tx
             .send(BaseToCellMsg::InventoryItemMoveApplied {
                 entity_id,
                 item_id: applied_item_id,
@@ -99,6 +103,18 @@ pub(super) async fn after_commit(
                 swapped_item_id,
             })
             .await;
+        if let Err(e) = sent {
+            tracing::warn!(
+                event = "move_cell_notify_failed",
+                reason = "cell_channel_closed",
+                entity_id,
+                player_id,
+                player_name = player_label,
+                item_id = applied_item_id,
+                error = %e,
+                "Inventory move notification to the cell was dropped"
+            );
+        }
     }
 
     if source_container_id == 3 || target_container_id == 3 {
@@ -145,15 +161,28 @@ pub(super) async fn after_commit(
     if EQUIPMENT_CONTAINERS.contains(&source_container_id)
         || EQUIPMENT_CONTAINERS.contains(&target_container_id)
     {
-        let has_visual: bool = sqlx::query_scalar(
+        let has_visual: bool = match sqlx::query_scalar(
             "SELECT visual_component IS NOT NULL FROM resources.items WHERE item_id = $1",
         )
         .bind(type_id)
         .fetch_optional(pool.as_ref())
         .await
-        .ok()
-        .flatten()
-        .unwrap_or(false);
+        {
+            Ok(row) => row.flatten().unwrap_or(false),
+            Err(e) => {
+                tracing::error!(
+                    event = "move_appearance_lookup_failed",
+                    entity_id,
+                    player_id,
+                    player_name = known_names::player_name(player_id),
+                    type_id,
+                    type_name = cimmeria_names::book().item(type_id),
+                    error = %e,
+                    "Inventory move appearance lookup failed; appearance not refreshed"
+                );
+                false
+            }
+        };
 
         if has_visual {
             refresh_player_appearance(
@@ -167,5 +196,90 @@ pub(super) async fn after_commit(
             )
             .await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tracing::Level;
+
+    use super::super::allowlist_tests::{assert_fields, cleanup_all, connected_client};
+    use super::super::tests::insert_account_and_player;
+    use super::*;
+    use crate::test_support::{require_db_or_skip, LogCapture};
+
+    const ACCOUNT_ID: i32 = 0x7000_C0A0;
+    const PLAYER_ID: i32 = 0x7000_C0A1;
+    const ENTITY_ID: u32 = 0x7000_C0A2;
+
+    /// Live DB: a committed move whose cell receiver is gone logs the dropped
+    /// notification at WARN, and the move row carries the source and target
+    /// containers, the swapped occupant and `source_deleted`.
+    #[tokio::test]
+    async fn live_db_dropped_cell_receiver_warns_and_move_row_has_new_fields() {
+        let pool = require_db_or_skip!();
+        cleanup_all(&pool, ACCOUNT_ID, PLAYER_ID).await;
+        insert_account_and_player(&pool, ACCOUNT_ID, PLAYER_ID).await;
+        let (_transport, dyn_transport, _addr, e2a, conn) = connected_client(ENTITY_ID, 40817);
+        let (tx, rx) = mpsc::channel::<BaseToCellMsg>(1);
+        drop(rx);
+        let cell_tx = Some(tx);
+        let db_pool = Some(Arc::new(pool.clone()));
+        let capture = LogCapture::install();
+
+        after_commit(
+            AppliedMove {
+                entity_id: ENTITY_ID,
+                player_id: PLAYER_ID,
+                item_id: 5001,
+                applied_item_id: 5001,
+                type_id: 0,
+                source_container_id: 1,
+                target_container_id: 2,
+                swapped_item_id: Some(9),
+                source_deleted: true,
+            },
+            &Arc::new(pool.clone()),
+            &db_pool,
+            &cell_tx,
+            &dyn_transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let dropped = capture
+            .find_event(
+                Level::WARN,
+                "notification to the cell was dropped",
+                "cell_channel_closed",
+            )
+            .expect("the dropped cell notification is logged");
+        assert_fields(
+            &dropped,
+            &[
+                ("event", "move_cell_notify_failed".into()),
+                ("entity_id", ENTITY_ID.to_string()),
+                ("player_id", PLAYER_ID.to_string()),
+                ("item_id", "5001".into()),
+            ],
+            &[],
+        );
+
+        let row = capture
+            .find_message(Level::DEBUG, "Inventory move persisted")
+            .expect("the move row is logged");
+        assert_fields(
+            &row,
+            &[
+                ("source_container_id", "1".into()),
+                ("target_container_id", "2".into()),
+                ("swapped_item_id", "9".into()),
+                ("source_deleted", "true".into()),
+            ],
+            &[],
+        );
+
+        cleanup_all(&pool, ACCOUNT_ID, PLAYER_ID).await;
     }
 }
