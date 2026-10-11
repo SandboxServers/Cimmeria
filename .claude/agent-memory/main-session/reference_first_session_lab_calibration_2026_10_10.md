@@ -5,6 +5,8 @@ metadata:
   type: reference
 ---
 
+> **Partly superseded 2026-10-11** by the lab spec vocabulary (lab-spec-vocab, released; `docs/guides/automated-uat.md` § Calibrate a row and the `pose` reference). The 17 s first-login wait is now a `wait_server` on the hold-release log line; the camera order (+200 pitch counts, face, +230 yaw counts) is now an absolute `@camera { pose }`; and the spec header's resume rule (call `client_camera {pitch_counts: 200}` first) is gone, since an absolute pose no longer depends on where the previous row left the camera. The other traps below still apply. The calibrated re-measurement (SV-15) is still pending: [[project-lab-spec-vocab-2026-10-11]].
+
 The `first-session` spec (`docs/guides/uat-specs/first-session.toml`) FS-01 to FS-P5 was calibrated live on the colo on 2026-10-10. A Haiku `lab-driver` then ran it with a one-line brief (one `lab_uat_run` call, about 42k tokens). The calibration table is in the spec header. The traps, each of which cost a run:
 
 - **First-login movie.** The server holds entity introductions for 16 s from `onClientReady` (`cinematic_aoi_hold::HOLD_DURATION`). `lab_ensure_in_world` and `lab_play_character` return during it. `MoviePlayerWin` hides after about 2 s, so it is not the signal: wait 17 s.

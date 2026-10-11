@@ -214,7 +214,19 @@ Relog at every step boundary that a section asks for. Most defects these campaig
 
 What every new player does in their first ten minutes, once per faction. Run it first on any new build: nothing in it depends on NPC movement, combat, abilities or AI, so a failure here means the build is broken for every new player. The lab runs it with no one at the keyboard (`lab_uat_run {sections: ["first-session"]}`, spec [first-session.toml](uat-specs/first-session.toml)); a tester can follow the same rows by hand.
 
-**Status:** Praxis rows (FS-01 to FS-P5) calibrated and passing on the colo, 2026-10-10: five clean runs in a row from a one-line Haiku brief, then concurrent runs on two lab clients. The SGU rows (FS-S1 to FS-S6) and FS-99 have not been run live.
+**Status:** Praxis rows (FS-01 to FS-P5) hand-calibrated and passing on the colo, 2026-10-10: five clean runs in a row from a one-line Haiku brief, then concurrent runs on two lab clients. Since 2026-10-11 (lab-spec-vocab, released) the spec names each target by spawn tag in a `pose`, stands with `@stand` and waits on the server's hold-release line instead of fixed sleeps; that version has not had a clean live run yet. The SGU rows (FS-S1 to FS-S6) and FS-99 have not been run live.
+
+**Calibrated rows and healing (lab only).** The interaction rows FS-P3, FS-P4 and FS-S3 to FS-S6 each carry a `pose`. When one fails on a missed hover, `lab uat first-session ... -Leases 1 -Heal` recalibrates that pose after the batch and prints a spec diff to review (exit 8); it never edits the spec. To recalibrate one row by hand: `lab calibrate first-session <row> -Apply`. Both are lab use: ask the owner first. How it works: [automated-uat.md, Calibrate a row](automated-uat.md#calibrate-a-row).
+
+**Still to run: SV-15, the calibrated acceptance run (coordinator, with the owner's OK; paused 2026-10-11).** Paused because the workstation was under full build load and starved the lab client; run it only when the machine is idle and the lab is free. Pending rows:
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| SV-15a | Recalibrate FS-P3 and FS-P4 from scratch with `lab calibrate ... -Apply`, committing after each | Each pose proposes a diff, confirmed 3/3 | The FS-P3 call needs `-Prepare FS-01,FS-02,FS-P1,FS-P2` |
+| SV-15b | Calibrate FS-S3 to FS-S6 the same way | Each pose proposes a diff, confirmed 3/3 | The FS-S3 call needs `-Prepare FS-01,FS-02,FS-S1,FS-S2`. A "no entity with tag" means the target is not in the player's space yet: run the rows before it, then calibrate again |
+| SV-15c | Run the whole section five times: `lab uat first-session -Rows FS-01,...,FS-99 -RunsPerLease 5 -Heal` | 5 of 5 runs, every row PASS | An FS-P2 or FS-S2 `movie-over` failure is #1341: record it and restart the count. A heal proposal: review, apply, restart the count |
+
+The exact commands and the resume order are in the [SV-15 worknote](../analysis/lab-spec-vocab/worknotes/SV-15.md#resume-procedure).
 
 **Prerequisites:** a GM account with two free character slots. The rows create, play and delete their own characters. GM commands used: `/gmgotoxyz` (to stand next to each quest object) and `/gmsetgodmode 1`.
 

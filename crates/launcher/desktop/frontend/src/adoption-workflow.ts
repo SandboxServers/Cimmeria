@@ -1,16 +1,17 @@
 import {Context,Data,Effect,Layer,PubSub,Ref,Schema,Semaphore,Stream} from 'effect';
 import {NativeSnapshot} from './contract';
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:Number.MAX_SAFE_INTEGER}));
-const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable'] as const;
+const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','outdated_install','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files'] as const;
 const Code=Schema.Literals(codes);
 const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Count,preferences_revision:Count,source:Schema.String,destination:Schema.String,
  release:Schema.Struct({manifest_sha256:Schema.String,seed_sha256:Schema.String,patches:Schema.Array(Schema.String)}),
  counts:Schema.Struct({matched:Count,known_transform:Count,modified:Count,missing:Count,extra:Count}),
  differences:Schema.Array(Schema.Struct({path:Schema.String,source_path:Schema.NullOr(Schema.String),classification:Schema.Literals(['matched','known_transform','modified','missing','extra'])})),differences_omitted:Count,
  login_servers:Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String})),client_patches_enabled:Schema.Boolean,
- game_telemetry_opted_in:Schema.Boolean,game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean});
+ game_telemetry_opted_in:Schema.Boolean,game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
+ in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String)});
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
- backend:Schema.Literals(['available','unsupported_platform','helper_unavailable']),
+ backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),
  imported:Schema.NullOr(Schema.Struct({launcher_directory:Schema.String,game_directory:Schema.String,blocker:Schema.NullOr(Code)})),
  activity:Schema.Literals(['idle','preparing','review','copying']),review:Schema.NullOr(Review),
  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count})),cancellable:Schema.Boolean,
@@ -35,8 +36,9 @@ export const adoptionBridgeLayer=(call:(request:Request|'choose')=>Promise<unkno
  )});
 export type AdoptionState={status:AdoptionStatus|null;pending:boolean;uncertain:boolean;error:string|null;stale:boolean;maintenance:Maintenance|null}&Record<Choice,boolean>;
 const initial:AdoptionState={status:null,pending:false,uncertain:true,error:null,stale:false,maintenance:null,normalize:false,telemetry:false,closed:false};
-/** Consent rule comes from the native review; this only checks the boxes it asks for. */
-export const consented=(s:AdoptionState)=>{const r=s.status?.review;return !!r&&s.closed&&(!r.requires_normalization||s.normalize)&&(!r.requires_telemetry_acceptance||s.telemetry);};
+/** Consent rule comes from the native review; this only checks the boxes it asks for.
+ * A folder whose release files do not verify cannot be adopted in place at all. */
+export const consented=(s:AdoptionState)=>{const r=s.status?.review;return !!r&&!r.blocked_files.length&&s.closed&&(!r.requires_normalization||s.normalize)&&(!r.requires_telemetry_acceptance||s.telemetry);};
 const offered=(status:AdoptionStatus,m:Maintenance)=>{const r=status.reconciliation;
  if(m.action==='abandon_preparation')return (r?.kind==='preparation'&&r.preparation_id===m.id)||status.preparations.includes(m.id);
  return r?.kind==='copy'&&r.operation_id===m.id&&(m.action==='recover'?r.can_recover:r.can_abandon);};

@@ -48,6 +48,7 @@ async fn init_player_state_assigns_system_options() {
         vec![],
         hydrated.clone(),
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -89,6 +90,7 @@ async fn init_player_state_assigns_access_level() {
         vec![],
         SystemOptions::default(),
         GM_LEVEL,
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -136,6 +138,7 @@ async fn init_player_state_seeds_stats_from_archetype() {
         vec![],
         SystemOptions::default(),
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -216,6 +219,7 @@ async fn init_player_state_resends_active_slot_update_for_resync() {
         vec![], // no bandolier items (slot can still be active over an empty slot)
         SystemOptions::default(),
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
@@ -283,6 +287,7 @@ async fn init_player_state_assigns_default_values_explicitly() {
         vec![],
         SystemOptions::default(),
         0, // access_level
+        crate::cell::messages::WorldEntryCause::Login,
         &tx,
         &mut mgr,
         &engine,
