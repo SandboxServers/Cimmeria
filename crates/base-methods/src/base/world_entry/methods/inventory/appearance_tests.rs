@@ -1,12 +1,13 @@
 //! Tests for the player appearance refresh (`appearance.rs`): the cache
 //! write, the witness fan-out, the skip and degraded outcome rows
-//! (TG-ITM-01) and the abort after a failed load (TG-ITM-14).
+//! (TG-ITM-01), the abort after a failed load (TG-ITM-14) and the bounds
+//! on its retry.
 
 use super::*;
 use crate::test_support::TestTransport;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use std::sync::atomic::{AtomicBool, AtomicU32};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn make_connected_state(account_id: u32) -> ConnectedClientState {
     ConnectedClientState {
@@ -461,7 +462,10 @@ async fn failed_load_does_not_cache_or_send_default_appearance() {
         capture
             .find_message(Level::WARN, "keeping the last appearance")
             .is_some_and(|c| c.has_field("event", "appearance_refresh_aborted")
-                && c.has_field("player_name", "TgItm14Player")),
+                && c.has_field("player_name", "TgItm14Player")
+                && c.has_field("attempts", "2")
+                && c.has_field("retry", "failed")
+                && c.fields.contains_key("elapsed_ms")),
         "an aborted refresh must log appearance_refresh_aborted at WARN, naming the \
          player. Captured: {:#?}",
         capture.all()
@@ -474,4 +478,107 @@ async fn failed_load_does_not_cache_or_send_default_appearance() {
         "an aborted refresh must not log the success row. Captured: {:#?}",
         capture.all()
     );
+}
+
+/// A fake loader for `load_with_bounded_retry`: attempt `n` (1-based) takes
+/// `delays[n - 1]` and returns `results[n - 1]`; 7 counts as a real load.
+/// The returned cell counts the attempts.
+fn fake_loader(
+    delays: [Duration; 2],
+    results: [i32; 2],
+) -> (
+    Arc<AtomicU32>,
+    impl FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = i32> + Send>>,
+) {
+    let calls = Arc::new(AtomicU32::new(0));
+    let counter = calls.clone();
+    let load = move || {
+        let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) as usize;
+        let (delay, result) = (delays[n.min(1)], results[n.min(1)]);
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            result
+        }) as std::pin::Pin<Box<dyn std::future::Future<Output = i32> + Send>>
+    };
+    (calls, load)
+}
+
+fn attempts(calls: &AtomicU32) -> u32 {
+    calls.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// TG-ITM-14 review: a first load that fails slowly means the database is
+/// hung, and the refresh runs on the base's shared cell-to-base loop, so it
+/// must abort without a retry. Fails if the fast-failure gate is removed
+/// (the fake would be called twice).
+#[tokio::test(start_paused = true)]
+async fn bounded_retry_skips_the_retry_after_a_slow_failure() {
+    let (calls, load) = fake_loader([Duration::from_millis(1_500), Duration::ZERO], [0, 7]);
+    match load_with_bounded_retry(load, |v| *v == 7).await {
+        BoundedLoad::Aborted {
+            attempts: 1,
+            elapsed_ms,
+            retry: "skipped_slow_failure",
+        } => assert!(elapsed_ms >= 1_500, "elapsed_ms {elapsed_ms}"),
+        other => panic!("a slow failure must abort with no retry, got {other:?}"),
+    }
+    assert_eq!(attempts(&calls), 1, "a slow failure must not be retried");
+}
+
+/// The retry is capped: a fast first failure followed by a retry that hangs
+/// gives up at `RETRY_LOAD_TIMEOUT` instead of waiting the hang out. Fails if
+/// the timeout is removed (the abort would report `failed` after 60 s).
+#[tokio::test(start_paused = true)]
+async fn bounded_retry_times_out_a_hung_retry() {
+    let (calls, load) = fake_loader([Duration::from_millis(10), Duration::from_secs(60)], [0, 7]);
+    match load_with_bounded_retry(load, |v| *v == 7).await {
+        BoundedLoad::Aborted {
+            attempts: 2,
+            elapsed_ms,
+            retry: "timed_out",
+        } => {
+            let cap = 10 + LOAD_RETRY_DELAY.as_millis() + RETRY_LOAD_TIMEOUT.as_millis();
+            assert!(
+                u128::from(elapsed_ms) <= cap + 50,
+                "elapsed_ms {elapsed_ms} over the {cap} ms cap"
+            );
+        }
+        other => panic!("a hung retry must time out, got {other:?}"),
+    }
+    assert_eq!(attempts(&calls), 2);
+}
+
+/// D-TG11 still holds for a fast failure: one retry, and a good retry is
+/// used; a failed one aborts after exactly two attempts.
+#[tokio::test(start_paused = true)]
+async fn bounded_retry_retries_a_fast_failure_once() {
+    let (calls, load) = fake_loader(
+        [Duration::from_millis(10), Duration::from_millis(10)],
+        [0, 7],
+    );
+    assert!(
+        matches!(
+            load_with_bounded_retry(load, |v| *v == 7).await,
+            BoundedLoad::Loaded(7)
+        ),
+        "a good retry must be used"
+    );
+    assert_eq!(attempts(&calls), 2);
+
+    let (calls, load) = fake_loader(
+        [Duration::from_millis(10), Duration::from_millis(10)],
+        [0, 0],
+    );
+    assert!(
+        matches!(
+            load_with_bounded_retry(load, |v| *v == 7).await,
+            BoundedLoad::Aborted {
+                attempts: 2,
+                retry: "failed",
+                ..
+            }
+        ),
+        "a failed retry must abort"
+    );
+    assert_eq!(attempts(&calls), 2, "only one retry");
 }

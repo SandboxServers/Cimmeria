@@ -150,6 +150,10 @@ pub(super) async fn refresh_appearance(
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
+                // Known gap (TG-ITM-14): set before the refresh, so if the
+                // refresh aborts on a failed player load the mirror can
+                // disagree with what the clients show until the next
+                // successful refresh.
                 c.weapon_holstered = holstered;
                 // Named under the lock already held (interned: a hash hit),
                 // so the line below takes no second lock per combat

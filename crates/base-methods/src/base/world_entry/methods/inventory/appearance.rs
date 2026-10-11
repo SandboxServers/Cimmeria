@@ -37,14 +37,81 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 /// player still sees the gear change land promptly when the retry succeeds.
 const LOAD_RETRY_DELAY: Duration = Duration::from_millis(200);
 
+/// A first failed load slower than this is a hung database, not a hiccup,
+/// so the refresh aborts without retrying. The bandolier and equip callers
+/// await the refresh on the base's single `cell_rx` loop, so every second
+/// spent here is a second every player's cell-to-base traffic waits; a
+/// retry against a hung pool would add up to another acquire timeout (30 s).
+const FAST_FAILURE_LIMIT: Duration = Duration::from_secs(1);
+
+/// Upper bound on the one retry's load, for the same reason: the cell queue
+/// waits behind it.
+const RETRY_LOAD_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// What [`load_with_bounded_retry`] got.
+#[derive(Debug)]
+enum BoundedLoad<T> {
+    Loaded(T),
+    Aborted {
+        attempts: u32,
+        /// Total time spent, both attempts and the retry delay included.
+        elapsed_ms: u64,
+        /// Why the retry did not produce a load: `skipped_slow_failure`
+        /// (no retry), `failed` or `timed_out`.
+        retry: &'static str,
+    },
+}
+
+/// Run `load`, and retry it once (D-TG11) only when the first attempt failed
+/// fast; the retry itself is capped at [`RETRY_LOAD_TIMEOUT`]. `loaded` says
+/// whether a result is a real load. Generic over the loader so the retry
+/// bounds can be tested without a database.
+async fn load_with_bounded_retry<T, F, Fut>(
+    mut load: F,
+    loaded: impl Fn(&T) -> bool,
+) -> BoundedLoad<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = T>,
+{
+    // tokio's clock, so paused-time tests drive it.
+    let started = tokio::time::Instant::now();
+    let first = load().await;
+    if loaded(&first) {
+        return BoundedLoad::Loaded(first);
+    }
+    let elapsed_ms =
+        |s: tokio::time::Instant| u64::try_from(s.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if started.elapsed() >= FAST_FAILURE_LIMIT {
+        return BoundedLoad::Aborted {
+            attempts: 1,
+            elapsed_ms: elapsed_ms(started),
+            retry: "skipped_slow_failure",
+        };
+    }
+    tokio::time::sleep(LOAD_RETRY_DELAY).await;
+    let retry = match tokio::time::timeout(RETRY_LOAD_TIMEOUT, load()).await {
+        Ok(second) if loaded(&second) => return BoundedLoad::Loaded(second),
+        Ok(_) => "failed",
+        Err(_) => "timed_out",
+    };
+    BoundedLoad::Aborted {
+        attempts: 2,
+        elapsed_ms: elapsed_ms(started),
+        retry,
+    }
+}
+
 /// Re-run the player's appearance assembly and broadcast `BEING_APPEARANCE`.
 ///
 /// Returns without sending when the entity has no connected client (e.g.
 /// logging out, not yet connected) — the assembly will run again on the next
 /// `world_entry` and the witness packet would have nowhere to land in the
 /// meantime. Also returns without sending or caching when the player load
-/// fails twice (TG-ITM-14), so a database error never replaces the player's
-/// model with the default body.
+/// fails (TG-ITM-14), so a database error never replaces the player's model
+/// with the default body. The retry is bounded (see [`FAST_FAILURE_LIMIT`]
+/// and [`RETRY_LOAD_TIMEOUT`]) because callers await this on the base's
+/// shared cell-to-base loop.
 pub async fn refresh_player_appearance(
     entity_id: u32,
     player_id: i32,
@@ -83,37 +150,63 @@ pub async fn refresh_player_appearance(
         return;
     };
 
-    let mut player_data = query_player_load_data(db_pool, account_id, player_id).await;
     // The loader never fails outright: on any error it returns the default
     // payload (player_id 0, the "naked human male" body). With a live pool
     // that payload is a failed load, not an appearance, and sending it would
     // strip the player's model on every client in range. D-TG11: retry once
     // after a short delay, then give up and leave the last good appearance in
     // place — on the witnesses' screens and in `cached_appearance_args`.
-    if db_pool.is_some() && player_data.player_id != player_id {
-        tokio::time::sleep(LOAD_RETRY_DELAY).await;
-        player_data = query_player_load_data(db_pool, account_id, player_id).await;
-        if player_data.player_id != player_id {
-            let identity = identity_for_addr(connected, addr);
-            // The load error itself is on the loader's own ERROR
-            // `player_load_degraded` row for each attempt; this row says what
-            // the refresh did about it.
-            tracing::warn!(
-                event = "appearance_refresh_aborted",
-                cause = "player_load_failed",
-                attempts = 2u32,
-                entity_id,
-                // The player's own entity: its name is the player's.
-                entity_name = known_names::player_name(player_id),
-                account_id = identity.account_id,
-                account_name = identity.account_name,
-                player_id,
-                player_name = known_names::player_name(player_id),
-                "refresh_player_appearance: player load failed twice, keeping the last appearance"
-            );
-            return;
+    //
+    // Known gaps (TG-ITM-14):
+    // - Only a failed *base row* load comes back as the default payload. When
+    //   the equipment-visuals or weapon-visual sub-query fails, the loader
+    //   returns the real `player_id` with those visuals stripped
+    //   (`player_data.rs`, `equipment_visuals_query_failed` /
+    //   `weapon_visual_query_failed`), which this check cannot tell from a
+    //   good load, so that partial appearance is still cached and sent.
+    // - The caller may already have changed state the aborted refresh was
+    //   meant to show: `RefreshAppearance` sets the `weapon_holstered` mirror
+    //   before calling here (`cell_dispatch/bandolier.rs`), so after an abort
+    //   the mirror can disagree with what the clients show until the next
+    //   successful refresh.
+    let player_data = if db_pool.is_some() {
+        let outcome = load_with_bounded_retry(
+            || query_player_load_data(db_pool, account_id, player_id),
+            |d| d.player_id == player_id,
+        )
+        .await;
+        match outcome {
+            BoundedLoad::Loaded(d) => d,
+            BoundedLoad::Aborted {
+                attempts,
+                elapsed_ms,
+                retry,
+            } => {
+                let identity = identity_for_addr(connected, addr);
+                // The load error itself is on the loader's own ERROR
+                // `player_load_degraded` row for each attempt; this row says
+                // what the refresh did about it.
+                tracing::warn!(
+                    event = "appearance_refresh_aborted",
+                    cause = "player_load_failed",
+                    attempts,
+                    elapsed_ms,
+                    retry,
+                    entity_id,
+                    // The player's own entity: its name is the player's.
+                    entity_name = known_names::player_name(player_id),
+                    account_id = identity.account_id,
+                    account_name = identity.account_name,
+                    player_id,
+                    player_name = known_names::player_name(player_id),
+                    "refresh_player_appearance: player load failed, keeping the last appearance"
+                );
+                return;
+            }
         }
-    }
+    } else {
+        query_player_load_data(db_pool, account_id, player_id).await
+    };
     let degraded = player_data.player_id != player_id;
     if degraded {
         let identity = identity_for_addr(connected, addr);
