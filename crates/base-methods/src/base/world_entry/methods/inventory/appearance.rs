@@ -76,18 +76,34 @@ pub async fn refresh_player_appearance(
     };
 
     let player_data = query_player_load_data(db_pool, account_id, player_id).await;
-    if player_data.player_id != player_id {
+    let degraded = player_data.player_id != player_id;
+    if degraded {
         let identity = identity_for_addr(connected, addr);
-        tracing::error!(
-            event = "appearance_refresh_degraded",
-            cause = "player_load_failed",
-            entity_id,
-            account_id = identity.account_id,
-            account_name = identity.account_name,
-            player_id,
-            player_name = known_names::player_name(player_id),
-            "refresh_player_appearance: player load failed, sending default appearance"
-        );
+        // `db_pool = None` is offline mode: the loader already logged its own
+        // DEBUG `no_db_pool` row, so it is not an ERROR here.
+        if db_pool.is_some() {
+            tracing::error!(
+                event = "appearance_refresh_degraded",
+                cause = "player_load_failed",
+                entity_id,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "refresh_player_appearance: player load failed, sending default appearance"
+            );
+        } else {
+            tracing::debug!(
+                event = "appearance_refresh_degraded",
+                cause = "player_load_failed",
+                entity_id,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "refresh_player_appearance: offline, sending default appearance"
+            );
+        }
     }
     // Honors the live `weapon_holstered` mirror from `ConnectedClientState`,
     // which is set in lockstep with `CellEntity::weapon_holstered` on the
@@ -162,6 +178,7 @@ pub async fn refresh_player_appearance(
         holstered,
         component_count = components.len(),
         bodyset = player_data.bodyset.as_str(),
+        degraded,
         "refresh_player_appearance: appearance refreshed"
     );
 }
@@ -411,12 +428,14 @@ mod tests {
         );
     }
 
-    /// TG-ITM-01: a refresh that gives up says why. A failed player load is
-    /// an ERROR; an entity with no session is a WARN; the same miss after
-    /// its session was torn down is only a DEBUG.
+    /// TG-ITM-01: a refresh that gives up says why. A failed player load with
+    /// a live pool is an ERROR; offline mode (`db_pool = None`) is only a
+    /// DEBUG; an entity with no session, or no client state, is a WARN; the
+    /// same miss after its session was torn down is only a DEBUG.
     #[tokio::test]
     async fn appearance_refresh_logs_degraded_and_skips() {
         use crate::test_support::LogCapture;
+        use std::time::Duration;
         use tracing::Level;
 
         let capture = LogCapture::install();
@@ -427,9 +446,18 @@ mod tests {
             addr,
             make_connected_state(0x1234),
         )])));
+        let errors = || {
+            capture
+                .all()
+                .iter()
+                .filter(|c| c.level == Level::ERROR)
+                .count()
+        };
 
         // db_pool = None: the load returns the default payload (player_id 0),
-        // which is not the requested player, so the ERROR fires.
+        // which is not the requested player. Offline mode is expected, so it
+        // logs DEBUG and no ERROR.
+        let errors_before = errors();
         refresh_player_appearance(
             42,
             100,
@@ -442,9 +470,83 @@ mod tests {
         .await;
         assert!(
             capture
+                .find_message(Level::DEBUG, "sending default appearance")
+                .is_some(),
+            "an offline load must log appearance_refresh_degraded at DEBUG. Captured: {:#?}",
+            capture.all()
+        );
+        assert_eq!(
+            errors_before,
+            errors(),
+            "db_pool = None must not log an ERROR. Captured: {:#?}",
+            capture.all()
+        );
+
+        // A live pool that cannot connect fails the load for real: ERROR.
+        // Options, not a URL string: the URL guard rejects any `postgres://`
+        // literal other than the dead 127.0.0.1:1.
+        let pool = Arc::new(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_millis(50))
+                .connect_lazy_with(
+                    sqlx::postgres::PgConnectOptions::new()
+                        .host("127.0.0.1")
+                        .port(1)
+                        .username("nobody")
+                        .password("nobody")
+                        .database("none"),
+                ),
+        );
+        refresh_player_appearance(
+            42,
+            100,
+            &Some(pool),
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(
+            capture
                 .find_message(Level::ERROR, "player load failed")
                 .is_some(),
             "a failed player load must log appearance_refresh_degraded at ERROR. Captured: {:#?}",
+            capture.all()
+        );
+        // The degraded refresh still logs its success row, marked degraded.
+        assert!(
+            capture
+                .find_message(Level::DEBUG, "appearance refreshed")
+                .is_some_and(|c| c.fields.get("degraded").map(String::as_str) == Some("true")),
+            "a degraded refresh must log appearance_refreshed with degraded = true. Captured: {:#?}",
+            capture.all()
+        );
+
+        // A mapped entity whose address has no client state is a WARN.
+        let orphan: u32 = 0x7A10_0003;
+        let orphan_addr: SocketAddr = "127.0.0.1:55703".parse().unwrap();
+        entity_to_addr.lock().unwrap().insert(orphan, orphan_addr);
+        refresh_player_appearance(
+            orphan,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "refresh_player_appearance: skipped",
+                    "client_state_missing"
+                )
+                .is_some(),
+            "a mapped entity without client state must log the skip at WARN. Captured: {:#?}",
             capture.all()
         );
 
