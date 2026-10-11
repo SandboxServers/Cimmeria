@@ -25,6 +25,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 use cimmeria_wireclient::auth::Credentials;
 use cimmeria_wireclient::bundle::{decode_bundle, S2CMessage};
 use cimmeria_wireclient::session::GameSession;
+use cimmeria_wireclient::sparbot::HEARTBEAT_EVERY;
 
 /// SGWPlayer -- the class byte every player-ghost introduction carries,
 /// GM or not (see the doc comment on
@@ -429,6 +430,53 @@ pub async fn enter_castle(
     .await
 }
 
+/// Keeps a waiting session's ACKs flowing, as the SGW client's idle
+/// `AUTHENTICATE` does (sparbot's [`HEARTBEAT_EVERY`]). Without it a session
+/// that only listens never acks, the server retransmits everything it sent,
+/// and a loss past the 32-packet TX window is never resent (#1371).
+#[derive(Default)]
+struct KeepAlive {
+    last: Option<tokio::time::Instant>,
+}
+
+impl KeepAlive {
+    async fn send_if_due(&mut self, session: &GameSession) {
+        if self.last.is_some_and(|t| t.elapsed() < HEARTBEAT_EVERY) {
+            return;
+        }
+        session
+            .send_keepalive()
+            .await
+            .expect("send keep-alive AUTHENTICATE");
+        self.last = Some(tokio::time::Instant::now());
+    }
+}
+
+/// Keep `session` acking until the server has nothing reliable in flight to
+/// it: two heartbeats in a row that end with no ACK owed. Bundles that arrive
+/// meanwhile are discarded. Panics if that takes longer than `limit`.
+pub async fn settle(session: &GameSession, limit: Duration) {
+    let start = tokio::time::Instant::now();
+    let mut quiet_beats = 0;
+    while quiet_beats < 2 {
+        assert!(
+            start.elapsed() < limit,
+            "session still owed {} ACKs after {limit:?}",
+            session.pending_acks_len()
+        );
+        session
+            .send_keepalive()
+            .await
+            .expect("send keep-alive AUTHENTICATE");
+        let _ = session.recv_bundles(usize::MAX, HEARTBEAT_EVERY).await;
+        quiet_beats = if session.pending_acks_len() == 0 {
+            quiet_beats + 1
+        } else {
+            0
+        };
+    }
+}
+
 /// Poll `session`'s inbox (decoding every bundle that arrives) until
 /// `pred` matches a message or `deadline` elapses. Every decoded message
 /// that doesn't match is discarded (not re-queued) -- callers that need to
@@ -441,12 +489,14 @@ pub async fn wait_for(
     mut pred: impl FnMut(&S2CMessage) -> bool,
 ) -> Option<S2CMessage> {
     let start = tokio::time::Instant::now();
+    let mut keepalive = KeepAlive::default();
     loop {
         let elapsed = start.elapsed();
         if elapsed >= deadline {
             return None;
         }
-        let slice = Duration::from_millis(300).min(deadline - elapsed);
+        keepalive.send_if_due(session).await;
+        let slice = HEARTBEAT_EVERY.min(deadline - elapsed);
         let bundles = session.recv_bundles(1, slice).await;
         for b in &bundles {
             for msg in decode_bundle(b) {
@@ -480,12 +530,14 @@ pub async fn wait_for_recording(
 ) -> (Option<S2CMessage>, Vec<S2CMessage>) {
     let start = tokio::time::Instant::now();
     let mut seen = Vec::new();
+    let mut keepalive = KeepAlive::default();
     loop {
         let elapsed = start.elapsed();
         if elapsed >= deadline {
             return (None, seen);
         }
-        let slice = Duration::from_millis(300).min(deadline - elapsed);
+        keepalive.send_if_due(session).await;
+        let slice = HEARTBEAT_EVERY.min(deadline - elapsed);
         let bundles = session.recv_bundles(1, slice).await;
         for b in &bundles {
             for msg in decode_bundle(b) {
