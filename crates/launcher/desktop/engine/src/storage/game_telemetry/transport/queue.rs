@@ -1,18 +1,28 @@
-//! The consent gate, the queue lock, and the two queue calls that need no
-//! session: startup recovery and an event queued before any session.
+//! The consent gate, the flush turn, and the queue calls that need no
+//! session: startup recovery, discarding on a change of choice, and an
+//! event queued before any session.
 use super::{TelemetryEvent, TransportError};
 use crate::game_telemetry::Identity;
 use crate::storage::DesktopState;
 use cimmeria_launcher_core::telemetry::queue::DiskQueue;
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-/// Core's queue is drain-then-requeue, so two writers in one process could
-/// lose an event between them. The state directory's owner lock already
-/// keeps other processes out.
-pub(super) static QUEUE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-/// Core's queue file names, inside the state directory.
-const QUEUE_FILES: [&str; 2] = ["telemetry-queue.jsonl", "telemetry-queue.dropped"];
+/// One flush or bundle upload at a time per queue directory, across every
+/// transport in the process: two flushes would send the same in-flight
+/// chunk. Core's queue locks its own files, so enqueues never wait on this;
+/// the state directory's owner lock keeps other processes out.
+pub(super) fn flush_turn(queue_dir: &Path) -> Arc<tokio::sync::Mutex<()>> {
+    static TURNS: Mutex<BTreeMap<PathBuf, Arc<tokio::sync::Mutex<()>>>> =
+        Mutex::new(BTreeMap::new());
+    TURNS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(queue_dir.to_path_buf())
+        .or_default()
+        .clone()
+}
 
 /// Proof the player has opted in, read under the state lock and used after
 /// it is released. The transport cannot be opened without one.
@@ -60,32 +70,17 @@ pub fn recover_on_startup(
 ) -> impl std::future::Future<Output = Recovery> + Send + 'static {
     let root = state.state_root().to_path_buf();
     let opted_in = state.game_telemetry().map(|choice| choice.opted_in);
-    async move {
-        let _queue = QUEUE_LOCK.lock().await;
-        recover_at(&root, opted_in)
-    }
+    async move { recover_at(&root, opted_in) }
 }
 
-fn recover_at(
-    root: &std::path::Path,
-    opted_in: Result<bool, crate::storage::StorageError>,
-) -> Recovery {
+fn recover_at(root: &Path, opted_in: Result<bool, crate::storage::StorageError>) -> Recovery {
     match opted_in {
         Ok(true) => match cimmeria_launcher_core::telemetry::recover_pending_on_startup(root) {
             0 => Recovery::Empty,
             n => Recovery::Pending(n),
         },
         Ok(false) => {
-            let mut removed = false;
-            for name in QUEUE_FILES {
-                match std::fs::remove_file(root.join(name)) {
-                    Ok(()) => removed = true,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(_) => tracing::warn!(file = name, "opted-out telemetry queue not deleted"),
-                }
-            }
-            if removed {
-                tracing::info!("telemetry queue from before the opt-out deleted unsent");
+            if discard_queue(root) {
                 Recovery::Discarded
             } else {
                 Recovery::Empty
@@ -95,13 +90,31 @@ fn recover_at(
     }
 }
 
+/// Delete the queue, in-flight chunk and dropped-lines counter unsent.
+/// Called whenever the game-telemetry choice changes (nothing may be queued
+/// while opted out, so an opt-in starts empty too) and at startup for an
+/// opted-out player. Returns whether anything was deleted; a failure is
+/// logged and retried at the next change or startup.
+pub(crate) fn discard_queue(root: &Path) -> bool {
+    match DiskQueue::new(root).discard() {
+        Ok(true) => {
+            tracing::info!("game telemetry queue deleted unsent");
+            true
+        }
+        Ok(false) => false,
+        Err(_) => {
+            tracing::warn!("game telemetry queue not deleted");
+            false
+        }
+    }
+}
+
 /// Queue an event that has no session to go with (an install result):
 /// it is sent by the next session's first flush. `seq` stays as given.
 pub async fn queue_without_session(
     consent: &Consent,
     event: TelemetryEvent,
 ) -> Result<(), TransportError> {
-    let _queue = QUEUE_LOCK.lock().await;
     DiskQueue::new(&consent.queue_dir)
         .enqueue(&event)
         .map_err(|_| TransportError::Queue)

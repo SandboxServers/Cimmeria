@@ -71,6 +71,8 @@ pub struct Telemetry {
     /// ms-since-epoch before which [`Telemetry::flush`] sends nothing: the
     /// `Retry-After` of the last 429 or 503.
     retry_not_before_ms: std::sync::atomic::AtomicI64,
+    /// One flush at a time: two would send the same in-flight chunk.
+    flush_turn: Mutex<()>,
 }
 
 /// How far before the session's start a log file's modification time may
@@ -118,6 +120,7 @@ impl Telemetry {
             queue: DiskQueue::new(&ctx.queue_dir),
             seq: Arc::new(Mutex::new(0)),
             retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
+            flush_turn: Mutex::new(()),
         })
     }
 
@@ -199,12 +202,18 @@ impl Telemetry {
     ///   never take that chunk: its events are dropped and added to the
     ///   queue's dropped-lines count (the bundle metadata reports it), and
     ///   the next chunk is sent.
-    /// - Any other failure re-enqueues that chunk and every later one, so
-    ///   the next flush replays them, and propagates the error (a
+    /// - Any other failure leaves that chunk and every later one on disk,
+    ///   so the next flush sends them, and propagates the error (a
     ///   `TokenRejected` lets the caller refresh and retry).
     /// - A 429 or 503 also holds off further flushes for its
-    ///   `Retry-After`; the queue stays on disk meanwhile.
+    ///   `Retry-After` (an hour at most); the queue stays on disk meanwhile.
+    /// - A chunk leaves the disk only once the server has answered for it,
+    ///   so dropping this future (the launcher closing) loses nothing, and
+    ///   one call sends at most eight chunks. Enqueues are not held up
+    ///   while a chunk is on the wire; overlapping flushes of one handle
+    ///   take turns.
     pub async fn flush(&self, http: &reqwest::Client) -> Result<u64, TelemetryError> {
+        let _turn = self.flush_turn.lock().await;
         let (endpoint, token, max_bytes) = {
             let s = self.session.read().await;
             (
@@ -346,34 +355,33 @@ fn map_chunk_err(e: ChunkError) -> TelemetryError {
     TelemetryError::Chunk(e)
 }
 
-/// Drain any telemetry events left on disk from a previous launcher
-/// run that crashed or was killed before its bundle could upload.
-/// `queue_dir` is the directory [`Telemetry::start_session`] was given.
+/// Count the telemetry events a previous launcher run left on disk (it
+/// crashed, was killed, or closed mid-flush); the next flush sends them.
+/// Nothing is moved or rewritten, so a crash here loses nothing either;
+/// only a line torn by a crash mid-append is ended, so the next append
+/// does not join it. `queue_dir` is the directory
+/// [`Telemetry::start_session`] was given.
 pub fn recover_pending_on_startup(queue_dir: &Path) -> u64 {
     let q = DiskQueue::new(queue_dir);
     recover_pending_at(&q)
 }
 
 fn recover_pending_at(q: &DiskQueue) -> u64 {
-    match q.drain::<TelemetryEvent>() {
-        Ok(events) if events.is_empty() => 0,
-        Ok(events) => {
-            let n = events.len() as u64;
+    if let Err(e) = q.repair_torn_tail() {
+        tracing::warn!(error = %e, "telemetry queue tail not repaired");
+    }
+    match q.pending_count::<TelemetryEvent>() {
+        Ok(0) => 0,
+        Ok(n) => {
             tracing::info!(
                 pending = n,
                 dropped_since_last_drain = q.dropped_count(),
                 "Recovered telemetry events from previous session — will replay on next flush"
             );
-            for ev in &events {
-                if let Err(e) = q.enqueue(ev) {
-                    tracing::warn!(error = %e, "failed to re-enqueue recovered event");
-                    break;
-                }
-            }
             n
         }
         Err(e) => {
-            tracing::warn!(error = %e, "telemetry recovery drain failed");
+            tracing::warn!(error = %e, "telemetry recovery count failed");
             0
         }
     }
@@ -411,6 +419,36 @@ mod tests {
         assert_eq!(n, 3);
         let drained: Vec<TelemetryEvent> = q.drain().unwrap();
         assert_eq!(drained.len(), 3);
+    }
+
+    /// A line that is not UTF-8 neither hides the queue from recovery nor
+    /// costs the events around it.
+    #[test]
+    fn recover_pending_counts_past_a_non_utf8_line() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let q = DiskQueue::new(dir.path());
+        let ev = |i: i64| {
+            TelemetryEvent::ClientLog(ClientLogEvent {
+                ts_ms: i,
+                seq: i as u64,
+                source_file: "x.log".into(),
+                level: "info".into(),
+                category: "raw".into(),
+                packet_no: None,
+                message: format!("e-{i}"),
+            })
+        };
+        q.enqueue(&ev(0)).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dir.path().join("telemetry-queue.jsonl"))
+            .unwrap();
+        f.write_all(b"\x80\x81 torn\n").unwrap();
+        drop(f);
+        q.enqueue(&ev(1)).unwrap();
+        assert_eq!(recover_pending_at(&q), 2);
+        assert_eq!(q.drain::<TelemetryEvent>().unwrap().len(), 2);
     }
 
     // stamp_seq rewrites the seq field on every variant and fills in

@@ -95,6 +95,8 @@ impl DesktopState {
 
     /// Saved before it is acknowledged. The choice may change during an
     /// operation: it takes effect at the next Play, never on a running game.
+    /// A change deletes the upload queue unsent, so events collected before
+    /// an opt-out never ship after a later opt-in.
     pub fn set_game_telemetry(&mut self, opted_in: bool) -> Result<GameTelemetry, StorageError> {
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
@@ -108,6 +110,7 @@ impl DesktopState {
         }
         value.opted_in = opted_in;
         self.write_game_telemetry(NAME, &value)?;
+        transport::discard_queue(&self.directory.root);
         Ok(value)
     }
 

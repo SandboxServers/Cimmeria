@@ -145,6 +145,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Testing patterns
 
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
+- [tracing-capture-single-dispatcher-trap](tracing-capture-single-dispatcher-trap.md) — scoped tracing capture records nothing under `cargo test` unless a 2nd Dispatch lives; static async locks couple tests.
 - [cap-guard-sized-from-the-constant](cap-guard-sized-from-the-constant.md) — a cap guard sized `CAP + 1` passes when the cap is loosened; use a literal size.
 - [aoi-fixture-introducible-and-wire-ledger](aoi-fixture-introducible-and-wire-ledger.md) — account_id without archetype_id hides a test player from AoI; ability sends go through `wire_ledger` (AB-T4).
 - [damage-apply-miss-gate-and-seeded-rolls](damage-apply-miss-gate-and-seeded-rolls.md) — since AB-06 a miss lands nothing; a literal effect_seq may roll a miss; use `seq_rolling`.

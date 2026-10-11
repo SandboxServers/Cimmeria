@@ -6,25 +6,32 @@
 //!   `telemetry-queue.jsonl` in the launcher state directory (100 MiB cap,
 //!   dropped lines counted in `telemetry-queue.dropped`). It survives a
 //!   launcher restart and is replayed by the next session's first flush.
+//!   A flush moves it to `telemetry-queue.inflight.jsonl` and deletes each
+//!   chunk only once the server has answered for it, so closing the
+//!   launcher mid-flush loses nothing (at worst one chunk goes twice).
 //! - **Upload.** Gzipped NDJSON chunks of at most the mint's
-//!   `chunk_max_bytes` and 1,000 rows, POSTed to `<upload_endpoint>/upload-chunk`.
-//!   A 429 or 503 holds further flushes off for its `Retry-After` (60 s if
-//!   absent); the events stay queued. A 413 or other permanent 4xx drops
-//!   that chunk into the dropped-lines count.
+//!   `chunk_max_bytes` and 1,000 rows, POSTed to `<upload_endpoint>/upload-chunk`,
+//!   at most eight per flush. A 429 or 503 holds further flushes off for
+//!   its `Retry-After` (60 s if absent, an hour at most); the events stay
+//!   queued. A 413 or other permanent 4xx drops that chunk into the
+//!   dropped-lines count.
 //! - **Token.** Refreshed when 75% of its life has gone, and at once on a
 //!   401, then the flush is retried once. A refresh the server refuses (an
 //!   expired token, or a chain past its session cap) mints a new session
 //!   with the same identity, bounded like Play's mint (4 s connect, 8 s
-//!   total).
+//!   total). Replies past 16 KiB are refused unread. When renewing fails,
+//!   or the refresh answers 429/503, flushes hold off for 60 s, doubling on
+//!   each further failure up to 30 minutes.
 //! - **Addresses.** https anywhere; plain http only to this machine or the
 //!   host and port of a login server
 //!   ([`EndpointPolicy`](crate::telemetry_endpoint::EndpointPolicy)),
 //!   for the mint, every refresh and every upload endpoint handed back.
 //! - **Consent.** Nothing here runs without [`Consent`], which exists only
-//!   while the player has opted in to game telemetry. At startup
-//!   [`recover_on_startup`] keeps an opted-in player's queue and deletes an
-//!   opted-out player's, so withdrawn data is never sent after a later
-//!   opt-in.
+//!   while the player has opted in to game telemetry. Changing the choice
+//!   (`DesktopState::set_game_telemetry`) deletes the queue unsent, and at
+//!   startup [`recover_on_startup`] keeps an opted-in player's queue and
+//!   deletes an opted-out player's, so withdrawn data is never sent after
+//!   a later opt-in.
 //!
 //! API for the session and event packets (LX-08b, LX-08c):
 //!
@@ -39,15 +46,17 @@
 //! | [`Transport::upload_bundle`]`(event_count)` | at game exit, the end-of-session log bundle |
 //! | [`Transport::shutdown`]`()` | final flush; whatever is left stays queued on disk |
 //!
-//! Every call that touches the queue takes one process-wide lock, so an
-//! enqueue can never land between a flush's drain and its re-queue. Errors
-//! are [`TransportError`] codes: no token, key, URL or server text.
+//! Core's queue locks its files for each short operation, never across a
+//! POST, so an enqueue never waits on a flush; flushes and bundle uploads
+//! take turns across the process. Errors are [`TransportError`] codes: no
+//! token, key, URL or server text.
 mod queue;
 #[cfg(test)]
 mod tests;
 
 pub use cimmeria_launcher_core::telemetry::bundle::BundleOutcome;
 pub use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
+pub(crate) use queue::discard_queue;
 pub use queue::{queue_without_session, recover_on_startup, Consent, Recovery};
 
 use super::{session, Identity, Session};
@@ -58,14 +67,37 @@ use cimmeria_launcher_core::telemetry::bundle::BundleError;
 use cimmeria_launcher_core::telemetry::chunk::ChunkError;
 use cimmeria_launcher_core::telemetry::queue::DiskQueue;
 use cimmeria_launcher_core::telemetry::{SessionContext, Telemetry, TelemetryError};
-use queue::QUEUE_LOCK;
+use queue::flush_turn;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// A chunk is at most a megabyte of NDJSON before gzip, and the bundle a
 /// zip of one session's logs: far more than a mint's 8 s on a slow line.
 const UPLOAD_TOTAL: Duration = Duration::from_secs(60);
+
+/// After the server will not give the launcher a working token, flushes
+/// wait this long, doubling on each further failure up to [`AUTH_HOLD_MAX`],
+/// rather than refreshing and minting again on every flush.
+const AUTH_HOLD_FIRST: Duration = Duration::from_secs(60);
+const AUTH_HOLD_MAX: Duration = Duration::from_secs(30 * 60);
+
+/// The token back-off: when flushes may run again, and the next wait.
+#[derive(Debug)]
+struct AuthHold {
+    until: Option<Instant>,
+    next: Duration,
+}
+
+impl AuthHold {
+    fn new() -> Self {
+        Self {
+            until: None,
+            next: AUTH_HOLD_FIRST,
+        }
+    }
+}
 
 /// What went wrong, as a code safe for logs and IPC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, thiserror::Error)]
@@ -119,6 +151,7 @@ pub struct Transport {
     login_servers: Vec<LoginServer>,
     tags: Vec<String>,
     queue_dir: PathBuf,
+    auth_hold: Mutex<AuthHold>,
 }
 
 impl Transport {
@@ -157,6 +190,7 @@ impl Transport {
             login_servers: login_servers.to_vec(),
             tags: marker.tags.clone(),
             queue_dir: consent.queue_dir,
+            auth_hold: Mutex::new(AuthHold::new()),
         })
     }
 
@@ -167,19 +201,25 @@ impl Transport {
     }
 
     /// Stamp the next `seq` (and `ts_ms` when 0) and append to the queue.
+    /// Never waits on a flush in progress.
     pub async fn enqueue(&self, event: TelemetryEvent) -> Result<(), TransportError> {
-        let _queue = QUEUE_LOCK.lock().await;
         self.telemetry
             .enqueue(event)
             .await
             .map_err(|e| TransportError::of(&e))
     }
 
-    /// Send what is queued. Returns the events the server took; `Ok(0)`
-    /// during a back-off. On an error the unsent events stay queued.
+    /// Send what is queued, at most eight chunks. Returns the events the
+    /// server took; `Ok(0)` during a back-off. On an error, or if the future
+    /// is dropped part-way (the launcher closing), the unsent events stay
+    /// queued on disk.
     pub async fn flush(&self) -> Result<u64, TransportError> {
-        let _queue = QUEUE_LOCK.lock().await;
-        self.refresh_if_due().await;
+        let turn = flush_turn(&self.queue_dir);
+        let _turn = turn.lock().await;
+        if self.auth_held() {
+            return Ok(0);
+        }
+        self.refresh_if_due().await?;
         let result = match self.telemetry.flush(&self.upload).await {
             Err(TelemetryError::Chunk(ChunkError::TokenRejected)) => {
                 tracing::info!("telemetry token refused by the upload endpoint; renewing");
@@ -202,7 +242,8 @@ impl Transport {
         &self,
         event_count: u64,
     ) -> Result<Option<BundleOutcome>, TransportError> {
-        let _queue = QUEUE_LOCK.lock().await;
+        let turn = flush_turn(&self.queue_dir);
+        let _turn = turn.lock().await;
         let queue = DiskQueue::new(&self.queue_dir);
         let dropped = queue.dropped_count();
         let mut result = self
@@ -212,7 +253,8 @@ impl Transport {
         if matches!(
             result,
             Err(TelemetryError::Bundle(BundleError::TokenRejected))
-        ) {
+        ) && !self.auth_held()
+        {
             self.renew().await?;
             result = self
                 .telemetry
@@ -237,31 +279,81 @@ impl Transport {
         self.flush().await
     }
 
-    /// The proactive refresh. A failure leaves the current token in use; a
-    /// 401 from the upload will renew it.
-    async fn refresh_if_due(&self) {
-        if let Err(e) = self.telemetry.refresh_if_due(&self.auth).await {
-            let code = TransportError::of(&e);
-            if code == TransportError::TokenRejected {
-                if let Err(code) = self.remint().await {
-                    tracing::warn!(?code, "telemetry re-mint failed");
+    /// The proactive refresh. A failure that only means the server could
+    /// not be reached leaves the current token in use (a 401 from the
+    /// upload will renew it). A refused token is re-minted; a failed
+    /// re-mint, or a 429/503 from the refresh, starts the token back-off
+    /// and ends this flush.
+    async fn refresh_if_due(&self) -> Result<(), TransportError> {
+        let code = match self.telemetry.refresh_if_due(&self.auth).await {
+            Ok(true) => {
+                self.release_auth_hold();
+                return Ok(());
+            }
+            Ok(false) => return Ok(()),
+            Err(e) => TransportError::of(&e),
+        };
+        match code {
+            TransportError::TokenRejected => match self.remint().await {
+                Ok(()) => {
+                    self.release_auth_hold();
+                    Ok(())
                 }
-            } else {
+                Err(code) => {
+                    tracing::warn!(?code, "telemetry re-mint failed; holding flushes off");
+                    self.hold_auth();
+                    Err(code)
+                }
+            },
+            TransportError::BackingOff => {
+                tracing::warn!("telemetry refresh told to wait; holding flushes off");
+                self.hold_auth();
+                Err(code)
+            }
+            code => {
                 tracing::warn!(?code, "proactive telemetry token refresh failed");
+                Ok(())
             }
         }
     }
 
     /// After a 401: refresh, or mint a new session when the refresh is
-    /// refused too.
+    /// refused too. Any failure starts the token back-off.
     async fn renew(&self) -> Result<(), TransportError> {
-        match self.telemetry.refresh_now(&self.auth).await {
+        let result = match self.telemetry.refresh_now(&self.auth).await {
             Ok(()) => Ok(()),
             Err(e) => match TransportError::of(&e) {
                 TransportError::TokenRejected => self.remint().await,
                 code => Err(code),
             },
+        };
+        match result {
+            Ok(()) => {
+                self.release_auth_hold();
+                Ok(())
+            }
+            Err(code) => {
+                tracing::warn!(?code, "telemetry token not renewed; holding flushes off");
+                self.hold_auth();
+                Err(code)
+            }
         }
+    }
+
+    fn auth_held(&self) -> bool {
+        let hold = self.auth_hold.lock().unwrap_or_else(|e| e.into_inner());
+        hold.until.is_some_and(|until| Instant::now() < until)
+    }
+
+    /// Hold flushes off for the next wait, and double it.
+    fn hold_auth(&self) {
+        let mut hold = self.auth_hold.lock().unwrap_or_else(|e| e.into_inner());
+        hold.until = Some(Instant::now() + hold.next);
+        hold.next = (hold.next * 2).min(AUTH_HOLD_MAX);
+    }
+
+    fn release_auth_hold(&self) {
+        *self.auth_hold.lock().unwrap_or_else(|e| e.into_inner()) = AuthHold::new();
     }
 
     async fn remint(&self) -> Result<(), TransportError> {

@@ -132,7 +132,7 @@ pub async fn post_chunk(
             retry_after_secs: parse_retry_after(&resp),
         });
     }
-    let body = resp.text().await.unwrap_or_default();
+    let body = super::auth::error_body(resp).await;
     // 401 and 429 are handled above; 408 is a timeout worth retrying.
     // Every other 4xx says this chunk itself is unacceptable.
     if status.is_client_error() && status.as_u16() != 408 {
@@ -154,12 +154,20 @@ fn join_endpoint(endpoint: &str, path: &str) -> String {
     format!("{trimmed}/{path}")
 }
 
-fn parse_retry_after(resp: &reqwest::Response) -> u64 {
+/// The longest `Retry-After` the launcher honours: a server (or a proxy in
+/// front of it) asking for days would otherwise silence telemetry for
+/// longer than any session.
+pub const MAX_RETRY_AFTER_SECS: u64 = 3_600;
+
+/// `Retry-After` in seconds: 60 when absent or not a number, at most
+/// [`MAX_RETRY_AFTER_SECS`].
+pub(super) fn parse_retry_after(resp: &reqwest::Response) -> u64 {
     resp.headers()
         .get(reqwest::header::RETRY_AFTER)
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or(60)
+        .min(MAX_RETRY_AFTER_SECS)
 }
 
 #[cfg(test)]

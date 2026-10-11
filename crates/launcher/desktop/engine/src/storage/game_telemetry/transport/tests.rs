@@ -259,8 +259,9 @@ async fn the_queue_survives_a_reopen_and_ships_with_the_next_session() {
 }
 
 /// No consent, no transport: an opted-out player has nothing to open one
-/// with, and the queue left from before the opt-out is deleted at startup,
-/// so opting back in later does not ship it.
+/// with. **Opting out deletes the queue at once**, so opting back in during
+/// the same run (no startup recovery in between) does not ship it, nor an
+/// in-flight chunk a flush had already taken.
 #[tokio::test]
 async fn an_opted_out_player_sends_nothing() {
     let root = tempfile::tempdir().unwrap();
@@ -273,13 +274,25 @@ async fn an_opted_out_player_sends_nothing() {
     }
     let mut state = opted_in(root.path());
     let consent = Consent::read(&state).unwrap().unwrap();
-    queue_without_session(&consent, event("collected-while-opted-in"))
+    for message in ["in-flight", "collected-while-opted-in"] {
+        queue_without_session(&consent, event(message))
+            .await
+            .unwrap();
+    }
+    // A flush took one chunk and was cut off before the server answered.
+    let core = DiskQueue::new(root.path());
+    drop(
+        core.take_batch::<TelemetryEvent>(u64::MAX, 1)
+            .unwrap()
+            .unwrap(),
+    );
+    queue_without_session(&consent, event("after-the-take"))
         .await
         .unwrap();
+
     state.set_game_telemetry(false).unwrap();
     assert!(Consent::read(&state).unwrap().is_none());
-    assert_eq!(recover_on_startup(&state).await, Recovery::Discarded);
-    assert!(!root.path().join("telemetry-queue.jsonl").exists());
+    assert_eq!(core.pending_count::<TelemetryEvent>().unwrap(), 0);
 
     // Opting back in starts from an empty queue.
     state.set_game_telemetry(true).unwrap();
@@ -296,13 +309,284 @@ async fn an_opted_out_player_sends_nothing() {
     server.verify().await;
 }
 
-/// Error codes carry no token, address or server text.
-#[test]
-fn transport_errors_are_codes() {
-    let text = serde_json::to_string(&TransportError::TokenRejected).unwrap();
-    assert_eq!(text, "\"token_rejected\"");
+/// A queue an opted-out player still has at startup (an opt-out whose
+/// delete failed) is deleted unsent.
+#[tokio::test]
+async fn startup_deletes_an_opted_out_players_queue() {
+    let root = tempfile::tempdir().unwrap();
+    let state = DesktopState::open(root.path()).unwrap();
+    DiskQueue::new(root.path())
+        .enqueue(&event("left-behind"))
+        .unwrap();
+    assert_eq!(recover_on_startup(&state).await, Recovery::Discarded);
+    assert!(!root.path().join("telemetry-queue.jsonl").exists());
+}
+
+/// **Closing the launcher mid-flush loses nothing, and an enqueue never
+/// waits for a flush.** The flush future is dropped while its chunk is on
+/// the wire; an event queued meanwhile goes straight to disk; the next
+/// launcher run finds all three and sends them in order.
+#[tokio::test]
+async fn a_flush_cut_off_mid_post_keeps_its_events_and_never_blocks_enqueue() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    {
+        let slow = MockServer::start().await;
+        mount_mint(&slow, "tok-slow").await;
+        Mock::given(method("POST"))
+            .and(path(CHUNK))
+            .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(30)))
+            .mount(&slow)
+            .await;
+        let state = opted_in(root.path());
+        let transport = open(&state, &slow, install.path()).await;
+        transport.enqueue(event("a")).await.unwrap();
+        transport.enqueue(event("b")).await.unwrap();
+        let meanwhile = async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::timeout(Duration::from_millis(300), transport.enqueue(event("c"))).await
+        };
+        let (flushed, queued) = tokio::join!(
+            tokio::time::timeout(Duration::from_secs(1), transport.flush()),
+            meanwhile
+        );
+        assert!(flushed.is_err(), "the flush must be cut off mid-POST");
+        assert_eq!(queued, Ok(Ok(())), "enqueue waited on the flush");
+        assert_eq!(chunk_posts(&slow.received_requests().await.unwrap()), 1);
+    }
+
+    let state = DesktopState::open(root.path()).unwrap();
+    assert_eq!(recover_on_startup(&state).await, Recovery::Pending(3));
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-new").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let transport = open(&state, &server, install.path()).await;
+    // The cut-off chunk first, then what was queued behind it.
+    assert_eq!(transport.flush().await, Ok(3));
+    assert_eq!(chunk_posts(&server.received_requests().await.unwrap()), 2);
+    assert_eq!(delivered(&server, "tok-new").await, ["a", "b", "c"]);
+}
+
+/// A refresh that hands back plain http to a host that is not a login
+/// server is refused: the old endpoint and token stay, nothing is sent
+/// there, and flushes hold off rather than refreshing again at once.
+#[tokio::test]
+async fn a_refresh_to_an_unchecked_http_endpoint_is_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(401))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let expires = chrono::Utc::now().timestamp_millis() + 8 * 60 * 60 * 1000;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "session_id": "session-1", "token": "tok-2", "expires_at_ms": expires,
+            "upload_endpoint": "http://uploads.example.org/api",
+            "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    transport.enqueue(event("kept")).await.unwrap();
     assert_eq!(
-        serde_json::to_string(&TransportError::BackingOff).unwrap(),
-        "\"backing_off\""
+        transport.flush().await,
+        Err(TransportError::EndpointRefused)
     );
+    {
+        let session = transport.telemetry.session.read().await;
+        assert_eq!(
+            session.upload_endpoint,
+            format!("{}/api/telemetry", server.uri())
+        );
+        assert_eq!(session.token, "tok-1");
+    }
+    // Held off: no second refresh, no second chunk.
+    assert_eq!(transport.flush().await, Ok(0));
+    server.verify().await;
+    assert_eq!(
+        DiskQueue::new(root.path())
+            .pending_count::<TelemetryEvent>()
+            .unwrap(),
+        1
+    );
+}
+
+/// **A server that keeps refusing tokens is not hammered.** A refused
+/// refresh and a re-mint the server answers 503 hold flushes off: the next
+/// flush sends nothing to any route.
+#[tokio::test]
+async fn a_failed_renewal_holds_flushes_off() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session"))
+        .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "1"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(401))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(ResponseTemplate::new(401))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    transport.enqueue(event("kept")).await.unwrap();
+    assert_eq!(
+        transport.flush().await,
+        Err(TransportError::SessionUnavailable)
+    );
+    let before = server.received_requests().await.unwrap().len();
+    for _ in 0..3 {
+        assert_eq!(transport.flush().await, Ok(0));
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
+    server.verify().await;
+    let hold = transport.auth_hold.lock().unwrap();
+    assert_eq!(hold.next, AUTH_HOLD_FIRST * 2);
+}
+
+/// The doubling stops at the cap.
+#[test]
+fn the_token_back_off_doubles_up_to_its_cap() {
+    let mut hold = AuthHold::new();
+    let mut waits = Vec::new();
+    for _ in 0..8 {
+        waits.push(hold.next);
+        hold.next = (hold.next * 2).min(AUTH_HOLD_MAX);
+    }
+    assert_eq!(waits[0], Duration::from_secs(60));
+    assert_eq!(waits[1], Duration::from_secs(120));
+    assert_eq!(*waits.last().unwrap(), AUTH_HOLD_MAX);
+}
+
+/// **Server text and tokens stay out of the logs and the errors.** Every
+/// reply below carries a marker string; the chunk 500, the 401 and the
+/// failed refresh are all logged (as codes), and neither the marker nor the
+/// token appears in a log line or an error's text.
+#[tokio::test]
+async fn transport_errors_and_logs_carry_no_server_text_or_token() {
+    const MARKER: &str = "MARKER-7f3a-server-text";
+    const TOKEN: &str = "tok-secret-91c2";
+    let lines = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    // With exactly one dispatcher alive, tracing works out a new callsite's
+    // interest from the default of whichever thread hits it first; under
+    // `cargo test` that is another test's thread with no subscriber, and the
+    // callsite is cached as never enabled. A second live dispatcher makes it
+    // ask every dispatcher, this capture included.
+    let _second = tracing::Dispatch::new(Capture(Default::default()));
+    let _capture =
+        tracing::dispatcher::set_default(&tracing::Dispatch::new(Capture(lines.clone())));
+
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, TOKEN).await;
+    let marked = |status: u16| ResponseTemplate::new(status).set_body_string(MARKER);
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(marked(500))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(marked(401))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(marked(500))
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    transport.enqueue(event("e")).await.unwrap();
+    let errors = [transport.flush().await, transport.flush().await];
+    assert_eq!(
+        errors,
+        [
+            Err(TransportError::Upload),
+            Err(TransportError::SessionUnavailable)
+        ]
+    );
+    let lines = lines.lock().unwrap().clone();
+    assert!(
+        lines.contains("telemetry flush failed") && lines.contains("not renewed"),
+        "the capture saw nothing: {lines}"
+    );
+    for error in errors.iter().filter_map(|r| r.as_ref().err()) {
+        let text = format!(
+            "{error} {error:?} {}",
+            serde_json::to_string(error).unwrap()
+        );
+        assert!(!text.contains(MARKER) && !text.contains(TOKEN), "{text}");
+    }
+    assert!(!lines.contains(MARKER), "server text logged: {lines}");
+    assert!(!lines.contains(TOKEN), "token logged: {lines}");
+}
+
+/// Every event and span field from this repo's crates, as text.
+struct Capture(std::sync::Arc<std::sync::Mutex<String>>);
+
+impl Capture {
+    fn push(&self, values: &dyn Fn(&mut dyn tracing::field::Visit)) {
+        let mut text = String::new();
+        values(&mut Fields(&mut text));
+        let mut lines = self.0.lock().unwrap();
+        lines.push_str(&text);
+        lines.push('\n');
+    }
+}
+
+struct Fields<'a>(&'a mut String);
+
+impl tracing::field::Visit for Fields<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        use std::fmt::Write;
+        let _ = write!(self.0, "{}={value:?} ", field.name());
+    }
+}
+
+impl tracing::Subscriber for Capture {
+    fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+        metadata.target().starts_with("cimmeria")
+    }
+    fn new_span(&self, span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        self.push(&|v| span.record(v));
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, values: &tracing::span::Record<'_>) {
+        self.push(&|v| values.record(v));
+    }
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        self.push(&|v| event.record(v));
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
 }
