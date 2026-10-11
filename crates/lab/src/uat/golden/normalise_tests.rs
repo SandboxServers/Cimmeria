@@ -303,17 +303,17 @@ fn entity_fields_are_labels_and_missing_fields_are_left_out() {
 }
 
 #[test]
-fn events_from_tap_keeps_the_contract_pair() {
+fn allow_unordered_moves_events_out_of_the_ordered_stream() {
     let mut v = resolve(None, None);
     v.allow_unordered = vec!["onB".into()];
     let tap = [out("onA", 8, json!({}), 0), out("onB", 8, json!({}), 0)];
     let mut labels = EntityLabels::new(8, None, None);
-    let (events, unordered) = events_from_tap(&tap, false, &mut labels, &v, &[]);
+    let n = normalise_tap(&tap, false, &mut labels, &v, &[]);
     assert_eq!(
-        events.iter().map(Event::render).collect::<Vec<_>>(),
+        n.events.iter().map(Event::render).collect::<Vec<_>>(),
         ["s2c onA@self"]
     );
-    assert_eq!(unordered, ["s2c onB@self"]);
+    assert_eq!(n.unordered, ["s2c onB@self"]);
 }
 
 #[test]

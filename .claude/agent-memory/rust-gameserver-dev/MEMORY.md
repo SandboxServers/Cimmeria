@@ -79,6 +79,9 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-daemon-lease-gate.md](lab-daemon-lease-gate.md) — lease gate is hand-written call_tool; new tools need a policy line; runner touches its own lease; per-test lease books.
 - [ability-uat-staging-limits.md](ability-uat-staging-limits.md) — warmup and cleanse rows need .dummy caster (#1188); 1462/4306/2827 are effect ids; one graded press per row.
 - [uat-runner-grade-neutral-capture.md](uat-runner-grade-neutral-capture.md) — reasons name step indices; opt-in capture records go to the row at the end, re-indexed (GD-06).
+- [uat-run-dir-sibling-json-trap](uat-run-dir-sibling-json-trap.md) — `RunDir::rows` parses every json beside the row JSON (skip `.snapshot.json`); attest re-grade must re-apply post-grade rules.
+- [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
+- [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -143,7 +146,9 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cap-guard-sized-from-the-constant](cap-guard-sized-from-the-constant.md) — a cap guard sized `CAP + 1` passes when the cap is loosened; use a literal size.
 - [aoi-fixture-introducible-and-wire-ledger](aoi-fixture-introducible-and-wire-ledger.md) — account_id without archetype_id hides a test player from AoI; ability sends go through `wire_ledger` (AB-T4).
 - [damage-apply-miss-gate-and-seeded-rolls](damage-apply-miss-gate-and-seeded-rolls.md) — since AB-06 a miss lands nothing; a literal effect_seq may roll a miss; use `seq_rolling`.
+- [table-driven-live-db-refusal-cases](table-driven-live-db-refusal-cases.md) — one character per refusal case + collected failures, so each dropped check shows; rolled-back dry run as precheck.
 - [player-cast-fixtures-need-a-mechanic](player-cast-fixtures-need-a-mechanic.md) — since AB-12 a player cast with no mechanic is refused; effectless fixtures need `seed_mechanic_effect`.
+- [lab-runner-paused-time-poll-tests](lab-runner-paused-time-poll-tests.md) — lab runner poll/timeout tests use `start_paused = true`; deadlines must be `tokio::time::Instant`.
 
 ## Campaign judgment
 

@@ -15,14 +15,10 @@ pub const FIXTURE_CHARACTER_VAR: &str = "fixture_character";
 /// Containers a fixture counts as carried: main through crafting. This
 /// mirrors `FIXTURE_CARRIED_CONTAINERS` in base-session, which the server
 /// uses when it stages; the two must move together.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub const FIXTURE_CARRIED_CONTAINERS: &[i32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
 /// One read-only check: a label for the BLOCKED reason, the SQL, a JSON
 /// pointer into the `server_db_query` result and the value it must equal.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FixtureCheck {
     /// The label a BLOCKED reason names, e.g. `mission 622 active`.
@@ -85,8 +81,6 @@ fn drop_nulls(v: &mut Value) {
 /// the character `name`: per mission its row, per item its carried count,
 /// per tutorial that it is no longer unseen. `name` is formatted into SQL,
 /// so it must be ASCII letters.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn verify_checks(f: &FixtureSpec, name: &str) -> Result<Vec<FixtureCheck>, String> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
         return Err(format!(

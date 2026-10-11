@@ -15,12 +15,23 @@ pub struct Probe {
     pub edge_px: f64,
 }
 
-/// From a `client_hover_probe` result; None when a field is missing.
+/// D-SV6: the avatar margin counts up to this many pixels ...
+pub const AVATAR_CAP_PX: f64 = 400.0;
+/// ... and the screen-edge margin up to this many, at half weight.
+pub const EDGE_CAP_PX: f64 = 200.0;
+
+/// From a `client_hover_probe` result; None when a field is missing. The
+/// probe reports `avatar_px: null` when the avatar is off-screen, which is
+/// as far from the aim pixel as D-SV6 counts: [`AVATAR_CAP_PX`].
 pub fn parse_probe(v: &Value) -> Option<Probe> {
+    let avatar_px = match v.get("avatar_px")? {
+        Value::Null => AVATAR_CAP_PX,
+        px => px.as_f64()?,
+    };
     Some(Probe {
         ok: v.get("verdict")?.as_str()? == "ok",
         jitter_hits: u32::try_from(v.get("jitter_hits")?.as_u64()?).ok()?,
-        avatar_px: v.get("avatar_px")?.as_f64()?,
+        avatar_px,
         edge_px: v.get("edge_px")?.as_f64()?,
     })
 }
@@ -30,7 +41,9 @@ pub fn score(p: &Probe) -> Option<u32> {
     if !p.ok {
         return None;
     }
-    let s = f64::from(p.jitter_hits) * 1000.0 + p.avatar_px.min(400.0) + p.edge_px.min(200.0) / 2.0;
+    let s = f64::from(p.jitter_hits) * 1000.0
+        + p.avatar_px.min(AVATAR_CAP_PX)
+        + p.edge_px.min(EDGE_CAP_PX) / 2.0;
     Some(s.round() as u32)
 }
 
@@ -105,5 +118,20 @@ mod tests {
         assert_eq!(parse_probe(&json!({ "verdict": "miss" })), None);
         let no_edge = json!({ "verdict": "ok", "jitter_hits": 8, "avatar_px": 1.0 });
         assert_eq!(parse_probe(&no_edge), None);
+        let no_avatar = json!({ "verdict": "ok", "jitter_hits": 8, "edge_px": 1.0 });
+        assert_eq!(parse_probe(&no_avatar), None);
+    }
+
+    #[test]
+    fn an_off_screen_avatar_is_far_not_a_missing_field() {
+        // The real probe sends `avatar_px: null` when the avatar does not
+        // project; that hit must score, with the full avatar margin.
+        let v = json!({
+            "verdict": "ok", "jitter_hits": 8, "avatar_px": null, "edge_px": 50.0
+        });
+        let p = parse_probe(&v).expect("a null avatar_px is still a probe");
+        assert_eq!(p, probe(true, 8, 400.0, 50.0));
+        // 8000 + 400 + 50 / 2.
+        assert_eq!(score(&p), Some(8425));
     }
 }

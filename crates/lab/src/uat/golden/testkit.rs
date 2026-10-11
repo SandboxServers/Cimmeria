@@ -85,6 +85,7 @@ pub fn row_evidence(
         vars: json!({}),
         attestations: Vec::new(),
         blocked: Vec::new(),
+        fixture_parity: None,
     }
 }
 
