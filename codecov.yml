@@ -8,9 +8,8 @@
 # test.yml uploads coverage from two jobs that run at the same time
 # (coverage-workspace and coverage-live-db). Wait for both before posting
 # statuses or the PR comment, so the first half never reports as the whole.
-# On PRs test.yml uploads no coverage unless the PR is labeled `coverage`, so a
-# launcher PR's single launcher-build.yml upload never reaches 2 and gets no
-# Codecov status or comment. Coverage is advisory; label the PR to get one.
+# On PRs test.yml uploads no coverage unless the PR is labeled `coverage`.
+# Coverage is advisory; label the PR to get one.
 codecov:
   notify:
     after_n_builds: 2
@@ -35,18 +34,6 @@ coverage:
         threshold: 0%
         informational: true
 
-# Flags. launcher-build.yml uploads `launcher` coverage, but that workflow is
-# path-filtered: it runs only on commits that touch the launcher. Without
-# carryforward, every later commit's report on main has no `launcher` data at
-# all (the upload itself succeeds; checked on run 36279900778), so the
-# launcher component read as uncovered. Carryforward keeps the last upload
-# until the next launcher change.
-flags:
-  launcher:
-    carryforward: true
-    paths:
-      - "crates/launcher/**"
-
 # PR comment shape. The defaults are noisy on a workspace this size, so we
 # scope the comment to a header + the per-component diff and trim file lists.
 comment:
@@ -60,10 +47,7 @@ comment:
 # Keep this list aligned with the cargo workspace's CI excludes. The Tauri
 # editors (cimmeria-content-editor / cimmeria-scene-editor) are GUI shells
 # excluded from CI, so their files would show as 0% covered and skew the
-# report. The sgw-launcher crate is excluded from the main `ci` workflow
-# (eframe needs heavier system deps and only matters on Windows) but has
-# its own coverage job in `launcher-build.yml` that uploads under the
-# `launcher` flag — so it lives in `component_management` below, not here.
+# report.
 ignore:
   - "src-tauri/**"
   - "crates/cimmeria-content-editor/**"
@@ -286,20 +270,6 @@ component_management:
       name: admin-api
       paths:
         - "crates/admin-api/**"
-      statuses:
-        - type: project
-          target: auto
-          threshold: 1%
-          informational: true
-    # sgw-launcher coverage is uploaded by `launcher-build.yml` under the
-    # `launcher` flag (the main `coverage` job in test.yml excludes it via
-    # WORKSPACE_EXCLUDES). Start on `target: auto` so the PR comment
-    # doesn't fail on the first launcher PR after the ignore was lifted;
-    # ratchet up once a stable baseline lands.
-    - component_id: launcher
-      name: launcher
-      paths:
-        - "crates/launcher/**"
       statuses:
         - type: project
           target: auto

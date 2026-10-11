@@ -174,13 +174,13 @@ cargo check -p cimmeria-cell
 # skips):
 cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
-  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-scene-editor `
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Run the test suite (no live DB needed):
 cargo nextest run --profile=ci --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
-  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-scene-editor `
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 

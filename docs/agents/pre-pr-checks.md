@@ -76,16 +76,16 @@ cargo fmt --all -- --check
 cargo hakari generate --diff && cargo hakari manage-deps --dry-run
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-scene-editor \
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab \
   --all-targets -- -D warnings
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-scene-editor \
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-scene-editor \
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 # Doctests aren't run by nextest — only cimmeria-commands has runnable
 # doctests today, so this is a one-crate sanity check:

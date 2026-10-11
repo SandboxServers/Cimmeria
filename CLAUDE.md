@@ -76,18 +76,18 @@ Every script in `tools/build-lane/` has a `.ps1` twin with the same options and 
 
 Worktrees, per-worktree test databases and Dev Drive seeding: [docs/agents/development-workflow.md](docs/agents/development-workflow.md). **Retire a worktree the day its PR merges** with `bash tools/build-lane/rm-worktree.sh <name>` (`pwsh tools/build-lane/rm-worktree.ps1 <name>` from PowerShell): it deletes the target dir and the test database, and unlinks `external/` safely. A session that dispatched workers retires their worktrees too; `--merged` sweeps every merged, idle one. `bash tools/build-lane/ship.sh pr -C <worktree> -m <msg>` commits, pushes and opens the PR, and `ship.sh merge <PR> --retire <name>` merges and retires, each in one call. Stale target dirs filled the Dev Drive once and stopped every lane build.
 
-Quick reference (the seven `--exclude`s are CI's: the GUI apps and the Windows-only cdylibs):
+Quick reference (the six `--exclude`s are CI's: the GUI apps and the Windows-only cdylibs):
 
 ```bash
 # Full workspace check
 bash tools/build-lane/lane.sh --exclusive cargo check --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-scene-editor \
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 # ...the same from PowerShell
 pwsh tools/build-lane/lane.ps1 --exclusive cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
-  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-scene-editor `
   --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Full debug info for a debugger session (builds into target/dev-debug/)
@@ -103,8 +103,8 @@ python tools/build-lane/lane_stats.py --recent 20
 Run this before pushing, or the pipeline fails and you round-trip. Agents run the compiling lines through the lane (`lane.sh`, or `pwsh tools/build-lane/lane.ps1` from PowerShell), with `--exclusive` for the workspace-wide ones. `fmt`, `clippy` and `build-and-test` (which runs the live-DB tier too) block a merge, and so do the two figure checks when figures or `docs/drafts/spec/` chapters change; markdownlint and spec-lint only annotate. **Before your first PR, and whenever a check fails, read [docs/agents/pre-pr-checks.md](docs/agents/pre-pr-checks.md):** what each CI job gates and when it runs, the annotated command list, and the fix for each failing check.
 
 ```bash
-# The same seven exclusions as CI.
-EXCL="--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab"
+# The same six exclusions as CI.
+EXCL="--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab"
 cargo fmt --all -- --check
 # After a dependency change: cargo hakari generate && cargo hakari manage-deps --yes
 cargo hakari generate --diff && cargo hakari manage-deps --dry-run

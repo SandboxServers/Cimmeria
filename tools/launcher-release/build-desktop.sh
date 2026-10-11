@@ -2,8 +2,7 @@
 # Build the desktop launcher (crates/launcher/desktop) for Windows in stages.
 # The release workflow (.github/workflows/launcher-release.yml) runs these;
 # launcher-desktop.yml runs the same stages on every desktop-launcher PR as a
-# dry run, so the release is exercised before it is needed. build.sh beside
-# this file does the same for the original launcher (sgw-launcher).
+# dry run, so the release is exercised before it is needed.
 #
 # Usage: tools/launcher-release/build-desktop.sh <stage> [args]
 #
@@ -55,12 +54,16 @@
 #   feed-dry-run <version>
 #                    feed-tool, then sign and verify-feed with a throwaway key
 #                    made here, for the PR dry run, which has no real key
+#   overlay <url>    build pack-client-overlay (cimmeria-launcher-core) and pack
+#                    crates/client-patches/overlay into overlay-out/; <url> is
+#                    the release download base the manifest entry points at
 #   paths            print the artifact paths
 #
 # PROFILE=release (default) or dev. Output goes under cargo's target dir
 # (CARGO_TARGET_DIR if set, else target/). The desktop launcher is its own
 # workspace, so it and the launch worker build into target/desktop; the two
-# DLLs are root-workspace crates and build where build.sh builds them.
+# DLLs and the overlay packer are root-workspace crates and build into
+# target/ itself.
 #
 # The launcher is not one file. It reads the three 32-bit pieces from a
 # windows/ directory beside the executable and refuses any whose SHA-256 is
@@ -98,6 +101,8 @@ ARCHIVE_WORKER="$OUT/cimmeria-archive-worker.exe"
 PREREQUISITE_WORKER="$DESKTOP_DIR/$I686/$PROFILE_DIR/cimmeria-prerequisite-worker.exe"
 MAC_PIECES="artifacts/mac-pieces"
 PLAY_PIECES="artifacts/play-pieces"
+PACKER="$TARGET_DIR/$PROFILE_DIR/pack-client-overlay"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) PACKER="$PACKER.exe" ;; esac
 
 # The staged file name of each piece and the build variable that pins it.
 PIECES=(
@@ -107,7 +112,7 @@ PIECES=(
 )
 
 # Text only a lab-bridge build of the telemetry DLL carries. Same literal as
-# build.sh and cimmeria_client_telemetry::LAB_BRIDGE_MARKER.
+# cimmeria_client_telemetry::LAB_BRIDGE_MARKER.
 LAB_BRIDGE_MARKER="cimmeria-client-telemetry build flavour: lab-bridge"
 
 die() { echo "::error::$*" >&2; exit 1; }
@@ -153,8 +158,8 @@ sys.exit(0 if data.find(sys.argv[2].encode()) >= 0 else 1)
 }
 
 stage_helpers() {
-  # Separate invocations, as in build.sh: building the DLLs together would
-  # unify their dependency features. The telemetry DLL is built with its
+  # Separate invocations: building the DLLs together would unify their
+  # dependency features. The telemetry DLL is built with its
   # default features, never lab-bridge. The launch worker is a binary of the
   # desktop workspace's runtime-probe package.
   cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-runtime-probe \
@@ -404,6 +409,18 @@ stage_feed_dry_run() {
   rm -rf "$keys"
 }
 
+# The client-patches UI overlay, packed as a patch zip and its manifest entry.
+# With no overlay committed the packer prints "nothing to pack" and writes
+# nothing, which the release reads as "no overlay this time".
+stage_overlay() {
+  local base="${1:?overlay needs the release download base URL}"
+  cargo build --locked -p cimmeria-launcher-core --bin pack-client-overlay "${PROFILE_FLAG[@]}"
+  need "$PACKER"
+  mkdir -p overlay-out
+  "$PACKER" --overlay crates/client-patches/overlay --out-dir overlay-out --blob-base-url "$base"
+  ls -l overlay-out
+}
+
 case "${1:-}" in
   helpers) stage_helpers ;;
   stage) stage_stage ;;
@@ -418,6 +435,7 @@ case "${1:-}" in
   sign) shift; stage_sign "$@" ;;
   verify-feed) shift; stage_verify_feed "$@" ;;
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
-  *) sed -n '2,58p' "$0" >&2; exit 2 ;;
+  overlay) shift; stage_overlay "$@" ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" "PACKER=$PACKER" ;;
+  *) sed -n '2,60p' "$0" >&2; exit 2 ;;
 esac

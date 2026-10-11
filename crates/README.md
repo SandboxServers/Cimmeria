@@ -264,19 +264,19 @@ cargo test -p cimmeria-cell
 # Full workspace check, with the same exclusions as CI (the GUI apps, the
 # Windows-only client-telemetry and client-patches cdylibs and the lab supervisor):
 cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
+  --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for the build rules and the build lane that agents and workers run cargo through.
 
 ## Testing
 
-The current test counts (total, per crate, gated in CI, live-DB) are generated into [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md#workspace-totals) from `python tools/extract_tests.py`. CI runs every crate except the seven excluded below; the live-DB regression guards live in the crates `tools/test-live-db.sh` lists, and 3 end-to-end PL/pgSQL smokes cover the vendor stack, inventory move and progression. Run the full suite:
+The current test counts (total, per crate, gated in CI, live-DB) are generated into [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md#workspace-totals) from `python tools/extract_tests.py`. CI runs every crate except the six excluded below; the live-DB regression guards live in the crates `tools/test-live-db.sh` lists, and 3 end-to-end PL/pgSQL smokes cover the vendor stack, inventory move and progression. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
+  --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

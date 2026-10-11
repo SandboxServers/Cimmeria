@@ -14,7 +14,7 @@ name: launcher-release
 # moment; the triggering PR is just the cut-point marker, mirroring the policy
 # of `release-container.yml`.
 #
-# Seven jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
+# Six jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
 # signing key never shares a job with the build's third-party code, and no job
 # that runs build code can write to the repository: the only write-token jobs,
 # `publish` and `publish-macos`, run tools/launcher-release/publish.sh from a
@@ -32,12 +32,8 @@ name: launcher-release
 #   - `desktop-macos` (LX-28, D-LX14) builds the arm64 app, signs it ad hoc and
 #     zips it, through the reusable `launcher-desktop-macos.yml` the PR dry run
 #     also calls.
-#   - `egui-macos-wine` builds the egui launcher as
-#     `sgw-launcher-macos-wine-<tag>.exe` for Mac players under Wine until
-#     LX-18. Never as `sgw-launcher-<tag>.exe`, the name the egui launcher
-#     updates itself from, so its Windows players move to the zip (D-LX2).
-#   - `publish-macos` attaches both macOS assets. A failed macOS build leaves
-#     the Windows release as it is.
+#   - `publish-macos` attaches the macOS zip. A failed macOS build leaves the
+#     Windows release as it is.
 #
 # Windows releases ship unsigned (D-LX10): the launch worker injects DLLs,
 # which Defender and SmartScreen react to. The macOS app is signed ad hoc only;
@@ -197,8 +193,7 @@ jobs:
           TAG: ${{ steps.stamp.outputs.tag }}
         run: |
           set -euo pipefail
-          cargo build --locked -p cimmeria-launcher-core --bin pack-client-overlay --release
-          tools/launcher-release/build.sh overlay "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          tools/launcher-release/build-desktop.sh overlay "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           shopt -s nullglob
           packed=(overlay-out/*.zip overlay-out/*.entry.json)
           if [ ${#packed[@]} -gt 0 ]; then HAS=true; else HAS=false; fi
@@ -548,91 +543,15 @@ jobs:
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
       LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
 
-  # D-LX14: Mac players who run the original egui launcher under Wine keep
-  # getting it until LX-18 retires it, under a name the egui self-update does
-  # not look for (D-LX2; see the top of this file). A read-only build: it
-  # uploads the exe as an artifact and publish-macos attaches it, so a failure
-  # here leaves the release as it is. LX-18 deletes this job with the egui
-  # launcher.
-  egui-macos-wine:
-    name: original launcher for macOS under Wine
-    needs: desktop-windows
-    if: github.ref == 'refs/heads/main'
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    timeout-minutes: 45
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      exe_sha256: ${{ steps.exe.outputs.sha256 }}
-    env:
-      CARGO_TERM_COLOR: always
-      CARGO_INCREMENTAL: 0
-      TAG: ${{ needs.desktop-windows.outputs.tag }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
-        with:
-          # The commit the first job stamped into the tag, not whatever main
-          # has become since.
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: ./.github/actions/rust-toolchain
-        with:
-          targets: i686-pc-windows-msvc
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
-        with:
-          shared-key: launcher-release
-      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
-        run: tools/launcher-release/build.sh i686
-      # Both secrets are baked in at compile time via `option_env!` in
-      # src/config.rs and src/manifest.rs. The tag and epoch are the release's,
-      # read by src/self_update/build_info.rs.
-      - name: build the 64-bit launcher, embedding them
-        env:
-          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
-          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
-          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ needs.desktop-windows.outputs.epoch }}
-          CIMMERIA_BUILD_BRANCH: main
-          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
-        run: tools/launcher-release/build.sh launcher
-      - name: verify the artifacts
-        env:
-          CIMMERIA_LAUNCHER_TAG: ${{ needs.desktop-windows.outputs.tag }}
-        run: tools/launcher-release/build.sh verify
-      - name: name the exe for the release
-        id: exe
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          EXE="sgw-launcher-macos-wine-${TAG}.exe"
-          cp target/release/sgw-launcher.exe "artifacts/${EXE}"
-          SHA="$(sha256sum "artifacts/${EXE}" | cut -d' ' -f1)"
-          printf '%s  %s\n' "${SHA}" "${EXE}" > "artifacts/${EXE}.sha256"
-          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          name: launcher-egui-${{ needs.desktop-windows.outputs.tag }}
-          path: |
-            artifacts/sgw-launcher-macos-wine-${{ needs.desktop-windows.outputs.tag }}.exe
-            artifacts/sgw-launcher-macos-wine-${{ needs.desktop-windows.outputs.tag }}.exe.sha256
-          if-no-files-found: error
-          retention-days: 30
-          overwrite: true
-
-  # Attaches both macOS assets after publish made the dated release: the egui
-  # exe under Wine and the macOS zip, each when its build succeeded, in one job
-  # because both rewrite the dated release's notes. The macOS zip also
-  # replaces the one on launcher-current when publish refreshed it (a signed,
+  # Attaches the macOS zip after publish made the dated release, and replaces
+  # the one on launcher-current when publish refreshed it (a signed,
   # first-of-the-day release). It runs whenever publish succeeded and fails
-  # when either build did not, so "Re-run failed jobs" reruns it with the
+  # when the macOS build did not, so "Re-run failed jobs" reruns it with the
   # failed build. No build and no third-party action: publish.sh from the
   # released commit's checkout.
   publish-macos:
-    name: macOS assets -> same release + launcher-current
-    needs: [desktop-windows, sign, publish, desktop-macos, egui-macos-wine]
+    name: macOS zip -> same release + launcher-current
+    needs: [desktop-windows, sign, publish, desktop-macos]
     if: >-
       !cancelled() && github.ref == 'refs/heads/main'
       && needs.publish.result == 'success'
@@ -642,10 +561,8 @@ jobs:
     timeout-minutes: 15
     env:
       MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
-      EGUI_EXE: artifacts/sgw-launcher-macos-wine-${{ needs.desktop-windows.outputs.tag }}.exe
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       MAC_OK: ${{ needs.desktop-macos.result == 'success' }}
-      EGUI_OK: ${{ needs.egui-macos-wine.result == 'success' }}
       SIGNED: ${{ needs.sign.outputs.signed == 'true' }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -655,22 +572,10 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
-        if: env.EGUI_OK == 'true'
-        with:
-          name: launcher-egui-${{ needs.desktop-windows.outputs.tag }}
-          path: artifacts
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         if: env.MAC_OK == 'true'
         with:
           name: launcher-macos-zip-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
-      - name: attach the egui exe to the dated release
-        if: env.EGUI_OK == 'true'
-        env:
-          EGUI_SHA256: ${{ needs.egui-macos-wine.outputs.exe_sha256 }}
-        run: |
-          tools/launcher-release/publish.sh check "${EGUI_EXE}" "${EGUI_SHA256}"
-          tools/launcher-release/publish.sh egui
       - name: attach the macOS zip to the dated release
         if: env.MAC_OK == 'true'
         env:
@@ -681,12 +586,11 @@ jobs:
       - name: refresh the macOS zip on launcher-current
         if: env.MAC_OK == 'true' && env.SIGNED == 'true'
         run: tools/launcher-release/publish.sh macos-current
-      - name: summary, and fail when a macOS build failed
+      - name: summary, and fail when the macOS build failed
         if: always()
         run: |
           {
             echo "## macOS assets for ${TAG}"
-            [ "${EGUI_OK}" = true ] || echo "- The egui launcher under Wine was not built; the release has no \`sgw-launcher-macos-wine\` exe."
             if [ "${MAC_OK}" != true ]; then
               echo "- The macOS build failed: \`${MAC_ZIP_NAME}\` is not on this release, and \`launcher-current\` keeps the macOS zip it had. \"Re-run failed jobs\" (crates/launcher/desktop/docs/release.md)."
             elif [ "${SIGNED}" = true ]; then
@@ -695,4 +599,4 @@ jobs:
               echo "- \`${MAC_ZIP_NAME}\` is on the dated release only; \`launcher-current\` was not changed."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          [ "${MAC_OK}" = true ] && [ "${EGUI_OK}" = true ]
+          [ "${MAC_OK}" = true ]

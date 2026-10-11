@@ -18,7 +18,6 @@ members = [
     "crates/commands",
     "crates/server",
     "crates/supervisor",
-    "crates/launcher",
     "crates/launcher-core",
     "crates/workspace-hack",
     "src-tauri",

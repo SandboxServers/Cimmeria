@@ -88,10 +88,10 @@ cargo check -p cimmeria-services
 # 4. Run the pre-PR checklist locally (CI runs this exactly)
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets -- -D warnings
+  --exclude cimmeria-scene-editor --all-targets -- -D warnings
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor
 
 # 5. If you changed anything touching the database, run live-DB tests:
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

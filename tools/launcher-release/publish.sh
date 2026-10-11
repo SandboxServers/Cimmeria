@@ -4,9 +4,9 @@
 # hold a write token and run no build code, no npm and no third-party action
 # (crates/launcher/desktop/docs/release.md, "Jobs"). Every command is safe to
 # re-run, in any order: uploads replace this release's own assets (--clobber),
-# and the dated release's notes are always rewritten as its base text plus one
-# paragraph for each macOS asset the release holds at that moment, so any
-# sequence of runs and re-runs ends with the same notes.
+# and the dated release's notes are always rewritten as its base text plus the
+# macOS paragraph while the release holds the macOS zip, so any sequence of
+# runs and re-runs ends with the same notes.
 #
 # Usage: tools/launcher-release/publish.sh <command> [args]
 #
@@ -18,8 +18,6 @@
 #                    client-patches overlay patch when one was packed
 #   current          refresh launcher-current (D-LX7) with the Windows zip,
 #                    .sha256, .zip.sig and latest.json, the feed last
-#   egui             attach sgw-launcher-macos-wine-$TAG.exe and its .sha256
-#                    to $TAG
 #   macos            attach the macOS zip and its .sha256 to $TAG
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
 #   current-notes    rewrite launcher-current's notes from its assets
@@ -34,11 +32,9 @@ ZIP="artifacts/$ZIP_NAME"
 MAC_ZIP="artifacts/$MAC_ZIP_NAME"
 CURRENT=launcher-current
 TAG="${TAG:?TAG is not set}"
-EGUI_EXE="sgw-launcher-macos-wine-${TAG}.exe"
 STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/$CURRENT"
-# Each macOS paragraph of the dated release's notes is one line starting with
-# its marker; nothing else in the notes contains either marker.
-EGUI_MARKER='**macOS (under Wine):**'
+# The macOS paragraph of the dated release's notes is one line starting with
+# this marker; nothing else in the notes contains it.
 MAC_MARKER='**macOS (Apple silicon):**'
 
 die() { echo "::error::$*" >&2; exit 1; }
@@ -59,26 +55,21 @@ check() {
 # One asset name per line.
 assets_of() { gh release view "$1" --json assets --jq '.assets[].name'; }
 
-# A release's notes without the macOS paragraphs and the blank lines that
-# trailed them.
+# A release's notes without the macOS paragraph and the blank lines that
+# trailed it.
 base_of() {
   local body
   body="$(gh release view "$1" --json body --jq .body)"
-  body="$(grep -vF -e "$EGUI_MARKER" -e "$MAC_MARKER" <<<"$body" || true)"
+  body="$(grep -vF -e "$MAC_MARKER" <<<"$body" || true)"
   printf '%s' "${body%"${body##*[![:space:]]}"}"
 }
 
-# Write the dated release's notes: the base, then the egui paragraph and the
-# macOS paragraph, each only while its asset is on the release.
+# Write the dated release's notes: the base, then the macOS paragraph only
+# while the macOS zip is on the release.
 dated_notes() {
   local base="$1" assets notes
   assets="$(assets_of "$TAG")"
   notes="$base"
-  if grep -qxF "$EGUI_EXE" <<<"$assets"; then
-    notes="$notes
-
-$EGUI_MARKER \`${EGUI_EXE}\` is the original launcher, for Mac players who still run it under Wine (docs/guides/macos.md). The macOS desktop launcher, \`${MAC_ZIP_NAME}\`, replaces it. It does not update itself to later releases; download the newest from the releases page."
-  fi
   if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
     notes="$notes
 
@@ -130,7 +121,7 @@ This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/c
 Includes the client-patches UI overlay patch. To publish it, add its \`.entry.json\` to the content manifest and re-sign (docs/client/launcher-distribution-setup.md)."
   fi
   if gh release view "$TAG" >/dev/null 2>&1; then
-    # A re-run: the macOS paragraphs come back for the macOS assets already
+    # A re-run: the macOS paragraph comes back when the macOS zip is already
     # attached, whichever publish job ran last.
     echo "$TAG exists (a re-run): replacing its notes and assets"
     gh release edit "$TAG" --title "Launcher $TAG"
@@ -161,11 +152,6 @@ current() {
   current_notes
 }
 
-egui() {
-  gh release upload "$TAG" --clobber "artifacts/$EGUI_EXE" "artifacts/$EGUI_EXE.sha256"
-  dated_notes "$(base_of "$TAG")"
-}
-
 macos() {
   gh release upload "$TAG" --clobber "$MAC_ZIP" "$MAC_ZIP.sha256"
   dated_notes "$(base_of "$TAG")"
@@ -183,9 +169,8 @@ case "${1:-}" in
   check) shift; check "$@" ;;
   dated) dated ;;
   current) current ;;
-  egui) egui ;;
   macos) macos ;;
   macos-current) macos_current ;;
   current-notes) current_notes ;;
-  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
 esac

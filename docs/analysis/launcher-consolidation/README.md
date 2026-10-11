@@ -88,7 +88,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | Integrated ([#1534](https://github.com/SandboxServers/Cimmeria/pull/1534)) |
 | LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | BlockedDependency |
 | LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | Integrated ([#1443](https://github.com/SandboxServers/Cimmeria/pull/1443)) |
-| LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | BlockedDecision |
+| LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | Review (this PR) |
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | BlockedDependency |
 | LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | BlockedDependency |
