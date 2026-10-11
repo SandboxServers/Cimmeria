@@ -131,6 +131,7 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `send_loot_display`, the vendor open rows, `send_dialog_display` | `player_id` (held the player's entity id) | `entity_id` + `entity_name` | NT-21 |
 | The `spawn_entity` executor rows and the DHD rows | `world_name` | `world` | NT-21 |
 | The spawn rows in `space_manager/npc_population.rs` | `name` (held the template name) | `template_name` | NT-25 |
+| `active_slot_change` (the auto-attack resolved row in `bandolier/active_slot.rs`) | `resolved_ranged_ability` (`?Some(..)`) | `resolved_ability_id` (a number) + `resolved_ability_name`; `item_id` is now a bare number | TG-CMB-05 |
 | `npc_respawn_recreate` (`npc_respawn` tick) and the stargate loader (`spawner/stargates.rs`); also the `npc_respawns_total` metric label | `world_name` | `world` | NT-25 |
 | The respawn tick's witness re-create WARN (`spawner.npc_respawn`) | `reason = "cell_to_base_closed"` | `reason = "base_channel_closed"` (the shared cell→base send reason) | TG-NPC-12 |
 | `npc_ai.aggro_scan event=candidate_rejected` | `player_id` + `player_name` (held the witness's entity id and label) | `witness_id` + `witness_name`; `player_id` now holds the sgw character id, beside `account_id`, `account_name`, `player_name` (left out for an NPC witness) | TG-NPC-07 |

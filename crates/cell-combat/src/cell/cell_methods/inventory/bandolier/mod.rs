@@ -11,6 +11,8 @@ mod active_slot;
 #[cfg(test)]
 mod active_slot_flush_tests;
 mod ammo_change;
+#[cfg(test)]
+mod bandolier_identity_tests;
 mod switch_return;
 mod weapon_abilities;
 
