@@ -7,44 +7,49 @@
     "On Windows that looks like: C:\\Users\\you\\source\\projects\\Cimmeria",
     "",
     "If you ran `pwsh setup.ps1 -WithReToolchain`, this file was generated for",
-    "you automatically — no manual edits required. See:",
+    "you automatically. See:",
     "  docs/guides/re-toolchain-setup.md     -- end-to-end setup",
     "  docs/guides/reverse-engineering-with-claude.md  -- the workflow doc",
+    "  docs/guides/live-research-lab.md      -- the lab runbook",
     "",
-    "Five servers are wired:",
+    "Four servers are wired (mcpServers below):",
     "  ghidra       : Static analysis of SGW.exe via the bethington/ghidra-mcp",
     "                 bridge. Requires Ghidra GUI running with the GhidraMCP",
     "                 plugin server started.",
     "  x64dbg       : Dynamic analysis via dariushoule/x64dbg-automate. Requires",
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
-    "  cimmeria-lab-http : the same supervisor as ONE shared daemon for every",
-    "                 Claude session (cimmeria-lab --http, a per-user scheduled",
-    "                 task: pwsh tools/lab/daemon.ps1 install). Loopback only;",
-    "                 the bearer token comes from labd-headers.ps1, which reads",
-    "                 the CIMMERIA_LAB_DAEMON_TOKEN user env var. To switch,",
-    "                 rename it to cimmeria-lab and delete the stdio entry",
-    "                 (runbook: docs/guides/live-research-lab.md). Its",
-    "                 timeout (ms) lifts Claude Code's 60 s per-request",
-    "                 timer for HTTP servers, which cut lab_uat_run rows off.",
-    "                 One daemon serves every lab account: tools take an optional",
-    "                 instance (default, p2, ... or lab, lab2, ...).",
-    "  cimmeria-lab-p2 : optional second lab client (named instance; its own port,",
-    "                 session file and lab-account.p2.json). See the two-clients",
-    "                 section of docs/guides/live-research-lab.md.",
-    "  cimmeria-lab : Live Research Lab supervisor (stdio). Drives a running",
-    "                 SGW.exe on this dev box: Lua eval, non-freezing hooks,",
-    "                 screenshots, client UI flows, and the timeline. Windows",
-    "                 only. Build once: cargo build -p cimmeria-lab. See",
-    "                 docs/guides/live-research-lab.md and re-toolchain-setup.md.",
+    "  cimmeria-lab : the Live Research Lab supervisor, as ONE shared daemon",
+    "                 for every session (cimmeria-lab --http, a per-user",
+    "                 scheduled task). Set it up with: pwsh tools/lab/lab.ps1",
+    "                 local-setup, pwsh tools/lab/install.ps1, then",
+    "                 pwsh tools/lab/daemon.ps1 install. Loopback only; the",
+    "                 bearer token comes from labd-headers.ps1, which reads the",
+    "                 CIMMERIA_LAB_DAEMON_TOKEN user env var (daemon.ps1",
+    "                 install generates it). Keep the timeout (ms): it lifts",
+    "                 Claude Code's 60 s per-request timer for HTTP servers,",
+    "                 which cut lab_uat_run rows off. One daemon serves every",
+    "                 lab account: tools take an optional instance (default,",
+    "                 p2, ... or lab, lab2, ...).",
     "  lab-server   : In-server lab endpoint (http, token-gated). Live entity /",
     "                 witness / packet-tap / dot-console reads from a running",
     "                 cimmeria-server. Only present when the server was started",
     "                 with CIMMERIA_LAB_MCP_BIND + CIMMERIA_LAB_MCP_TOKEN set",
-    "                 (fail-closed). On the colo it is reachable over WireGuard",
-    "                 only -- see docs/operations/colo-deploy.md. URL and token",
-    "                 come from the CIMMERIA_LAB_MCP_URL / CIMMERIA_LAB_MCP_TOKEN",
-    "                 user env vars (Claude Code expands ${VAR} here), so the",
-    "                 token never lands in this file.",
+    "                 (fail-closed). Locally that is 127.0.0.1:8451 (8444 is",
+    "                 the dev supervisor's port); on the colo it is reachable",
+    "                 over WireGuard only -- see docs/operations/colo-deploy.md.",
+    "                 URL and token come from the CIMMERIA_LAB_MCP_URL /",
+    "                 CIMMERIA_LAB_MCP_TOKEN user env vars (Claude Code expands",
+    "                 ${VAR} here), so the token never lands in this file.",
+    "",
+    "_alternatives (ignored by Claude Code; copy an entry into mcpServers to",
+    "use it):",
+    "  cimmeria-lab-stdio : the older one-supervisor-per-session setup. Rename",
+    "                 it to cimmeria-lab in place of the daemon entry. Paths",
+    "                 are where tools/lab/install.ps1 installs the binaries;",
+    "                 <SGW_INSTALL_DIR> is the folder holding Binaries\\SGW.exe.",
+    "  cimmeria-lab-p2 : a second stdio supervisor for a second lab client.",
+    "                 The daemon hosts several clients itself",
+    "                 (CIMMERIA_LAB_INSTANCES in labd.env), so it needs none.",
     "",
     "The GHIDRA_MCP_URL port can drift on Windows when iphlpsvc holds 8089-8099.",
     "The plugin falls back to the first free port in 8089..8104 — confirm the",
@@ -70,41 +75,41 @@
       }
     },
     "cimmeria-lab": {
-      "type": "stdio",
-      "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
-      "env": {
-        "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
-        "CIMMERIA_LAB_START32": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\sgw-start32.exe",
-        "CIMMERIA_LAB_BRIDGE": "127.0.0.1:8770",
-        "CIMMERIA_LAB_PATCHES_DLL": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\cimmeria_client_patches.dll",
-        "CIMMERIA_LAB_SERVER_URL": "http://127.0.0.1:8443",
-        "CIMMERIA_LAB_MCP_URL": "http://127.0.0.1:8444/mcp",
-        "CIMMERIA_LAB_MCP_TOKEN": "REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
-      }
-    },
-    "cimmeria-lab-http": {
       "type": "http",
       "url": "http://127.0.0.1:8779/mcp",
-      "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1",
+      "headersHelper": "pwsh -NoProfile -File \"<CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1\"",
       "timeout": 1800000
+    },
+    "lab-server": {
+      "type": "http",
+      "url": "${CIMMERIA_LAB_MCP_URL:-http://127.0.0.1:8451/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${CIMMERIA_LAB_MCP_TOKEN:-}"
+      }
+    }
+  },
+  "_alternatives": {
+    "cimmeria-lab-stdio": {
+      "type": "stdio",
+      "command": "<LAB_BIN>\\cimmeria-lab.exe",
+      "env": {
+        "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
+        "CIMMERIA_LAB_START32": "<LAB_BIN>\\sgw-start32.exe",
+        "CIMMERIA_LAB_BRIDGE": "127.0.0.1:8770",
+        "CIMMERIA_LAB_PATCHES_DLL": "<LAB_BIN>\\cimmeria_client_patches.dll",
+        "CIMMERIA_LAB_MCP_URL": "${CIMMERIA_LAB_MCP_URL:-http://127.0.0.1:8451/mcp}",
+        "CIMMERIA_LAB_MCP_TOKEN": "${CIMMERIA_LAB_MCP_TOKEN:-}"
+      }
     },
     "cimmeria-lab-p2": {
       "type": "stdio",
-      "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+      "command": "<LAB_BIN>\\cimmeria-lab.exe",
       "env": {
         "CIMMERIA_LAB_INSTANCE": "p2",
         "CIMMERIA_LAB_BRIDGE_PORT": "8771",
         "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
-        "CIMMERIA_LAB_START32": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\sgw-start32.exe",
-        "CIMMERIA_LAB_PATCHES_DLL": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\cimmeria_client_patches.dll",
-        "CIMMERIA_LAB_SERVER_URL": "http://127.0.0.1:8443"
-      }
-    },
-    "lab-server": {
-      "type": "http",
-      "url": "${CIMMERIA_LAB_MCP_URL:-http://127.0.0.1:8444/mcp}",
-      "headers": {
-        "Authorization": "Bearer ${CIMMERIA_LAB_MCP_TOKEN}"
+        "CIMMERIA_LAB_START32": "<LAB_BIN>\\sgw-start32.exe",
+        "CIMMERIA_LAB_PATCHES_DLL": "<LAB_BIN>\\cimmeria_client_patches.dll"
       }
     }
   }

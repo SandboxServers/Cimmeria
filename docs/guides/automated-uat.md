@@ -6,6 +6,7 @@ last_updated: 2026-10-11
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
+  - lab-contributor-setup.md
   - ../architecture/live-research-lab.md
 ---
 
@@ -21,6 +22,8 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 To check that a run still behaves the way known-good runs did, without a model reading it, compare it with the section's golden: see [Golden runs](#golden-runs).
 
 ## Before you start
+
+First time on your own machine? [lab-contributor-setup.md](lab-contributor-setup.md) gets you from a fresh clone to a passing row against a local server, with the secrets, `labd.env` and the MCP registration for Claude Code or Codex.
 
 1. **Hold the lab lease.** Only one agent drives a client at a time, and the supervisor enforces it. Either pass `lab_uat_run` the `lease_id` from your own `lab_lease_acquire {owner, purpose}`, or pass none and the run takes a lease of its own (owner `lab_uat_run`) for its duration; both are refused while another session holds the lab, naming who. `plan_only` needs no lease. The `%LOCALAPPDATA%\cimmeria-lab\live.lock` folder lock is obsolete: do not create it. Run the [shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http) so every session sees the same lease; a stdio supervisor's watchdog relaunches a client another session killed, so ask its owner for `lab_client_stop` instead ([live research lab, before you drive the client](live-research-lab.md#before-you-drive-the-client-the-lab-lease)). Install the lab binaries from the commit you test ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
 2. **One `SGW.exe` per lab instance, the `lab` account for the default one.** `lab_client_start` refuses while an `SGW.exe` runs outside the lab, when another instance holds its bridge port, and past the client cap ([Parallel clients](live-research-lab.md#parallel-clients-up-to-five)). The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)). A two-player row adds a second client, `p2`, on its own account ([Two-player rows](#two-player-rows)).

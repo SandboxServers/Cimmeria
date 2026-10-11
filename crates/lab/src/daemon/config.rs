@@ -14,7 +14,8 @@ pub const ENV_TOKEN: &str = "CIMMERIA_LAB_DAEMON_TOKEN";
 /// Minimum accepted token length in bytes (same floor as lab-mcp).
 pub const MIN_TOKEN_LEN: usize = 32;
 /// The address `tools/lab/daemon.ps1` and `.mcp.json.example` use. Clear of
-/// the bridge ports (8770 + one per instance, at most four) and lab-mcp (8444).
+/// the bridge ports (8770 + one per instance, at most four), the local lab-mcp
+/// endpoint (8451) and the dev supervisor (8444).
 pub const DEFAULT_BIND: &str = "127.0.0.1:8779";
 /// The only `Host` values the daemon accepts (rmcp's DNS-rebinding guard).
 pub const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];

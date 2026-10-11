@@ -62,7 +62,7 @@ Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/ag
 
 ## Agent skills and the shell guard
 
-Repo skills live in [`.claude/skills/`](../../.claude/skills/), one directory each, in the shared Agent Skills format. Claude Code reads them there, Codex reads the mirror in `.agents/skills/`, and Copilot reads both. Edit only `.claude/skills/`, then run `python tools/agent-skills/sync.py`; the `agent-skills` CI job fails while the mirror is stale. Copilot's PR review skill, `.github/skills/code-review/`, is hand-written and not mirrored.
+Repo skills live in [`.claude/skills/`](../../.claude/skills/), one directory each, in the shared Agent Skills format. Claude Code reads them there, Codex reads the mirror in `.agents/skills/`, and Copilot reads both. Edit only `.claude/skills/`, then run `python tools/agent-skills/sync.py`; the `agent-skills` CI job fails while the mirror is stale. The same script generates the Codex agent `.codex/agents/lab-driver.toml` from `.claude/agents/lab-driver.md` and rewrites cross-folder links in what it copies. Copilot's PR review skill, `.github/skills/code-review/`, is hand-written and not mirrored.
 
 | Skill | Use it for |
 |---|---|
