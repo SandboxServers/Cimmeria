@@ -117,15 +117,21 @@ pub const ATTRIBUTE_PATCHES: &[AttributePatch] = &[
     },
 ];
 
-/// The metadata bump for one category: a 32-bit FNV-1a hash of every patch
-/// in it (element id, attribute, value), low bit set so it is never 0 (a 0
-/// bump would leave clients on the shipped version).
+/// The metadata bump for one category: a FNV-1a hash of every patch in it
+/// (element id, attribute, value), masked to 30 bits with the low bit set so
+/// it is never 0 (a 0 bump would leave clients on the shipped version).
+///
+/// The client treats the category version as signed 32-bit: a version at or
+/// above 2^31 never sticks in its cache, so the category resyncs on every
+/// login (seen live on 2026-10-10 with ErrorStrings at 2,929,517,722). Shipped
+/// metadata is below 2^30, so shipped + bump stays below 2^31. 30 bits keeps
+/// the collision resistance the hash is for.
 ///
 /// FNV-1a rather than `DefaultHasher` (which `metadata_bump` still uses):
 /// std may change `DefaultHasher`'s algorithm between releases, and a
 /// toolchain bump would then silently move the version and resync every
-/// client again. 32 bits rather than 16 makes it unlikely that a later edit
-/// lands on the same bump and leaves clients holding the stale entry.
+/// client again. A wide hash makes it unlikely that a later edit lands on the
+/// same bump and leaves clients holding the stale entry.
 fn bump_for(category: u32) -> u32 {
     const FNV_OFFSET: u32 = 0x811c_9dc5;
     const FNV_PRIME: u32 = 0x0100_0193;
@@ -149,7 +155,7 @@ fn bump_for(category: u32) -> u32 {
             feed(&[0]);
         }
     }
-    hash | 0x1
+    (hash & 0x3FFF_FFFF) | 0x1
 }
 
 /// Apply [`ATTRIBUTE_PATCHES`] and [`ERROR_STRING_ADDITIONS`] to the loaded
@@ -220,6 +226,15 @@ pub(crate) fn apply_attribute_patches(
         if let Some(category) = categories.get_mut(&category_id) {
             let bump = bump_for(category_id);
             category.metadata = category.metadata.wrapping_add(bump);
+            if category.metadata > i32::MAX as u32 {
+                tracing::warn!(
+                    category = category_id,
+                    category_name = category_name(category_id),
+                    bumped_metadata = category.metadata,
+                    reason = "version_not_signed_safe",
+                    "cooked metadata bump exceeds i32::MAX; clients will resync this category every login"
+                );
+            }
             tracing::info!(
                 category = category_id,
                 category_name = category_name(category_id),
