@@ -14,9 +14,8 @@
 
 // `cimmeria-lab` is a binary crate, so its items are dead until the golden
 // tools are wired in (GD-07 removes this allow). It applies to test builds
-// too: the tests do not build every type, and the re-exports are unused
-// until then.
-#![allow(dead_code, unused_imports)]
+// too: the tests do not build every type.
+#![allow(dead_code)]
 
 pub mod agree;
 pub mod build;
@@ -29,4 +28,5 @@ pub mod normalise;
 #[cfg(test)]
 pub(crate) mod testkit;
 
+#[allow(unused_imports)] // until GD-07 calls through them
 pub use event::{Dir, Event, RowFingerprint, RunFingerprint, Variance, FINGERPRINT_SCHEMA};

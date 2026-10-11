@@ -205,7 +205,8 @@ All three sit in `rows/<section>/<row>/` and are listed in the row's
   `"replaced_existing": bool`. In fingerprint mode it is written for every
   row, also when no tap bound (`{ "coverage": "none", "error": "..." }`).
 - `entities` (`entities.json`):
-  `{ "player": 8, "space_id": 65563, "snapshots": [ { "at": "bind" | "finish", "capped": false, "entities": [ { "entity_id": 100751, "is_player": false, "tag": "ArmYourself_FrostBody", "template_id": 14 } ] } ] }`
+  `{ "player": 8, "space_id": 65563, "snapshots": [ { "at": "bind" | "finish", "capped": false, "entities": [ { "entity_id": 100751, "is_player": false, "tag": "ArmYourself_FrostBody", "spawn_id": null, "template_id": 14 } ] } ] }`
+  (`spawn_id` and `tag` may be null; GD-02's labels read all four entity fields)
   (a snapshot that failed has `"error"` and no `entities`; absent keys are
   left out).
 - `windows` (`windows.json`):

@@ -107,14 +107,25 @@ mod tests {
         assert_eq!(labels.label(100999), "?2");
         assert_eq!(labels.label(100745), "?1");
 
-        let other = json!({ "snapshots": [ { "at": "bind", "entities": [
-            { "entity_id": 5, "is_player": true },
-            { "entity_id": 6, "spawn_id": 77 },
-            { "entity_id": 7, "template_id": 14 },
-        ] } ] });
+        // Each entity carries every lower-precedence key too, so swapping
+        // any two rules in label_of changes a label.
+        let other = json!({ "snapshots": [
+            { "at": "bind", "entities": [
+                { "entity_id": 5, "is_player": true, "tag": "T", "spawn_id": 1, "template_id": 2 },
+                { "entity_id": 6, "spawn_id": 77, "template_id": 14 },
+                { "entity_id": 7, "template_id": 14 },
+                { "entity_id": 10, "tag": "First" },
+            ] },
+            { "at": "read", "entities": [
+                { "entity_id": 10, "tag": "Second" },
+                { "entity_id": 11, "spawn_id": null, "template_id": 3 },
+            ] },
+        ] });
         let mut labels = EntityLabels::new(8, None, Some(&other));
         assert_eq!(labels.label(5), "player");
         assert_eq!(labels.label(6), "spawn:77");
         assert_eq!(labels.label(7), "tpl:14");
+        assert_eq!(labels.label(10), "tag:First", "the first snapshot wins");
+        assert_eq!(labels.label(11), "tpl:3", "a null spawn_id falls through");
     }
 }

@@ -214,24 +214,63 @@ mod tests {
         );
     }
 
-    /// Every listed method, with and without the sub-slot byte, returns
-    /// None for each length below its minimum and never panics on 0 to 8
-    /// bytes. (interact without the sub-slot needs exactly 8 bytes.)
+    /// Each listed method needs exactly its prefix plus its fields: None one
+    /// byte short (and for every shorter length, without a panic), Some at
+    /// the minimum. The 0xBD sub-slot adds one byte. An unlisted method is
+    /// always None.
     #[test]
     fn inbound_decode_never_panics_on_short_args() {
-        for method in [74, 75, 38, 163, 85] {
-            for msg_id in [None, Some(0xBD)] {
-                let min = (0..=64)
-                    .find(|&len| decode_inbound(method, msg_id, &vec![0; len]).is_some())
-                    .unwrap();
-                for len in 0..=8 {
-                    let got = decode_inbound(method, msg_id, &vec![0xFF; len]);
-                    if len < min {
-                        assert!(got.is_none(), "method {method} {msg_id:?} with {len} bytes");
-                    }
+        // Entity-id prefix (4) plus the fields the method reads.
+        let minimums = [(74, 8), (75, 12), (38, 20), (163, 16), (85, 9)];
+        for (method, base) in minimums {
+            for (msg_id, extra) in [(None, 0), (Some(0xA6), 0), (Some(0xBD), 1)] {
+                let min = base + extra;
+                for len in 0..min {
+                    assert!(
+                        decode_inbound(method, msg_id, &vec![0xFF; len]).is_none(),
+                        "method {method} {msg_id:?} with {len} bytes"
+                    );
                 }
+                assert!(
+                    decode_inbound(method, msg_id, &vec![0; min]).is_some(),
+                    "method {method} {msg_id:?} with {min} bytes"
+                );
             }
         }
+        assert!(decode_inbound(1, None, &[0; 32]).is_none());
+    }
+
+    fn le(fields: &[i32]) -> Vec<u8> {
+        let mut out = vec![0xEE; 4]; // the entity-id prefix, skipped
+        for f in fields {
+            out.extend_from_slice(&f.to_le_bytes());
+        }
+        out
+    }
+
+    /// Without the 0xBD sub-slot the fields start at byte 4, and moveItem
+    /// drops its item instance id (README D-GD4).
+    #[test]
+    fn inbound_fields_start_after_the_prefix_without_a_sub_slot() {
+        assert_eq!(
+            decode_inbound(38, Some(0xA6), &le(&[123_456, 1, 7, 3])),
+            Some(vec![
+                ("bag", InArg::Int(1)),
+                ("slot", InArg::Int(7)),
+                ("qty", InArg::Int(3))
+            ])
+        );
+        assert_eq!(
+            decode_inbound(74, None, &le(&[100_751])),
+            Some(vec![("target", InArg::Entity(100_751))])
+        );
+        assert_eq!(
+            decode_inbound(75, Some(0xA6), &le(&[3995, -1])),
+            Some(vec![
+                ("dialog", InArg::Int(3995)),
+                ("button", InArg::Int(-1))
+            ])
+        );
     }
 
     #[test]
