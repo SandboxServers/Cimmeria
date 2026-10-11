@@ -138,7 +138,7 @@ test('opening Settings re-reads, even when no snapshot ever arrived',async()=>{
 // Composition: a game-telemetry save and a finished install publish a launcher
 // snapshot, so the list re-reads without Settings being reopened.
 const nativeSnapshot=(revision=0):NativeSnapshot=>({schema_version:1,operation:{schema_version:1,revision,operation:null},
- preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false});
+ preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false,adopted_login_servers:null});
 const until=async(done:()=>boolean,what:()=>string)=>{for(let i=0;i<500&&!done();i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(done(),what());};
 
 test('a game-telemetry save re-reads the list through a launcher snapshot',async()=>{
