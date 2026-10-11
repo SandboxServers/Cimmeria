@@ -59,7 +59,7 @@ For stream (1):
 > upstream compose file, now vendored at v0.125.1 in
 > [`docker/signoz/`](../../docker/signoz/). SigNoz v0.125 folds the
 > query service, frontend and alertmanager into one `signoz` service
-> (UI on 8080). The Cloudflare Tunnel was never deployed and no longer
+> (UI on container port 8080, host port 8082). The Cloudflare Tunnel was never deployed and no longer
 > has a compose service; operators use the VPN. See
 > [colo-deploy.md](../operations/colo-deploy.md) and
 > [signoz-remote-access.md](../operations/signoz-remote-access.md).
