@@ -70,6 +70,29 @@ pub(super) fn is_status_target(target: &str) -> bool {
     STATUS_TARGET_PREFIXES.iter().any(|p| target.starts_with(p))
 }
 
+/// The DLL's silent-drop oracle target.
+const METHOD_DROPPED_TARGET: &str = "client.dispatch.method_dropped";
+
+/// ClientMethods the stock client binds for no entity class, so it drops
+/// every one it receives. A `client.dispatch.method_dropped` row for one is
+/// expected, not a correctness fault, and is replayed at INFO with
+/// `drop_class = "known_unbound"` in its `fields` bag instead of at the DLL's
+/// WARN. Matched by the resolved name, not the index, so another class's
+/// method at the same index is never swallowed.
+///
+/// - `onPlayerTeleport` (116): the server keeps sending it beside every
+///   `FORCED_POSITION` (D-TG17 option A), and the client has no handler on
+///   any class (`docs/reverse-engineering/findings/method-116-on-teleport.md`),
+///   so without this every teleport raised a WARN.
+const KNOWN_UNBOUND_CLIENT_METHODS: &[&str] = &["onPlayerTeleport"];
+
+/// Whether a DLL row of `target`, naming ClientMethod `method_name`, is a
+/// drop of a method the client binds nowhere ([`KNOWN_UNBOUND_CLIENT_METHODS`]).
+pub(super) fn is_known_unbound_drop(target: &str, method_name: Option<&str>) -> bool {
+    target == METHOD_DROPPED_TARGET
+        && method_name.is_some_and(|m| KNOWN_UNBOUND_CLIENT_METHODS.contains(&m))
+}
+
 /// What every replayed `client.native` row says about its names: the IDs,
 /// spaces and times they were resolved from are the client's own claims.
 const NAMES_SOURCE: &str = "client_claimed";
@@ -227,6 +250,9 @@ pub(super) fn replay_client_native_named(
 /// - **`level` is honoured** if it is one of `trace`/`debug`/`info`/
 ///   `warn`/`error`; anything else is replayed at `info` so a typo in the
 ///   DLL never drops an event. The raw string is kept in `client_level`.
+///   One exception: a drop of a known-unbound method
+///   ([`is_known_unbound_drop`]) is replayed at `info` with
+///   `drop_class = "known_unbound"` added to `fields`.
 /// - **Identity** is the token's (`session_id`, `install_id`,
 ///   `cimmeria.session_kind`, `lab`), never the DLL's own claims.
 /// - **IDs are named** (module docs); `entity_label` names an entity ID as
@@ -253,7 +279,20 @@ pub(super) fn replay_client_native_stamped(
     let kind = claims.session_kind();
     let lab = claims.is_lab();
     let name = e.target.as_str();
-    let fields_json = Value::Object(e.fields);
+    // A drop of a method the client binds nowhere is classified, not
+    // alarmed on. The marker rides in the bag: the game shape is already at
+    // `tracing`'s 32-field cap.
+    let known_unbound = is_known_unbound_drop(name, n.method_name);
+    let mut fields = e.fields;
+    if known_unbound {
+        fields.insert("drop_class".into(), Value::from("known_unbound"));
+    }
+    let fields_json = Value::Object(fields);
+    let level = if known_unbound {
+        "info"
+    } else {
+        e.level.as_str()
+    };
 
     // `tracing` fixes an event's level at the call site, so one call per
     // level; each macro keeps its field list in one place.
@@ -325,7 +364,7 @@ pub(super) fn replay_client_native_stamped(
         };
     }
 
-    match (!is_status_target(name), e.level.as_str()) {
+    match (!is_status_target(name), level) {
         (true, "trace") => game_event!(tracing::Level::TRACE),
         (true, "debug") => game_event!(tracing::Level::DEBUG),
         (true, "warn") => game_event!(tracing::Level::WARN),

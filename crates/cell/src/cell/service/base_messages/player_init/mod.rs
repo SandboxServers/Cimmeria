@@ -5,6 +5,9 @@
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::missions::{
+    MissionInstance, MISSION_ACTIVE, MISSION_COMPLETED, MISSION_FAILED,
+};
 
 use crate::cell::content;
 use crate::cell::messages::{CellToBaseMsg, SavedMission, WorldEntryCause};
@@ -89,6 +92,28 @@ pub(in crate::cell::service) fn seed_bandolier_ammo_stats(
     }
 }
 
+/// Most active missions the `missions_restored` row lists. The row is one per
+/// login, so a long journal stays a bounded line; `saved_count` keeps the total.
+const MISSIONS_RESTORED_LIST_CAP: usize = 20;
+
+/// The active restored missions as `mission_id:step_id`, `h` appended to a
+/// hidden one, comma-separated and capped at [`MISSIONS_RESTORED_LIST_CAP`].
+fn active_missions_summary(missions: &[MissionInstance]) -> String {
+    missions
+        .iter()
+        .filter(|m| m.status == MISSION_ACTIVE)
+        .take(MISSIONS_RESTORED_LIST_CAP)
+        .map(|m| {
+            let step = m
+                .current_step_id
+                .map_or_else(|| "-".to_owned(), |s| s.to_string());
+            let hidden = if m.is_hidden { "h" } else { "" };
+            format!("{}:{step}{hidden}", m.mission_id)
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
 ///
@@ -147,6 +172,29 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // Reconstruct before the mutable entity borrow: hydration reads the
     // `mission_defs` / `step_objectives` caches off `space_mgr`.
     let restored_missions = mission_restore::build_restored_missions(&saved_missions, space_mgr);
+    // One snapshot per login of what the saved journal restored to, so a
+    // "missions gone after relog" report can be read off the login row.
+    tracing::info!(
+        event = "missions_restored",
+        entity_id,
+        entity_name = who.player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
+        world = %world_name,
+        saved_count = saved_missions.len(),
+        active = %active_missions_summary(&restored_missions),
+        completed_count = restored_missions
+            .iter()
+            .filter(|m| m.status == MISSION_COMPLETED)
+            .count(),
+        failed_count = restored_missions
+            .iter()
+            .filter(|m| m.status == MISSION_FAILED)
+            .count(),
+        "Restored missions from the saved journal"
+    );
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         entity.player_id = Some(player_id);
         entity.archetype_id = Some(archetype_id);

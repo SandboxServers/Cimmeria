@@ -258,7 +258,15 @@ impl BaseService {
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {
             Ok(cache) => Some(Arc::new(cache)),
             Err(e) => {
-                tracing::warn!("Failed to load resource cache: {e}");
+                // Same row the cell's `startup_report::cache_failed` writes;
+                // base does not depend on the cell crate.
+                tracing::warn!(
+                    event = "cache_load_failed",
+                    cache = "resource_cache",
+                    error = %e,
+                    consequence = "the base runs without the resource cache",
+                    "startup cache failed to load"
+                );
                 None
             }
         };

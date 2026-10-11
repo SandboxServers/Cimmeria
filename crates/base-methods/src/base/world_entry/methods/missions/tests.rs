@@ -1,5 +1,6 @@
 use super::*;
-use crate::test_support::require_db_or_skip;
+use crate::test_support::{require_db_or_skip, LogCapture};
+use tracing::Level;
 
 /// Sentinel base for mission tests. Distinct from grant_cash (0x7000_0100),
 /// move_inventory (0x7000_0200), grant_item (0x7000_0300).
@@ -226,4 +227,87 @@ async fn live_db_query_saved_missions_clamps_out_of_range_status_to_i8_min() {
     );
 
     cleanup(&pool, account_id, player_id).await;
+}
+
+/// TG-MIS-11: a persist row names the step it wrote, and a failed write says
+/// why. The successful UPSERT logs DEBUG with `current_step_id = 7`; a row for
+/// a player with no `sgw_player` row breaks the foreign key and logs ERROR with
+/// `reason = "db_write_failed"`, `error` and the step. Removing either field
+/// from the emit fails the matching assertion.
+#[tokio::test]
+async fn live_db_persist_row_carries_step_and_reason() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_PLAYER_BASE + 60;
+    let player_id = TEST_PLAYER_BASE + 61;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    let capture = LogCapture::install();
+    handle_mission_update(
+        player_id,
+        12345,
+        1,
+        Some(7),
+        &[],
+        &[],
+        &[],
+        &[],
+        0,
+        &db_pool,
+    )
+    .await;
+    let row = capture
+        .find_message(Level::DEBUG, "Mission state persisted")
+        .expect("the persist DEBUG row");
+    assert!(
+        row.has_field("current_step_id", "7"),
+        "the persist row must carry the numeric current_step_id"
+    );
+
+    // No `sgw_player` row for this id: the FK rejects the UPSERT.
+    let orphan_player_id = TEST_PLAYER_BASE + 62;
+    handle_mission_update(
+        orphan_player_id,
+        12345,
+        1,
+        Some(7),
+        &[],
+        &[],
+        &[],
+        &[],
+        0,
+        &db_pool,
+    )
+    .await;
+    let failed = capture
+        .find_event(Level::ERROR, "Failed to persist mission", "db_write_failed")
+        .expect("the failed write must log ERROR with reason db_write_failed");
+    assert!(
+        failed.has_field("current_step_id", "7"),
+        "the failure row must carry current_step_id"
+    );
+    assert!(
+        failed.fields.contains_key("error"),
+        "the failure row must carry the error field"
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// TG-MIS-11: with no pool (dev only), the saved-missions read says so at
+/// DEBUG with `reason = "no_db_pool"` instead of silently returning none.
+#[tokio::test]
+async fn saved_missions_read_without_a_pool_logs_no_db_pool() {
+    let capture = LogCapture::install();
+    let missions = try_query_saved_missions(&None, TEST_PLAYER_BASE + 63)
+        .await
+        .expect("no pool reads as none");
+    assert!(missions.is_empty());
+    assert!(
+        capture
+            .find_event(Level::DEBUG, "Saved missions not read", "no_db_pool")
+            .is_some(),
+        "the no-pool read must log DEBUG reason = no_db_pool"
+    );
 }

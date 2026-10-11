@@ -12,7 +12,7 @@ companion_docs:
 # Method 116 (`onPlayerTeleport`): the client binds it for no class
 
 > **Diátaxis type**: reference
-> **Packet**: TG-MOV-09 of the telemetry-gaps campaign; feeds decision D-TG17
+> **Packet**: TG-MOV-09 of the telemetry-gaps campaign; feeds decision D-TG17 (decided: option A, see "Decision")
 > **Binary**: the QA `SGW.exe` (ASLR off, so every address is the live address)
 > **Method**: repo docs first, then headless Ghidra 12.0.4 (`tools/re/ghidra-headless/Probe.java`), 2026-10-11. Static only; no live client was attached.
 > **Confidence legend**: **VERIFIED** = read in a decompile or string search in this pass. **INFERRED** = follows from verified code. **UNRESOLVED** = not found; the next action is named.
@@ -44,9 +44,19 @@ Not relative to a normal player: nobody ever had it. Relative to the original de
 
 ## Server side today
 
-- `handle_teleport_player` in `crates/base-world-entry/src/base/world_entry/teleport.rs` builds one bundle: `FORCED_POSITION` plus method 116 (24 argument bytes: position, then a zero direction). It stamps `streaming_hint = "method_116"` on the forced-position row (`teleport.rs:164` and `:540`), which claims a hint that the client discards.
+- `handle_teleport_player` in `crates/base-world-entry/src/base/world_entry/teleport.rs` builds one bundle: `FORCED_POSITION` plus method 116 (24 argument bytes: position, then a zero direction). Before D-TG17 it stamped `streaming_hint = "method_116"` on the forced-position row, which claimed a hint that the client discards. Since D-TG17 the value is `method_116_unbound`.
 - The burst-shape test `teleport_bundles_forced_position_and_player_teleport_to_single_packet` pins the two-message bundle. Ring transport (`crates/cell-content/src/cell/ring_transport/dispatch.rs`) also expects the pair.
 - The `streaming_hint` field exists in the SigNoz row, so any option below can change its value to be honest.
+
+## Decision: D-TG17 option A (decided 2026-10-11)
+
+The owner chose **option A**. What shipped on the TG-MOV-09 branch:
+
+- **Wire unchanged.** The server keeps sending method 116 beside `FORCED_POSITION` to every class.
+- **Hint relabelled.** The `wire.out.forced_position` row says `streaming_hint = "method_116_unbound"`. Test: `teleport_forced_position_row_reports_sent_and_gm_class` (`teleport.rs`), which fails if the value goes back to `method_116`.
+- **Drop classified at ingest, not in the DLL.** The server's telemetry ingest (`crates/admin-api/src/routes/telemetry/replay_native.rs`, `KNOWN_UNBOUND_CLIENT_METHODS`) replays a `client.dispatch.method_dropped` row whose method resolves to `onPlayerTeleport` at INFO instead of WARN. It keeps the DLL's `warn` in `client_level` and adds `drop_class = "known_unbound"` to the `fields` bag. Matching is by resolved name, so another class's method at index 116 is not swallowed. Installed DLLs need no update. Test: `a_dropped_on_player_teleport_is_known_unbound_not_a_warn` (`replay_tests.rs`), which fails if 116 leaves the list or the demotion is removed. A drop of any other method stays a WARN.
+
+The options table below is kept as the record of what was weighed.
 
 ## Options for D-TG17
 
