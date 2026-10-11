@@ -323,7 +323,10 @@ slow-statement threshold (sqlx's default is 1 s), so every statement over
 250 ms is a WARN on `sqlx::query` carrying the SQL text (never its bound
 parameters; values written into the SQL text itself are logged). sqlx also
 WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
-is the earlier, sampled signal for a pool running out of connections. See the
+is the earlier, sampled signal for a pool running out of connections.
+`sqlx::query=info` (TG-DB-11, D-TG8) keeps both WARNs in SigNoz and drops
+sqlx's per-statement DEBUG rows (about 189k a week, mostly two idle pollers),
+so per-statement `elapsed_secs` survives only for statements over 250 ms. See the
 [target catalog](observability-target-catalog.md).
 
 **Content engine conditions (TG-MIS-13).** `cimmeria_content_engine=debug`
