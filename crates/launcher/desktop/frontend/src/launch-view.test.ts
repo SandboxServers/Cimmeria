@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {mountLaunch} from './launch-view';
 const html=readFileSync('ui/index.html','utf8');
-const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,preferences:{schema_version:1,revision:1,install_directory:'/fixture',launcher_summary_consent:false},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('Play first click gives feedback, lost reply is observed without replay, unknown stays blocked',async()=>{
  let status=initial();let plays=0;let finish!:()=>void;const wait=new Promise<void>(resolve=>{finish=resolve;});
  const {document,window}=parseHTML(html);

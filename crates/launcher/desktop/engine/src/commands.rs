@@ -1,5 +1,6 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
+use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -14,6 +15,13 @@ pub enum NativeCommand {
         expected_revision: u64,
         install_directory: Option<PathBuf>,
         launcher_summary_consent: bool,
+    },
+    /// Takes effect at the next Play. Leaves the install path and consent alone.
+    SaveClientOptions {
+        schema_version: u32,
+        expected_revision: u64,
+        login_servers: Vec<LoginServer>,
+        client_patches_enabled: bool,
     },
 }
 
@@ -57,6 +65,17 @@ impl DesktopState {
                     expected_revision,
                 )?;
             }
+            NativeCommand::SaveClientOptions {
+                schema_version,
+                expected_revision,
+                login_servers,
+                client_patches_enabled,
+            } => {
+                if schema_version != 1 {
+                    return Err(StorageError::UnsupportedSchema);
+                }
+                self.save_client_options(login_servers, client_patches_enabled, expected_revision)?;
+            }
         }
         Ok(self.inspect())
     }
@@ -82,13 +101,55 @@ mod tests {
     }
 
     #[test]
+    fn stale_client_options_are_refused_and_write_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let save = |expected_revision| NativeCommand::SaveClientOptions {
+            schema_version: 1,
+            expected_revision,
+            login_servers: vec![LoginServer {
+                name: "Local".into(),
+                url: "http://login.example:8081".into(),
+            }],
+            client_patches_enabled: false,
+        };
+        assert!(matches!(
+            state.dispatch(save(1)),
+            Err(StorageError::StaleRevision)
+        ));
+        assert_eq!(state.preferences(), &Preferences::default());
+        assert!(!dir.path().join("preferences.json").exists());
+        let saved = state.dispatch(save(0)).unwrap().preferences;
+        assert_eq!(saved.revision, 1);
+        assert!(!saved.client_patches_enabled);
+        let bytes = std::fs::read(dir.path().join("preferences.json")).unwrap();
+        // The revision just moved on, so the same request is stale now.
+        assert!(matches!(
+            state.dispatch(save(0)),
+            Err(StorageError::StaleRevision)
+        ));
+        assert_eq!(state.preferences(), &saved);
+        assert_eq!(
+            std::fs::read(dir.path().join("preferences.json")).unwrap(),
+            bytes
+        );
+    }
+
+    #[test]
     fn bridge_has_no_native_observation_or_arbitrary_field_command() {
         for input in [
             r#"{"command":"observe","schema_version":1,"state":"succeeded"}"#,
             r#"{"command":"inspect","schema_version":1,"root":"/other"}"#,
             r#"{"command":"save_preferences","schema_version":1,"expected_revision":0,"install_directory":null}"#,
+            r#"{"command":"save_client_options","schema_version":1,"expected_revision":0,"login_servers":[],"client_patches_enabled":true,"install_directory":"/other"}"#,
         ] {
             assert!(serde_json::from_str::<NativeCommand>(input).is_err());
         }
+        // The same command without the extra field is accepted, so the line
+        // above fails on the unknown field and not on an unknown command.
+        assert!(serde_json::from_str::<NativeCommand>(
+            r#"{"command":"save_client_options","schema_version":1,"expected_revision":0,"login_servers":[],"client_patches_enabled":true}"#
+        )
+        .is_ok());
     }
 }

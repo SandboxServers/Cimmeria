@@ -6,6 +6,8 @@ use std::{
 };
 
 mod adoption;
+mod client_changes;
+mod client_maintenance;
 mod game_telemetry;
 mod game_update;
 #[cfg(test)]
@@ -17,6 +19,7 @@ pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;
 mod launch;
+mod log_upload;
 mod migration;
 pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
