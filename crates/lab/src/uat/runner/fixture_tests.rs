@@ -91,6 +91,8 @@ pub(super) struct Endpoint<'f> {
     pub(super) no_entity: bool,
     /// `server_db_query` fails with this message.
     pub(super) db_error: Option<String>,
+    /// `server_sessions` fails with this message.
+    pub(super) sessions_error: Option<String>,
     /// Scripted `server_db_query` replies per SQL substring, popped in
     /// order (the last repeats); see `db_replies`.
     db: Mutex<Vec<(String, VecDeque<Value>)>>,
@@ -133,6 +135,7 @@ impl<'f> Endpoint<'f> {
             position: [-319.0, 73.6, -212.5],
             no_entity: false,
             db_error: None,
+            sessions_error: None,
             db: Mutex::new(vec![]),
         }
     }
@@ -245,6 +248,9 @@ impl ServerInvoker for Endpoint<'_> {
             .unwrap()
             .push((name.to_string(), args.clone()));
         let out = match name {
+            "server_sessions" if self.sessions_error.is_some() => {
+                ToolOutcome::err(self.sessions_error.clone().unwrap_or_default())
+            }
             "server_sessions" => ToolOutcome {
                 ok: true,
                 json: self.sessions(),

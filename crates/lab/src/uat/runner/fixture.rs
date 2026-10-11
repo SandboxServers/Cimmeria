@@ -90,28 +90,34 @@ pub(super) fn mark_fixture(ctx: &mut RowCtx, from: usize) {
 
 impl<I: ToolInvoker> Runner<'_, I> {
     /// Whether `row`'s fixture is applied (D-FX10): `auto` continues the
-    /// chain only when the previous row of this section ran last in this
-    /// run, passed, and left the client in world.
+    /// chain only when the row continues a passing spec neighbour.
     pub(crate) fn applies_fixture(&self, spec: &SectionSpec, row: &RowSpec) -> bool {
         match self.req.fixtures {
             FixtureMode::Never => false,
             FixtureMode::Always => true,
-            FixtureMode::Auto => {
-                let prev = spec
-                    .rows
-                    .iter()
-                    .position(|r| r.id == row.id)
-                    .and_then(|i| i.checked_sub(1))
-                    .and_then(|i| spec.rows.get(i));
-                let continues = match (&self.last_row, prev) {
-                    (Some(last), Some(prev)) => {
-                        last.section == spec.section.id && last.row_id == prev.id && last.passed
-                    }
-                    _ => false,
-                };
-                !(continues && self.in_world_as.is_some())
-            }
+            FixtureMode::Auto => !self.continues_passing_neighbour(spec, row),
         }
+    }
+
+    /// The previous row of this section in spec order ran last in this
+    /// run, passed, and left the client in world. Fixture mode `auto`
+    /// chains on it, and only then can a parity mismatch fail a chained
+    /// row (FX-10): in `never` mode without it the chain state is whatever
+    /// the client happened to hold, so a mismatch is a flag.
+    pub(crate) fn continues_passing_neighbour(&self, spec: &SectionSpec, row: &RowSpec) -> bool {
+        let prev = spec
+            .rows
+            .iter()
+            .position(|r| r.id == row.id)
+            .and_then(|i| i.checked_sub(1))
+            .and_then(|i| spec.rows.get(i));
+        let continues = match (&self.last_row, prev) {
+            (Some(last), Some(prev)) => {
+                last.section == spec.section.id && last.row_id == prev.id && last.passed
+            }
+            _ => false,
+        };
+        continues && self.in_world_as.is_some()
     }
 
     /// End the running session: log out when in world, stop the client,

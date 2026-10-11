@@ -99,15 +99,30 @@ fn parity_lists_unnamed_missions_as_unspecified_without_failing() {
     assert_eq!(
         p.unspecified,
         vec![
-            "mission 688: step 3001".to_string(),
-            "mission 700: it completed".to_string()
+            "mission 688: chain has step 3001, fixture does not name it".to_string(),
+            "mission 700: chain has it completed, fixture does not name it".to_string()
         ]
     );
     let mut g = pass();
     apply_parity(&mut g, Some(&p));
     assert_eq!(g.result, RowResult::Pass);
     assert!(g.reasons.is_empty(), "{:?}", g.reasons);
-    assert_eq!(g.flags.len(), 1, "{:?}", g.flags);
+    assert_eq!(
+        g.flags,
+        vec![
+            "fixture parity: mission 688: chain has step 3001, fixture does not name it; \
+             mission 700: chain has it completed, fixture does not name it"
+                .to_string()
+        ]
+    );
+    // An odd status reads as one too.
+    snap.missions = vec![mission(5, "status 0", None)];
+    let mut f = fs_p4();
+    f.missions.clear();
+    assert_eq!(
+        parity(&f, &snap).unspecified,
+        vec!["mission 5: chain has it in status 0, fixture does not name it".to_string()]
+    );
 }
 
 #[test]
@@ -223,7 +238,10 @@ fn from_rows_refuses_a_truncated_or_malformed_reply() {
     assert!(from_rows("Labone", &text, &empty, &empty)
         .unwrap_err()
         .starts_with("missions: id"));
-    assert!(from_rows("Labone", &json!({}), &empty, &empty).is_err());
+    assert_eq!(
+        from_rows("Labone", &json!({}), &empty, &empty).unwrap_err(),
+        "missions: reply has no rows list"
+    );
     assert!(from_rows("Lab one", &empty, &empty, &empty).is_err());
 }
 
@@ -313,9 +331,96 @@ fn parity_round_trips_through_the_row_json() {
         mismatches: vec!["a".into()],
         unspecified: vec!["b".into()],
         snapshot_error: None,
+        advisory: false,
     };
     let v = serde_json::to_value(&p).unwrap();
     assert!(v.get("snapshot_error").is_none(), "{v}");
+    assert!(v.get("advisory").is_none(), "{v}");
     let back: Parity = serde_json::from_value(v).unwrap();
     assert_eq!(back, p);
+    let p = Parity {
+        advisory: true,
+        ..p
+    };
+    let back: Parity = serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+    assert_eq!(back, p);
+}
+
+#[test]
+fn an_active_mission_in_another_status_is_a_mismatch() {
+    let mut snap = matching();
+    snap.missions[0].status = "status 3".into();
+    let p = parity(&fs_p4(), &snap);
+    assert_eq!(
+        p.mismatches,
+        vec!["mission 622: chain has it in status 3, fixture wants 80623".to_string()]
+    );
+}
+
+#[test]
+fn a_surplus_item_is_a_mismatch() {
+    let mut snap = matching();
+    snap.items = vec![item(55, 1, 2)];
+    let p = parity(&fs_p4(), &snap);
+    assert_eq!(
+        p.mismatches,
+        vec!["item 55: chain carries 2, fixture wants 1".to_string()]
+    );
+}
+
+#[test]
+fn not_active_holds_with_no_row_or_status_0() {
+    let mut f = fs_p4();
+    f.missions = vec![FixtureMission {
+        id: 1360,
+        step: None,
+        state: Some(FixtureMissionState::NotActive),
+    }];
+    let mut snap = matching();
+    snap.missions = vec![];
+    assert!(parity(&f, &snap).mismatches.is_empty());
+    snap.missions = vec![mission(1360, "status 0", None)];
+    assert!(parity(&f, &snap).mismatches.is_empty());
+    snap.missions = vec![mission(1360, "completed", None)];
+    assert_eq!(
+        parity(&f, &snap).mismatches,
+        vec!["mission 1360: chain has it completed, fixture wants it not active".to_string()]
+    );
+}
+
+#[test]
+fn a_mismatch_on_an_already_failed_row_is_a_flag() {
+    let p = Parity {
+        mismatches: vec!["item 55: chain carries 0, fixture wants 1".into()],
+        ..Default::default()
+    };
+    let mut g = Grade {
+        result: RowResult::Fail,
+        reasons: vec!["clause c failed".into()],
+        ..pass()
+    };
+    apply_parity(&mut g, Some(&p));
+    assert_eq!(g.result, RowResult::Fail);
+    assert_eq!(g.reasons, vec!["clause c failed".to_string()]);
+    assert_eq!(
+        g.flags,
+        vec!["fixture parity: item 55: chain carries 0, fixture wants 1".to_string()]
+    );
+}
+
+#[test]
+fn an_advisory_mismatch_is_a_flag_on_a_pass() {
+    let p = Parity {
+        mismatches: vec!["item 55: chain carries 0, fixture wants 1".into()],
+        advisory: true,
+        ..Default::default()
+    };
+    let mut g = pass();
+    apply_parity(&mut g, Some(&p));
+    assert_eq!(g.result, RowResult::Pass);
+    assert!(g.reasons.is_empty(), "{:?}", g.reasons);
+    assert_eq!(
+        g.flags,
+        vec!["fixture parity: item 55: chain carries 0, fixture wants 1".to_string()]
+    );
 }

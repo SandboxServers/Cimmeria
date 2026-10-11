@@ -21,22 +21,29 @@ pub const SNAPSHOT_SCHEMA: u32 = 1;
 pub const PARITY_CAP: usize = 300;
 
 /// `sgw_mission.status` of an active and a completed mission (FX-02
-/// worknote, "Mission row shape").
+/// worknote, "Mission row shape"). Status 0 is a row the mission left
+/// without being active, which a `not_active` fixture mission accepts.
 const STATUS_ACTIVE: i64 = 1;
 const STATUS_COMPLETED: i64 = 2;
+const STATUS_NOT_ACTIVE: i64 = 0;
 
 /// The chain character's state at a row boundary, before the row's setup.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RowSnapshot {
+    /// [`SNAPSHOT_SCHEMA`] when it was written.
     pub schema: u32,
     /// The character's last name (ASCII letters only).
     pub character: String,
-    /// The session's world, `None` when no session lists the character.
+    /// The session's world, `None` when no session lists the character
+    /// (or the session list could not be read and the fixture names no
+    /// world).
     pub world: Option<String>,
+    /// Every `sgw_mission` row of the character, by mission id.
     pub missions: Vec<SnapMission>,
     /// Carried items (containers 1 to 15), one entry per design id and
     /// container.
     pub items: Vec<SnapItem>,
+    /// Tutorial ids in `sgw_player_tutorials`, sorted, no repeats.
     pub tutorials_seen: Vec<i32>,
     /// Host clock when the snapshot was taken.
     pub host_ms: i64,
@@ -45,6 +52,7 @@ pub struct RowSnapshot {
 /// One `sgw_mission` row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapMission {
+    /// `mission_id`.
     pub id: i32,
     /// `active`, `completed`, or `status <n>` for any other value.
     pub status: String,
@@ -55,23 +63,39 @@ pub struct SnapMission {
 /// The carried count of one design id in one container.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SnapItem {
+    /// The item's design id (`sgw_inventory.type_id`).
     pub id: i32,
+    /// `sgw_inventory.container_id`, one of the carried containers.
     pub container: i32,
+    /// The summed stack sizes of that design id in that container.
     pub count: i64,
 }
 
-/// What parity found. Mismatches fail a passing row; `unspecified` (chain
-/// missions the fixture does not name) is reported only.
+/// What parity found. Mismatches fail a passing row unless `advisory`;
+/// `unspecified` (chain missions the fixture does not name) is reported
+/// only.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Parity {
+    /// Each way the chain differs from the fixture, one line each.
     #[serde(default)]
     pub mismatches: Vec<String>,
+    /// Each chain mission the fixture does not name, one line each.
     #[serde(default)]
     pub unspecified: Vec<String>,
     /// Why no snapshot was taken; parity was not checked. Kept here, not
     /// only as a reason, so a re-grade after an attestation keeps it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_error: Option<String>,
+    /// The row did not continue a passing spec neighbour (fixture mode
+    /// `never` on a run's first row, or after a failed row): the chain
+    /// state is whatever the client held, so mismatches are flags only.
+    /// Absent (false) on rows written before it existed.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub advisory: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Three read-only statements (missions, carried items, tutorials) for the
@@ -244,7 +268,10 @@ pub fn parity(f: &FixtureSpec, snap: &RowSnapshot) -> Parity {
                 have.is_some_and(|m| m.status == "completed"),
                 "it completed".into(),
             ),
-            Ok(FixtureMissionState::NotActive) => (have.is_none(), "it not active".into()),
+            Ok(FixtureMissionState::NotActive) => (
+                have.is_none_or(|m| m.status == format!("status {STATUS_NOT_ACTIVE}")),
+                "it not active".into(),
+            ),
             Err(e) => {
                 p.mismatches.push(e);
                 continue;
@@ -260,9 +287,11 @@ pub fn parity(f: &FixtureSpec, snap: &RowSnapshot) -> Parity {
     }
     for m in &snap.missions {
         if !f.missions.iter().any(|fm| fm.id == m.id) {
-            let has = chain_has(Some(m));
-            let has = has.strip_prefix("chain has ").unwrap_or(&has);
-            p.unspecified.push(format!("mission {}: {has}", m.id));
+            p.unspecified.push(format!(
+                "mission {}: {}, fixture does not name it",
+                m.id,
+                chain_has(Some(m))
+            ));
         }
     }
     for fi in &f.items {
@@ -304,10 +333,10 @@ pub fn parity(f: &FixtureSpec, snap: &RowSnapshot) -> Parity {
 }
 
 /// Apply a chained row's parity to its grade: mismatches turn a PASS into
-/// a FAIL (`fixture parity: ...`) and are a flag on any other result; a
-/// snapshot error is a reason that changes nothing; unnamed missions are a
-/// flag. The runner and `lab_uat_attest` both call this after `grade`, so a
-/// re-grade keeps the parity result.
+/// a FAIL (`fixture parity: ...`) and are a flag on any other result or
+/// when the parity is advisory; a snapshot error is a reason that changes
+/// nothing; unnamed missions are a flag. The runner and `lab_uat_attest`
+/// both call this after `grade`, so a re-grade keeps the parity result.
 pub fn apply_parity(g: &mut Grade, p: Option<&Parity>) {
     let Some(p) = p else {
         return;
@@ -323,7 +352,7 @@ pub fn apply_parity(g: &mut Grade, p: Option<&Parity>) {
             &format!("fixture parity: {}", p.mismatches.join("; ")),
             PARITY_CAP,
         );
-        if g.result == RowResult::Pass {
+        if g.result == RowResult::Pass && !p.advisory {
             g.result = RowResult::Fail;
             g.reasons.push(text);
         } else {
@@ -332,10 +361,7 @@ pub fn apply_parity(g: &mut Grade, p: Option<&Parity>) {
     }
     if !p.unspecified.is_empty() {
         g.flags.push(cap_chars(
-            &format!(
-                "fixture parity: the fixture does not name {}",
-                p.unspecified.join("; ")
-            ),
+            &format!("fixture parity: {}", p.unspecified.join("; ")),
             PARITY_CAP,
         ));
     }
