@@ -12,7 +12,7 @@ How much of the world the server introduces to the SGW client and how fast: the 
 | Bound | Value | Grade | Source | Safe level | Break level | Notes |
 |---|---|---|---|---|---|---|
 | Player AoI radius | 150 m | config | `crates/entity/src/cell_entity/witness_aoi.rs` `PLAYER_AOI_RADIUS` | n/a | n/a | CL-03 confirms the client has no radius of its own. |
-| NPC default AoI radius | 100 m | config | `crates/entity/src/cell_entity/construction.rs` `aoi_radius` | n/a | n/a | |
+| NPC default AoI radius | 100 m | config | `crates/entity/src/cell_entity/construction.rs`, the `aoi_radius` field initializer (literal, no named constant) | n/a | n/a | |
 | AoI leave margin | 25 m | config | `crates/entity/src/cell_entity/witness_aoi.rs` `AOI_LEAVE_MARGIN` | n/a | n/a | |
 | Entities the client holds at once | not measured | n/a | n/a | not measured | not measured | Chaos profile `burst`. CL-03: any fixed-size entity table; CL-09: the count at which creates fail. A lab session ran 161 extra NPCs (Debug Area lineup) without anyone looking for the ceiling. |
 | Creates in one flush the client absorbs | not measured | n/a | n/a | not measured | not measured | Chaos profiles `burst` and `flush`. CL-09 finds the ceiling. Seen so far: 24 creates of 37 bytes each in one 889-byte packet, the packet #1341 hits; 28-NPC instances flush in about 11 packets (`crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs`). |
