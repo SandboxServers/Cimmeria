@@ -282,12 +282,16 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 })
                 .await
             {
+                let names = space_mgr.entity_names(entity_id);
                 tracing::warn!(
                     target: "spawner.npc_respawn",
+                    event = "respawn_loot_close_failed",
                     player_id,
                     player_name = space_mgr.entity_label(player_id),
-                    respawning_entity = entity_id,
-                    respawning_entity_name = space_mgr.entity_label(entity_id),
+                    npc_id = entity_id,
+                    npc_name = names.entity_name,
+                    template_id,
+                    template_name = names.template_name,
                     reason = "base_channel_closed",
                     error = %e,
                     "NPC respawn: onLootDisplay close could not be enqueued; the \
@@ -345,6 +349,9 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 npc.direction = spawn_dir;
             }
         } else {
+            // This row marks a broken invariant: every spawn path sets
+            // `spawn_position`, so a missing one is a bug to chase, not a
+            // normal case.
             let names = space_mgr.entity_names(entity_id);
             tracing::warn!(
                 target: "spawner.npc_respawn",
@@ -355,7 +362,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 template_name = names.template_name,
                 space_id,
                 world = space_mgr.world_name_for_space(space_id),
-                "NPC respawn: no spawn position recorded; the NPC is re-created where it died"
+                "NPC respawn: no spawn position recorded; the NPC stays at its last position"
             );
         }
         // An NPC authored in cover respawns holding its slot (NA22).
