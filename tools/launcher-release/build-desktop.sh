@@ -26,16 +26,20 @@
 #                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
 #                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
+#   feed-tool        build the release_feed example (always the release
+#                    profile) that sign and verify-feed run; never with the
+#                    signing key in the environment
 #   sign <version> <url> <notes>
 #                    Minisign-sign the zip with LAUNCHER_UPDATER_MINISIGN_KEY
 #                    (and _PASSWORD) and write artifacts/<zip>.sig and
-#                    artifacts/latest.json, the feed offering it from <url>
+#                    artifacts/latest.json, the feed offering it from <url>;
+#                    runs the built tool, no cargo
 #   verify-feed <version>
 #                    run the launcher engine's own feed, signature and zip
 #                    checks on those files against LAUNCHER_UPDATER_PUBKEY
 #   feed-dry-run <version>
-#                    sign and verify-feed with a throwaway key made here, for
-#                    the PR dry run, which has no real key
+#                    feed-tool, then sign and verify-feed with a throwaway key
+#                    made here, for the PR dry run, which has no real key
 #   paths            print the artifact paths
 #
 # PROFILE=release (default) or dev. Output goes under cargo's target dir
@@ -237,10 +241,25 @@ PY
 }
 
 # The release-profile example that signs and checks the feed with the
-# launcher engine's own code (engine/examples/release_feed.rs).
+# launcher engine's own code (engine/examples/release_feed.rs). It is always a
+# release build, whatever PROFILE says.
+FEED_TOOL="$DESKTOP_DIR/release/examples/release_feed"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) FEED_TOOL="$FEED_TOOL.exe" ;; esac
+
+# Built in its own step, before any key is in the environment: compiling it
+# runs build scripts and proc macros of its dependencies for the first time,
+# and none of them may see the signing key.
+stage_feed_tool() {
+  cargo build --locked --release --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+    --example release_feed --target-dir "$DESKTOP_DIR"
+  need "$FEED_TOOL"
+}
+
+# Runs the already-built tool. No cargo here, so `sign` compiles nothing while
+# the key is set.
 release_feed() {
-  cargo run --locked --release --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
-    --example release_feed --target-dir "$DESKTOP_DIR" -- "$@"
+  need "$FEED_TOOL"
+  "$FEED_TOOL" "$@"
 }
 
 stage_sign() {
@@ -261,6 +280,7 @@ stage_verify_feed() {
 
 stage_feed_dry_run() {
   local version="${1:?feed-dry-run needs the version}"
+  stage_feed_tool
   local keys; keys="$(mktemp -d)"
   # Throwaway: made here, used once, deleted. Never a release key.
   export LAUNCHER_UPDATER_MINISIGN_PASSWORD="dry-run-$RANDOM$RANDOM"
@@ -279,9 +299,10 @@ case "${1:-}" in
   launcher) stage_launcher ;;
   verify) stage_verify ;;
   package) stage_package ;;
+  feed-tool) stage_feed_tool ;;
   sign) shift; stage_sign "$@" ;;
   verify-feed) shift; stage_verify_feed "$@" ;;
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ZIP=$ZIP" "FEED=$FEED" ;;
-  *) sed -n '2,39p' "$0" >&2; exit 2 ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
+  *) sed -n '2,43p' "$0" >&2; exit 2 ;;
 esac
