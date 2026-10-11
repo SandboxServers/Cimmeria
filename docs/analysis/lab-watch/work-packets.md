@@ -180,7 +180,8 @@ lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]
 - Exit codes: 0 a snapshot was printed, or the live view ended with Ctrl+C;
   1 the daemon is down and there is no batch to show; 2 usage (an
   `-IntervalSeconds` outside 1 to 60, or a `-Batch` folder with neither
-  `plan.json` nor `batch.jsonl`).
+  `plan.json` nor `batch.jsonl`); 3 a one-snapshot read failed (added in the
+  LW-04 review: a locked `labd.log` or batch folder, not "daemon down").
 - Hidden test seam: `-StatusFile <path>` reads the `/status` JSON from a file
   instead of the daemon, and `-LogFile <path>` reads that file instead of
   `labd.log`. Both are for tests and for reading a saved snapshot.

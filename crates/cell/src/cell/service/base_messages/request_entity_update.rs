@@ -33,6 +33,7 @@
 //! per-call cost (witness-set lookup per id).
 
 use cimmeria_common::EntityId;
+use cimmeria_entity::cell_entity::CellEntity;
 
 use super::super::super::space_manager::SpaceManager;
 
@@ -99,6 +100,7 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
             // visibility of it -- same anti-probe posture as before this fix.
             unknown += 1;
             let names = space_mgr.entity_names(entity_id);
+            let cause = refusal_cause(space_mgr, witness, witness_id, entity_id);
             tracing::warn!(
                 witness_id,
                 witness_name = identity.player_name,
@@ -111,6 +113,7 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
                 player_id = identity.player_id,
                 player_name = identity.player_name,
                 reason = "not_in_witness_aoi",
+                cause,
                 "RequestEntityUpdate: id outside witness's AoI -- refusing"
             );
         }
@@ -133,4 +136,26 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
         player_name = identity.player_name,
         "RequestEntityUpdate acknowledged"
     );
+}
+
+/// Why `entity_id` is refused for `witness`, for the `cause` field on the
+/// refusal WARN. Checked in order: the entity is gone; it lives in another
+/// space than the witness; the witness has no AoI state yet (the AoI tick has
+/// not introduced anything); otherwise it is simply outside the witness's AoI.
+fn refusal_cause(
+    space_mgr: &SpaceManager,
+    witness: &CellEntity,
+    witness_id: u32,
+    entity_id: u32,
+) -> &'static str {
+    if space_mgr.get_entity(entity_id).is_none() {
+        return "entity_gone";
+    }
+    if space_mgr.get_entity_space_id(entity_id) != space_mgr.get_entity_space_id(witness_id) {
+        return "other_space";
+    }
+    if witness.witnesses.is_empty() {
+        return "not_introduced_yet";
+    }
+    "outside_aoi"
 }

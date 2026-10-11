@@ -486,6 +486,32 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 - **`CIMMERIA_LAB_SHARED_USER_DIR=1`** (also `true` or `yes`) in `labd.env` turns this off and puts every lab client back on the real, shared folder (`reason = opted_out`). Two clients then lock each other's cache again.
 - **OneDrive and redirected Documents.** The redirect works only where the `Personal` shell folder (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`) is `%USERPROFILE%`-relative, the Windows default. If OneDrive Known Folder Move or a policy points Documents at an absolute path, every launch logs `reason = documents_not_redirectable` and uses the shared folder, and so does a failed registry read. A seed that fails (`reason = seed_failed`) falls back the same way. On such a machine run one lab client at a time. The durable fix, a `SHGetFolderPathW` hook in the lab DLL, is on the [tooling backlog](../analysis/lab-automation/tooling-backlog.md#backlog-lab-bridge-and-supervisor-for-the-session-that-owns-them).
 
+### Ini overrides for an instance
+
+Lab-only changes to the client's user `SGWEngine.ini`, such as the texture streaming budget, come from an `ini-overrides.toml` file. There is none by default, so nothing is overridden. `tools/lab/ini-overrides.example.toml` lists the targets, every entry commented out. Copy it, uncomment what you need, and put it where the supervisor looks. The first match wins:
+
+1. The path in `CIMMERIA_LAB_INI_OVERRIDES`. For the installed daemon, `lab env set CIMMERIA_LAB_INI_OVERRIDES <path>` writes it to `labd.env`, then `lab restart` picks it up.
+2. `%LOCALAPPDATA%\cimmeria-lab\ini-overrides.toml`, the lab state folder. Use this one for the installed daemon: it runs from that folder and never sees a checkout.
+3. `tools/lab/ini-overrides.toml` in a checkout, found walking up from the supervisor's working folder or its exe. This covers a stdio supervisor or a daemon run from a checkout.
+
+The file is read at every launch, so an edit takes effect at the next client launch. Only a change to the variable needs `lab restart`. An entry looks like this:
+
+```toml
+[[override]]
+file = "SGWEngine.ini"
+section = "TextureStreaming"
+key = "HysteresisLimit"
+value = "..."
+```
+
+`value` can be a string, an integer, a float or a boolean. Booleans are written `TRUE` and `FALSE`, as in UE3's own ini files. Only a bare `Key=` line matches: `;Key=` comments and `+Key=` array edits are left alone, and only the first `Key=` in the section changes. A missing key is added at the end of its section, and a missing section at the end of the file.
+
+The overrides go only into an instance's own seeded profile, its `Documents\My Games\Firesky\SGWGame\Config\SGWEngine.ini`, at each launch after the seed, so they come back after a reseed. When the instance falls back to the shared folder (`opted_out`, `documents_not_redirectable`, `no_profile_root`, `profile_root_not_absolute`, `profile_root_inside_install` or `seed_failed`, above), nothing is applied: the real, shared ini is never touched. A new profile with nothing to seed from (`seeded = no_source`) has no ini until the client writes one, so that launch logs `ini_override_skipped` and the overrides apply from its second launch.
+
+Everything logs under `lab.instance`. `ini_override_file` (info) names the file used, and `ini_override_none` (debug) says there was none. Each override logs `ini_override_applied` with its old and new value and `changed`, which is false when the key already had the value. A bad file logs `ini_override_failed` and applies nothing: TOML that does not parse, an entry for `[IniVersion]`, a `file` that is not a plain name in `Config` (a path, `:`, or a Windows device name such as `NUL`), or a section with a bracket in it. A missing or unwritable ini logs `ini_override_failed` and is skipped. The ini is written to `<file>.tmp` and renamed over the original, after clearing its read-only attribute; a UTF-8 BOM is kept.
+
+An override lasts only while the user ini's `[IniVersion]` matches the chain files' timestamps. A reinstall or a patch can lose it, and then the client prompts to regenerate the ini, which can block a headless lab client. The chain and the target keys are in [engine.md](../client/limits/engine.md#ini-chain-and-lab-override-targets).
+
 ### Accounts, characters, the cap and the windows
 
 **Accounts.** A second login on the same account evicts the first client (`duplicate_login`), so every instance needs its own account. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); keep all five in the Discord `muted_accounts` list.
@@ -496,7 +522,7 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 
 **Booting several at once.** With other clients running, a new client's bridge took about 25 s to come up on 2026-10-10. The watchdog leaves a client that has never answered its bridge alone for 90 s after launch ([the watchdog](#the-watchdog-hangs-world-loads-and-the-recovery-cap)).
 
-**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) on every instance: it answers `GetForegroundWindow` per process, so none is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so don't type while a scenario runs.
+**Focus.** The stock player client does not throttle a background window: the below-normal priority and 5 ms sleep in `FEngineLoop::Tick` run only when `GIsEditor` is set, which the player never does (static; [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)). Turn on `client_input_focus` (virtual focus) on every instance all the same: it answers `GetForegroundWindow` per process so each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so don't type while a scenario runs.
 
 **Windows.** Every client opens at the same place and size, stacked. Arranging them is up to you; no lab tool moves a window. Screenshots use `PrintWindow` per window, so an overlapped window still captures.
 
@@ -1046,6 +1072,7 @@ first line of each.
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
 | `-Chaos <profile[:level][:knobs]>` on `lab uat` | passed to the runner unchanged (`lab_uat_run` `chaos`); profiles land in later lab-chaos packets; quote a multi-knob spec, as its commas would split it elsewhere | no new codes |
+| `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
 | `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
 | `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
 
@@ -1092,6 +1119,27 @@ lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
 ```
+
+**`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `-Batch` folder, redrawn every `-IntervalSeconds` (default 2, 1 to 60) in the terminal's alternate screen until Ctrl+C, which puts the screen back. Run it in one terminal while the batch runs in another:
+
+```powershell
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 3   # terminal 1
+lab watch                                                                                           # terminal 2
+```
+
+- **Batch line.** The batch's name, section, state, runs done of planned (lanes times runs per lease), passed, failed, and how many failures match a known issue; then the last failure (`<instance>#<run>`, its row, result and reason, cut to 72 characters) with its issue tag. It reads the batch folder's `plan.json` and `batch.jsonl`. The state is `live` while the `lab uat` that wrote `plan.json` still runs, `done` once `batch.json` is written, `interrupted` when that `lab uat` is gone without one, and `unknown` for a batch from before `plan.json` existed (its runs show as a bare count, and its progress lines as `<i>/?`). A lane-death record (run 0) brakes its lane and can be the last failure, but is not counted as a run.
+- **Instance rows.** One per lab instance in the daemon's `/status` (per plan lane when the daemon is down). CLIENT is the client pid. LEASE is `free` or `<owner> (<purpose>)`, the purpose cut to 40 characters; never a lease id or the time left. RUN is the lane's run of its runs per lease (`3/3`), `<n>/3 braked` once its brake stopped it, or `-` for an instance outside the batch. ROW is the row under way and how long it has run (`FS-P3 42s`), from the `uat` field of `/status`; `-` between rows, `?` when the daemon predates that field (the footer then says `daemon has no run progress: lab install, then lab restart`). SHOT is the age of the newest screenshot under the run directory's `rows\` (the run under way, from `/status`, else the lane's last run): the first-session rows save only one `final.png` per row as it ends, so SHOT is the age of the last finished row, and `-` when there is none. Screenshots an agent takes outside a run carry no instance, so they never count. Under each row, indented, is the lane's last progress line as `lab uat` printed it, tagged with the known issue.
+- **Footer.** `orphan SGW.exe: <pid> (#1342?)` for game clients no instance owns, client relaunches per instance and login retries (`#1343`) counted in `labd.log` since the batch started.
+- **Known issues** are tagged by their signature with the same table `lab uat` uses: `#1341` (FS-P2's "Corporal Frost is known") and `#1343` (the login password box read back empty). `#1342` has no failure signature; it shows as an orphan `SGW.exe` and as relaunch counts.
+- **`-Once`** prints one snapshot and exits; with output redirected (a pipe or a file) the view prints one snapshot too, never the live loop. **`-Json`** implies `-Once` and prints one line for agents, under 500 characters for a two-lane batch and under 700 for five lanes, with empty, null and zero keys left out (except `passed` and `failed`):
+
+```json
+{"ok":true,"daemon":"up","batch":"batch-20261011-013906","state":"live","section":"first-session","runs":"3/6","passed":1,"failed":2,"known":2,"last_failure":{"run":"default#2","why":"FS-01 BLOCKED: setup failed: lab_login: Login_PasswordEdit holds 0 ch...","issue":"#1343"},"lanes":{"default":"3/3 FS-P3 42s shot 5s","p2":"2/3 FS-02 3s"},"orphans":[63904],"relaunches":1,"login_retries":1}
+```
+
+- **Read-only.** It takes no lease and asks the daemon only for `GET /status`, so it can run beside any batch or agent. Lease ids are redacted from everything it prints.
+- **Exit codes.** 0 a snapshot was printed or Ctrl+C ended the view; 1 the daemon is down and there is no batch; 2 usage; 3 a `-Once` read failed (a locked or denied batch folder or `labd.log`). Under `-Json`, 2 and 3 print `{"ok":false,"exit":N,"error":"..."}`. A frame taller than the window is cut, with a last line saying how many lines it hid. With stdin redirected, Ctrl+C is the shell's own and the exit is not 0; Ctrl+Break or closing the window leaves the alternate screen without restoring it.
+- **Test seams.** `-StatusFile <path>` reads the `/status` JSON from a file instead of the daemon (a file without the daemon's shape reads as the daemon down), and `-LogFile <path>` reads that file instead of `labd.log`. They exist for `test-watch.ps1` and for reading a saved snapshot; they are not in `lab help`.
 
 **`lab calibrate`.** It finds a pose again on the live client and proposes it as a spec diff, through `lab_uat_calibrate`; the how-to, the sweep and its score are in [Calibrate a row](automated-uat.md#calibrate-a-row).
 
