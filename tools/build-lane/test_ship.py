@@ -343,6 +343,18 @@ class MergeTests(MergeCase):
         code, _, line = self.merge()
         self.assertEqual(code, 0, line)
 
+    def test_every_conditional_check_names_a_real_workflow_job(self):
+        # A renamed job would never match, and its check would silently stop gating.
+        workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
+        names = set()
+        for wf in workflows.glob("*.yml"):
+            for line in wf.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("name:") and line.startswith("    name:"):
+                    names.add(stripped[len("name:"):].strip().strip("'\""))
+        missing = [c for c in ship.CONDITIONAL if c not in names]
+        self.assertEqual(missing, [], "CONDITIONAL names no job in .github/workflows")
+
     def test_timeout_exits_3(self):
         self.add_pr(["src.rs"], checks=[{g: "pending" for g in ship.GATING}])
         code, f, _ = self.merge("--timeout", "0s")

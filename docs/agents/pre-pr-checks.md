@@ -1,6 +1,6 @@
 # Pre-PR Checks
 
-> **Last updated**: 2026-10-03
+> **Last updated**: 2026-10-10
 > **Audience**: Contributors and agents about to open a PR, or looking at a red CI job
 > **Type**: Reference
 > **Companions**: [CLAUDE.md](../../CLAUDE.md) (the short runnable checklist), [doc-update-map.md](doc-update-map.md), [TESTING.md](../../TESTING.md), [build-system.md](../architecture/build-system.md), [troubleshooting.md](../troubleshooting.md#tests--ci)
@@ -16,8 +16,8 @@ Not every check blocks a merge. Here's what each one is actually worth:
 | `fmt`, `clippy`, `build-and-test`, `test-live-db` | [test.yml](../../.github/workflows/test.yml) | **Yes** — four gating jobs | Every PR that changes more than Markdown, `.claude/` or images under `docs/` (those skip and report as passed; `docs/protocol/` always runs) |
 | `figure-sources-in-sync` | [figure-sources.yml](../../.github/workflows/figure-sources.yml) | **Yes** | Only when `docs/drafts/spec/figures/**` changes |
 | `figure-style-lint` | [figure-style.yml](../../.github/workflows/figure-style.yml) | **Yes** | Only when figures or `docs/drafts/spec/**.md` change |
-| `cargo clippy -D warnings (cimmeria-lab)`, `cargo nextest (cimmeria-lab, UAT specs)`, `lab CLI PowerShell tests` | [lab.yml](../../.github/workflows/lab.yml) | **Yes** when they run (`ship.py merge` waits for them) | `crates/lab/**`, `crates/client-launch/**`, `docs/guides/uat-specs/**`, `tools/lab/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`. The lab supervisor is excluded from the workspace jobs, so this is its only build-and-test |
-| `build-lane PowerShell tests` | [build-lane-scripts.yml](../../.github/workflows/build-lane-scripts.yml) | **Yes** when it runs | `tools/build-lane/**` (the Python tests there run in `test.yml`) |
+| `cargo clippy -D warnings (cimmeria-lab)`, `cargo nextest (cimmeria-lab, UAT specs)`, `lab CLI PowerShell tests` | [lab.yml](../../.github/workflows/lab.yml) | **Yes** when they run, enforced by `ship.py merge` (not branch protection: a manual `gh pr merge` ignores them) | `crates/lab/**`, `crates/client-launch/**`, `docs/guides/uat-specs/**`, `tools/lab/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`. The lab supervisor is excluded from the workspace jobs, so this is its only build-and-test |
+| `build-lane PowerShell tests` | [build-lane-scripts.yml](../../.github/workflows/build-lane-scripts.yml) | **Yes** when it runs, enforced by `ship.py merge` | `tools/build-lane/**` (the Python tests there run in `test.yml`) |
 | `markdownlint` | [markdownlint.yml](../../.github/workflows/markdownlint.yml) | No — warn-only annotations | Any `**/*.md` change |
 | `spec-lint` | [spec-lint.yml](../../.github/workflows/spec-lint.yml) | No — warn-only annotations | `docs/spec/**`, `crates/**`, manifest changes |
 

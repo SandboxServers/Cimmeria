@@ -17,6 +17,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
       - '.github/workflows/lab.yml'
   pull_request:
     paths:
@@ -27,6 +30,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
       - '.github/workflows/lab.yml'
 
 concurrency:
