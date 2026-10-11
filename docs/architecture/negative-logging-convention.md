@@ -1155,6 +1155,16 @@ Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, whic
 
 Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
 
+## MinigamePlayer stub rows (TG-MG-02)
+
+`cell_methods/minigame.rs` in `cimmeria-cell-methods`. Every MinigamePlayer stub logs each call once at INFO, with the entity pair and `args_len`, whatever the payload. Each arm reads only the INT32s that `entities/defs/interfaces/MinigamePlayer.def` declares for it; a field whose bytes are missing is left out, never `0`. `endCurrentMinigame` declares no arguments, so `winner_*` and `loser_*` are gone. Key changes: `winner_id`, `winner_name`, `loser_id`, `loser_name`, `host_entity_id`, `host_entity_name`, `target_entity_id`, `target_entity_name`, `game_def_id`, `help_level` are removed; `target_player_id` and `target_player_name` (spectate), `calling_player_id` and `calling_player_name` (accept, decline) and `contact_id` and `contact_name` (contact request) are new. The stubs still do nothing: minigame behaviour is #1303's.
+
+| Level | Message | When | Fields |
+| --- | --- | --- | --- |
+| INFO | `UNIMPLEMENTED: <method>` | Every call to a MinigamePlayer stub | entity pair, `args_len`, the declared INT32s and their name pairs |
+
+Guard: `cell_methods/minigame_names_tests.rs` `end_current_minigame_logs_with_wire_payload`. A 4-byte `00000000` payload gives the INFO row with `args_len = 4`. The earlier `args.len() >= N` guard logged nothing for it, so reverting fails the test.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
