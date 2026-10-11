@@ -74,6 +74,8 @@ pub struct LabEntityFilter {
     pub class_id: Option<u8>,
     /// Restrict to entities within a radius of a point or another entity.
     pub radius: Option<LabRadius>,
+    /// Restrict to entities whose spawn `tag` equals this, exactly (case sensitive).
+    pub tag: Option<String>,
 }
 
 /// Spatial constraint for [`LabEntityFilter`]: match only entities within

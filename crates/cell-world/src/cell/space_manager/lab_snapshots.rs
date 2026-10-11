@@ -73,6 +73,13 @@ impl SpaceManager {
                 if filter.class_id.is_some_and(|c| entity.class_id != c) {
                     continue;
                 }
+                if filter
+                    .tag
+                    .as_deref()
+                    .is_some_and(|t| entity.tag.as_deref() != Some(t))
+                {
+                    continue;
+                }
                 if let Some((center, radius_sq)) = radius_check {
                     let dx = entity.position.x - center[0];
                     let dy = entity.position.y - center[1];
