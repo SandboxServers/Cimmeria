@@ -3,11 +3,63 @@
 //! result compacted; `tools/list` advertises the lease and instance
 //! arguments.
 
+use std::time::Instant;
+
 use rmcp::{model::*, tool_handler, ErrorData as McpError, ServerHandler};
 use serde_json::Value;
 use tracing::Instrument;
 
 use super::{compact, lease, LabServer};
+
+/// The longest `error` text a `lab.call` row carries.
+const ERROR_CAP: usize = 200;
+
+/// The owner of the lease held right now, if one is held.
+fn holder_owner(lease_status: &Value) -> Option<String> {
+    lease_status
+        .pointer("/lease/owner")
+        .and_then(Value::as_str)
+        .map(String::from)
+}
+
+/// Write the one INFO `lab.call` row for a finished `tools/call`. Outcome is
+/// `refused` when the lease gate turned the call away, `error` for a failed
+/// tool, else `ok`. The arguments are never logged: they can carry Lua or
+/// chat text.
+fn log_call(
+    instance: &str,
+    tool: &str,
+    lease_owner: Option<&str>,
+    started: Instant,
+    refused: bool,
+    out: &Result<CallToolResponse, McpError>,
+) {
+    let failed = match out {
+        Ok(CallToolResponse::Complete(r)) => r.is_error == Some(true),
+        Ok(_) => false,
+        Err(_) => true,
+    };
+    let outcome = match (refused, failed) {
+        (true, _) => "refused",
+        (false, true) => "error",
+        (false, false) => "ok",
+    };
+    let error: Option<String> = match out {
+        Err(e) => Some(e.message.chars().take(ERROR_CAP).collect()),
+        Ok(_) => None,
+    };
+    let duration_ms = started.elapsed().as_millis() as u64;
+    tracing::info!(
+        target: "lab.call",
+        tool,
+        instance,
+        lease_owner,
+        outcome,
+        duration_ms,
+        error = error.as_deref(),
+        "lab tool call"
+    );
+}
 
 /// Compact a tool's text results and its error data for the MCP client
 /// ([`compact`]). Images and non-JSON text pass through.
@@ -92,9 +144,21 @@ impl ServerHandler for LabServer {
         mut request: CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
-        let routed = self.route(&mut request)?;
+        let started = Instant::now();
+        let tool = request.name.to_string();
+        let routed = match self.route(&mut request) {
+            Ok(routed) => routed,
+            Err(e) => {
+                let out = Err(e);
+                log_call(self.supervisor.label(), &tool, None, started, false, &out);
+                return out;
+            }
+        };
         let target = routed.as_ref().unwrap_or(self);
-        let span = tracing::info_span!("lab_call", instance = target.supervisor.label());
+        // Read before the gate: a call that is turned away still shows who holds the lease.
+        let holder = holder_owner(&target.supervisor.leases().status());
+        let instance = target.supervisor.label();
+        let span = tracing::info_span!("lab_call", instance);
         // Shaping arguments the tool declares itself stay with the tool.
         let own: Vec<String> = target
             .tool_router
@@ -113,7 +177,14 @@ impl ServerHandler for LabServer {
             })
             .unwrap_or_default();
         let shape = compact::Shape::take(request.name.as_ref(), request.arguments.as_mut(), &own);
-        let permit = target.gate_call(&mut request)?;
+        let permit = match target.gate_call(&mut request) {
+            Ok(permit) => permit,
+            Err(e) => {
+                let out = Err(e);
+                log_call(instance, &tool, holder.as_deref(), started, true, &out);
+                return shape_response(&shape, out);
+            }
+        };
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(target, request, context);
         let out = match permit {
             // The gate admits once; the permit makes every action of the
@@ -125,6 +196,7 @@ impl ServerHandler for LabServer {
             }
             None => target.tool_router.call(tcc).instrument(span).await,
         };
+        log_call(instance, &tool, holder.as_deref(), started, false, &out);
         shape_response(&shape, out)
     }
 
@@ -146,5 +218,41 @@ impl ServerHandler for LabServer {
             ttl_ms: cache_hints.then_some(0),
             cache_scope: cache_hints.then_some(CacheScope::Public),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cimmeria_test_support::LogCapture;
+    use serde_json::json;
+
+    use crate::daemon::http_tests::{spawn_daemon, test_server, McpSession};
+
+    /// A lease-gated tool called with no lease is refused, and its one
+    /// `lab.call` row says so, names the tool and carries no arguments.
+    #[tokio::test]
+    async fn unleased_tool_call_logs_refused() {
+        let capture = LogCapture::install();
+        let url = spawn_daemon(test_server()).await;
+        let mut s = McpSession::open(&url).await;
+
+        let r = s
+            .call("client_lua_eval", json!({ "chunk": "return 1" }))
+            .await;
+        assert!(r["error"].is_object(), "{r}");
+
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "lab.call")
+            .collect();
+        assert_eq!(rows.len(), 1, "one row per call: {rows:?}");
+        let row = &rows[0];
+        assert!(row.has_field("outcome", "refused"), "{row:?}");
+        assert!(row.has_field("tool", "client_lua_eval"), "{row:?}");
+        assert!(row.fields.contains_key("duration_ms"), "{row:?}");
+        assert!(!row.fields.contains_key("lease_owner"), "{row:?}");
+        assert!(!row.fields.contains_key("chunk"), "{row:?}");
+        assert!(!row.message_contains("return 1"), "{row:?}");
     }
 }

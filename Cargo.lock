@@ -1439,6 +1439,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "cimmeria-client-launch",
+ "cimmeria-test-support",
  "png 0.18.1",
  "regex",
  "reqwest 0.13.4",
