@@ -473,6 +473,7 @@ async fn session_start_names_the_account_the_character_and_the_archetype() {
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
             entry_cause: crate::cell::messages::WorldEntryCause::Login,
+            session_kind: None,
         },
         &tx,
         &mut mgr,

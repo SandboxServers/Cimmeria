@@ -134,6 +134,7 @@ pub async fn handle_on_client_ready(
         plugins,
         account_name,
         entry_cause,
+        session_kind,
     ) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
@@ -176,6 +177,9 @@ pub async fn handle_on_client_ready(
                     // The login name for this function's lines (Rule 6).
                     super::super::session_identity::session_identity(c).account_name,
                     entry_cause,
+                    // Lab or player, resolved at Phase 3 from the account
+                    // flag (TG-NET-16); the cell stamps it on its rows.
+                    c.session_kind,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
@@ -190,6 +194,7 @@ pub async fn handle_on_client_ready(
                 Default::default(),
                 None,
                 WorldEntryCause::Login,
+                None,
             ),
         }
     };
@@ -409,6 +414,7 @@ pub async fn handle_on_client_ready(
                 looted_containers,
                 shown_tutorials,
                 entry_cause,
+                session_kind,
             })
             .await
         {
@@ -604,6 +610,7 @@ pub async fn handle_on_client_ready(
     // already complete and we must not block it on per-watcher DB + sends.
     if let Some(ref name) = player_name {
         let name_owned = name.clone();
+        let player_id_owned = pending.player_id;
         let pool_c = db_pool.clone();
         let transport_c = transport.clone();
         let connected_c = connected.clone();
@@ -611,6 +618,7 @@ pub async fn handle_on_client_ready(
         tokio::spawn(async move {
             super::super::contact_list::handlers::fanout_login_status(
                 &name_owned,
+                player_id_owned,
                 true, // online
                 &pool_c,
                 &transport_c,

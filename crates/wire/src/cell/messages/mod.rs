@@ -52,6 +52,7 @@ mod bank_cell_to_base;
 mod base_to_cell;
 mod black_market_cell_to_base;
 mod cell_to_base;
+mod cell_to_base_kind;
 mod chat_cell_to_base;
 mod content_mail_cell_to_base;
 mod data;

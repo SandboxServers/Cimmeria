@@ -41,3 +41,7 @@ tokio = { workspace = true, features = ["test-util"] }
 # dev-dependency must be listed in tools/test-live-db.{sh,ps1};
 # `live_db_wrapper_lists_every_test_support_crate` enforces it.
 cimmeria-test-support = { workspace = true }
+# A span-scope layer for the `minigame.connection` guard
+# (server/connection_span_tests.rs): `LogCapture` does not record which span
+# an event was logged in.
+tracing-subscriber = { workspace = true }

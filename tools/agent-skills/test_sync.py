@@ -65,6 +65,51 @@ class SyncTest(unittest.TestCase):
         self.assertIn("hand-written", str(raised.exception))
         self.assertEqual((hand / "SKILL.md").read_text(encoding="utf-8"), SKILL)
 
+    def test_links_leaving_the_skill_are_repointed(self):
+        body = (
+            "[agent](../../agents/lab-driver.md) [doc](../../../docs/x.md#part) "
+            "[local](extra.md) [web](https://example.org/a) [here](#top)\n"
+        )
+        (self.repo / ".claude/skills/demo/SKILL.md").write_text(SKILL + body, encoding="utf-8")
+        self.run_sync()
+        text = (self.repo / ".agents/skills/demo/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("[agent](../../../.claude/agents/lab-driver.md)", text)
+        # Same depth on both sides, so repo-level links come out unchanged.
+        self.assertIn("[doc](../../../docs/x.md#part)", text)
+        self.assertIn("[local](extra.md)", text)
+        self.assertIn("[web](https://example.org/a)", text)
+        self.assertIn("[here](#top)", text)
+        self.assertEqual(self.run_sync("--check"), 0)
+
+    def test_codex_agent_from_claude_agent(self):
+        agents = self.repo / ".claude/agents"
+        agents.mkdir(parents=True)
+        (agents / "lab-driver.md").write_bytes(
+            (
+                '---\nname: lab-driver\ndescription: "Drives the client; says \\"hi\\"."\n'
+                "model: haiku\nmcpServers:\n  - cimmeria-lab\neffort: low\n---\n\n"
+                "Rules with a back\\slash and \"quotes\".\nSecond line.\n"
+            ).replace("\n", "\r\n").encode()
+        )
+        self.run_sync()
+        out = self.repo / ".codex/agents/lab-driver.toml"
+        data = out.read_bytes()
+        self.assertNotIn(b"\n", data.replace(b"\r\n", b""), "CRLF source keeps CRLF")
+        text = data.decode()
+        self.assertIn('name = "lab-driver"', text)
+        self.assertIn('description = "Drives the client; says \\"hi\\"."', text)
+        self.assertIn('model_reasoning_effort = "low"', text)
+        self.assertIn("developer_instructions = '''\r\nRules with a back\\slash", text)
+        self.assertTrue(text.endswith("Second line.\r\n'''\r\n"))
+        self.assertEqual(self.run_sync("--check"), 0)
+        try:
+            import tomllib
+        except ImportError:  # Python < 3.11
+            return
+        parsed = tomllib.loads(text)
+        self.assertEqual(parsed["description"], 'Drives the client; says "hi".')
+        self.assertTrue(parsed["developer_instructions"].startswith("Rules with a back\\slash"))
+
     def test_crlf_source_keeps_crlf(self):
         (self.repo / ".claude/skills/demo/SKILL.md").write_bytes(SKILL.replace("\n", "\r\n").encode())
         self.run_sync()

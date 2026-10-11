@@ -21,20 +21,28 @@ async fn send_combat_exits(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    for (player_id, new_state) in exits {
+    for (entity_id, new_state) in exits {
+        // `exits` holds player *entity* ids; the sgw `player_id` comes from
+        // the entity's identity (TG-NPC-07: this row logged the entity id as
+        // `player_id`).
+        let who = space_mgr.player_identity(entity_id);
         tracing::debug!(
             target: "npc_ai.leash",
             event = "player_combat_exit",
             npc_id,
             npc_name = space_mgr.entity_label(npc_id),
-            player_id,
-            player_name = space_mgr.entity_label(player_id),
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             new_state,
             new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "NPC gave up: player's last threatening mob drained, BSF_InCombat cleared"
         );
         crate::cell::abilities::send_entity_method(
-            player_id,
+            entity_id,
             crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
             new_state.to_le_bytes().to_vec(),
             tx,
@@ -263,4 +271,55 @@ pub(in crate::cell::service::npc_ai) async fn begin_leash(
         },
         now,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use cimmeria_entity::cell_entity::AiState;
+
+    use crate::test_fixtures::npc_detectors::{
+        add_npc, add_threat_player, castle_mgr, NPC, PLAYER,
+    };
+    use crate::test_support::LogCapture;
+
+    /// The fixture player's sgw `player_id`, deliberately not its entity id
+    /// (101), so a row that logs the entity id as `player_id` is caught.
+    const SGW_PLAYER_ID: i32 = 4242;
+
+    /// TG-NPC-07 revert proof: log the drained player's entity id as
+    /// `player_id` again and `player_id` reads 101, not 4242, and
+    /// `entity_id` is gone.
+    #[tokio::test]
+    async fn player_combat_exit_logs_entity_and_sgw_player_id() {
+        let mut mgr = castle_mgr();
+        add_npc(
+            &mut mgr,
+            "Castle",
+            [0.0; 3],
+            Some([0.0; 3]),
+            AiState::Fighting,
+        );
+        add_threat_player(&mut mgr, "Castle", [10.0, 0.0, 0.0]);
+        {
+            let p = mgr.get_entity_mut(PLAYER).unwrap();
+            p.account_id = Some(6);
+            p.player_id = Some(SGW_PLAYER_ID);
+            p.character_name = Some("Teal'c".into());
+            p.stamp_log_names(Some("Teal'c"), Some("sgc_login"));
+        }
+        let _ = crate::cell::combat::enter_player_combat(&mut mgr, PLAYER, NPC);
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let logs = LogCapture::install();
+        super::drain_player_combat(NPC, &tx, &mut mgr).await;
+        let all = logs.all();
+        let row = all
+            .iter()
+            .find(|c| c.target == "npc_ai.leash" && c.has_field("event", "player_combat_exit"))
+            .unwrap_or_else(|| panic!("the player_combat_exit row: {all:#?}"));
+        assert!(row.has_field("entity_id", "101"), "{row:?}");
+        assert!(row.has_field("player_id", "4242"), "{row:?}");
+        assert!(row.has_field("player_name", "Teal'c"), "{row:?}");
+        assert!(row.has_field("account_id", "6"), "{row:?}");
+        assert!(row.has_field("account_name", "sgc_login"), "{row:?}");
+    }
 }

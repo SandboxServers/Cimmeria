@@ -429,17 +429,17 @@ pub(crate) async fn remove_members(
     Ok(removed)
 }
 
-/// Find player_ids of all players who have `player_name` in any of their
-/// contact lists. Used for the login/logout presence fanout (Phase 4).
-///
-/// Returns distinct `player_id` values — a player may have the same name in
-/// multiple lists but should only receive one event.
-pub(crate) async fn find_watchers(
+/// Find `(player_id, flags)` for every contact list that holds `player_name`,
+/// one row per distinct owner and list flags. Used for the login/logout
+/// presence fanout (Phase 4); the flags tell an Ignore-list watcher (301)
+/// from a Friends-list one. A player may appear in several rows, so callers
+/// dedupe by `player_id`.
+pub(crate) async fn find_watchers_with_flags(
     pool: &PgPool,
     player_name: &str,
-) -> Result<Vec<i32>, sqlx::Error> {
-    let rows: Vec<i32> = sqlx::query_scalar(
-        "SELECT DISTINCT cl.player_id \
+) -> Result<Vec<(i32, i32)>, sqlx::Error> {
+    let rows: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT DISTINCT cl.player_id, cl.flags \
          FROM sgw_contact_list_member m \
          JOIN sgw_contact_list cl USING (list_id) \
          WHERE m.player_name = $1",

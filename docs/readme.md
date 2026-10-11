@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->853<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,122<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,283<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,472<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,753<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->858<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,414<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,334<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,625<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,760<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -119,7 +119,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Desktop launcher engine](../crates/launcher/desktop/README.md) | Tauri settings shell, native state and Effect workflows, persistence UAT and remaining game integration gates |
 | [Desktop Play integration](analysis/playtests/2026-10-03-macos-wine/worknotes/play-integration.md) | Native-owned launch, Effect lifecycle controls and persistence UAT boundaries |
 | [Desktop updater parity research](analysis/playtests/2026-10-03-macos-wine/worknotes/updater-parity-research.md) | Legacy checksum trust, signed Tauri packages and remaining native recovery contracts |
-| [Desktop launcher release](../crates/launcher/desktop/docs/release.md) | What `/release-launcher` builds for the desktop launcher, the Windows preview's limits, and why macOS is deferred |
+| [Desktop launcher release](../crates/launcher/desktop/docs/release.md) | What `/release-launcher` builds and publishes for the desktop launcher: the Windows zip and its signed updater feed, the ad-hoc signed macOS zip, the jobs and what each can see, and how to recover a failed run |
 | [Desktop signed package updater](../crates/launcher/desktop/docs/updater.md) | Settings check/download, signed-version verification and remaining Apply/recovery gates |
 | [Existing-user adoption contract](analysis/playtests/2026-10-03-macos-wine/worknotes/adoption-contract-audit.md) | Verified separate-copy migration, effective settings and installed Update requirements |
 | [Native launch ownership fix](analysis/playtests/2026-10-03-macos-wine/worknotes/launcher-launch-lock-fix.md) | Locked-handle launch preparation regression and native Windows validation handoff |
@@ -432,6 +432,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [re-toolchain-setup.md](guides/re-toolchain-setup.md) | **Start here for RE.** End-to-end setup for Ghidra, x64dbg, MCP bridges, and `.mcp.json`. Includes the `pwsh setup.ps1 -WithReToolchain` automated path. | Complete |
 | [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
 | [live-research-lab.md](guides/live-research-lab.md) | **How-to + rulebook.** The "ask the running game" path: the experiment loop, the seven research rules, the merged `lab_timeline` window, and the free SigNoz Lua-VM check. Operating manual for the ADR at [architecture/live-research-lab.md](architecture/live-research-lab.md) | Complete |
+| [lab-contributor-setup.md](guides/lab-contributor-setup.md) | **How-to. Start here for the lab on your own machine.** Fresh clone to a passing `lab_uat_run` row against a local server: prerequisites, the secrets table (what each token is for, who makes it, where it lives), `LoginInternal.lua` and `lab-account.json`, the daemon and `labd.env`, MCP registration for Claude Code and Codex, `lab doctor`, troubleshooting. No colo, VPN, SigNoz or Key Vault | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
 | [placing-npcs-and-objects.md](guides/placing-npcs-and-objects.md) | **How-to (content authors).** Spawn, move, turn and remove NPCs and objects in-game with the `.`-console (`.movehere`, `.lookat`, `.savespawn`), confirm with `.seedconfirm`, and hand the batch id to a developer; ends with how a developer merges a batch from SigNoz into `spawnlist.sql` | Complete |
@@ -540,6 +541,7 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
 | [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
 | [ability-client-hook-anchors.md](reverse-engineering/findings/ability-client-hook-anchors.md) | — | Ability client hook anchors (AB-C0): outgoing-RPC seam with named arguments, Mercury sequence assignment, the press path and every silent drop branch (the `AbilitySet` not-found branch at `0x00d2afcf`), inbound payload seams, effect/cooldown/stat/state apply points, hook-gate bytes | HIGH (VERIFIED/INFERRED/UNRESOLVED marked per seam) |
+| [method-116-on-teleport.md](reverse-engineering/findings/method-116-on-teleport.md) | — | `onPlayerTeleport` (116) has no client handler for any class (TG-MOV-09): why `SGWGmPlayer` drops it, what the forced-position path does instead, options for D-TG17 | HIGH (static; streaming-wait mechanism UNRESOLVED) |
 | [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md) | — | Native combat debug (AB-N0): `onSendCombatDebug`/`onSendEventDebug` are server-internal, not client methods; the four `gmDebug*` NetOut events, slash keywords, non-GM drop, the chat-line path for debug text | HIGH |
 | [right-click-routing-on-corpse.md](reverse-engineering/findings/right-click-routing-on-corpse.md) | — | Right-click routing on corpses: why some corpses fail to open the loot window | HIGH |
 | [cooked-data-pipeline.md](reverse-engineering/findings/cooked-data-pipeline.md) | — | Cooked-data pipeline binary findings: PAK read path, resource delivery | HIGH |

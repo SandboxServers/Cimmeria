@@ -87,6 +87,10 @@ fn the_row_carries_state_world_geometry_and_reason() {
         "a path failure is a per-zone content problem — without `world` \
          it cannot be triaged to a map: {ev:#?}"
     );
+    assert!(
+        ev.fields.contains_key("space_id"),
+        "the NPC stands in a space, so the row names it: {ev:#?}"
+    );
     assert!(ev.fields.contains_key("dist"), "{ev:#?}");
     assert!(
         ev.fields.contains_key("dy"),

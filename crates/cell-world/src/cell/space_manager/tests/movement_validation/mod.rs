@@ -27,6 +27,8 @@
 //!   minimum distance, players-only, navmesh state).
 //! - [`telemetry_lifecycle`] — release of that per-entity state on every
 //!   teardown path, and the recycled-id window it protects.
+//! - [`telemetry_teleport`] — the `movement.teleport` row every
+//!   server-authoritative move writes, and its off-mesh WARN.
 //!
 //! Neither changes a validation decision; they live here because they
 //! need this module's real-navmesh fixture.
@@ -97,3 +99,4 @@ mod recovery;
 mod telemetry_lifecycle;
 mod telemetry_reject;
 mod telemetry_sampling;
+mod telemetry_teleport;

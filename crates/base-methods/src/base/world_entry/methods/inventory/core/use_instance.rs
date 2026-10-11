@@ -172,7 +172,9 @@ pub async fn handle_use_inventory_item(
             {
                 return;
             }
-            tracing::warn!(
+            tracing::info!(
+                event = "use_refused",
+                reason = "entity_missing",
                 player_id,
                 player_name = known_names::player_name(player_id),
                 item_id, // nt:id-only instance id, type unread yet

@@ -27,11 +27,12 @@ fn launch_of(all: &[Captured], eid: u32) -> Option<Captured> {
         .cloned()
 }
 
-/// The `target_killed` row whose `attacker` is `attacker`.
+/// The `target_killed` row whose `attacker_id` is `attacker`.
 fn kill_by(all: &[Captured], attacker: u32) -> Option<Captured> {
     all.iter()
         .find(|c| {
-            c.has_field("event", "target_killed") && c.has_field("attacker", &attacker.to_string())
+            c.has_field("event", "target_killed")
+                && c.has_field("attacker_id", &attacker.to_string())
         })
         .cloned()
 }

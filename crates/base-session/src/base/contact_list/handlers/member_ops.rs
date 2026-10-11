@@ -218,7 +218,18 @@ pub async fn announce_added_members(
     // adder sees them online immediately. Mirrors the login reverse
     // sync (`notify_online_contacts`); without it, a freshly-added
     // online friend stays dim until one side relogs.
-    super::notify_online_contacts(entity_id, added, transport, connected, entity_to_addr).await;
+    // An Ignore list never gets presence (D-TG10). A header lookup failure
+    // also skips the announcement, so an unknown list cannot leak.
+    let announce_presence = match db_pool {
+        Some(pool) => matches!(
+            load_list_header(pool, player_id, list_id).await,
+            Ok(Some((_, flags))) if flags != IGNORE_LIST_FLAGS
+        ),
+        None => true,
+    };
+    if announce_presence {
+        super::notify_online_contacts(entity_id, added, transport, connected, entity_to_addr).await;
+    }
     resync_if_ignore_list(
         entity_id,
         player_id,

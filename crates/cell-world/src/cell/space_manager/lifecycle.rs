@@ -8,6 +8,20 @@ use cimmeria_entity::space::Space;
 
 use super::{SpaceInstance, SpaceManager, GRID_CELL_SIZE};
 
+/// `movement_navmesh_missing_total{world, reason}`: one per space created
+/// without a navmesh, beside its `movement.navmesh` WARN.
+const METRIC_NAVMESH_MISSING: &str = "movement_navmesh_missing_total";
+
+cimmeria_observability::metric_label! {
+    /// Why a space was created without a navmesh.
+    pub enum NavmeshMissingReason {
+        /// No `.nav` file for the world or its client map.
+        Missing => "missing",
+        /// A `.nav` file exists but did not load.
+        LoadFailed => "load_failed",
+    }
+}
+
 impl SpaceManager {
     /// Allocate the next space ID using the `(cell_id << 16) | local_index` scheme.
     pub fn allocate_space_id(&mut self) -> u32 {
@@ -43,6 +57,11 @@ impl SpaceManager {
                     Some(nm)
                 }
                 Err(e) => {
+                    cimmeria_observability::counter!(
+                        METRIC_NAVMESH_MISSING,
+                        "world" => world_name.to_string(),
+                        "reason" => NavmeshMissingReason::LoadFailed.label(),
+                    );
                     tracing::warn!(target: "movement.navmesh", space_id, world = %world_name,
                         world_id, path = %file.path.display(), file_source = file.source.label(),
                         error = %e, reason = "navmesh_load_failed",
@@ -56,6 +75,11 @@ impl SpaceManager {
                 // `has_line_of_sight` / `is_position_valid` -> true), so
                 // NPCs in this space path blind through geometry. That is
                 // not an "optional" condition, so surface it.
+                cimmeria_observability::counter!(
+                    METRIC_NAVMESH_MISSING,
+                    "world" => world_name.to_string(),
+                    "reason" => NavmeshMissingReason::Missing.label(),
+                );
                 tracing::warn!(target: "movement.navmesh", space_id, world = %world_name,
                     world_id, path = %nav_path.display(), reason = "navmesh_missing",
                     "navmesh: no .nav file for space or its client map -- NPCs here path in straight lines through geometry and LoS/position checks fail open");
@@ -301,5 +325,41 @@ impl SpaceManager {
                 "Destroyed instanced space (last player left)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use cimmeria_observability::testing::{counter_total, install as install_meter};
+
+    /// A space for a world with no `.nav` (in its own or its client map's
+    /// name) logs the `navmesh_missing` WARN and counts one `missing` row
+    /// under its world. Fails if the counter is removed from the no-mesh arm.
+    #[test]
+    fn navmesh_missing_warns_and_counts_by_world() {
+        install_meter();
+        let logs = LogCapture::install();
+        let world = "NoNavmeshTestWorld";
+        let dir =
+            std::env::temp_dir().join(format!("cimmeria-navmesh-missing-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let labels = [("world", world), ("reason", "missing")];
+        let before = counter_total(METRIC_NAVMESH_MISSING, &labels);
+        let mut mgr = SpaceManager::new(1);
+        mgr.space_data_dir = dir.clone();
+        mgr.create_space_instance(9001, world);
+        let after = counter_total(METRIC_NAVMESH_MISSING, &labels);
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(
+            logs.find_message(tracing::Level::WARN, "no .nav file")
+                .is_some(),
+            "a world with no navmesh must WARN"
+        );
+        assert_eq!(after - before, 1, "one missing row per no-mesh space");
+        assert!(mgr.spaces[&9001].navmesh.is_none());
     }
 }

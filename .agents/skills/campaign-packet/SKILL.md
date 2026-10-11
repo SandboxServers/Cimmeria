@@ -71,7 +71,7 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 
 - One worktree and one test database (`sgw_<worktree>`) per worker. Never
   run two implementers in one checkout.
-- Implementer: the [`packet-coder`](../../agents/packet-coder.md) agent (a
+- Implementer: the [`packet-coder`](../../../.claude/agents/packet-coder.md) agent (a
   Haiku-tier coder that edits only the named files, compiles through the lane
   and commits locally). A packet that needs judgment goes to
   `rust-gameserver-dev` with the same brief instead.
@@ -86,7 +86,7 @@ pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <worktree-name>
 ## 4. Review, fix, ship
 
 1. Run an adversarial read-only reviewer on the packet's diff: the
-   [`packet-reviewer`](../../agents/packet-reviewer.md) agent (Sonnet tier),
+   [`packet-reviewer`](../../../.claude/agents/packet-reviewer.md) agent (Sonnet tier),
    plus the matching domain advisor or `server-authority-enforcer` when the
    packet touches their area. Give it the worktree, the commit range and
    the packet spec.

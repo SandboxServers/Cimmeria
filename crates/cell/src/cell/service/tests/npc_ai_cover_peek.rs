@@ -194,6 +194,15 @@ async fn hallway02_guard_in_cover_holds_fire_through_the_wall() {
             .any(|c| c.has_field("decision_outcome", "cover_no_shot")),
         "held fire: {rows:#?}"
     );
+    let held_row = rows
+        .iter()
+        .find(|c| c.has_field("decision_outcome", "cover_no_shot"))
+        .expect("the cover_no_shot row");
+    assert!(
+        held_row.fields.get("world").is_some_and(|w| w != "unknown"),
+        "the cover row names its world: {held_row:#?}"
+    );
+    assert!(held_row.fields.contains_key("space_id"), "{held_row:#?}");
     assert!(
         !rows
             .iter()

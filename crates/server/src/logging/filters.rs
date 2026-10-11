@@ -287,6 +287,20 @@ use crate::otel;
 /// draws and returns, damage modifiers and loot drops (DEBUG) and their
 /// refusals (WARN). AM-F adds the row before any DEBUG emitter exists so no
 /// Wave-1 packet has to edit this file.
+///
+/// `db.pool` (TG-DB-06) is the database pool: INFO `db_pool_configured` at
+/// connect, a DEBUG `size` / `idle` sample every 15 s, and WARN
+/// `db_pool_saturated` (Pattern D, 60 s) when no connection is free. `debug`
+/// so the samples reach SigNoz. sqlx's own slow-statement WARN (250 ms) rides
+/// `sqlx::query`, which is `info` (TG-DB-11, D-TG8): that WARN and the
+/// `sqlx::pool::acquire` WARN export, the per-statement DEBUG rows do not.
+///
+/// `cimmeria_content_engine::conditions=debug` (TG-MIS-13) exports the content
+/// engine's fail-closed condition rows, invisible under the leading `info`.
+/// The crate row stays at `info` (`every_in_process_crate_has_its_own_otel_row`):
+/// `chain` logs a DEBUG row per matching chain per event, too many to export;
+/// `content.resolve` already carries the resolve outcome. The `mission=info` row went:
+/// no target emits under the bare `mission` prefix.
 pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
@@ -321,6 +335,8 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_chatter=debug,\
                 cimmeria_cell_org=debug,\
                 cimmeria_cell_effect_scripts=debug,\
+                cimmeria_content_engine=info,\
+                cimmeria_content_engine::conditions=debug,\
                 cimmeria_base_crafting=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
@@ -339,6 +355,8 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
                 aoi.introduce=debug,\
+                aoi.appearance=debug,\
+                aoi.bundle_manifest=debug,\
                 base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
@@ -353,14 +371,16 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 threat=info,\
                 auth=info,\
                 world_entry=info,\
-                vendor=info,progression=info,inventory=info,mission=info,\
+                vendor=info,progression=info,inventory=info,\
                 abilities=debug,\
                 crafting=debug,\
                 content.resolve=debug,\
                 dialog.display=debug,\
                 mission.step_context=debug,\
+                mission.step_anchor=info,\
                 movement.movement_type=debug,\
                 movement.position_sample=debug,\
+                movement.teleport=debug,\
                 movement.validation=debug,\
                 player.journal=debug,player.respawn=debug,\
                 trade.atomic_swap=debug,\
@@ -376,7 +396,8 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 launcher=debug,\
                 launcher.key_dump=off,\
                 cimmeria_discord=debug,\
-                sqlx::query=debug,\
+                db.pool=debug,\
+                sqlx::query=info,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
 

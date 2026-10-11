@@ -27,14 +27,19 @@ A platform contains `url` and the base64-encoded Minisign signature document.
 HTTP 204 means no offer. Stable SemVer must have greater precedence than the
 compiled native version; build metadata does not turn an equal version into a
 newer release. Prerelease offers are not accepted in this stable channel.
+An installed prerelease counts as its base version: a same-day rebuild
+`2026.10.11-2` ([release](release.md#version-and-tag)) is not offered
+`2026.10.11` or anything older, which SemVer alone would order above it, and is
+offered `2026.10.12`.
 
 Verification follows [Tauri updater v2.13.1's pinned implementation](https://github.com/tauri-apps/plugins-workspace/blob/e51128438011755f9e7277bad29b8c0978cf281c/plugins/updater/src/updater.rs):
 `minisign-verify` 0.2.4 verifies both artifact and global signatures before reading
 the trusted comment. Exactly one tab-separated `version:` field must equal the
 announced SemVer. Thus an old signed artifact relabeled as a new release fails.
 The implementation rejects duplicate version fields, more strictly than Tauri's
-first-match parser. Release automation must still pin and test a Tauri CLI that
-emits this field; signing and publishing belong to the release workflow (LX-15).
+first-match parser. The release workflow signs with this field and checks the
+result with the engine's own verification before publishing (LX-15,
+[release](release.md#the-signed-feed)).
 
 Transport requires HTTPS, port 443, an exact native host allowlist, no URL
 credentials or fragments, and at most four followed redirects. Every redirect

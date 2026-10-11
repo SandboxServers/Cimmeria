@@ -40,6 +40,7 @@ use cimmeria_mercury::packet::{
 };
 use cimmeria_mercury::transport::Transport;
 
+use super::bundle_manifest::{log_bundle_manifest, BundleManifestEntry, ManifestSend};
 use super::reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
 use super::{BundleSendOutcome, ConnectedClientState, WitnessSendOutcome};
 
@@ -333,7 +334,9 @@ async fn send_oversize_as_bundle(
     );
     let mut bundle = ChannelBundle::new(true);
     bundle.append_raw_message(body);
-    match send_bundle_reliable_to_addr(transport, connected, addr, log_id, bundle, kind).await {
+    // One raw body, not a flush: no per-message manifest.
+    match send_bundle_reliable_to_addr(transport, connected, addr, log_id, bundle, kind, &[]).await
+    {
         BundleSendOutcome::Sent {
             addr,
             base_seq,
@@ -359,7 +362,9 @@ async fn send_oversize_as_bundle(
 ///
 /// See [`super::send_bundle_to_witness_reliable`] for the sequence
 /// reservation contract. `log_id` is the entity the log lines name; `kind`
-/// is the `send_kind` each registered fragment carries.
+/// is the `send_kind` each registered fragment carries. `manifest` is the
+/// per-message list an `aoi_flush_*` bundle logs on `aoi.bundle_manifest`
+/// (TG-AOI-09); empty for every other source.
 pub(super) async fn send_bundle_reliable_to_addr(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -367,6 +372,7 @@ pub(super) async fn send_bundle_reliable_to_addr(
     witness_id: u32,
     mut bundle: ChannelBundle,
     kind: &'static str,
+    manifest: &[BundleManifestEntry],
 ) -> BundleSendOutcome {
     let send_data = {
         let clients = connected.lock().unwrap();
@@ -471,6 +477,18 @@ pub(super) async fn send_bundle_reliable_to_addr(
             packets.len()
         );
     }
+    // Which entity sits at which body offset, so a client `unpack_fault`
+    // offset in this bundle names the message it lost.
+    log_bundle_manifest(&ManifestSend {
+        addr,
+        witness_id,
+        witness_name,
+        kind,
+        base_seq,
+        messages: num_messages,
+        packets: packets.len(),
+        entries: manifest,
+    });
 
     for (i, pkt) in packets.iter().enumerate() {
         let frag_seq = base_seq.wrapping_add(i as u32) & SEQUENCE_MASK;
