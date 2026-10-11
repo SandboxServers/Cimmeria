@@ -828,6 +828,17 @@ Each save writes through `PersistPosition` and `BandolierAmmoUpdate`'s writers, 
 
 `player_state_not_persisted` is conservative: it can over-report. A save the base aborts at the deadline may already have committed its write, and a write that lands after the cell stopped waiting still counts as missed, so a player it names may in fact be saved. It never under-reports. While the cell waits for the base's answer it does not drain base-to-cell messages; anything the base sends the cell in that window is handled (or dropped) by the shutdown that follows.
 
+### Sessions open at stop (TG-NET-10)
+
+After the cell's flush, `BaseService::stop` (`crates/base/src/base/service.rs`) ends the session row of every session still holding a player entity. It only logs; nothing is torn down, and it adds no await to the stop.
+
+| Level | Row | When |
+|---|---|---|
+| INFO | target `session.end`, `disconnect_reason = "server_shutdown"`, identity, `entity_id`, `entity_name`, `addr`, `session_secs` | Once per session with a player entity. Without it, a stop left those sessions with a `session.start` and no end |
+| INFO | `sessions_open_at_stop` (every session in the map, account-only ones included), `sessions_ended` | Once per stop |
+
+Guard: `service.rs` `tests::stop_ends_each_live_session`.
+
 ## Logout position persistence (TG-DB-04)
 
 `PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.
