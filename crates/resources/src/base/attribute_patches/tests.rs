@@ -5,8 +5,8 @@
 use std::io::Read;
 
 use super::{
-    generate_error_text_xml, ATTRIBUTE_PATCHES, CATEGORY_ABILITIES, CATEGORY_ERROR_STRINGS,
-    ERROR_STRING_ADDITIONS, MEDKIT_ICON,
+    bump_for, generate_error_text_xml, ATTRIBUTE_PATCHES, CATEGORY_ABILITIES,
+    CATEGORY_ERROR_STRINGS, ERROR_STRING_ADDITIONS, MEDKIT_ICON,
 };
 use crate::base::resources::ResourceCache;
 
@@ -247,8 +247,42 @@ fn every_bump_is_non_zero_and_stable() {
     assert_eq!(super::bump_for(CATEGORY_ERROR_STRINGS), PINNED_ERROR_BUMP);
 }
 
-/// FNV-1a of the two Medkit patches (computed independently in Python).
-const PINNED_ABILITIES_BUMP: u32 = 0x4d34_0d53;
-/// FNV-1a of the error-string text patches (42, 10000-10003) and the 20001
-/// addition's generated entry (computed independently in Python).
-const PINNED_ERROR_BUMP: u32 = 0xae9c_cdd1;
+/// **Regression guard (2026-10-10).** The client reads a category version as
+/// signed 32-bit, so a served version at or above 2^31 never sticks and the
+/// category resyncs on every login (ErrorStrings was served at 2,929,517,722).
+/// Every patched category's served metadata must fit in `i32`, and its bump
+/// must stay below 2^30 so shipped metadata plus bump cannot overflow it.
+#[test]
+fn served_versions_fit_in_i32() {
+    let cache = ResourceCache::load_all(&data_dir()).expect("committed PAKs load");
+    // Every loaded category, not just the patched ones, so a later bump path
+    // (apply_overrides, metadata_bump) can't reintroduce the overflow unseen.
+    let mut checked = 0;
+    for category in 0..64 {
+        let Some(data) = cache.category(category) else {
+            continue;
+        };
+        checked += 1;
+        assert!(
+            data.metadata <= i32::MAX as u32,
+            "category {category} is served at {}, above i32::MAX",
+            data.metadata
+        );
+    }
+    assert!(checked >= 20, "only {checked} categories loaded");
+    for category in [CATEGORY_ERROR_STRINGS, CATEGORY_ABILITIES] {
+        assert!(
+            bump_for(category) < 1 << 30,
+            "category {category} bump {} must stay below 2^30",
+            bump_for(category)
+        );
+    }
+}
+
+/// The 30-bit FNV-1a of the two Medkit patches (computed independently in
+/// Python, then masked to 30 bits).
+const PINNED_ABILITIES_BUMP: u32 = 0x0d34_0d53;
+/// The 30-bit FNV-1a of the error-string text patches (42, 10000-10003) and
+/// the 20001 addition's generated entry (computed independently in Python,
+/// then masked to 30 bits).
+const PINNED_ERROR_BUMP: u32 = 0x2e9c_cdd1;
