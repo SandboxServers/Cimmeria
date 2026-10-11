@@ -56,6 +56,10 @@ CONDITIONAL = (
     "cargo nextest (cimmeria-lab, UAT specs)",
     "lab CLI PowerShell tests",
     "build-lane PowerShell tests",
+    # launcher-desktop.yml's matrix: the only build of the desktop launcher's
+    # macOS-only code, which a Windows workstation cannot compile.
+    "native-engine (macos-latest)",
+    "native-engine (windows-latest)",
 )
 PROTECTED = ("main", "master")
 

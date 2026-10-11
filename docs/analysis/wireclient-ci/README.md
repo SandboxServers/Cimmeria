@@ -7,12 +7,13 @@
 > flush tail drop). Packet specs: [work-packets.md](work-packets.md). ADR:
 > [wireclient.md](../../architecture/wireclient.md).
 >
-> **Campaign status (2026-10-10): waves 1 to 3 merged** (WC-01 to WC-10 and
-> WC-13; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are decided (option
-> (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is Ready. The
-> `wireclient e2e` job runs on every server PR but stays red, reporting only,
-> until #1371 (the three chaos tests, failing on `main` since late September)
-> is fixed; WC-16 cannot pass until then.
+> **Campaign status (2026-10-11): waves 1 to 3 and WC-18 merged** (WC-01 to
+> WC-10, WC-13, WC-18; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are
+> decided (option (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is
+> Ready. WC-18 (#1447) fixed the three chaos tests (#1371, closed), so the
+> `wireclient e2e` job, still reporting only, passes. Linux CI moved to the
+> self-hosted `cimmeria-linux` runners on 2026-10-11 (#1410); WC-16's
+> shakedown counts green runs there.
 
 ## Purpose
 
@@ -59,6 +60,7 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | F16 | The ADR's Phase 7 plan, a profile that serialises the suite because "parallel runs would corrupt shared state", is out of date. nextest runs each test in its own process (so the `chdir` and globals are per test), every port is ephemeral with retry, and the `live-db` test group gives each running test its own database clone. | D-WC6, WC-03 |
 | F17 | #1341's own evidence: the first-login flush packs one 11-byte `CREATE_ENTITY` plus one 26-byte avatar update per NPC into an 889-byte single-packet bundle. Any wire guard of the form "no quest-critical introduction after an avatar update in the first packet" fails on today's server, so the guard can land only with #1341's mitigation. The wire client itself cannot be fooled by the residue (it parses each message from its own header), which is why it needs a packet-level recorder, not a decoder change, to see the hazard. | D-WC8, WC-15 |
 | F18 | The ADR's TL;DR says the wire client drives the protocol "the way the original Flash client would have". The SGW client is Unreal Engine 3 with CEGUI; only the minigames are Flash. Wording only. | WC-17 |
+| F19 | #1371: three tests in `two_client_castle_visibility_chaos.rs` have failed since #1007 put 28 NPCs, some wandering, in the AoI of `CASTLE_BASE_POS`. There are two harness causes. (1) `LossyTransport` sleeps for the latency inside `send_to`/`recv_from`, and the base routes every cell message from one task, so at 80 ms the base drained about 10 messages a second while `EntityMoved` relays arrived far faster: the 256-slot channel stayed full, and B's `EntityCreated` reached the base 45 s late. (2) An idle `GameSession` never ACKs (ACKs ride only its own sends), so the server resent all 56 introduction packets on RTO (the burst test's targeted drop hit a retransmit, not B's create) and could resend only the 32-packet TX window (in the lossy test a loss past seq 41 was never resent, and B's create waited behind it). Neither affects real players: production sends never wait on the network, and the real client acks about six times a second. No aggro or combat traffic was involved. | WC-18 |
 
 ## Decisions
 
@@ -98,6 +100,7 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
 | WC-17 | Close-out: ADR, TESTING.md, status docs, #281 | documentation-writer | M | 8 | all | BlockedDependency |
+| WC-18 | Chaos tests vs a populated Castle (#1371): pipelined `LossyTransport` latency, keep-alive ACKs in the test waits | packet-coder | M | any | none | Done (#1447) |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
 
@@ -111,6 +114,8 @@ Waves (packets in one wave touch disjoint files and run in parallel):
 6. WC-14.
 7. WC-15 (when #1341 has decided), WC-16.
 8. WC-17.
+
+WC-18 touches no other packet's files and can run in any wave.
 
 ## Dispatch rules
 
@@ -181,3 +186,12 @@ then the reference, not the spec.
 - **WC-13 (#1404).** As specified, plus `data/cache/**` in both path filters
   (the server loads those paks at startup). First run: 25 tests, 22 passed,
   3 failed, all three #1371.
+
+- **WC-18 (#1447).** Root cause by a `rust-gameserver-dev` investigation (F19),
+  implemented by a Haiku `packet-coder` and finished by the coordinator. Beyond
+  the spec: `LossyConfig::with_lossless_first_sends` (the wire client reads
+  the phase-3 handshake positionally, so the lossy scenario exempts its two
+  datagrams), and `lossy_transport.rs` split into `lossy_transport/mod.rs`
+  and `tests.rs`. First green Linux run:
+  https://github.com/SandboxServers/Cimmeria/actions/runs/38118805363/job/114409089613.
+  Details in [worknotes/WC-18.md](worknotes/WC-18.md).

@@ -348,10 +348,22 @@ class MergeTests(MergeCase):
         workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
         names = set()
         for wf in workflows.glob("*.yml"):
-            for line in wf.read_text(encoding="utf-8").splitlines():
+            lines = wf.read_text(encoding="utf-8").splitlines()
+            for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith("name:") and line.startswith("    name:"):
-                    names.add(stripped[len("name:"):].strip().strip("'\""))
+                    name = stripped[len("name:"):].strip().strip("'\"")
+                    if "${{ matrix.os }}" not in name:
+                        names.add(name)
+                        continue
+                    # A matrix job names one check per os: value in its own block.
+                    for later in lines[i + 1:]:
+                        if later.startswith("  ") and not later.startswith("   "):
+                            break   # the next job
+                        if later.strip().startswith("os: ["):
+                            for os_name in later.split("[", 1)[1].rstrip("]").split(","):
+                                names.add(name.replace("${{ matrix.os }}", os_name.strip()))
+                            break
         missing = [c for c in ship.CONDITIONAL if c not in names]
         self.assertEqual(missing, [], "CONDITIONAL names no job in .github/workflows")
 
