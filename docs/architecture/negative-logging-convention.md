@@ -157,6 +157,17 @@ The prefix is six characters, which is enough to correlate one login's events an
 
 Two deliberate exceptions remain. Credentials of six characters or fewer appear in full in `CredentialPrefix` output — there is nothing left to truncate — and the `UDP_IN` TRACE hex dump in `base/connect_loop/mod.rs` captures pre-encryption packet bytes, including the ticket field in `baseAppLogin`. That dump is required for wire-level debugging; production login tickets are long enough that the prefix rule still holds in practice.
 
+## Witness refusal causes (TG-AOI-05)
+
+A `RequestEntityUpdate` id that is not in the witness's AoI is refused at WARN with `reason = "not_in_witness_aoi"` and a `cause` that says why. The checks run in this order, so the first match wins:
+
+| `cause` | Meaning | Fields |
+|---|---|---|
+| `entity_gone` | The requested id names no entity in any space. | `witness_id`, `entity_id`, `reason` |
+| `other_space` | The entity exists in a different space from the witness. | `witness_id`, `entity_id`, `reason` |
+| `not_introduced_yet` | The witness is in the same space but has no AoI state yet, so the AoI tick has not introduced anything. | `witness_id`, `entity_id`, `reason` |
+| `outside_aoi` | The entity is in the same space and the witness has AoI state, but the entity is not in its witness set. | `witness_id`, `entity_id`, `reason` |
+
 ## Level discipline
 
 | Level | When |
@@ -301,7 +312,7 @@ warmup ability is the warmup tick, not the launch (AT-10).
 | `no_ability_def` | the ability has no loaded `resources.abilities` row | `source_id`, `target_id`, `ability_id`, `suppressed` |
 | `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
 | `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
-| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter within their AoI radius (the target's range does not count: a player who sees only the target cannot see the shooter), or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id` |
+| `no_witnesses` | the Ability_End went out to zero AoI witnesses, and a player is present (a player has the shooter within their AoI radius (the target's range does not count: a player who sees only the target cannot see the shooter), or the target or a threat-list entry is a player or a player's pet, deployable or lab dummy: `SpaceManager::player_present`, DA-F2). An NPC shooting an NPC with no player around writes nothing | same, plus `sequence_id`, `present_via` (`player_side`, `aoi` or `threat_list`) and `world`. A `threat_list` row (a player fighting the NPC from outside AoI) is DEBUG and not throttled; the other two are WARN |
 | `stance_not_announced` | the Ability_End reached a witness but the NPC's `BSF_InCombat` stance had not (the shot came from outside the Fighting pass, or the stance sync regressed): the client draws no muzzle flash, tracer or weapon sound | same, plus `sequence_id`, `witness_count` |
 
 This is a Pattern D seam with one deliberate difference: the throttle
@@ -861,6 +872,16 @@ An attack tick whose `handle_use_ability` call returns false (cooldown race, no 
 | WARN | target `npc_ai`, `event = "attack_not_fired"`, `reason = "handle_use_ability_returned_false"`, `npc_id` + `npc_name`, `template_id` + `template_name`, `world`, `space_id`, `target` + `target_name`, `suppressed` | An attack tick fired nothing; at most one row per NPC per 15 s |
 
 Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
+
+## Inert effect WARN (TG-CMB-03)
+
+An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `abilities.effect`, `event = "effect_inert"`, Rule 5 identity, `entity_id`, `entity_name` (the caster), `caster_kind` (`player` or `npc`), `ability_id`, `ability_name`, `effect_id`, `effect_name`, `target_id`, `target_name`, `target_player_id`, `target_player_name`, `suppressed` | An effect with no script and no NVP damage landed on a target (once per pair per 60 s) |
+
+Guards: `one_no_script_plan_warns_once`, `burst_writes_one_row_then_reports_suppressed` and `another_effect_id_is_not_swallowed` in `cell/abilities/effect_plan.rs` (`cimmeria-cell-combat`).
 
 ## Stale combat state (TG-CMB-02)
 
