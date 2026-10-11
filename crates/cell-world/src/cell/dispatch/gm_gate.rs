@@ -160,16 +160,21 @@ pub async fn enforce_gm_gate(
         return true;
     }
 
-    let access_level = space_mgr
-        .get_entity(entity_id)
-        .map(|e| e.access_level)
-        .unwrap_or(0);
+    let entity = space_mgr.get_entity(entity_id);
+    let access_level = entity.map_or(0, |e| e.access_level);
+    // Identity is `UNKNOWN` (all `None`) for a missing entity, so its fields
+    // are left out rather than logged as empty.
+    let id = space_mgr.player_identity(entity_id);
 
     let caller = access_level_from_u32(access_level);
     if caller.can_execute(REQUIRED) {
         tracing::info!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
             access_level,
@@ -181,13 +186,23 @@ pub async fn enforce_gm_gate(
     // Rejected. Loud `warn!` so an ops dashboard surfaces attempted
     // privilege escalation, with the structured fields needed to pivot
     // by caller + method.
+    let reason = if entity.is_some() {
+        "not_gm"
+    } else {
+        "entity_missing"
+    };
     tracing::warn!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         access_level,
         required = %REQUIRED,
+        reason,
         "GM-gated cell method rejected -- caller is not a GM (server-authority gate, #475)"
     );
 
@@ -381,5 +396,42 @@ mod tests {
             AccessLevel::Developer,
             "out-of-range level must clamp to most-privileged, never lose access"
         );
+    }
+
+    /// TG-NET-09: a non-GM's rejection is a WARN with the identity quartet and
+    /// `reason = "not_gm"`; a missing entity fails closed with
+    /// `reason = "entity_missing"` and no identity fields (never `""`).
+    #[tokio::test]
+    async fn gm_gate_rejects_carry_identity_and_reason() {
+        use crate::test_support::{make_space_manager_with_player, LogCapture};
+
+        let mut mgr = make_space_manager_with_player(1);
+        {
+            let e = mgr.get_entity_mut(1).unwrap();
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.access_level = 0;
+        }
+        let (tx, _rx) = mpsc::channel(8);
+
+        let capture = LogCapture::install();
+        assert!(!enforce_gm_gate(1, SGWGMPLAYER_CELL_METHOD_BASE, &tx, &mgr).await);
+        let rows = capture.all();
+        let row = rows
+            .iter()
+            .find(|c| c.level == tracing::Level::WARN && c.has_field("reason", "not_gm"))
+            .expect("WARN row with reason=not_gm");
+        assert!(row.has_field("player_id", "100"), "{row:?}");
+        assert!(row.has_field("entity_id", "1"), "{row:?}");
+
+        let capture = LogCapture::install();
+        assert!(!enforce_gm_gate(999, SGWGMPLAYER_CELL_METHOD_BASE, &tx, &mgr).await);
+        let rows = capture.all();
+        let row = rows
+            .iter()
+            .find(|c| c.level == tracing::Level::WARN && c.has_field("reason", "entity_missing"))
+            .expect("WARN row with reason=entity_missing");
+        assert!(!row.fields.contains_key("player_id"), "{row:?}");
+        assert!(!row.fields.contains_key("account_name"), "{row:?}");
     }
 }

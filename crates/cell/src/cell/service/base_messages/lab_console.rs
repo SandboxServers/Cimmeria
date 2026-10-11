@@ -42,14 +42,26 @@ pub(super) async fn handle_lab_console_exec(
     // `.`-console path in `crate::cell::chat`: authorization is on the
     // server-side `access_level` (from `account.accesslevel`), never a
     // client-asserted byte. An unknown entity is treated as access level 0.
-    let access_level = space_mgr
-        .get_entity(entity_id)
-        .map_or(0, |e| e.access_level);
+    let entity = space_mgr.get_entity(entity_id);
+    let access_level = entity.map_or(0, |e| e.access_level);
     if !console::is_gm(access_level) {
+        // A missing entity is `UNKNOWN` (all identity fields `None`), so its
+        // identity is left out of the row.
+        let id = space_mgr.player_identity(entity_id);
+        let reason = if entity.is_some() {
+            "not_gm"
+        } else {
+            "entity_missing"
+        };
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
             access_level,
+            reason,
             "LabConsoleExec rejected: acting entity is not a GameMaster"
         );
         let _ = reply_tx.send(Err(format!(
