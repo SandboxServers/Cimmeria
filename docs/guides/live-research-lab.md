@@ -1011,9 +1011,9 @@ lab doctor
 Output:
 
 - **Progress:** one line per run.
-- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known"), so a new failure stands out.
+- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out.
 - **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-Quiet` prints one line.
-- **Files.** Every batch writes `batch.jsonl` (one line per run, as each finishes), then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
+- **Files.** Every batch writes `plan.json` first: the section, the rows, the lanes (lane and instance), the runs per lease, the start time (UTC) and the `lab uat` pid. Then `batch.jsonl` (one line per run, as each finishes) with `Started` and `Ended` (UTC) on each line, then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
 
 ```powershell
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly

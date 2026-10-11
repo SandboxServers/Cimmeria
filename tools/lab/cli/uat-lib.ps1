@@ -25,12 +25,41 @@ $script:UatMaxRunsPerLease = 20
 $script:UatKnownIssues = @(
     @{ Issue = '#1341'; Rows = '^FS-[PS]2$'; Reason = 'movie-over'
        Note = 'client dropped the first-login entity batch (iterator residue)' }
+    @{ Issue = '#1343'; Rows = '.'; Reason = 'Login_PasswordEdit holds 0 characters'
+       Note = 'login password box read back empty on a slow-booting client' }
 )
 
+# The lab home's UAT folder for batches and runs (CIMMERIA_LAB_UAT_DIR, else the
+# lab home's uat-runs), so a batch folder sits next to its runs. Needs common.ps1.
+function Get-UatRoot {
+    $map = Get-LabdEnv
+    foreach ($raw in @($map['CIMMERIA_LAB_UAT_DIR'], $env:CIMMERIA_LAB_UAT_DIR)) {
+        if ("$raw".Trim()) { return "$raw".Trim() }
+    }
+    return Join-Path (Get-LabHome) 'uat-runs'
+}
+
+# The daemon's MCP URL, from labd.pid's bind (as Get-LabStatus reads it).
+function Get-LabMcpUrl {
+    $bind = '127.0.0.1:8779'
+    $info = Get-DaemonInfo
+    if ($info -and $info.PSObject.Properties.Name -contains 'bind' -and $info.bind) { $bind = [string]$info.bind }
+    return "http://$bind/mcp"
+}
+
+# The repo's spec folder when this runs from a checkout, else $null (the
+# daemon then uses its own default).
+function Get-DefaultSpecsDir {
+    $dir = Join-Path $PSScriptRoot '..\..\..\docs\guides\uat-specs'
+    if (Test-Path -LiteralPath $dir) { return (Resolve-Path -LiteralPath $dir).Path }
+    return $null
+}
+
 # A property of an object, or $null when it has none (strict mode throws on a missing one).
+# A dictionary (the lane's ordered records) is read by key.
 function Get-UatField($Object, [string]$Name) {
     if ($null -eq $Object) { return $null }
-    if ($Object -is [hashtable]) { return $Object[$Name] }
+    if ($Object -is [System.Collections.IDictionary]) { return $Object[$Name] }
     if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
     return $null
 }
@@ -185,6 +214,26 @@ function Read-UatRecords([string]$Path) {
     return @($out)
 }
 
+# The batch's plan.json, written once before any run starts: UTF-8 without a BOM.
+function Write-UatPlan([string]$Path, $Plan) {
+    [IO.File]::WriteAllText($Path, ($Plan | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
+}
+
+# A batch's plan.json as an object, or $null when it is missing or not JSON.
+function Read-UatPlan([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    try { return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json } catch { return $null }
+}
+
+# The known issue (its Issue, '#1341') for a failing row and reason: the first
+# entry whose Rows and Reason patterns both match, else $null.
+function Get-UatKnownIssue([string]$Row, [string]$Reason) {
+    foreach ($k in $script:UatKnownIssues) {
+        if ($Row -match $k.Rows -and $Reason -match $k.Reason) { return $k.Issue }
+    }
+    return $null
+}
+
 # One run's verdict from lab_uat_run's rows: Ok (every row PASS, or SKIPPED on a
 # plan), the first failing row and reason, and the known issue it matches.
 # Expected: the planned row ids; a run that reports fewer fails.
@@ -201,10 +250,7 @@ function Get-UatRunVerdict($Rows, [string[]]$Expected = @()) {
     if (-not $first) { return @{ Ok = $true; Row = $null; Result = $null; Reason = $null; Issue = $null } }
     $reason = Hide-LeaseIds ([string](@(Get-UatField $first 'reasons')[0]))
     $row = [string](Get-UatField $first 'row')
-    $issue = $null
-    foreach ($k in $script:UatKnownIssues) {
-        if ($row -match $k.Rows -and $reason -match $k.Reason) { $issue = $k.Issue; break }
-    }
+    $issue = Get-UatKnownIssue $row $reason
     return @{ Ok = $false; Row = $row; Result = [string](Get-UatField $first 'result'); Reason = $reason; Issue = $issue }
 }
 
@@ -330,4 +376,19 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("Batch: $BatchDir")
     return $sb.ToString()
+}
+
+# The progress line lab uat prints for one finished run (Record: Instance, Index,
+# Ok, Error, Verdict, Seconds), with Total runs per lease.
+function Format-UatProgressLine($Record, [int]$Total) {
+    $verdict = Get-UatField $Record 'Verdict'
+    $runError = Get-UatField $Record 'Error'
+    if ([bool](Get-UatField $Record 'Ok')) { $what = 'PASS' }
+    elseif ($runError) { $what = "ERROR $runError" }
+    else {
+        $issue = Get-UatField $verdict 'Issue'
+        $tag = if ($issue) { " [known $issue]" } else { '' }
+        $what = "FAIL $(Get-UatField $verdict 'Row'): $(Get-UatField $verdict 'Reason')$tag"
+    }
+    return ("[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds'))
 }
