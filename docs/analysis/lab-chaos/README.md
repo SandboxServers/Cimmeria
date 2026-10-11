@@ -91,7 +91,7 @@ the report so a run can be replayed exactly.
 |---|---|---|---|---|---|---|
 | CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Integrated |
 | CH-02 | `lab uat --chaos` in the PowerShell CLI | packet-coder | S | 2 | CH-01 | BlockedDependency |
-| CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Ready |
+| CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Integrated |
 | CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | BlockedDecision |
 | CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder | S | 3 | CH-04 | BlockedDependency |
 | CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDecision |
@@ -157,3 +157,9 @@ the code is then the reference, not the spec.
   `pack` → `records=24`, `shift` → `shift=sweep`), and a knob for another
   mode is refused. Anything named twice, empty segments and empty values
   are `BadValue`. Review fixes by the coordinator.
+- **CH-03.** `CpuStress::start` clamps `cores` and `duty_percent` itself
+  (the fields are public; a duty over 100 underflowed the idle time and
+  killed every thread silently). A panicked stressor thread logs a WARN on
+  join. `from_knobs` refuses a `+`-prefixed core count. Two tests beyond the
+  spec: clamping at start, and a refusal table for bad knob text. Review
+  fixes by the coordinator.
