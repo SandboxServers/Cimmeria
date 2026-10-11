@@ -328,9 +328,9 @@ The lab's `first-session` UAT rows FS-P2 to FS-P5 drive the real client through 
 | 6 | `interact` | the NID Guard body's entity id | `onDialogDisplay` 3996; step 80623 done, 80622 started; `onKnownAbilitiesUpdate` [597, 1218, 592, 594]; `onDialogDisplay` 5882 (the weapon tutorial) for the player |
 | 7 | `dialogButtonChoice` | 5882, -1 | |
 | 8 | `dialogButtonChoice` | 3996, -1 | |
-| 9 | `moveItem` (msg 166) | raw `[0, <pistol item id>, 3, 1, 1]`: the pistol to the bandolier, slot 1 (field meanings not confirmed) | `onSequence` 10000; step 80622 done; `onMissionUpdate` 622 status 1 (complete); `onSequence` 1872 |
+| 9 | `moveItem` (cell method 38, sent direct as msg `0xA6`) | the leading 0 is the entity-id prefix, then item id, bag 3 (the bandolier), slot 1 (1-based on the wire), quantity 1; checked against dispatch-table row 38 and the server handler | `onSequence` 10000; step 80622 done; `onMissionUpdate` 622 status 1 (complete); `onSequence` 1872 |
 
-- Entity ids are per space instance (Frost was 100402, 100659, 100705 and 100751 in four runs), so a script finds Frost and the body by template from `CREATE_ENTITY`: that needs the Phase 3 entity mirror.
+- Entity ids are per space instance (Frost was 100402, 100659, 100705 and 100751 in four runs), so a script has to identify Frost and the body some other way. `CREATE_ENTITY` carries no template id; identity comes from the messages that follow it (static mesh, name id, interaction type; Frost is template 14, mesh `CA-Props.CA-PrisonerCorpse00`, name id 7031). That is the Phase 3 entity mirror ([campaign](../analysis/wireclient-ci/README.md)).
 - A new character's first `CREATE_ENTITY` burst arrives 16 s after `onClientReady` (the first-login movie's AoI hold, `cinematic_aoi_hold::HOLD_DURATION`) unless the client sends `cancelMovie`.
 - The server's own record is the oracle: `sgw_mission` 622 status 2, 1360 status 1 (what the lab rows grade).
 - No server inventory message appears in the tap after `moveItem`; check whether the tap covers base-entity traffic before relying on it for inventory.
