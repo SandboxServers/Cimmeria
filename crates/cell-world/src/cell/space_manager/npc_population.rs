@@ -9,6 +9,8 @@
 //! `SpaceManager` (docs/architecture/services-crate-split.md §2B). The
 //! events keep landing in `spawner.log`: the file layer names this module.
 
+use std::collections::BTreeMap;
+
 use super::super::spawner::SpawnRecord;
 use super::SpaceManager;
 
@@ -25,9 +27,21 @@ use super::SpaceManager;
 )]
 pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceManager) -> usize {
     let mut count = 0;
+    // Records whose world is absent from spaces.xml, counted per world name and
+    // reported once per world below (a bad world name is one WARN, not one per row).
+    let mut unknown_worlds: BTreeMap<&str, usize> = BTreeMap::new();
+    // Records for a known instanced world: skipped by design, so no WARN.
+    let mut instanced_skipped = 0;
     for record in records {
         // Only spawn in spaces that already exist (startup/non-instanced spaces)
         if !space_mgr.has_space_for_world(&record.world_name) {
+            if space_mgr.worlds.contains_key(&record.world_name) {
+                instanced_skipped += 1;
+            } else {
+                *unknown_worlds
+                    .entry(record.world_name.as_str())
+                    .or_insert(0) += 1;
+            }
             continue;
         }
 
@@ -59,6 +73,23 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
             }
         }
     }
+    for (world, records) in unknown_worlds {
+        tracing::warn!(
+            target: "spawner",
+            event = "spawn_world_unknown",
+            world,
+            records,
+            "DB NPC records name a world not in spaces.xml; skipped"
+        );
+    }
+    if instanced_skipped > 0 {
+        tracing::debug!(
+            target: "spawner",
+            event = "spawn_instanced_skipped",
+            records = instanced_skipped,
+            "DB NPC records for instanced worlds skipped; spawned per instance"
+        );
+    }
     tracing::Span::current().record("spawned", count);
     tracing::info!(count, "DB-driven NPC population spawned (startup spaces)");
     count
@@ -74,7 +105,7 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
     name = "spawner.spawn_instance",
     level = "info",
     skip_all,
-    fields(world_name, space_id, record_count = records.len(), spawned = tracing::field::Empty),
+    fields(world_name, space_id, record_count = tracing::field::Empty, spawned = tracing::field::Empty),
 )]
 pub fn spawn_instance_npcs_from_records(
     records: &[SpawnRecord],
@@ -83,6 +114,13 @@ pub fn spawn_instance_npcs_from_records(
     space_mgr: &mut SpaceManager,
 ) -> usize {
     let mut count = 0;
+    let mut failed = 0;
+    // Only this instance's world counts: the list holds every world's rows.
+    let record_count = records
+        .iter()
+        .filter(|r| r.world_name == world_name)
+        .count();
+    tracing::Span::current().record("record_count", record_count);
     for record in records {
         if record.world_name != world_name {
             continue;
@@ -111,9 +149,20 @@ pub fn spawn_instance_npcs_from_records(
                     template_name = %record.template_name,
                     "Failed to spawn instance NPC: {e}"
                 );
+                failed += 1;
             }
         }
     }
+    tracing::info!(
+        target: "spawner",
+        event = "instance_populated",
+        world = world_name,
+        space_id,
+        record_count,
+        spawned = count,
+        failed,
+        "instance NPC population summary"
+    );
     tracing::Span::current().record("spawned", count);
     // `cover.coverage` for the new instance, now that its NPCs exist.
     space_mgr.log_cover_coverage(space_id);

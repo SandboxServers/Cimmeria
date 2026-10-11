@@ -34,7 +34,7 @@ pub(super) async fn spawn_placeholder_session(
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<SessionEnd>,
 ) {
     spawn_placeholder_session_with_idle(entity_id, ListenerLimits::default().idle_timeout).await
 }
@@ -46,7 +46,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<SessionEnd>,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -92,7 +92,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
             ReadState::empty(),
             idle_timeout,
         )
-        .await;
+        .await
     });
     (client, rx, handle)
 }
@@ -100,7 +100,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
 /// Wait until the server is in its game loop, then drop the socket. Reading
 /// first both keeps the server's writes from blocking and guarantees the
 /// close lands mid-game rather than mid-handshake.
-async fn drain_and_close(mut client: TcpStream) {
+pub(super) async fn drain_and_close(mut client: TcpStream) {
     read_until_game_begin(&mut client).await;
     drop(client);
 }

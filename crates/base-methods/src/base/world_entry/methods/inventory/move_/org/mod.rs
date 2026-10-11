@@ -465,7 +465,7 @@ async fn locked(
             return Err(OrgMoveRefusal::MoveFailed);
         }
     };
-    let shape = match choose_shape(tx, req, quantity, &source, occupant.as_ref()).await {
+    let shape = match choose_shape(tx, req, quantity, &source, occupant.as_ref(), ctx).await {
         Ok(shape) => shape,
         Err(Some(r)) => return Err(OrgMoveRefusal::Shared(r)),
         // Logged by `choose_shape`.

@@ -241,17 +241,39 @@ fn witness_audience(
             // An NPC nobody watches drops the method by design. It is only
             // a fault when a player is present: in AoI range of the NPC, or
             // in its fight (DA-F2: `SpaceManager::player_present`).
-            // NPC-vs-NPC with no player around writes nothing.
-            if witnesses.is_empty() && space_mgr.player_present(entity_id, None) {
-                tracing::warn!(
-                    target: "abilities.wire",
-                    event = "wire_npc_no_witnesses",
-                    entity_id,
-                    entity_name = space_mgr.entity_label(entity_id),
-                    method_index,
-                    method_name = space_mgr.client_method_name(entity_id, method_index),
-                    "send_entity_method: NPC has no witnesses, method dropped"
-                );
+            // NPC-vs-NPC with no player around writes nothing. A player who
+            // only sits on the threat list (outside AoI) logs DEBUG.
+            if witnesses.is_empty() {
+                if let Some(present_via) = space_mgr.player_present_via(entity_id, None) {
+                    let world = space_mgr
+                        .get_entity_world_name(entity_id)
+                        .unwrap_or_default();
+                    if present_via == "threat_list" {
+                        tracing::debug!(
+                            target: "abilities.wire",
+                            event = "wire_npc_no_witnesses",
+                            entity_id,
+                            entity_name = space_mgr.entity_label(entity_id),
+                            method_index,
+                            method_name = space_mgr.client_method_name(entity_id, method_index),
+                            present_via,
+                            world = %world,
+                            "send_entity_method: NPC has no witnesses, method dropped"
+                        );
+                    } else {
+                        tracing::warn!(
+                            target: "abilities.wire",
+                            event = "wire_npc_no_witnesses",
+                            entity_id,
+                            entity_name = space_mgr.entity_label(entity_id),
+                            method_index,
+                            method_name = space_mgr.client_method_name(entity_id, method_index),
+                            present_via,
+                            world = %world,
+                            "send_entity_method: NPC has no witnesses, method dropped"
+                        );
+                    }
+                }
             }
             witnesses
         }
