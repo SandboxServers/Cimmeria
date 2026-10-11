@@ -218,8 +218,10 @@ impl<'a> Sampler<'a> {
         }
         // Clicks already in the store came before this recording (the
         // `record` cursor outlives a recording, and the first one on an
-        // instance starts at the store's oldest event): skip them. A failure
-        // here shows again in tick 0's own read.
+        // instance starts at the store's oldest event): skip them. The pump
+        // first, so the ones still in the Lua ring are skipped too. A failure
+        // here shows again in tick 0's own pump and read.
+        let _ = s.client.pump().await;
         let _ = s.client.clicks().await;
         s.sample(&mut t, true).await;
         s.account(&t);

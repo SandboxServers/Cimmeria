@@ -104,6 +104,55 @@ fn a_click_with_a_server_call_in_the_same_tick_is_dropped() {
     assert!(!draft.text.contains("ActionBar_Slot1"), "{}", draft.text);
 }
 
+/// A hotbar click read a tick ahead of the `useAbility` it sent (row A ends
+/// at 37, row B anchors at 38) is row B's, dropped for its call: no row
+/// writes it as a `@window_click`.
+#[test]
+fn a_click_a_tick_before_its_ability_anchor_is_dropped() {
+    let mut log = fs_p3();
+    tick_mut(&mut log, 37)
+        .clicks
+        .push(click("ActionBarWin", "ActionBar_Slot1", Some("left")));
+    tick_mut(&mut log, 38)
+        .tap
+        .push(cell_call("useAbility", 68, &[1462, 8]));
+    let draft = transform(&log, &opts()).unwrap();
+    // REC-02 is written as comments: it recorded no server change.
+    assert!(draft.text.contains("id = \"REC-02\""), "{}", draft.text);
+    assert!(!draft.text.contains("ActionBar_Slot1"), "{}", draft.text);
+    assert!(!draft.text.contains("@window_click"), "{}", draft.text);
+}
+
+/// An item anchor never drops a title-bar close: no item call replays it,
+/// so it is a step and its window's closing needs no TODO. A click the
+/// anchor does drop explains nothing, so that closing stays a TODO.
+#[test]
+fn an_item_anchor_keeps_a_close_click_and_a_dropped_click_explains_nothing() {
+    const BAG_X: &str = "InventoryWin__auto_closebutton__";
+    for (button, kept) in [(BAG_X, true), ("InventoryWin_Slot3", false)] {
+        let mut log = fs_p3();
+        for seq in 34..=37 {
+            let windows = tick_mut(&mut log, seq).windows.as_mut().unwrap();
+            windows.push("InventoryWin".into());
+        }
+        let t = tick_mut(&mut log, 38);
+        t.tap.push(cell_call("useItem", 39, &[7001, 0]));
+        t.clicks.push(click("InventoryWin", button, Some("left")));
+        let draft = transform(&log, &opts()).unwrap();
+        assert!(draft.text.contains("id = \"REC-02\""), "{}", draft.text);
+        let step = format!("{{ tool = \"@window_click\", args = {{ target = \"{button}\" }}");
+        assert_eq!(draft.text.contains(&step), kept, "{button}: {}", draft.text);
+        assert_eq!(
+            draft
+                .text
+                .contains("# TODO window InventoryWin closed with no call"),
+            !kept,
+            "{button}: {}",
+            draft.text
+        );
+    }
+}
+
 /// Only a left click on a named widget is a step; everything else is a TODO
 /// line naming the click, and its window change is still explained.
 #[test]
@@ -123,6 +172,11 @@ fn a_right_click_stays_a_todo() {
         ),
         (
             click("TutorialWin", TUTORIAL_X, None),
+            "no mouse button was recorded",
+        ),
+        // The ring's unknown button.
+        (
+            click("TutorialWin", TUTORIAL_X, Some("")),
             "no mouse button was recorded",
         ),
         (

@@ -36,7 +36,7 @@ pub(super) fn click_lines(
     let mut out = Vec::new();
     for (at, c) in &row.clicks {
         let at = *at;
-        if c.window == WORLD_WIN && c.button == WORLD_WIN {
+        if !kept(row, at, c) {
             continue;
         }
         if let Some(why) = not_a_step(c) {
@@ -46,9 +46,6 @@ pub(super) fn click_lines(
                 one_line(&c.button)
             );
             out.push((at, Line::Todo(what)));
-            continue;
-        }
-        if replayed_by_a_call(row, at, c) {
             continue;
         }
         if is_lua_name(&c.window) {
@@ -82,6 +79,16 @@ pub(super) fn click_lines(
     out
 }
 
+/// Whether the click is written into the row, as a step or a TODO. Two
+/// kinds are dropped: a click on the bare world window, and a click its
+/// call already replays. The window walk counts only kept clicks as
+/// explaining a window closing, so a dropped one never hides a TODO.
+pub(super) fn kept(row: &RecordedRow, at: u32, c: &UiClick) -> bool {
+    let world = c.window == WORLD_WIN && c.button == WORLD_WIN;
+    let replayed = not_a_step(c).is_none() && replayed_by_a_call(row, at, c);
+    !(world || replayed)
+}
+
 /// Why a click cannot be replayed by name; `None` for a left click on a
 /// named widget inside its window.
 fn not_a_step(c: &UiClick) -> Option<String> {
@@ -89,8 +96,9 @@ fn not_a_step(c: &UiClick) -> Option<String> {
         Some("left") => return named(c).map(str::to_string),
         Some("right") => "a right click".to_string(),
         Some("middle") => "a middle click".to_string(),
+        // The ring writes "" for a button it cannot name (LR-10).
+        None | Some("") => "no mouse button was recorded".to_string(),
         Some(other) => format!("mouse button {}", one_line(other)),
-        None => "no mouse button was recorded".to_string(),
     };
     Some(why)
 }
@@ -121,7 +129,10 @@ fn named(c: &UiClick) -> Option<&'static str> {
 /// button sends `useAbility`). `interact` and region anchors come from the
 /// world, never from a window. A call in the click's tick or a neighbour
 /// counts: the tick reads the clicks before the tap, so a click made
-/// between the two lands one tick after its call.
+/// between the two lands one tick after its call, and one whose call
+/// reached the tap late lands a tick before it (the segmenter gives that
+/// click to the anchor's row). A title-bar close button sends no item or
+/// ability call, so those anchors never replay one: it stays a step.
 fn replayed_by_a_call(row: &RecordedRow, at: u32, c: &UiClick) -> bool {
     let near = |t: u32| t.abs_diff(at) <= 1;
     if c.window == DIALOG_WIN {
@@ -129,7 +140,8 @@ fn replayed_by_a_call(row: &RecordedRow, at: u32, c: &UiClick) -> bool {
             .iter()
             .any(|(t, call)| near(*t) && matches!(call, Call::DialogChoice { .. }))
     } else {
-        near(row.anchor.tick)
+        !c.button.ends_with(CLOSE_BUTTON)
+            && near(row.anchor.tick)
             && matches!(
                 row.anchor.kind,
                 AnchorKind::UseItem | AnchorKind::MoveItem | AnchorKind::UseAbility

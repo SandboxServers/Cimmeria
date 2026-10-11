@@ -161,6 +161,38 @@ fn clicks_join_the_row_of_their_tick() {
     assert_eq!(buttons(&rows[2]), [(3, "shared".to_string())]);
 }
 
+/// LR-11: a click in the tick before an item or ability anchor is that
+/// anchor's (its call can reach the tap a tick after the click); the tick
+/// before an interact keeps its clicks in the previous row.
+#[test]
+fn a_click_a_tick_before_an_ability_anchor_joins_its_row() {
+    let mut log = log_of(
+        (0..=5)
+            .map(|seq| {
+                let mut t = tick(seq, vec![], None);
+                t.clicks.push(UiClick {
+                    window: "ActionBarWin".into(),
+                    button: format!("b{seq}"),
+                    mouse: Some("left".into()),
+                });
+                t
+            })
+            .collect(),
+    );
+    log.ticks[1].tap = vec![cell("interact", 74, &[7], &[])];
+    log.ticks[3].tap = vec![cell("useAbility", 68, &[1462, 8], &[])];
+    log.ticks[5].tap = vec![cell("interact", 74, &[9], &[])];
+    let rows = segment(&log);
+    assert_eq!(rows.len(), 3, "{rows:#?}");
+    assert_eq!(rows[0].last_tick, 2);
+    let buttons = |r: &RecordedRow| -> Vec<String> {
+        r.clicks.iter().map(|(_, c)| c.button.clone()).collect()
+    };
+    assert_eq!(buttons(&rows[0]), ["b1"]);
+    assert_eq!(buttons(&rows[1]), ["b2", "b3", "b4"]);
+    assert_eq!(buttons(&rows[2]), ["b5"]);
+}
+
 #[test]
 fn interact_zero_with_no_target_set_has_no_target() {
     let rows = segment(&log_of(vec![tick(

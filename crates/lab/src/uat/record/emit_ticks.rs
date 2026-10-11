@@ -3,8 +3,8 @@
 //! nothing explains.
 
 use super::super::decode::Call;
-use super::super::log::{RecordLog, Tick};
-use super::super::segment::{AnchorKind, RecordedRow};
+use super::super::log::{RecordLog, Tick, UiClick};
+use super::super::segment::{click_ticks, AnchorKind, RecordedRow};
 use super::one_line;
 
 /// The dialog window's CEGUI name.
@@ -20,15 +20,22 @@ pub(super) struct WindowWalk {
 
 /// Compare each tick's windows in the row with the last read before it.
 /// `DialogWin` opening is the interact's (or an `onDialogDisplay`'s) and
-/// closing a dialog choice's; any other change needs a click on that window
-/// in its tick or a neighbour, else it is a TODO (keys are never recorded,
-/// D-LR9). The click explains the change whether it became a step, a TODO
-/// or was dropped for its call: each of those already accounts for it.
+/// closing a dialog choice's. Any other window closing needs a click on
+/// that window in its tick or a neighbour, else it is a TODO (keys are
+/// never recorded, D-LR9); a window opening always is one, because a click
+/// inside a window cannot have opened it. A click of this row explains a
+/// close only when `kept` writes it (a step or a TODO): one dropped for its
+/// call does not replay the close. A neighbour tick outside the row's
+/// clicks holds another row's click, which counts as it is.
 ///
 /// A neighbour on both sides because a tick pumps the clicks before it
 /// reads the UI: a click between the two shows its window change in this
 /// tick and the click itself in the next.
-pub(super) fn walk_windows(log: &RecordLog, row: &RecordedRow) -> WindowWalk {
+pub(super) fn walk_windows(
+    log: &RecordLog,
+    row: &RecordedRow,
+    kept: impl Fn(u32, &UiClick) -> bool,
+) -> WindowWalk {
     let mut walk = WindowWalk {
         dialog_opened: None,
         todos: Vec::new(),
@@ -43,21 +50,29 @@ pub(super) fn walk_windows(log: &RecordLog, row: &RecordedRow) -> WindowWalk {
     let mut prev: Vec<String> = before(log, row.anchor.tick, |t| t.windows.as_ref())
         .cloned()
         .unwrap_or_default();
+    let own = click_ticks(row);
     for t in in_row(log, row) {
         let Some(now) = &t.windows else { continue };
         let clicked = |w: &str| {
             [t.seq.checked_sub(1), Some(t.seq), t.seq.checked_add(1)]
                 .into_iter()
                 .flatten()
-                .filter_map(|seq| tick(log, seq))
-                .any(|k| k.clicks.iter().any(|c| c.window == w))
+                .any(|seq| {
+                    if own.contains(&seq) {
+                        row.clicks
+                            .iter()
+                            .any(|(at, c)| *at == seq && c.window == w && kept(*at, c))
+                    } else {
+                        tick(log, seq).is_some_and(|k| k.clicks.iter().any(|c| c.window == w))
+                    }
+                })
         };
         for (w, opened) in changes(&prev, now) {
             let explained = match (w.as_str(), opened) {
                 (DIALOG_WIN, true) => dialog_shown,
                 (DIALOG_WIN, false) => dialog_chosen,
                 _ => false,
-            } || clicked(&w);
+            } || (!opened && clicked(&w));
             if w == DIALOG_WIN && opened && walk.dialog_opened.is_none() {
                 walk.dialog_opened = Some(t.host_ms.saturating_sub(anchor_ms));
             }

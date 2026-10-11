@@ -53,7 +53,7 @@ pub(super) fn draft_row(
             .push(action(vec![("chat", s(chat)), ("tier", s("G"))], None));
     }
 
-    let walk = walk_windows(log, row);
+    let walk = walk_windows(log, row, |at, c| clicks::kept(row, at, c));
     anchor_steps(log, row, &mut d, &mut labels, walk.dialog_opened.is_some());
     if let Some(t) = walk.dialog_opened {
         d.steps.push(action(

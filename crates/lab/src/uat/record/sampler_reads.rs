@@ -199,7 +199,8 @@ pub(super) fn ui_sample(v: &Value) -> (Option<Vec<String>>, Option<DialogSample>
 /// The probe's `{clicks, gap}` as `UiClick`s, in store order, and whether
 /// the store evicted clicks before this read. A field that is not a string
 /// (a raw mouse button number) keeps its JSON text; a missing one is empty
-/// (`mouse`: `None`).
+/// (`mouse`: `None`). The ring writes `mouse = ""` for a button it cannot
+/// name, which is no mouse button either.
 pub(super) fn click_sample(v: &Value) -> (Vec<UiClick>, bool) {
     let text = |c: &Value, k: &str| match c.get(k) {
         None | Some(Value::Null) => None,
@@ -214,7 +215,7 @@ pub(super) fn click_sample(v: &Value) -> (Vec<UiClick>, bool) {
         .map(|c| UiClick {
             window: text(c, "window").unwrap_or_default(),
             button: text(c, "button").unwrap_or_default(),
-            mouse: text(c, "mouse"),
+            mouse: text(c, "mouse").filter(|m| !m.is_empty()),
         })
         .collect();
     (clicks, v.get("gap").and_then(Value::as_bool) == Some(true))
