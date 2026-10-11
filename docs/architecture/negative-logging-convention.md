@@ -1150,6 +1150,18 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 | `db_write_failed` | Any other insert error |
 
 Guard: `live_db_header_ops_log_event_account_and_duplicate_reason` in `handlers/header_ops/tests.rs` asserts `event` and `account_id` on each op and `reason=duplicate_name` on the second create. `no_pool_rows_carry_event_and_account` guards the no-pool rows.
+## Cinematic AoI hold lifecycle (TG-AOI-06)
+
+`release` in `cinematic_aoi_hold/mod.rs` (`cimmeria-base-world-entry`) and `log_discarded_on_teardown` in `base/deferred_aoi.rs` (`cimmeria-base-session`). A `release` that finds no hold to end used to return silently. It now logs DEBUG `target: "aoi.cinematic_hold"`, `event = "hold_release_skipped"`, with `witness_id` + `witness_name` and `reason`; `witness_name` is absent when the session is gone. A teardown inside a hold with a non-empty buffer logs INFO `event = "hold_abandoned"` with `discarded` (buffered messages), `held_ms` and the account and player identity fields. An intro-only buffer, which the entity-method row skips, is covered by this row.
+
+| `reason` | Meaning |
+|---|---|
+| `session_gone` | The session is no longer in the connected map |
+| `no_hold` | The session has no cinematic hold to end |
+| `already_releasing` | Another task has claimed the hold and is flushing it |
+| `token_mismatch` | The releasing task belongs to an earlier hold |
+
+Guard: `release_without_a_session_logs_session_gone` in `cinematic_aoi_hold/tests.rs`, and `teardown_inside_a_hold_logs_the_abandoned_buffer` in `base/deferred_aoi.rs`.
 
 ## DoT kill with no credited player (TG-NPC-13)
 

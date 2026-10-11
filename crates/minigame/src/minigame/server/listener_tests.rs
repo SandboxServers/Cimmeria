@@ -581,6 +581,50 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
     );
 }
 
+/// The login row names the peer, the player and the ticket's age, and never
+/// carries the ticket. Without the `minigame.claimed` fields the row has no
+/// `player_id` or `peer`, and the assertions fail.
+#[tokio::test]
+async fn a_successful_login_logs_the_claimed_row_with_identity() {
+    let capture = LogCapture::install();
+    let registry = SessionRegistry::new();
+    let ticket = registry
+        .register(
+            4317,
+            555,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            Some("Tester".into()),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        )
+        .await
+        .expect("fresh registry must accept the session");
+
+    let (mut client, _rx, _handle) = connect_to(registry.clone(), ListenerLimits::default()).await;
+    send_handshake(&mut client, 4317, &ticket).await;
+    read_until_game_begin(&mut client).await;
+
+    let row = capture
+        .find_message(Level::INFO, "Minigame login successful")
+        .expect("a successful login must log its row");
+    assert!(row.has_field("event", "minigame.claimed"), "{row:#?}");
+    assert!(row.has_field("entity_id", "4317"), "{row:#?}");
+    assert!(row.has_field("player_id", "555"), "{row:#?}");
+    assert!(row.has_field("player_name", "Tester"), "{row:#?}");
+    assert!(row.fields.contains_key("peer"), "{row:#?}");
+    assert!(row.fields.contains_key("ticket_age_ms"), "{row:#?}");
+    assert!(
+        !row.fields.values().any(|v| v.contains(&ticket)),
+        "the login row must not carry the ticket: {row:#?}",
+    );
+}
+
 /// A crafted login naming a registered (guessable) entity id with a
 /// made-up ticket or the wrong game is refused below WARN, with the peer.
 /// The registry used to WARN both, so a peer looping them reached Discord.
