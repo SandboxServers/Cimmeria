@@ -503,4 +503,14 @@ fn section_skip_and_overlapping_globs_are_rejected() {
     );
     let e = parse(&row_glob).unwrap_err();
     assert!(e.contains("M1-9/golden: bad glob \" \""), "{e}");
+
+    // Every glob list is checked, not only the first two.
+    for key in ["collapse", "ignore_windows"] {
+        let bad = GOLDEN.replace(
+            "[row.golden]\nskip = true",
+            &format!("[row.golden]\n{key} = [\"\"]"),
+        );
+        let e = parse(&bad).unwrap_err();
+        assert!(e.contains("M1-9/golden: bad glob \"\""), "{key}: {e}");
+    }
 }

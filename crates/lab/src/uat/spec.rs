@@ -65,6 +65,7 @@ pub struct SectionMeta {
     pub golden: Option<GoldenSpec>,
     // end lab-golden
 }
+
 fn default_account() -> String {
     "gm".into()
 }
@@ -139,7 +140,8 @@ pub struct RowSpec {
     /// This row's variance, added to the section's (see [`GoldenSpec`]).
     #[serde(default)]
     pub golden: Option<GoldenSpec>,
-    // end lab-golden    // lab-spec-vocab (SV-03)
+    // end lab-golden
+    // lab-spec-vocab (SV-03)
     /// Interaction poses: where to stand and how to aim at a tagged target.
     #[serde(default)]
     pub pose: Vec<PoseSpec>,
@@ -474,7 +476,8 @@ pub struct GoldenSpec {
 }
 // end lab-golden
 
-// lab-spec-vocab (SV-03)/// How a pose aims the camera at its target.
+// lab-spec-vocab (SV-03)
+/// How a pose aims the camera at its target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AimMode {

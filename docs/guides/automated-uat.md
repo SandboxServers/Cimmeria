@@ -347,11 +347,11 @@ p2's account and character come from `lab-account.p2.json`. The section's `chara
 
 A section can say what may differ between runs that still agree. The `lab golden` commands compare run fingerprints with these tables; they arrive later in the [golden campaign](../analysis/lab-golden/README.md), so until then they only validate. `[section.golden]` applies to every row, and `[row.golden]` extends it: a row's lists add to the section's. Globs use `*` only and match message names unless a key says otherwise.
 
-- `ignore`: messages dropped before comparing. The built-in defaults are `avatarUpdate*`, `perfStats` and `requestEntityUpdate`.
+- `ignore`: messages dropped before comparing. The built-in defaults `avatarUpdate*`, `perfStats` and `requestEntityUpdate` always apply; a spec's `ignore` only adds to them.
 - `allow_unordered`: messages moved out of the ordered stream into a sorted set per row, for streams the server does not order.
 - `collapse`: consecutive identical messages count once.
 - `ignore_windows`: window-name globs left out of the opened and closed sets.
-- `key_args`: a table from message name to the decoded fields to keep. An entry replaces the built-in one for that message, and needs a name and at least one field.
+- `key_args`: a table from message name to the decoded fields to keep. An entry replaces the built-in one for that message, a row's entry replaces the section's for the same message, and each entry needs a name and at least one field.
 - `late_bind_settle_ms`: when the packet tap bound after the row entered the world, this many milliseconds of messages after its first one are dropped (default 1000).
 - `skip` (row only): leaves the row out of every fingerprint, for cleanup rows.
 
@@ -369,6 +369,7 @@ skip = true
 Validation rejects `skip` on the section, an empty glob or one with whitespace, a glob that is both ignored and unordered, and a `key_args` entry without a name or fields.
 
 ### The capability table
+
 `crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), `@window_click` (`client_window_click`: a widget by its real CEGUI name, Lua global or not, such as a frame's `__auto_closebutton__`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, `native_cegui` (N1) / `client_ui_lua` / `native_call` (both N3), as the UI and item tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3, and so does a `client_drag_drop` that had to fire the drop itself.
 
 The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier G. The runner builds the line from `args`, types it, and waits up to 5 s for the command's own feedback line; a refusal (`.dummy: ...`) or no reply fails the action, so a teardown that cleared nothing is flagged, not trusted.
