@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
     Shared library for the lab CLI (tools/lab/cli/): paths, the daemon token,
-    labd.env, labd.pid and the /status probe. Dot-source it; it defines
-    functions only. Never print a token or a lease id from here.
+    labd.env, labd.pid, the /status probe and the daemon log filter. Dot-source
+    it; it defines functions only. Never print a token or a lease id from here.
 
 .DESCRIPTION
     CIMMERIA_LAB_HOME overrides the lab home (%LOCALAPPDATA%\cimmeria-lab);
@@ -97,4 +97,38 @@ function Format-Ago([int]$seconds) {
 # Rows (objects whose property names are the column names) as an aligned table string.
 function Write-LabTable($rows, [string[]]$columns) {
     $rows | Format-Table -Property $columns -AutoSize | Out-String -Width 200
+}
+
+# The log lines that pass the instance and level filters, with tokens masked.
+# Pure: it reads lines from the pipeline and touches no file. An entry starts
+# with a timestamp; a line without one (a panic body, a backtrace) belongs to
+# the entry above it and is kept or dropped with it, so a level word inside a
+# continuation line ("   at error handling") never ranks it on its own.
+function Select-LabLogLine {
+    param(
+        [Parameter(ValueFromPipeline)][string]$Line,
+        [string]$Instance,
+        [string]$Level
+    )
+    begin {
+        $ranks = @{ trace = 0; debug = 1; info = 2; warn = 3; error = 4 }
+        # Before the first entry, continuation lines have no entry to follow.
+        $keep = -not ($Instance -or $Level)
+    }
+    process {
+        if ($Line -match '^\d{4}-\d\d-\d\dT') {
+            $keep = $true
+            if ($Instance -and $Line -inotmatch ('instance=(Some\()?"' + [regex]::Escape($Instance) + '"')) { $keep = $false }
+            if ($keep -and $Level) {
+                $parts = @($Line.Trim() -split '\s+')
+                $token = if ($parts.Count -ge 2) { $parts[1].ToLowerInvariant() } else { '' }
+                $rank = $ranks[$token]
+                if ($null -eq $rank -or $rank -lt $ranks[$Level]) { $keep = $false }
+            }
+        }
+        if (-not $keep) { return }
+
+        $masked = $Line -replace '(?i)bearer\s+\S+', '<redacted>'
+        $masked -replace '(?i)\b[0-9a-f]{64}\b', '<redacted>'
+    }
 }

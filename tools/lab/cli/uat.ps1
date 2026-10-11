@@ -23,9 +23,9 @@
     per lane, failures grouped by their first failing row, known issues
     tagged). -Json prints only one compact JSON object (on failure too:
     {"ok":false,"exit":N,"error":...}), for agents. Every batch writes
-    batch.jsonl (one line per run, as each finishes), then batch.json and
-    summary.md, under uat-runs\batch-<time>\ next to the runs' own evidence
-    folders. Ctrl+C starts no new run and still writes the summary of the
+    plan.json first, then batch.jsonl (one line per run, as each finishes),
+    then batch.json and summary.md, under uat-runs\batch-<time>\ next to the
+    runs' own evidence folders. Ctrl+C starts no new run and still writes the summary of the
     runs that finished; a run under way finishes on the daemon and releases
     its lease.
 
@@ -61,32 +61,6 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
-
-# The daemon's MCP URL, from labd.pid's bind (as Get-LabStatus reads it).
-function Get-LabMcpUrl {
-    $bind = '127.0.0.1:8779'
-    $info = Get-DaemonInfo
-    if ($info -and $info.PSObject.Properties.Name -contains 'bind' -and $info.bind) { $bind = [string]$info.bind }
-    return "http://$bind/mcp"
-}
-
-# The repo's spec folder when this runs from a checkout, else $null (the
-# daemon then uses its own default).
-function Get-DefaultSpecsDir {
-    $dir = Join-Path $PSScriptRoot '..\..\..\docs\guides\uat-specs'
-    if (Test-Path -LiteralPath $dir) { return (Resolve-Path -LiteralPath $dir).Path }
-    return $null
-}
-
-# Where the daemon writes run evidence (CIMMERIA_LAB_UAT_DIR, else the lab
-# home's uat-runs), so a batch folder sits next to its runs.
-function Get-UatRoot {
-    $map = Get-LabdEnv
-    foreach ($raw in @($map['CIMMERIA_LAB_UAT_DIR'], $env:CIMMERIA_LAB_UAT_DIR)) {
-        if ("$raw".Trim()) { return "$raw".Trim() }
-    }
-    return Join-Path (Get-LabHome) 'uat-runs'
-}
 
 # A usage or pre-flight failure: plain text on stderr, or under -Json one
 # object on stdout. Returns the exit code.
@@ -166,12 +140,22 @@ function Invoke-LabUat {
     $total = $plan.Lanes.Count * $RunsPerLease
     & $say "lab uat $Section`: $($plan.Lanes.Count) lease(s) x $RunsPerLease run(s) = $total run(s) on $(@($plan.Lanes.Instance) -join ', '); rows $($rowIds -join ', ')"
 
+    $started = Get-Date
     $batchDir = Join-Path (Get-UatRoot) "batch-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
     $jsonl = Join-Path $batchDir 'batch.jsonl'
+    try {
+        New-Item -ItemType Directory -Force -Path $batchDir | Out-Null
+        # plan.json before any lane starts, so a watcher never sees runs without a plan.
+        Write-UatPlan (Join-Path $batchDir 'plan.json') ([ordered]@{
+            schema = 1; section = $Section; rows = $rowIds
+            lanes = @($plan.Lanes | ForEach-Object { [ordered]@{ lane = $_.Lane; instance = $_.Instance } })
+            runs_per_lease = $RunsPerLease; started = $started.ToUniversalTime().ToString('o'); pid = $PID
+        })
+    } catch {
+        return Stop-Uat 3 "cannot write the batch folder ${batchDir}: $(($_.Exception.Message -split "`n")[0])"
+    }
     $lib = Join-Path $PSScriptRoot 'uat-lib.ps1'
     $common = Join-Path $PSScriptRoot 'common.ps1'
-    $started = Get-Date
 
     try {
         $plan.Lanes | ForEach-Object -ThrottleLimit $plan.Lanes.Count -Parallel {
@@ -186,7 +170,8 @@ function Invoke-LabUat {
                 for ($i = 1; $i -le $n; $i++) {
                     $t0 = Get-Date
                     $rec = [ordered]@{ Lane = $lane.Lane; Instance = $lane.Instance; Index = $i; Ok = $false; Rows = @()
-                                       Verdict = $null; RunDir = $null; Error = $null; Seconds = 0; Braked = $false }
+                                       Verdict = $null; RunDir = $null; Error = $null; Seconds = 0; Braked = $false
+                                       Started = $t0.ToUniversalTime().ToString('o'); Ended = $null }
                     $timedOut = $false
                     try {
                         $s = New-McpSession $using:url $using:token
@@ -209,11 +194,10 @@ function Invoke-LabUat {
                     if ($timedOut) { $stuck = -not (Wait-UatLeaseFree $lane.Instance 600) }
                     $brake = Test-UatStopLane $i $n $outcomes $using:MaxConsecutiveFailures
                     $rec.Braked = $brake -or $stuck
+                    $rec.Ended = (Get-Date).ToUniversalTime().ToString('o')
                     Add-UatRecord $using:jsonl $rec
                     if (-not $quietL) {
-                        $what = if ($rec.Ok) { 'PASS' } elseif ($rec.Error) { "ERROR $($rec.Error)" } else {
-                            "FAIL $($rec.Verdict.Row): $($rec.Verdict.Reason)$(if ($rec.Verdict.Issue) { " [known $($rec.Verdict.Issue)]" })" }
-                        Write-Host ("[{0} {1}/{2}] {3} ({4}s)" -f $lane.Instance, $i, $n, $what, $rec.Seconds)
+                        Write-Host (Format-UatProgressLine $rec $n)
                         if ($stuck) { Write-Host "[$($lane.Instance)] its lease did not clear after the timeout; lane stopped" }
                         elseif ($brake) { Write-Host "[$($lane.Instance)] stopped after $($using:MaxConsecutiveFailures) failed runs in a row" }
                     }
@@ -222,9 +206,10 @@ function Invoke-LabUat {
             } catch {
                 # A lane that dies outside a run still leaves a record, so the batch reports it.
                 $err = Hide-LeaseIds (($_.Exception.Message -split "`n")[0])
+                $at = (Get-Date).ToUniversalTime().ToString('o')
                 Add-UatRecord $using:jsonl ([ordered]@{ Lane = $lane.Lane; Instance = $lane.Instance; Index = 0; Ok = $false
                     Rows = @(); Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = $err; Issue = $null }
-                    RunDir = $null; Error = "lane: $err"; Seconds = 0; Braked = $true })
+                    RunDir = $null; Error = "lane: $err"; Seconds = 0; Braked = $true; Started = $at; Ended = $at })
             }
         }
     } finally {

@@ -49,6 +49,9 @@ $v = Get-UatRunVerdict @((Row 'FS-P3' 'FAIL' 'clause aim failed'))
 Check (-not $v.Ok -and $null -eq $v.Issue) 'any other failure is new'
 $v = Get-UatRunVerdict @((Row 'FS-P1' 'BLOCKED' 'setup failed'))
 Check (-not $v.Ok -and $v.Result -eq 'BLOCKED') 'BLOCKED fails a run'
+$v = Get-UatRunVerdict @((Row 'FS-01' 'BLOCKED' 'Login_PasswordEdit holds 0 characters after typing, expected 4'))
+Check ($v.Issue -eq '#1343') 'the empty login password box is known #1343'
+Check ($null -eq (Get-UatKnownIssue 'FS-P3' 'clause aim failed')) 'a row and reason no known issue covers have no issue'
 
 # --- brake ---
 Check (-not (Test-UatBrake @($false, $false, $true, $false) 3)) 'a pass resets the failure streak'
@@ -126,6 +129,41 @@ try {
     Check ($back.Count -eq 2 -and $rt.failed_known -eq 1 -and $rt.failed_new -eq 1) 'records read back from JSONL aggregate like live ones'
     Check (@(Read-UatRecords (Join-Path $env:TEMP 'no-such-batch.jsonl')).Count -eq 0) 'a missing JSONL file reads as no runs'
 } finally { Remove-Item -LiteralPath $jl -ErrorAction SilentlyContinue }
+
+# --- batch files: plan.json, record times, the shared progress line ---
+$frostRun = [pscustomobject]@{ row = 'FS-P2'; result = 'FAIL'; reasons = @('clause movie-over failed: client_entity_find/count gte 1') }
+$frostVerdict = Get-UatRunVerdict @($frostRun)
+$line = Format-UatProgressLine ([ordered]@{ Instance = 'default'; Index = 1; Ok = $true; Verdict = $null; Error = $null; Seconds = 114 }) 3
+Check ($line -ceq '[default 1/3] PASS (114s)') "the progress line for a PASS run ($line)"
+$line = Format-UatProgressLine @{ Instance = 'p2'; Index = 1; Ok = $false; Verdict = $frostVerdict; Error = $null; Seconds = 130 } 3
+Check ($line -ceq '[p2 1/3] FAIL FS-P2: clause movie-over failed: client_entity_find/count gte 1 [known #1341] (130s)') "the progress line for a known FAIL ($line)"
+$line = Format-UatProgressLine @{ Instance = 'p2'; Index = 2; Ok = $false; Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = 'bridge down'; Issue = $null }
+    Error = 'lab_uat_run failed: bridge down'; Seconds = 3 } 3
+Check ($line -ceq '[p2 2/3] ERROR lab_uat_run failed: bridge down (3s)') "the progress line for an ERROR run ($line)"
+
+$planFile = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-plan-" + [guid]::NewGuid() + '.json')
+try {
+    $planOut = [ordered]@{ schema = 1; section = 'first-session'; rows = @('FS-01', 'FS-P1')
+        lanes = @([ordered]@{ lane = 1; instance = 'default' }, [ordered]@{ lane = 2; instance = 'p2' })
+        runs_per_lease = 3; started = '2026-10-11T01:39:06.0000000Z'; pid = 41236 }
+    Write-UatPlan $planFile $planOut
+    $planBack = Read-UatPlan $planFile
+    Check ($planBack.section -eq 'first-session' -and @($planBack.lanes).Count -eq 2 -and $planBack.pid -eq 41236) 'plan.json round-trips its section, two lanes and pid'
+    Check (@(@($planBack.rows)).Count -eq 2 -and $planBack.lanes[1].instance -eq 'p2') 'plan.json keeps the rows and each lane'
+    $head = [System.IO.File]::ReadAllBytes($planFile)[0..2]
+    Check (-not ($head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF)) 'plan.json has no byte order mark'
+    Check ($null -eq (Read-UatPlan (Join-Path $env:TEMP 'no-such-plan.json'))) 'a missing plan.json reads as nothing'
+    [System.IO.File]::WriteAllText($planFile, '{', [System.Text.UTF8Encoding]::new($false))
+    Check ($null -eq (Read-UatPlan $planFile)) 'a plan.json that is not JSON reads as nothing'
+} finally { Remove-Item -LiteralPath $planFile -ErrorAction SilentlyContinue }
+
+# A record with Started and Ended aggregates exactly as one without them.
+$plainRun = Rec 'default' 1 $false $frost
+$timedRun = Rec 'default' 1 $false $frost
+$timedRun.Started = '2026-10-11T01:39:06.0000000Z'; $timedRun.Ended = '2026-10-11T01:41:00.0000000Z'
+$plainSum = Merge-UatResults @($plainRun) @($lanes[0]) @()
+$timedSum = Merge-UatResults @($timedRun) @($lanes[0]) @()
+Check ((ConvertTo-Json $timedSum -Depth 8) -ceq (ConvertTo-Json $plainSum -Depth 8)) 'Started and Ended do not change the aggregate'
 
 $md = Format-UatSummary $s 'lab uat first-session' 'C:\b'
 Check ($md -match 'FAIL \(1/4 runs passed\)' -and $md -match 'known: #1341') 'the Markdown summary names the verdict and the known issue'
