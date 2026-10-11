@@ -7,10 +7,11 @@ use crate::test_support::{
 use std::net::SocketAddr;
 
 /// Sentinel block for the header-op live-DB rows (distinct from the
-/// persistence tests' `0x7000_4000` block).
-const ACCOUNT_ID: u32 = 0x7000_D100;
-const PLAYER_ID: i32 = 0x7000_D101;
-const ENTITY_ID: u32 = 0x7000_D102;
+/// persistence tests' `0x7000_4000` block and the consumable
+/// tests' `0x7000_D100` block).
+const ACCOUNT_ID: u32 = 0x7000_D500;
+const PLAYER_ID: i32 = 0x7000_D501;
+const ENTITY_ID: u32 = 0x7000_D502;
 const ACCOUNT_NAME: &str = "cl-header-ops-test";
 const PLAYER_NAME: &str = "cl-header-ops";
 
