@@ -1,6 +1,6 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-11
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -15,6 +15,13 @@ Azure Function. With the SigNoz migration that path is retired —
 uploads now land on cimmeria-server's admin port and flow into SigNoz
 through the OTLP exporter. See [observability.md](observability.md)
 for the broader pipeline.
+
+The launcher here is the desktop launcher. The pipeline's pieces live in
+`cimmeria-launcher-core` (`crates/launcher-core/src/telemetry/`), moved
+there from the egui launcher that LX-18 retired, and the desktop engine
+drives them from `crates/launcher/desktop/engine/src/storage/game_telemetry/`.
+Its player-facing contract is in the desktop
+[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
 
 ## Goal
 
@@ -48,21 +55,22 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 
 | Crate / module | Role |
 |---|---|
-| `crates/launcher/src/identity.rs` | Mint-once per-install identity (`install_id`, `machine_id`). |
-| `crates/launcher/src/telemetry/auth.rs` | Launcher → server `/auth/dev-session` client + proactive-refresh policy. |
-| `crates/launcher/src/telemetry/tail.rs` | Polling tailer (2 s) over `Binaries/sessions/*.log` + `sgwdebuglog*`. Handles per-minute Atera rotation. |
-| `crates/launcher/src/telemetry/events.rs` | NDJSON event schema + Atera log-line parser. |
-| `crates/launcher/src/telemetry/queue.rs` | Crash-safe on-disk JSONL queue (100 MiB cap, drop-oldest). |
-| `crates/launcher/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`, and the split of a drained queue into chunks. |
-| `crates/launcher/src/telemetry/flush.rs` | Flushes the queue as chunks of at most `chunk_max_bytes` of NDJSON and 1,000 rows. A 413, or any 4xx but 401, 408 and 429, drops that chunk into the dropped-lines count; a 429 or 503 holds further flushes off for its `Retry-After`; any other failure re-queues the unsent chunks. |
-| `crates/launcher/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`, carrying the log files written to since the session started. |
-| `crates/launcher/src/telemetry/session.rs` | `current-session.json` writer (reserved for future Lua-side hook). |
-| `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |
-| `crates/launcher/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
-| `crates/launcher/src/telemetry/patch_counts.rs` | Parses the same log's per-call lines into the DLL's claimed / delivered / dropped counters and yields `client.patches.counts` (at most once a minute when a count moved, and once at game exit). |
-| `crates/launcher/src/telemetry/install_result.rs` | Builds `client.launcher.install_result` from an `install_report::InstallReport` (one outcome per manifest patch) and writes it to the on-disk queue after each Install / Update run when the player opted in. |
-| `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
-| `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
+| `crates/launcher/desktop/engine/src/storage/game_telemetry/mod.rs` | Per-install identity (`install_id`, `machine_id`), minted at the first opt-in and kept after an opt-out, in `game-telemetry.json`. |
+| `crates/launcher-core/src/telemetry/auth.rs` | Launcher → server `/auth/dev-session` client + proactive-refresh policy. |
+| `crates/launcher-core/src/telemetry/tail.rs` | Polling tailer (2 s) over `Binaries/sessions/*.log` + `sgwdebuglog*`. Handles per-minute Atera rotation. |
+| `crates/launcher-core/src/telemetry/events.rs` | NDJSON event schema + Atera log-line parser. |
+| `crates/launcher-core/src/telemetry/queue.rs` | Crash-safe on-disk JSONL queue (100 MiB cap, drop-oldest). |
+| `crates/launcher-core/src/telemetry/chunk.rs` | Gzipped NDJSON POST to `/api/upload-chunk`, and the split of a drained queue into chunks. |
+| `crates/launcher-core/src/telemetry/flush.rs` | Flushes the queue as chunks of at most `chunk_max_bytes` of NDJSON and 1,000 rows. A 413, or any 4xx but 401, 408 and 429, drops that chunk into the dropped-lines count; a 429 or 503 holds further flushes off for its `Retry-After`; any other failure re-queues the unsent chunks. |
+| `crates/launcher-core/src/telemetry/bundle.rs` | End-of-session multipart POST to `/api/upload-bundle`, carrying the log files written to since the session started. |
+| `crates/launcher-core/src/telemetry/session.rs` | `current-session.json` writer: the file the injected DLL reads its token and upload endpoint from at boot. |
+| `crates/launcher-core/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |
+| `crates/launcher-core/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
+| `crates/launcher-core/src/telemetry/patch_counts.rs` | Parses the same log's per-call lines into the DLL's claimed / delivered / dropped counters and yields `client.patches.counts` (at most once a minute when a count moved, and once at game exit). |
+| `crates/launcher-core/src/telemetry/install_result.rs` | Builds `client.launcher.install_result` from an `install_report::InstallReport` (one outcome per manifest patch), written to the on-disk queue after each Install, Repair or game Update run when the player opted in. |
+| `crates/launcher-core/src/telemetry/runner.rs` | The egui launcher's per-session loop: tail → enqueue → flush → on-exit bundle. The desktop launcher runs the same steps in its own loop (next row). |
+| `crates/launcher-core/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
+| `crates/launcher/desktop/engine/src/storage/game_telemetry/` | The desktop launcher's side: `session.rs` mints the session and writes the marker before Play starts the game, `session_loop/` tails, flushes and sends the exit event and bundle, and `transport/` holds the queue, token refresh and back-off. |
 | `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
 | `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` (`replay.rs`) so the OTLP layer ships it to SigNoz. The client-side rows go to the `cimmeria-client` service. |
 | `crates/client-telemetry/src/uploader.rs` | The injected DLL's own uploader: reads `current-session.json`, POSTs gzip(NDJSON) `client_native` batches to `<upload_endpoint>/upload-chunk`. |
@@ -133,9 +141,10 @@ port (`http://<host>:8081/api/telemetry`) so uploads go there too.
 
 ## Launcher endpoint policy
 
-The launcher checks `telemetry.auth_url` before minting, and every
-`upload_endpoint` the server returns (at mint and at each refresh),
-against one rule (`crates/launcher/src/telemetry/endpoint.rs`,
+The launcher checks the address it mints from (the installation's first
+login server), and every `upload_endpoint` the server returns (at mint
+and at each refresh), against one rule
+(`crates/launcher-core/src/telemetry/endpoint.rs`,
 `EndpointPolicy`):
 
 - `https://` anywhere;
@@ -150,11 +159,11 @@ look-alike hosts are refused, and an `https://` login server does not
 vouch for plain http to its host. The telemetry HTTP client never follows
 redirects, so a checked request cannot be bounced elsewhere.
 
-The default `auth_url` is `http://play.cimmeria.app:8081/api`, on the
-default login server. Launcher config schema 2 migrates a schema-1 file
-whose `auth_url` is exactly the old default (`http://localhost:8443/api`)
-to the new default once, and writes the file back; any other value is
-kept.
+The desktop launcher mints from `<first login server>/api/auth/dev-session`,
+so with the default server list that is the public login port. (The retired
+egui launcher kept a separate `telemetry.auth_url` setting, defaulting to
+`http://play.cimmeria.app:8081/api`; an imported legacy record keeps that
+value unchanged.)
 
 ## Lab sessions
 
@@ -173,22 +182,27 @@ then carries an empty token (the bridge still starts, because
 
 ## Session lifecycle
 
-Two buttons run a session. **Launch + Telemetry** (the Atera debug
-path) is traced below. **Launch SGW.exe** runs one too when
-the player opted in (`telemetry.opted_in`, off by default) and the
-identity loaded (`worker/launch_sgw.rs`, `worker/launch_telemetry.rs`).
-Since 2026-09-29 that session starts *before* the game: the injected
-`cimmeria-client-telemetry` DLL reads its token and upload endpoint
-from `current-session.json` as it boots, so the file must exist first.
-The handshake gets at most 10 s; a failed or slow one is reported and
-the game starts without the telemetry DLL, so it delays play by no more
+**Play** runs a session when the player opted in ("Send game diagnostics
+while playing" in Settings, off by default). The session starts *before*
+the game: the injected `cimmeria-client-telemetry` DLL reads its token and
+upload endpoint from `current-session.json` as it boots, so the file must
+exist first. The handshake is bounded to 8 s; a failed or slow one leaves
+the DLL out and the game starts without it, so it delays play by no more
 than that. The game then starts with the client-patches DLL and the
 telemetry DLL, in that order, and the session follows it. The launcher
 sends no `session_kind`, so both the launcher's uploads and the DLL's
 carry `cimmeria.session_kind = player`. That session also records the
-`client.patches.boot` and `client.telemetry_dll.launch` events described
-after this sequence. Without the opt-in, **Launch SGW.exe** starts no
-session and injects the client patches only.
+`client.patches.boot` and `client.patches.counts` events described after
+this sequence. Without the opt-in, Play starts no session and injects the
+client patches only. The desktop details (tail baselines, one session at a
+time, the `game_exited` event) are in the
+[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+
+The retired egui launcher ran the sequence below from its **Launch +
+Telemetry** button (the Atera debug path). It is kept because the core
+pieces it names are the ones the desktop session loop calls in the same
+order: start the session, tail and enqueue, refresh, flush, then on exit a
+final flush and the bundle.
 
 ```text
 1. User clicks "Launch + Telemetry" in the launcher UI
@@ -217,7 +231,7 @@ session and injects the client patches only.
 
 ### Client-patches boot event
 
-A **Launch SGW.exe** session passes the runner a `PatchLogWatcher`. On
+A Play session watches the client-patches log with a `PatchLogWatcher` (`patch_log.rs`). On
 each tick it reads `cimmeria-client-patches.log` next to `SGW.exe`
 (ignoring a file older than the launch), and once the DLL has logged
 how its bootstrap ended it enqueues one `client_native` event with
@@ -268,8 +282,8 @@ counted, `info` otherwise.
 
 ### Install result event
 
-Every **Install / Update** run fills an `InstallReport`
-([`install_report.rs`](../../crates/launcher/src/install_report.rs)):
+Every Install, Repair or game Update run fills an `InstallReport`
+([`install_report.rs`](../../crates/launcher-core/src/install_report.rs)):
 the seed step, one outcome per manifest patch, and how the run ended.
 When the player opted in to telemetry, the launcher writes one
 `client_native` event with target `client.launcher.install_result` to
@@ -293,28 +307,28 @@ by `_`.
 
 ### Telemetry DLL launch event
 
-The same session records one `client_native` event with target
-`client.telemetry_dll.launch`, before the runner starts, saying whether
-the telemetry DLL went in: `outcome` is `injected` (with `dll_path`),
-`unavailable` (with `reason`: not bundled, or a `lab-bridge` build
-refused) or `inject_failed` (the game was started without it). The
-level is `info` for `injected`, `warn` otherwise. An opted-in session
-with no `client.dll.attached` row from the DLL can be told apart from
-one whose DLL never went in. Each chunk the DLL uploads carries its process id in the `X-Cimmeria-Client-Pid` header (TG-PIPE-02), so a relaunch under the same session is distinguishable.
+The retired egui launcher recorded a `client_native` event with target
+`client.telemetry_dll.launch` saying whether the telemetry DLL went in.
+The desktop launcher sends no such event: it records the outcome of the
+last Play in `game-telemetry-status.json` in its state directory
+(`attached`, `session_unavailable`, `endpoint_refused`,
+`session_not_written`) and shows it in Settings. A session that never
+went in has no session id, so there is nothing to tell apart in SigNoz;
+an opted-in session with launcher rows but no `client.dll.attached` row
+means the DLL was injected and did not attach. Each chunk the DLL uploads carries its process id in the `X-Cimmeria-Client-Pid` header (TG-PIPE-02), so a relaunch under the same session is distinguishable.
 
 ## Failure modes
 
 | Scenario | Behavior |
 |---|---|
-| `/auth/dev-session` returns 503 (kill switch) | Launcher logs warn, falls back to `launch_atera_debug` (no telemetry). Game launches. |
-| `/auth/dev-session` network failure | Same as kill switch — game launches without telemetry. |
-| **Launch SGW.exe**: handshake fails or takes over 10 s | Session error in the status log; the game launches with the client patches only, no telemetry DLL. |
-| **Launch SGW.exe**: telemetry DLL missing or a `lab-bridge` build | Status line `In-game telemetry: unavailable: …`; the game launches without it; the session still runs (`client.telemetry_dll.launch`, `outcome = unavailable`). |
-| **Launch SGW.exe**: injecting both DLLs fails | Retried with the client patches alone, then plainly; `outcome = inject_failed`. |
+| `/auth/dev-session` returns 503 (kill switch) | The DLL is left out and the game launches with the client patches only; the status is `session_unavailable`. |
+| `/auth/dev-session` network failure, or the handshake takes over 8 s | Same as kill switch. |
+| The server hands back an upload address the endpoint policy refuses | The DLL is left out; the status is `endpoint_refused`. |
+| The build has no verified telemetry DLL, or a `lab-bridge` one | Opting in fails with `platform_unavailable` and saves nothing; a `lab-bridge` build is refused at staging, bundle resolution and Play admission. Play is unaffected. |
 | DLL session outlives its 8 h token | The DLL never refreshes: its uploads stop being accepted. The launcher's own uploads refresh and continue. |
 | Chunk POST 401 | `ChunkError::TokenRejected` → next tick fires `refresh_if_due`. |
 | Chunk POST 503 | `ChunkError::KillSwitch { retry_after_secs }` honored. Events stay on disk. |
-| Launcher killed mid-session | Game keeps running (no Job Object). Events stay in `telemetry-queue.jsonl`. Next launch drains them via `recover_pending_on_startup`. |
+| Launcher killed mid-session | Game keeps running (no Job Object). Events stay in `telemetry-queue.jsonl` in the launcher's state directory and go with the next session's first flush (`recover_pending_on_startup`). |
 | Game crashes | Same as clean exit from the runner's perspective — `child.wait()` returns. Final flush + bundle upload still fire. |
 | Disk full mid-enqueue | Enqueue surfaces the IO error; the event is lost on the stack. Telemetry is supplementary — never load-bearing. |
 

@@ -48,7 +48,6 @@ env:
     --exclude cimmeria-app
     --exclude cimmeria-content-editor
     --exclude cimmeria-scene-editor
-    --exclude sgw-launcher
     --exclude cimmeria-client-telemetry
     --exclude cimmeria-client-patches
     --exclude cimmeria-lab

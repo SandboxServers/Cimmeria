@@ -161,8 +161,8 @@ Three pools:
 
 | Pool | Jobs | Where |
 | --- | --- | --- |
-| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, launcher coverage, spec-lint | Five per node, plus three on the operator's desktop |
-| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, launcher, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style, and the `main-red` reporters (`test.yml`'s `nightly-report`, `pr-container.yml`'s `report`) | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
+| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, client-launch coverage, spec-lint | Five per node, plus three on the operator's desktop |
+| `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style, and the `main-red` reporters (`test.yml`'s `nightly-report`, `pr-container.yml`'s `report`) | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
 | `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell) | GitHub-hosted |
 
 GitHub has no overflow between pools (a job waits for a runner with its label), so
@@ -221,7 +221,7 @@ account, with its own directory, toolchain and sccache server.
 | Workflow | Jobs on the pool |
 | --- | --- |
 | `launcher-desktop.yml` | `native-engine (windows-latest)` (the Windows matrix leg), `desktop release build dry run (Windows)` |
-| `launcher-build.yml` | `cargo clippy -D warnings (Windows)`, `cargo build (Windows)`, `cargo nextest (Windows)`, `release build dry run (Windows)` |
+| `client-launch.yml` | `cargo clippy -D warnings (client launch, Windows)`, `cargo nextest (client launch, Windows)` |
 | `launcher-runtime-probe.yml` | `runtime-probe`, `local-lab-tools` |
 
 `launcher-release.yml` stays on GitHub-hosted runners. Every job on the pool can write

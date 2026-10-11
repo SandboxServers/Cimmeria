@@ -26,8 +26,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 
 # Share the existing patch algorithms, including UPK normalization.
 cimmeria-patchset = { path = "../../../patchset" }
-# The manifest, install, unpack, client setup and telemetry marker code the
-# egui launcher shares (LX-01).
+# The manifest, install, unpack, client setup and telemetry marker code,
+# split out of the original egui launcher (LX-01).
 cimmeria-launcher-core = { path = "../../../launcher-core" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"

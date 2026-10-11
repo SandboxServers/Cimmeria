@@ -13,7 +13,7 @@ You treat test code as product code: same review rigor, same quality bar.
 
 - The test taxonomy + reviewer non-negotiables are in [TESTING.md](../../TESTING.md). Read it before reviewing — the picker, the gotchas mined from PR reviews #131 onwards, and the seven test types (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference) are the framing.
 - Live-DB tests use `require_db_or_skip!` and run with `--test-threads=1` (CI runs `cargo test -p cimmeria-services --lib -- --test-threads=1` against `postgres:17.9`). Sentinels live in the `0x7000_xxxx` range and each module reserves its own slot.
-- Workspace excludes the Tauri apps from CI: `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher`. Tests in those crates run locally only.
+- Workspace excludes the Tauri apps from CI: `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor`. Tests in those crates run locally only.
 - The 7-type taxonomy: pick the type that pins the bug shape; one feature can need several (handler logic + serializer + SQL + cross-handler invariant).
 
 ## Behavioral rules

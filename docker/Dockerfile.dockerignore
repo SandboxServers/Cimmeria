@@ -44,8 +44,8 @@ tools/container-smoke.sh
 .idea/
 *.swp
 
-# Built launcher exe at the repo root (rebuilt every PR by setup.ps1).
-sgw-launcher.exe
+# Built binaries at the repo root, and the launcher setup.ps1 unpacks there.
+launcher/
 *.dll
 *.pdb
 

@@ -1,7 +1,7 @@
 # Launcher Consolidation
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and maintainers.
-> Updated: 2026-10-11. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
+> Updated: 2026-10-11. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [announcement text (D-LX2)](announcement.md), [player guide](../../client/launcher-guide.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -86,15 +86,15 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-13 | 1 | Zip self-update apply on Windows | rust-gameserver-dev | LX-02 | Integrated ([#1438](https://github.com/SandboxServers/Cimmeria/pull/1438)) |
 | LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-launcher-core` | packet-coder | LX-01 | Integrated ([#1379](https://github.com/SandboxServers/Cimmeria/pull/1379)) |
 | LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | Integrated ([#1534](https://github.com/SandboxServers/Cimmeria/pull/1534)) |
-| LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | BlockedDependency |
+| LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | Review (this PR) |
 | LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | Integrated ([#1443](https://github.com/SandboxServers/Cimmeria/pull/1443)) |
-| LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | BlockedDecision |
+| LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | Review (this PR) |
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |
-| LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | BlockedDependency |
-| LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | BlockedDependency |
-| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Ready |
-| LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
-| LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |
+| LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | Review (this PR) |
+| LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | Review (this PR) |
+| LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Review (this PR) |
+| LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | Review (this PR) |
+| LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | Review (this PR) |
 | LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Done ([#1357](https://github.com/SandboxServers/Cimmeria/pull/1357)) |
 | LX-28 | 2 | macOS release: ad-hoc signed app from a macOS CI job | rust-gameserver-dev | LX-15; redistribution check | Review (this PR; [worknote](worknotes/lx-28-redistribution.md); LX-26 step 13) |
 | LX-29 | 1 | Native Windows test proofs (G-13) | coordinator | | Done ([#1374](https://github.com/SandboxServers/Cimmeria/pull/1374)) |

@@ -18,7 +18,7 @@ pub enum ProgressSink {
     /// the `test-fixtures` feature).
     #[cfg(any(test, feature = "test-fixtures"))]
     Checkpoint(std::sync::Arc<dyn ProgressReporter>),
-    /// Preserve the existing egui worker's event stream.
+    /// Every event, unbounded: the stream the retired egui worker read.
     Legacy(mpsc::UnboundedSender<Progress>),
     /// Bounded to one observation even when the UI is stalled or disconnected.
     Latest(watch::Sender<Option<Progress>>),

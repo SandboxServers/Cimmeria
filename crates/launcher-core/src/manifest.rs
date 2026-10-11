@@ -161,7 +161,9 @@ pub struct Manifest {
     /// manifest supports. Optional, so no schema bump: an older launcher
     /// ignores it, and a newer one that is older than the minimum turns off
     /// Install / Update and Launch and makes the update banner mandatory.
-    /// See `check_min_launcher` in the egui launcher's `self_update::version`.
+    /// The desktop launcher enforces it (`launcher_compatibility` in its
+    /// engine): a launcher older than this tag blocks Install / Update and
+    /// Play.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_launcher: Option<String>,
     pub seed: SeedEntry,

@@ -11,8 +11,9 @@ The project never hosts CME's files. The launcher installs the stock 2009
 client from archive.org, and every change to a stock file ships as a
 bsdiff delta that the launcher applies to the player's own copy. A patch
 zip holds a `cimmeria-patch.json` recipe, the deltas, and files we wrote
-ourselves. See [docs/client/sgw-launcher.md](../../docs/client/sgw-launcher.md#patch-sets-cimmeria-patchset)
-for the format and [crates/patchset](../../crates/patchset/) for the code.
+ourselves. See [crates/patchset](../../crates/patchset/) for the format and
+the code, and [crates/launcher-core](../../crates/launcher-core/src/unpack/zip.rs)
+for how the launcher applies a patch zip.
 
 **Transforms keep derived bytes off the server too.** A patch whose new bytes would be derived from CME's art (a re-baked texture, say) cannot ship them as a delta either: the delta would carry a resampled copy of CME pixels. Such a patch uses a source transform that computes the bytes on the player's machine from the player's own files, with deterministic code so the recipe can pin the result hash (`world_map_rebake`, patch 013). The zip then holds a recipe and a delta of a few hundred bytes. A transform is new launcher code: publish the launcher release before the patch that uses it.
 

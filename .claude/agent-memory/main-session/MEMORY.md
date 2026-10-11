@@ -69,7 +69,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last
 
-- [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 proposed egui/wgpu versus Tauri versus SwiftUI evaluation; no accepted architecture or performance benchmark; scoped Mac packaging proof later authorized
+- [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 egui/wgpu versus Tauri versus SwiftUI evaluation; outcome 2026-10-11: Tauri desktop launcher is the only launcher (egui retired LX-18)
 
 - [reference_macos_wgl_forward_compat.md](reference_macos_wgl_forward_compat.md) — 2026-10-03: WoWSilicon launcher WGL rejection is missing forward-compatible flag; CX_FWD_COMPAT_GL_CTX=1 opens launcher and manifest; game UAT pending
 

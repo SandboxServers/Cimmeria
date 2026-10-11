@@ -181,7 +181,7 @@ The result is a pointer whose reference count is the dword at `+0x04`. The calle
 
 The Lua expects the store to fire `Events.BMViewUpdate(viewType)` after data arrives. That event would have come from the unwritten C++ subscriber, so a patch can call `BlackMarketMod.onBMViewUpdate(nil, view)` directly instead.
 
-UI Lua and layouts are loose files under `SGWGame/Content/UI/`. The server cannot deliver them, but the launcher's signed overlay-patch pipeline (`crates/launcher/src/install.rs`, `manifest.rs`) can.
+UI Lua and layouts are loose files under `SGWGame/Content/UI/`. The server cannot deliver them, but the launcher's signed overlay-patch pipeline (`crates/launcher-core/src/install.rs`, `manifest.rs`) can.
 
 ## 6. Live checks still owed
 

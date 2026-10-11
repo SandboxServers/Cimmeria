@@ -11,7 +11,7 @@ not depend on the telemetry opt-in. The decision record is
 decode, main-thread delivery to Lua) and **send** path (native Lua
 functions for the cell methods 61–66). The launcher injects this DLL on
 every `SGW.exe` launch unless the player opts out
-([sgw-launcher.md](../../docs/client/sgw-launcher.md#client-patches-dll)),
+([desktop launch contract](../launcher/desktop/docs/launch.md)),
 but nothing here has run inside a live client. Both paths are verified statically and by host and
 i686 unit tests only. The live checks still owed are listed at the end.
 

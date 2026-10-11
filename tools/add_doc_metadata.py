@@ -74,7 +74,6 @@ OVERRIDES: dict[str, Meta] = {
     "docs/tools/admin-panel.md":     Meta("explanation", "engineers"),
 
     # docs/client/
-    "docs/client/sgw-launcher.md":              Meta("explanation", "engineers"),
     "docs/client/launcher-guide.md":            Meta("how-to", "players, operators"),
     "docs/client/launcher-distribution-setup.md": Meta("how-to", "operators"),
     "docs/client/audio-voice-inventory.md":     Meta("reference", "engineers"),
@@ -130,7 +129,6 @@ IN_SCOPE = [
     # docs/client/
     "docs/client/audio-voice-inventory.md",
     "docs/client/facefx-lip-sync.md",
-    "docs/client/sgw-launcher.md",
     "docs/client/ui-layout-inventory.md",
     "docs/client/launcher-guide.md",
     "docs/client/launcher-distribution-setup.md",

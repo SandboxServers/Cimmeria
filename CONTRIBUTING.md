@@ -53,7 +53,7 @@ These areas mostly need careful Rust work, content authoring, or test additions 
 - **Mission fixes** — the database has 1,040 mission rows and many have known bugs. See [`docs/content/mission-chains.md`](docs/content/mission-chains.md) and [`docs/content/zone-audit.md`](docs/content/zone-audit.md).
 - **Game-system tests** — most subsystems (combat, inventory, vendors, social) have known gaps in test coverage. See [`docs/testing/inventory/`](docs/testing/inventory/) for the per-crate test census.
 - **Documentation** — about 90 in-scope docs are missing the metadata blocks the documentation-writer agent expects. [Issue #344](https://github.com/SandboxServers/Cimmeria/issues/344) tracks this sweep.
-- **Tauri admin app** — [`tools/`](tools/) and the launcher under [`crates/launcher/`](crates/launcher/). Frontend changes need a REPL-style logic UAT per [`AGENTS.md`](AGENTS.md).
+- **Tauri admin app** — [`tools/`](tools/) and the desktop launcher under [`crates/launcher/desktop/`](crates/launcher/desktop/README.md), with its shared code in [`crates/launcher-core/`](crates/launcher-core/). Frontend changes need a REPL-style logic UAT per [`AGENTS.md`](AGENTS.md).
 
 ### RE-required areas (Ghidra knowledge needed)
 
@@ -88,10 +88,10 @@ cargo check -p cimmeria-services
 # 4. Run the pre-PR checklist locally (CI runs this exactly)
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets -- -D warnings
+  --exclude cimmeria-scene-editor --all-targets -- -D warnings
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor
 
 # 5. If you changed anything touching the database, run live-DB tests:
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

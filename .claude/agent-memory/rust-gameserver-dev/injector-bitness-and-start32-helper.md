@@ -1,6 +1,6 @@
 ---
 name: injector-bitness-and-start32-helper
-description: DLL injection into the 32-bit SGW.exe must run at 32-bit; the x64 launcher uses the i686 sgw-start32 helper; the WOW64 kernel32 export-table resolver does not work on a suspended target
+description: DLL injection into the 32-bit SGW.exe must run at 32-bit; x64 callers go through an i686 helper (sgw-start32 for the lab, the desktop launcher's own launch worker); the WOW64 kernel32 export-table resolver does not work on a suspended target
 metadata:
   type: project
 ---
@@ -46,3 +46,5 @@ one stable path `<launcher dir>/sgw-start32.exe` (never %TEMP%, for AV exclusion
 **How to apply:** any new injector from a 64-bit process goes through `start32::run`;
 test it with the real WOW64 helper tests. See [[injected-dll-unwind-and-lua-error-rules]],
 [[i686-test-exe-uac-installer-detection]].
+
+**2026-10-11 (LX-18):** the egui launcher that embedded `sgw-start32` is retired. The desktop launcher injects through its own i686 launch worker, `cimmeria-launch-worker.exe` (package `cimmeria-runtime-probe` under `crates/launcher/desktop/`, built on `cimmeria-client-launch`, shipped in the release zip's `windows\` folder). `sgw-start32` stays for `cimmeria-lab` and the `sgw-testhost` DLL boot tests. `tools/launcher-release/build.sh` and `launcher-build.yml` are gone: the release build is `tools/launcher-release/build-desktop.sh`, and the start32 helper tests run in `client-launch.yml` (LX-16).

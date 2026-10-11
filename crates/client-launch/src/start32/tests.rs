@@ -156,8 +156,8 @@ fn answer_at_eof_is_empty_and_bad_utf8_is_kept() {
 
 /// The built i686 helper, from `CIMMERIA_TEST_START32`. Unset locally
 /// skips these tests; unset in CI fails them, so the helper tests can
-/// never pass vacuously there (the launcher workflow builds the helper
-/// and sets it).
+/// never pass vacuously there (the client-launch workflow builds the
+/// helper and sets it).
 #[cfg(windows)]
 fn helper() -> Option<PathBuf> {
     match std::env::var_os("CIMMERIA_TEST_START32") {

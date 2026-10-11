@@ -1,0 +1,166 @@
+name: client launch
+
+# Path-filtered: the client launch primitives (cimmeria-client-launch), the
+# i686 sgw-start32 injection helper built on them, and the launcher logic
+# that uses them (cimmeria-launcher-core). The main `ci` workflow (test.yml)
+# builds and tests these crates on Linux, where their injection and cabinet
+# code is cfg(windows) and compiles away; this workflow lints and tests that
+# code on Windows, with a real 32-bit injection. The desktop launcher, which
+# consumes all three, has its own workflow (launcher-desktop.yml).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/launcher-core/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/patchset/**'
+      - 'crates/upk/**'
+      - '.github/workflows/client-launch.yml'
+  pull_request:
+    paths:
+      - 'crates/launcher-core/**'
+      - 'crates/client-launch/**'
+      - 'crates/start32/**'
+      - 'crates/patchset/**'
+      - 'crates/upk/**'
+      - '.github/workflows/client-launch.yml'
+
+concurrency:
+  group: client-launch-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+# The Windows jobs run on the self-hosted `cimmeria-windows` pool (node3,
+# tools/ci-runners/README.md "Windows pool"), where sccache replaces rust-cache. Fork
+# and Dependabot PRs, and every run while the repository variable CI_WINDOWS_RUNNER is
+# `hosted`, use windows-latest.
+jobs:
+  clippy:
+    name: cargo clippy -D warnings (client launch, Windows)
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: client-launch-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The workspace clippy on Linux never lints client-launch's injection
+      # code or launcher-core's cabinet extraction: both are cfg(windows).
+      - name: cargo clippy
+        run: cargo clippy -p cimmeria-launcher-core -p cimmeria-client-launch -p cimmeria-start32 --all-targets -- -D warnings
+
+  test:
+    name: cargo nextest (client launch, Windows)
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: client-launch-windows
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      # SGW.exe is 32-bit, so injection goes through the i686 sgw-start32
+      # helper. Build it, then run the x64 tests with CIMMERIA_TEST_START32
+      # pointing at it: the start32 tests inject a real DLL into a real 32-bit
+      # process through the helper, check its asInvoker manifest, and that it
+      # starts without elevation. They fail, rather than skip, when CI is set
+      # and the variable is not.
+      - name: build the i686 sgw-start32 helper
+        run: cargo build -p cimmeria-start32 --target i686-pc-windows-msvc
+      - name: cargo nextest run
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A Windows path: the test runs the helper through std::process::Command.
+          CIMMERIA_TEST_START32="$(cygpath -w "$PWD/target/i686-pc-windows-msvc/debug/sgw-start32.exe")"
+          export CIMMERIA_TEST_START32
+          cargo nextest run --profile=ci -p cimmeria-launcher-core -p cimmeria-client-launch
+
+  # Coverage of the same crates, uploaded under the `client-launch` flag
+  # (codecov.yml) on every run of this path-filtered workflow; test.yml's
+  # workspace coverage runs only nightly and on PRs labeled `coverage`.
+  coverage:
+    name: cargo llvm-cov (client launch)
+    # Self-hosted cimmeria-linux (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage,')) && 'ubuntu-latest' || 'cimmeria-linux' }}
+    needs: clippy
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: llvm-tools-preview
+      - name: install clang + mold
+        # `.cargo/config.toml` pins `linker = "clang"` with
+        # `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` for the Linux GNU
+        # target. The runner's stock clang doesn't ship with mold so the
+        # build fails with `invalid linker name in argument '-fuse-ld=mold'`
+        # unless we install it here.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang mold
+      - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners use the shared sccache instead (tools/ci-runners/README.md).
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: client-launch-coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: clean stale counter data
+        run: cargo llvm-cov clean --workspace
+      - name: cargo llvm-cov nextest -p cimmeria-launcher-core -p cimmeria-client-launch
+        run: cargo llvm-cov --no-report nextest --profile=ci -p cimmeria-launcher-core -p cimmeria-client-launch
+      - name: render cobertura report
+        run: |
+          mkdir -p target/coverage
+          cargo llvm-cov report --cobertura --output-path target/coverage/cobertura.xml
+          cargo llvm-cov report --summary-only | tee target/coverage/summary.txt
+      - name: print summary to job log
+        run: |
+          {
+            echo "## Client launch coverage summary"
+            echo '```'
+            cat target/coverage/summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-launch-coverage
+          path: target/coverage/
+          retention-days: 14
+      - name: upload to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: target/coverage/cobertura.xml
+          flags: client-launch
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true

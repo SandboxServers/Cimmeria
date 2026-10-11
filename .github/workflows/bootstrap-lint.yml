@@ -5,11 +5,12 @@ name: bootstrap-lint
 # silently ship and waste a contributor's setup time. Gated to paths that
 # could affect either artifact.
 #
-# Two checks today:
+# Checks today:
 #   - .mcp.json.example parses as valid JSON (with the four expected
 #     mcpServers entries present so a rename or accidental delete trips CI).
 #   - Every PowerShell file under bootstrap/CimmeriaBootstrap/ parses via the
-#     PowerShell AST.
+#     PowerShell AST, and the module exports the expected functions.
+#   - Install-CimmeriaLauncher's tests (bootstrap/tests/), on Windows.
 
 on:
   pull_request:
@@ -84,7 +85,7 @@ jobs:
             'Install-CimmeriaReToolchain',
             'Build-CimmeriaServer',
             'Build-CimmeriaApp',
-            'Build-CimmeriaLauncher',
+            'Install-CimmeriaLauncher',
             'Initialize-CimmeriaDatabase',
             'Start-CimmeriaServer',
             'Stop-CimmeriaServer',
@@ -98,3 +99,19 @@ jobs:
             exit 1
           }
           Write-Host "All expected exports present: $($expected -join ', ')"
+
+  # setup.ps1 -WithLauncher downloads the released launcher zip; the function is
+  # Windows only, so its tests run on Windows against a local HTTP server.
+  install-launcher:
+    name: Install-CimmeriaLauncher tests (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: bootstrap/tests/test-install-launcher.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File bootstrap/tests/test-install-launcher.ps1

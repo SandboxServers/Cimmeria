@@ -340,7 +340,7 @@ mod tests {
     // Manual check against the real archive.org client RAR (4.1 GB, about
     // 10 GB of scratch space). Run with:
     //   SGW_CLIENT_RAR=<path to .rar> SGW_UNPACK_DEST=<empty dir> \
-    //     cargo test -p sgw-launcher real_client_rar -- --ignored --nocapture
+    //     cargo test -p cimmeria-launcher-core real_client_rar -- --ignored --nocapture
     #[test]
     #[ignore = "needs the 4.1 GB client RAR; see the comment"]
     fn real_client_rar() {

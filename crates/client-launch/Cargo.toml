@@ -3,7 +3,7 @@ name = "cimmeria-client-launch"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Shared client launch primitives: suspended-process launch and DLL injection. Extracted from sgw-launcher so both the launcher and the Live Research Lab supervisor (cimmeria-lab) drive the same code path."
+description = "Shared client launch primitives: suspended-process launch and DLL injection. Shared by the desktop launcher's launch worker and the Live Research Lab supervisor (cimmeria-lab), so both drive the same code path."
 
 [lib]
 name = "cimmeria_client_launch"

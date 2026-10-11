@@ -20,5 +20,5 @@ metadata:
 - [cme-registry-is-a-factory-not-subscribe.md](cme-registry-is-a-factory-not-subscribe.md) — 0x00a5c0f0/0x00a5c150 are the CME event-factory map (create/count by std::string); the CME subscribe never worked.
 - [dll-boot-testhost-traps.md](dll-boot-testhost-traps.md) — sgw-testhost harness: console children hold a piped stdout (start32::run blocks), restage after DLL edits, derive site counts.
 - [cargo-artifact-hardlink-cp-trap.md](cargo-artifact-hardlink-cp-trap.md) — `cp` over a built DLL writes through the hardlink into deps/; `rm` first, `touch` a source to recover.
-- [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 launcher injects via the i686 sgw-start32 helper; the WOW64 resolver fails on suspended targets.
+- [injector-bitness-and-start32-helper.md](injector-bitness-and-start32-helper.md) — x64 callers inject via an i686 helper (sgw-start32 for the lab, the desktop launch worker); the WOW64 resolver fails on suspended targets.
 - [client-unit-slots-and-actor-pose.md](client-unit-slots-and-actor-pose.md) — Lua units are slots (map at mgr+0x130), pin private slots 7700+; actor pose at +0xDC; worldToPixel only in PreRender.

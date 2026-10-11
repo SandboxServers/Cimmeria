@@ -21,7 +21,7 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 | 2 | `Install-CimmeriaDependencies` | Download PostgreSQL (Windows) or verify system PG |
 | 3 | `Build-CimmeriaServer` | `cargo build --workspace` excluding the GUI apps (see below) |
 | 4 | `Build-CimmeriaApp` | `npm install` + `cargo tauri build` (optional, `-WithAdmin`) |
-| 5 | `Build-CimmeriaLauncher` | Build the `sgw-launcher` egui app (optional, `-WithLauncher`) |
+| 5 | `Install-CimmeriaLauncher` | Download the released desktop launcher zip from `launcher-current`, check its `.sha256`, unpack it into `launcher\` (optional, `-WithLauncher`) |
 | 6 | `Sync-CimmeriaGameData` | Copy client PAK files into `data/cache/` |
 | 7 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
 | 8 | `Start-CimmeriaServer` | Launch cimmeria-server binary |
@@ -30,13 +30,14 @@ Step 3 (`Build-CimmeriaServer`) runs:
 
 ```powershell
 cargo build --workspace `
-  --exclude cimmeria-app --exclude sgw-launcher `
+  --exclude cimmeria-app `
   --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
 ```
 
-The four GUI apps (Tauri admin panel, egui game launcher, and the two Tauri editors)
-are excluded from the default build and only built on demand via `-WithAdmin` /
-`-WithLauncher` or their dedicated functions.
+The three GUI apps (Tauri admin panel and the two Tauri editors) are excluded from
+the default build; the admin panel is built on demand via `-WithAdmin` or
+`Build-CimmeriaApp`. The game launcher is not built at all: `-WithLauncher`
+downloads the released one.
 
 `Invoke-CimmeriaBootstrap` runs all steps in order with fail-fast semantics.
 
@@ -46,7 +47,7 @@ are excluded from the default build and only built on demand via `-WithAdmin` /
 
 - **`Build-CimmeriaServer`** - Build the Rust server workspace via Cargo (excludes the GUI apps)
 - **`Build-CimmeriaApp`** - Build the Tauri admin app (SolidJS frontend + Rust backend)
-- **`Build-CimmeriaLauncher`** - Build the `sgw-launcher` egui game launcher
+- **`Install-CimmeriaLauncher`** - Download the released desktop launcher into `launcher\` beside the server
 
 ### Setup & Database
 
@@ -142,7 +143,7 @@ CimmeriaBootstrap/
 │   ├── Install-CimmeriaDependencies.ps1
 │   ├── Build-CimmeriaServer.ps1
 │   ├── Build-CimmeriaApp.ps1
-│   ├── Build-CimmeriaLauncher.ps1
+│   ├── Install-CimmeriaLauncher.ps1
 │   ├── Initialize-CimmeriaDatabase.ps1
 │   ├── Sync-CimmeriaGameData.ps1
 │   ├── Start-CimmeriaServer.ps1

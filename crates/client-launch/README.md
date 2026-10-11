@@ -1,9 +1,9 @@
 # cimmeria-client-launch
 
 Shared client launch primitives: start `SGW.exe` suspended, inject DLLs
-into it, resume it, and patch its `.rdata` server hostname. Used by
-`sgw-launcher` and `cimmeria-lab` so both drive the same code (see
-issue #685).
+into it, resume it, and patch its `.rdata` server hostname. Used by the
+desktop launcher's 32-bit launch worker (`crates/launcher/desktop/runtime-probe/`)
+and `cimmeria-lab` so both drive the same code (see issue #685).
 
 | Module | What it holds |
 |---|---|
@@ -98,14 +98,12 @@ let game = RunningProcess::open(pid)?; // SYNCHRONIZE: wait on the exit
 let exit_code = game.wait()?;
 ```
 
-`sgw-launcher` embeds the helper and keeps it at one stable path,
-`<launcher dir>/sgw-start32.exe`, never `%TEMP%`
-(`crates/launcher/src/start32_helper.rs`), so an antivirus exclusion for
-the launcher's folder survives updates. An opted-in player launch passes
-both DLLs (patches, then telemetry), and `cimmeria-lab` calls the same
-helper with its own DLL list; a
-caller that ships separately should likewise keep it beside itself under
-that name.
+`cimmeria-lab` calls the helper with its own DLL list. The desktop
+launcher does not use it: its launch worker is itself an i686 binary and
+calls this library directly, passing both DLLs (patches, then telemetry)
+for an opted-in player launch. A caller that ships the helper should keep
+it beside itself under its own name, never in `%TEMP%`, so an antivirus
+exclusion for its folder survives updates.
 
 ## Tests
 
@@ -124,5 +122,5 @@ CIMMERIA_TEST_START32='<target dir>\i686-pc-windows-msvc\debug\sgw-start32.exe' 
 ```
 
 Unset, those tests skip locally; with `CI` set they fail, so they cannot
-pass vacuously in [launcher-build.yml](../../.github/workflows/launcher-build.yml),
+pass vacuously in [client-launch.yml](../../.github/workflows/client-launch.yml),
 which builds the helper and sets the variable.
