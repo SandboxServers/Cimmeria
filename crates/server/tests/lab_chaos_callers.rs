@@ -123,6 +123,30 @@ fn lab_chaos_callers_stay_on_the_allowlist() {
     );
 }
 
+/// A return to character select keeps the session, so no teardown clears the
+/// address's chaos and the next character on it would inherit it (CH-05
+/// review). The logOff handler's character-select branch must clear it
+/// through the teardown helper. A text check: no test binary but the
+/// registry's own may install it (see [`INSTALL_ALLOWED`]), so the handler
+/// cannot be driven with live chaos; the helper's behaviour is tested in
+/// `base-session`'s `lab_chaos` tests.
+#[test]
+fn character_select_logoff_clears_the_sessions_chaos() {
+    let rel = "base/src/base/dispatch/session.rs";
+    let text = std::fs::read_to_string(crates_dir().join(rel))
+        .unwrap_or_else(|e| panic!("read {rel}: {e}"))
+        .replace("\r\n", "\n");
+    let branch = text
+        .find("logOff: returning to character select")
+        .expect("the character-select branch's log line");
+    let call = "#[cfg(feature = \"lab-chaos\")]\n        \
+        cimmeria_base_session::base::helpers::clear_lab_chaos_on_character_select(addr);";
+    let at = text
+        .find(call)
+        .expect("the character-select branch clears the address's lab chaos");
+    assert!(at > branch, "the clear sits in the character-select branch");
+}
+
 /// The scan itself: each rule fires on a disallowed file and stays quiet on
 /// an allowed one.
 #[test]

@@ -104,6 +104,31 @@ fn process_registry_gate_and_teardown_clear() {
     );
     assert_eq!(installed.net_for(a, now), None);
     assert_eq!(installed.flush_for(a, now), None);
+
+    // A return to character select keeps the session but clears its chaos,
+    // and only at its own address.
+    let b = addr(40_102);
+    set_net(installed, a, 1007, 3, now);
+    set_net(installed, b, 1008, 4, now);
+    crate::base::helpers::clear_lab_chaos_on_character_select(a);
+    assert_eq!(installed.net_for(a, now), None);
+    assert!(installed.net_for(b, now).is_some());
+    installed.clear(None);
+}
+
+#[test]
+fn clear_entity_removes_every_entry_tagged_with_it() {
+    let chaos = LabChaos::new();
+    let now = Instant::now();
+    // The same entity on two addresses: a relaunch while the old session
+    // lingered. Both go; another entity's entry stays.
+    set_net(&chaos, addr(40_061), 77, 1, now);
+    set_net(&chaos, addr(40_062), 77, 2, now);
+    set_net(&chaos, addr(40_063), 78, 3, now);
+    assert_eq!(chaos.clear_entity(77), 2);
+    assert_eq!(chaos.clear_entity(77), 0);
+    let left: Vec<u32> = chaos.status(now).iter().map(|s| s.entity_id).collect();
+    assert_eq!(left, [78]);
 }
 
 #[test]

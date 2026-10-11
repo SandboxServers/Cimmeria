@@ -271,6 +271,18 @@ struct EndHints {
     channel: ChannelHealth,
 }
 
+/// Clears the lab chaos at `addr` when its player returns to character
+/// select. That path keeps the session, so no teardown runs, and chaos set
+/// for the old character would otherwise keep hitting the next one on the
+/// same address. Lives here so the logOff handler need not read the registry
+/// itself (`lab_chaos_callers` allowlist).
+#[cfg(feature = "lab-chaos")]
+pub fn clear_lab_chaos_on_character_select(addr: SocketAddr) {
+    if let Some(chaos) = crate::base::lab_chaos::current() {
+        chaos.clear(Some(addr));
+    }
+}
+
 /// The body of both teardown entry points. `false` when nothing was torn
 /// down: the session was already gone, or `owner` is set and the session
 /// at `addr` is not the one it names.
