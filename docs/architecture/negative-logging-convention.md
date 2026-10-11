@@ -937,6 +937,12 @@ Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_log
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Spatial chat send failures (TG-SOC-07)
+
+`cell/console/chat/spatial.rs` in `cimmeria-cell-console`. A `say`, `emote` or `yell` line sent into a closed base channel was dropped by `let _`. Each failed send now logs WARN `target: CHAT_LOG_TARGET`, `event = "chat.spatial_send_failed"`, `reason = "base_channel_closed"`: one row per witness (`target_entity_id` + `target_entity_name`, and the `target_player_*` / `target_account_*` identity), and one for the speaker's echo (`entity_id` + `entity_name`, the speaker's identity). Both carry `channel`. The broadcast row is DEBUG `event = "chat.spatial_broadcast"` with the speaker's identity and `ignored`, the count of witnesses withheld by an Ignore list. A sent line logs nothing new.
+
+Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
