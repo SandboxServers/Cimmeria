@@ -30,8 +30,13 @@
     Exit codes: 0 a snapshot was printed, or the live view ended with Ctrl+C;
     1 the daemon is down and there is no batch to show; 2 usage (an
     -IntervalSeconds outside 1 to 60, a -Batch folder with neither plan.json
-    nor batch.jsonl, or a -StatusFile that does not exist). Under -Json a
-    usage error prints {"ok":false,"exit":2,"error":...}.
+    nor batch.jsonl, or a -StatusFile that does not exist); 3 a one-snapshot
+    read failed (a locked or denied batch folder or labd.log). Under -Json
+    exits 2 and 3 print {"ok":false,"exit":N,"error":...}.
+
+    Limits: with stdin redirected, Ctrl+C is the shell's own and the exit is
+    not 0 (the screen is still restored); Ctrl+Break or closing the window
+    skips the restore.
 
     Test seams, not for normal use: -StatusFile <path> reads the /status JSON
     from a file instead of the daemon (a file without the daemon's shape, such
@@ -140,17 +145,29 @@ function Show-LabWatchLive {
     if (-not [Console]::IsInputRedirected) {
         try { $savedCtrlC = [Console]::TreatControlCAsInput; [Console]::TreatControlCAsInput = $true; $readKeys = $true } catch { $readKeys = $false }
     }
-    [Console]::Out.Write("$e[?1049h$e[?25l")
     try {
+        [Console]::Out.Write("$e[?1049h$e[?25l")
         while ($true) {
             $width = Get-LabWatchWidth
+            # A frame taller than the window scrolls the alternate screen, and
+            # the next ESC[H then draws over a shifted one: keep it inside.
+            $height = 0
+            try { $height = [Console]::WindowHeight } catch { $height = 0 }
             $lines = [System.Collections.Generic.List[string]]::new()
             $lines.Add("lab watch  $((Get-Date).ToString('HH:mm:ss'))  every ${IntervalSeconds}s  Ctrl+C to quit")
             try {
                 foreach ($l in @(Format-LabWatchText (Get-LabWatchFrame) $width)) { $lines.Add($l) }
             } catch {
                 # One bad tick (a file mid-write, a daemon restart) is shown, not fatal.
-                $lines.Add("error: $(Hide-LeaseIds (("$($_.Exception.Message)" -split "`n")[0]))")
+                # A CRLF message would leave a CR that, with the ESC[K after it,
+                # blanks the line: split on either ending.
+                $lines.Add("error: $(Hide-LeaseIds (("$($_.Exception.Message)" -split '\r?\n')[0]))")
+            }
+            if ($height -gt 1 -and $lines.Count -gt $height - 1) {
+                $keep = $height - 1
+                $cut = $lines.Count - $keep + 1
+                $lines = [System.Collections.Generic.List[string]]$lines.GetRange(0, $keep - 1)
+                $lines.Add("... $cut more lines: widen or heighten the window, or use lab watch -Once")
             }
             $frame = [System.Text.StringBuilder]::new("$e[H")
             foreach ($l in $lines) { [void]$frame.Append((Limit-UatText $l $width)).Append("$e[K`r`n") }
@@ -159,8 +176,10 @@ function Show-LabWatchLive {
             if (Wait-LabWatchTick $readKeys) { break }
         }
     } finally {
-        [Console]::Out.Write("$e[?25h$e[?1049l")
-        if ($readKeys) { [Console]::TreatControlCAsInput = $savedCtrlC }
+        # Ctrl+C mode first: a write to a closed console must not leave the
+        # parent shell ignoring Ctrl+C.
+        try { if ($readKeys) { [Console]::TreatControlCAsInput = $savedCtrlC } }
+        finally { [Console]::Out.Write("$e[?25h$e[?1049l") }
     }
 }
 
@@ -183,7 +202,12 @@ function Invoke-LabWatch {
     # A redirected stdout gets one snapshot: escape codes and an endless loop
     # into a file or a pipe help nobody.
     if ($Once -or $Json -or [Console]::IsOutputRedirected) {
-        $snap = Get-LabWatchFrame
+        try { $snap = Get-LabWatchFrame }
+        catch {
+            # A batch folder or labd.log that can't be read (locked, denied) is
+            # its own exit code, not "daemon down and no batch".
+            return Stop-Watch 3 "could not read the lab state: $(Hide-LeaseIds (("$($_.Exception.Message)" -split '\r?\n')[0]))"
+        }
         if ($Json) {
             [Console]::Out.WriteLine((ConvertTo-LabWatchJson $snap))
         } else {

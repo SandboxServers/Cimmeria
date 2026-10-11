@@ -6,8 +6,15 @@
         pwsh -NoProfile -File tools/lab/cli/test-watch.ps1
 
 .DESCRIPTION
-    Reads the recorded fixtures in fixtures/watch/ from a temp copy, with a
-    fixed clock and fake pid checks, so nothing here touches the lab.
+    Library checks read the recorded fixtures in fixtures/watch/ from a temp
+    copy, with a fixed clock and fake pid checks. Command checks run watch.ps1
+    in child pwsh processes through its -StatusFile and -LogFile seams, with a
+    temp lab home whose labd.pid points at a closed port and an empty UAT
+    root, so nothing here touches the lab or a running daemon.
+
+    Not covered: the live loop and its terminal restore, and -Once/-Json on
+    their own (a child's stdout is always redirected here, which takes the
+    one-snapshot path anyway). LW-05 checks those in a real console.
 
 .EXAMPLE
     pwsh -NoProfile -File tools/lab/cli/test-watch.ps1
@@ -240,6 +247,15 @@ try {
         [IO.File]::WriteAllText($downStatus, 'null')
         $out = @(pwsh -NoProfile -File $watch -Json -StatusFile $downStatus -LogFile $logPath)
         Check ($LASTEXITCODE -eq 1 -and ($out -join '') -ceq '{"ok":true,"daemon":"down","state":"none"}') "daemon down and no batch exits 1 ($LASTEXITCODE, $($out -join ' '))"
+
+        # A labd.log held open with no sharing can't be read: exit 3 with the
+        # error shape, not exit 1 as if the daemon were down.
+        $lockedLog = Join-Path $tmp 'locked.log'
+        [IO.File]::WriteAllText($lockedLog, "x`n")
+        $lock = [IO.File]::Open($lockedLog, 'Open', 'Read', 'None')
+        try { $out = @(pwsh -NoProfile -File $watch -Json -Batch $newDir -StatusFile $statusPath -LogFile $lockedLog) }
+        finally { $lock.Dispose() }
+        Check ($LASTEXITCODE -eq 3 -and ($out -join '').StartsWith('{"ok":false,"exit":3,')) "an unreadable labd.log exits 3 with the error shape ($LASTEXITCODE, $($out -join ' '))"
 
         # Redirected stdout without -Once: one snapshot, never the live loop. A
         # 20 s timeout fails the check instead of hanging the job.
