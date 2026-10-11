@@ -937,6 +937,29 @@ Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_log
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Character-create refusals (TG-DB-08)
+
+`character_create/refusal_log.rs` in `cimmeria-base`. Every refused `createCharacter` writes one row, `event = "character_create_failed"`, message "character creation refused", before `onCharacterCreateFailed` goes to the client. Each row carries the account (`addr`, `account_id`, `account_name`), the code sent (`error_code` paired with its `ErrorStrings` moniker as `error_name`), and what was refused once it has been parsed: `player_name` (the requested name) and `char_def_id`. The level is the one each site logged at before.
+
+| Level | `reason` | When | Extra fields |
+|---|---|---|---|
+| WARN | `name_parse_failed` | The name or extra name is not a readable WSTRING | `error` |
+| INFO | `name_rejected` | The name breaks the format rules | `rule` |
+| INFO | `extra_name_rejected` | The extra name breaks the format rules | `rule`, `extra_name` |
+| WARN | `malformed_args` | The payload ends before the CharDef, the visual choices or the skin tint | |
+| INFO | `invalid_skin_tint` | The skin tint is outside 0..=15 | `skin_tint_color_id` |
+| WARN | `unknown_char_def` | No CharDef row, or the start profile refuses the CharDef | |
+| WARN | `no_db_pool` | No database is attached | |
+| ERROR | `query_failed` | The visual-group, start-profile or starter-kit query failed | `error` when the site has one |
+| WARN | `invalid_visual_group` | A choice names a visual group the CharDef lacks | `vg_id`, `choice_id` |
+| WARN | `forced_group_choice` | A choice targets a forced visual group | `vg_id`, `choice_id` |
+| WARN | `invalid_choice` | A choice is not in its visual group | `vg_id`, `choice_id` |
+| WARN | `missing_optional_choice` | An optional visual group has no choice | `vg_id` |
+| INFO | `name_taken` | The insert hit `sgw_player_player_name_key` | |
+| ERROR | `db_write_failed` | The transaction could not open, the insert, starter kit or grant record failed, or the commit failed | `error` when the site has one, `player_id` after the insert |
+
+`char_def_id`, `vg_id`, `choice_id` and `skin_tint_color_id` are `nt:id-only`: their rows carry no name column. Guards: `fail_code_tests.rs` `unknown_char_def_is_invalid_character_type` (asserts `reason`, `account_id`, `char_def_id`, `error_code` and `error_name`) and `skin_tint_out_of_range_is_invalid_skin_color` (asserts `reason`, `account_id`, `skin_tint_color_id`, `char_def_id` and `player_name`).
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

@@ -21,7 +21,9 @@ use cimmeria_mercury::encryption::MercuryEncryption;
 use super::live_db_tests::{build_create_character_payload, cleanup, insert_account};
 use super::seed_parity_live_db_tests::{create, default_choices};
 use super::*;
-use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
+use crate::test_support::{
+    require_db_or_skip, test_default_connected_client_state, LogCapture, TestTransport,
+};
 
 /// `test_default_connected_client_state` builds its cipher from this key.
 const SESSION_KEY: [u8; 32] = [0u8; 32];
@@ -140,17 +142,40 @@ async fn rejected_extra_name_is_invalid_character_name() {
 
 #[tokio::test]
 async fn skin_tint_out_of_range_is_invalid_skin_color() {
+    let capture = LogCapture::install();
     assert_eq!(
         refusal_message(&payload("Good Name", "", 1, 16)).await,
         expected(10002)
     );
+    // The row names the refusal and the account it came from (TG-DB-08).
+    let line = capture
+        .find_message(tracing::Level::INFO, "character creation refused")
+        .unwrap_or_else(|| panic!("no refusal row: {:#?}", capture.all()));
+    assert!(line.has_field("reason", "invalid_skin_tint"), "{line:#?}");
+    assert!(line.has_field("account_id", "7"), "{line:#?}");
+    // ...and what was refused.
+    assert!(line.has_field("skin_tint_color_id", "16"), "{line:#?}");
+    assert!(line.has_field("char_def_id", "1"), "{line:#?}");
+    assert!(line.has_field("player_name", "Good Name"), "{line:#?}");
 }
 
 #[tokio::test]
 async fn unknown_char_def_is_invalid_character_type() {
+    let capture = LogCapture::install();
     assert_eq!(
         refusal_message(&payload("Good Name", "", 999, 0)).await,
         expected(10001)
+    );
+    let line = capture
+        .find_message(tracing::Level::WARN, "character creation refused")
+        .unwrap_or_else(|| panic!("no refusal row: {:#?}", capture.all()));
+    assert!(line.has_field("reason", "unknown_char_def"), "{line:#?}");
+    assert!(line.has_field("account_id", "7"), "{line:#?}");
+    assert!(line.has_field("char_def_id", "999"), "{line:#?}");
+    assert!(line.has_field("error_code", "10001"), "{line:#?}");
+    assert!(
+        line.has_field("error_name", "ERROR_CharacterCreationInvalidCharacterType"),
+        "{line:#?}"
     );
 }
 
