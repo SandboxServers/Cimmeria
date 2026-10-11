@@ -31,28 +31,42 @@ pub enum Diff {
     /// A new mission (`from` None), a changed status, or a removed mission
     /// (`to` None).
     MissionStatus {
+        /// `sgw_mission.mission_id`.
         mission: i32,
+        /// The status before; None when the mission had no row.
         from: Option<i32>,
+        /// The status after; None when the row is gone.
         to: Option<i32>,
     },
     /// Same status, changed step.
     MissionStep {
+        /// `sgw_mission.mission_id`.
         mission: i32,
+        /// `current_step_id` before; None when it was NULL.
         from: Option<i32>,
+        /// `current_step_id` after; None when it is NULL.
         to: Option<i32>,
     },
     /// A carried stack's count changed; a stack that is not there counts 0.
     ItemCount {
+        /// The item's design id.
         type_id: i32,
+        /// The bag it is in ([`is_carried`]).
         container: i32,
+        /// The count before.
         from: i32,
+        /// The count after.
         to: i32,
+        /// The item's name from the after snapshot, else the before one.
         name: Option<String>,
     },
     /// `level`, `exp`, `naquadah` or `world`.
     Player {
+        /// Which of [`PLAYER_FIELDS`] changed.
         field: &'static str,
+        /// The value before, as text.
         from: String,
+        /// The value after, as text.
         to: String,
     },
 }
@@ -168,6 +182,11 @@ pub fn row_snapshots<'a>(
 /// Host ms from the anchor's tick to the first tick (from the anchor's tick
 /// to `last_tick`) whose snapshot shows `d`. A diff no snapshot in the row
 /// shows (not one of this row's) gets the row's whole span.
+/// [`row_clauses`] never reaches that fallback: its diffs end in the row's
+/// own last snapshot, so some tick in the row always shows them.
+///
+/// `host_ms` comes from the JSONL, so the subtraction saturates rather than
+/// trusting it to be sane.
 pub fn settle_ms(log: &RecordLog, row: &RecordedRow, d: &Diff) -> i64 {
     let in_row = || {
         log.ticks
@@ -181,7 +200,7 @@ pub fn settle_ms(log: &RecordLog, row: &RecordedRow, d: &Diff) -> i64 {
         .find(|t| t.snapshot.as_ref().is_some_and(|s| shows(s, d)))
         .or_else(|| in_row().next_back())
         .map_or(anchor_ms, |t| t.host_ms);
-    (shown - anchor_ms).max(0)
+    shown.saturating_sub(anchor_ms).max(0)
 }
 
 /// Whether a snapshot holds the state a diff ends in.
@@ -221,9 +240,14 @@ fn shows(s: &DbSnapshot, d: &Diff) -> bool {
 }
 
 /// `clamp(max(2t, t + floor), floor, ceiling)`, rounded up to 250 ms.
+/// Saturating, since `t` is a recorded time span: a huge one clamps to the
+/// ceiling.
 fn margin(t: i64, floor: i64, ceiling: i64) -> u64 {
     let t = t.max(0);
-    let ms = (2 * t).max(t + floor).clamp(floor, ceiling);
+    let ms = t
+        .saturating_mul(2)
+        .max(t.saturating_add(floor))
+        .clamp(floor, ceiling);
     // The floors and ceilings are multiples of 250, so rounding up never
     // leaves the clamp's range.
     ((ms + 249) / 250 * 250) as u64
@@ -249,8 +273,11 @@ pub fn server_wait_timeout_ms(t: i64) -> u64 {
 /// `timeout_ms`, ...).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClauseOut {
+    /// The clause id, unique in the row (`dialog-3995`, `mission-622-step`).
     pub id: String,
+    /// The one-line description a reader sees.
     pub text: String,
+    /// The clause's keys and values, in the order they are written.
     pub fields: Vec<(&'static str, Inline)>,
 }
 
@@ -401,13 +428,18 @@ fn string(s: &str) -> Inline {
 /// An inline TOML value, as the emitter writes it on one line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Inline {
+    /// A string, written quoted and escaped.
     Str(String),
+    /// An integer.
     Int(i64),
     /// The value and its fixed number of decimals (at least one is written,
     /// so the value stays a TOML float).
     Float(f64, usize),
+    /// `true` or `false`.
     Bool(bool),
+    /// An inline table; its pairs are written in this order.
     Table(Vec<(String, Inline)>),
+    /// An array, in this order.
     Array(Vec<Inline>),
 }
 
@@ -454,3 +486,7 @@ fn key(k: &str) -> String {
 #[cfg(test)]
 #[path = "clauses_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "clauses_row_tests.rs"]
+mod row_tests;

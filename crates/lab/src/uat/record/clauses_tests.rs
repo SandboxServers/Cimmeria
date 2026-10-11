@@ -3,11 +3,11 @@ use serde_json::{json, Value};
 use super::*;
 use crate::uat::record::decode::Call;
 use crate::uat::record::log::{read_log, SnapItem, SnapMission, Tick};
-use crate::uat::record::segment::{segment, Anchor, AnchorKind};
+use crate::uat::record::segment::{Anchor, AnchorKind};
 
-const FIXTURE: &str = include_str!("fixtures/fs_p3_record.jsonl");
+pub(super) const FIXTURE: &str = include_str!("fixtures/fs_p3_record.jsonl");
 
-fn mission(mission_id: i32, status: i32, step: Option<i32>) -> SnapMission {
+pub(super) fn mission(mission_id: i32, status: i32, step: Option<i32>) -> SnapMission {
     SnapMission {
         mission_id,
         status,
@@ -16,7 +16,7 @@ fn mission(mission_id: i32, status: i32, step: Option<i32>) -> SnapMission {
     }
 }
 
-fn item(type_id: i32, container_id: i32, count: i32, name: Option<&str>) -> SnapItem {
+pub(super) fn item(type_id: i32, container_id: i32, count: i32, name: Option<&str>) -> SnapItem {
     SnapItem {
         type_id,
         container_id,
@@ -34,7 +34,8 @@ fn player(level: i32, exp: i64, naquadah: i64, world: &str) -> SnapPlayer {
     }
 }
 
-fn tick(seq: u32, snapshot: Option<DbSnapshot>) -> Tick {
+/// A tick `500 * seq` host ms in.
+pub(super) fn tick(seq: u32, snapshot: Option<DbSnapshot>) -> Tick {
     Tick {
         seq,
         host_ms: 500 * i64::from(seq),
@@ -45,7 +46,7 @@ fn tick(seq: u32, snapshot: Option<DbSnapshot>) -> Tick {
 
 /// A log whose snapshot is `before` at tick 1, nothing at the anchor (tick
 /// 2), and `after` at tick 3; the row covers ticks 2 to 4.
-fn one_row(
+pub(super) fn one_row(
     before: DbSnapshot,
     after: DbSnapshot,
     server: Vec<(u32, String, Value)>,
@@ -77,15 +78,15 @@ fn one_row(
     (log, row)
 }
 
-fn ids(clauses: &[ClauseOut]) -> Vec<&str> {
+pub(super) fn ids(clauses: &[ClauseOut]) -> Vec<&str> {
     clauses.iter().map(|c| c.id.as_str()).collect()
 }
 
-fn field<'a>(c: &'a ClauseOut, name: &str) -> &'a Inline {
+pub(super) fn field<'a>(c: &'a ClauseOut, name: &str) -> &'a Inline {
     &c.fields.iter().find(|(k, _)| *k == name).unwrap().1
 }
 
-fn dialog(seq: u32, d: i64) -> (u32, String, Value) {
+pub(super) fn dialog(seq: u32, d: i64) -> (u32, String, Value) {
     (
         seq,
         "onDialogDisplay".into(),
@@ -93,79 +94,23 @@ fn dialog(seq: u32, d: i64) -> (u32, String, Value) {
     )
 }
 
-/// FS-P3's one row: the dialog the server opened, mission 622's step and
-/// the new mission 1360, the server clauses at 3500 ms (settled 500 ms after
-/// the anchor). Fails if the start snapshot is taken after the anchor's
-/// tick: tick 33 already holds the new state, so nothing would differ.
-#[test]
-fn fs_p3_row_gives_a_dialog_clause_and_two_mission_clauses() {
-    let log = read_log(FIXTURE).unwrap();
-    let rows = segment(&log);
-    assert_eq!(rows.len(), 1);
-    let row = &rows[0];
-    let clauses = row_clauses(&log, row, "${character}");
-    assert_eq!(
-        ids(&clauses),
-        ["dialog-3995", "mission-622-step", "mission-1360-status"]
-    );
-
-    let dialog = &clauses[0];
-    assert_eq!(dialog.text, "onDialogDisplay 3995 to the player");
-    assert_eq!(field(dialog, "source"), &Inline::Str("packet".into()));
-    assert_eq!(
-        field(dialog, "match_fields").render(),
-        "{ dialog_id = 3995 }"
-    );
-
-    let step = &clauses[1];
-    assert_eq!(step.text, "sgw_mission: 622 on step 80623");
-    assert_eq!(field(step, "value"), &Inline::Int(80623));
-    assert_eq!(
-        field(step, "args").render(),
-        "{ sql = \"SELECT m.current_step_id FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id WHERE p.player_name = '${character}' AND m.mission_id = 622\" }"
-    );
-    let status = &clauses[2];
-    assert_eq!(status.text, "sgw_mission: 1360 status 1");
-    assert_eq!(field(status, "value"), &Inline::Int(1));
-    for c in &clauses[1..] {
-        assert_eq!(field(c, "timeout_ms"), &Inline::Int(3500), "{}", c.id);
-        assert_eq!(field(c, "op"), &Inline::Str("eq".into()));
-    }
-    let keys: Vec<&str> = step.fields.iter().map(|(k, _)| *k).collect();
-    assert_eq!(
-        keys,
-        [
-            "source",
-            "tool",
-            "args",
-            "pointer",
-            "op",
-            "value",
-            "timeout_ms"
-        ]
-    );
-}
-
-/// The start snapshot is the last strictly before the anchor's tick. With
-/// the effect already in tick 32's snapshot (the anchor's own tick), the
-/// clauses still come out, settled at 0 ms. Fails if the start snapshot is
-/// taken at the anchor's tick.
-#[test]
-fn the_start_snapshot_is_strictly_before_the_anchor_tick() {
-    let mut log = read_log(FIXTURE).unwrap();
-    log.ticks[32].snapshot = log.ticks[33].snapshot.clone();
-    let rows = segment(&log);
-    let clauses = row_clauses(&log, &rows[0], "${character}");
-    assert_eq!(
-        ids(&clauses),
-        ["dialog-3995", "mission-622-step", "mission-1360-status"]
-    );
-    assert_eq!(field(&clauses[1], "timeout_ms"), &Inline::Int(3000));
+/// One row with a dialog, two missions, three item stacks and all four
+/// player fields changed, each listed out of contract order.
+pub(super) fn contract_order_row() -> (RecordLog, RecordedRow) {
+    let before = DbSnapshot {
+        missions: vec![mission(9, 1, Some(1)), mission(5, 1, None)],
+        player: Some(player(1, 0, 10, "Castle_CellBlock")),
+        items: vec![item(55, 3, 1, None), item(3, 1, 1, None)],
+    };
+    let after = DbSnapshot {
+        missions: vec![mission(9, 1, Some(2)), mission(5, 2, None)],
+        player: Some(player(2, 150, 25, "Castle")),
+        items: vec![item(55, 1, 1, None), item(3, 1, 4, None)],
+    };
+    one_row(before, after, vec![dialog(2, 7)])
 }
 
 /// D-LR7: a floor, a ceiling, doubling, and rounding up to 250 ms.
-/// Deviation: the packet's `dialog_timeout_ms(1) == 2000` contradicts its
-/// own "rounded up" rule (2001 rounds up to 2250), so 0 and 1 are pinned.
 #[test]
 fn timeouts_have_floors_ceilings_and_quarter_seconds() {
     assert_eq!(clause_timeout_ms(0), 3000);
@@ -178,6 +123,19 @@ fn timeouts_have_floors_ceilings_and_quarter_seconds() {
     assert_eq!(server_wait_timeout_ms(17_000), 34_000);
     assert_eq!(server_wait_timeout_ms(0), 5000);
     assert_eq!(server_wait_timeout_ms(100_000), 120_000);
+}
+
+/// A span from a hostile log clamps instead of overflowing: `2t` and
+/// `t + floor` both overflow at `i64::MAX`.
+#[test]
+fn extreme_spans_clamp_without_overflow() {
+    assert_eq!(clause_timeout_ms(i64::MAX), 60_000);
+    assert_eq!(dialog_timeout_ms(i64::MAX), 30_000);
+    assert_eq!(server_wait_timeout_ms(i64::MAX), 120_000);
+    assert_eq!(clause_timeout_ms(i64::MAX - 1000), 60_000);
+    assert_eq!(clause_timeout_ms(i64::MIN), 3000);
+    assert_eq!(dialog_timeout_ms(i64::MIN), 2000);
+    assert_eq!(server_wait_timeout_ms(i64::MIN), 5000);
 }
 
 /// A mission that disappeared is graded by its row being absent.
@@ -195,6 +153,31 @@ fn a_removed_mission_is_an_absent_clause() {
     assert_eq!(field(c, "op"), &Inline::Str("absent".into()));
     assert!(c.fields.iter().all(|(k, _)| *k != "value"));
     assert_eq!(c.text, "sgw_mission: 622 has no row");
+}
+
+/// A step cleared to NULL is graded by the step being absent, on the step
+/// pointer.
+#[test]
+fn a_step_going_to_none_is_an_absent_step_clause() {
+    let before = DbSnapshot {
+        missions: vec![mission(1, 1, Some(10))],
+        ..DbSnapshot::default()
+    };
+    let after = DbSnapshot {
+        missions: vec![mission(1, 1, None)],
+        ..DbSnapshot::default()
+    };
+    let (log, row) = one_row(before, after, Vec::new());
+    let clauses = row_clauses(&log, &row, "${character}");
+    assert_eq!(ids(&clauses), ["mission-1-step"]);
+    let c = &clauses[0];
+    assert_eq!(c.text, "sgw_mission: 1 on no step");
+    assert_eq!(field(c, "op"), &Inline::Str("absent".into()));
+    assert_eq!(
+        field(c, "pointer"),
+        &Inline::Str("/rows/0/current_step_id".into())
+    );
+    assert!(c.fields.iter().all(|(k, _)| *k != "value"));
 }
 
 /// A new mission is one status clause even when it has a step; a status
@@ -287,22 +270,39 @@ fn an_item_count_change_is_one_clause_per_container() {
     );
 }
 
+/// A stack that went away keeps its name, taken from the before snapshot.
+#[test]
+fn a_removed_stack_takes_its_name_from_the_before_snapshot() {
+    let before = DbSnapshot {
+        items: vec![item(55, 1, 1, Some("SI 3 9mm Pistol"))],
+        ..DbSnapshot::default()
+    };
+    let (log, row) = one_row(before, DbSnapshot::default(), Vec::new());
+    let clauses = row_clauses(&log, &row, "${character}");
+    assert_eq!(ids(&clauses), ["item-55-1"]);
+    assert_eq!(clauses[0].text, "carried SI 3 9mm Pistol (55) in bag 1: 0");
+}
+
+/// The player is compared only when both snapshots have its row; a row in
+/// only one makes no `player-*` clause.
+#[test]
+fn a_player_row_in_only_one_snapshot_makes_no_player_clause() {
+    let after = DbSnapshot {
+        player: Some(player(2, 150, 25, "Castle")),
+        ..DbSnapshot::default()
+    };
+    let (log, row) = one_row(DbSnapshot::default(), after.clone(), Vec::new());
+    assert!(row_clauses(&log, &row, "${character}").is_empty());
+    let (log, row) = one_row(after, DbSnapshot::default(), Vec::new());
+    assert!(row_clauses(&log, &row, "${character}").is_empty());
+}
+
 /// Dialogs, then missions by id, then items by type and container, then
 /// the player's level, exp, naquadah and world, whatever order the
-/// snapshots list them in.
+/// snapshots list them in. The player clauses read their own column.
 #[test]
 fn clauses_come_in_contract_order_across_kinds() {
-    let before = DbSnapshot {
-        missions: vec![mission(9, 1, Some(1)), mission(5, 1, None)],
-        player: Some(player(1, 0, 10, "Castle_CellBlock")),
-        items: vec![item(55, 3, 1, None), item(3, 1, 1, None)],
-    };
-    let after = DbSnapshot {
-        missions: vec![mission(9, 1, Some(2)), mission(5, 2, None)],
-        player: Some(player(2, 150, 25, "Castle")),
-        items: vec![item(55, 1, 1, None), item(3, 1, 4, None)],
-    };
-    let (log, row) = one_row(before, after, vec![dialog(2, 7)]);
+    let (log, row) = contract_order_row();
     let clauses = row_clauses(&log, &row, "${character}");
     assert_eq!(
         ids(&clauses),
@@ -319,19 +319,31 @@ fn clauses_come_in_contract_order_across_kinds() {
             "player-world",
         ]
     );
-    let level = &clauses[6];
-    assert_eq!(level.text, "sgw_player: level 2");
-    assert_eq!(field(level, "value"), &Inline::Int(2));
-    assert_eq!(
-        field(level, "args").render(),
-        "{ sql = \"SELECT p.level FROM sgw_player p WHERE p.player_name = '${character}'\" }"
-    );
-    let world = &clauses[9];
-    assert_eq!(field(world, "value"), &Inline::Str("Castle".into()));
-    assert_eq!(
-        field(world, "pointer"),
-        &Inline::Str("/rows/0/world_location".into())
-    );
+    assert_eq!(clauses[6].text, "sgw_player: level 2");
+    let players = [
+        ("level", "level", Inline::Int(2)),
+        ("exp", "exp", Inline::Int(150)),
+        ("naquadah", "naquadah", Inline::Int(25)),
+        ("world", "world_location", Inline::Str("Castle".into())),
+    ];
+    for (c, (name, column, value)) in clauses[6..].iter().zip(players) {
+        assert_eq!(c.id, format!("player-{name}"));
+        assert_eq!(field(c, "value"), &value, "{}", c.id);
+        assert_eq!(
+            field(c, "pointer"),
+            &Inline::Str(format!("/rows/0/{column}")),
+            "{}",
+            c.id
+        );
+        assert_eq!(
+            field(c, "args").render(),
+            format!(
+                "{{ sql = \"SELECT p.{column} FROM sgw_player p WHERE p.player_name = '${{character}}'\" }}"
+            ),
+            "{}",
+            c.id
+        );
+    }
 }
 
 /// Each distinct dialog in the row gets its own clause, in the order sent;
@@ -357,33 +369,24 @@ fn two_distinct_dialogs_in_one_row_each_get_a_clause() {
     );
 }
 
-/// The settle time is from the anchor's tick to the first snapshot that
-/// shows the diff's end state, not merely the first that differs.
+/// Dialogs keep the order they were shown in, not their id order.
 #[test]
-fn settle_time_waits_for_the_diffs_end_state() {
-    let (mut log, row) = one_row(
-        DbSnapshot {
-            missions: vec![mission(1, 1, Some(10))],
-            ..DbSnapshot::default()
-        },
-        DbSnapshot::default(),
-        Vec::new(),
-    );
-    let state = |step| DbSnapshot {
-        missions: vec![mission(1, 1, Some(step))],
-        ..DbSnapshot::default()
-    };
-    log.ticks[3].snapshot = Some(state(11));
-    log.ticks[4].snapshot = Some(state(12));
-    let d = Diff::MissionStep {
-        mission: 1,
-        from: Some(10),
-        to: Some(12),
-    };
-    assert_eq!(settle_ms(&log, &row, &d), 1000);
+fn dialogs_come_in_the_order_shown_not_sorted() {
+    let server = vec![dialog(2, 11), dialog(3, 10)];
+    let (log, row) = one_row(DbSnapshot::default(), DbSnapshot::default(), server);
     let clauses = row_clauses(&log, &row, "${character}");
-    assert_eq!(field(&clauses[0], "value"), &Inline::Int(12));
-    assert_eq!(field(&clauses[0], "timeout_ms"), &Inline::Int(4000));
+    assert_eq!(ids(&clauses), ["dialog-11", "dialog-10"]);
+}
+
+/// Only `onDialogDisplay` makes a dialog clause, even when another message
+/// carries a `dialog_id`.
+#[test]
+fn only_on_dialog_display_makes_a_dialog_clause() {
+    let server = vec![(2, "onSomethingElse".into(), json!({ "dialog_id": 42 }))];
+    let (log, row) = one_row(DbSnapshot::default(), DbSnapshot::default(), server);
+    let clauses = row_clauses(&log, &row, "${character}");
+    assert!(!ids(&clauses).contains(&"dialog-42"), "{clauses:?}");
+    assert!(clauses.is_empty());
 }
 
 /// A string with a quote and a backslash renders as TOML that parses back
@@ -405,24 +408,28 @@ fn inline_strings_are_escaped() {
 }
 
 /// Floats keep their fixed decimals (at least one, so they stay floats),
-/// empty tables are `{}`, arrays are `[a, b]`.
+/// NaN and infinities are TOML's words, empty tables are `{}`, arrays are
+/// `[a, b]`.
 #[test]
 fn inline_render_shapes() {
     assert_eq!(Inline::Float(4.156, 2).render(), "4.16");
     assert_eq!(Inline::Float(250.0, 0).render(), "250.0");
+    assert_eq!(Inline::Float(f64::NAN, 2).render(), "nan");
     assert_eq!(Inline::Table(Vec::new()).render(), "{}");
     assert_eq!(
         Inline::Array(vec![Inline::Int(1), Inline::Bool(true)]).render(),
         "[1, true]"
     );
     let doc = format!(
-        "a = {}\nb = {}\n",
+        "a = {}\nb = {}\nc = {}\n",
         Inline::Float(250.0, 0).render(),
-        Inline::Float(f64::NEG_INFINITY, 1).render()
+        Inline::Float(f64::NEG_INFINITY, 1).render(),
+        Inline::Float(f64::NAN, 1).render()
     );
     let parsed: toml::Table = toml::from_str(&doc).unwrap();
     assert!(parsed["a"].is_float());
     assert_eq!(parsed["b"].as_float(), Some(f64::NEG_INFINITY));
+    assert!(parsed["c"].as_float().is_some_and(f64::is_nan));
 }
 
 /// Only the main, mission and equipment bags are carried.
