@@ -1196,6 +1196,16 @@ Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no
 
 Guard: `cell_methods/minigame_names_tests.rs` `end_current_minigame_logs_with_wire_payload`. A 4-byte `00000000` payload gives the INFO row with `args_len = 4`. The earlier `args.len() >= N` guard logged nothing for it, so reverting fails the test.
 
+## Cell-to-base dispatch slow WARN (TG-DB-05)
+
+The base's cell-to-base loop in `base/service.rs` times each `route_cell_message` call. A dispatch that takes 250 ms or more writes one WARN. `msg_kind` is the fixed snake_case name from `CellToBaseMsg::kind()` (`cell_to_base_kind.rs` in `cimmeria-wire`), never payload text. The rows are throttled per `msg_kind` (Pattern D): the first is written at once, then at most one per 10 s, carrying `suppressed`. `queue_depth` is the cell channel's backlog when the dispatch finished.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_dispatch_slow"`, `msg_kind`, `elapsed_ms`, `queue_depth`, `suppressed` | A cell-to-base dispatch took 250 ms or more; at most one row per kind per 10 s |
+
+Guard: `base/dispatch_timing.rs` tests. `slow_dispatch_burst_writes_one_row_per_window` captures the WARN and asserts `suppressed` is `0` and then `49` after a burst of 50. `slow_dispatch_throttle_is_per_kind` checks that a second kind's first row is not swallowed and that a fast dispatch writes nothing.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
