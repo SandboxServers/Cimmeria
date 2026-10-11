@@ -40,6 +40,34 @@ services:
   # ranges the colo can't reach, README "Colo egress") go to the exit proxy in
   # EGRESS_EXIT; everything else connects directly. Without EGRESS_EXIT it is a
   # plain direct proxy.
+  # The node's shared compile cache: every runner here uses it as its sccache
+  # backend, so a crate compiled by any job on this node is a hit for the others.
+  # A cache, not a store: no persistence (a restart means one cold run), LRU
+  # eviction at CACHE_MAXMEMORY. It lives on this compose network because the
+  # colo's networks are isolated from each other (a cache shared across nodes
+  # would need a gateway rule) and Docker drops traffic between its bridge
+  # networks. If it is down, sccache counts lookups as misses and compiles.
+  cache:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    command:
+      - redis-server
+      - --requirepass
+      - ${CACHE_PASSWORD:?set CACHE_PASSWORD in .env (deploy.ps1 does)}
+      - --maxmemory
+      - ${CACHE_MAXMEMORY:-16gb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # sccache stores whole rlibs; the largest are tens of MB.
+      - --proto-max-bulk-len
+      - 512mb
+    mem_limit: ${CACHE_MEM_LIMIT:-18g}
   egress:
     build:
       context: .
@@ -60,7 +88,7 @@ services:
   runner1:
     <<: *runner
     network_mode: service:dind1
-    depends_on: [egress, dind1]
+    depends_on: [cache, egress, dind1]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r1
@@ -68,7 +96,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_ENDPOINT: redis://cache:6379
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -91,7 +119,7 @@ services:
   runner2:
     <<: *runner
     network_mode: service:dind2
-    depends_on: [egress, dind2]
+    depends_on: [cache, egress, dind2]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r2
@@ -99,7 +127,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_ENDPOINT: redis://cache:6379
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -122,7 +150,7 @@ services:
   runner3:
     <<: *runner
     network_mode: service:dind3
-    depends_on: [egress, dind3]
+    depends_on: [cache, egress, dind3]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r3
@@ -130,7 +158,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_ENDPOINT: redis://cache:6379
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -153,7 +181,7 @@ services:
   runner4:
     <<: *runner
     network_mode: service:dind4
-    depends_on: [egress, dind4]
+    depends_on: [cache, egress, dind4]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r4
@@ -161,7 +189,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_ENDPOINT: redis://cache:6379
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -184,7 +212,7 @@ services:
   runner5:
     <<: *runner
     network_mode: service:dind5
-    depends_on: [egress, dind5]
+    depends_on: [cache, egress, dind5]
     environment:
       REPO_URL: ${REPO_URL:-https://github.com/SandboxServers/Cimmeria}
       RUNNER_NAME: ${NODE:?set NODE in .env}-r5
@@ -192,7 +220,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_ENDPOINT: redis://cache:6379
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128

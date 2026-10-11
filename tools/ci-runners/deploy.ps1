@@ -17,8 +17,6 @@ param(
     # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty
     # keeps the value already in the node's .env.
     [string]$EgressExit = $env:CIMMERIA_EGRESS_EXIT,
-    # The node that runs the shared compile cache (cache.compose.yml); '' turns it off.
-    [string]$CacheNode = 'node2',
     [switch]$Down
 )
 Set-StrictMode -Version Latest
@@ -26,34 +24,11 @@ $ErrorActionPreference = 'Stop'
 
 # ssh host alias and where the compose project lives (both on the NVMe volume).
 $targets = @{
-    node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g' }
-    node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g' }
+    node5 = @{ Ssh = 'cimmeria-colo'; Dir = '/mnt/nvme/gha-runners'; Mem = '16g'; Cache = '12gb' }
+    node2 = @{ Ssh = 'cimmeria-node2'; Dir = '/var/lib/gha-runners'; Mem = '20g'; Cache = '24gb' }
 }
 
 $src = $PSScriptRoot
-# The shared compile cache first, so every runner deployed below can use it. Its
-# password is generated once and kept in the cache node's .env.
-$cacheEndpoint = ''; $cachePassword = ''
-if ($CacheNode -and -not $Down) {
-    $c = $targets[$CacheNode]
-    if (-not $c) { throw "unknown cache node '$CacheNode'" }
-    $cdir = $c.Dir -replace 'gha-runners$', 'gha-cache'
-    ssh $c.Ssh "sudo install -d -o `$(id -u) -g `$(id -g) $cdir"
-    if ($LASTEXITCODE -ne 0) { throw "${CacheNode}: could not create $cdir" }
-    $cachePassword = (ssh $c.Ssh "sed -n 's/^CACHE_PASSWORD=//p' $cdir/.env 2>/dev/null") -join ''
-    if (-not $cachePassword) {
-        $bytes = [byte[]]::new(24); [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-        $cachePassword = [Convert]::ToHexString($bytes).ToLower()
-    }
-    scp -q "$src/cache.compose.yml" "$($c.Ssh):$cdir/compose.yml"
-    "CACHE_PASSWORD=$cachePassword`n" | ssh $c.Ssh "umask 077 && cat > $cdir/.env"
-    Write-Host "== ${CacheNode}: starting the shared compile cache"
-    ssh $c.Ssh "cd $cdir && docker compose up -d"
-    if ($LASTEXITCODE -ne 0) { throw "${CacheNode}: cache compose up failed" }
-    # The address the other nodes reach it on: the cache node's ssh HostName.
-    $cacheHost = ((ssh -G $c.Ssh) | Where-Object { $_ -like 'hostname *' }) -replace '^hostname ', ''
-    $cacheEndpoint = "redis://${cacheHost}:6379"
-}
 foreach ($node in $Nodes) {
     $t = $targets[$node]
     if (-not $t) { throw "unknown node '$node' (known: $($targets.Keys -join ', '))" }
@@ -74,7 +49,13 @@ foreach ($node in $Nodes) {
     if ($LASTEXITCODE -ne 0) { throw "${node}: scp failed" }
     $exit = $EgressExit
     if (-not $exit) { $exit = (ssh $ssh "sed -n 's/^EGRESS_EXIT=//p' $dir/.env 2>/dev/null") -join '' }
-    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_ENDPOINT=$cacheEndpoint`nCACHE_PASSWORD=$cachePassword`n"
+    # The node's compile-cache password: generated once, kept in its .env.
+    $cachePassword = (ssh $ssh "sed -n 's/^CACHE_PASSWORD=//p' $dir/.env 2>/dev/null") -join ''
+    if (-not $cachePassword) {
+        $bytes = [byte[]]::new(24); [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $cachePassword = [Convert]::ToHexString($bytes).ToLower()
+    }
+    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_PASSWORD=$cachePassword`nCACHE_MAXMEMORY=$($t.Cache)`n"
     $envFile | ssh $ssh "umask 077 && cat > $dir/.env && sed -i 's/\r$//' $dir/entrypoint.sh $dir/hooks/*.sh"
 
     $token = gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token

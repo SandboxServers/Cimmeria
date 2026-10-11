@@ -94,6 +94,7 @@ is baked in again.
 - **Production comes first on node5.** Runners and their daemons get a CPU weight of 256
   against the default 1024, so they use idle cores but yield to the game server and
   SigNoz. Memory caps are 16 GB per runner on node5 and 20 GB on node2.
+- **One compile cache per node.** Each node's five runners share a Redis-backed sccache (compose.yml `cache`), so a crate any job compiled is a hit for every runner on that node. It lives on the runners' compose network: the colo networks are isolated from each other (the gateway's zone firewall blocks node-to-node traffic), and Docker drops traffic between its own bridge networks, so neither a cross-node cache nor a host-published port works. LRU at 12 GB on node5 and 24 GB on node2, no persistence.
 - **sccache instead of rust-cache.** Self-hosted jobs skip `Swatinem/rust-cache`
   (`if: runner.environment == 'github-hosted'`); downloading a multi-GB cache from GitHub
   is slower than a local sccache hit. Every runner builds in the same path, so its cache
