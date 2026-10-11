@@ -51,6 +51,9 @@ use std::sync::OnceLock;
 
 use opentelemetry::metrics::Meter;
 
+mod sampler;
+pub use sampler::FirehoseSampler;
+
 /// A recording meter so tests can assert what a code path emitted.
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

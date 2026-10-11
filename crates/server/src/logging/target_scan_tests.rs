@@ -362,6 +362,9 @@ fn scan_finds_known_targets() {
         ("abilities.qr", Level::DEBUG),
         ("movement.navmesh", Level::TRACE),
         ("npc_ai.transition", Level::DEBUG),
+        // Since TG-MER-09 only the transport's unsampled failure row: the
+        // per-datagram rows use the `cimmeria_mercury::firehose` consts, which
+        // the scan skips and the firehose table covers.
         ("mercury.packet", Level::INFO),
         // Emitted only by crates/wire-log (wave W3b of the services split).
         ("wire.in", Level::INFO),

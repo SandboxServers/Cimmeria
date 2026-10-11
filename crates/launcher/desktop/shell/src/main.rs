@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
+mod updater_restart;
 mod webview2;
 
 use cimmeria_launcher_engine::client_changes::{
@@ -360,30 +361,24 @@ async fn choose_legacy_source(
     }).await.map_err(|_| StorageError::Io)?
 }
 
-/// Whether this process is the launcher an update restarted. The updater starts the
-/// new launcher without waiting for the old one to exit, so the two overlap: the
-/// restarted one must not register as a second instance, or it would exit at once
-/// and the update would never come back up. It waits for the state lock instead
-/// (`NativeHost::store` retries `InUse` for this argument).
-///
-/// Known limit: the restarted launcher stays unguarded for its whole session, so the
-/// first manual launch after an update reaches the state lock and reports it in use
-/// instead of focusing this window. LX-13 removes it: the restart will carry the old
-/// process id, and this process waits for it to exit and then registers the guard.
-fn is_updater_restart(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
-    args.into_iter()
-        .any(|arg| arg == "--launcher-update-restart")
-}
-
 fn main() {
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
+    // An updater restart waits for the old launcher to exit first, so the guard
+    // below finds no running instance and this start proceeds (LX-13).
+    let startup = updater_restart::prepare(
+        std::env::args_os(),
+        cimmeria_launcher_engine::updater::process_alive,
+        std::thread::sleep,
+        updater_restart::OLD_LAUNCHER_WAIT,
+    );
+    if let updater_restart::OldLauncher::StillRunning { pid } = startup.old_launcher {
+        eprintln!("updated launcher: process {pid} still running after the restart wait");
+    }
     let builder = tauri::Builder::default();
     // First, so a second launch never reaches setup or the state lock. The plugin
     // exits the second process with status 0 after this callback focuses the first.
-    let builder = if is_updater_restart(std::env::args_os()) {
-        builder
-    } else {
+    let builder = if startup.single_instance_guard {
         builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -391,6 +386,8 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
+    } else {
+        builder
     };
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -404,6 +401,7 @@ fn main() {
             let app_handle = app.handle().clone();
             let host = host
                 .with_launch_resources(app.path().resource_dir()?)
+                .with_compiled_updater_config()
                 .with_updater_shutdown(move || app_handle.exit(0));
             app.manage(Arc::new(host));
             Ok(())
@@ -428,18 +426,4 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");
-}
-
-#[cfg(test)]
-mod single_instance_tests {
-    use super::is_updater_restart;
-
-    #[test]
-    fn only_the_updater_restart_skips_the_single_instance_guard() {
-        assert!(!is_updater_restart(["launcher.exe".into()]));
-        assert!(is_updater_restart([
-            "launcher.exe".into(),
-            "--launcher-update-restart".into()
-        ]));
-    }
 }

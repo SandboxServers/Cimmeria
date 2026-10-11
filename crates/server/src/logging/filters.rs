@@ -502,6 +502,7 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
         directives: "off,\
              cimmeria_wire::mercury=trace,\
              cimmeria_mercury=trace,\
+             wire.firehose.mercury_packet=trace,\
              mercury.packet=info,\
              wire.in=info,wire.out=info,\
              mercury.retransmit=info",

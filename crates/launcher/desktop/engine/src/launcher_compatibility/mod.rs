@@ -11,6 +11,16 @@ pub struct Identity {
     pub compatibility_tag: Option<String>,
     pub built_at: Option<i64>,
 }
+/// The version this binary was compiled as: `CIMMERIA_LAUNCHER_VERSION` for a
+/// release (D-LX8, `YYYY.M.D`), the package version otherwise. The shell's
+/// build script refuses a value that is not SemVer, so it parses as one.
+pub fn compiled_version() -> &'static str {
+    match option_env!("CIMMERIA_LAUNCHER_VERSION") {
+        Some(version) if !version.trim().is_empty() => version,
+        _ => env!("CARGO_PKG_VERSION"),
+    }
+}
+
 impl Identity {
     pub fn current() -> Self {
         Self::from_parts(
