@@ -57,6 +57,7 @@ pub(super) async fn request_execute_trade(
             entity_id,
             partner_entity_id,
             ETRADERESULTS_CANCELLED,
+            "handoff_out_of_range",
             tx,
             space_mgr,
         )
@@ -225,6 +226,7 @@ pub(super) async fn request_execute_trade(
             partner_player_name = snapshot.p_name,
             p1_cash = snapshot.my_cash,
             p2_cash = snapshot.p_cash,
+            event = "trade.execute_requested",
             "trade execute requested → base"
         );
     }
