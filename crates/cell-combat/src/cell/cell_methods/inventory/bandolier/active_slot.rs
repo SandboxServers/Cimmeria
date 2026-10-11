@@ -457,10 +457,11 @@ pub async fn handle_request_active_slot_change(
     // ability id (None) is a weapon with no RANGED binding: right-click
     // fires nothing with it and says so (CS-07, `interaction/hostile_attack`).
     {
+        let who = space_mgr.player_identity(entity_id);
         let item_id = space_mgr
             .get_entity(entity_id)
             .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
-        let resolved_ranged_ability = item_id.and_then(|iid| {
+        let resolved_ability_id = item_id.and_then(|iid| {
             crate::cell::abilities::ability_for_item(
                 space_mgr,
                 iid,
@@ -472,11 +473,16 @@ pub async fn handle_request_active_slot_change(
             event = "active_slot_change",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             slot_id, // nt:id-only inventory slot index, not a named object
             prev_slot = prev_slot_for_log,
-            item_id = ?item_id,
+            item_id,
             item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
-            resolved_ranged_ability = ?resolved_ranged_ability,
+            resolved_ability_id,
+            resolved_ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(resolved_ability_id),
             "Active bandolier slot changed — auto-attack ability resolved"
         );
     }
