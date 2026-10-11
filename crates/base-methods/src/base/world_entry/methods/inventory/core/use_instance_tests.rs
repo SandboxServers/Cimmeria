@@ -356,7 +356,7 @@ async fn live_db_pistol_in_bandolier_use_routes_to_auto_unequip() {
 /// INFO with `event = "use_refused"` and `reason = "entity_missing"`, not
 /// WARN. Reverting the level, the event or the reason fails the asserts.
 #[tokio::test]
-async fn use_of_unowned_instance_logs_refusal_at_info() {
+async fn live_db_use_of_unowned_instance_logs_refusal_at_info() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 2;
     let player_id = TEST_BASE + 3;
