@@ -12,7 +12,7 @@ const snapshot={schema_version:1,operation:{schema_version:1,revision:0,operatio
 
 function machine() {
  const m={installed:false,uac:'decline',package:'pinned',exit:0,runs:0,last:null};
- const status=()=>({schema_version:1,supported:true,detection:{loader_present:m.installed,core_registered:m.installed},
+ const status=()=>({schema_version:1,supported:true,detection:{core_registered:m.installed,core_present:m.installed},
   installer_available:true,installing:false,last_result:m.last});
  m.invoke=async(command,args)=>{
   assert.equal(command,'physx_command');
@@ -23,7 +23,7 @@ function machine() {
   if(m.uac==='decline'){m.last={state:'cancelled_at_uac'};return status();}
   m.runs++;
   if(m.exit===0||m.exit===3010)m.installed=true;
-  m.last=m.installed?{state:'installed',restart_required:m.exit===3010}:{state:'failed',exit_code:m.exit};
+  m.last=m.installed?{state:'installed',restart_required:m.exit===3010}:m.exit===1638?{state:'other_version_blocks'}:{state:'failed',exit_code:m.exit};
   return status();
  };
  return m;
@@ -56,8 +56,13 @@ assert.equal(m.runs,0);
 
 m.uac='accept';m.exit=1603;
 await p.press();
-assert.equal(p.text('physx-status'),'The PhysX installer failed (exit code 1603). Try again, or install PhysX System Software from NVIDIA.');
+assert.equal(p.text('physx-status'),'The PhysX installer failed (exit code 1603). Try again, or install "NVIDIA PhysX Legacy System Software" yourself.');
 assert.equal(p.get('physx-play-warning').hidden,false);
+
+m.exit=1638;
+await p.press();
+assert.match(p.text('physx-status'),/^Another PhysX version is installed and blocks this installer/);
+assert.equal(p.get('physx-play-warning').hidden,false,'a blocking older or newer PhysX still reads as missing');
 
 m.exit=0;
 await p.press();
@@ -72,5 +77,5 @@ assert.equal(p.text('physx-status'),'PhysX System Software installed.','the last
 assert.equal(p.get('physx-play-warning').hidden,true);
 await p.app.dispose();
 
-console.log('PhysX UAT passed: missing PhysX warns beside Play; each press shows busy first; a mismatched package is refused unrun; a declined UAC prompt reads as cancelled; an installer failure shows its exit code; success clears the warning and survives a reopen.');
+console.log('PhysX UAT passed: missing PhysX warns beside Play; each press shows busy first; a mismatched package is refused unrun; a declined UAC prompt reads as cancelled; an installer failure shows its exit code; another PhysX version blocking the installer gets its own line; success clears the warning and survives a reopen.');
 console.log('Excluded: the real engine, registry, UAC prompt and msiexec (engine tests cover detection, the pinned hash and exit-code mapping); the packaged window and visual layout.');

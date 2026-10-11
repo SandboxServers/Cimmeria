@@ -8,7 +8,7 @@ import {mountPhysx,physxWarning} from './physx-view';
 const html=readFileSync('ui/index.html','utf8');
 const snapshot:NativeSnapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,
  preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
-const status=(over:Partial<PhysxStatus>={}):PhysxStatus=>({schema_version:1,supported:true,detection:{loader_present:false,core_registered:false},
+const status=(over:Partial<PhysxStatus>={}):PhysxStatus=>({schema_version:1,supported:true,detection:{core_registered:false,core_present:false},
  installer_available:true,installing:false,last_result:null,...over});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
 async function mounted(respond:(request:{command:string})=>Promise<unknown>) {
@@ -58,7 +58,7 @@ test('a finished install clears the warning and shows the restart line',async()=
  let installed=false;
  const p=await mounted(async request=>{
   if(request.command==='install')installed=true;
-  return installed?status({detection:{loader_present:true,core_registered:true},last_result:{state:'installed',restart_required:true}}):status();
+  return installed?status({detection:{core_registered:true,core_present:true},last_result:{state:'installed',restart_required:true}}):status();
  });
  try{
   p.press();await p.app.settled();await flush();
@@ -77,6 +77,7 @@ test('refusals and failures each get their own result line',async()=>{
   [()=>Promise.resolve(status({last_result:{state:'failed',exit_code:1603}})),/failed \(exit code 1603\)/],
   [()=>Promise.resolve(status({last_result:{state:'cancelled_in_installer'}})),/installer was cancelled/],
   [()=>Promise.resolve(status({last_result:{state:'not_detected',exit_code:0}})),/still not detected/],
+  [()=>Promise.resolve(status({last_result:{state:'other_version_blocks'}})),/Another PhysX version is installed and blocks this installer.*NVIDIA PhysX Legacy System Software/],
   [()=>Promise.resolve(status({last_result:{state:'start_failed',win32_error:5}})),/could not start the PhysX installer \(error 5\)/],
  ] as const){
   const p=await mounted(request=>request.command==='inspect'?Promise.resolve(status()):reply());
@@ -89,6 +90,16 @@ test('without the retained installer the button is disabled and says why',async(
  try{
   assert.equal(p.get('install-physx').disabled,true);
   assert.match(p.text('physx-state')!,/not in this game folder/);
+  assert.match(p.text('physx-state')!,/run Repair.*Otherwise install "NVIDIA PhysX Legacy System Software" yourself/,'a disabled button still leaves a path forward');
   p.press();await flush();assert.deepEqual(p.calls,['inspect'],'a disabled button sends nothing');
+ }finally{await p.app.dispose();}
+});
+
+test('a registered PhysX path without the 2.6.3 core reads as missing, and says so',async()=>{
+ const p=await mounted(async()=>status({detection:{core_registered:true,core_present:false}}));
+ try{
+  assert.equal(p.get('physx-play-warning').hidden,false);
+  assert.match(p.text('physx-state')!,/not the 2\.6\.3 core/);
+  assert.equal(p.get('install-physx').hidden,false);
  }finally{await p.app.dispose();}
 });

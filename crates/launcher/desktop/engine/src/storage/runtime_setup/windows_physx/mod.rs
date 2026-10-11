@@ -1,7 +1,7 @@
 //! PhysX System Software on native Windows (D-LX13). The 32-bit game's own
-//! `PhysXLoader.dll` loads the 2.x core from the path the system software
-//! registers, so a machine without it fails `NxCreatePhysicsSDK` (#1121).
-//! The launcher detects the system software and, when it is missing, runs the
+//! `PhysXLoader.dll` loads `v2.6.3\PhysXCore.dll` from the path the system
+//! software registers, so a machine without it fails `NxCreatePhysicsSDK`
+//! (#1121). The launcher detects that core file and, when it is missing, runs the
 //! same vendor MSI the macOS path verifies, elevated through UAC. It does not
 //! write the `enableLocalPhysXCore` registry value (tied to a MAC address).
 //!
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 mod detect;
 #[cfg(windows)]
 pub mod native;
-pub use detect::{detect, Detection, Probe};
+pub use detect::{core_file, detect, Detection, Probe, CORE_RELATIVE};
 
 /// The retained vendor installer, relative to the installation's `game` folder.
 /// Install extraction keeps `Data/Prerequisites` here as inert data.
@@ -28,6 +28,9 @@ const ERROR_SUCCESS: u32 = 0;
 const ERROR_SUCCESS_REBOOT_REQUIRED: u32 = 3010;
 /// The player pressed Cancel inside the installer's own wizard.
 const ERROR_INSTALL_USEREXIT: u32 = 1602;
+/// `ERROR_PRODUCT_VERSION`: another version of this product is already
+/// installed, so Windows Installer refuses to run this one.
+const ERROR_PRODUCT_VERSION: u32 = 1638;
 
 /// A `physx_command` request from the webview. It names no path, URL or hash:
 /// native code finds the package and pins its identity.
@@ -59,6 +62,9 @@ pub enum InstallResult {
     Failed { exit_code: u32 },
     /// msiexec reported success, but detection still finds nothing.
     NotDetected { exit_code: u32 },
+    /// Exit code 1638: another PhysX version is installed and blocks this
+    /// installer, and the 2.6.3 core the game loads is still missing.
+    OtherVersionBlocks {},
     /// Windows could not start the elevated installer at all.
     StartFailed { win32_error: u32 },
 }
@@ -203,6 +209,12 @@ pub fn outcome(code: Result<u32, ElevateError>, after: Detection) -> InstallResu
                 InstallResult::NotDetected { exit_code }
             }
         }
+        // The installed release may already carry the 2.6.3 core; only
+        // detection can say whether the refusal matters.
+        Ok(ERROR_PRODUCT_VERSION) if after.installed() => InstallResult::Installed {
+            restart_required: false,
+        },
+        Ok(ERROR_PRODUCT_VERSION) => InstallResult::OtherVersionBlocks {},
         Ok(exit_code) => InstallResult::Failed { exit_code },
     }
 }

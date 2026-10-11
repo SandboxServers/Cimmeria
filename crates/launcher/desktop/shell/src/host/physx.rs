@@ -100,9 +100,6 @@ mod tests {
 
     struct Missing;
     impl Probe for Missing {
-        fn system_loader(&self) -> bool {
-            false
-        }
         fn core_path(&self) -> Option<PathBuf> {
             None
         }
@@ -129,8 +126,8 @@ mod tests {
         assert_eq!(
             status.detection,
             Some(Detection {
-                loader_present: false,
-                core_registered: false
+                core_registered: false,
+                core_present: false
             })
         );
         assert_eq!(status.last_result, None);

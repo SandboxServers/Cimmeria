@@ -101,13 +101,15 @@ export const PhysxResult = Schema.Union([
   Schema.Struct({state: Schema.Literal("cancelled_in_installer")}),
   Schema.Struct({state: Schema.Literal("failed"), exit_code: Schema.Int}),
   Schema.Struct({state: Schema.Literal("not_detected"), exit_code: Schema.Int}),
+  Schema.Struct({state: Schema.Literal("other_version_blocks")}),
   Schema.Struct({state: Schema.Literal("start_failed"), win32_error: Schema.Int}),
 ]);
 export type PhysxResult = typeof PhysxResult.Type;
 export const PhysxStatus = Schema.Struct({
   schema_version: Schema.Literal(1),
   supported: Schema.Boolean,
-  detection: Schema.NullOr(Schema.Struct({loader_present: Schema.Boolean, core_registered: Schema.Boolean})),
+  // `core_present` is `<PhysXCore Path>\v2.6.3\PhysXCore.dll`, the file the game's loader opens.
+  detection: Schema.NullOr(Schema.Struct({core_registered: Schema.Boolean, core_present: Schema.Boolean})),
   installer_available: Schema.Boolean,
   installing: Schema.Boolean,
   last_result: Schema.NullOr(PhysxResult),

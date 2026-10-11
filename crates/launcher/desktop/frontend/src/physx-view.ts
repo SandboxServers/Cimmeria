@@ -8,19 +8,22 @@ import {decodePhysxStatus,physxFailure,type PhysxResult,type PhysxStatus} from '
  * The panel also owns the non-blocking warning beside Play. Off Windows `supported` is false and
  * both stay hidden: the macOS path sets PhysX up inside Wine during installation.
  */
-export const physxInstalled=(s:PhysxStatus)=>!!s.detection&&s.detection.loader_present&&s.detection.core_registered;
+export const physxInstalled=(s:PhysxStatus)=>!!s.detection?.core_present;
+const manual='install "NVIDIA PhysX Legacy System Software" yourself';
 export function physxResultText(r:PhysxResult):string {
  switch(r.state){
   case 'installed':return r.restart_required?'PhysX System Software installed. Restart Windows before you play.':'PhysX System Software installed.';
   case 'cancelled_at_uac':return 'Install cancelled at the Windows permission prompt. Nothing was changed.';
   case 'cancelled_in_installer':return 'The PhysX installer was cancelled. Nothing was installed.';
-  case 'failed':return `The PhysX installer failed (exit code ${r.exit_code}). Try again, or install PhysX System Software from NVIDIA.`;
+  case 'failed':return `The PhysX installer failed (exit code ${r.exit_code}). Try again, or ${manual}.`;
   case 'not_detected':return `The PhysX installer finished (exit code ${r.exit_code}), but PhysX System Software is still not detected.`;
+  case 'other_version_blocks':return `Another PhysX version is installed and blocks this installer, but it lacks the 2.6.3 core the game loads. To add that core, ${manual}.`;
   case 'start_failed':return `Windows could not start the PhysX installer (error ${r.win32_error}).`;
  }
 }
 const errorText:Record<string,string>={
- installer_unavailable:'The PhysX installer is not in this game folder. Install or repair the game, then try again.',
+ // Adopted copies, older installs and some seeds never had the retained installer.
+ installer_unavailable:`The PhysX installer is not in this game folder. If the launcher installed this game, run Repair, then try again. Otherwise ${manual}.`,
  package_mismatch:'The PhysX installer in this game folder is not the expected file, so it was not run. Repair the game, then try again.',
  busy:'Another install, repair, update or game is running. Try again when it finishes.',
  persistence_uncertain:'The launcher could not confirm its saved state. Restart the launcher, then try again.',
@@ -45,8 +48,9 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
   const missing=supported&&!physxInstalled(s!);
   warning.hidden=!missing;warning.textContent=missing?physxWarning:'';
   if(!s||!supported)return;
-  state.textContent=!missing?'Installed.':s.installer_available?'Not installed. The game needs it to start its physics engine.'
-   :'Not installed. The game needs it to start its physics engine. '+errorText.installer_unavailable!;
+  const lacking=s.detection?.core_registered?'A PhysX version is installed, but not the 2.6.3 core the game needs to start its physics engine.'
+   :'Not installed. The game needs it to start its physics engine.';
+  state.textContent=!missing?'Installed.':s.installer_available?lacking:lacking+' '+errorText.installer_unavailable!;
   const busy=installing||s.installing;
   install.hidden=!missing&&!busy;install.disabled=busy||!s.installer_available;
   install.textContent=busy?'Installing…':'Install PhysX';install.setAttribute('aria-busy',String(busy));

@@ -507,25 +507,29 @@ address. The code is `engine/src/storage/runtime_setup/windows_physx/`, the
 `physx_command` Tauri command (`shell/src/host/physx.rs`) and the Settings panel
 `frontend/src/physx-view.ts`.
 
-**Detection.** PhysX counts as installed only when both of these hold:
+**Detection.** The game loads its own `PhysXLoader.dll` from
+`Working\binaries` (pinned in [the PhysX probe](physx-probe.md)); DLL search
+finds that copy first, so a loader in `SysWOW64` plays no part and is not
+checked. That loader reads REG_SZ `PhysXCore Path` under
+`HKLM\SOFTWARE\AGEIA Technologies` and loads `v2.6.3\PhysXCore.dll` beneath it,
+for the SDK version `0x02060300` the game asks for. Detection checks the same
+file:
 
-- `PhysXLoader.dll` is a file in the 32-bit system directory:
-  `GetSystemWow64DirectoryW` (`SysWOW64`) on 64-bit Windows, or
-  `GetSystemDirectoryW` on 32-bit Windows. The game is 32-bit, so this is the
-  copy its DLL search reaches; the 64-bit `System32` copy is not. The launcher
-  checks the file and does not load it: a 32-bit DLL cannot load into the 64-bit
-  launcher, and loading would run its entry point.
-- REG_SZ `PhysXCore Path` under `HKLM\SOFTWARE\AGEIA Technologies`, read in the
-  32-bit registry view (`RRF_SUBKEY_WOW6432KEY`, so `WOW6432Node` on 64-bit
-  Windows), is non-empty and names a folder that exists. This is the value the
-  game's loader reads to find the core, so it is the direct evidence. The
-  installer's entry under `...\CurrentVersion\Uninstall` is keyed by a product
-  code that differs between PhysX releases, and NVIDIA's later system software
-  still writes the AGEIA value, so the uninstall entry is not used.
+- `PhysXCore Path` is read in the 32-bit registry view
+  (`RRF_SUBKEY_WOW6432KEY`, so `WOW6432Node` on 64-bit Windows) and must be
+  non-empty (`core_registered`).
+- `<PhysXCore Path>\v2.6.3\PhysXCore.dll` must be a file (`core_present`). The
+  launcher checks the file and does not load it: a 32-bit DLL cannot load into
+  the 64-bit launcher, and loading would run its entry point.
 
-Either one alone, such as a stale registry value after an uninstall, reads as
-missing. The Settings panel shows the state, and when PhysX is missing a
-warning appears beside Play. The warning does not disable Play.
+PhysX counts as installed only when the 2.6.3 core is present. A registered
+path without it, such as a stale value after an uninstall or a PhysX release
+that carries other cores only, reads as missing, and the panel says that a PhysX
+version is installed without the 2.6.3 core. The installer's entry under
+`...\CurrentVersion\Uninstall` is keyed by a product code that differs between
+PhysX releases and says nothing about which cores are on disk, so it is not
+used. The Settings panel shows the state, and when PhysX is missing a warning
+appears beside Play. The warning does not disable Play.
 
 **Install.** "Install PhysX" uses the installer that install extraction keeps at
 `game/.cimmeria-prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe`, the same
@@ -554,16 +558,27 @@ deleted. Results, shown as the panel's result line:
 | `cancelled_in_installer` | Exit code 1602: the player cancelled the installer's wizard. |
 | `failed` | Any other exit code, shown in the line. |
 | `not_detected` | Exit code 0 or 3010, but detection still finds nothing. |
+| `other_version_blocks` | Exit code 1638 (`ERROR_PRODUCT_VERSION`): another PhysX version is installed and Windows Installer refused this one, and the 2.6.3 core is still missing. If detection finds the core afterwards, 1638 reads as `installed` instead. |
 | `start_failed` | `ShellExecuteExW` failed with another Win32 error. |
 
 The host keeps the last result, so Inspect shows it again if the reply to the
 press was lost. Every refusal and failure is logged through `tracing` in the
 engine (the busy refusal in the shell goes to stderr).
 
-**Tests.** Engine `windows_physx::tests` inject the registry and DLL probes
-(present, missing value, missing DLL), refuse a same-size package with the wrong
-hash and a wrong-size package without starting the injected installer or writing
-an MSI, and map a declined UAC prompt to `cancelled_at_uac`. Shell
+**No retained installer.** Adopted copies, installs made before the launcher
+kept `Data/Prerequisites`, and seeds that are not the RAR have no retained
+installer, so the button is disabled. The repo pins no download URL for this
+EXE, so the launcher does not fetch one. The panel instead tells the player to
+run Repair if the launcher installed the game, or else to install "NVIDIA PhysX
+Legacy System Software" themselves.
+
+**Tests.** Engine `windows_physx::tests` inject the registry value over a
+temporary folder (core present, registered folder without `v2.6.3\PhysXCore.dll`,
+value missing), refuse a same-size package with the wrong hash and a wrong-size
+package without starting the injected installer or writing an MSI, check
+`read_package`'s own size check, check on Windows that the extracted MSI cannot
+be opened for writing or deleted while its guard is held, and map a declined UAC
+prompt to `cancelled_at_uac` and exit code 1638 by what detection finds. Shell
 `host::physx::tests` check that an active operation and a running install both
 refuse with `busy`. `physx-view.test.ts` and `npm run uat:physx` cover the
 first-press busy state, each result line and the Play warning. Each guard was

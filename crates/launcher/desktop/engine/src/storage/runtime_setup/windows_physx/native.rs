@@ -7,9 +7,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_CANCELLED,
 use windows_sys::Win32::System::Registry::{
     RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RRF_SUBKEY_WOW6432KEY,
 };
-use windows_sys::Win32::System::SystemInformation::{
-    GetSystemDirectoryW, GetSystemWow64DirectoryW,
-};
+use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
 use windows_sys::Win32::UI::Shell::{
     ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS,
@@ -34,22 +32,8 @@ fn directory(read: unsafe extern "system" fn(*mut u16, u32) -> u32) -> Option<Pa
         .then(|| PathBuf::from(std::ffi::OsString::from_wide(&buffer[..units])))
 }
 
-/// The directory a 32-bit process gets as its system directory: `SysWOW64` on
-/// 64-bit Windows (where `GetSystemWow64DirectoryW` succeeds), else `System32`.
-fn system32_for_x86() -> Option<PathBuf> {
-    directory(GetSystemWow64DirectoryW).or_else(|| directory(GetSystemDirectoryW))
-}
-
 pub struct System;
 impl Probe for System {
-    fn system_loader(&self) -> bool {
-        // A metadata check, not LoadLibrary: a 32-bit DLL cannot load into the
-        // 64-bit launcher, and loading would run its entry point.
-        system32_for_x86().is_some_and(|dir| {
-            std::fs::metadata(dir.join("PhysXLoader.dll")).is_ok_and(|m| m.is_file())
-        })
-    }
-
     fn core_path(&self) -> Option<PathBuf> {
         let key = wide(OsStr::new(AGEIA_KEY));
         let value = wide(OsStr::new(CORE_PATH_VALUE));
@@ -75,8 +59,7 @@ impl Probe for System {
         let units = (bytes as usize / 2).min(buffer.len());
         let text = String::from_utf16_lossy(&buffer[..units]);
         let text = text.trim_end_matches('\0').trim();
-        let path = PathBuf::from(text);
-        (!text.is_empty() && path.is_dir()).then_some(path)
+        (!text.is_empty()).then(|| PathBuf::from(text))
     }
 }
 
