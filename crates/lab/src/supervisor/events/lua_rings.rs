@@ -49,10 +49,17 @@
 //! The binding has no `unsubscribeGlobal`, so the subscription is made
 //! once per Lua state (`L.click_host`), never per pump: re-subscribing would
 //! stack handlers. An interface reload rebuilds the Lua state (a new
-//! `epoch`), which installs it again. In CEGUI 0.6 an unhandled
-//! `MouseClick` bubbles to the parents, firing the global event once per
-//! ancestor; a fire whose window is the last record's window or one of its
-//! ancestors, at the same UI time, is that bubble and is skipped.
+//! `epoch`), which installs it again. The host is `Root`, the ancestor of
+//! every window, so a subscription scoped to the host's subtree still sees
+//! all clicks; `BackgroundWin` is only the fallback. In CEGUI 0.6 an
+//! unhandled `MouseClick` bubbles to the parents, firing the global event
+//! once per ancestor; a fire on one of the last record's ancestors (never
+//! the clicked window itself), at the same UI time and cursor position, is
+//! that bubble and is skipped, and a fire on `Root` is never a click. The
+//! click install runs under its own `pcall`, so a fault there cannot stop
+//! the combat and chat rings. The chunk is never run by the Rust tests (no
+//! Lua runtime in the workspace); it was run under Lua 5.1 with stub
+//! windows when written (LR-10 worknote).
 
 use serde_json::{json, Value};
 
@@ -179,9 +186,15 @@ local function mouse_name(b)
   end
   return clean(b)
 end
-L.record_click = function(w, mouse)
+local function pos_key(pos)
+  if pos == nil then return "" end
+  local ok, k = pcall(function() return tostring(pos.x or pos.d_x) .. "," .. tostring(pos.y or pos.d_y) end)
+  return ok and k or ""
+end
+L.record_click = function(w, mouse, pos)
   local name = wname(w)
-  if name == nil then return end
+  -- An unhandled click bubbling all the way up fires once more for Root; it is never a click of its own.
+  if name == nil or name == "Root" then return end
   local chain, top, p, depth = {{ name }}, name, wparent(w), 0
   while p ~= nil and depth < 32 do
     local pn = wname(p)
@@ -189,34 +202,43 @@ L.record_click = function(w, mouse)
     top = pn chain[#chain + 1] = pn
     p = wparent(p) depth = depth + 1
   end
-  local t = now()
+  -- A bubbled fire reaches an ancestor of the last click at the same instant and cursor position.
+  -- Only ancestors (chain[2..]) are skipped, so two real clicks on one widget both record; with no
+  -- clock (t == 0) the position alone has to tell them apart.
+  local t, key = now(), pos_key(pos)
   local last = L.click_last
-  if type(last) == "table" and last.t == t then
-    for _, n in ipairs(last.chain) do if n == name then return end end
+  if type(last) == "table" and last.key == key and (t == 0 or last.t == t) then
+    for i = 2, #last.chain do if last.chain[i] == name then return end end
   end
-  L.click_last = {{ t = t, chain = chain }}
+  L.click_last = {{ t = t, key = key, chain = chain }}
   push(ring("click"), {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) }})
 end
 L.on_click = function(this, window, position, moveDelta, button)
   if L.click_busy then return end
   L.click_busy = true
-  pcall(L.record_click, window, button)
+  pcall(L.record_click, window, button, position)
   L.click_busy = false
 end
 local st_click = "missing"
-if L.click_host ~= nil then st_click = "ok" else
-  local host = rawget(_G, "BackgroundWin")
-  if host == nil then local okw, w = pcall(getWindow, "Root") if okw then host = w end end
-  if host ~= nil then
-    local ns, ev = "Window", "MouseClick"
-    if type(CEGUI) == "table" and type(CEGUI.Window) == "table" then
-      ns = CEGUI.Window.EventNamespace or ns
-      ev = CEGUI.Window.EventMouseClick or ev
-    end
-    local oks = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
-    if oks then L.click_host = host st_click = "installed" else st_click = "failed" end
+-- Its own pcall: a fault in the click install must not cost the combat and chat rings their pump.
+local okc = pcall(function()
+  if L.click_host ~= nil then st_click = "ok" return end
+  -- Root first: it is an ancestor of every window, so a subscription scoped to the host's
+  -- subtree still sees every click. BackgroundWin is a sibling of TutorialWin and the rest.
+  local host
+  local okw, w = pcall(getWindow, "Root")
+  if okw then host = w end
+  if host == nil then host = rawget(_G, "BackgroundWin") end
+  if host == nil then return end
+  local ns, ev = "Window", "MouseClick"
+  if type(CEGUI) == "table" and type(CEGUI.Window) == "table" then
+    ns = CEGUI.Window.EventNamespace or ns
+    ev = CEGUI.Window.EventMouseClick or ev
   end
-end
+  local oks = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
+  if oks then L.click_host = host st_click = "installed" else st_click = "failed" end
+end)
+if not okc then st_click = "failed" end
 local out = {{}}
 local function add(...) out[#out + 1] = table.concat({{...}}, "\t") end
 add("epoch", clean(L.epoch))
@@ -266,9 +288,11 @@ pub struct RingRead {
     /// `(ring seq, fields)` per record.
     pub combat: Vec<(u64, Value)>,
     pub chat: Vec<(u64, Value)>,
+    /// Click records: `window`, `button`, `mouse` (LR-10).
     pub click: Vec<(u64, Value)>,
     pub combat_head: u64,
     pub chat_head: u64,
+    /// The click ring's latest seq, read or not.
     pub click_head: u64,
     /// Lines that did not parse (kept for the error report, never fatal).
     pub bad_lines: Vec<String>,
@@ -429,18 +453,42 @@ mod tests {
         let c = pump_chunk(0, 0, 0, READ_MAX);
         assert_eq!(c.matches("subscribeGlobal").count(), 1);
         let gate = c
-            .find(r#"if L.click_host ~= nil then st_click = "ok" else"#)
+            .find(r#"if L.click_host ~= nil then st_click = "ok" return end"#)
             .expect("install gate");
         let sub = c.find("host:subscribeGlobal").unwrap();
         let set = c
             .find(r#"if oks then L.click_host = host st_click = "installed" else st_click = "failed" end"#)
             .expect("host recorded only on success");
         assert!(gate < sub && sub < set);
-        // A bubbled or repeated fire of one click is recorded once.
-        assert!(c.contains("if type(last) == \"table\" and last.t == t then"));
-        assert!(c.contains("for _, n in ipairs(last.chain) do if n == name then return end end"));
-        // The chunk is a pure function of its marks.
-        assert_eq!(c, pump_chunk(0, 0, 0, READ_MAX));
+        // Root is tried before BackgroundWin: only Root is every window's ancestor.
+        let root = c.find(r#"pcall(getWindow, "Root")"#).expect("root host");
+        let bg = c
+            .find(r#"rawget(_G, "BackgroundWin")"#)
+            .expect("fallback host");
+        assert!(root < bg && bg < sub);
+        // The install has its own pcall, opened before the gate, so a fault
+        // there cannot stop the combat and chat reads that follow.
+        let guard = c
+            .find("local okc = pcall(function()")
+            .expect("install pcall");
+        assert!(guard < gate && sub < c.find("add(\"head\", \"combat\"").unwrap());
+    }
+
+    /// A bubbled fire is skipped only on the last click's ancestors, never
+    /// on the clicked window itself, so two real clicks on one button both
+    /// record; a fire on Root is never a click.
+    #[test]
+    fn the_click_dedup_skips_ancestors_only() {
+        let c = pump_chunk(0, 0, 0, READ_MAX);
+        assert!(c.contains("if name == nil or name == \"Root\" then return end"));
+        assert!(c.contains("last.key == key and (t == 0 or last.t == t)"));
+        assert!(
+            c.contains("for i = 2, #last.chain do if last.chain[i] == name then return end end")
+        );
+        assert!(
+            !c.contains("ipairs(last.chain)"),
+            "the clicked window itself must not dedup"
+        );
     }
 
     #[test]

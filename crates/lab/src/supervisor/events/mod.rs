@@ -102,8 +102,10 @@ pub fn ingest_bridge(st: &mut StoreInner, result: &Value) -> (usize, u64) {
 /// What one Lua ring read added to the store.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RingIngest {
+    /// Records pushed to the store this pump, per ring.
     pub combat: usize,
     pub chat: usize,
+    /// `ui.click` records (LR-10).
     pub click: usize,
     /// The Lua state was rebuilt since the last read.
     pub epoch_changed: bool,
