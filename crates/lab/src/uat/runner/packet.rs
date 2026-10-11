@@ -132,6 +132,7 @@ fn server_record(index: usize, role: Role, tool: &str, args: &Value) -> ActionRe
         result: Value::Null,
         calls: vec![],
         client: None,
+        optional: false,
     }
 }
 

@@ -182,6 +182,7 @@ mod tests {
             result: Value::Null,
             calls: vec![],
             client: None,
+            optional: false,
         }
     }
 

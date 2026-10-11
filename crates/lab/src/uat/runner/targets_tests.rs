@@ -449,6 +449,26 @@ async fn a_passing_row_summary_has_no_heal_key() {
     assert!(summary.heal.is_none());
     let json = serde_json::to_value(summary).unwrap();
     assert!(json.get("heal").is_none(), "{json}");
+
+    // The same click optional and missing: the evidence marks it optional,
+    // so it gives no hint (the grader still fails the row on it).
+    let text = text.replace(r#"label = "go" }"#, r#"label = "go", optional = true }"#);
+    let fake = client(vec![player_at([0.0; 3])]).answer(
+        "client_world_click",
+        vec![json!({ "__error": "pose missed", "__data": { "step": "hover" } })],
+    );
+    let out = outcome(&fake, Some(&srv), &text).await;
+    let summary = &out.rows[0];
+    assert_ne!(summary.result, "PASS", "{:?}", summary.reasons);
+    let json = serde_json::to_value(summary).unwrap();
+    assert!(json.get("heal").is_none(), "{json}");
+    let ev = RunDir::open(std::path::Path::new(&out.run_dir))
+        .unwrap()
+        .rows()
+        .unwrap()
+        .remove(0);
+    let act = step_action(&ev);
+    assert!(!act.ok && act.optional, "{act:?}");
 }
 
 /// Where the frost pose stands (README F20): `/gmgotoxyz -325.00 73.60 -212.80`.

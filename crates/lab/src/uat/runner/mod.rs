@@ -120,7 +120,11 @@ pub enum FixtureMode {
 /// (SV-11, README F15): the pose id and the world step that failed.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HealHint {
+    /// The pose id the failed action's target resolved through (its
+    /// `resolve.pose` call record), the key `-Heal` recalibrates.
     pub pose: String,
+    /// The world-tool step that failed (`error_data.step`): `hover`,
+    /// `on_screen`, `face`, `abs_pitch` or `abs_yaw`.
     pub step: String,
 }
 
@@ -343,11 +347,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     row: r.row_id.clone(),
                     result: r.result.as_str().to_string(),
                     reasons: r.reasons.clone(),
-                    heal: if r.result == super::evidence::RowResult::Pass {
-                        None
-                    } else {
-                        heal::heal_hint(r)
-                    },
+                    heal: heal::summary_heal(r),
                 })
                 .collect(),
             ledger: done

@@ -375,6 +375,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             result: json!({ "skipped": skipped }),
             calls: vec![],
             client: None,
+            optional: false,
         });
     }
 }

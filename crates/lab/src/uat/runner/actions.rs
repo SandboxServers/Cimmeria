@@ -130,6 +130,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
             result: Value::Null,
             calls: vec![],
             client: who.tag(),
+            // The primary's flag, as `drive_steps` reads it to stop a row.
+            optional: a.optional,
         };
         let t0 = std::time::Instant::now();
         match chosen.kind() {
