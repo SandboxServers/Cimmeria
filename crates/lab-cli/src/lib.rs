@@ -36,54 +36,58 @@ pub fn main_with(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     }
 }
 
-/// `lab help [name]`: the root help, or the full help of one command.
+/// `lab help [name]`: the root help, or the full help of one command (clap's
+/// `--help` page; a name clap does not know yet goes to the PowerShell
+/// fallback with `--help`).
 fn help_for(ui: &Ui, target: Option<&OsString>) -> ExitCode {
     let Some(target) = target else {
         anstream::println!("{}", help::root_help(ui));
         return ExitCode::SUCCESS;
     };
     let name = target.to_string_lossy().into_owned();
-    match commands::find(&name) {
-        // `version` has no PowerShell half to ask for its help.
-        Some(info) if name == "version" => {
-            anstream::println!("lab {} - {}", info.name, info.summary);
-            ExitCode::SUCCESS
-        }
-        Some(_) => ExitCode::from(fallback::run(&Ctx {
-            ui: *ui,
-            command: name,
-            raw: vec![OsString::from("--help")],
-        })),
-        None => unknown_command(ui, &name),
+    if commands::find(&name).is_none() {
+        return unknown_command(ui, &name);
     }
+    let tokens = vec![OsString::from(name), OsString::from("--help")];
+    dispatch(*ui, tokens.clone(), tokens)
 }
 
-/// Runs one command: `version` through clap, any other known name through
-/// the PowerShell fallback with its original tokens.
+/// Runs one command: clap parses it (a name clap does not know yet becomes
+/// `Command::Other` and goes to the PowerShell fallback with its original
+/// tokens).
 fn dispatch(ui: Ui, raw: Vec<OsString>, rewritten: Vec<OsString>) -> ExitCode {
     let name = raw
         .first()
         .map(|t| t.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if name == "version" {
-        return match Cli::try_parse_from(once(OsString::from("lab")).chain(rewritten)) {
-            Ok(_) => commands::version::run(),
-            Err(err) => {
-                let code = u8::try_from(err.exit_code()).unwrap_or(2);
-                let _ = err.print();
-                ExitCode::from(code)
-            }
-        };
-    }
     if commands::find(&name).is_none() {
         return unknown_command(&ui, &name);
     }
-    let tail = raw.into_iter().skip(1).collect();
-    ExitCode::from(fallback::run(&Ctx {
+    let cli = match Cli::try_parse_from(once(OsString::from("lab")).chain(rewritten)) {
+        Ok(cli) => cli,
+        Err(err) => return clap_error(err, &ui, &name),
+    };
+    let Some(command) = cli.command else {
+        return ExitCode::SUCCESS;
+    };
+    let ctx = Ctx {
         ui,
         command: name,
-        raw: tail,
-    }))
+        raw: raw.into_iter().skip(1).collect(),
+    };
+    ExitCode::from(commands::dispatch(&command, &ctx))
+}
+
+/// Prints a clap error (or help page) and returns its exit code: 0 for help,
+/// 2 for a usage error. An unknown subcommand gets the `lab` unknown-command
+/// message instead of clap's.
+fn clap_error(err: clap::Error, ui: &Ui, name: &str) -> ExitCode {
+    if err.kind() == clap::error::ErrorKind::InvalidSubcommand {
+        return unknown_command(ui, name);
+    }
+    let code = u8::try_from(err.exit_code()).unwrap_or(2);
+    let _ = err.print();
+    ExitCode::from(code)
 }
 
 /// Reports an unknown command, with the nearest names when there are any.

@@ -4,12 +4,24 @@
 //! PowerShell dispatcher through [`crate::fallback`] until its packet moves it
 //! here, one file per command.
 
+pub mod clients;
+pub mod doctor;
+pub mod env;
+pub mod instances;
+pub mod logs;
+pub mod restart;
+pub mod start;
+pub mod status;
+pub mod stop;
 pub mod version;
 
 use std::ffi::OsString;
 
+use anstyle::{AnsiColor, Style};
+use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
+use crate::fallback;
 use crate::ui::Ui;
 
 /// What a command gets: the terminal kit, its name and its raw arguments.
@@ -171,9 +183,19 @@ pub fn find(name: &str) -> Option<&'static CommandInfo> {
     COMMANDS.iter().find(|info| info.name == name)
 }
 
-/// The clap surface of `lab`. Only `version` is parsed by clap for now.
+/// The clap help styles: headings bold yellow, literals cyan, placeholders dim.
+pub fn styles() -> Styles {
+    let heading = Style::new().bold().fg_color(Some(AnsiColor::Yellow.into()));
+    Styles::styled()
+        .header(heading)
+        .usage(heading)
+        .literal(Style::new().fg_color(Some(AnsiColor::Cyan.into())))
+        .placeholder(Style::new().dimmed())
+}
+
+/// The clap surface of `lab`.
 #[derive(Debug, Parser)]
-#[command(name = "lab", disable_help_subcommand = true)]
+#[command(name = "lab", disable_help_subcommand = true, styles = styles())]
 pub struct Cli {
     /// The subcommand, if any.
     #[command(subcommand)]
@@ -183,9 +205,99 @@ pub struct Cli {
 /// The subcommands clap knows about.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Status(status::Args),
+    Start(start::Args),
+    Stop(stop::Args),
+    Restart(restart::Args),
+    Logs(logs::Args),
+    Doctor(doctor::Args),
+    Instances(instances::Args),
+    Clients(clients::Args),
+    Env(env::Args),
     /// Print the CLI and daemon versions.
     Version,
-    /// Any other command: the PowerShell dispatcher handles it.
+    /// A command that has not moved to clap yet: the PowerShell dispatcher
+    /// handles it. LX-02b deletes this variant.
     #[command(external_subcommand)]
     Other(Vec<OsString>),
+}
+
+/// Runs a parsed command and returns its exit code.
+pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
+    match cmd {
+        Command::Status(args) => status::run(args, ctx),
+        Command::Start(args) => start::run(args, ctx),
+        Command::Stop(args) => stop::run(args, ctx),
+        Command::Restart(args) => restart::run(args, ctx),
+        Command::Logs(args) => logs::run(args, ctx),
+        Command::Doctor(args) => doctor::run(args, ctx),
+        Command::Instances(args) => instances::run(args, ctx),
+        Command::Clients(args) => clients::run(args, ctx),
+        Command::Env(args) => env::run(args, ctx),
+        Command::Version => version::run(),
+        Command::Other(_) => fallback::run(ctx),
+    }
+}
+
+/// Parses `lab <command> <tokens...>` after `argv::rewrite`, as `main_with` does.
+#[cfg(test)]
+pub(crate) fn try_parse(command: &str, tokens: &[&str]) -> Result<Cli, clap::Error> {
+    let mut args = vec![OsString::from(command)];
+    args.extend(tokens.iter().map(|t| OsString::from(*t)));
+    let rewritten = crate::argv::rewrite(args);
+    Cli::try_parse_from(std::iter::once(OsString::from("lab")).chain(rewritten))
+}
+
+/// [`try_parse`] that panics with clap's message when the tokens do not parse.
+#[cfg(test)]
+pub(crate) fn parse_ok(command: &str, tokens: &[&str]) -> Command {
+    match try_parse(command, tokens) {
+        Ok(cli) => cli.command.expect("a subcommand"),
+        Err(err) => panic!("`lab {command} {tokens:?}` should parse: {err}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::*;
+
+    /// Every clap subcommand is a command in the table (the table may hold
+    /// more until LX-02b converts the rest).
+    #[test]
+    fn clap_subcommands_are_in_the_command_table() {
+        for sub in Cli::command().get_subcommands() {
+            assert!(
+                find(sub.get_name()).is_some(),
+                "clap subcommand '{}' is missing from COMMANDS",
+                sub.get_name()
+            );
+        }
+    }
+
+    #[test]
+    fn converted_commands_are_clap_subcommands() {
+        let names: Vec<String> = Cli::command()
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        for want in [
+            "status",
+            "start",
+            "stop",
+            "restart",
+            "logs",
+            "doctor",
+            "instances",
+            "clients",
+            "env",
+            "version",
+        ] {
+            assert!(
+                names.iter().any(|n| n == want),
+                "no clap subcommand '{want}'"
+            );
+        }
+    }
 }

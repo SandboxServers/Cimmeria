@@ -72,12 +72,19 @@ fn help_for_an_unknown_name_exits_2() {
 }
 
 #[test]
-fn help_for_a_known_name_goes_to_the_fallback() {
+fn help_for_a_converted_name_prints_its_clap_page() {
+    let output = run_lab(&["help", "status"], &[]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(stdout.contains("Examples:"), "stdout: {stdout}");
+    assert!(stdout.contains("lab status"), "stdout: {stdout}");
+}
+
+#[test]
+fn help_for_a_name_not_in_clap_yet_goes_to_the_fallback() {
+    // uat moves to clap in LX-02b, which replaces this test with `completions`.
     let empty = tempfile::TempDir::new().expect("temp dir");
-    let output = run_lab(
-        &["help", "status"],
-        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
-    );
+    let output = run_lab(&["help", "uat"], &[("CIMMERIA_LAB_CLI_DIR", empty.path())]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr.contains("not installed"), "stderr: {stderr}");
@@ -99,4 +106,44 @@ fn status_without_dispatcher_exits_1_not_installed() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr.contains("not installed"), "stderr: {stderr}");
+}
+
+#[test]
+fn command_help_flag_prints_examples_and_exits_0() {
+    for (args, flag) in [
+        (&["status", "--help"][..], "Examples:"),
+        (&["logs", "-h"], "--lines"),
+        (&["logs", "-?"], "--lines"),
+        (&["clients", "--help"], "--force"),
+    ] {
+        let output = run_lab(args, &[]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(stdout.contains(flag), "{args:?}: {stdout}");
+        assert!(
+            !stdout.contains('\u{1b}'),
+            "{args:?}: redirected help has no colour"
+        );
+    }
+}
+
+#[test]
+fn unknown_flag_is_a_usage_error_exit_2() {
+    assert_eq!(run_lab(&["status", "--bogus"], &[]).status.code(), Some(2));
+    assert_eq!(
+        run_lab(&["logs", "--level", "loud"], &[]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn powershell_spelling_is_accepted_before_the_fallback() {
+    // -Lines 5 is rewritten to --lines 5, parses, then the fallback reports
+    // the missing dispatcher (exit 1), not a usage error (exit 2).
+    let empty = tempfile::TempDir::new().expect("temp dir");
+    let output = run_lab(
+        &["logs", "-Lines", "5"],
+        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
+    );
+    assert_eq!(output.status.code(), Some(1));
 }
