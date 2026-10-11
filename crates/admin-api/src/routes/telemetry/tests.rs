@@ -143,6 +143,7 @@ fn replay_client_native_tolerates_unknown_level() {
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
         kind: None,
+        acct: None,
     };
     let ev = ClientNativeEvent {
         ts_ms: 0,
@@ -180,6 +181,7 @@ fn verify_bearer_accepts_token_minted_by_dev_session() {
         exp: chrono::Utc::now().timestamp() + 3600,
         scope: vec!["telemetry.write".into()],
         kind: None,
+        acct: None,
     };
     let token = encode_token(&claims, &secret).unwrap();
 
@@ -222,6 +224,7 @@ fn verify_bearer_rejects_a_token_without_the_telemetry_write_scope() {
             exp: now + 3600,
             scope,
             kind: None,
+            acct: None,
         };
         let token = encode_token(&claims, &secret).unwrap();
         let mut headers = HeaderMap::new();

@@ -91,6 +91,7 @@ pub(super) fn claims(sid: &str) -> TokenClaims {
         exp: now + 3600,
         scope: vec!["telemetry.write".into()],
         kind: None,
+        acct: None,
     }
 }
 

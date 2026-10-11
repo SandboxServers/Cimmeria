@@ -10,6 +10,7 @@
 //! See `docs/protocol/login-handshake.md` for the full protocol spec.
 
 mod cert_watcher;
+pub mod client_telemetry;
 mod credentials;
 mod handlers;
 mod password_hash;

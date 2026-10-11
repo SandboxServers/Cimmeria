@@ -453,6 +453,7 @@ mod tests {
                 git_sha: "abc".into(),
                 launcher_version: "0.1.0".into(),
                 tags: vec![],
+                account_name: None,
             },
             dir.path(),
             "0.1.0",
@@ -482,6 +483,7 @@ mod tests {
             git_sha: "abc".into(),
             launcher_version: "0.1.0".into(),
             tags: vec![],
+            account_name: None,
         }
     }
 

@@ -199,6 +199,12 @@ pub async fn handle_map_loaded(
         .map(|p| p.len())
         .sum();
     let pkt_count = enter_packets.len() + map_packets.len();
+    // TG-NET-18 (D-TG14): whether this account's launcher minted a client
+    // telemetry stream, joined on the account name the mint signed in. The
+    // stream's `session_id` is the one on every replayed client row, so a
+    // session with server logs and no client rows says which it is here.
+    let client_telemetry =
+        cimmeria_auth::auth::client_telemetry::client_telemetry_now(who.account_name);
     tracing::info!(
         %addr,
         account_id = who.account_id,
@@ -209,6 +215,8 @@ pub async fn handle_map_loaded(
         level = player_data.level,
         archetype = player_data.archetype,
         archetype_name = cimmeria_names::archetype_name(player_data.archetype),
+        client_telemetry = client_telemetry.as_str(),
+        client_telemetry_session_id = client_telemetry.session_id(), // nt:id-only telemetry session UUID; it names nothing
         packets = pkt_count,
         "World entry complete ({} bytes across {} packets)",
         total_bytes,

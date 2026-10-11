@@ -127,6 +127,7 @@ async fn a_row_uploaded_after_its_slot_was_reused_names_the_original_occupant() 
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
         kind: Some("lab".into()),
+        acct: None,
     };
 
     // The chunk the client uploads now, written over the last minute while

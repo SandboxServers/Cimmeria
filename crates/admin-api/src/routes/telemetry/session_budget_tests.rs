@@ -141,6 +141,7 @@ fn a_runaway_chunk_is_cut_at_the_budget_and_counted() {
         exp: i64::MAX,
         scope: vec!["telemetry.write".into()],
         kind: None,
+        acct: None,
     };
     let extra = 250u64;
     let mut lines: Vec<String> = (0..EVENTS_PER_WINDOW + extra)

@@ -67,6 +67,40 @@ pub struct DevSessionRequest {
     /// rows as player rows.
     #[serde(default)]
     pub session_kind: Option<String>,
+    /// The game account the player logs in with (TG-NET-18, owner decision
+    /// D-TG14). Signed into the token as `acct` and recorded so world entry
+    /// can say whether this account has a client telemetry stream. Absent
+    /// from every launcher before it, which still mints: its player's world
+    /// entry just says `absent`. Blank counts as absent.
+    #[serde(default)]
+    pub account_name: Option<String>,
+}
+
+/// The longest `account_name` a mint takes. Game account names are far
+/// shorter; this only bounds what an unauthenticated caller can store.
+pub const MAX_ACCOUNT_NAME_LEN: usize = 64;
+
+/// The `acct` claim for a requested account name: `None` when absent or
+/// blank (the token then has the bytes it had before the claim existed),
+/// the trimmed name otherwise. A name that is too long or carries control
+/// characters (it reaches the mint log line) is refused with 400.
+pub(super) fn account_claim(requested: Option<&str>) -> Result<Option<String>, AuthError> {
+    let Some(name) = requested.map(str::trim).filter(|n| !n.is_empty()) else {
+        return Ok(None);
+    };
+    if name.len() > MAX_ACCOUNT_NAME_LEN {
+        return Err(AuthError::BadField {
+            field: "account_name",
+            reason: "exceeds 64 bytes",
+        });
+    }
+    if name.chars().any(char::is_control) {
+        return Err(AuthError::BadField {
+            field: "account_name",
+            reason: "must not contain control characters",
+        });
+    }
+    Ok(Some(name.to_string()))
 }
 
 /// The `kind` claim for a requested session kind: `None` for a player
@@ -228,6 +262,7 @@ pub(super) fn mint_inner(
         validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
     }
     let kind = kind_claim(req.session_kind.as_deref())?;
+    let acct = account_claim(req.account_name.as_deref())?;
     tables.mint_install.check_and_record(
         install_key(&req.install_id),
         policy.mint_per_install,
@@ -246,12 +281,16 @@ pub(super) fn mint_inner(
         exp,
         scope: vec![SCOPE_TELEMETRY_WRITE.into()],
         kind,
+        acct,
     };
     let token = encode_token(&claims, &secret)?;
+    record_stream(&claims);
     // install_id / machine_id stay at debug to avoid leaking
-    // persistent fingerprints into info-level pipelines.
+    // persistent fingerprints into info-level pipelines. The token itself
+    // is never logged.
     tracing::info!(
         session_id = %session_id, // nt:id-only generated UUID, nothing to name
+        account_name = claims.acct.as_deref(),
         session_kind = claims.session_kind(),
         branch = %req.branch,
         git_sha = %req.git_sha,
@@ -349,10 +388,14 @@ pub(super) fn refresh_inner(
         scope: claims.scope,
         // A refresh keeps the session's kind: a lab session stays lab.
         kind: claims.kind,
+        // ...and keeps its account, so world entry still finds the stream.
+        acct: claims.acct,
     };
     let token = encode_token(&new_claims, &secret)?;
+    record_stream(&new_claims);
     tracing::info!(
         session_id = %new_claims.sid, // nt:id-only generated UUID, nothing to name
+        account_name = new_claims.acct.as_deref(),
         old_exp = claims.exp,
         new_exp,
         session_age_secs = elapsed,
@@ -366,6 +409,20 @@ pub(super) fn refresh_inner(
         chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
         flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
     })
+}
+
+/// Record the stream under its `acct` claim for world entry's
+/// `client_telemetry` field (TG-NET-18); a token without one records
+/// nothing. Called after the token is signed, so a refused mint or refresh
+/// leaves no stream behind.
+fn record_stream(claims: &TokenClaims) {
+    if let Some(acct) = claims.acct.as_deref() {
+        cimmeria_services::auth::client_telemetry::record_client_telemetry_stream(
+            acct,
+            &claims.sid,
+            claims.exp,
+        );
+    }
 }
 
 /// Every refusal the operator can act on leaves a row with its `reason`

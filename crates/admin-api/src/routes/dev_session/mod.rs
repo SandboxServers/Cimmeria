@@ -8,10 +8,14 @@
 //! Token shape:
 //!
 //! ```text
-//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
+//! payload = base64url(JSON {iss, sub, sid, iat, exp, scope, [kind], [acct]})
 //! sig     = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
+//!
+//! A mint whose request names the game account (`account_name`, TG-NET-18)
+//! signs it in as `acct` and records the stream in
+//! `cimmeria_auth::auth::client_telemetry`, where world entry looks it up.
 //!
 //! # Trust model
 //!
@@ -49,6 +53,8 @@ pub mod token;
 
 mod handlers;
 
+#[cfg(test)]
+mod account_name_tests;
 #[cfg(test)]
 mod session_kind_tests;
 #[cfg(test)]

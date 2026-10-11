@@ -321,7 +321,7 @@ one whose DLL never went in.
 ## Token format
 
 ```text
-payload = base64url(JSON {iss, sub, sid, iat, exp, scope, kind?})
+payload = base64url(JSON {iss, sub, sid, iat, exp, scope, kind?, acct?})
 sig     = base64url(HMAC-SHA256(secret, payload))
 token   = payload || "." || sig
 ```
@@ -333,6 +333,21 @@ a player token is byte-identical to one minted before the claim existed
 and older tokens still decode. It is signed, so an upload cannot relabel
 itself, but minting is open, so it is a filter label and never a
 privilege. A refresh keeps it. Any other requested kind is a 400.
+
+`acct` is the game account the launcher names in the mint request's
+optional `account_name` field (TG-NET-18, owner decision D-TG14). It is
+absent when the request has no name or a blank one, so tokens from older
+launchers keep their bytes and those launchers still mint. A name over 64
+bytes or with a control character is a 400. Like `kind`, `acct` is a signed
+label, not proof of identity. The mint and every refresh record the stream
+under the account name (ASCII case ignored) in
+`cimmeria_auth::auth::client_telemetry`. The `World entry complete` row
+then carries `client_telemetry = "present"` and
+`client_telemetry_session_id`, which is the `session_id` on the stream's
+replayed rows, or `client_telemetry = "absent"`. The registry is in-process
+and holds at most 4096 streams; a stream lapses at its token's `exp`. The
+desktop and egui launchers do not send an account yet. That part ships with
+the launcher release.
 
 `iat` is the **original mint** time and survives every refresh, so
 `exp` − `iat` is 8 hours only on a freshly minted token and shrinks
