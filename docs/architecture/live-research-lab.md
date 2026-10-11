@@ -117,7 +117,7 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |
 | `lab_client_status` | PID, uptime, bridge heartbeat age, login state, crash count. |
-| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, ...) are listed in the operating guide. |
+| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, `lab_disconnect` (Back at character select, to the login screen), ...) are listed in the operating guide. |
 | `lab_screenshot` | Capture of the window's client area; over MCP it comes back as a saved file path unless the call passes `image: true`. |
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |
@@ -279,6 +279,14 @@ that nothing enforced.
   screenshots, the UI readers, `lab_timeline` and SigNoz.
 - Every lease change is one `lab.lease` event in `labd.log`, so who drove
   the lab and when is reconstructable after the fact.
+- **SigNoz export** (TG-PIPE-17, D-TG2). With `CIMMERIA_LAB_OTLP_ENDPOINT`
+  in `labd.env` (and `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf` for an HTTP
+  collector), the daemon also ships its log to SigNoz as
+  `service.name = cimmeria-lab`, local paths reduced to the instance name,
+  the user and machine names to `<user>`/`<host>`, and the lease's
+  owner/purpose text left off; unset, nothing is exported. Restart the
+  daemon (`daemon.ps1 restart`) to pick it up. Details:
+  [observability.md § The lab daemon](observability.md#the-lab-daemon-cimmeria-lab).
 - The same lease book covers the in-process second-player supervisor:
   the lease is for the lab, not for one client.
 - **`GET /status`** (added 2026-10-10, D-LC2 of the
@@ -293,7 +301,10 @@ that nothing enforced.
   MCP service and don't cover `/status`; a DNS-rebinding page can't supply
   the bearer token, so the token is the guard there. A plain GET replaced
   the alternative, an MCP streamable-HTTP client written in PowerShell
-  (initialize, session id, SSE parsing).
+  (initialize, session id, SSE parsing). Each instance row also carries
+  `uat`: its running `lab_uat_run` (run id, run directory, rows done and
+  total, the current row and when it started), or `null`, for `lab watch`
+  (D-LW1 of the [lab watch ledger](../analysis/lab-watch/README.md)).
 
 Implementation: `crates/lab/src/daemon/` (transport, auth, single
 instance, log rotation, `status.rs`), `crates/lab/src/lease/` (book, policy, run lease),

@@ -46,17 +46,25 @@
 //! - `--http <127.0.0.1:port> [--log-file <path>]`: the shared daemon
 //!   ([`daemon`]), token-gated by `CIMMERIA_LAB_DAEMON_TOKEN`, logging to
 //!   `%LOCALAPPDATA%\cimmeria-lab\labd.log`. `tools/lab/daemon.ps1` runs it
-//!   as a per-user scheduled task.
+//!   as a per-user scheduled task. With `CIMMERIA_LAB_OTLP_ENDPOINT` set
+//!   (and optionally `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf`) it also
+//!   exports its log to SigNoz as `cimmeria-lab`, local paths reduced to
+//!   the instance name ([`otlp`], TG-PIPE-17).
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use rmcp::{transport::stdio, ServiceExt};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
+use tracing_subscriber::{EnvFilter, Layer as _};
 
+#[allow(dead_code)] // wired into the runner by CH-08 (lab-chaos)
+mod chaos;
 mod client;
 mod daemon;
 mod lease;
+mod otlp;
 mod server;
 mod supervisor;
 mod timeline;
@@ -222,10 +230,21 @@ async fn run_http(bind: String, log_file: Option<std::path::PathBuf>) -> i32 {
         }
     };
     let (nb, _log_guard) = tracing_appender::non_blocking(writer);
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter())
-        .with_writer(nb)
-        .with_ansi(false)
+    // labd.log keeps everything at RUST_LOG's level; the OTLP copy (when
+    // CIMMERIA_LAB_OTLP_ENDPOINT is set) gets its own filter and redacted
+    // paths (TG-PIPE-17). `_otlp_guard` flushes the last batch on return.
+    let (otlp_layer, _otlp_guard) = match otlp::init() {
+        Some((layer, guard)) => (Some(layer.with_filter(otlp::filter())), Some(guard)),
+        None => (None, None),
+    };
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(nb)
+                .with_ansi(false)
+                .with_filter(env_filter()),
+        )
+        .with(otlp_layer)
         .init();
 
     let (addr, token) = match config::evaluate(&bind, std::env::var(config::ENV_TOKEN).ok()) {

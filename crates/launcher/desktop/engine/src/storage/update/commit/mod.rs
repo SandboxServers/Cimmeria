@@ -1,6 +1,7 @@
 //! Retained replacement with a durable checkpoint before either rename.
 //! Backup cleanup and restart reconciliation are separate, not implicit retries.
 use super::*;
+use crate::game_telemetry::install_event::{Ending, Run};
 use crate::OperationState;
 use preparation::{Failure, Prepared};
 use std::{
@@ -80,6 +81,11 @@ pub(crate) fn start(
             std::panic::catch_unwind(AssertUnwindSafe(|| replace(&state, &prepared, |_| Ok(()))))
                 .unwrap_or(Err(Failure::ReconciliationRequired));
         let result = result.map_err(|error| preparation::finish_failure(&state, id, error));
+        if result.is_ok() {
+            if let Ok(mut owner) = state.lock() {
+                owner.queue_install_result(id, Run::Update, Ending::Succeeded);
+            }
+        }
         // Prepared's observer is harmless once a durable terminal result exists.
         drop(prepared);
         let _ = send.send(result);

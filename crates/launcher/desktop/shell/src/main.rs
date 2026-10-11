@@ -12,6 +12,9 @@ use cimmeria_launcher_engine::client_maintenance::{
 use cimmeria_launcher_engine::log_upload::{
     CollectedLogs, LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
 };
+use cimmeria_launcher_engine::runtime_setup::windows_physx::{
+    PhysxCommand, PhysxError, PhysxStatus,
+};
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
@@ -298,6 +301,19 @@ async fn client_changes_command(
         .map_err(|_| StorageError::Io)?
 }
 
+/// Inspect, or run the elevated PhysX installer (LX-12). Install holds a
+/// blocking thread until msiexec exits, which can be minutes of player input.
+#[tauri::command]
+async fn physx_command(
+    request: PhysxCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<PhysxStatus, PhysxError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.physx_command(request))
+        .await
+        .map_err(|_| StorageError::Io)?
+}
+
 #[tauri::command]
 async fn migration_command(
     request: MigrationCommand,
@@ -462,6 +478,7 @@ fn main() {
             log_upload_command,
             client_maintenance_command,
             client_changes_command,
+            physx_command,
             migration_command,
             updater_command,
             game_update_command,

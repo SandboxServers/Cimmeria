@@ -115,7 +115,13 @@ pub async fn queue_without_session(
     consent: &Consent,
     event: TelemetryEvent,
 ) -> Result<(), TransportError> {
+    queue_now(consent, &event)
+}
+
+/// [`queue_without_session`] for callers that hold the state lock and
+/// cannot await: core's queue locks its own file only for the append.
+pub(crate) fn queue_now(consent: &Consent, event: &TelemetryEvent) -> Result<(), TransportError> {
     DiskQueue::new(&consent.queue_dir)
-        .enqueue(&event)
+        .enqueue(event)
         .map_err(|_| TransportError::Queue)
 }

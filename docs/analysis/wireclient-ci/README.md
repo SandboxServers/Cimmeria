@@ -10,7 +10,7 @@
 > **Campaign status (2026-10-11): waves 1 to 3 and WC-18 merged** (WC-01 to
 > WC-10, WC-13, WC-18; PRs in the table). D-WC2, D-WC3, D-WC6 and D-WC7 are
 > decided (option (a) each). D-WC8 still waits on #1341. WC-11 (wave 4) is
-> Ready. WC-18 (#1447) fixed the three chaos tests (#1371, closed), so the
+> integrated (#1496), and so is WC-12 (wave 5); WC-14 (wave 6) is Ready. WC-18 (#1447) fixed the three chaos tests (#1371, closed), so the
 > `wireclient e2e` job, still reporting only, passes. Linux CI moved to the
 > self-hosted `cimmeria-linux` runners on 2026-10-11 (#1410); WC-16's
 > shakedown counts green runs there.
@@ -93,10 +93,10 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | Done (#1401) |
 | WC-09 | Entity-introduction and chat decoders | packet-coder | S | 3 | WC-05 | Done (#1402) |
 | WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | Done (#1403) |
-| WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | Ready |
-| WC-12 | `ScriptSession`: lossless event log, ordered waits, keep-alive | rust-gameserver-dev | M | 5 | WC-10, WC-11 | BlockedDependency |
+| WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | Integrated |
+| WC-12 | `ScriptSession`: lossless event log, ordered waits, keep-alive | rust-gameserver-dev | M | 5 | WC-10, WC-11 | Integrated |
 | WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | Done (#1404) |
-| WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | BlockedDependency |
+| WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | Ready |
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
 | WC-17 | Close-out: ADR, TESTING.md, status docs, #281 | documentation-writer | M | 8 | all | BlockedDependency |
@@ -195,3 +195,28 @@ then the reference, not the spec.
   and `tests.rs`. First green Linux run:
   https://github.com/SandboxServers/Cimmeria/actions/runs/38118805363/job/114409089613.
   Details in [worknotes/WC-18.md](worknotes/WC-18.md).
+
+- **WC-11.** Finished by the coordinator after the worker ran out of
+  context. Beyond the spec: `CREATE_BASE_PLAYER` also takes an introduction
+  number; `EntityQuery`'s `Display` also renders `class` and `interactable`;
+  `matches` ignores `hidden` (the client still holds a hidden entity); an
+  entity method too short for an entity id is logged and dropped, not
+  orphaned; short introductions and avatar updates log a `warn`. No NPC
+  decoder sits at index 61 or above, so `an_npc_extended_method_uses_idbase_62`
+  checks the NPC index through the helper `apply` uses (a TODO asserts it
+  through `apply` once one exists). Review added tests for the Player/Npc
+  kind rule on a non-own class-3 entity and on the own entity with a
+  non-player class, `near` with no position, `class_id`, `entityInvisible`,
+  and the query's `Display`.
+- **WC-12.** `script/mod.rs` plus `script/tests.rs` (one file would have
+  passed 500 lines). Queued `requestEntityUpdate`s go first in the next
+  `send`, or behind the `AUTHENTICATE` in the unreliable keep-alive tick:
+  the real client sends `0x07` reliably, but the wire client's peer never
+  retransmits and the server answers nothing, so a reliable send would buy
+  nothing (review). Any send resets the keep-alive clock. A wait at its
+  deadline drains the inbox once before giving up, so a zero timeout sees a
+  backlog. The trail prints `m<index>` for a `0xBD` method only on the own
+  entity and `sub<n>` elsewhere (`Observed` does not carry the target's
+  idbase). Added the live test `script_session_live_db_sees_the_arrival_dialog`
+  (sentinel `0x7000_9C05`), which also checks that keep-alives leave at most
+  four ACKs owed. Decode failures and mirror rejections log a `warn`.
