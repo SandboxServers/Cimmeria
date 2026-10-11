@@ -340,6 +340,14 @@ jobs:
           report_type: test_results
           flags: live-db
           fail_ci_if_error: false
+      # Lab chaos (lab-chaos campaign) is compiled only with `--features
+      # lab-chaos`, which no ordinary build turns on, so its tests and the
+      # gated server code are built here or nowhere. After the uploads: this
+      # nextest run rewrites target/nextest/ci/junit.xml.
+      - name: cargo nextest run (lab-chaos feature)
+        run: cargo nextest run --profile=ci -p cimmeria-base-session --features lab-chaos
+      - name: cargo check (server, lab-chaos feature)
+        run: cargo check -p cimmeria-server --features lab-chaos
 
   # Logic UAT for the client UI overlay (BM-05): loads the patched
   # BlackMarket.lua in stock Lua 5.1 against stubbed CEGUI windows and a
