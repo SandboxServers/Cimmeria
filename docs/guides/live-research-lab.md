@@ -300,7 +300,9 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_entity_find` | Entities the client knows, by id, name, mob id (the client's template id), hostility or distance: name, level, hostility, rendered, targetable, position (client and server coordinates), distance, screen point. Read-only. See [World tools](#world-tools). |
 | `client_world_click` / `client_target` | Click an entity or world point in the 3D view with real input (camera turned onto it if needed, mouse-over checked for occluders), then report the target and windows it changed. `client_target` left-clicks and requires `Unit.Target` to become the entity. |
 | `client_move_to` | Walk to a point, an entity or through waypoints with `W` and mouse-look, closed loop on the player's position; stuck detection, arrival radius, timeout. |
-| `client_camera` | Mouse-look yaw/pitch, wheel zoom, face an entity or point. |
+| `client_camera` | Mouse-look yaw/pitch, wheel zoom, face an entity or point, then an absolute pitch, yaw and zoom (`pitch_deg`, `yaw_offset_deg`, `zoom`). |
+| `client_hover_probe` | Hover an entity or a world point without clicking and score it: verdict under the cursor, jitter hits, distance to the avatar and the screen edge. Never turns the camera. See [World tools](#world-tools). |
+| `lab_uat_calibrate` | Takes its own lease (owner `lab_uat_calibrate`). Sweeps a spec row's poses by hover, never a click, and writes the best as a spec diff in a new run folder; the spec is never written. `{section, row, pose?, specs_dir?, budget_minutes?, radii_m?, bearing_step_deg?, lease_id?}` → `{run_dir, outcomes: [{ok, section, row, pose, score, confirmed, changed, diff_path, probes, reason}]}`; `diff_path` only on the first outcome that proposed (one diff holds every proposal). Refused per pose, before anything moves, when the section is not `account = "gm"`, the server lab MCP is not configured or the client is not in the world. `budget_minutes` above 0 (default 15, capped at 30), `radii_m` within 1 to 8, `bearing_step_deg` 1 to 360, at most 1999 grid candidates a pose. Behind [`lab calibrate`](#commands); see [Calibrate a row](automated-uat.md#calibrate-a-row). |
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
@@ -312,6 +314,26 @@ See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.
+
+Two of them take filters the UAT runner relies on for
+[poses and server waits](automated-uat.md#targets-poses-and-waits). Both
+are reads.
+
+| Tool | Arguments | Reply |
+|---|---|---|
+| `server_entity_query` | `space_id`, `template_id`, `class_id` (2 player, 4 NPC), `tag` (a `spawnlist.tag`, exact), `radius` with `around_entity` or `around_point`; all AND-combined | `entities` (each with `tag`, `space_id`, `position`), `returned`, `total_matched`, `capped` (at 256). Always give `space_id` with `tag`: one tag matches once in every player's copy of an instanced map |
+| `server_log_tail` | `level`, `target` (the tracing target, exact), `contains` (a case-sensitive substring of the message), `since_ms` (strictly after), `limit` (default 100) | `entries` (`timestamp_ms`, `level`, `target`, `message`, `fields`), `count`, `total_buffered`, `newest_ms` |
+
+`server_log_tail` reads a ring of the last 500 lines (or 2 MiB). Its
+`total_buffered` counts the lines that passed the filters, while
+`newest_ms` is the newest timestamp in the whole ring, taken before
+filtering, so you can wait from it even when nothing matches yet; an empty
+ring has no `newest_ms`. `limit` is not capped and replies are not
+truncated, so pass a small one with the filters. **Never poll with
+`since_ms` alone:** every endpoint call writes a `lab.tool_call` audit line
+into the same ring, so a `since_ms`-only poll matches its own previous
+polls. Always pass `contains` or `target`, and poll no faster than every
+250 ms (each poll adds a line to the 500-line ring).
 
 ### Names next to IDs in the server tools
 
@@ -603,7 +625,8 @@ The world tools drive the 3D view the way a player does, so an automated UAT ste
 | `client_target` | `entity_id` or `name`; `rotate_camera` (true), `force`, `allow_fallback`, `settle_ms` (1200) | Left-click; passes when `Unit.Target` becomes the entity. `result` has the target before and after, windows opened and closed; `hover_verified`; `camera` when it had to turn |
 | `client_world_click` | as above plus `point`, `button` (`right`), `expect` (`target`, `window`, `any` (default), `nothing`) | Same shape; `expect: nothing` reports what changed without failing (for "nothing should happen" steps) |
 | `client_move_to` | `point`, `entity_id` or `name`; `waypoints`; `arrival_m` (1.5, or 2.5 for an entity); `timeout_ms` (60000) | `arrived`, `start`, `end`, per-leg outcome and unstick attempts, the learned mouse-look gain, a path sampled every second |
-| `client_camera` | `yaw_counts`, `pitch_counts`, `zoom_notches`; `face_entity_id`, `face_name` or `face_point`; `max_steps` (10) | Camera actor pose before and after; for a face, whether the target ended up centred |
+| `client_camera` | `yaw_counts`, `pitch_counts`, `zoom_notches` or `zoom_to`; `face_entity_id`, `face_name` or `face_point`; `max_steps` (10); then absolute `pitch_deg`, `yaw_offset_deg` and `zoom` (the same setting as `zoom_to`; give one) | Camera actor pose and readout (`view_before` / `view_after`) before and after; for a face, whether the target ended up centred; `absolute.pitch` / `absolute.yaw` as `{want, got, looks}` |
+| `client_hover_probe` | `entity_id`, or `point` with an optional `expect_entity`; `jitter_px` (12) | `verdict` (`ok`, `off_screen`, or the miss: `own`, `nothing`, `{other_entity: id}`, `{ui: "<window>"}`), `pixel`, `hover`, `jitter_hits` of 8, `avatar_px`, `edge_px`, `cursor_restored`, `entity` |
 
 Points are server coordinates (BigWorld metres, Y up, as `.location` and `server_entity_get` print them) unless the point says `"space": "client"`; the client uses UE3 units with Z up, `client = (z, x, y) * 100`.
 
@@ -617,10 +640,12 @@ How they work:
 - **Clicking** places the CEGUI cursor on the projected point (plus a `WM_MOUSEMOVE` when the mouse-over does not follow), reads `Unit.MouseOver` from the slot map, tries the body centre, chest, legs and head, and fails as occluded when another entity answers at every height. Then it presses and releases the real button and polls the target slot and the visible windows.
 - **Walking** holds `W` and turns with DirectInput mouse-look. The mouse-look gain and its sign are learned from each motion (`steer::TurnModel`), and so is whether the pawn turns while standing (if not, it turns while walking). No progress for 2.5 s while walking is a snag: jump, strafe right (`D`), strafe left (`A`), then fail. More than 30 m in one tick fails as a teleport. Every exit releases `W`, `A` and `D`.
 - **Facing** turns until the target projects within a quarter of the half-width of the centre. While it is behind the camera, it turns by the bearing from the camera actor (see below), or a quarter turn when that is unknown. It turns yaw, and pitches only when the target projects outside the vertical margin (40 px from the top or bottom edge).
+- **Absolute camera.** `client_camera` runs relative counts, then zoom, then the face, then `pitch_deg`, then `yaw_offset_deg`. `pitch_deg` is a closed loop on the readout's `pitch_offset_deg`: up to 4 looks to within 0.5 deg, learning the real gain from each look, and it fails as "the camera stopped at ..." when it runs out of looks or hits the pitch limit. `yaw_offset_deg` (-180 to 180) is a turn from where the face left the camera, closed loop on the camera actor's world yaw through the signed `yaw_gain`: positive is the way positive `yaw_counts` turn on a camera without yaw inversion, and the same view on one with it. Use them instead of counts: the result no longer depends on the pitch or yaw the camera started at.
+- **Hover probe.** `client_hover_probe` places the cursor on the aim pixel and on 8 points `jitter_px` around it and reads what is under each, without a click. An entity aim passes when the entity is under the cursor; a point aim when nothing is, or `expect_entity`. A HUD window over the pixel outranks the mouse-over and reads as `{ui: name}`; your own avatar is `own`. It never turns the camera, so an aim off screen is `verdict: "off_screen"`: face the target with `client_camera` first. `avatar_px` is null when the avatar is off screen (with `avatar_error` when it could not be read). It reads the cursor first and puts it back on every path (`cursor_restored`). It needs a lease, like the other world tools.
 
 ### Clicking a body on the floor (measured 2026-10-10)
 
-The first-session spec's Castle_CellBlock corpses fixed these numbers on the live client (1280x720). The spec header has the full calibration table.
+The first-session spec's Castle_CellBlock corpses fixed these numbers on the live client (1280x720). The spec header has the full calibration table. A spec row now carries them as a [`pose`](automated-uat.md#targets-poses-and-waits) (stand-off, absolute pitch and yaw, zoom), and `lab calibrate` finds new ones by hover; the notes below explain why the poses look the way they do.
 
 - **The avatar eats clicks.** The camera orbits behind the avatar, so a target straight ahead or centred by a face sits behind the avatar's legs or head and under the HUD ring. The hover then answers the player's own entity id. Stand 4-4.5 m off and to the side of the target, never straight behind it.
 - **Pitch.** A new character starts level: `pitch_offset_deg` 0, zoom 250. `pitch_counts: 200` tilts it down by 21.97 deg (gain 20, about 9.1 counts per degree; positive is down). A face that follows re-centres the target vertically when it sits outside the margin: from +22 deg, facing Frost lands on -28.8 deg every time, and that is the pitch every passing click ran at. Pitch is relative and a face can change it, so assert `view_after.pitch_offset_deg` after the last camera move rather than assume it.
@@ -1019,7 +1044,8 @@ first line of each.
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
-| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage, or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 a heal proposal was written (SV-12), which wins over 5 and every other code |
+| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
+| `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
 | `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
 
 An unknown command exits 2. Examples:
@@ -1047,6 +1073,7 @@ lab doctor
 - **Timeouts.** Each run times out after `-RunTimeoutMinutes` (default 15). The lane then waits up to 10 minutes for that instance's lease to clear before its next run; a lease that never clears ends the lane.
 - **Ctrl+C** starts no new run, and the summary is still written from the runs that finished. A run already under way finishes on the daemon and releases its lease.
 - **`-DiffGolden`** compares every passing run with the section's committed golden (`<specs>/golden/<section>.json`, from `lab golden record`). The runs are fingerprinted, and `lab_golden_diff` is called on each passing run's folder; a failed run is not compared and gets no `golden` value. Each passing run gets one: `match`, the first divergence as one line, or `error: <why>` when the diff could not be made (`cannot_diff` on one run is reported on that run; the batch goes on). Rows' verdicts don't change (README D-GD7 of the [lab-golden ledger](../analysis/lab-golden/README.md)): a divergence on passing runs exits 5, not 1, and nothing gates `ship.py` or CI on it. A diff error is never counted as a match, so it exits 5 too. A failed run (1) or a stopped lane (4) keeps its own code, and a heal proposal (8, SV-12) wins over all of them. With no golden for the section, or one that is not JSON with `schema`, `section` and `fingerprint`, the command exits 2 before the daemon is asked.
+- **`-Heal`** (needs `-Leases 1`; exit 2 otherwise, before the daemon is asked). After the batch, each distinct `(row, pose)` of the failed runs' heal hints (a pose click, target or camera move that missed) is recalibrated by one `lab_uat_calibrate` call on the batch's instance, at the default 15-minute budget. A proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed (its line, then the diff; neither under `-Json` or `-Quiet`, and only the line, on stderr, under `-ProgressToStderr`). `batch.json`, `summary.md` (under "Heal proposals (spec diffs to review; nothing was applied)") and the `-Json` object gain `heal: [{row, pose, diff}]`, and the command exits 8. Under `-Json`, `heal` holds at most 3 entries with `diff` as the file name in `batch`, then `more_heal: <n>`. The heal runs after the summary is written, so Ctrl+C during the batch skips it; Ctrl+C during the heal keeps the diffs already written. After a calibrate call that failed, it waits up to 10 minutes for the instance's lease to clear, and stops healing (naming the poses left) when it does not. The spec file is never written. See [Calibrate a row](automated-uat.md#calibrate-a-row).
 
 Output:
 
@@ -1062,6 +1089,25 @@ lab uat first-session -Instance p2 -Rows FS-01,FS-02,FS-P1 -Json
 lab uat first-session -Rows FS-P4 -RunsPerLease 20
 lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
+```
+
+**`lab calibrate`.** It finds a pose again on the live client and proposes it as a spec diff, through `lab_uat_calibrate`; the how-to, the sweep and its score are in [Calibrate a row](automated-uat.md#calibrate-a-row).
+
+- **Poses.** With no `-Pose`, every pose a `client_world_click` step of the row names, in step order.
+- **Pre-flight** as `lab uat`: argument checks first (exit 2 whatever the daemon's state), then the daemon answers, the instance (`-Instance`, else the first free hosted one) is free, and no `SGW.exe` runs outside the lab (exit 3).
+- **`-Prepare FS-01,FS-02,...`** runs those rows first, in one `lab_uat_run` on the same instance, so the client stands where the row starts. A prepare row that does not PASS stops with exit 3 (`prepare row FS-P2 FAIL: ...`).
+- **`-BudgetMinutes`** bounds the whole sweep (default 15); the command's own call timeout is the budget plus 5 minutes.
+- **`-SpecsDir`** defaults to the checkout's `docs/guides/uat-specs`, as for `lab uat`.
+- **Output.** One line per pose (`frost: score 8312, confirmed 3/3, bearing 322.5 -> 330.0; diff <path>`, `... unchanged`, or `frost: no proposal: <reason> (best score 5100, confirmed 1/3)`), then the diff text unless `-Quiet`, then how to apply it. The field labels are `radius`, `bearing`, `pitch`, `yaw` and `zoom`, and an unset field reads `none`.
+- **`-Json`** prints one object under about 400 characters: `{ok, section, row, outcomes: [{pose, ok, score, confirmed, changed: {bearing: "322.5 -> 330.0"}, diff, reason}], applied}`, with `score`, `changed`, `diff`, `reason` (cut to 40 characters) and `applied` only when set. Errors are `{"ok":false,"exit":N,"error":"..."}`; a failed `-Apply` adds `run_dir`, `diff` and the outcomes (under about 700 characters, then `outcomes_cut: <n>`). The candidate list is never printed: it is `calibrate.jsonl` in the run folder.
+- **`-Apply`** runs `git apply` with the proposed diff in this checkout, and nothing else: it never stages or commits. It is refused with exit 2 when the spec file has uncommitted changes, staged or not, or is not tracked. It checks before the sweep (so a dirty spec costs no lab time) and again just before applying, on the file the diff names. A diff for a file outside `docs/guides/uat-specs/` or naming more than one file is not applied. Every `-Apply` error starts with the diff's path; the diff stays in the run folder.
+
+```powershell
+lab calibrate first-session FS-P3
+lab calibrate first-session FS-P3 -Pose frost -Prepare FS-01,FS-02,FS-P1,FS-P2
+lab calibrate first-session FS-P3 -Pose frost -BudgetMinutes 8 -Apply
+lab calibrate first-session FS-P3 -Instance p2 -Json
 ```
 
 **`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `-Runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `-Leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly.
