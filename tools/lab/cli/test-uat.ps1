@@ -192,5 +192,92 @@ Check ((ConvertTo-Json $timedSum -Depth 8) -ceq (ConvertTo-Json $plainSum -Depth
 $md = Format-UatSummary $s 'lab uat first-session' 'C:\b'
 Check ($md -match 'FAIL \(1/4 runs passed\)' -and $md -match 'known: #1341') 'the Markdown summary names the verdict and the known issue'
 
+# --- -DiffGolden (GD-09, README D-GD7) ---
+$divA = 'row FS-P3: event 4 expected dialogDisplay(dialog=3995), got dialogDisplay(dialog=2982); after mission(688).step(2)=active'
+$divB = 'row FS-P5: expected windows opened {MissionLog}, got {}'
+# The value stored per run, from each lab_golden_diff reply shape.
+Check ((Get-UatGoldenValue ([pscustomobject]@{ ok = $true; match = $true }) '') -ceq 'match') 'a matching diff stores match'
+Check ((Get-UatGoldenValue ([pscustomobject]@{ ok = $true; match = $false; first = $divA; diverged = 2 }) '') -ceq $divA) 'a divergence stores its first line'
+$gv = Get-UatGoldenValue ([pscustomobject]@{ ok = $false; code = 'cannot_diff'; error = 'run C:\r\x: no fingerprint.json' }) ''
+Check ($gv -ceq 'error: cannot_diff: run C:\r\x: no fingerprint.json') "a cannot_diff refusal is an error, not a match ($gv)"
+Check ((Get-UatGoldenValue $null 'lab_golden_diff failed: connection refused') -ceq 'error: lab_golden_diff failed: connection refused') 'a diff call that threw is an error'
+Check ((Get-UatGoldenValue ([pscustomobject]@{ ok = $true }) '') -like 'error: *') 'a reply with no verdict is an error, not a match'
+Check ((Get-UatGoldenValue ([pscustomobject]@{ ok = $true; match = $false }) '') -like 'error: *') 'a divergence without a line is an error'
+$gv = Get-UatGoldenValue ([pscustomobject]@{ ok = $true; match = $false; first = ('row FS-P3: lease-0123456789abcdef ' + ('y' * 400)) }) ''
+Check ($gv.Length -le 300 -and $gv -notmatch '0123456789abcdef') 'a stored line is cut to 300 characters with lease ids hidden'
+
+function GRec($inst, $i, [bool]$ok, $golden) {
+    $r = Rec $inst $i $ok $(if ($ok) { $good } else { $frost })
+    if ($null -ne $golden) { $r.Golden = $golden }
+    $r
+}
+# golden_match_and_divergence_are_counted
+$gRuns = @((GRec 'default' 1 $true 'match'), (GRec 'default' 2 $true $divA), (GRec 'default' 3 $true 'match'),
+           (GRec 'default' 4 $true $divA), (GRec 'default' 5 $true $divB))
+$gs = Merge-UatResults $gRuns @($lanes[0]) @()
+Check ($gs.golden.match -eq 2 -and $gs.golden.diverged -eq 3 -and $gs.golden.errors -eq 0) 'golden_match_and_divergence_are_counted'
+Check (@($gs.golden.groups).Count -eq 2 -and $gs.golden.groups[0].line -ceq $divA -and $gs.golden.groups[0].count -eq 2 -and
+       (@($gs.golden.groups[0].runs) -join ',') -eq 'default#2,default#4') 'divergence lines group with counts and run refs, most common first'
+$many = Merge-UatResults @(1..7 | ForEach-Object { GRec 'default' $_ $true $divB }) @($lanes[0]) @()
+Check (@($many.golden.groups[0].runs).Count -eq 5 -and $many.golden.groups[0].count -eq 7) 'a group keeps its full count but at most 5 run refs'
+# a_divergence_on_passing_runs_exits_5: verdicts and ok stay as they are.
+Check ($gs.ok -and $gs.passed -eq 5 -and $gs.failed -eq 0) 'a divergence leaves every run passed and the batch ok'
+Check ((Get-UatExitCode $gs) -eq 5) 'a_divergence_on_passing_runs_exits_5'
+$allMatch = Merge-UatResults @(1..5 | ForEach-Object { GRec 'default' $_ $true 'match' }) @($lanes[0]) @()
+Check ((Get-UatExitCode $allMatch) -eq 0 -and $allMatch.golden.match -eq 5) 'every run matching the golden exits 0'
+$withErr = Merge-UatResults @((GRec 'default' 1 $true 'match'), (GRec 'default' 2 $true 'error: cannot_diff: run d: no fingerprint')) @($lanes[0]) @()
+Check ($withErr.golden.errors -eq 1 -and $withErr.golden.match -eq 1 -and (Get-UatExitCode $withErr) -eq 5) 'a run the diff could not compare is counted as an error and is not a match (exit 5)'
+$failAndDiv = Merge-UatResults @((GRec 'default' 1 $false $divA), (GRec 'default' 2 $true $divB)) @($lanes[0]) @()
+Check ((Get-UatExitCode $failAndDiv) -eq 1 -and $failAndDiv.failed -eq 1) 'a failed run exits 1 even when another run diverged'
+$brakeAndDiv = Merge-UatResults @((GRec 'default' 1 $false $divA)) @($lanes[0]) @('default')
+Check ((Get-UatExitCode $brakeAndDiv) -eq 4) 'a braked lane exits 4 even with a divergence'
+# Exit 8 (lab-spec-vocab SV-12's heal proposal) wins over 5 and every other code.
+$healDiv = Merge-UatResults $gRuns @($lanes[0]) @(); $healDiv.heal = @([ordered]@{ row = 'FS-P3'; pose = 'aim'; diff = 'C:\b\heal-FS-P3-aim.diff' })
+Check ((Get-UatExitCode $healDiv) -eq 8) 'a heal proposal (8) wins over a golden divergence (5)'
+$healFail = Merge-UatResults @((GRec 'default' 1 $false $null)) @($lanes[0]) @(); $healFail.heal = @([ordered]@{ row = 'FS-P3'; pose = 'aim'; diff = 'd' })
+Check ((Get-UatExitCode $healFail) -eq 8) 'a heal proposal (8) wins over a failed run (1)'
+$healNone = Merge-UatResults $gRuns @($lanes[0]) @(); $healNone.heal = @()
+Check ((Get-UatExitCode $healNone) -eq 5) 'an empty heal list is no proposal'
+# compact_json_with_golden_stays_under_500_chars: 5 runs, two distinct divergences.
+$fiveRuns = foreach ($i in 1..5) {
+    $r = Rec 'default' $i $true @($praxis | ForEach-Object { Row $_ 'PASS' '' })
+    $r.Golden = @('match', $divA, 'match', $divB, 'match')[$i - 1]; $r
+}
+$fiveJson = ConvertTo-UatCompactJson (Merge-UatResults $fiveRuns @($lanes[0]) @()) 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261010-183832'
+$fiveObj = $fiveJson | ConvertFrom-Json
+Check ($fiveJson.Length -lt 500 -and $fiveJson -notmatch 'null') "compact_json_with_golden_stays_under_500_chars ($($fiveJson.Length))"
+Check ($fiveObj.golden.match -eq 3 -and $fiveObj.golden.diverged -eq 2 -and $fiveObj.golden.first -ceq $divA -and
+       -not ($fiveObj.golden.PSObject.Properties.Name -contains 'errors')) 'compact golden is {match, diverged, first}, errors only when there are some'
+$longDiv = Merge-UatResults @((GRec 'default' 1 $true ('row FS-P3: ' + ('z' * 290)))) @($lanes[0]) @()
+Check (((ConvertTo-UatCompactJson $longDiv 'C:\b' | ConvertFrom-Json).golden.first).Length -le 200) 'the compact first line is capped at 200 characters'
+$matchJson = ConvertTo-UatCompactJson $allMatch 'C:\b' | ConvertFrom-Json
+Check ($matchJson.golden.match -eq 5 -and -not ($matchJson.golden.PSObject.Properties.Name -contains 'first')) 'an all-match batch has no first line'
+# A batch without Golden fields is unchanged.
+Check (-not $s.Contains('golden') -and -not $s3.Contains('golden')) 'a batch without Golden fields has no golden summary'
+Check ((ConvertTo-UatCompactJson $s3 'C:\b') -notmatch 'golden' -and (Format-UatSummary $s3 't' 'C:\b') -notmatch 'Golden') 'a batch without Golden fields prints no golden'
+$md = Format-UatSummary $gs 'lab uat first-session' 'C:\b'
+Check ($md -match 'Golden: 2 match, 3 diverged' -and $md.Contains("- 2x $divA; runs: default#2, default#4") -and $md.Contains("- 1x $divB")) 'the Markdown summary has a Golden block with each line and its count'
+Check ((Format-UatSummary $withErr 't' 'C:\b') -match 'Golden: 1 match, 0 diverged, 1 could not be compared') 'the Golden block counts runs that could not be compared'
+$line = Format-UatProgressLine @{ Instance = 'default'; Index = 2; Ok = $true; Verdict = $null; Error = $null; Seconds = 114; Golden = $divB } 5
+Check ($line -ceq "[default 2/5] PASS (114s); golden: $divB") "the progress line ends with the golden value ($line)"
+$jl = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-test-" + [guid]::NewGuid() + '.jsonl')
+try {
+    foreach ($r in $gRuns) { Add-UatRecord $jl $r }
+    $back = Merge-UatResults @(Read-UatRecords $jl) @($lanes[0]) @()
+    Check ($back.golden.match -eq 2 -and $back.golden.diverged -eq 3 -and (Get-UatExitCode $back) -eq 5) 'Golden fields read back from JSONL aggregate like live ones'
+} finally { Remove-Item -LiteralPath $jl -ErrorAction SilentlyContinue }
+
+# Through a real process: -DiffGolden without a golden stops with exit 2
+# before the daemon is asked (an empty spec folder; no daemon is touched).
+$emptySpecs = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-specs-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $emptySpecs | Out-Null
+try {
+    $uat = Join-Path $PSScriptRoot 'uat.ps1'
+    $out = @(& $pwshExe -NoProfile -File $uat 'no-such-section' -DiffGolden -SpecsDir $emptySpecs -Json 2>$null)
+    $code = $LASTEXITCODE
+    $obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
+    Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -ceq 'no golden for no-such-section; record one with lab golden record') "-DiffGolden without a golden exits 2 up front ($code)"
+} finally { Remove-Item -LiteralPath $emptySpecs -Recurse -ErrorAction SilentlyContinue }
+
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'

@@ -305,17 +305,73 @@ function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
     }
     $passed = @($Runs | Where-Object { $_.Ok }).Count
     $known = @($Runs | Where-Object { -not $_.Ok -and -not $_.Error -and $_.Verdict.Issue }).Count
-    return [ordered]@{
+    $out = [ordered]@{
         ok = ($Runs.Count -gt 0 -and $passed -eq $Runs.Count)
         runs = $Runs.Count; passed = $passed; failed = $Runs.Count - $passed
         failed_known = $known; failed_new = $Runs.Count - $passed - $known
         rows = $rowStats; lanes = @($laneStats); failures = @($groups.Values)
     }
+    $golden = Merge-UatGolden $Runs
+    if ($golden) { $out.golden = $golden }
+    return $out
 }
 
-# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake.
+# The value -DiffGolden stores in a run's Golden field (README D-GD7) from a
+# lab_golden_diff reply, or the message of a call that threw: 'match', the
+# first divergence line (it starts 'row '), or 'error: <why>'. A refusal
+# (no_golden, cannot_diff) or a reply without a verdict is an error, never a
+# match. Lease ids are hidden and the value is cut to 300 characters.
+function Get-UatGoldenValue($Reply, [string]$CallError) {
+    $match = Get-UatField $Reply 'match'
+    $first = [string](Get-UatField $Reply 'first')
+    $v = if ($CallError) { "error: $CallError" }
+    elseif (-not [bool](Get-UatField $Reply 'ok')) {
+        $code = [string](Get-UatField $Reply 'code')
+        "error: $(if ($code) { "${code}: " })$(Get-UatField $Reply 'error')"
+    }
+    elseif ($match -eq $true) { 'match' }
+    elseif ($match -eq $false -and $first) { $first }
+    else { 'error: lab_golden_diff gave no verdict' }
+    $v = Hide-LeaseIds ("$v" -replace '[\r\n]+', ' ')
+    if ($v.Length -gt 300) { $v = $v.Substring(0, 297) + '...' }
+    return $v
+}
+
+# The golden comparison of the runs that carry a Golden field: match and
+# diverged counts, errors (a diff that could not be made), and every
+# non-match line grouped with its count and up to 5 run refs, most common
+# first. $null when no run has one (a batch without -DiffGolden).
+function Merge-UatGolden($Runs) {
+    $withGolden = @(@($Runs) | Where-Object { Get-UatField $_ 'Golden' })
+    if (-not $withGolden.Count) { return $null }
+    $groups = [ordered]@{}
+    $match = 0; $diverged = 0; $errors = 0
+    foreach ($run in $withGolden) {
+        $line = [string](Get-UatField $run 'Golden')
+        if ($line -ceq 'match') { $match++; continue }
+        if ($line.StartsWith('error: ')) { $errors++ } else { $diverged++ }
+        if (-not $groups.Contains($line)) { $groups[$line] = [ordered]@{ line = $line; count = 0; runs = @() } }
+        $groups[$line].count++
+        if (@($groups[$line].runs).Count -lt 5) { $groups[$line].runs += "$(Get-UatField $run 'Instance')#$(Get-UatField $run 'Index')" }
+    }
+    return [ordered]@{
+        match = $match; diverged = $diverged; errors = $errors
+        groups = @($groups.Values | Sort-Object -Stable { $_.count } -Descending)
+    }
+}
+
+# The exit code: 0 all passed, 1 a run failed, 4 a lane hit the brake, 5
+# every run passed but the golden comparison did not match on one (a
+# divergence, or a diff that could not be made; README D-GD7), 8 a heal
+# proposal was written (lab-spec-vocab SV-12's summary `heal`). 8 wins over
+# every other code, because a heal proposal needs action first.
 function Get-UatExitCode($Summary) {
-    if ($Summary.ok) { return 0 }
+    if (@(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ }).Count) { return 8 }
+    if ($Summary.ok) {
+        $g = Get-UatField $Summary 'golden'
+        if ($g -and ($g.diverged + $g.errors) -gt 0) { return 5 }
+        return 0
+    }
     if (@($Summary.lanes | Where-Object { $_.braked }).Count) { return 4 }
     return 1
 }
@@ -346,6 +402,18 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     })
     if ($shown) { $out.failures = @($shown) }
     if ($fails.Count -gt $MaxFailures) { $out.more_failure_groups = $fails.Count - $MaxFailures }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        $go = [ordered]@{ match = $g.match; diverged = $g.diverged }
+        if ($g.errors) { $go.errors = $g.errors }
+        $top = @($g.groups) | Select-Object -First 1
+        if ($top) {
+            $first = [string]$top.line
+            if ($first.Length -gt 200) { $first = $first.Substring(0, 197) + '...' }
+            $go.first = $first
+        }
+        $out.golden = $go
+    }
     $out.batch = $BatchDir
     return $out | ConvertTo-Json -Depth 6 -Compress
 }
@@ -376,13 +444,22 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
             [void]$sb.AppendLine("- $($f.count)x $($f.signature)$tag; runs: $(@($f.runs) -join ', ')")
         }
     }
+    $g = Get-UatField $Summary 'golden'
+    if ($g) {
+        [void]$sb.AppendLine('')
+        $err = if ($g.errors) { ", $($g.errors) could not be compared" } else { '' }
+        [void]$sb.AppendLine("Golden: $($g.match) match, $($g.diverged) diverged$err")
+        foreach ($l in @($g.groups)) {
+            [void]$sb.AppendLine("- $($l.count)x $($l.line); runs: $(@($l.runs) -join ', ')")
+        }
+    }
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("Batch: $BatchDir")
     return $sb.ToString()
 }
 
 # The progress line lab uat prints for one finished run (Record: Instance, Index,
-# Ok, Error, Verdict, Seconds), with Total runs per lease.
+# Ok, Error, Verdict, Seconds, and Golden under -DiffGolden), with Total runs per lease.
 function Format-UatProgressLine($Record, [int]$Total) {
     $verdict = Get-UatField $Record 'Verdict'
     $runError = Get-UatField $Record 'Error'
@@ -393,7 +470,10 @@ function Format-UatProgressLine($Record, [int]$Total) {
         $tag = if ($issue) { " [known $issue]" } else { '' }
         $what = "FAIL $(Get-UatField $verdict 'Row'): $(Get-UatField $verdict 'Reason')$tag"
     }
-    return ("[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds'))
+    $line = "[{0} {1}/{2}] {3} ({4}s)" -f (Get-UatField $Record 'Instance'), (Get-UatField $Record 'Index'), $Total, $what, (Get-UatField $Record 'Seconds')
+    $golden = Get-UatField $Record 'Golden'
+    if ($golden) { $line += "; golden: $golden" }
+    return $line
 }
 
 # Where lab uat's progress lines go: 'stderr' with -ProgressToStderr (even
