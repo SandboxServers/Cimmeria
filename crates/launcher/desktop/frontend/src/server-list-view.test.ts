@@ -54,7 +54,8 @@ test('a bad line shows the error under the box and sends no command',async()=>{
 });
 
 test('Save sends the parsed list with the current revision, shows busy, then Saved',async()=>{
- const m=mounted();
+ let revision=3;
+ const m=mounted(async request=>request,async()=>{m.feed.publish(snapshot(++revision,m.calls.at(-1)!.request.login_servers));});
  m.edit('Home = http://home.example:8081\n\nLab = https://lab.example');m.press();
  assert.equal(m.text('server-list-status'),'Saving login servers…');
  assert.equal((m.document.getElementById('save-server-list') as unknown as HTMLButtonElement).disabled,true);
@@ -102,6 +103,15 @@ test('a save keeps the comments, and a failed reload keeps the text without clai
  assert.equal(m.box.value,'Lab = https://lab.example');
  // Still the player's text: an old snapshot does not put the previous list back.
  m.feed.publish(snapshot(4,[{name:'Home',url:'http://home.example'}]));assert.equal(m.box.value,'Lab = https://lab.example');
+ await m.app.dispose();
+});
+
+test('a refresh that brings no newer snapshot keeps the text and says it could not reload',async()=>{
+ // The refresh resolves with the pre-save snapshot (revision 3) still current.
+ const m=mounted(async()=>null,async()=>{m.feed.publish(snapshot(3,[{name:'Old',url:'http://old.example:8081'}]));});
+ m.edit('Lab = https://lab.example');m.press();await m.app.settled();
+ assert.equal(m.text('server-list-status'),'Saved, but the launcher could not reload settings. Restart the launcher to see the saved list.');
+ assert.equal(m.box.value,'Lab = https://lab.example','the old snapshot does not put the previous list back');
  await m.app.dispose();
 });
 

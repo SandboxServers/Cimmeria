@@ -116,6 +116,18 @@ pub struct Graphics {
     pub rosetta_x87: Option<(Artifact, Artifact)>,
 }
 impl Resources {
+    /// Whether a retry of an admitted Launch names the same resources. The DLLs a
+    /// player preference picks (client patches, telemetry opt-in) are left out: a
+    /// retry returns the recorded plan and never dispatches, so a toggle made while
+    /// the game runs must not turn an identical retry into an identity conflict.
+    pub(super) fn same_retry(&self, retried: &Resources) -> bool {
+        let retried = Resources {
+            client_patches: self.client_patches.clone(),
+            client_telemetry: self.client_telemetry.clone(),
+            ..retried.clone()
+        };
+        *self == retried
+    }
     pub fn verify(&self) -> Result<(), IntentError> {
         self.helper.verify()?;
         if let Some(patches) = &self.client_patches {
