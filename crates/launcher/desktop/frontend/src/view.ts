@@ -80,7 +80,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     get('retry').hidden = !failure || native?.requires_reopen === true;
     get<HTMLButtonElement>('retry').disabled = !!active || current.busy;
     get('gear').setAttribute('aria-busy', String(!!active || current.busy));
-    get('about').textContent = aboutText(native?.launcher ?? null);
+    get('about').textContent = aboutText(native?.launcher ?? null, !!failure);
     get('build-badge').textContent = buildBadge(native?.launcher ?? null);
   };
   const watcher = runtime.runFork(Effect.flatMap(Launcher, launcher => Stream.runForEach(launcher.changes,

@@ -13,7 +13,16 @@ const MAX_REPLY: usize = 16 * 1024;
 /// The transport's refresh uses the same bound.
 pub(super) const CONNECT: Duration = Duration::from_secs(4);
 pub(super) const TOTAL: Duration = Duration::from_secs(8);
-pub(super) const LAUNCHER_VERSION: &str = concat!("desktop-", env!("CARGO_PKG_VERSION"));
+
+/// The session's `launcher_version`: the D-LX8 release version About shows,
+/// not the package's, so a session and the launcher summary name one build.
+/// The transport's re-mint sends the same value.
+pub(super) fn mint_launcher_version() -> String {
+    format!(
+        "desktop-{}",
+        crate::launcher_compatibility::compiled_version()
+    )
+}
 
 /// Capture switches a developer may set in the launcher's own environment.
 /// The game's environment is built from scratch, so they are copied on purpose,
@@ -80,13 +89,13 @@ pub async fn start(
     policy.check(&url).map_err(|_| Outcome::EndpointRefused)?;
     let branch = option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("desktop");
     let git_sha = option_env!("CIMMERIA_BUILD_GIT_SHA").unwrap_or("unknown");
-    let launcher_version = LAUNCHER_VERSION;
+    let launcher_version = mint_launcher_version();
     let body = serde_json::to_vec(&MintRequest {
         install_id: identity.install_id.to_string(),
         machine_id: &identity.machine_id,
         branch,
         git_sha,
-        launcher_version,
+        launcher_version: &launcher_version,
         tags,
     })
     .map_err(|_| Outcome::SessionUnavailable)?;

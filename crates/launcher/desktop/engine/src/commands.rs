@@ -216,4 +216,17 @@ mod tests {
         )
         .is_ok());
     }
+
+    #[test]
+    fn a_test_build_reports_the_compiled_version_and_no_release_tag() {
+        // A test build carries no release tag and stamp, so it is a development
+        // build, and its version is the one About and the updater use.
+        assert_eq!(
+            serde_json::to_value(LauncherBuild::current()).unwrap(),
+            serde_json::json!({
+                "version": crate::launcher_compatibility::compiled_version(),
+                "tag": null,
+            })
+        );
+    }
 }

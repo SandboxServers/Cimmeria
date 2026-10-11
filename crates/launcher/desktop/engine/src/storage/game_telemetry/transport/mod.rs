@@ -183,7 +183,7 @@ impl Transport {
             install_dir: install_dir.to_path_buf(),
             install_id: marker.install_id.clone(),
             machine_id: marker.machine_id.clone(),
-            launcher_version: session::LAUNCHER_VERSION.into(),
+            launcher_version: session::mint_launcher_version(),
             session_started_at_ms: marker.session_started_at_ms,
             endpoint_policy: EndpointPolicy::from_login_servers(
                 login_servers.iter().map(|s| s.url.as_str()),

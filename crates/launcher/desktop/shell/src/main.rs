@@ -462,7 +462,9 @@ fn main() {
         .setup(|app| {
             if LauncherBuild::current().tag.is_none() {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_title(DEVELOPMENT_TITLE);
+                    if let Err(error) = window.set_title(DEVELOPMENT_TITLE) {
+                        tracing::warn!(%error, "development window title not set");
+                    }
                 }
             }
             let app_data = app.path().app_data_dir()?;

@@ -64,6 +64,23 @@ test('Settings shows the compiled version, with the release tag or "development 
   }
 });
 
+test('About stops saying "Reading" once no snapshot is coming', {timeout:5000}, async () => {
+  const {launcher: _omitted, ...withoutLauncher} = initial();
+  for (const [invoke, status] of [
+    [async () => withoutLauncher, /versions do not match/],
+    [async () => { throw 'io'; }, /could not read or save/],
+  ] as const) {
+    const ui = dom();
+    const app = mountLauncher(ui.document, invoke);
+    try {
+      await app.ready; await app.settled(); await flush();
+      assert.match(ui.get('status').textContent!, status);
+      assert.equal(ui.get('about').textContent, 'Launcher version unavailable');
+      assert.equal(ui.get('build-badge').textContent, '');
+    } finally { await app.dispose(); }
+  }
+});
+
 test('consent waits for native acknowledgement and rolls back on failed save', {timeout:5000}, async () => {
   const ui = dom(); let saves=0;
   let rejectSave!: (reason:unknown) => void;
