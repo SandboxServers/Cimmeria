@@ -305,6 +305,20 @@ async fn inactivity_timeout_line_names_the_player_and_the_account() {
     // The loop tears down only the session it owns: hand it that
     // session's own cancel flag, as `handle_login` does.
     let cancelled = Arc::clone(&connected.lock().unwrap()[&addr].cancelled);
+    {
+        // TG-NET-14: the character is in the world with two reliable packets
+        // the client never acked, so the timeout line has state to name.
+        let mut clients = connected.lock().unwrap();
+        let state = clients.get_mut(&addr).unwrap();
+        state.listed_online = true;
+        state.world_name = Some("Castle_CellBlock".into());
+        let mut ch = state.channel.lock().unwrap();
+        for seq in [1u32, 2] {
+            let packet =
+                cimmeria_mercury::packet::Packet::new(Default::default(), seq, Default::default());
+            ch.register_sent_packet(packet, Default::default()).unwrap();
+        }
+    }
 
     crate::base::tick_sync::run_tick_loop(
         transport(),
@@ -333,6 +347,13 @@ async fn inactivity_timeout_line_names_the_player_and_the_account() {
     );
     assert!(timeout.has_field("player_id", &PLAYER_ID.to_string()));
     assert!(timeout.has_field("player_name", "Teal'c"), "{timeout:#?}");
+    assert!(timeout.has_field("in_world", "true"), "{timeout:#?}");
+    assert!(
+        timeout.has_field("world", "Castle_CellBlock"),
+        "{timeout:#?}"
+    );
+    assert!(timeout.has_field("tx_outstanding", "2"), "{timeout:#?}");
+    assert!(timeout.fields.contains_key("session_secs"), "{timeout:#?}");
     assert!(
         capture
             .find_message(Level::INFO, "player session ended")
