@@ -414,7 +414,7 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
-| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged |
+| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs |
 
 Never entity ids, positions or mesh hashes as labels — those are
 per-entity and per-build correlators and belong on the log event.
