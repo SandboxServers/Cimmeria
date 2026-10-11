@@ -317,9 +317,10 @@ production code below it is still checked.
 throttled `db_pool_saturated` WARN. The pool is built with sqlx's defaults
 written out (10 connections, a 30 s acquire timeout) and a 250 ms
 slow-statement threshold (sqlx's default is 1 s), so every statement over
-250 ms is a WARN on `sqlx::query` carrying the SQL text, never its bound
-values. Before this, a statement row's `elapsed_secs` measured execution only
-and nothing showed a query waiting for a connection. See the
+250 ms is a WARN on `sqlx::query` carrying the SQL text (never its bound
+parameters; values written into the SQL text itself are logged). sqlx also
+WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
+is the earlier, sampled signal for a pool running out of connections. See the
 [target catalog](observability-target-catalog.md).
 
 `crates/server/src/logging/parity_tests/` builds the production filters

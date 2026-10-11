@@ -24,7 +24,8 @@ pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 /// A statement slower than this is logged by sqlx at WARN on target
 /// `sqlx::query` ("slow statement"), with the SQL text, `elapsed_secs` and
 /// the row counts. sqlx never logs bound parameter values, so names and
-/// passwords passed as binds stay out of the row. sqlx's default is 1 s.
+/// passwords passed as binds stay out of the row; a value written into the
+/// SQL text itself (the lab read-only query, console authoring) is logged. sqlx's default is 1 s.
 pub const SLOW_STATEMENT_THRESHOLD: Duration = Duration::from_millis(250);
 
 /// Errors specific to database operations.
