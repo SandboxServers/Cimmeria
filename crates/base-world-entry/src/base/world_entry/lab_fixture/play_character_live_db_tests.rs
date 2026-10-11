@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cimmeria_base_session::base::world_entry::lab_fixture::{
-    fixture_pending, stage_fixture, GM_ACCESS_LEVEL,
+    fixture_pending, stage_fixture, take_fixture_for, GM_ACCESS_LEVEL,
 };
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::transport::Transport;
@@ -17,7 +17,7 @@ use tokio::time::timeout;
 
 use super::tests::{
     active, cleanup, fixture, mission_row, place, seed_player, steps_of, MISSION, PLAY_GM,
-    PLAY_PLAYER, START,
+    PLAY_PLAYER, PLAY_THIEF, PLAY_VICTIM, START,
 };
 use crate::base::world_entry::handle_play_character;
 use crate::base::ConnectedClientState;
@@ -129,4 +129,70 @@ async fn live_db_play_character_applies_a_staged_fixture_before_world_entry() {
         START
     );
     assert!(!pending_fixture, "a refused fixture is still consumed");
+}
+
+/// **Guard (authority review): another account's Play cannot burn a
+/// staged fixture.** `playCharacter` carries a client-chosen player id;
+/// a GM session on account Y plays character A (account X). World entry
+/// refuses the foreign character, and A's fixture must still be staged
+/// for X's next Play. Move the take back to a plain `take(player_id)`
+/// ahead of the account check and the fixture is consumed here.
+#[tokio::test]
+async fn live_db_play_character_leaves_another_accounts_fixture_staged() {
+    let pool = require_db_or_skip!();
+    let victim = seed_player(&pool, PLAY_VICTIM).await;
+    seed_player(&pool, PLAY_THIEF).await;
+    let steps = steps_of(&pool, MISSION).await;
+    let staged = fixture(victim, vec![active(MISSION, steps[1])]);
+    assert_eq!(staged.account_id, PLAY_VICTIM, "staged for the owner");
+    stage_fixture(staged.clone());
+
+    let addr: SocketAddr = "127.0.0.1:55671".parse().expect("addr");
+    let mut state = test_default_connected_client_state();
+    state.account_id = PLAY_THIEF as u32;
+    state.access_level = GM_ACCESS_LEVEL;
+    let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+        Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    // Kept open and unread: world entry for a foreign character never
+    // reaches the cell, and the buffer absorbs anything that does.
+    let (cell_tx, _cell_rx) = mpsc::channel(16);
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let mgr = Arc::new(Mutex::new(EntityManager::new()));
+    let db = Some(Arc::new(pool.clone()));
+    let played = timeout(
+        Duration::from_secs(10),
+        handle_play_character(
+            &transport,
+            addr,
+            [0u8; 32],
+            PLAY_THIEF as u32,
+            victim,
+            &connected,
+            &db,
+            &mgr,
+            &Some(cell_tx),
+        ),
+    )
+    .await
+    .expect("a foreign Play must not hang")
+    .map_err(|e| e.to_string());
+    let still_pending = fixture_pending(victim);
+    let mission = mission_row(&pool, victim, MISSION).await;
+    let victim_place = place(&pool, victim).await;
+    // Leave nothing staged behind for another test in this process.
+    let owner_take = take_fixture_for(victim, PLAY_VICTIM);
+    cleanup(&pool, PLAY_VICTIM).await;
+    cleanup(&pool, PLAY_THIEF).await;
+
+    played.expect("play returns Ok after refusing the foreign character");
+    assert!(
+        still_pending,
+        "another account's Play leaves the fixture staged"
+    );
+    assert_eq!(mission, None, "nothing is written for the foreign session");
+    assert_eq!(
+        [victim_place.pos_x, victim_place.pos_y, victim_place.pos_z],
+        START
+    );
+    assert_eq!(owner_take, Some(staged), "the owner can still take it");
 }

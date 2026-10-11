@@ -9,6 +9,9 @@ use sqlx::PgPool;
 /// Write `world` and/or `position` to `sgw_player`. Ok(false) when both are
 /// None; Err when the row is missing or the write fails (an unknown world
 /// fails the `world_location` foreign key and writes nothing).
+///
+/// The one caller, `apply_staged_fixture`, has already refused an unknown
+/// world and a non-finite position in its precheck, before any part wrote.
 pub(crate) async fn move_player(
     pool: &PgPool,
     player_id: i32,
@@ -17,11 +20,6 @@ pub(crate) async fn move_player(
 ) -> Result<bool, String> {
     if world.is_none() && position.is_none() {
         return Ok(false);
-    }
-    if let Some(p) = position {
-        if !p.iter().all(|c| c.is_finite()) {
-            return Err(format!("position {p:?} is not finite"));
-        }
     }
     let [x, y, z] = match position {
         Some([x, y, z]) => [Some(x), Some(y), Some(z)],

@@ -11,8 +11,10 @@
 //! rewards, Discord or tutorials. Each part is its own write, in the order
 //! missions, items, tutorials, position; the first failure stops the apply
 //! and earlier parts stay written. The runner's verify step reports what is
-//! missing. The checks that need no part's state (ownership, the world and
-//! the position) run before the first write.
+//! missing. Every check (ownership, no items until FX-03, the world, the
+//! position, each mission and step) runs before the first write, so a
+//! refused fixture writes nothing; the ERROR's `reason` says which kind of
+//! failure it was (`precheck_refused` or `write_failed`).
 
 mod items;
 mod missions;
@@ -21,6 +23,8 @@ mod tutorials;
 
 #[cfg(test)]
 mod play_character_live_db_tests;
+#[cfg(test)]
+mod refusal_live_db_tests;
 #[cfg(test)]
 mod tests;
 
@@ -32,9 +36,35 @@ use cimmeria_base_session::base::world_entry::lab_fixture as store;
 use cimmeria_base_session::base::world_entry::lab_fixture::StagedFixture;
 
 use items::apply_items;
-use missions::apply_missions;
+use missions::{plan_missions, write_missions, MissionRow};
 use position::move_player;
 use tutorials::forget_tutorials;
+
+/// Why [`apply_staged_fixture`] failed: the `reason` of the "lab fixture
+/// not applied" ERROR (Rule 6, a stable value per class).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ApplyError {
+    /// A check before the first write refused the fixture; nothing written.
+    Precheck(String),
+    /// A write failed part-way; earlier parts may be written.
+    Write(String),
+}
+
+impl ApplyError {
+    fn reason(&self) -> &'static str {
+        match self {
+            ApplyError::Precheck(_) => "precheck_refused",
+            ApplyError::Write(_) => "write_failed",
+        }
+    }
+
+    /// The human-readable cause.
+    pub(crate) fn message(&self) -> &str {
+        match self {
+            ApplyError::Precheck(m) | ApplyError::Write(m) => m,
+        }
+    }
+}
 
 /// What [`apply_staged_fixture`] wrote.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -52,10 +82,11 @@ pub(crate) struct FixtureApplied {
 ///
 /// Lab-only (D-FX2): only the lab endpoint stages a fixture, for a GM
 /// account's offline character, and nothing a client sends reaches the
-/// store. The session must be a GM's too, since the store is keyed by
-/// player and the session is what proves who is playing. The fixture is
-/// taken whether or not it is applied, so a refused one never waits for a
-/// later Play.
+/// store. The take is scoped to the playing account: `player_id` is the
+/// client's `playCharacter` argument, so a session of another account
+/// leaves the fixture staged rather than burning it. Once taken, the
+/// session must also be a GM's; a taken fixture that is refused (a demoted
+/// GM, no database) is discarded, never left for a later Play.
 pub(crate) async fn apply_at_play(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
@@ -63,7 +94,7 @@ pub(crate) async fn apply_at_play(
     player_id: i32,
     access_level: u32,
 ) {
-    let Some(f) = store::take_fixture(player_id) else {
+    let Some(f) = store::take_fixture_for(player_id, account_id as i32) else {
         return;
     };
     if access_level < store::GM_ACCESS_LEVEL {
@@ -104,22 +135,36 @@ pub(crate) async fn apply_at_play(
             account_name,
             player_id,
             player_name = %f.player_name,
-            %error,
+            reason = error.reason(),
+            error = error.message(),
             "lab fixture not applied"
         ),
     }
 }
 
 /// Write `f` for `player_id` (owned by `account_id`). Called from
-/// [`apply_at_play`], before `query_world_entry`.
+/// [`apply_at_play`], before `query_world_entry`. The error says whether
+/// a check refused the fixture (nothing written) or a write failed.
 pub(crate) async fn apply_staged_fixture(
     pool: &PgPool,
     account_id: i32,
     f: &StagedFixture,
+) -> Result<FixtureApplied, ApplyError> {
+    let rows = precheck(pool, account_id, f)
+        .await
+        .map_err(ApplyError::Precheck)?;
+    write_parts(pool, f, &rows).await.map_err(ApplyError::Write)
+}
+
+/// The writes, in the contract's order: missions, items, tutorials,
+/// position. The first failure stops; earlier parts stay written.
+async fn write_parts(
+    pool: &PgPool,
+    f: &StagedFixture,
+    missions: &[MissionRow],
 ) -> Result<FixtureApplied, String> {
-    precheck(pool, account_id, f).await?;
     let mut applied = FixtureApplied {
-        missions: apply_missions(pool, f.player_id, &f.missions).await?,
+        missions: write_missions(pool, f.player_id, missions).await?,
         ..FixtureApplied::default()
     };
     (applied.items_removed, applied.items_granted) =
@@ -129,12 +174,17 @@ pub(crate) async fn apply_staged_fixture(
     Ok(applied)
 }
 
-/// Refuse before any write: the character must be `account_id`'s (the
-/// store is keyed by player only, so a fixture staged for one character
-/// must never land on a session that plays another account's), the world
-/// must be one `sgw_player.world_location` accepts, and the position must
-/// be finite (a NaN makes the next world entry undefined).
-async fn precheck(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<(), String> {
+/// Refuse before any write, and build the mission rows: the character must
+/// be `account_id`'s (a second check behind the store's account-scoped
+/// take, against the row itself), no items until FX-03, the world must be
+/// one `sgw_player.world_location` accepts, the position must be finite (a
+/// NaN makes the next world entry undefined; `move_player` relies on this
+/// check), and every mission and step must match the seed.
+async fn precheck(
+    pool: &PgPool,
+    account_id: i32,
+    f: &StagedFixture,
+) -> Result<Vec<MissionRow>, String> {
     let owner: Option<i32> =
         sqlx::query_scalar("SELECT account_id FROM sgw_player WHERE player_id = $1")
             .bind(f.player_id)
@@ -150,6 +200,11 @@ async fn precheck(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<(
             ))
         }
         Some(_) => {}
+    }
+    // FX-03 replaces this with its own item checks; until then an item
+    // fixture is refused here, so no other part is written for it.
+    if !f.items.is_empty() {
+        return Err(items::ITEMS_NOT_YET.to_string());
     }
     if let Some(world) = f.world.as_deref() {
         let known: bool =
@@ -167,5 +222,5 @@ async fn precheck(pool: &PgPool, account_id: i32, f: &StagedFixture) -> Result<(
             return Err(format!("position {p:?} is not finite"));
         }
     }
-    Ok(())
+    plan_missions(pool, &f.missions).await
 }

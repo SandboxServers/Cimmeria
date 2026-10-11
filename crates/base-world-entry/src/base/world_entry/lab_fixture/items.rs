@@ -6,6 +6,10 @@ use sqlx::PgPool;
 
 use cimmeria_base_session::base::world_entry::lab_fixture::StagedItem;
 
+/// The refusal of an item fixture until FX-03. The apply's precheck returns
+/// it before any write; [`apply_items`] keeps it as the backstop.
+pub(crate) const ITEMS_NOT_YET: &str = "item fixtures land in FX-03";
+
 /// Set each item's carried count; returns `(removed, granted)` instances.
 pub(crate) async fn apply_items(
     _pool: &PgPool,
@@ -15,5 +19,5 @@ pub(crate) async fn apply_items(
     if items.is_empty() {
         return Ok((0, 0));
     }
-    Err("item fixtures land in FX-03".to_string())
+    Err(ITEMS_NOT_YET.to_string())
 }

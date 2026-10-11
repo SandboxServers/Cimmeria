@@ -80,3 +80,4 @@
 - [exploit_feedback_name_oracle.md](exploit_feedback_name_oracle.md) — #1252 DA-F5 too-far line names any same-space NPC by guessed id (no witness gate); sweepable roster
 - [project_vendor_stock_wire_review.md](project_vendor_stock_wire_review.md) — 2026-10-10 vendor 78-82 stock layouts + session template; CAT-E-01 closed; base refusals silent; CAT-E-02 open
 - [reference_ability_grant_provenance.md](reference_ability_grant_provenance.md) — CS-01a grant provenance: credit hydration filters, cleared gm promotion, trained-then-granted + archetype gaps
+- [project_lab_fixture_fx02_review.md](project_lab_fixture_fx02_review.md) — FX-02 lab fixture: no client stage path; take-before-owner-check lets any account burn fixtures

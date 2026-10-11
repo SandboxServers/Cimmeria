@@ -26,7 +26,7 @@ use super::super::methods::missions::handle_mission_update;
 
 /// The row one fixture mission writes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MissionRow {
+pub(crate) struct MissionRow {
     mission_id: i32,
     status: i8,
     current_step_id: Option<i32>,
@@ -35,14 +35,13 @@ struct MissionRow {
     repeats: i32,
 }
 
-/// Write every mission of the fixture; returns how many were written.
-/// Every mission is checked and its row built before the first write, so a
-/// bad step anywhere in the fixture writes nothing.
-pub(crate) async fn apply_missions(
+/// Check every mission of the fixture against the seed and build its row,
+/// writing nothing: the apply's precheck, so a bad step anywhere in the
+/// fixture writes nothing at all.
+pub(crate) async fn plan_missions(
     pool: &PgPool,
-    player_id: i32,
     missions: &[StagedMission],
-) -> Result<usize, String> {
+) -> Result<Vec<MissionRow>, String> {
     let mut seen = HashSet::new();
     let mut rows = Vec::with_capacity(missions.len());
     for m in missions {
@@ -51,11 +50,19 @@ pub(crate) async fn apply_missions(
         }
         rows.push(build_row(pool, m).await?);
     }
+    Ok(rows)
+}
 
+/// Write the rows [`plan_missions`] built; returns how many were written.
+pub(crate) async fn write_missions(
+    pool: &PgPool,
+    player_id: i32,
+    rows: &[MissionRow],
+) -> Result<usize, String> {
     // `handle_mission_update` takes the session-shaped optional pool; the
     // clone is a handle to the same pool.
     let db = Some(Arc::new(pool.clone()));
-    for row in &rows {
+    for row in rows {
         handle_mission_update(
             player_id,
             row.mission_id,
@@ -70,8 +77,10 @@ pub(crate) async fn apply_missions(
             &db,
         )
         .await;
-        // The persist logs a failure and returns nothing; read the row back
-        // so a failed write fails the fixture instead of passing silently.
+        // The persist logs a failure and returns nothing, and refuses the
+        // write outright for a player whose saved missions are locked
+        // (TG-DB-12 `refuse_persist_if_locked`); read the row back so either
+        // fails the fixture instead of passing silently.
         confirm_written(pool, player_id, row).await?;
     }
     Ok(rows.len())
@@ -184,22 +193,31 @@ async fn objectives_of(pool: &PgPool, steps: &[i32]) -> Result<Vec<i32>, String>
         .collect())
 }
 
-/// The row is as built (or gone, for a not-active one).
+/// What [`confirm_written`] reads back: status, current step, completed
+/// steps, completed objectives, repeats.
+type StoredRow = (i32, Option<i32>, Vec<i32>, Vec<i32>, i32);
+
+/// The row is as built (or gone, for a not-active one), arrays included: a
+/// stale row whose status happens to match must not pass.
 async fn confirm_written(pool: &PgPool, player_id: i32, row: &MissionRow) -> Result<(), String> {
-    let stored: Option<(i32, Option<i32>, i32)> = sqlx::query_as(
-        "SELECT status, current_step_id, repeats FROM sgw_mission \
-         WHERE player_id = $1 AND mission_id = $2",
+    let stored: Option<StoredRow> = sqlx::query_as(
+        "SELECT status, current_step_id, completed_step_ids, completed_objective_ids, repeats \
+         FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
     )
     .bind(player_id)
     .bind(row.mission_id)
     .fetch_optional(pool)
     .await
     .map_err(|e| format!("mission {} read-back failed: {e}", row.mission_id))?;
-    let want = (row.status != MISSION_NOT_ACTIVE).then_some((
-        i32::from(row.status),
-        row.current_step_id,
-        row.repeats,
-    ));
+    let want = (row.status != MISSION_NOT_ACTIVE).then(|| {
+        (
+            i32::from(row.status),
+            row.current_step_id,
+            row.completed_step_ids.clone(),
+            row.completed_objective_ids.clone(),
+            row.repeats,
+        )
+    });
     if stored != want {
         return Err(format!(
             "mission {} was not written: stored {stored:?}, wanted {want:?}",

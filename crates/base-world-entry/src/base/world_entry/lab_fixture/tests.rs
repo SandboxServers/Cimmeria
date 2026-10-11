@@ -7,6 +7,8 @@
 
 use sqlx::PgPool;
 
+use super::{apply_staged_fixture, FixtureApplied};
+
 use cimmeria_base_session::base::world_entry::lab_fixture::{
     StagedFixture, StagedMission, StagedMissionState,
 };
@@ -21,6 +23,13 @@ pub(super) const OTHER_ACCOUNT: i32 = 0x7046_0260;
 pub(super) const STRANGER_ACCOUNT: i32 = 0x7046_0268;
 pub(super) const PLAY_GM: i32 = 0x7046_0270;
 pub(super) const PLAY_PLAYER: i32 = 0x7046_0280;
+pub(super) const COMPLETED: i32 = 0x7046_0290;
+pub(super) const UNKNOWN_WORLD: i32 = 0x7046_02A0;
+pub(super) const REFUSED_WRITE: i32 = 0x7046_02B0;
+pub(super) const LOG_ROWS: i32 = 0x7046_02C0;
+pub(super) const LOG_ROWS_STRANGER: i32 = 0x7046_02C8;
+pub(super) const PLAY_VICTIM: i32 = 0x7046_02D0;
+pub(super) const PLAY_THIEF: i32 = 0x7046_02E0;
 
 /// The Cellblock weapon mission: three steps, enough for a middle one.
 pub(super) const MISSION: i32 = 622;
@@ -174,9 +183,12 @@ pub(super) async fn place(pool: &PgPool, player_id: i32) -> Place {
     .expect("read place")
 }
 
+/// A fixture for `player_id`, staged for its owner (the account one below,
+/// as [`seed_player`] lays them out).
 pub(super) fn fixture(player_id: i32, missions: Vec<StagedMission>) -> StagedFixture {
     StagedFixture {
         player_id,
+        account_id: player_id - 1,
         player_name: format!("fx02-{player_id}"),
         world: None,
         position: None,
@@ -184,6 +196,18 @@ pub(super) fn fixture(player_id: i32, missions: Vec<StagedMission>) -> StagedFix
         items: Vec::new(),
         tutorials_unseen: Vec::new(),
     }
+}
+
+/// [pply_staged_fixture] with the error as its message, for the
+/// assertions that read the cause.
+pub(super) async fn apply(
+    pool: &PgPool,
+    account_id: i32,
+    f: &StagedFixture,
+) -> Result<FixtureApplied, String> {
+    apply_staged_fixture(pool, account_id, f)
+        .await
+        .map_err(|e| e.message().to_string())
 }
 
 pub(super) fn active(mission_id: i32, step_id: i32) -> StagedMission {
@@ -196,7 +220,6 @@ pub(super) fn active(mission_id: i32, step_id: i32) -> StagedMission {
 mod lab_fixture_live_db_tests {
     use cimmeria_base_session::base::world_entry::lab_fixture::StagedItem;
 
-    use super::super::apply_staged_fixture;
     use super::*;
     use crate::base::world_entry::shown_tutorials::{record_tutorial_shown, TutorialInsert};
     use crate::test_support::require_db_or_skip;
@@ -215,7 +238,7 @@ mod lab_fixture_live_db_tests {
         let steps = steps_of(&pool, MISSION).await;
         let first_objectives = objectives_of_step(&pool, steps[0]).await;
 
-        let applied = apply_staged_fixture(
+        let applied = apply(
             &pool,
             COMPLETED_BACK,
             &fixture(player_id, vec![active(MISSION, steps[1])]),
@@ -247,7 +270,7 @@ mod lab_fixture_live_db_tests {
         let player_id = seed_player(&pool, NOT_ACTIVE).await;
         seed_mission(&pool, player_id, MISSION, 2, 3).await;
 
-        let applied = apply_staged_fixture(
+        let applied = apply(
             &pool,
             NOT_ACTIVE,
             &fixture(
@@ -278,7 +301,7 @@ mod lab_fixture_live_db_tests {
         let steps = steps_of(&pool, MISSION).await;
         let before = mission_row(&pool, player_id, MISSION).await;
 
-        let applied = apply_staged_fixture(
+        let applied = apply(
             &pool,
             BAD_STEP,
             &fixture(
@@ -315,7 +338,7 @@ mod lab_fixture_live_db_tests {
 
         let mut f = fixture(player_id, Vec::new());
         f.tutorials_unseen = vec![TUTORIAL];
-        let applied = apply_staged_fixture(&pool, TUTORIALS, &f).await;
+        let applied = apply(&pool, TUTORIALS, &f).await;
         let left: Vec<i32> = sqlx::query_scalar(
             "SELECT tutorial_id FROM sgw_player_tutorials WHERE player_id = $1 ORDER BY tutorial_id",
         )
@@ -347,7 +370,7 @@ mod lab_fixture_live_db_tests {
         let mut f = fixture(player_id, Vec::new());
         f.world = Some("Castle".to_string());
         f.position = Some([411.5, 70.25, 987.75]);
-        let applied = apply_staged_fixture(&pool, MOVE, &f).await;
+        let applied = apply(&pool, MOVE, &f).await;
         let stored = place(&pool, player_id).await;
         cleanup(&pool, MOVE).await;
 
@@ -380,7 +403,7 @@ mod lab_fixture_live_db_tests {
         let mut f = fixture(player_id, vec![active(MISSION, steps[1])]);
         f.world = Some("Castle".to_string());
         f.position = Some([1.0, 2.0, 3.0]);
-        let applied = apply_staged_fixture(&pool, STRANGER_ACCOUNT, &f).await;
+        let applied = apply(&pool, STRANGER_ACCOUNT, &f).await;
         let mission_after = mission_row(&pool, player_id, MISSION).await;
         let place_after = place(&pool, player_id).await;
         cleanup(&pool, OTHER_ACCOUNT).await;
@@ -393,19 +416,76 @@ mod lab_fixture_live_db_tests {
     }
 
     /// FX-02 leaves item counts to FX-03: an item fixture is refused, not
-    /// silently skipped.
+    /// silently skipped, and refused in the precheck, so the fixture's
+    /// mission is not written either. Move the refusal back into the items
+    /// part (after the missions write) and the row assertion fails.
     #[tokio::test]
     async fn live_db_fixture_items_are_refused_until_fx03() {
         let pool = require_db_or_skip!();
         let player_id = seed_player(&pool, ITEMS).await;
-        let mut f = fixture(player_id, Vec::new());
+        seed_mission(&pool, player_id, MISSION, 2, 1).await;
+        let steps = steps_of(&pool, MISSION).await;
+        let before = mission_row(&pool, player_id, MISSION).await;
+        let mut f = fixture(player_id, vec![active(MISSION, steps[1])]);
         f.items = vec![StagedItem {
             type_id: 55,
             count: 1,
             container_id: 1,
         }];
-        let applied = apply_staged_fixture(&pool, ITEMS, &f).await;
+        let applied = apply(&pool, ITEMS, &f).await;
+        let after = mission_row(&pool, player_id, MISSION).await;
         cleanup(&pool, ITEMS).await;
         assert_eq!(applied, Err("item fixtures land in FX-03".to_string()));
+        assert!(before.is_some());
+        assert_eq!(after, before, "the mission row is untouched");
+    }
+
+    /// **Guard: the completed row shape.** Over an active mid-step row, a
+    /// `Completed` fixture writes status 2, no current step, every step in
+    /// index order, every one of their objectives, and `repeats = 1` (what
+    /// `MissionInstance::complete` leaves after a first completion). Change
+    /// the repeats or drop the objective fill and an assertion fails.
+    #[tokio::test]
+    async fn live_db_fixture_completed_writes_every_step_and_repeats_one() {
+        let pool = require_db_or_skip!();
+        let player_id = seed_player(&pool, COMPLETED).await;
+        seed_mission(&pool, player_id, MISSION, 1, 0).await;
+        let steps = steps_of(&pool, MISSION).await;
+        let mut objectives = Vec::new();
+        for step in &steps {
+            objectives.extend(objectives_of_step(&pool, *step).await);
+        }
+        assert!(
+            !objectives.is_empty(),
+            "fixture sanity: mission {MISSION} has objectives in the seed"
+        );
+
+        let applied = apply(
+            &pool,
+            COMPLETED,
+            &fixture(
+                player_id,
+                vec![StagedMission {
+                    mission_id: MISSION,
+                    state: StagedMissionState::Completed,
+                }],
+            ),
+        )
+        .await;
+        let row = mission_row(&pool, player_id, MISSION).await;
+        cleanup(&pool, COMPLETED).await;
+
+        assert_eq!(applied.expect("applied").missions, 1);
+        assert_eq!(
+            row.expect("the completed row is kept"),
+            MissionRow {
+                status: 2,
+                current_step_id: None,
+                completed_step_ids: steps,
+                completed_objective_ids: objectives,
+                active_objective_ids: Vec::new(),
+                repeats: 1,
+            }
+        );
     }
 }
