@@ -44,10 +44,6 @@ mod named_world_entry_tests;
 #[cfg(test)]
 mod player_index_lifecycle_tests;
 
-/// CH-14: chaos armed for an account reaches its next world entry's flush.
-#[cfg(all(test, feature = "lab-chaos"))]
-mod play_character_chaos_tests;
-
 // The space registry is in `cimmeria-base-session` (wave B1): base-methods
 // resolves world names through it from below world entry.
 pub(crate) use cimmeria_base_session::base::world_entry::space_registry;

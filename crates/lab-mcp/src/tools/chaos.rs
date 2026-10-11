@@ -14,8 +14,13 @@
 //! A set names an in-world `entity_id`, or an `account` (CH-14, D-CH10):
 //! then the chaos is armed for that account's next world entry, one-shot,
 //! and the base moves it onto the session at `playCharacter`, before that
-//! login's first flush. Like `entity_id`, any account may be named: the lab
-//! token already reaches every session, so this adds no reach.
+//! login's first flush. Like `entity_id`, any account may be named, and an
+//! arm does reach further than a set: it waits for an account that is not
+//! online, until its TTL. Only deployment keeps it off real players (no
+//! colo image is built with `lab-chaos`, and the registry needs
+//! `DEVELOPER_MODE`). An armed net profile starts shaping at the
+//! RESET_ENTITIES send; authentication, the character list and
+//! `playCharacter` itself are never shaped by it.
 
 use std::future::Future;
 use std::net::SocketAddr;

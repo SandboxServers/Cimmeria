@@ -70,7 +70,9 @@ fn promotion_moves_the_arm_onto_the_new_session() {
     );
 
     let later = now + Duration::from_secs(10);
-    assert!(chaos.promote_armed(ACCOUNT, addr(41_001), ENTITY, later));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_001), ENTITY, later)
+        .is_some());
     assert!(
         !chaos.clear_if_not(addr(41_001), ENTITY),
         "tagged with the new entity, so the flush's check keeps it"
@@ -95,9 +97,13 @@ fn an_arm_is_promoted_once() {
     let chaos = LabChaos::new();
     let now = Instant::now();
     arm_pack(&chaos, ACCOUNT, 24, 60, now);
-    assert!(chaos.promote_armed(ACCOUNT, addr(41_011), ENTITY, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_011), ENTITY, now)
+        .is_some());
     assert_eq!(chaos.clear(Some(addr(41_011))), 1);
-    assert!(!chaos.promote_armed(ACCOUNT, addr(41_011), ENTITY + 1, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_011), ENTITY + 1, now)
+        .is_none());
     assert_eq!(chaos.flush_for(addr(41_011), now), None);
 }
 
@@ -107,7 +113,9 @@ fn promotion_is_by_account() {
     let chaos = LabChaos::new();
     let now = Instant::now();
     arm_pack(&chaos, ACCOUNT, 24, 60, now);
-    assert!(!chaos.promote_armed(ACCOUNT + 1, addr(41_021), ENTITY, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT + 1, addr(41_021), ENTITY, now)
+        .is_none());
     assert_eq!(chaos.flush_for(addr(41_021), now), None);
     assert_eq!(armed_accounts(&chaos, now), [ACCOUNT]);
 }
@@ -121,7 +129,9 @@ fn an_arm_expires() {
     arm_pack(&chaos, ACCOUNT + 1, 24, 5, now);
     let after = now + Duration::from_secs(5);
     assert!(
-        !chaos.promote_armed(ACCOUNT, addr(41_031), ENTITY, after),
+        chaos
+            .promote_armed(ACCOUNT, addr(41_031), ENTITY, after)
+            .is_none(),
         "an expired arm is not promoted"
     );
     assert_eq!(chaos.flush_for(addr(41_031), after), None);
@@ -182,7 +192,9 @@ fn clear_account_removes_only_that_arm() {
     assert_eq!(chaos.clear_account(ACCOUNT), 1);
     assert_eq!(chaos.clear_account(ACCOUNT), 0);
     assert_eq!(armed_accounts(&chaos, now), [ACCOUNT + 1]);
-    assert!(!chaos.promote_armed(ACCOUNT, addr(41_041), ENTITY, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_041), ENTITY, now)
+        .is_none());
 }
 
 /// Clear-all counts and drops arms with sessions; a per-session clear (a
@@ -245,7 +257,9 @@ fn has_net_and_generation_after_promotion() {
         .arm(ACCOUNT, "net".into(), Some(net(2)), None, 60, now)
         .expect("a valid arm");
     assert!(!chaos.has_net(), "an arm is not net chaos");
-    assert!(chaos.promote_armed(ACCOUNT, addr(41_061), ENTITY, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_061), ENTITY, now)
+        .is_some());
     assert!(chaos.has_net(), "promotion recounts");
     let (promoted, generation) = chaos.net_entry_for(addr(41_061), now).expect("promoted");
     assert_eq!(promoted.seed, 2);
@@ -280,7 +294,9 @@ fn arm_and_promotion_logs_carry_no_address() {
     assert!(armed.has_field("seed", "7"), "{armed:#?}");
     assert!(armed.has_field("expires_in_s", "300"), "{armed:#?}");
 
-    assert!(chaos.promote_armed(ACCOUNT, addr(41_071), ENTITY, now));
+    assert!(chaos
+        .promote_armed(ACCOUNT, addr(41_071), ENTITY, now)
+        .is_some());
     let promoted = capture
         .find_message(Level::WARN, "lab chaos armed for the account set")
         .expect("the promotion WARN");

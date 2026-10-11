@@ -22,6 +22,11 @@ use cimmeria_services::base::lab_chaos::NetChaos;
 /// a CH-01 header is a few dozen characters.
 pub(super) const LABEL_MAX: usize = 120;
 
+/// The longest `account` a set or clear takes: `account.account_name` is
+/// `character varying(32)` (`db/sgw/Accounts/Tables/account.sql`), so a
+/// longer name matches no account and is refused before the lookup.
+pub(super) const ACCOUNT_NAME_MAX: usize = 32;
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SetArgs {
@@ -162,15 +167,21 @@ pub(super) fn parse<T: DeserializeOwned>(raw: Value) -> Result<T, String> {
     })
 }
 
-/// The arguments as the audit row records them. A `label` that set would
-/// refuse (too long, or with a control character) is replaced by its length,
-/// so the raw text never reaches the log.
+/// The arguments as the audit row records them. A `label` or an `account`
+/// the tool would refuse (too long, or with a control character) is
+/// replaced by its length, so the raw text never reaches the log.
 pub(super) fn audit_args(raw: &Value) -> Value {
     let mut audit = raw.clone();
     if let Some(Value::String(label)) = audit.get("label") {
         if check_label(label).is_err() {
             let n = label.chars().count();
             audit["label"] = Value::String(format!("<label: {n} chars, refused>"));
+        }
+    }
+    if let Some(Value::String(account)) = audit.get("account") {
+        if !account.is_empty() && check_account(account).is_err() {
+            let n = account.chars().count();
+            audit["account"] = Value::String(format!("<account: {n} chars, refused>"));
         }
     }
     audit
@@ -203,9 +214,27 @@ fn target(entity_id: Option<u32>, account: Option<&str>) -> Result<Option<Target
         (Some(_), Some(_)) => Err(knob_refusal("give entity_id or account, not both")),
         (Some(id), None) => Ok(Some(Target::Entity(id))),
         (None, Some("")) => Err(knob_refusal("account is empty")),
-        (None, Some(name)) => Ok(Some(Target::Account(name.to_string()))),
+        (None, Some(name)) => {
+            check_account(name)?;
+            Ok(Some(Target::Account(name.to_string())))
+        }
         (None, None) => Ok(None),
     }
+}
+
+/// An account name no account can have is refused before the lookup: over
+/// the column's [`ACCOUNT_NAME_MAX`] characters, or with a control
+/// character. The refusal does not echo the name.
+fn check_account(name: &str) -> Result<(), String> {
+    if name.chars().count() > ACCOUNT_NAME_MAX {
+        return Err(knob_refusal(format!(
+            "account is over {ACCOUNT_NAME_MAX} characters"
+        )));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(knob_refusal("account has a control character"));
+    }
+    Ok(())
 }
 
 /// A label is logged as text on the set WARN: short, one line, printable.

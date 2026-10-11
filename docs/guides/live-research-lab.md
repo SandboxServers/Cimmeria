@@ -352,9 +352,21 @@ return to character select and a disconnect before it (both are before the
 next world entry), and expires on its own TTL, counted from the set, so a
 slow login can outlive it. Any account may be named, as any entity may.
 
+An arm reaches further than a set: it waits for an account that is not
+online, until its TTL, and attaches at that account's next login whoever
+makes it. Nothing in the tool keeps it off a real player; only deployment
+does (no colo image is built with `lab-chaos`). Arm only lab accounts. An
+armed `net` profile does not shape authentication, the character list or
+`playCharacter` itself: shaping starts with the RESET_ENTITIES send that
+answers `playCharacter`. A world entry that fails or is abandoned after the
+attach (the send fails, or the session is replaced mid-entry) gives the arm
+back to the account, unless the lab cleared chaos since. The account name is
+at most 32 characters (the `account_name` column); a longer one, or one with
+a control character, is refused and the audit row records only its length.
+
 | Tool | Arguments | Reply |
 |---|---|---|
-| `server_chaos_set` | exactly one of `entity_id` (a player entity, not 0) and `account` (an account name, matched exactly as login matches it; arms the account's next world entry); `net` (`latency`, `jitter` in ms, at most 5000; `loss`, `dup` in percent with at most one decimal; `reorder` in packets, at most 1000) and/or `flush` (`mode` `delay` with `delay_ms` at most 60000, `reorder`, `pack` with `records` 1 to 34, the most one packet holds behind the longest filler, or `shift` with `shift` 0, 2 to 38 or `"sweep"`); `seed` (default 0; for `net`, flush `reorder` and `"sweep"`); `ttl_s` (default 300; 0 or over 1800 is refused, never clamped); `label` (the spec text logged as `level`, at most 120 printable characters, built from the profiles when omitted) | `{set: true, expires_in_s}` for an entity, `{armed: true, account_id, expires_in_s}` for an account, or `{refused}` with the server's reason (both or neither target, an unknown account). Replaces the session's chaos or the account's arm |
+| `server_chaos_set` | exactly one of `entity_id` (a player entity, not 0) and `account` (an account name of at most 32 characters, matched exactly as login matches it; arms the account's next world entry); `net` (`latency`, `jitter` in ms, at most 5000; `loss`, `dup` in percent with at most one decimal; `reorder` in packets, at most 1000) and/or `flush` (`mode` `delay` with `delay_ms` at most 60000, `reorder`, `pack` with `records` 1 to 34, the most one packet holds behind the longest filler, or `shift` with `shift` 0, 2 to 38 or `"sweep"`); `seed` (default 0; for `net`, flush `reorder` and `"sweep"`); `ttl_s` (default 300; 0 or over 1800 is refused, never clamped); `label` (the spec text logged as `level`, at most 120 printable characters, built from the profiles when omitted) | `{set: true, expires_in_s}` for an entity, `{armed: true, account_id, expires_in_s}` for an account, or `{refused}` with the server's reason (both or neither target, an unknown account). Replaces the session's chaos or the account's arm |
 | `server_chaos_clear` | `entity_id` (the chaos set for that entity, wherever its session is now), or `account` (that account's pending arm), or neither for every session and every arm | `{cleared: n}` |
 | `server_chaos_status` | none | `{sessions: [{entity_id, net?, flush?, expires_in_s}], more?, armed: [{account_id, net?, flush?, expires_in_s}], armed_more?}`, sessions by entity id and pending arms by account id (never an address), at most 10 of each; `more` and `armed_more` count the rest |
 

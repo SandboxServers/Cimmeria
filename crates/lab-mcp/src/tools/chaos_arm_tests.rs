@@ -16,7 +16,7 @@ use cimmeria_services::base::lab_chaos::LabChaos;
 use cimmeria_services::orchestrator::Orchestrator;
 
 use super::chaos::{clear_account_on, clear_on, set_on, status_on};
-use super::chaos_args::{ClearCall, FlushArgs, SetArgs, SetCall};
+use super::chaos_args::{audit_args, ClearCall, FlushArgs, SetArgs, SetCall};
 use super::LabTools;
 use crate::state::LabState;
 
@@ -118,12 +118,14 @@ async fn set_with_an_account_arms_and_status_lists_it() {
     );
     // The registry holds what the tool armed, ready for the account's
     // next playCharacter.
-    assert!(registry.promote_armed(
-        ACCOUNT,
-        "127.0.0.1:50100".parse().unwrap(),
-        9,
-        Instant::now()
-    ));
+    assert!(registry
+        .promote_armed(
+            ACCOUNT,
+            "127.0.0.1:50100".parse().unwrap(),
+            9,
+            Instant::now()
+        )
+        .is_some());
     assert_eq!(
         registry.flush_for("127.0.0.1:50100".parse().unwrap(), Instant::now()),
         Some(FlushChaos::Pack { records: 24 })
@@ -190,4 +192,54 @@ async fn clear_by_account_and_clear_all() {
         status_on(&registry, Instant::now()),
         json!({ "sessions": [], "armed": [] })
     );
+}
+
+/// An account name longer than `account.account_name` (32 characters) or
+/// with a control character is refused by the parse, on a set and on a
+/// clear, without echoing it; 32 characters reach the lookup. Fails if the
+/// cap is dropped (the long name would reach the lookup and read "lab
+/// chaos is off" here, where no registry is installed).
+#[tokio::test]
+async fn an_account_name_no_account_can_have_is_refused() {
+    let tools = tools();
+    let long = "a".repeat(33);
+    let flush = json!({ "mode": "pack", "records": 4 });
+    for (account, why) in [
+        (long.as_str(), "account is over 32 characters"),
+        ("lab\nERROR forged", "account has a control character"),
+    ] {
+        let call: SetCall =
+            serde_json::from_value(json!({ "account": account, "flush": flush })).expect("a call");
+        let v = reply(tools.server_chaos_set(Parameters(call)).await);
+        assert_eq!(v, json!({ "refused": format!("bad chaos knob: {why}") }));
+        let call: ClearCall =
+            serde_json::from_value(json!({ "account": account })).expect("a call");
+        let v = reply(tools.server_chaos_clear(Parameters(call)).await);
+        assert_eq!(v, json!({ "refused": format!("bad chaos knob: {why}") }));
+    }
+    let registry = LabChaos::new();
+    let at_cap = "b".repeat(32);
+    assert_eq!(
+        arm(&registry, arm_args(&at_cap)).await,
+        Err(format!("no account named {at_cap:?}")),
+        "32 characters is a name the lookup is asked about"
+    );
+}
+
+/// The audit row never carries a refused account name, only its length; an
+/// acceptable one is kept as sent. Fails if `audit_args` passes the account
+/// through unchecked.
+#[test]
+fn audit_args_redacts_a_refused_account() {
+    let long = "c".repeat(40);
+    assert_eq!(
+        audit_args(&json!({ "account": long }))["account"],
+        "<account: 40 chars, refused>"
+    );
+    assert_eq!(
+        audit_args(&json!({ "account": "lab\nERROR forged" }))["account"],
+        "<account: 16 chars, refused>"
+    );
+    let fine = json!({ "account": NAME, "flush": { "mode": "reorder" } });
+    assert_eq!(audit_args(&fine), fine);
 }

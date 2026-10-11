@@ -38,6 +38,7 @@ use std::time::{Duration, Instant};
 
 use cimmeria_base_session::base::lab_chaos::FlushChaos;
 use cimmeria_base_session::base::lab_chaos::LabChaos;
+use cimmeria_base_session::base::lab_chaos::Promotion;
 use cimmeria_base_session::base::lab_chaos::PHASE1_RECORD_LEN;
 use cimmeria_base_session::base::lab_chaos::SHIFT_LEN_MAX;
 use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
@@ -105,12 +106,25 @@ pub(crate) fn flush_delay(addr: SocketAddr, witness_id: u32) -> Option<Duration>
 
 /// Sets the chaos armed for `account_id` (D-CH10) on this session, tagged
 /// with `entity_id`, the player entity `playCharacter` just created. Called
-/// from `playCharacter` before RESET_ENTITIES goes out, so it lands before
+/// from `playCharacter` (under its session-owner check) before
+/// RESET_ENTITIES goes out, so it lands before
 /// the client can send `onClientReady`: [`flush_delay`] and [`apply`] then
 /// read it for this login's first flush, and their stale-entity check keeps
-/// it because the tag is this entity. Returns whether an arm was promoted.
-pub(crate) fn promote_armed(account_id: u32, addr: SocketAddr, entity_id: u32) -> bool {
-    registry().is_some_and(|r| r.promote_armed(account_id, addr, entity_id, Instant::now()))
+/// it because the tag is this entity. Returns what was promoted, if anything.
+pub(crate) fn promote_armed(
+    account_id: u32,
+    addr: SocketAddr,
+    entity_id: u32,
+) -> Option<Promotion> {
+    registry()?.promote_armed(account_id, addr, entity_id, Instant::now())
+}
+
+/// Undoes [`promote_armed`] for a world entry that failed after it
+/// (`LabChaos::rearm`).
+pub(crate) fn rearm_promotion(promotion: Promotion) {
+    if let Some(registry) = registry() {
+        registry.rearm(promotion, Instant::now());
+    }
 }
 
 /// The `flush_delayed` row, logged when a hold starts its delay.
