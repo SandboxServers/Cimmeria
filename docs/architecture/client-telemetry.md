@@ -150,6 +150,21 @@ The packet spec listed `ue3_shutdown` and `crash` as reasons too. The exit-path 
 
 Upload-failure accounting is TG-PIPE-13.
 
+## Boot failures
+
+TG-PIPE-14. Four boot steps that can fail used to write only to the local log. Each now also queues a `warn` row (builders in `crates/client-telemetry/src/boot_report.rs`). All four are must-keep in the governor and replayed over budget by the ingest (`client.dll.*`, `client.hooks.*`).
+
+| Target | When | Fields |
+|---|---|---|
+| `client.dll.uploader_spawn_failed` | the uploader thread could not be spawned | `error` |
+| `client.dll.bridge_failed` | a lab session asked for the bridge and it did not start | `reason`, `error` |
+| `client.dll.input_unhooked` | the bridge started but its DirectInput hook did not go in, so the lab cannot drive input without focus | `error` |
+| `client.hooks.install_lock_unavailable` | the install lock shared with the client-patches DLL was not taken within the wait, so no hooks went in | `wait_ms` |
+
+`reason` on `client.dll.bridge_failed` is one of `invalid_token` (the lab token is not 64 hex characters), `addr_in_use`, `addr_not_available`, `permission_denied` or `io_error` (anything else). `boot_report::report_bridge_result` picks it from the start result and returns no row when no bridge was asked for or it started.
+
+`client.dll.uploader_spawn_failed` is queued, but with no uploader nothing ships it: its local log line (`uploader thread failed to start`) is the record that survives. In SigNoz the failure looks like a launch with no DLL rows at all, `client.dll.attached` included.
+
 ## Hook taxonomy
 
 Seven techniques, applied per-tier per the [hookpoints anchor doc](../reverse-engineering/findings/client-instrumentation-hookpoints.md):
