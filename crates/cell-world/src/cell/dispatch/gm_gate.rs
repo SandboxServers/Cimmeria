@@ -409,7 +409,9 @@ mod tests {
         {
             let e = mgr.get_entity_mut(1).unwrap();
             e.is_player = true;
+            e.account_id = Some(6);
             e.player_id = Some(100);
+            e.stamp_log_names(Some("Teal'c"), Some("sgc_login"));
             e.access_level = 0;
         }
         let (tx, _rx) = mpsc::channel(8);
@@ -421,7 +423,10 @@ mod tests {
             .iter()
             .find(|c| c.level == tracing::Level::WARN && c.has_field("reason", "not_gm"))
             .expect("WARN row with reason=not_gm");
+        assert!(row.has_field("account_id", "6"), "{row:?}");
+        assert!(row.has_field("account_name", "sgc_login"), "{row:?}");
         assert!(row.has_field("player_id", "100"), "{row:?}");
+        assert!(row.has_field("player_name", "Teal'c"), "{row:?}");
         assert!(row.has_field("entity_id", "1"), "{row:?}");
 
         let capture = LogCapture::install();
@@ -431,7 +436,19 @@ mod tests {
             .iter()
             .find(|c| c.level == tracing::Level::WARN && c.has_field("reason", "entity_missing"))
             .expect("WARN row with reason=entity_missing");
+        assert!(row.has_field("entity_id", "999"), "{row:?}");
         assert!(!row.fields.contains_key("player_id"), "{row:?}");
         assert!(!row.fields.contains_key("account_name"), "{row:?}");
+
+        // An authorized GM call logs an INFO row carrying the same identity.
+        mgr.get_entity_mut(1).unwrap().access_level = GM_ACCESS_LEVEL;
+        let capture = LogCapture::install();
+        assert!(enforce_gm_gate(1, SGWGMPLAYER_CELL_METHOD_BASE, &tx, &mgr).await);
+        let rows = capture.all();
+        let row = rows
+            .iter()
+            .find(|c| c.level == tracing::Level::INFO && c.has_field("player_id", "100"))
+            .expect("INFO row for an authorized GM call carries player_id");
+        assert!(row.has_field("account_id", "6"), "{row:?}");
     }
 }

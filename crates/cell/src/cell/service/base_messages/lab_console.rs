@@ -70,6 +70,21 @@ pub(super) async fn handle_lab_console_exec(
         return;
     }
 
+    // Authorized: record who ran the command before it runs, so lab console
+    // activity is attributable the same way a rejection is.
+    let id = space_mgr.player_identity(entity_id);
+    tracing::info!(
+        event = "lab_console_authorized",
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        access_level,
+        "LabConsoleExec authorized"
+    );
+
     // Capture tee: run against a private channel, then drain it.
     let (cap_tx, mut cap_rx) = mpsc::channel::<CellToBaseMsg>(CAPTURE_CAPACITY);
     console::handle_console_command(entity_id, &line, &cap_tx, space_mgr, engine).await;
@@ -98,6 +113,10 @@ pub(super) async fn handle_lab_console_exec(
                     tracing::warn!(
                         entity_id,
                         entity_name = space_mgr.entity_label(entity_id),
+                        account_id = id.account_id,
+                        account_name = id.account_name,
+                        player_id = id.player_id,
+                        player_name = id.player_name,
                         "LabConsoleExec: base channel closed while forwarding a side-effect message"
                     );
                     break;
