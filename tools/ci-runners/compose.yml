@@ -29,6 +29,9 @@ x-runner: &runner
   cpu_shares: 256
   mem_limit: ${RUNNER_MEM_LIMIT:-20g}
   pids_limit: 16384
+  # Time for the listener to close its GitHub session; a killed one leaves a
+  # stale session and the new container retries on "Conflict" for minutes.
+  stop_grace_period: 1m
   shm_size: 2g
   # Hooks are read per job, so deploy.ps1 updates them without recreating a runner.
 
