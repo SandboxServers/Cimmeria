@@ -618,8 +618,8 @@ pub use witness_broadcast::broadcast_to_witnesses;
 
 mod session_teardown;
 pub use session_teardown::{
-    destroy_client_entities, destroy_owned_client_entities, log_session_end, session_idle_ms,
-    LogoffRequested, SessionEndRow,
+    destroy_client_entities, destroy_owned_client_entities, log_session_end,
+    session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 
 #[cfg(test)]

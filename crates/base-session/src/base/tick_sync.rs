@@ -103,14 +103,6 @@ pub async fn run_tick_loop(
         // cleanup runs so we don't double-stamp a second disconnect event
         // under a misleading reason.
         if cancelled.load(Ordering::Relaxed) {
-            tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
-            return;
-        }
-
-        let idle = last_recv.lock().unwrap().elapsed();
-        if idle > INACTIVITY_TIMEOUT {
-            // The session is still in the map here (teardown runs after the
-            // loop), so the timeout line names who went silent (Rules 5, 6).
             let who = super::session_identity::identity_for_addr(&connected, addr);
             tracing::info!(
                 %addr,
@@ -118,7 +110,44 @@ pub async fn run_tick_loop(
                 account_name = who.account_name,
                 player_id = who.player_id,
                 player_name = who.player_name,
+                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+            );
+            return;
+        }
+
+        let idle = last_recv.lock().unwrap().elapsed();
+        if idle > INACTIVITY_TIMEOUT {
+            // The session is still in the map here (teardown runs after the
+            // loop), so the timeout line names who went silent (Rules 5, 6)
+            // and what it was doing: in the world or still loading, how long
+            // it had been connected, and how many reliable packets it never
+            // acked (TG-NET-14, from TG-MER-07's channel health).
+            let who = super::session_identity::identity_for_addr(&connected, addr);
+            let (in_world, world, session_secs, tx_outstanding) = connected
+                .lock()
+                .ok()
+                .and_then(|clients| {
+                    clients.get(&addr).map(|c| {
+                        (
+                            c.listed_online,
+                            c.world_name.clone(),
+                            c.connected_at.elapsed().as_secs(),
+                            super::helpers::session_channel_health(c).tx_outstanding,
+                        )
+                    })
+                })
+                .unwrap_or((false, None, 0, 0));
+            tracing::info!(
+                %addr,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 idle_secs = idle.as_secs(),
+                session_secs,
+                in_world,
+                world = world.as_deref(),
+                tx_outstanding,
                 "Tick-sync stopping: client inactive for {}s",
                 idle.as_secs()
             );
@@ -190,7 +219,15 @@ pub async fn run_tick_loop(
         // meanwhile, the session there is not ours and its channel is not
         // ours to drive.
         if cancelled.load(Ordering::Relaxed) {
-            tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
+            let who = super::session_identity::identity_for_addr(&connected, addr);
+            tracing::info!(
+                %addr,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+            );
             return;
         }
         let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);

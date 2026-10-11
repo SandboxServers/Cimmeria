@@ -21,6 +21,7 @@ use crate::cell::messages::BaseToCellMsg;
 use super::super::session_identity;
 use super::super::world_entry::{handle_cancel_movie, handle_map_loaded};
 use super::super::ConnectedClientState;
+use super::bundle_drop::{self, DropReason, DroppedMsg};
 use super::cell_send::send_to_cell;
 
 /// Dispatch a cell-method message in the `0x80..=0xBF` range. Returns
@@ -32,6 +33,8 @@ use super::cell_send::send_to_cell;
 pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],
+    // The session's clientIndex, for the drop rows' `entity_type`.
+    class_id: u8,
     packet_seq: Option<u32>,
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
@@ -83,25 +86,33 @@ pub(super) async fn dispatch_cell_method(
                 )
             })
     };
-    let Some(player_eid) = player_eid else {
-        tracing::trace!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            "Cell method before world entry -- ignored"
+    // Every drop below names the message the same way. The identity was
+    // resolved above, so the throttled row takes no second lock.
+    let log_dropped = |reason: DropReason| {
+        bundle_drop::log_drop(
+            reason,
+            addr,
+            DroppedMsg {
+                msg_id: id,
+                class_id,
+                payload,
+                method_index: cell_method_index(id, payload),
+                offset: None,
+                body_len: None,
+            },
+            || who,
         );
+    };
+
+    let Some(player_eid) = player_eid else {
+        log_dropped(DropReason::BeforeWorldEntry);
         return ControlFlow::Continue(());
     };
 
     if map_loaded_pending && id != 0x99 {
-        tracing::trace!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            "Ignoring cell method until mapLoaded arrives"
-        );
+        // Only this message is dropped: the walk goes on to the next one in
+        // the bundle (the caller's `continue`).
+        log_dropped(DropReason::MapLoadedPending);
         return ControlFlow::Break(());
     }
 
@@ -109,14 +120,7 @@ pub(super) async fn dispatch_cell_method(
     if payload.len() < 4 {
         // `method_name` is absent for the 0xBD sub-slot, whose index is in
         // the bytes this payload is too short for.
-        tracing::warn!(
-            %addr,
-            msg_id = format_args!("{:#04x}", id),
-            msg_name = names::server_msg_name(id),
-            method_name = names::player_inbound_method(id, payload),
-            payload_len = payload.len(),
-            "Cell method payload too short for entityId prefix"
-        );
+        log_dropped(DropReason::MalformedArgs);
         return ControlFlow::Break(());
     }
     let entity_id_from_client =
@@ -177,6 +181,10 @@ pub(super) async fn dispatch_cell_method(
                 )
                 .await;
             }
+        } else {
+            // The entityId prefix with no sub-index byte after it: the
+            // method cannot be named or forwarded.
+            log_dropped(DropReason::SubslotMissingIndex);
         }
     } else {
         let method_index = (id - 0x80) as u16;
@@ -199,4 +207,16 @@ pub(super) async fn dispatch_cell_method(
     }
 
     ControlFlow::Continue(())
+}
+
+/// The SGWPlayer cell method index a `0x80..=0xBF` message addresses:
+/// `id - 0x80` for the direct encoding, `61 + sub_index` for `0xBD` (the
+/// sub-index is the byte after the 4-byte entityId). `None` when a `0xBD`
+/// payload is too short to hold it.
+fn cell_method_index(id: u8, payload: &[u8]) -> Option<u16> {
+    if id == 0xBD {
+        payload.get(4).map(|&sub| u16::from(sub) + 61)
+    } else {
+        Some(u16::from(id - 0x80))
+    }
 }

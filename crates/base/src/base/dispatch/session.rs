@@ -13,7 +13,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_base_session::base::helpers::{
-    log_session_end, session_idle_ms, LogoffRequested, SessionEndRow,
+    log_session_end, session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 use cimmeria_base_session::base::plugin::{SessionEvent, SessionHookPoint};
 use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
@@ -78,6 +78,7 @@ pub(super) async fn handle_log_off(
                     c.listed_online,
                     c.world_name.clone(),
                     c.session_kind,
+                    session_channel_health(c),
                 );
                 c.listed_online = false;
                 // A full exit keeps the session until the client disconnects
@@ -139,7 +140,7 @@ pub(super) async fn handle_log_off(
                 Default::default(),
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
                 0,
-                (0, false, None, None),
+                (0, false, None, None, Default::default()),
             ),
         }
     };
@@ -167,6 +168,7 @@ pub(super) async fn handle_log_off(
             in_world: end_hints.1,
             world: end_hints.2.as_deref(),
             session_kind: end_hints.3,
+            channel: end_hints.4,
         });
     }
 

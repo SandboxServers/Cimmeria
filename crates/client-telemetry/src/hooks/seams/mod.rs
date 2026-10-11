@@ -57,6 +57,9 @@ pub mod level_streaming;
 pub mod load_failures;
 pub mod matinee;
 pub mod objects;
+// Called only from the i686 seams and tick hook.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub mod phase;
 pub mod physx;
 
 use crate::queue::Producer;

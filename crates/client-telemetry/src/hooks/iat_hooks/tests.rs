@@ -161,3 +161,31 @@ fn get_foreground_window_detour_without_an_original_returns_null() {
     assert_eq!(ORIG_GET_FOREGROUND_WINDOW.load(Ordering::Acquire), 0);
     assert!(unsafe { get_foreground_window_detour() }.is_null());
 }
+
+/// A mismatched slot names the module its current value points into and the
+/// RVA there, as a number. A slot that could not be read, or an address no
+/// module holds, adds no owner fields.
+#[test]
+fn slot_mismatch_names_the_module_that_owns_the_slot() {
+    use serde_json::json;
+
+    // Fake loader: `d3d9.dll` is mapped at 0x1000_0000 and 1 MiB long.
+    let resolve = |addr: usize| {
+        (0x1000_0000..0x1010_0000)
+            .contains(&addr)
+            .then(|| ("d3d9.dll".to_string(), addr - 0x1000_0000))
+    };
+
+    let fields = super::owner_fields(Some(0x1000_2a10), resolve);
+    assert_eq!(
+        fields,
+        vec![
+            ("owner_module", json!("d3d9.dll")),
+            ("owner_rva", json!(0x2a10)),
+        ]
+    );
+    assert!(fields[1].1.is_u64(), "owner_rva must be a JSON number");
+
+    assert!(super::owner_fields(None, resolve).is_empty());
+    assert!(super::owner_fields(Some(0x0500_0000), resolve).is_empty());
+}

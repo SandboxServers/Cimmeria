@@ -30,6 +30,7 @@ use super::super::resources::ResourceCache;
 use super::super::session_identity;
 use super::super::world_entry::{handle_on_client_ready, handle_play_character};
 use super::super::ConnectedClientState;
+use super::bundle_drop::{self, DropReason, DroppedMsg};
 
 /// Dispatch a base-method message in the `0xC2..=0xC7` range. Branches on
 /// whether the connection is in-world (player entity present) or still at
@@ -198,17 +199,20 @@ pub(super) async fn dispatch_base_method(
             tracing::debug!(%addr, "Client sent onClientVersion -- acknowledged");
         }
         _ => {
-            tracing::trace!(
-                %addr,
-                msg_id = format_args!("{:#04x}", id),
-                msg_name = cimmeria_wire::names::server_msg_name(id),
-                method_name = cimmeria_wire::names::inbound_method(
-                    cimmeria_wire::names::ACCOUNT_CLASS_ID,
-                    id,
-                    payload
-                ),
-                entity_type = "Account",
-                "Unhandled Account base method"
+            bundle_drop::log_drop(
+                DropReason::UnhandledAccountMethod,
+                addr,
+                DroppedMsg {
+                    msg_id: id,
+                    class_id: cimmeria_wire::names::ACCOUNT_CLASS_ID,
+                    payload,
+                    // `method_name` comes from the wire byte; the Account
+                    // index offset (after the cache ids) is not restated here.
+                    method_index: None,
+                    offset: None,
+                    body_len: None,
+                },
+                || session_identity::identity_for_addr(connected, addr),
             );
         }
     }

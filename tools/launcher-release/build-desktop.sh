@@ -16,14 +16,30 @@
 #                    checks each one's architecture and digest
 #   launcher         build the UI and the 64-bit launcher, pinned to the
 #                    SHA-256 of each staged file; a release exports
-#                    CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH and
-#                    LAUNCHER_MANIFEST_PUBKEY_HEX first
+#                    CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
+#                    CIMMERIA_LAUNCHER_VERSION, LAUNCHER_MANIFEST_PUBKEY_HEX
+#                    and, once the updater key exists, LAUNCHER_UPDATER_PUBKEY
 #   verify           check the result: bitness, the telemetry DLL is not a
-#                    lab-bridge build, and the files beside the launcher are
-#                    the ones it was pinned to
-#   package <tag>    zip the launcher and its resources into
-#                    artifacts/stargate-worlds-launcher-desktop-windows-<tag>.zip
+#                    lab-bridge build, the files beside the launcher are the
+#                    ones it was pinned to, and the release stamps reached it
+#   package          zip the launcher and its resources into
+#                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
+#                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
+#   feed-tool        build the release_feed example (always the release
+#                    profile) that sign and verify-feed run; never with the
+#                    signing key in the environment
+#   sign <version> <url> <notes>
+#                    Minisign-sign the zip with LAUNCHER_UPDATER_MINISIGN_KEY
+#                    (and _PASSWORD) and write artifacts/<zip>.sig and
+#                    artifacts/latest.json, the feed offering it from <url>;
+#                    runs the built tool, no cargo
+#   verify-feed <version>
+#                    run the launcher engine's own feed, signature and zip
+#                    checks on those files against LAUNCHER_UPDATER_PUBKEY
+#   feed-dry-run <version>
+#                    feed-tool, then sign and verify-feed with a throwaway key
+#                    made here, for the PR dry run, which has no real key
 #   paths            print the artifact paths
 #
 # PROFILE=release (default) or dev. Output goes under cargo's target dir
@@ -55,6 +71,12 @@ TELEMETRY_DLL="$TARGET_DIR/$I686/$PROFILE_DIR/cimmeria_client_telemetry.dll"
 STAGED="$DESKTOP/shell/resources/windows"
 OUT="$DESKTOP_DIR/$PROFILE_DIR"
 LAUNCHER="$OUT/cimmeria-launcher-desktop.exe"
+# The release names (docs/analysis/launcher-consolidation/work-packets.md,
+# "Release names"). The launcher's updater offers whatever latest.json names,
+# but players and docs link to the zip by this exact name on launcher-current.
+ZIP_NAME="StargateWorlds-Launcher-windows-x64.zip"
+ZIP="artifacts/$ZIP_NAME"
+FEED="artifacts/latest.json"
 
 # The staged file name of each piece and the build variable that pins it.
 PIECES=(
@@ -176,27 +198,99 @@ stage_verify() {
       || die "the launcher does not embed its release tag $CIMMERIA_LAUNCHER_TAG"
     echo "launcher embeds release tag $CIMMERIA_LAUNCHER_TAG"
   fi
+  # A stamp that never reached the compile would leave the package version
+  # (the updater compares against it) or a Disabled updater, silently.
+  if [ -n "${CIMMERIA_LAUNCHER_VERSION:-}" ]; then
+    has_text "$LAUNCHER" "$CIMMERIA_LAUNCHER_VERSION" \
+      || die "the launcher does not embed its version $CIMMERIA_LAUNCHER_VERSION"
+    echo "launcher embeds version $CIMMERIA_LAUNCHER_VERSION"
+  fi
+  if [ -n "${LAUNCHER_UPDATER_PUBKEY:-}" ]; then
+    has_text "$LAUNCHER" "$LAUNCHER_UPDATER_PUBKEY" \
+      || die "the launcher does not embed LAUNCHER_UPDATER_PUBKEY"
+    echo "launcher embeds the updater public key"
+  fi
   echo "verified: 64-bit launcher pinned to its 32-bit launch worker and DLLs (player telemetry build)"
 }
 
 stage_package() {
-  local tag="${1:?package needs the release tag}"
   need "$LAUNCHER"
-  local name="stargate-worlds-launcher-desktop-windows-$tag"
-  local root="artifacts/$name"
-  rm -rf "$root" "artifacts/$name.zip" "artifacts/$name.zip.sha256"
+  local root="artifacts/package-root"
+  rm -rf "$root" "$ZIP" "$ZIP.sha256" "$ZIP.sig" "$FEED"
   mkdir -p "$root"
   cp "$LAUNCHER" "$root/"
   # Everything the bundle configuration ships: windows/ and graphics/.
   cp -R "$OUT/windows" "$OUT/graphics" "$root/"
-  python - "$(winpath artifacts)" "$name" <<'PY'
-import shutil, sys
-shutil.make_archive(f"{sys.argv[1]}/{sys.argv[2]}", "zip", sys.argv[1], sys.argv[2])
+  # The executable sits at the zip's root, not in a folder: the self-update
+  # swap (engine updater/apply/zip_swap.rs) refuses a zip without exactly one
+  # root .exe. Files only, sorted, `/` separators.
+  python - "$(winpath "$root")" "$(winpath "$ZIP")" <<'PY'
+import os, sys, zipfile
+root, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for here, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(here, name)
+            z.write(path, os.path.relpath(path, root).replace(os.sep, "/"))
 PY
   rm -rf "$root"
-  need "artifacts/$name.zip"
-  printf '%s  %s\n' "$(sha "artifacts/$name.zip")" "$name.zip" > "artifacts/$name.zip.sha256"
-  cat "artifacts/$name.zip.sha256"
+  need "$ZIP"
+  printf '%s  %s\n' "$(sha "$ZIP")" "$ZIP_NAME" > "$ZIP.sha256"
+  cat "$ZIP.sha256"
+}
+
+# The release-profile example that signs and checks the feed with the
+# launcher engine's own code (engine/examples/release_feed.rs). It is always a
+# release build, whatever PROFILE says.
+FEED_TOOL="$DESKTOP_DIR/release/examples/release_feed"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) FEED_TOOL="$FEED_TOOL.exe" ;; esac
+
+# Built in its own step, before any key is in the environment: compiling it
+# runs build scripts and proc macros of its dependencies for the first time,
+# and none of them may see the signing key.
+stage_feed_tool() {
+  cargo build --locked --release --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+    --example release_feed --target-dir "$DESKTOP_DIR"
+  need "$FEED_TOOL"
+}
+
+# Runs the already-built tool. No cargo here, so `sign` compiles nothing while
+# the key is set.
+release_feed() {
+  need "$FEED_TOOL"
+  "$FEED_TOOL" "$@"
+}
+
+stage_sign() {
+  local version="${1:?sign needs the version}" url="${2:?sign needs the zip URL}" notes="${3:-}"
+  need "$ZIP"
+  [ -n "${LAUNCHER_UPDATER_MINISIGN_KEY:-}" ] || die "sign needs LAUNCHER_UPDATER_MINISIGN_KEY"
+  release_feed sign "$(winpath "$ZIP")" "$version" "$url" "$notes" "$(winpath artifacts)"
+  need "$ZIP.sig"; need "$FEED"
+}
+
+stage_verify_feed() {
+  local version="${1:?verify-feed needs the version}"
+  need "$ZIP"; need "$ZIP.sig"; need "$FEED"
+  [ -n "${LAUNCHER_UPDATER_PUBKEY:-}" ] || die "verify-feed needs LAUNCHER_UPDATER_PUBKEY"
+  release_feed verify "$(winpath "$FEED")" "$(winpath "$ZIP")" "$(winpath "$ZIP.sig")" \
+    "$LAUNCHER_UPDATER_PUBKEY" "$version"
+}
+
+stage_feed_dry_run() {
+  local version="${1:?feed-dry-run needs the version}"
+  stage_feed_tool
+  local keys; keys="$(mktemp -d)"
+  # Throwaway: made here, used once, deleted. Never a release key.
+  export LAUNCHER_UPDATER_MINISIGN_PASSWORD="dry-run-$RANDOM$RANDOM"
+  release_feed keygen "$(winpath "$keys")"
+  LAUNCHER_UPDATER_MINISIGN_KEY="$(cat "$keys/secret.key")" \
+    stage_sign "$version" \
+    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-dry-run/$ZIP_NAME" \
+    "Dry run $version"
+  LAUNCHER_UPDATER_PUBKEY="$(cat "$keys/public.key")" stage_verify_feed "$version"
+  rm -rf "$keys"
 }
 
 case "${1:-}" in
@@ -204,7 +298,11 @@ case "${1:-}" in
   stage) stage_stage ;;
   launcher) stage_launcher ;;
   verify) stage_verify ;;
-  package) shift; stage_package "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" ;;
-  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
+  package) stage_package ;;
+  feed-tool) stage_feed_tool ;;
+  sign) shift; stage_sign "$@" ;;
+  verify-feed) shift; stage_verify_feed "$@" ;;
+  feed-dry-run) shift; stage_feed_dry_run "$@" ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" ;;
+  *) sed -n '2,43p' "$0" >&2; exit 2 ;;
 esac

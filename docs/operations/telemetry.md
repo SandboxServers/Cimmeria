@@ -478,7 +478,7 @@ with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `bad_rows` for an upload that was accepted in part, the last with a
 `bad_rows` count), `budget` and `limit` for a size
 refusal or truncation, `kept` (rows or lines replayed) and
-`dropped_estimate` for a truncation, `peer`, and `session_id` /
+`dropped_estimate` for a truncation, `pool` (`peer_share` or `route`) and `limit` for a `busy` refusal, `peer`, `cimmeria.session_kind`, and `session_id` /
 `install_id` once the token verified. The row never carries the payload.
 `dropped_estimate` is in the unit of the budget that was hit: rows for a
 chunk (past the expansion cap, estimated from the compression ratio),
@@ -516,7 +516,7 @@ server:
 | `cimmeria-client` | `client.native` | The injected DLL's events; the DLL's own event name is `client_target` and the log body |
 | `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles |
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
-| `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events. `kind=ended` carries the game's `pid` and `exit_code` (the exit code is absent when the OS reports none) |
+| `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events. `kind=game_exited` carries the game's `pid` and `exit_code` (the exit code is absent when the OS reports none); the desktop launcher also sends `host_pid` and `early` |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
 | `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled `warn` per refused upload, with its `route` and `reason` ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |

@@ -225,6 +225,7 @@ per-session is a record attribute instead:
 | `cimmeria.session_kind` | `lab` (a Live Research Lab session) or `player`, from the signed `kind` claim |
 | `lab` | `true` for a lab session |
 | `ts_ms`, `seq` | The uploader's clock and sequence number |
+| `client_pid` | The uploading process's id, from the `X-Cimmeria-Client-Pid` header (TG-PIPE-04). Absent when the header is absent or not a `u32`; never 0 |
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
 | `class_id` + `class_name`, `method_index` + `method_name`, `msg_id` + `msg_name` | Lifted from the DLL's `fields` bag (`type_id` becomes `class_id`) and named from the NT-30 wire tables: `method_index` is a flat ClientMethod index, looked up in the row's entity type when it has one; `msg_id` is read from the server's interface on `client.net.out` and `client.ability.sent*`, the client's otherwise |
@@ -239,6 +240,8 @@ per-session is a record attribute instead:
 Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
 The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on `session.end` and `Client entities cleaned up` (base), and carries it to the cell on `InitPlayerState` (stored as `CellEntity.session_kind`) for `session.start` and every `playtest.friction` row, so one filter spans client, launcher and server rows. It is absent when Phase 3 did not resolve the account.
+
+`session.end` also carries the session's Mercury channel health (TG-MER-07), snapshotted from `Channel::health()` before the session is removed: `tx_outstanding` (reliable packets sent and not acked, TX window plus deferred queue), `oldest_unacked_age_ms` (from the oldest one's first send; absent when none), `retransmits_total`, `tx_holes`, `tx_hole_stalls`, `rx_stalls` (lifetime counters), `srtt_ms` (absent before a clean RTT sample) and `last_rx_age_ms`. A large `last_rx_age_ms` with `tx_outstanding = 0` is a client that vanished; a deep `tx_outstanding` with an old `oldest_unacked_age_ms` and climbing `retransmits_total` is a peer that still talks but stopped acking.
 
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
@@ -322,6 +325,11 @@ parameters; values written into the SQL text itself are logged). sqlx also
 WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
 is the earlier, sampled signal for a pool running out of connections. See the
 [target catalog](observability-target-catalog.md).
+
+**Content engine conditions (TG-MIS-13).** `cimmeria_content_engine=debug`
+exports the crate's DEBUG rows, including the fail-closed condition decisions
+in `conditions` (`Condition::World`, `EntityTagState`, `TutorialShown`), which
+the leading `info` used to cut. See the [target catalog](observability-target-catalog.md).
 
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a

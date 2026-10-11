@@ -94,9 +94,10 @@ pub enum SessionMetaKind {
     Started,
     FileRotated,
     DroppedWindow,
-    /// The game process exited. `fields` carries `pid` and, when the OS
-    /// reported one, `exit_code`.
-    Ended,
+    /// The game process ended. The desktop launcher's fields: `exit_code`,
+    /// `pid` (the game's), `host_pid` (the launch helper's) and `early`
+    /// (it ran under ten seconds).
+    GameExited,
 }
 
 /// Parsed fields of one client log line, returned by
@@ -240,24 +241,26 @@ mod tests {
         });
         let json = serde_json::to_value(&ev).unwrap();
         assert_eq!(json["kind"], "file_rotated");
+        let exited = serde_json::to_value(SessionMetaKind::GameExited).unwrap();
+        assert_eq!(exited, "game_exited");
     }
 
-    /// `kind=ended` carries the game's pid and exit code through the wire
+    /// `kind=game_exited` carries the game's pid and exit code through the wire
     /// format and back unchanged.
     #[test]
-    fn session_meta_ended_round_trips_pid_and_exit_code() {
+    fn session_meta_game_exited_round_trips_pid_and_exit_code() {
         let mut fields = serde_json::Map::new();
         fields.insert("pid".into(), serde_json::Value::from(4242_u32));
         fields.insert("exit_code".into(), serde_json::Value::from(7_i32));
         let ev = TelemetryEvent::SessionMeta(SessionMetaEvent {
             ts_ms: 9,
             seq: 9,
-            kind: SessionMetaKind::Ended,
+            kind: SessionMetaKind::GameExited,
             fields,
         });
         let text = serde_json::to_string(&ev).unwrap();
         let json: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(json["kind"], "ended");
+        assert_eq!(json["kind"], "game_exited");
         assert_eq!(json["fields"]["pid"], 4242);
         assert_eq!(json["fields"]["exit_code"], 7);
         let back: TelemetryEvent = serde_json::from_str(&text).unwrap();

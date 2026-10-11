@@ -366,8 +366,111 @@ async fn live_db_presence_fanout_logs_summary_row() {
     assert!(row.has_field("player_id", &subject_player.to_string()));
     assert!(row.has_field("watchers", "2"));
     assert!(row.has_field("ignoring_watchers", "1"));
+    assert!(row.has_field("skipped_ignoring", "1"));
     assert!(row.has_field("online_watchers", "0"));
     assert!(row.has_field("sent", "0"));
+
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
+}
+
+/// D-TG10 guard: with both a Friends watcher and an Ignore watcher online,
+/// only the friend receives CM 89. The summary row's `sent` counts the friend
+/// alone and `skipped_ignoring` counts the ignorer. Reverting the ignorer
+/// filter in `fanout_contact_event` sends to both and fails every assertion.
+#[tokio::test]
+async fn live_db_ignorer_gets_no_presence() {
+    use crate::test_support::test_default_connected_client_state;
+    use std::net::SocketAddr;
+
+    let pool = require_db_or_skip!();
+    let friend_account = TEST_BASE + 100;
+    let friend_player = TEST_BASE + 101;
+    let ignorer_account = TEST_BASE + 102;
+    let ignorer_player = TEST_BASE + 103;
+    let subject_player = TEST_BASE + 104;
+    cleanup(&pool, friend_account, friend_player).await;
+    cleanup(&pool, ignorer_account, ignorer_player).await;
+    insert_minimal_player(&pool, friend_account, friend_player).await;
+    insert_minimal_player(&pool, ignorer_account, ignorer_player).await;
+
+    let friends = create_list(&pool, friend_player, "Friends", 300)
+        .await
+        .unwrap();
+    let ignore = create_list(&pool, ignorer_player, "Ignore", 301)
+        .await
+        .unwrap();
+    let subject = "IgnorerPresenceSubject".to_string();
+    add_members(
+        &pool,
+        friend_player,
+        friends,
+        std::slice::from_ref(&subject),
+    )
+    .await
+    .unwrap();
+    add_members(
+        &pool,
+        ignorer_player,
+        ignore,
+        std::slice::from_ref(&subject),
+    )
+    .await
+    .unwrap();
+
+    let friend_addr: SocketAddr = "127.0.0.1:6101".parse().unwrap();
+    let ignorer_addr: SocketAddr = "127.0.0.1:6102".parse().unwrap();
+    let mut friend = test_default_connected_client_state();
+    friend.active_player_id = Some(friend_player);
+    friend.player_entity_id = Some(6101);
+    let mut ignorer = test_default_connected_client_state();
+    ignorer.active_player_id = Some(ignorer_player);
+    ignorer.player_entity_id = Some(6102);
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (friend_addr, friend),
+        (ignorer_addr, ignorer),
+    ])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (6101u32, friend_addr),
+        (6102u32, ignorer_addr),
+    ])));
+
+    let capture = LogCapture::install();
+    let tt = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = tt.clone();
+    let db_pool = Some(Arc::new(pool.clone()));
+    presence_fanout::fanout_contact_event(
+        &subject,
+        subject_player,
+        EVENT_DEATH,
+        0,
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    assert_eq!(
+        tt.filter_to(friend_addr).len(),
+        1,
+        "the Friends watcher must receive the presence event"
+    );
+    assert!(
+        tt.filter_to(ignorer_addr).is_empty(),
+        "a watcher who ignores the subject must receive no presence event"
+    );
+    let row = capture
+        .find_message(
+            tracing::Level::DEBUG,
+            "ContactList: presence fanout complete",
+        )
+        .expect("fanout must log the summary row");
+    assert!(row.has_field("watchers", "2"));
+    assert!(row.has_field("ignoring_watchers", "1"));
+    assert!(row.has_field("skipped_ignoring", "1"));
+    assert!(row.has_field("online_watchers", "1"));
+    assert!(row.has_field("sent", "1"));
 
     cleanup(&pool, friend_account, friend_player).await;
     cleanup(&pool, ignorer_account, ignorer_player).await;

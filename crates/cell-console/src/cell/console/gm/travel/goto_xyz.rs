@@ -22,10 +22,16 @@ pub(in crate::cell::console::gm) async fn handle_goto_xyz(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The calling GM's Rule 5 identity, carried on every row below.
+    let who = space_mgr.player_identity(entity_id);
     let Some(position) = read_xyz(args, 0) else {
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             args_len = args.len(),
             "gmGotoXYZ: truncated args (need 3×FLOAT = 12 bytes)"
         );
@@ -40,6 +46,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_xyz(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             ?position,
             "gmGotoXYZ: non-finite coordinate rejected"
         );
@@ -57,6 +67,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_xyz(
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 "gmGotoXYZ: caller entity not found"
             );
             send_gm_feedback(entity_id, "gmGotoXYZ: caller entity not found", tx).await;
@@ -67,6 +81,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_xyz(
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         ?position,
         space_id,
         world = space_mgr.world_name_for_space(space_id),

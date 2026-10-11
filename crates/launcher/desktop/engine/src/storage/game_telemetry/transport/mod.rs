@@ -39,13 +39,16 @@
 //!   (`DesktopState::set_game_telemetry`) deletes the queue unsent, and at
 //!   startup [`recover_on_startup`] keeps an opted-in player's queue and
 //!   deletes an opted-out player's, so withdrawn data is never sent after
-//!   a later opt-in.
+//!   a later opt-in. A transport stops at the change too: every enqueue,
+//!   flush and bundle checks its [`Consent`] is still current, before and
+//!   after it writes, so an opt-out while the game runs leaves no queue
+//!   behind (a chunk already being posted at that moment still completes).
 //!
 //! API for the session and event packets (LX-08b, LX-08c):
 //!
 //! | Call | Use |
 //! |---|---|
-//! | [`recover_on_startup`]`(&state).await` | once, when the launcher opens its state directory |
+//! | [`recover_on_startup`]`(&state).await`, or [`recover_now`]`(&state)` under the lock | once, when the launcher opens its state directory |
 //! | [`Consent::read`]`(&state)` | under the state lock; `None` means opted out, do nothing |
 //! | [`queue_without_session`]`(&consent, event)` | an event with no game session yet (install result); ships with the next session |
 //! | [`Transport::open`]`(consent, &session, &login_servers, install_dir)` | after Play minted `session` |
@@ -65,9 +68,9 @@ mod tests;
 pub use cimmeria_launcher_core::telemetry::bundle::BundleOutcome;
 pub use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 pub(crate) use queue::{discard_queue, queue_now};
-pub use queue::{queue_without_session, recover_on_startup, Consent, Recovery};
+pub use queue::{queue_without_session, recover_now, recover_on_startup, Consent, Recovery};
 
-use super::{session, Identity, Session};
+use super::{session, Session};
 use crate::client_setup::login_servers::LoginServer;
 use crate::telemetry_endpoint::EndpointPolicy;
 use cimmeria_launcher_core::telemetry::auth::{AuthError, DevSessionResponse};
@@ -79,7 +82,7 @@ use cimmeria_launcher_core::telemetry::{
 };
 use queue::flush_turn;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -157,10 +160,11 @@ pub struct Transport {
     auth: reqwest::Client,
     /// Chunks and the bundle.
     upload: reqwest::Client,
-    identity: Identity,
+    /// Checked around every queue write and send: an opt-out stops this
+    /// transport mid-session.
+    consent: Consent,
     login_servers: Vec<LoginServer>,
     tags: Vec<String>,
-    queue_dir: PathBuf,
     auth_hold: Mutex<AuthHold>,
 }
 
@@ -196,10 +200,9 @@ impl Transport {
             telemetry,
             auth: client(session::TOTAL)?,
             upload: client(UPLOAD_TOTAL)?,
-            identity: consent.identity,
+            consent,
             login_servers: login_servers.to_vec(),
             tags: marker.tags.clone(),
-            queue_dir: consent.queue_dir,
             auth_hold: Mutex::new(AuthHold::new()),
         })
     }
@@ -212,11 +215,30 @@ impl Transport {
 
     /// Stamp the next `seq` (and `ts_ms` when 0) and append to the queue.
     /// Never waits on a flush in progress.
+    /// After an opt-out: Err(NotOptedIn), and nothing is written.
     pub async fn enqueue(&self, event: TelemetryEvent) -> Result<(), TransportError> {
-        self.telemetry
+        if !self.consent.current() {
+            return Err(TransportError::NotOptedIn);
+        }
+        let result = self
+            .telemetry
             .enqueue(event)
             .await
-            .map_err(|e| TransportError::of(&e))
+            .map_err(|e| TransportError::of(&e));
+        self.consent.undo_if_withdrawn()?;
+        result
+    }
+
+    /// False once the player has changed their game-telemetry choice since
+    /// this transport was opened: every call after that refuses. A chunk
+    /// already being posted when the choice changed still completes.
+    pub fn consented(&self) -> bool {
+        self.consent.current()
+    }
+
+    /// The queue (and state) directory this transport writes to.
+    pub(crate) fn queue_dir(&self) -> &Path {
+        &self.consent.queue_dir
     }
 
     /// Send what is queued, at most eight chunks. Returns the events the
@@ -228,8 +250,19 @@ impl Transport {
     }
 
     async fn flush_chunks(&self, max_chunks: usize) -> Result<u64, TransportError> {
-        let turn = flush_turn(&self.queue_dir);
+        let turn = flush_turn(&self.consent.queue_dir);
         let _turn = turn.lock().await;
+        if !self.consent.current() {
+            return Err(TransportError::NotOptedIn);
+        }
+        let result = self.flush_in_turn(max_chunks).await;
+        // A flush puts back what the server did not take; after an opt-out
+        // that must not survive.
+        self.consent.undo_if_withdrawn()?;
+        result
+    }
+
+    async fn flush_in_turn(&self, max_chunks: usize) -> Result<u64, TransportError> {
         if self.auth_held() {
             return Ok(0);
         }
@@ -276,9 +309,12 @@ impl Transport {
         &self,
         event_count: u64,
     ) -> Result<Option<BundleOutcome>, TransportError> {
-        let turn = flush_turn(&self.queue_dir);
+        let turn = flush_turn(&self.consent.queue_dir);
         let _turn = turn.lock().await;
-        let queue = DiskQueue::new(&self.queue_dir);
+        if !self.consent.current() {
+            return Err(TransportError::NotOptedIn);
+        }
+        let queue = DiskQueue::new(&self.consent.queue_dir);
         let dropped = queue.dropped_count();
         let mut result = self
             .telemetry
@@ -396,7 +432,7 @@ impl Transport {
 
     async fn remint(&self) -> Result<(), TransportError> {
         let tags: Vec<&str> = self.tags.iter().map(String::as_str).collect();
-        let session = super::start(&self.identity, &self.login_servers, &tags)
+        let session = super::start(&self.consent.identity, &self.login_servers, &tags)
             .await
             .map_err(|outcome| match outcome {
                 super::Outcome::EndpointRefused => TransportError::EndpointRefused,
