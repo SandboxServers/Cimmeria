@@ -6,7 +6,8 @@ use tokio::sync::mpsc;
 use cimmeria_entity::missions::STATUS_COMPLETED;
 
 use super::{
-    suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
+    send_mission_frame, suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE,
+    ON_STEP_UPDATE,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{EntityNames, SpaceManager};
@@ -135,13 +136,16 @@ pub async fn complete_mission_direct(
         args.push(STATUS_COMPLETED as u8);
         args.push(u8::from(*hidden));
         args.push(u8::from(*optional));
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_OBJECTIVE_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_OBJECTIVE_UPDATE,
+            args,
+            "onObjectiveUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     // Send step completed
@@ -149,13 +153,16 @@ pub async fn complete_mission_direct(
         let mut args = Vec::with_capacity(5);
         args.extend_from_slice(&sid.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_STEP_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_STEP_UPDATE,
+            args,
+            "onStepUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     // Send mission completed
@@ -163,11 +170,14 @@ pub async fn complete_mission_direct(
     args.extend_from_slice(&mission_id.to_le_bytes());
     args.push(STATUS_COMPLETED as u8);
     args.extend_from_slice(&0i32.to_le_bytes());
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_MISSION_UPDATE,
-            args,
-        })
-        .await;
+    send_mission_frame(
+        tx,
+        entity_id,
+        ON_MISSION_UPDATE,
+        args,
+        "onMissionUpdate",
+        mission_id,
+        &who,
+    )
+    .await;
 }

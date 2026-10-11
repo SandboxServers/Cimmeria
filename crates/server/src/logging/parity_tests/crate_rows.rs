@@ -38,7 +38,6 @@ const NO_OWN_ROW: &[(&str, &str)] = &[
     ("admin-api", NEVER_EXPORTED_BELOW_INFO),
     ("commands", NEVER_EXPORTED_BELOW_INFO),
     ("common", NEVER_EXPORTED_BELOW_INFO),
-    ("content-engine", NEVER_EXPORTED_BELOW_INFO),
     ("defs", NEVER_EXPORTED_BELOW_INFO),
     ("entity", NEVER_EXPORTED_BELOW_INFO),
     ("game", NEVER_EXPORTED_BELOW_INFO),
@@ -321,6 +320,21 @@ fn no_own_row_exemptions_are_in_process_and_rowless() {
             "{name} has an OTEL_FILTER row now; remove its NO_OWN_ROW entry"
         );
     }
+}
+
+/// TG-MIS-13: the content engine's condition rows (`conditions`, the
+/// fail-closed decisions) reach `cimmeria-server` at the DEBUG they are
+/// emitted at. Before its crate row they were cut by the leading `info`.
+#[test]
+fn content_engine_condition_reaches_the_server_index() {
+    let (dispatch, hits) = probe(OTEL_FILTER);
+    let sinks = sinks_for(
+        &dispatch,
+        &hits,
+        "cimmeria_content_engine::conditions",
+        Level::DEBUG,
+    );
+    assert!(sinks.contains(OTLP_SERVER), "got {sinks:?}");
 }
 
 /// **Guard (b).** No module-path row of `OTEL_FILTER` or a file layer reaches

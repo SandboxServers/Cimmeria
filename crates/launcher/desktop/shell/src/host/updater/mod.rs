@@ -34,24 +34,17 @@ pub enum UpdaterCommand {
 /// Both the "is this newer" check and the startup acknowledgment compare
 /// against the one compiled launcher version (D-LX8), so they never disagree.
 pub(crate) use cimmeria_launcher_engine::launcher_compatibility::compiled_version;
-/// The rolling `launcher-current` release's static Tauri feed (LX-15).
-const FEED_URL: &str =
-    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/latest.json";
-/// GitHub serves release assets by redirect; every hop is checked against this.
-const FEED_HOSTS: [&str; 3] = [
-    "github.com",
-    "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com",
-];
 
-/// The release updater configuration, from the Minisign public key compiled in
-/// as `LAUNCHER_UPDATER_PUBKEY`. Windows only: the feed carries only the
+/// The release updater configuration: the `launcher-current` feed and its
+/// hosts (`updater::RELEASE_FEED_URL`, shared with the release workflow's
+/// feed check) and the Minisign public key compiled in as
+/// `LAUNCHER_UPDATER_PUBKEY`. Windows only: the feed carries only the
 /// `windows-x86_64` zip, so macOS stays Disabled as before. No key, or a key
 /// that does not decode, leaves the updater Disabled.
 fn compiled_updater_config() -> Option<updater::Config> {
     updater_config_from(
         option_env!("LAUNCHER_UPDATER_PUBKEY"),
-        cfg!(windows).then_some("windows-x86_64"),
+        cfg!(windows).then_some(updater::WINDOWS_PLATFORM),
     )
 }
 fn updater_config_from(
@@ -60,8 +53,7 @@ fn updater_config_from(
 ) -> Option<updater::Config> {
     let public_key = public_key.map(str::trim).filter(|key| !key.is_empty())?;
     let platform = platform?;
-    let hosts = FEED_HOSTS.iter().map(|host| host.to_string()).collect();
-    match updater::Config::new(FEED_URL, public_key, compiled_version(), platform, hosts) {
+    match updater::release_config(public_key, compiled_version(), platform) {
         Ok(config) => Some(config),
         Err(error) => {
             // A release built with a bad key must not look like "no updates".

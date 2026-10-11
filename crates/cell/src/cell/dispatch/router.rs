@@ -166,9 +166,14 @@ pub async fn dispatch_cell_method(
     // direct signal for "client called a method we don't implement".
     // Reverting to `info!` makes the dispatcher gap invisible on a
     // warn-filtered ops dashboard.
+    let identity = space_mgr.player_identity(entity_id);
     tracing::warn!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         args_len = args.len(),
@@ -217,6 +222,7 @@ mod tests {
             .unwrap();
         if let Some(e) = mgr.get_entity_mut(entity_id) {
             e.access_level = 2; // GameMaster — passes the gate
+            e.account_id = Some(77);
         }
         let args: &[u8] = &[0x01, 0x02, 0x03];
 
@@ -253,6 +259,11 @@ mod tests {
         assert!(
             event.has_field("entity_id", "4242"),
             "entity_id must round-trip so ops can pivot per-player; got {event:#?}",
+        );
+        assert!(
+            event.has_field("account_id", "77"),
+            "account_id must come from SpaceManager::player_identity so a catch-all \
+             warn names the owning account; got {event:#?}",
         );
     }
 }

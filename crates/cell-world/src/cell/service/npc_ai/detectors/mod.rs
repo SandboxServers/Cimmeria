@@ -196,7 +196,7 @@ impl NpcDetectors {
     }
 
     /// WARN gate: `Some(suppressed)` to emit, `None` to count silently.
-    pub(in crate::cell) fn admit_warn(
+    pub fn admit_warn(
         &mut self,
         npc_id: u32,
         kind: &'static str,

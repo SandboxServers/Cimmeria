@@ -1552,6 +1552,7 @@ dependencies = [
  "socket2",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1714,6 +1715,7 @@ dependencies = [
  "cimmeria-wire",
  "cimmeria-wire-log",
  "cimmeria-workspace-hack",
+ "log",
  "serde_json",
  "sqlx",
  "thiserror 2.0.21",

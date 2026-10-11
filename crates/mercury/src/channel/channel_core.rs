@@ -135,6 +135,10 @@ pub struct Channel {
     /// [`consts::TX_HOLE_WARN_MS`] over this channel's life.
     pub tx_hole_stalls: u64,
 
+    /// Retransmits sent over this channel's life, bumped once per expired
+    /// entry in [`Self::check_timeouts`]. Read through [`Self::health`].
+    pub retransmits_total: u64,
+
     /// Capped entries dropped unacked since the last
     /// [`Self::take_abandoned`]. See [`super::retransmit_cap`].
     pub(super) abandoned: Vec<AbandonedPacket>,
@@ -261,6 +265,7 @@ impl Channel {
             tx_hole: None,
             tx_holes: 0,
             tx_hole_stalls: 0,
+            retransmits_total: 0,
             abandoned: Vec::new(),
             remote_addr,
             last_sent: now,
@@ -341,6 +346,7 @@ impl Channel {
         let now = self.clock.now();
         let entry = TxEntry {
             packet,
+            first_sent: now,
             last_sent: now,
             retransmit_count: 0,
             raw_bytes,
@@ -489,6 +495,7 @@ impl Channel {
         let now = self.clock.now();
         self.tx_window.push_back(TxEntry {
             packet,
+            first_sent: now,
             last_sent: now,
             retransmit_count: 0,
             // send_packet entries have no raw bytes — caller hasn't
@@ -575,6 +582,7 @@ impl Channel {
             budget -= 1;
             entry.retransmit_count += 1;
             entry.last_sent = now;
+            self.retransmits_total += 1;
             // Stable retransmit event for SigNoz: lets operators ask
             // "is the network actually lossy?" by counting events with
             // `target = "mercury.retransmit"` per peer / per minute.

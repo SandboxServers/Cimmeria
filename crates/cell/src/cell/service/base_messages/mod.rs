@@ -274,10 +274,17 @@ pub(super) async fn handle_base_message(
                 entity.session_kind = session_kind;
                 // Fill the friction watch's row context now: `player_tick`
                 // first runs on movement, so a chain-fired friction row right
-                // after entry would otherwise carry no session kind.
+                // after entry would otherwise carry no identity, world or
+                // session kind (TG-MIS-02). `player_id` is taken from the
+                // message: `handle_init_player_state` stamps it only below.
                 crate::cell::playtest_friction::note_session(
                     entity_id,
+                    cimmeria_entity::cell_entity::PlayerIdentity {
+                        player_id: Some(player_id),
+                        ..entity.identity()
+                    },
                     crate::cell::space_manager::EntityNames::of(entity).entity_name,
+                    Some(world_name.as_str()),
                     entity.session_kind,
                 );
             } else {

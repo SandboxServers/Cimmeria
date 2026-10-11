@@ -99,6 +99,9 @@ tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+# `log::LevelFilter` for the pool's slow-statement threshold (TG-DB-06):
+# sqlx's `log_slow_statements` takes the `log` crate's type.
+log = { workspace = true }
 thiserror = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 

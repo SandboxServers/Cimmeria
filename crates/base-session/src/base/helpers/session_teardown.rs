@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_common::EntityId;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::channel::ChannelHealth;
 use cimmeria_mercury::transport::Transport;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -63,6 +64,23 @@ pub struct SessionEndRow<'a> {
     /// (TG-NET-16), as `cimmeria.session_kind`; absent before Phase 3
     /// resolved the account (TG-NET-17).
     pub session_kind: Option<&'static str>,
+    /// The session's Mercury channel health, snapshotted before the session
+    /// is removed ([`session_channel_health`]): tells "the client vanished"
+    /// (old `last_rx_age_ms`, empty window) from "the server stopped getting
+    /// acks" (deep `tx_outstanding`, climbing `retransmits_total`)
+    /// (TG-MER-07).
+    pub channel: ChannelHealth,
+}
+
+/// `state`'s Mercury channel health, for [`SessionEndRow::channel`]. Takes
+/// the channel lock, so call it under the `connected` lock (the usual
+/// `connected` → `channel` order) and never while holding the channel. A
+/// poisoned channel still reads.
+pub fn session_channel_health(state: &ConnectedClientState) -> ChannelHealth {
+    match state.channel.lock() {
+        Ok(ch) => ch.health(),
+        Err(poisoned) => poisoned.into_inner().health(),
+    }
 }
 
 /// Milliseconds since `state`'s last fresh datagram, for
@@ -94,6 +112,14 @@ pub fn log_session_end(row: &SessionEndRow<'_>) {
         in_world = row.in_world,
         world = row.world,
         cimmeria.session_kind = row.session_kind,
+        tx_outstanding = row.channel.tx_outstanding,
+        oldest_unacked_age_ms = row.channel.oldest_unacked_age_ms,
+        retransmits_total = row.channel.retransmits_total,
+        tx_holes = row.channel.tx_holes,
+        tx_hole_stalls = row.channel.tx_hole_stalls,
+        rx_stalls = row.channel.rx_stalls,
+        srtt_ms = row.channel.srtt_ms,
+        last_rx_age_ms = row.channel.last_rx_age_ms,
         "player session ended"
     );
 }
@@ -212,6 +238,7 @@ struct EndHints {
     in_world: bool,
     world: Option<String>,
     session_kind: Option<&'static str>,
+    channel: ChannelHealth,
 }
 
 /// The body of both teardown entry points. `false` when nothing was torn
@@ -292,6 +319,8 @@ fn teardown_session(
             in_world: c.listed_online,
             world: c.world_name.clone(),
             session_kind: c.session_kind,
+            // TG-MER-07: the channel goes with `clients.remove` below.
+            channel: session_channel_health(c),
         };
         // Snapshot before `remove`: a character still in the world is
         // announced offline once (a `logOff` already unlisted and announced).
@@ -359,6 +388,7 @@ fn teardown_session(
             in_world: hints.in_world,
             world: hints.world.as_deref(),
             session_kind: hints.session_kind,
+            channel: hints.channel,
         });
 
         // Remove from entity->addr reverse index, and record the witness as

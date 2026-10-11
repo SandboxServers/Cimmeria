@@ -15,6 +15,12 @@
 //! - [`state_lock`] — the unreadable-saved-missions lock (TG-DB-12): every
 //!   mutation and persist above refuses while it holds.
 
+use tokio::sync::mpsc;
+
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
+use crate::cell::messages::CellToBaseMsg;
+
 mod complete_direct;
 mod lifecycle;
 mod persist;
@@ -79,6 +85,46 @@ pub fn suppress_hidden_mission_frames(
         );
     }
     is_hidden
+}
+
+/// Queue one client mission frame (`onMissionUpdate`, `onStepUpdate` or
+/// `onObjectiveUpdate`) to the base.
+///
+/// A closed base channel means the client never hears about this journal
+/// change, so it WARNs with the frame name and the player's identity instead
+/// of discarding the send. The entity's name is the character name, the same
+/// as the `player_name` in `who`.
+pub(super) async fn send_mission_frame(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    entity_id: u32,
+    method_index: u16,
+    args: Vec<u8>,
+    frame: &'static str,
+    mission_id: i32,
+    who: &PlayerIdentity,
+) {
+    let msg = CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index,
+        args,
+    };
+    if let Err(e) = tx.send(msg).await {
+        tracing::warn!(
+            event = "mission_frame_dropped",
+            reason = "base_channel_closed",
+            frame,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            error = %e,
+            "Mission journal frame not queued: the base channel is closed"
+        );
+    }
 }
 
 // ── Method indices for mission client methods ────────────────────────────────

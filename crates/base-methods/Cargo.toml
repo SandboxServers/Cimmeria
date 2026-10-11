@@ -58,3 +58,5 @@ cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # through this crate's hook sites install it on their sessions. A leaf
 # that depends only on cimmeria-base-session, so this is no cycle.
 cimmeria-base-crafting = { workspace = true }
+# Paused time for the appearance refresh's bounded-retry tests (TG-ITM-14).
+tokio = { workspace = true, features = ["test-util"] }
