@@ -13,6 +13,7 @@ on:
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
+      - '.github/workflows/launcher-desktop-macos.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
       - 'crates/client-patches/**'
@@ -33,6 +34,7 @@ on:
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
+      - '.github/workflows/launcher-desktop-macos.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
       - 'crates/client-patches/**'
@@ -127,7 +129,8 @@ jobs:
   # them, the artifact checks, the zip, and the zip's signature and feed with a
   # throwaway key. No manifest key, no tag and no updater key: it is a
   # development build, as every PR build is. It also builds the five Windows
-  # pieces the macOS app carries, for release-dry-run-macos.
+  # pieces the macOS app carries, and the macOS dry run's stamps, for
+  # release-dry-run-macos.
   release-dry-run:
     name: desktop release build dry run (Windows)
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
@@ -137,7 +140,22 @@ jobs:
         shell: bash
     outputs:
       mac_pieces_sha256: ${{ steps.macpieces.outputs.sha256 }}
+      dry_run_tag: ${{ steps.drystamp.outputs.tag }}
+      dry_run_version: ${{ steps.drystamp.outputs.version }}
+      dry_run_epoch: ${{ steps.drystamp.outputs.epoch }}
     steps:
+      # Stamps for the macOS dry run only: a same-day release of this commit.
+      # This job's own build stays unstamped, as LX-15 proved it.
+      - name: stamp the macOS dry run as a same-day release
+        id: drystamp
+        run: |
+          set -euo pipefail
+          EPOCH="$(date -u +%s)"
+          {
+            echo "tag=launcher-$(date -u -d "@${EPOCH}" +%Y%m%d)-${GITHUB_SHA:0:7}"
+            echo "version=$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(date -u -d "@${EPOCH}" +%-d)-2"
+            echo "epoch=${EPOCH}"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -203,60 +221,27 @@ jobs:
             artifacts/latest.json
           retention-days: 7
 
-  # launcher-release.yml's desktop-macos job, minus publishing: the Windows
-  # dry run's five pieces checked and staged, the pinned D9VK, the release
-  # profile .app, the ad-hoc signature and every check and the zip the release
-  # makes. No tag, no manifest key and no upload to a release. It stamps a
-  # version, so the Info.plist and embedded-version checks run here too.
+  # launcher-release.yml's desktop-macos job itself (the same reusable
+  # workflow), minus publishing: the Windows dry run's five pieces checked and
+  # staged, the pinned D9VK, the release-profile .app, the ad-hoc signature,
+  # every check and the zip. Stamped as a same-day release (a fake tag and a
+  # `YYYY.M.D-2` version) with the development manifest key, so the tag check
+  # and the same-day Info.plist rule run here and not first at a release. No
+  # release secret and no upload to a release.
   release-dry-run-macos:
     name: desktop release build dry run (macOS)
     needs: release-dry-run
-    runs-on: macos-15
-    timeout-minutes: 60
-    defaults:
-      run:
-        shell: bash
-    env:
-      MAC_PIECES_SHA256: ${{ needs.release-dry-run.outputs.mac_pieces_sha256 }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: launcher-release-desktop-macos-dry-run
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          workspaces: |
-            crates/launcher/desktop -> ../../../target/desktop
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-      - name: install the Tauri CLI
-        run: cargo install tauri-cli --version 2.12.1 --locked
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          name: desktop-mac-pieces-dry-run
-          path: mac-pieces
-      - name: stage the Windows pieces, checked against the Windows job's digest
-        run: tools/launcher-release/build-desktop-macos.sh pieces mac-pieces "${MAC_PIECES_SHA256}"
-      - name: fetch the pinned D9VK d3d9.dll
-        run: tools/launcher-release/build-desktop-macos.sh d3d9
-      # Once, so the build and the check agree across midnight UTC.
-      - name: stamp a dry-run version
-        run: echo "CIMMERIA_LAUNCHER_VERSION=$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)" >> "$GITHUB_ENV"
-      - name: build the app, pinned to them
-        run: tools/launcher-release/build-desktop-macos.sh app
-      - name: sign the app ad hoc
-        run: tools/launcher-release/build-desktop-macos.sh sign
-      - name: verify the app
-        run: tools/launcher-release/build-desktop-macos.sh verify
-      - name: package
-        run: tools/launcher-release/build-desktop-macos.sh package
-      - name: Retain the package for inspection
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: desktop-launcher-macos-dry-run
-          path: artifacts/StargateWorlds-Launcher-macos-arm64.zip*
-          retention-days: 7
-
+    permissions:
+      contents: read
+    uses: ./.github/workflows/launcher-desktop-macos.yml
+    with:
+      pieces_artifact: desktop-mac-pieces-dry-run
+      pieces_sha256: ${{ needs.release-dry-run.outputs.mac_pieces_sha256 }}
+      artifact_name: desktop-launcher-macos-dry-run
+      retention_days: 7
+      tag: ${{ needs.release-dry-run.outputs.dry_run_tag }}
+      version: ${{ needs.release-dry-run.outputs.dry_run_version }}
+      epoch: ${{ needs.release-dry-run.outputs.dry_run_epoch }}
+      dev_manifest_key: true
+      cache_key: launcher-release-desktop-macos-dry-run
+      save_cache: ${{ github.ref == 'refs/heads/main' }}

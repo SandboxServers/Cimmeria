@@ -81,10 +81,23 @@ die() { echo "::error::$*" >&2; exit 1; }
 need() { [ -s "$1" ] || die "$1 was not built"; }
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
-# Exit 0 when the file contains the given text.
+# Return 0 when the file contains the given text, 1 when it does not. Anything
+# else (an unreadable file, an empty needle, python failing) ends the build, so
+# a "does not contain" check can never pass because the search did not run.
 has_text() {
-  python3 -c "import sys; sys.exit(0 if open(sys.argv[1],'rb').read().find(sys.argv[2].encode()) >= 0 else 1)" \
-    "$1" "$2"
+  [ -n "$2" ] || die "has_text: empty search text for $1"
+  local rc=0
+  python3 -c '
+import sys
+try:
+    data = open(sys.argv[1], "rb").read()
+except OSError as error:
+    print(f"cannot read {sys.argv[1]}: {error}", file=sys.stderr)
+    sys.exit(2)
+sys.exit(0 if data.find(sys.argv[2].encode()) >= 0 else 1)
+' "$1" "$2" || rc=$?
+  [ "$rc" -le 1 ] || die "could not search $1 (exit $rc)"
+  return "$rc"
 }
 
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
@@ -124,6 +137,13 @@ stage_d3d9() {
 }
 
 stage_app() {
+  # A workflow passes an unset input or secret as an empty string; the build
+  # must see "not stamped", exactly as a local build does.
+  local stamp
+  for stamp in CIMMERIA_LAUNCHER_TAG CIMMERIA_LAUNCHER_BUILD_EPOCH CIMMERIA_LAUNCHER_VERSION \
+    CIMMERIA_BUILD_BRANCH LAUNCHER_MANIFEST_PUBKEY_HEX LAUNCHER_LOG_SAS_URL; do
+    [ -n "${!stamp:-}" ] || unset "$stamp"
+  done
   # A release carries its tag. Such a build with no manifest key cannot
   # verify any release, and says only "The release could not be verified".
   if [ -n "${CIMMERIA_LAUNCHER_TAG:-}" ] && [ -z "${LAUNCHER_MANIFEST_PUBKEY_HEX:-}" ]; then

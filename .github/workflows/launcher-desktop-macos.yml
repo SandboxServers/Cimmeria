@@ -1,0 +1,181 @@
+name: desktop launcher macOS build
+
+# The macOS desktop launcher (LX-28, D-LX14): an arm64 app, signed ad hoc and
+# zipped as StargateWorlds-Launcher-macos-arm64.zip, built in stages by
+# tools/launcher-release/build-desktop-macos.sh. Reusable: launcher-release.yml
+# calls it as `desktop-macos` for a release, and launcher-desktop.yml as the
+# macOS dry run on desktop-launcher PRs, so the PR runs exactly the release
+# job. Neither uploads to a release from here; launcher-release.yml's
+# publish-macos job attaches the zip.
+#
+# The token is read-only: this job runs npm and a cargo-installed Tauri CLI.
+# The caller's Windows job builds the five Windows pieces the app carries and
+# hands them over as an artifact, with the SHA-256 of their list as a job
+# output, a channel separate from the artifact store.
+#
+# On macos-15: macos-latest moves to a new macOS without notice, and GitHub has
+# deprecated the macos-14 images. No Apple account, certificate or keychain,
+# and no updater key: macOS updates are manual
+# (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md).
+# Every third-party action is pinned to a full commit SHA.
+
+on:
+  workflow_call:
+    inputs:
+      pieces_artifact:
+        description: Artifact holding the five Windows pieces and mac-pieces.sha256
+        type: string
+        required: true
+      pieces_sha256:
+        description: SHA-256 of mac-pieces.sha256, from the Windows job's output
+        type: string
+        required: true
+      artifact_name:
+        description: Name of the artifact this job uploads the zip and .sha256 as
+        type: string
+        required: true
+      retention_days:
+        type: number
+        default: 30
+      tag:
+        description: Release tag; empty for an untagged build
+        type: string
+        default: ''
+      version:
+        description: CIMMERIA_LAUNCHER_VERSION; empty for 0.1.0
+        type: string
+        default: ''
+      epoch:
+        type: string
+        default: ''
+      build_branch:
+        type: string
+        default: ''
+      dev_manifest_key:
+        description: Compile in the development manifest key instead of the secret (dry runs only)
+        type: boolean
+        default: false
+      cache_key:
+        type: string
+        required: true
+      save_cache:
+        type: boolean
+        default: true
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX:
+        required: false
+      LAUNCHER_LOG_SAS_URL:
+        required: false
+    outputs:
+      zip_sha256:
+        description: SHA-256 of the zip
+        value: ${{ jobs.build.outputs.zip_sha256 }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: macOS app -> ad-hoc signed zip
+    runs-on: macos-15
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      zip_sha256: ${{ steps.digest.outputs.sha256 }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
+      PIECES_SHA256: ${{ inputs.pieces_sha256 }}
+      # Stamps for the build and verify steps. Empty means unstamped.
+      CIMMERIA_LAUNCHER_TAG: ${{ inputs.tag }}
+      CIMMERIA_LAUNCHER_VERSION: ${{ inputs.version }}
+    steps:
+      - name: check the Windows job built the pieces
+        run: |
+          if [ -z "${PIECES_SHA256}" ]; then
+            echo "::error::the Windows job did not build the macOS app's Windows pieces; see its mac-helpers and mac-pieces steps. In a release run, use 'Re-run all jobs' (crates/launcher/desktop/docs/release.md)."
+            exit 1
+          fi
+
+      # The commit the Windows job built the pieces from.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # aarch64-apple-darwin is the runner's host target.
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: ${{ inputs.cache_key }}
+          save-if: ${{ inputs.save_cache }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+        with:
+          node-version: '24'
+
+      # Pinned to the version of the tauri crate in crates/launcher/desktop/
+      # Cargo.lock (docs/updater.md requires a pinned CLI). The cache keeps
+      # ~/.cargo/bin, so a cached CLI of this version is not rebuilt.
+      - name: install the Tauri CLI
+        run: cargo install tauri-cli --version 2.12.1 --locked
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: ${{ inputs.pieces_artifact }}
+          path: mac-pieces
+
+      - name: stage the Windows pieces, checked against the Windows job's digest
+        run: tools/launcher-release/build-desktop-macos.sh pieces mac-pieces "${PIECES_SHA256}"
+
+      - name: fetch the pinned D9VK d3d9.dll
+        run: tools/launcher-release/build-desktop-macos.sh d3d9
+
+      # The secrets are on this step only, as on Windows. A dry run compiles in
+      # the development manifest key's public half (the counterpart of
+      # [0x2a; 32], crates/launcher-core/src/manifest.rs), never the release
+      # key, so its tagged build passes the tagged-build guard.
+      - name: build the app, pinned to them
+        env:
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ inputs.dev_manifest_key && '197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61' || secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ inputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: ${{ inputs.build_branch }}
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+        run: tools/launcher-release/build-desktop-macos.sh app
+
+      - name: sign the app ad hoc
+        run: tools/launcher-release/build-desktop-macos.sh sign
+
+      - name: verify the app
+        run: tools/launcher-release/build-desktop-macos.sh verify
+
+      # ditto keeps the seal; the .sha256 is in the Windows zip's format.
+      - name: package
+        run: tools/launcher-release/build-desktop-macos.sh package
+
+      - name: record the zip digest
+        id: digest
+        run: |
+          set -euo pipefail
+          SHA="$(shasum -a 256 "${MAC_ZIP}" | cut -d' ' -f1)"
+          [ "${SHA}" = "$(cut -d' ' -f1 "${MAC_ZIP}.sha256")" ] || { echo "::error::${MAC_ZIP}.sha256 does not match the zip"; exit 1; }
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: upload the zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            artifacts/StargateWorlds-Launcher-macos-arm64.zip
+            artifacts/StargateWorlds-Launcher-macos-arm64.zip.sha256
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+          overwrite: true
