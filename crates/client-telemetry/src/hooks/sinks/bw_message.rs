@@ -50,6 +50,8 @@
 //! `0x00a36900`, `0x00a352f0`, `0x00a35210`, the priority-name table at
 //! `0x01922380`); not yet seen from a live client.
 
+use std::collections::BTreeMap;
+
 use serde_json::json;
 
 use super::emit::Fields;
@@ -132,6 +134,115 @@ pub fn message_fields(
         f.push(("truncated", json!(true)));
     }
     f
+}
+
+/// Telemetry target of the per-entity viewport row.
+pub const UNKNOWN_ENTITY_TARGET: &str = "client.viewport.unknown_entity";
+
+/// The start of the client's format for a failed viewport lookup (the
+/// `svidFollow` error). The entity id is its first argument.
+pub const UNKNOWN_ENTITY_FORMAT: &[u8] = b"Viewport for entity %d";
+
+/// Entities tracked at once. A message about a new entity past this bound
+/// takes the free-text path, so the table cannot grow without limit.
+pub const MAX_UNKNOWN_ENTITIES: usize = 256;
+
+/// Milliseconds between rollups of the later counts.
+pub const UNKNOWN_ROLLUP_MS: u64 = 10_000;
+
+/// Whether `format` (the start of a message's format string) is the failed
+/// viewport lookup.
+pub fn is_unknown_entity_format(format: &[u8]) -> bool {
+    format.starts_with(UNKNOWN_ENTITY_FORMAT)
+}
+
+/// The fields of one `client.viewport.unknown_entity` row.
+pub fn entity_row(entity_id: u32, count: u64, first_ts: u64) -> Fields {
+    vec![
+        ("entity_id", json!(entity_id)),
+        ("count", json!(count)),
+        ("first_ts", json!(first_ts)),
+    ]
+}
+
+/// What [`UnknownEntities::observe`] did with one message.
+#[derive(Debug, PartialEq)]
+pub enum Observed {
+    /// The first message for this entity: its row, now.
+    First(Fields),
+    /// A later message: counted, and reported on the next rollup.
+    Counted,
+    /// The table is full: the message takes the free-text path.
+    Untracked,
+}
+
+/// What the table knows about one entity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Seen {
+    first_ts: u64,
+    count: u64,
+    reported: u64,
+}
+
+/// Failed viewport lookups per entity: one row at first sight, the later
+/// counts on the rollup.
+#[derive(Debug)]
+pub struct UnknownEntities {
+    seen: BTreeMap<u32, Seen>,
+    last_rollup: u64,
+}
+
+impl UnknownEntities {
+    /// An empty table.
+    pub const fn new() -> Self {
+        Self {
+            seen: BTreeMap::new(),
+            last_rollup: 0,
+        }
+    }
+
+    /// Count one failed lookup for `entity_id` at `now_ms`.
+    pub fn observe(&mut self, entity_id: u32, now_ms: u64) -> Observed {
+        if let Some(s) = self.seen.get_mut(&entity_id) {
+            s.count += 1;
+            return Observed::Counted;
+        }
+        if self.seen.len() >= MAX_UNKNOWN_ENTITIES {
+            return Observed::Untracked;
+        }
+        self.seen.insert(
+            entity_id,
+            Seen {
+                first_ts: now_ms,
+                count: 1,
+                reported: 1,
+            },
+        );
+        Observed::First(entity_row(entity_id, 1, now_ms))
+    }
+
+    /// The rows of the entities whose count grew since the last rollup. Empty
+    /// until [`UNKNOWN_ROLLUP_MS`] has passed since the last one.
+    pub fn rollup(&mut self, now_ms: u64) -> Vec<Fields> {
+        if now_ms.saturating_sub(self.last_rollup) < UNKNOWN_ROLLUP_MS {
+            return Vec::new();
+        }
+        self.last_rollup = now_ms;
+        let mut rows = Vec::new();
+        for (id, s) in self.seen.iter_mut() {
+            if s.count > s.reported {
+                s.reported = s.count;
+                rows.push(entity_row(*id, s.count, s.first_ts));
+            }
+        }
+        rows
+    }
+}
+
+impl Default for UnknownEntities {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Install the sink.
@@ -223,6 +334,68 @@ mod tests {
         assert_eq!(get("filtered"), Some(json!(true)));
         assert_eq!(get("suppressed"), Some(json!(9)));
         assert_eq!(get("truncated"), Some(json!(true)));
+    }
+
+    fn field(row: &Fields, key: &str) -> Option<serde_json::Value> {
+        row.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
+    }
+
+    #[test]
+    fn a_failed_viewport_lookup_is_recognised_by_its_format() {
+        assert!(is_unknown_entity_format(
+            b"Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown"
+        ));
+        assert!(!is_unknown_entity_format(b"Entity %s has %d items"));
+    }
+
+    /// Three messages for one entity: one row at first sight, then the
+    /// count of 3 on the rollup, once the interval has passed.
+    #[test]
+    fn three_messages_for_one_entity_give_one_row_then_count_three() {
+        let mut t = UnknownEntities::new();
+        let Observed::First(row) = t.observe(7, 0) else {
+            panic!("the first message is reported at once");
+        };
+        assert_eq!(field(&row, "entity_id"), Some(json!(7)));
+        assert_eq!(field(&row, "count"), Some(json!(1)));
+        assert_eq!(t.observe(7, 1), Observed::Counted);
+        assert_eq!(t.observe(7, 2), Observed::Counted);
+        assert!(t.rollup(5_000).is_empty(), "no rollup before the interval");
+
+        let rows = t.rollup(UNKNOWN_ROLLUP_MS);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(field(&rows[0], "entity_id"), Some(json!(7)));
+        assert_eq!(field(&rows[0], "count"), Some(json!(3)));
+        assert_eq!(field(&rows[0], "first_ts"), Some(json!(0)));
+        assert!(
+            t.rollup(2 * UNKNOWN_ROLLUP_MS).is_empty(),
+            "nothing new to roll up"
+        );
+    }
+
+    /// A second entity has its own row and its own count.
+    #[test]
+    fn another_entity_is_independent() {
+        let mut t = UnknownEntities::new();
+        assert!(matches!(t.observe(7, 0), Observed::First(_)));
+        assert!(matches!(t.observe(9, 0), Observed::First(_)));
+        assert_eq!(t.observe(9, 1), Observed::Counted);
+        let rows = t.rollup(UNKNOWN_ROLLUP_MS);
+        assert_eq!(rows.len(), 1, "only the entity with later counts rolls up");
+        assert_eq!(field(&rows[0], "entity_id"), Some(json!(9)));
+        assert_eq!(field(&rows[0], "count"), Some(json!(2)));
+    }
+
+    /// The table stops at its cap: a new entity falls back, a tracked one
+    /// still counts.
+    #[test]
+    fn the_table_is_bounded() {
+        let mut t = UnknownEntities::new();
+        for id in 0..MAX_UNKNOWN_ENTITIES as u32 {
+            assert!(matches!(t.observe(id, 0), Observed::First(_)));
+        }
+        assert_eq!(t.observe(u32::MAX, 0), Observed::Untracked);
+        assert_eq!(t.observe(0, 0), Observed::Counted);
     }
 
     #[test]

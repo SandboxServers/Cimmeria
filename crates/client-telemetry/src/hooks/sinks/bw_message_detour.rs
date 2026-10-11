@@ -6,19 +6,50 @@
 use std::ffi::{c_char, c_void};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use super::bw_message::*;
 use super::mem;
 use super::nesting::SinkGuard;
 use super::text;
-use super::throttle::SinkThrottle;
+use super::throttle::{self, SinkThrottle};
 use crate::hooks::name_throttle::Decision;
 
 /// Trampoline to the original.
 pub(super) static TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 static THROTTLE: SinkThrottle = SinkThrottle::new();
+
+/// The failed viewport lookups, one row per entity. Checked before the
+/// throttle, so every lookup is counted and none is lost to its bucket.
+static UNKNOWN: Mutex<UnknownEntities> = Mutex::new(UnknownEntities::new());
+
+/// The unknown-entity table, whatever state a panicked holder left it in.
+fn unknown_table() -> MutexGuard<'static, UnknownEntities> {
+    UNKNOWN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Queue one `client.viewport.unknown_entity` row.
+fn emit_unknown(fields: super::emit::Fields) {
+    super::emit::emit(
+        UNKNOWN_ENTITY_TARGET,
+        "warn",
+        "viewport.unknown_entity",
+        fields,
+    );
+}
+
+/// The entity id of a failed viewport lookup, read from the format and the
+/// first argument without formatting the message. `None` for any other
+/// message.
+fn unknown_entity_id(fmt: usize, va: usize) -> Option<u32> {
+    let read = &mem::process_reader;
+    let head = mem::read_ansi_z(read, fmt, UNKNOWN_ENTITY_FORMAT.len())?;
+    if !is_unknown_entity_format(&head.units) {
+        return None;
+    }
+    u32::try_from(mem::read_i32(read, va)?).ok()
+}
 
 /// The implementation object last seen, so the forced threshold is
 /// written once per object rather than on every message.
@@ -96,6 +127,11 @@ fn force_threshold(imp: usize) {
 /// Report one message, before the client's own filter runs.
 fn observe(this: *mut c_void, header: *const i32, fmt: *const c_char, va: *const c_void) {
     let read = &mem::process_reader;
+    let now = throttle::now_ms();
+    let rows = unknown_table().rollup(now);
+    for row in rows {
+        emit_unknown(row);
+    }
     let Some(component) = mem::read_i32(read, header as usize) else {
         return;
     };
@@ -105,6 +141,15 @@ fn observe(this: *mut c_void, header: *const i32, fmt: *const c_char, va: *const
     let imp = mem::read_u32(read, this as usize).unwrap_or(0) as usize;
     if crate::capture::unfilter() {
         force_threshold(imp);
+    }
+
+    if let Some(id) = unknown_entity_id(fmt as usize, va as usize) {
+        let outcome = unknown_table().observe(id, now);
+        match outcome {
+            Observed::First(row) => emit_unknown(row),
+            Observed::Counted => return,
+            Observed::Untracked => {}
+        }
     }
 
     let Decision::Emit { suppressed } = THROTTLE.check(&throttle_key(fmt as usize, priority))
@@ -254,6 +299,23 @@ mod tests {
         assert!(caught.is_err());
         assert!(!super::super::nesting::in_known_sink());
         let _ = take_captured();
+    }
+
+    /// The viewport lookup's id is its first argument; another message's
+    /// first argument is not read as one.
+    #[test]
+    fn the_entity_id_is_the_first_argument() {
+        let fmt = c"Viewport for entity %d (immed vehicle %d, top vehicle %d) is unknown";
+        let va: [i32; 3] = [42, 7, 7];
+        assert_eq!(
+            unknown_entity_id(fmt.as_ptr() as usize, va.as_ptr() as usize),
+            Some(42)
+        );
+        let other = c"Entity %s has %d items";
+        assert_eq!(
+            unknown_entity_id(other.as_ptr() as usize, va.as_ptr() as usize),
+            None
+        );
     }
 
     /// The formatter reads a real x86 `va_list` the way the client's
