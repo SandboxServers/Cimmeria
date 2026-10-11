@@ -474,3 +474,12 @@ The engine doc was corrected to 21 categories (issue #267).
 - `docs/engine/cooked-data-pak-format.md` — PAK format details; should be updated to add integer IDs to category inventory
 - `docs/reverse-engineering/findings/cme-event-signal.md` — CME EventSignal architecture detail
 - `docs/reverse-engineering/address-map.md` — address map; new addresses appended this session
+
+## Finding 10 — Where a cache write lands, and what the bundled tier is for
+
+**Confidence**: HIGH for the code paths (headless decompile and disassembly of the QA `SGW.exe`, 2026-10-11, TG-CLI-03).
+**Sources**: `0x00479930` (`ZipStorageBase::WriteStreamToFile`), `0x0043a9d0`, `0x0043bdb0`, `0x00479e10`, `0x00479340` (`OpenArchive`), `0x00479fa0` (`UpdateFromSourceArchives`), `0x0047ab90`.
+
+- **Every write goes to the cache tier.** `WriteStreamToFile(this, entry, ostrstream&)` (`thiscall`, `ret 8`, `bool`) adds one entry to the archive at `this+0x20` and logs `Error creating new element file in archive` (`ZipStorage.cpp:0xec`) if the add fails. Its callers are `0x0043a9d0` (a pushed element, entry `_<key>`), `0x00479e10` (the `MetaData` version stamp) and `0x009060b0`. `OpenArchive` opens that archive under the cache directory (the string at `0x01dae3c4`, `CachePath`), so `WriteStreamToFile` never touches `SourceCache.en-us`.
+- **The bundled tier is only copied from.** `UpdateFromSourceArchives` (`ZipStorage.cpp:0x44..0x6b`) warns `Non-existent source archive directory` when `SourceCachePath` (`0x01dae3e0`) is missing and `Source archive does not exist` per PAK. Otherwise it reads the source PAK's `MetaData` version; if that is newer than the storage's (`this+0x24`), or the cache PAK is closed, it calls `0x0047ab90(source, cache)` (`cdecl`, a `CopyFileW` wrapper that returns `bool`) and logs `Error copying source archive <a> to archive <b>` on failure, then reopens the archive. So the bundled PAKs matter at runtime: a stock install with a populated `SourceCache.en-us` seeds the cache before the first push. This closes the open point in the cache-tier note that the client may not use the bundled tier.
+- **Correction to Finding 2.** The category id is not at `+0x04` of the object that holds `this+0x20` and `this+0x24`: `+0x04`/`+0x08` are the begin and end of the PAK-name vector (Finding 8). Telemetry therefore derives the category from the PAK name.
