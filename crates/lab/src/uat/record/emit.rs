@@ -7,7 +7,7 @@
 
 use crate::uat::spec::{self, PoseSpec, SectionMeta};
 
-use super::clauses::{ClauseOut, Inline};
+use super::clauses::{key, ClauseOut, Inline};
 use super::fixture;
 use super::log::{RecordLog, RecordStart};
 use super::segment::segment;
@@ -317,17 +317,28 @@ fn section(log: &RecordLog, opts: &TransformOptions) -> String {
 /// `[section.profiles.<profile>]` copied from the named section, so the
 /// rows' `[row.fixture]` names a profile the validator finds; empty with no
 /// profile. A profile the named section does not define is an error: the
-/// draft would not load.
+/// draft would not load. So is a profile with no named section, and a
+/// profile beside `character_expr`: the runner binds `${character}` to the
+/// fixture's character, so a second expression would grade another name.
 fn profile_table(opts: &TransformOptions) -> Result<String, String> {
     let Some(name) = &opts.profile else {
         return Ok(String::new());
     };
-    let Some(p) = opts.base.as_ref().and_then(|b| b.profiles.get(name)) else {
+    if opts.character_expr.is_some() {
+        return Err(
+            "-Profile and -CharacterExpr exclude each other: the fixture's character is ${character}"
+                .into(),
+        );
+    }
+    let Some(base) = &opts.base else {
+        return Err("-Profile needs a named section to copy the profile from".into());
+    };
+    let Some(p) = base.profiles.get(name) else {
         return Err(format!(
             "profile {name:?} is not a [section.profiles] key of the named section"
         ));
     };
-    let mut out = format!("\n[section.profiles.{name}]\n");
+    let mut out = format!("\n[section.profiles.{}]\n", key(name));
     for (k, v) in [
         ("alignment", &p.alignment),
         ("archetype", &p.archetype),

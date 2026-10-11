@@ -212,6 +212,130 @@ fn an_item_in_bag_3_or_over_the_cap_is_a_todo_line() {
     );
 }
 
+/// With no start stack the item is `count = 0` in the bag the row gained
+/// it in: bag 2 is `mission`; bags 3 to 14 have no fixture name, so a TODO
+/// and the item left out.
+#[test]
+fn an_item_with_no_start_stack_takes_the_bag_it_was_gained_in() {
+    let diffs = [changed(55, 2), changed(66, 3)];
+    let f = row_fixture("praxis", &DbSnapshot::default(), &diffs);
+    assert_eq!(f.spec.items, vec![spec_item(55, 0, "mission")]);
+    assert_eq!(
+        f.todos,
+        vec!["item 66 gained in bag 3; the fixture cannot clear it"]
+    );
+}
+
+/// The cap is on units, as the snapshot counts them: 11 units in one
+/// stack is over it.
+#[test]
+fn the_count_cap_compares_units() {
+    let before = DbSnapshot {
+        items: vec![stack(66, 1, 11), stack(77, 1, 10)],
+        ..Default::default()
+    };
+    let f = row_fixture("praxis", &before, &[changed(66, 1), changed(77, 1)]);
+    assert_eq!(f.spec.items, vec![spec_item(77, 10, "main")]);
+    assert_eq!(
+        f.todos,
+        vec!["item 66 started at count 11 in bag 1 (a fixture sets 0 to 10)"]
+    );
+}
+
+/// A log of `before` at tick 1 and `after` at tick 3, one row over ticks 2
+/// to 4.
+fn one_row(before: DbSnapshot, after: DbSnapshot) -> (RecordLog, RecordedRow) {
+    use crate::uat::record::decode::Call;
+    use crate::uat::record::log::Tick;
+    use crate::uat::record::segment::{Anchor, AnchorKind};
+    let tick = |seq: u32, snapshot: Option<DbSnapshot>| Tick {
+        seq,
+        host_ms: 500 * i64::from(seq),
+        snapshot,
+        ..Tick::default()
+    };
+    let log = RecordLog {
+        start: fs_p3().start,
+        ticks: vec![
+            tick(1, Some(before)),
+            tick(2, None),
+            tick(3, Some(after)),
+            tick(4, None),
+        ],
+        stop: None,
+    };
+    let row = RecordedRow {
+        anchor: Anchor {
+            kind: AnchorKind::Interact,
+            tick: 2,
+            call: Call::Interact { target: 7 },
+            target: Some(7),
+        },
+        first_tick: 2,
+        last_tick: 4,
+        calls: Vec::new(),
+        setup_chat: Vec::new(),
+        server: Vec::new(),
+    };
+    (log, row)
+}
+
+/// A row that restores nothing writes no fixture, profile or not; one that
+/// only changed player fields writes just the TODO naming them.
+#[test]
+fn a_row_that_restores_nothing_writes_no_fixture() {
+    let player = |level, exp| {
+        Some(crate::uat::record::log::SnapPlayer {
+            level,
+            exp,
+            naquadah: 0,
+            world_location: "Castle".into(),
+        })
+    };
+    let (log, row) = one_row(DbSnapshot::default(), DbSnapshot::default());
+    for profile in [None, Some("praxis")] {
+        assert_eq!(row_block(&log, &row, profile), (Vec::<String>::new(), 0));
+    }
+
+    let before = DbSnapshot {
+        player: player(1, 0),
+        ..Default::default()
+    };
+    let after = DbSnapshot {
+        player: player(2, 150),
+        ..Default::default()
+    };
+    let (log, row) = one_row(before, after);
+    let want = vec!["# TODO row changes player level, exp; a fixture cannot set them".to_string()];
+    for profile in [None, Some("praxis")] {
+        assert_eq!(row_block(&log, &row, profile), (want.clone(), 1));
+    }
+}
+
+/// The runner binds `${character}` to the fixture's character, so a
+/// profile beside a `character_expr` is refused.
+#[test]
+fn a_profile_with_a_character_expr_is_an_error() {
+    let mut o = opts(Some("praxis"));
+    o.character_expr = Some("Px${run_id}".into());
+    let err = transform(&fs_p3(), &o).unwrap_err();
+    assert!(err.contains("-CharacterExpr"), "{err}");
+}
+
+/// With no named section there is no profile to copy: a clear error.
+#[test]
+fn a_profile_with_no_named_section_is_an_error() {
+    let o = TransformOptions {
+        profile: Some("praxis".into()),
+        ..Default::default()
+    };
+    let err = transform(&fs_p3(), &o).unwrap_err();
+    assert_eq!(
+        err,
+        "-Profile needs a named section to copy the profile from"
+    );
+}
+
 /// Status 2 at the start is `state = "completed"`; an active mission with
 /// no step, or another status, is a TODO.
 #[test]

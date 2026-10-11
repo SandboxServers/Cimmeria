@@ -152,8 +152,12 @@ fn two_anchors_are_two_numbered_rows_with_summed_counts() {
     let draft = transform(&two_rows(8), &opts()).unwrap();
     assert_eq!(
         (draft.rows, draft.actions, draft.todos, draft.dropped_rows),
-        (2, 6, 0, 0)
+        (2, 6, 1, 0)
     );
+    // The second row restores nothing: no fixture, one TODO for the exp.
+    let want = "# TODO row changes player exp; a fixture cannot set them\n";
+    assert!(draft.text.ends_with(want), "{}", draft.text);
+    assert_eq!(draft.text.matches("[row.fixture]").count(), 1);
     let spec = parsed(&draft);
     let ids: Vec<&str> = spec.rows.iter().map(|r| r.id.as_str()).collect();
     assert_eq!(ids, ["REC-01", "REC-02"]);
@@ -203,7 +207,8 @@ fn a_use_ability_on_another_entity_targets_its_tag_or_writes_a_todo() {
     let want = "step = [\n  # TODO useAbility 1462 target 999 has no tag\n  \
                 { tool = \"@use_ability\", args = { ability_id = 1462 }, label = \"use\" },\n]\n";
     assert!(draft.text.contains(want), "{}", draft.text);
-    assert_eq!((draft.rows, draft.todos), (2, 1));
+    // The target TODO and the second row's player-exp fixture TODO.
+    assert_eq!((draft.rows, draft.todos), (2, 2));
     assert_eq!(parsed(&draft).rows.len(), 2);
 }
 

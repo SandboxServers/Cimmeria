@@ -393,3 +393,40 @@ fn the_section_falls_back_without_a_base() {
     let s = parsed(&transform(&fs_p3(), &o).unwrap()).section;
     assert_eq!(s.character, "lab");
 }
+
+/// A profile key outside `[A-Za-z0-9_-]` is quoted in the table header, so
+/// TOML reads it back as the one key with the same profile, not as nested
+/// tables. The spec validator then refuses it (keys are 1 to 8 lowercase
+/// letters), and that refusal names the whole key.
+#[test]
+fn a_dotted_profile_key_is_quoted_and_parses_back() {
+    let mut o = opts();
+    o.profile = Some("lab.praxis".into());
+    let base = o.base.as_mut().unwrap();
+    let praxis = base.profiles["praxis"].clone();
+    base.profiles.insert("lab.praxis".into(), praxis.clone());
+
+    let table = profile_table(&o).unwrap();
+    assert!(
+        table.starts_with("\n[section.profiles.\"lab.praxis\"]\n"),
+        "{table}"
+    );
+    let v: toml::Value = toml::from_str(&table).unwrap();
+    let profiles = v["section"]["profiles"].as_table().unwrap();
+    assert_eq!(profiles.keys().collect::<Vec<_>>(), ["lab.praxis"]);
+    let p = &profiles["lab.praxis"];
+    for (k, want) in [
+        ("alignment", &praxis.alignment),
+        ("archetype", &praxis.archetype),
+        ("gender", &praxis.gender),
+        ("first", &praxis.first),
+    ] {
+        assert_eq!(p[k].as_str(), Some(want.as_str()), "{k}");
+    }
+
+    let err = transform(&fs_p3(), &o).unwrap_err();
+    assert!(
+        err.contains("section.profiles.lab.praxis: the key must be"),
+        "{err}"
+    );
+}

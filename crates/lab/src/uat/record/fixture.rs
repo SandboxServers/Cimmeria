@@ -34,7 +34,8 @@ pub struct RowFixture {
 /// The fixture that puts a character back where this row started: the
 /// missions the row's diffs touch, at their start state, and the item
 /// design ids whose count changed, at their start count. No position (the
-/// row's `@stand` places the player) and no world.
+/// row's `@stand` places the player) and no world; a changed player field
+/// is one TODO line.
 pub fn row_fixture(profile: &str, before: &DbSnapshot, diffs: &[Diff]) -> RowFixture {
     let mut f = RowFixture {
         spec: FixtureSpec {
@@ -48,20 +49,25 @@ pub fn row_fixture(profile: &str, before: &DbSnapshot, diffs: &[Diff]) -> RowFix
         todos: Vec::new(),
     };
     let mut missions: Vec<i32> = Vec::new();
-    let mut items: Vec<i32> = Vec::new();
+    // (design id, the bag its count changed in)
+    let mut items: Vec<(i32, i32)> = Vec::new();
+    let mut player: Vec<&str> = Vec::new();
     for d in diffs {
         match d {
             Diff::MissionStatus { mission, .. } | Diff::MissionStep { mission, .. } => {
                 missions.push(*mission)
             }
-            Diff::ItemCount { type_id, .. } => items.push(*type_id),
-            Diff::Player { .. } => {}
+            Diff::ItemCount {
+                type_id, container, ..
+            } => items.push((*type_id, *container)),
+            Diff::Player { field, .. } => player.push(field),
         }
     }
     missions.sort_unstable();
     missions.dedup();
     items.sort_unstable();
-    items.dedup();
+    let mut ids: Vec<i32> = items.iter().map(|&(id, _)| id).collect();
+    ids.dedup();
 
     for id in missions {
         let start = before.missions.iter().find(|m| m.mission_id == id);
@@ -83,10 +89,22 @@ pub fn row_fixture(profile: &str, before: &DbSnapshot, diffs: &[Diff]) -> RowFix
         f.spec.missions.push(FixtureMission { id, step, state });
     }
 
-    for id in items {
-        if let Some(item) = start_item(id, before, &mut f.todos) {
+    for id in ids {
+        // The bags the row changed it in, ascending.
+        let bags: Vec<i32> = items
+            .iter()
+            .filter(|&&(i, _)| i == id)
+            .map(|&(_, b)| b)
+            .collect();
+        if let Some(item) = start_item(id, &bags, before, &mut f.todos) {
             f.spec.items.push(item);
         }
+    }
+    if !player.is_empty() {
+        f.todos.push(format!(
+            "row changes player {}; a fixture cannot set them",
+            player.join(", ")
+        ));
     }
     f
 }
@@ -95,8 +113,15 @@ pub fn row_fixture(profile: &str, before: &DbSnapshot, diffs: &[Diff]) -> RowFix
 /// TODO per stack the schema cannot set. Staging rewrites every bag from 1
 /// to 15, so the item is left out whole when any start stack is in another
 /// bag, over the cap, or beside a second stack: writing the rest would
-/// delete that stack.
-fn start_item(id: i32, before: &DbSnapshot, todos: &mut Vec<String>) -> Option<FixtureItem> {
+/// delete that stack. Counts are units (`stack_size` summed by the
+/// snapshot), so the cap is on units too. With no start stack the item is
+/// `count = 0` in the bag the row gained it in (`changed_bags`, ascending).
+fn start_item(
+    id: i32,
+    changed_bags: &[i32],
+    before: &DbSnapshot,
+    todos: &mut Vec<String>,
+) -> Option<FixtureItem> {
     let stacks: Vec<(i32, i32)> = before
         .items
         .iter()
@@ -123,8 +148,20 @@ fn start_item(id: i32, before: &DbSnapshot, todos: &mut Vec<String>) -> Option<F
         todos.extend(faults);
         return None;
     }
-    // No start stack: none carried, which `count = 0` sets in any bag.
-    let (bag, count) = stacks.first().copied().unwrap_or((INV_MAIN, 0));
+    let (bag, count) = match stacks.first() {
+        Some(&start) => start,
+        None => {
+            // None carried at the start: `count = 0` in the bag it was
+            // gained in, which must be one a fixture names.
+            if let Some(&b) = changed_bags.iter().find(|&&b| container_name(b).is_none()) {
+                todos.push(format!(
+                    "item {id} gained in bag {b}; the fixture cannot clear it"
+                ));
+                return None;
+            }
+            (changed_bags.first().copied().unwrap_or(INV_MAIN), 0)
+        }
+    };
     Some(FixtureItem {
         id,
         count: u32::try_from(count).unwrap_or(0),
@@ -200,7 +237,8 @@ fn state_name(s: FixtureMissionState) -> &'static str {
 /// What the emitter writes after a row's clauses, and its `# TODO` count.
 /// With a profile, the `[row.fixture]` block; without one, the same lines
 /// commented under `# fixture (pass -Profile to enable):`, the character
-/// left as `<profile>`. A row with no snapshot before it gets one TODO.
+/// left as `<profile>`. A row with no snapshot before it gets one TODO; a
+/// row that restores no mission or item gets only its TODO lines.
 pub(super) fn row_block(
     log: &RecordLog,
     row: &RecordedRow,
@@ -217,6 +255,13 @@ pub(super) fn row_block(
         before,
         &diff_snapshots(before, after),
     );
+    let todos = f.todos.len();
+    if f.spec.missions.is_empty() && f.spec.items.is_empty() {
+        // Nothing to restore: a fixture of only `character` would stage
+        // for nothing, so only the TODO lines (often none) are written.
+        let lines = f.todos.into_iter().map(|t| format!("# TODO {t}")).collect();
+        return (lines, todos);
+    }
     let lines = fixture_toml(&f);
     let lines = match profile {
         Some(_) => lines,
@@ -230,7 +275,7 @@ pub(super) fn row_block(
             }))
             .collect(),
     };
-    (lines, f.todos.len())
+    (lines, todos)
 }
 
 #[cfg(test)]
