@@ -997,6 +997,17 @@ Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_wa
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Contact-list header ops (TG-SOC-10)
+
+`handlers/header_ops.rs` in `cimmeria-base-session`. Every row carries `event` (`contacts.list_created`, `contacts.list_deleted`, `contacts.list_renamed`, `contacts.list_flags_updated`) and the identity pair `account_id` + `account_name`, beside `player_id` + `player_name`. A failed create logs WARN with `reason` and `error = %e`; its message is the constant `ContactListCreate: list not created`.
+
+| `reason` | Meaning |
+|---|---|
+| `duplicate_name` | Postgres rejected the unique `(player_id, name)` key (`is_unique_violation()`) |
+| `db_write_failed` | Any other insert error |
+
+Guard: `live_db_header_ops_log_event_account_and_duplicate_reason` in `handlers/header_ops/tests.rs` asserts `event` and `account_id` on each op and `reason=duplicate_name` on the second create. `no_pool_rows_carry_event_and_account` guards the no-pool rows.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
