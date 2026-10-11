@@ -474,6 +474,7 @@ fn destroy_client_entities_accepts_all_documented_reasons() {
         "send_error",
         "duplicate_login",
         "logoff",
+        "logoff_character_select",
     ];
 
     for (i, reason) in documented_reasons.iter().enumerate() {
