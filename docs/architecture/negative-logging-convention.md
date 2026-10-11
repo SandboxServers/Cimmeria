@@ -390,6 +390,15 @@ Its rows:
 | `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
 | `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
 
+## Unconsumed SIDs and tickets (TG-NET-05)
+
+The auth reaper (`auth/service.rs::reap_expired`) drops every Phase 1 SID past `SESSION_TTL` and every Phase 2 ticket past `TICKET_TTL` that no login consumed. Each drop is one row at `info!`; the DEBUG count summary stays.
+
+| `reason` | Level | Meaning | Fields |
+|---|---|---|---|
+| `ticket_unconsumed` | `info!` | A Phase 2 ticket outlived `TICKET_TTL` before BaseApp consumed it. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `ticket_prefix` |
+| `sid_unconsumed` | `info!` | A Phase 1 SID outlived `SESSION_TTL` before the Phase 2 selection consumed it. The prefix is `sid_prefix`, not `ticket_prefix`. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `sid_prefix` |
+
 ## Cross-space cast refusal (#906)
 
 `useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
@@ -1017,6 +1026,38 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 `effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
 
 Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
+
+## Character-create refusals (TG-DB-08)
+
+`character_create/refusal_log.rs` in `cimmeria-base`. Every refused `createCharacter` writes exactly one row, `event = "character_create_failed"`, message "character creation refused", before `onCharacterCreateFailed` goes to the client. Each row carries the account (`addr`, `account_id`, `account_name`), the code sent (`error_code` paired with its `ErrorStrings` moniker as `error_name`), and what was refused once it has been parsed: `player_name` (the requested name) and `char_def_id`. `reason` is the `Reason` enum, not a string, and `Reason::level` gives each reason its level, so a misspelt reason can't compile or fall through to a default level. The levels are the ones each site logged at before.
+
+The start-profile check (`start_profile.rs`, `resolve_start`) logs nothing itself: it returns its reason, error and profile to the handler, which writes the one row. Starter-kit helpers keep their own precise ERROR rows (`starter_abilities_load_failed`, `starter_item_failed`, `starter_grant_failed`); the refusal row is the client-facing summary, at WARN, with `reason = starter_kit_failed`, `cause` naming the helper's event and `kit_failure` its reason, so the database is not blamed for a kit that could not be placed.
+
+| Level | `reason` | When | Extra fields |
+|---|---|---|---|
+| WARN | `name_parse_failed` | The name or extra name is not a readable WSTRING | `error` |
+| INFO | `name_rejected` | The name breaks the format rules | `rule` |
+| INFO | `extra_name_rejected` | The extra name breaks the format rules | `rule`, `extra_name` |
+| WARN | `malformed_args` | The payload ends before the CharDef, the visual choices or the skin tint | |
+| INFO | `invalid_skin_tint` | The skin tint is outside 0..=15 | `skin_tint_color_id` |
+| WARN | `unknown_char_def` | No CharDef row | |
+| WARN | `no_db_pool` | No database is attached | |
+| ERROR | `query_failed` | The visual-group query failed | `error` |
+| ERROR | `start_profiles_load_failed` | The start profiles could not be read | `error` |
+| ERROR | `no_start_profile` | The CharDef has no start profile | |
+| ERROR | a `ProfileProblem` reason (`empty_world`, `origin_position`, `start_level_out_of_range`, `legacy_kit_on_canonical_profile`, ...) | The start profile has a problem | `profile_id`, `world`, `detail` (every problem) |
+| ERROR | `start_world_unknown` | The profile's world is not in `resources.worlds` | `profile_id`, `world` |
+| ERROR | `start_world_not_loaded` | The cell announced no space for the profile's world | `profile_id`, `world` |
+| ERROR | `db_error` | The profile's `world_id` lookup failed | `profile_id`, `world`, `error` |
+| WARN | `starter_kit_failed` | The starter kit could not be loaded, placed or recorded; the helper's ERROR row has the cause | `cause`, `kit_failure`, `player_id` after the insert |
+| WARN | `invalid_visual_group` | A choice names a visual group the CharDef lacks | `vg_id`, `choice_id` |
+| WARN | `forced_group_choice` | A choice targets a forced visual group | `vg_id`, `choice_id` |
+| WARN | `invalid_choice` | A choice is not in its visual group | `vg_id`, `choice_id` |
+| WARN | `missing_optional_choice` | An optional visual group has no choice | `vg_id` |
+| INFO | `name_taken` | The insert hit `sgw_player_player_name_key` | |
+| ERROR | `db_write_failed` | The transaction could not open, the insert failed, or the commit failed | `error`, `player_id` after the insert |
+
+`char_def_id`, `profile_id`, `vg_id`, `choice_id` and `skin_tint_color_id` are `nt:id-only`: their rows carry no name column. Guards: `fail_code_tests.rs` `unknown_char_def_is_invalid_character_type` (asserts `event`, `reason`, `account_id`, `char_def_id`, `error_code` and `error_name`) and `skin_tint_out_of_range_is_invalid_skin_color` (asserts `event`, `reason`, `account_id`, `skin_tint_color_id`, `char_def_id` and `player_name`); `refusal_log.rs` `every_reason_has_its_documented_spelling_and_level` (the table above as literals, every variant covered); and `profile_live_db_tests.rs` `a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db` (exactly one `character_create_failed` row, ERROR, `reason = start_world_not_loaded`, with `account_id`, `char_def_id`, `profile_id` and `world`).
 
 ## Spatial chat send failures (TG-SOC-07)
 
