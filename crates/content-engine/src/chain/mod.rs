@@ -453,12 +453,16 @@ impl ChainEngine {
             }
 
             if !admit(chain) {
+                let book = cimmeria_names::book();
+                let world_name = ctx.world_id.and_then(|w| book.world(w));
                 debug!(
                     target: "content.resolve",
                     chain_id = chain.id,
                     chain_name = chain.label(),
                     trigger_type = ?event.trigger_type,
-                    source_entity = ?ctx.source_entity_id,
+                    entity_id = ctx.source_entity_id.map(|e| e.0), // nt:id-only the acting entity has no name at resolve time
+                    world_id = ctx.world_id,
+                    world = world_name,
                     reason = "filtered_out",
                     "content resolve: trigger matched but the caller's filter refused the chain"
                 );
@@ -476,12 +480,16 @@ impl ChainEngine {
                 .enumerate()
                 .find(|(_, c)| !c.evaluate(ctx))
             {
+                let book = cimmeria_names::book();
+                let world_name = ctx.world_id.and_then(|w| book.world(w));
                 debug!(
                     target: "content.resolve",
                     chain_id = chain.id,
                     chain_name = chain.label(),
                     trigger_type = ?event.trigger_type,
-                    source_entity = ?ctx.source_entity_id,
+                    entity_id = ctx.source_entity_id.map(|e| e.0), // nt:id-only the acting entity has no name at resolve time
+                    world_id = ctx.world_id,
+                    world = world_name,
                     reason = "condition_failed",
                     failed_condition_index = idx,
                     failed_condition = ?failed,

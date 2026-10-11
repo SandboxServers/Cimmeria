@@ -45,6 +45,7 @@ use super::super::rate_limit::limits::{CHAT_EXEMPT_ACCESS_LEVEL, MAX_CHAT_TEXT_U
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use super::chat_gates::{refuse_channel, refuse_if_muted, Speaker};
+use super::chat_malformed::{log_malformed, log_relay_failed};
 use super::speaker_flags;
 use super::tell::{self, TellSender};
 
@@ -111,6 +112,7 @@ pub(super) async fn send_player_communication_at(
     let cell_tx = routes.cell_tx;
     // sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)
     if payload.is_empty() {
+        log_malformed(connected, addr, "empty_payload", payload.len());
         return;
     }
     let channel = payload[0];
@@ -127,14 +129,20 @@ pub(super) async fn send_player_communication_at(
     // read see garbage.
     let (target, target_bytes) = match read_wstring(payload, offset) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => {
+            log_malformed(connected, addr, "bad_target", payload.len());
+            return;
+        }
     };
     offset += target_bytes;
 
     // Parse text (WSTRING)
     let (text, _) = match read_wstring(payload, offset) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => {
+            log_malformed(connected, addr, "bad_text", payload.len());
+            return;
+        }
     };
 
     let speaker = player_name.as_deref().unwrap_or("Unknown");
@@ -323,18 +331,31 @@ pub(super) async fn send_player_communication_at(
         "sendPlayerCommunication"
     );
 
-    if let Some(player_eid) = player_eid {
-        if let Some(ref tx) = cell_tx {
-            let _ = tx
-                .send(BaseToCellMsg::ChatMessage {
-                    entity_id: player_eid,
-                    speaker_name: speaker.to_string(),
-                    speaker_flags: speaker_flags_value,
-                    channel,
-                    text,
-                })
-                .await;
-        }
+    let Some(player_eid) = player_eid else {
+        log_relay_failed(addr, ident, None, channel, "entity_missing");
+        return;
+    };
+    let Some(tx) = cell_tx else {
+        log_relay_failed(addr, ident, Some(player_eid), channel, "no_cell_channel");
+        return;
+    };
+    let sent = tx
+        .send(BaseToCellMsg::ChatMessage {
+            entity_id: player_eid,
+            speaker_name: speaker.to_string(),
+            speaker_flags: speaker_flags_value,
+            channel,
+            text,
+        })
+        .await;
+    if sent.is_err() {
+        log_relay_failed(
+            addr,
+            ident,
+            Some(player_eid),
+            channel,
+            "cell_channel_closed",
+        );
     }
 }
 
@@ -443,11 +464,17 @@ pub(super) async fn handle_chat_join(
     // chatJoin(WSTRING channelName, WSTRING password)
     let (channel_name, offset) = match read_wstring(payload, 0) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => {
+            log_malformed(connected, addr, "bad_channel_name", payload.len());
+            return;
+        }
     };
     let (_password, _) = match read_wstring(payload, offset) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => {
+            log_malformed(connected, addr, "bad_channel_name", payload.len());
+            return;
+        }
     };
     // Every routing test needs is this handler reached with the raw name;
     // everything past this line may bail out early for a session with no
@@ -681,6 +708,7 @@ async fn post_to_user_channel(
 ) {
     let text_units = text.encode_utf16().count();
     let Some(entity_id) = player_eid else {
+        log_relay_failed(addr, ident, None, channel, "entity_missing");
         return;
     };
     let Some(members) = user_channel_registry().members_if_joined(channel, entity_id) else {

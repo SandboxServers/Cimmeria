@@ -228,7 +228,7 @@ touching the file mtime.
 | **Mockability** | `DiscordSender` trait; `MockSender` recorder; `HttpDiscordSender` production impl. Same pattern as the mercury `Transport` trait. |
 | **Graceful shutdown** | `emit_server_shutdown` + 1 s drain before process exit. Beyond 1 s, drops are accepted. |
 | **Panic visibility** | `install_panic_hook` posts `Event::ServerPanic` via synchronous `reqwest::blocking` with 2 s timeout before the default hook lets the process die. |
-| **Self-observability** | `SenderStats` counters (enqueued / sent / filtered / dropped_full / dropped_closed / dropped_rate_limit / retried / 429d / failed). |
+| **Self-observability** | `SenderStats` counters (enqueued / sent / filtered / dropped_full / dropped_closed / dropped_rate_limit / retried / 429d / failed). Each event's end also counts on `discord_events_total{outcome}` (TG-SOC-12), and a drop WARNs `discord.dropped`: first per outcome, then one per 60 s with `suppressed`. |
 
 ## Configuration
 
