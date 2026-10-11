@@ -80,9 +80,29 @@ pub(crate) struct PlayerWatch {
     /// signals raised from gameplay hooks that hold no `SpaceManager` can
     /// still name the player (Rule 6). Log-only.
     entity_name: Option<&'static str>,
+    /// `"lab"` or `"player"` (TG-NET-17), copied from the entity with
+    /// `entity_name` for the same reason: every friction row carries
+    /// `cimmeria.session_kind`, so lab runs (which stall on purpose) can be
+    /// filtered out. Log-only.
+    session_kind: Option<&'static str>,
+}
+
+/// The log-only context a friction row carries besides its own fields:
+/// the player's name (Rule 6) and session kind (TG-NET-17).
+#[derive(Debug, Clone, Copy, Default)]
+struct RowContext {
+    entity_name: Option<&'static str>,
+    session_kind: Option<&'static str>,
 }
 
 impl PlayerWatch {
+    fn row_context(&self) -> RowContext {
+        RowContext {
+            entity_name: self.entity_name,
+            session_kind: self.session_kind,
+        }
+    }
+
     pub(crate) fn note_region_hint(&mut self, region_id: u32, now: Instant) {
         self.hints.insert(region_id, now);
         self.hints_total += 1;
@@ -226,17 +246,22 @@ fn with_watch<R>(entity_id: u32, f: impl FnOnce(&mut PlayerWatch) -> R) -> R {
     f(guard.entry(entity_id).or_default())
 }
 
-/// The name `player_tick` last recorded for `entity_id`, without creating a
-/// watch for an entity that has none.
-fn watched_name(entity_id: u32) -> Option<&'static str> {
+/// The name and session kind `player_tick` last recorded for `entity_id`,
+/// without creating a watch for an entity that has none.
+fn watched_context(entity_id: u32) -> RowContext {
     WATCHES
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .get(&entity_id)
-        .and_then(|w| w.entity_name)
+        .map(PlayerWatch::row_context)
+        .unwrap_or_default()
 }
 
-fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
+fn emit(entity_id: u32, ctx: RowContext, f: &Friction) {
+    let RowContext {
+        entity_name,
+        session_kind,
+    } = ctx;
     match f {
         Friction::StepStalled {
             mission_id,
@@ -248,6 +273,7 @@ fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
             reason = "step_not_advancing",
             entity_id,
             entity_name,
+            cimmeria.session_kind = session_kind,
             mission_id,
             mission_name = cimmeria_names::book().mission(*mission_id),
             step_id,
@@ -265,6 +291,7 @@ fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
             reason = "client_region_hint_missing",
             entity_id,
             entity_name,
+            cimmeria.session_kind = session_kind,
             region_id,
             region_name = (!region_tag.is_empty()).then_some(region_tag.as_str()),
             dwell_secs,
@@ -280,6 +307,7 @@ fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
             reason = "no_region_hints_since_respawn",
             entity_id,
             entity_name,
+            cimmeria.session_kind = session_kind,
             secs_since_respawn,
             travelled,
             hints_before_respawn,
@@ -295,6 +323,7 @@ fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
             reason = "dialog_replaced_too_fast",
             entity_id,
             entity_name,
+            cimmeria.session_kind = session_kind,
             dialog_id,
             dialog_name = cimmeria_names::book().dialog(*dialog_id),
             replaced_dialog_id,
@@ -339,13 +368,17 @@ pub fn player_tick(
         .get_entity_world_name(entity_id)
         .unwrap_or_default();
     let regions = regions_client_should_hint(&space_mgr.regions_for_world(&world), pos);
-    let entity_name = crate::cell::space_manager::EntityNames::of(e).entity_name;
+    let ctx = RowContext {
+        entity_name: crate::cell::space_manager::EntityNames::of(e).entity_name,
+        session_kind: e.session_kind,
+    };
     let fired = with_watch(entity_id, |w| {
-        w.entity_name = entity_name;
+        w.entity_name = ctx.entity_name;
+        w.session_kind = ctx.session_kind;
         w.evaluate(now, pos, &missions, &regions)
     });
     for f in &fired {
-        emit(entity_id, entity_name, f);
+        emit(entity_id, ctx, f);
     }
 }
 
@@ -391,10 +424,10 @@ pub fn last_dialog(entity_id: u32) -> Option<(i32, u64)> {
 pub fn dialog_shown(entity_id: u32, dialog_id: i32) {
     let fired = with_watch(entity_id, |w| {
         w.note_dialog(dialog_id, Instant::now())
-            .map(|f| (f, w.entity_name))
+            .map(|f| (f, w.row_context()))
     });
-    if let Some((f, entity_name)) = fired {
-        emit(entity_id, entity_name, &f);
+    if let Some((f, ctx)) = fired {
+        emit(entity_id, ctx, &f);
     }
 }
 
@@ -411,7 +444,10 @@ pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32,
     if open.is_empty() {
         return;
     }
-    let entity_name = watched_name(entity_id);
+    let RowContext {
+        entity_name,
+        session_kind,
+    } = watched_context(entity_id);
     for &(objective_id, optional) in open {
         tracing::warn!(
             target: "playtest.friction",
@@ -419,6 +455,7 @@ pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32,
             reason = "objective_open_at_mission_complete",
             entity_id,
             entity_name,
+            cimmeria.session_kind = session_kind,
             mission_id,
             mission_name = cimmeria_names::book().mission(mission_id),
             objective_id,
@@ -433,7 +470,10 @@ pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32,
 /// Any NPC following them is left behind: follow re-paths from where it stands
 /// and has no notion of the leader having changed floors or rooms.
 pub fn leader_teleported(space_mgr: &crate::cell::space_manager::SpaceManager, leader_id: u32) {
-    let Some(leader_pos) = space_mgr.get_entity(leader_id).map(|e| e.position) else {
+    let Some((leader_pos, session_kind)) = space_mgr
+        .get_entity(leader_id)
+        .map(|e| (e.position, e.session_kind))
+    else {
         return;
     };
     for npc_id in space_mgr.all_npc_entity_ids() {
@@ -455,6 +495,8 @@ pub fn leader_teleported(space_mgr: &crate::cell::space_manager::SpaceManager, l
             tag = npc.tag.as_deref(),
             target_id = leader_id,
             target_name = space_mgr.entity_label(leader_id),
+            // The followed player's session kind (TG-NET-17).
+            cimmeria.session_kind = session_kind,
             ai_state = ?npc.ai_state(),
             nav_path_len = npc.nav_path.len(),
             dist_before_teleport = npc.position.distance_to(&leader_pos),

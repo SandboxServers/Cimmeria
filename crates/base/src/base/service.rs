@@ -422,6 +422,7 @@ impl BaseService {
                 idle_ms: session_idle_ms(c),
                 in_world: c.listed_online,
                 world: c.world_name.as_deref(),
+                session_kind: c.session_kind,
             });
             ended += 1;
         }

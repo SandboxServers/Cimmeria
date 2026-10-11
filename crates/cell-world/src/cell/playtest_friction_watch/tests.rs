@@ -246,3 +246,71 @@ fn point_in_polygon_handles_rotated_boxes() {
     assert!(!region_contains_xz(&diamond, 0.9, 0.9));
     assert!(!region_contains_xz(&diamond[..2], 0.0, 0.0));
 }
+
+/// TG-NET-17: every friction row says whether the session is a lab run or a
+/// player. All 8 friction stalls in the triage were lab runs, which stop on
+/// purpose; without the field they read as player pain. Driven through
+/// `player_tick` (the step stall) and `dialog_shown` (a gameplay hook that
+/// only has the watch's cached copy), so dropping either the cache refresh
+/// or the field fails it.
+#[test]
+fn friction_rows_carry_session_kind() {
+    use crate::cell::space_manager::SpaceManager;
+    use crate::test_support::LogCapture;
+    use cimmeria_entity::missions::MissionInstance;
+
+    // An id no other test uses: the watch table is process-global.
+    const ENTITY: u32 = 917_017;
+    const MISSION: i32 = 706;
+    const STEP: i32 = 2411;
+
+    let capture = LogCapture::install();
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(ENTITY, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    {
+        let e = mgr.get_entity_mut(ENTITY).unwrap();
+        e.is_player = true;
+        e.session_kind = Some("lab");
+        e.missions
+            .add_mission(MissionInstance::new(MISSION, STEP, vec![]));
+    }
+    // The step has been current for longer than the stall threshold.
+    let first_seen = Instant::now()
+        .checked_sub(STEP_STALL_AFTER + Duration::from_secs(1))
+        .expect("monotonic clock is past the stall threshold");
+    forget(ENTITY);
+    with_watch(ENTITY, |w| {
+        w.steps.insert(MISSION, (STEP, first_seen, false));
+    });
+
+    player_tick(&mgr, ENTITY, [0.0; 3]);
+    dialog_shown(ENTITY, 2517);
+    dialog_shown(ENTITY, 2518);
+    forget(ENTITY);
+
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| {
+            c.level == tracing::Level::WARN
+                && c.target == "playtest.friction"
+                && c.fields.get("entity_id").map(String::as_str) == Some("917017")
+        })
+        .collect();
+    for signal in ["step_stalled", "dialog_displaced"] {
+        let row = rows
+            .iter()
+            .find(|c| c.fields.get("signal").map(String::as_str) == Some(signal))
+            .unwrap_or_else(|| panic!("no {signal} row: {rows:#?}"));
+        assert_eq!(
+            row.fields.get("cimmeria.session_kind").map(String::as_str),
+            Some("lab"),
+            "{signal} row lacks the session kind: {row:#?}"
+        );
+    }
+}

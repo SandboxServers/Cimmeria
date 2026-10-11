@@ -205,6 +205,7 @@ pub(super) async fn handle_base_message(
             looted_containers,
             shown_tutorials,
             entry_cause,
+            session_kind,
         } => {
             init_grant_merge::merge_into_snapshot(
                 entity_id,
@@ -266,6 +267,11 @@ pub(super) async fn handle_base_message(
                 // stamped a player's level, so every player trained as
                 // level 1. `max(1)` keeps a corrupt row from reading as 0.
                 entity.level = level.max(1) as u32;
+                // Lab or player (TG-NET-17), for `session.start` below and
+                // the `playtest.friction` rows. Stamped here, not threaded
+                // into the argument-capped handler. Assigned as sent: the
+                // account, and so the flag, is the same on a travel re-entry.
+                entity.session_kind = session_kind;
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
