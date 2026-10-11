@@ -98,7 +98,7 @@ the report so a run can be replayed exactly.
 | CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder (finished by rust-gameserver-dev) | S | 3 | CH-04 | Integrated (feature branch) |
 | CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | Integrated (feature branch) |
 | CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | Integrated (feature branch) |
-| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | Ready |
+| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | Integrated (burst deferred to CH-13) |
 | CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
@@ -214,3 +214,18 @@ the code is then the reference, not the spec.
       timer is pending (the stale-token guard in `cinematic_aoi_hold`).
     - `client_ready/mod.rs` is over the 700-line cap: 736 lines before
       CH-07, 738 after. A split is owed outside this campaign.
+- **CH-08 (2026-10-11).** Runner wiring for `cpu`, `net` and `flush`.
+  `burst` is refused until CH-13 (D-CH9).
+  - **Owner decision:** a clear that fails twice stops the run. The later
+    rows are BLOCKED because chaos may still be live.
+  - **Login rows:** rows that start `client_stopped` or `char_select` are
+    BLOCKED under net and flush until CH-15 (arming by account, D-CH10).
+    An `any` row is checked at run time.
+  - **Plan time:** the plan refuses every server knob bound, and probes
+    `server_chaos_status`, so a build without lab-chaos fails the plan.
+  - **Cancel safety:** the set is cancel-safe. The guard is armed before the
+    call.
+  - **CPU and leases:** `cpu` with `-Leases` over 1 is refused.
+  - **Incident:** a revert proof's child `uat.ps1` reached the live lab daemon
+    and started two first-session runs. Both were stopped. CLI tests now stub
+    every daemon call.

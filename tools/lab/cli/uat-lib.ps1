@@ -125,13 +125,43 @@ function Format-UatChaosHeader([string[]]$Chaos) {
 
 # Puts the non-empty -Chaos values on the lab_uat_run arguments and returns
 # the header. One filter for both, so the body and the header always agree.
-# Until CH-08 the header is built from the specs as typed (no resolved level
-# or seed); once the runner returns its own header, that one replaces it.
+# This header is the specs as typed (no resolved level or seed); the caller
+# replaces it with the runner's own (Get-UatRunChaos, Select-UatChaosHeader).
 function Set-UatChaos([hashtable]$BaseArgs, [string[]]$Chaos) {
     $specs = @($Chaos | Where-Object { $_ })
     if (-not $specs.Count) { return $null }
     $BaseArgs.chaos = $specs
     return Format-UatChaosHeader $specs
+}
+
+# cpu chaos loads the whole machine, and each lane's lab_uat_run starts its
+# own load, so -Leases 2 would double it: cpu runs on one lease. The message,
+# or $null when the combination is fine.
+function Test-UatChaosLeases([string[]]$Chaos, [int]$Leases) {
+    $cpu = @($Chaos | Where-Object { $_ -and ($_.Trim() -split ':')[0] -eq 'cpu' })
+    if ($cpu.Count -and $Leases -gt 1) {
+        return "-Chaos cpu loads the whole machine and each lease's run would start its own load; run it with -Leases 1"
+    }
+    return $null
+}
+
+# The runner's own chaos header from a lab_uat_run result (lab-chaos CH-08):
+# its `chaos` list (one header per spec, seed resolved) joined with "; ".
+# $null when the result carries none.
+function Get-UatRunChaos($Result) {
+    $headers = @(Get-UatField $Result 'chaos' | Where-Object { $_ })
+    if (-not $headers.Count) { return $null }
+    return ($headers -join '; ')
+}
+
+# The batch's header: the runs' own headers replace the typed one ($Fallback,
+# kept only when no run returned one). Runs differ in seed (each run's seed
+# is its run id's hash), so after the first the rest are counted, not listed.
+function Select-UatChaosHeader($Runs, [string]$Fallback) {
+    $seen = @(@($Runs) | ForEach-Object { [string](Get-UatField $_ 'Chaos') } | Where-Object { $_ } | Select-Object -Unique)
+    if (-not $seen.Count) { return $(if ($Fallback) { $Fallback } else { $null }) }
+    if ($seen.Count -eq 1) { return $seen[0] }
+    return "$($seen[0]) (+$($seen.Count - 1) other seed(s) in batch.jsonl)"
 }
 
 # Attaches the chaos header to a run summary, so -Json and summary.md carry it.

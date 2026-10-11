@@ -567,69 +567,7 @@ $code = $LASTEXITCODE
 $obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
 Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -like '-Heal needs -Leases 1*') "-Heal -Leases 2 exits 2 up front ($code)"
 
-# --- -Chaos (lab-chaos CH-02, D-CH7) ---
-Check ((Format-UatChaosHeader @('cpu', 'flush:pack')) -ceq 'chaos=cpu; chaos=flush:pack') 'the chaos header has one chaos=<spec> per value, joined with "; "'
-Check ($null -eq (Format-UatChaosHeader @())) 'no chaos gives no header'
-Check ((Format-UatChaosHeader @('net:latency=120,loss=1')) -ceq 'chaos=net:latency=120,loss=1') 'a quoted multi-knob spec stays one value'
-$cs = Merge-UatResults @((Rec 'default' 1 $true @())) @($lanes[0]) @()
-$cs['chaos'] = Format-UatChaosHeader @('cpu', 'flush:pack')
-Check ((ConvertTo-UatCompactJson $cs 'C:\b' | ConvertFrom-Json).chaos -ceq 'chaos=cpu; chaos=flush:pack') '-Json has the chaos string when the run had chaos'
-Check ((Format-UatSummary $cs 't' 'C:\b').StartsWith('chaos=cpu; chaos=flush:pack')) 'the chaos header leads the summary'
-$noChaos = Merge-UatResults @((Rec 'default' 1 $true @())) @($lanes[0]) @()
-$body = @{}
-Check ((Set-UatChaos $body @('', 'cpu')) -ceq 'chaos=cpu' -and (@($body.chaos) -join '|') -ceq 'cpu') 'an empty -Chaos value reaches neither the body nor the header'
-$body = @{}
-Check ($null -eq (Set-UatChaos $body @()) -and -not $body.ContainsKey('chaos')) 'no -Chaos leaves the body without a chaos key'
-$wired = Merge-UatResults @((Rec 'default' 1 $true @())) @($lanes[0]) @()
-Add-UatChaosHeader $wired (Set-UatChaos @{} @('flush:pack'))
-Check ((ConvertTo-UatCompactJson $wired 'C:\b' | ConvertFrom-Json).chaos -ceq 'chaos=flush:pack') 'the header attached to a merged summary reaches -Json'
-Add-UatChaosHeader $noChaos $null
-Check ((ConvertTo-UatCompactJson $noChaos 'C:\b') -notmatch '"chaos"' -and (Format-UatSummary $noChaos 't' 'C:\b') -notmatch 'chaos=') 'a run without chaos has no chaos key or header'
-
-# -Chaos reaches the lab_uat_run request body. uat.ps1 is dot-sourced with
-# the daemon calls stubbed, and -PlanOnly stops before anything is driven.
-$uatScript = Join-Path $PSScriptRoot 'uat.ps1'
-$script:sentArgs = $null
-function Invoke-UatPlanWithChaos([string[]]$Chaos) {
-    . $uatScript -Section 'first-session' -PlanOnly -Chaos $Chaos
-    function Get-LabToken { 'token' }
-    function Get-LabStatus { [pscustomobject]@{ instances = @([pscustomobject]@{ instance = 'default'; lease = [pscustomobject]@{ held = $false } }) } }
-    function Get-LabdEnv { @{} }
-    function Get-LabMcpUrl { 'http://stub' }
-    function Get-DefaultSpecsDir { '' }
-    function New-McpSession($Url, $Token) { 'session' }
-    function Close-McpSession($Session) { }
-    function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) {
-        $script:sentArgs = $Arguments
-        [pscustomobject]@{ rows = @([pscustomobject]@{ row = 'FS-01'; result = 'SKIPPED'; reasons = @() }) }
-    }
-    Invoke-LabUat
-}
-Check ((Invoke-UatPlanWithChaos 'cpu', 'flush:pack' 6>$null) -eq 0 -and @($script:sentArgs.chaos) -join '|' -ceq 'cpu|flush:pack') 'two -Chaos values both reach the request body'
-Check ((Invoke-UatPlanWithChaos 'net:latency=120,loss=1' 6>$null) -eq 0 -and @($script:sentArgs.chaos).Count -eq 1 -and $script:sentArgs.chaos[0] -ceq 'net:latency=120,loss=1') 'a quoted multi-knob spec reaches the body as one element'
-Check ((Invoke-UatPlanWithChaos 6>$null) -eq 0 -and -not $script:sentArgs.ContainsKey('chaos')) 'without -Chaos the body has no chaos key'
-
-# Until CH-08, a real run refuses -Chaos before the daemon is asked.
-$script:sentArgs = $null
-$refused = & {
-    . $uatScript -Section 'first-session' -Chaos 'cpu'
-    # Stubbed so a reverted guard reaches the stub, never a live daemon.
-    function Get-LabToken { 'token' }
-    function Get-LabStatus { [pscustomobject]@{ instances = @([pscustomobject]@{ instance = 'default'; lease = [pscustomobject]@{ held = $false } }) } }
-    function Get-LabdEnv { @{} }
-    function Get-Process { }
-    function Get-LabMcpUrl { 'http://stub' }
-    function Get-DefaultSpecsDir { '' }
-    function New-McpSession($Url, $Token) { 'session' }
-    function Close-McpSession($Session) { }
-    function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) { $script:sentArgs = $Arguments; throw 'stub: no run' }
-    Invoke-LabUat
-} 6>$null
-Check ($refused -eq 2 -and $null -eq $script:sentArgs) 'a real run with -Chaos exits 2 and sends nothing until CH-08'
-$out = @(& $pwshExe -NoProfile -File $uatScript 'first-session' -Chaos cpu -Json 2>$null)
-$code = $LASTEXITCODE
-$obj = ($out | Select-Object -Last 1) | ConvertFrom-Json
-Check ($code -eq 2 -and -not $obj.ok -and $obj.exit -eq 2 -and $obj.error -like '-Chaos is not wired*') "-Chaos -Json exits 2 with the refusal ($code)"
+# -Chaos (lab-chaos CH-02, CH-08) is tested in test-uat-chaos.ps1.
 
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'

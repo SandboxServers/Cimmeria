@@ -234,6 +234,10 @@ pub struct RunManifest {
     pub vars: Value,
     /// `section/row` → result, updated as rows finish.
     pub rows: Vec<Value>,
+    /// The run's chaos headers joined with "; " (lab-chaos CH-08); absent
+    /// on an ordinary run. A run carrying it never becomes a golden (CH-09).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chaos: Option<String>,
 }
 
 /// A run directory.

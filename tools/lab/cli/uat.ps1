@@ -35,14 +35,18 @@
     (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
     continues a passing chain and starts from its fixture otherwise).
 
-    -Chaos <profile[:level][:knobs]> passes chaos specs to the runner
-    unchanged (lab_uat_run `chaos`); profiles land in later lab-chaos packets.
-    Until lab-chaos CH-08 wires the runner, -Chaos is refused (exit 2)
-    except with -PlanOnly.
+    -Chaos <profile[:level][:knobs]> runs every row under chaos specs
+    (lab_uat_run `chaos`): cpu (the lab machine), net and flush (the row's
+    server session; a lab-chaos server build). burst is not wired yet and is
+    refused. A bad spec fails the plan call (exit 3) before anything is driven.
+    cpu loads the whole machine and every lane's run would start its own load,
+    so cpu needs -Leases 1 (exit 2 otherwise).
     Give several as -Chaos cpu,flush:pack or -Chaos @('cpu','flush:pack').
     A multi-knob spec contains commas, so quote it: -Chaos 'net:latency=120,loss=1'.
-    The run's header (chaos=<spec>, joined with "; ") leads the summary and
-    -Json gets a chaos key, only when -Chaos was given.
+    The run's header (the runner's chaos=<spec> seed=<n>, joined with "; ")
+    leads the summary and -Json gets a chaos key, only when -Chaos was given.
+    -PlanOnly prints seed=<per run> for a seed the spec did not name: each
+    run's seed is its own run id's hash.
 
     -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
@@ -136,12 +140,9 @@ function Invoke-LabUat {
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
     if ($shape) { return Stop-Uat 2 $shape }
-    # The runner ignores chaos until lab-chaos CH-08 wires it, so a real run
-    # would print a chaos= header for a run that had none. Remove with CH-08.
-    if (-not $PlanOnly -and @($Chaos | Where-Object { $_ }).Count) {
-        return Stop-Uat 2 '-Chaos is not wired to the runner until lab-chaos CH-08; refusing so no run is recorded as chaos-graded (-PlanOnly still accepts it)'
-    }
-    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
+    $chaosShape = Test-UatChaosLeases $Chaos $Leases
+    if ($chaosShape) { return Stop-Uat 2 $chaosShape }
+    $specs =if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     # A diff needs a golden: without one, stop before anything is driven.
     if ($DiffGolden) {
         if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
@@ -198,6 +199,9 @@ function Invoke-LabUat {
     } catch {
         return Stop-Uat 3 "the plan call failed: $(Hide-LeaseIds (($_.Exception.Message -split "`n")[0]))"
     }
+    # The runner's resolved header replaces the typed one (lab-chaos CH-08).
+    $planChaos = Get-UatRunChaos $planned
+    if ($planChaos) { $chaosHeader = $planChaos }
     $rowIds = @(@(Get-UatField $planned 'rows') | ForEach-Object { [string](Get-UatField $_ 'row') })
     if (-not $rowIds.Count) { return Stop-Uat 2 "no rows matched in section $Section" }
     $missing = @($requested | Where-Object { $rowIds -notcontains $_ })
@@ -208,8 +212,15 @@ function Invoke-LabUat {
         return Stop-Uat 3 "not ready: $why"
     }
     if ($PlanOnly) {
-        if ($Json) { [Console]::Out.WriteLine(([ordered]@{ ok = $true; plan_only = $true; rows = $rowIds; lanes = @($plan.Lanes.Instance) } | ConvertTo-Json -Compress)) }
-        else { & $say "plan: $($rowIds.Count) row(s) ready on $(@($plan.Lanes.Instance) -join ', '): $($rowIds -join ', ')" }
+        if ($Json) {
+            $planOut = [ordered]@{ ok = $true; plan_only = $true; rows = $rowIds; lanes = @($plan.Lanes.Instance) }
+            if ($chaosHeader) { $planOut.chaos = $chaosHeader }
+            [Console]::Out.WriteLine(($planOut | ConvertTo-Json -Compress))
+        }
+        else {
+            if ($chaosHeader) { & $say $chaosHeader }
+            & $say "plan: $($rowIds.Count) row(s) ready on $(@($plan.Lanes.Instance) -join ', '): $($rowIds -join ', ')"
+        }
         return 0
     }
 
@@ -255,6 +266,8 @@ function Invoke-LabUat {
                         try { $out = Invoke-McpTool $s 'lab_uat_run' $a ($using:RunTimeoutMinutes * 60) }
                         finally { Close-McpSession $s }
                         $rec.Rows = @(Get-UatField $out 'rows'); $rec.RunDir = [string](Get-UatField $out 'run_dir')
+                        $runChaos = Get-UatRunChaos $out
+                        if ($runChaos) { $rec.Chaos = $runChaos }
                         $rec.Verdict = Get-UatRunVerdict $rec.Rows $using:rowIds
                         $rec.Ok = $rec.Verdict.Ok
                     } catch {
@@ -300,7 +313,7 @@ function Invoke-LabUat {
         $allRuns = @(Read-UatRecords $jsonl)
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
-        Add-UatChaosHeader $summary $chaosHeader
+        Add-UatChaosHeader $summary (Select-UatChaosHeader $allRuns $chaosHeader)
         $title = "lab uat $Section"
         $batch = @{ Dir = $batchDir; Title = $title; Section = $Section; RowIds = $rowIds
                     LaneCount = $plan.Lanes.Count; RunsPerLease = $RunsPerLease; Started = $started }

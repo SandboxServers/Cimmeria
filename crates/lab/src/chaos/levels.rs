@@ -31,7 +31,9 @@ struct LevelPair {
 /// One level: its knob values and where they came from.
 #[derive(Debug, Deserialize)]
 pub struct LevelEntry {
-    /// Required so no level ships without a bound behind it.
+    /// Required so no level ships without a bound behind it. Only the
+    /// levels test reads it; the load refusing a level without one is the point.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub source: String,
     #[serde(flatten)]
     pub knobs: BTreeMap<String, String>,
