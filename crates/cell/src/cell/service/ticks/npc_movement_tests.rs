@@ -451,3 +451,75 @@ fn leg_step_restarts_only_when_a_new_path_is_installed() {
     assert_eq!(leg_step_index(npc, 4), 1, "longer path = new leg");
     assert_eq!(leg_step_index(npc + 1, 1), 1, "per NPC");
 }
+
+/// An NPC with one 80-unit leg at `move_speed = 5.0`. When `witnessed`, a
+/// connected player stands on it, so the AoI gives the NPC a witness.
+fn step_fixture(npc_id: u32, witnessed: bool) -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(npc_id, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(npc_id) {
+        npc.is_player = false;
+        npc.class_id = 0x04;
+        npc.move_speed = 5.0;
+        npc.nav_path
+            .push_back(cimmeria_common::Vector3::new(80.0, 0.0, 0.0));
+    }
+    if witnessed {
+        let player = npc_id + 1;
+        mgr.create_entity(player, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(player) {
+            p.is_player = true;
+            p.player_id = Some(player as i32);
+        }
+        mgr.connect_entity(player);
+        let _ = mgr.compute_aoi_changes();
+        assert_eq!(
+            mgr.get_witnesses_of(npc_id),
+            vec![player],
+            "fixture: the player sees the NPC"
+        );
+    }
+    mgr
+}
+
+/// Run `ticks` movement ticks; the `event=step` rows written for `npc_id`.
+fn step_rows(mgr: &mut SpaceManager, npc_id: u32, ticks: usize) -> usize {
+    let logs = crate::test_support::LogCapture::install();
+    for _ in 0..ticks {
+        npc_movement_tick(mgr);
+    }
+    logs.all()
+        .iter()
+        .filter(|c| {
+            c.target == "movement.npc"
+                && c.message_contains("NPC movement step")
+                && c.has_field("npc_id", &npc_id.to_string())
+        })
+        .count()
+}
+
+/// NA-style volume fix: ten steps of an unwitnessed NPC write at most one
+/// `event=step` row (the first, then one per 60 s), while a witnessed NPC
+/// keeps its leg-head rows. Reverting the witness gate gives one row per
+/// head step, so the unwitnessed count is 5 and the test fails.
+#[test]
+fn unwitnessed_npc_steps_are_sampled() {
+    let mut quiet = step_fixture(4_200_010, false);
+    let unwitnessed = step_rows(&mut quiet, 4_200_010, 10);
+    assert!(unwitnessed <= 1, "got {unwitnessed} step rows");
+
+    let mut seen = step_fixture(4_200_020, true);
+    let witnessed = step_rows(&mut seen, 4_200_020, 10);
+    assert!(
+        witnessed >= NPC_LEG_HEAD_STEPS as usize,
+        "a witnessed NPC keeps its head steps, got {witnessed}"
+    );
+}
