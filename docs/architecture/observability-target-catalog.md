@@ -642,7 +642,7 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 
 Successor PRs may add `patrol_arrived` / `wander_waypoint_set` / etc.
 as sub-state breadcrumb `event = "..."` discriminators (see
-[instrumentation-discipline.md §rule-2](instrumentation-discipline.md#rule-2--every-state-transition-gets-a-debug-level-event-with-event--)).
+[instrumentation-discipline.md §rule-2](instrumentation-discipline.md#rule-2--every-state-transition-gets-a-debug-level-event-with-event--)). For an NPC nobody can see (TG-NPC-09), these leg rows (`patrol_arrived`, `patrol_waypoint_set`, `wander_arrived`, `wander_waypoint_set`) and ok path `request` rows (60 s, not 10 s) are sampled once per 60 s per kind, with `suppressed` counting the rows skipped; a witnessed NPC writes every leg row with no `suppressed`, and its path requests keep their 10 s window.
 The enum above is the **terminal** decision-outcome — the single
 value `Span::current().record("decision_outcome", ...)` settles on per
 tick — not the per-transition event log.

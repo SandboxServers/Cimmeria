@@ -66,9 +66,9 @@ pub(super) async fn install(
     helper: PathBuf,
     cancel: CancellationToken,
     progress: ProgressSink,
-) -> Outcome {
+) -> Staged {
     let Ok(_ownership) = claim(intent, state_root) else {
-        return Outcome::DestinationUnavailable;
+        return (Outcome::DestinationUnavailable, None);
     };
     install_claimed(
         state,
@@ -92,7 +92,7 @@ async fn install_claimed(
     helper: PathBuf,
     cancel: CancellationToken,
     progress: ProgressSink,
-) -> Outcome {
+) -> Staged {
     let adapter = match WineSeedExtractor::prepare(
         state.clone(),
         intent.operation_id,
@@ -103,7 +103,7 @@ async fn install_claimed(
     .await
     {
         Ok(adapter) => adapter,
-        Err(error) => return preparation_outcome(error),
+        Err(error) => return (preparation_outcome(error), None),
     };
     let stage = intent
         .destination
@@ -112,7 +112,7 @@ async fn install_claimed(
         .destination
         .join(format!(".cimmeria-cache-{}", intent.operation_id));
     // Do not create staging here: the supervised helper requires an absent target.
-    let (result, _) = install::install_all_with_seed_extractor(
+    let (result, report) = install::install_all_with_seed_extractor(
         InstallContext {
             manifest_url,
             install_dir: &stage,
@@ -128,7 +128,7 @@ async fn install_claimed(
         },
     )
     .await;
-    finish_stage(intent, release, &stage, result)
+    (finish_stage(intent, release, &stage, result), Some(report))
 }
 fn preparation_outcome(error: WineError) -> Outcome {
     match error {

@@ -8,11 +8,13 @@
 //! what follows it until the terminal commit: content verification and
 //! promotion. Progress keeps only the newest value; a phase that was never
 //! observed is simply absent.
+use super::game_telemetry::install_event::{Ending, Run};
 use super::*;
 use crate::{
     catalog::{self, VerifiedRelease},
     install::{self, InstallContext, InstallError},
     install_progress::ProgressSink,
+    install_report::InstallReport,
     launcher_summary::TimedPhase,
     OperationState,
 };
@@ -199,7 +201,11 @@ fn spawn_worker(
         })
         .catch_unwind()
         .await
-        .unwrap_or(Outcome::ReconciliationRequired);
+        .unwrap_or((Outcome::ReconciliationRequired, None));
+        let (outcome, report) = outcome;
+        if let (Some(report), Ok(mut owner)) = (report, owned_state.lock()) {
+            owner.stash_install_report(id, report);
+        }
         let published = publish(&owned_state, id, outcome);
         result.send_replace(Some(published));
     });
@@ -247,7 +253,21 @@ fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
     // The summary row is built now, while the result record is this attempt's.
     // Install admission finalizes too; this keeps the row independent of it.
     state.finalize_summaries();
+    state.queue_install_result(id, Run::Install, ending(published));
     published
+}
+
+fn ending(outcome: Outcome) -> Ending {
+    match outcome {
+        Outcome::ContentPrepared => Ending::Succeeded,
+        Outcome::Cancelled => Ending::Cancelled,
+        Outcome::ReconciliationRequired => Ending::Uncertain,
+        Outcome::DestinationUnavailable => Ending::Failed("destination_unavailable"),
+        Outcome::InstallFailed => Ending::Failed("install_failed"),
+        Outcome::ContentInvalid => Ending::Failed("content_invalid"),
+        Outcome::RosettaRequired => Ending::Failed("rosetta_required"),
+        Outcome::RuntimeUnavailable => Ending::Failed("runtime_unavailable"),
+    }
 }
 
 fn commit_result(state: &mut DesktopState, id: Uuid, outcome: Outcome) -> Outcome {
@@ -286,12 +306,16 @@ async fn install_owned(
     http: &reqwest::Client,
     cancel: CancellationToken,
     progress: ProgressSink,
-) -> Outcome {
+) -> Staged {
     let Ok(_ownership) = claim(intent, state_root) else {
-        return Outcome::DestinationUnavailable;
+        return (Outcome::DestinationUnavailable, None);
     };
     install_stage(intent, release, manifest_url, http, cancel, progress).await
 }
+
+/// How a stage ended, with `install_all`'s report when it got that far
+/// (for the install-result telemetry event).
+type Staged = (Outcome, Option<InstallReport>);
 
 async fn install_stage(
     intent: &InstallIntent,
@@ -300,16 +324,16 @@ async fn install_stage(
     http: &reqwest::Client,
     cancel: CancellationToken,
     progress: ProgressSink,
-) -> Outcome {
+) -> Staged {
     let stage = intent
         .destination
         .join(format!(".cimmeria-stage-{}", intent.operation_id));
     match std::fs::create_dir(&stage) {
         Ok(()) => (),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => (),
-        Err(_) => return Outcome::DestinationUnavailable,
+        Err(_) => return (Outcome::DestinationUnavailable, None),
     }
-    let (result, _) = install::install_all(InstallContext {
+    let (result, report) = install::install_all(InstallContext {
         manifest_url,
         install_dir: &stage,
         manifest: release.manifest(),
@@ -319,7 +343,7 @@ async fn install_stage(
         http,
     })
     .await;
-    finish_stage(intent, release, &stage, result)
+    (finish_stage(intent, release, &stage, result), Some(report))
 }
 
 fn finish_stage(
@@ -436,6 +460,8 @@ pub(super) mod tests;
 mod export_tests;
 #[cfg(test)]
 mod summary_tests;
+#[cfg(test)]
+mod telemetry_tests;
 
 mod resume;
 pub use resume::{resume, ResumeError};
