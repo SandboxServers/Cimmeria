@@ -113,8 +113,12 @@ removes the whole `Firesky` tree and is refused with `confirmation_required`
 unless `confirmed: true`, which the panel sends only from its confirm step.
 Both refuse with `busy` while the updater or any operation, Play included, is
 running. Removal never follows a link: a link inside the tree is removed as
-itself, and a cache reached through a linked `Firesky` or `SGWGame` is
-refused with `unsafe_path`. Its other codes are `profile_unavailable` and `io`.
+itself, and either reset is refused with `unsafe_path` when `My Games` or
+`Firesky` (or, for the cache, `SGWGame`) is a link. `Documents` is the folder
+the client asks the shell for (`SHGetFolderPathW(CSIDL_PERSONAL)`), so a
+redirected (OneDrive) Documents is followed. On macOS every request answers
+`profile_unavailable`: the Wine client writes inside its prefix, not under
+`$HOME/Documents`, and resetting there is not built yet. The other code is `io`.
 
 ## Effect workflows
 

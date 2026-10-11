@@ -50,6 +50,10 @@ pub struct NativeHost {
     game_update_fixture: Option<game_update::TestDispatch>,
     #[cfg(test)]
     adoption_fixture: Option<adoption::TestDispatch>,
+    /// The `Firesky` tree client-maintenance tests act on, so they never
+    /// resolve the player's.
+    #[cfg(test)]
+    firesky_fixture: Option<PathBuf>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -79,6 +83,8 @@ impl NativeHost {
             game_update_fixture: None,
             #[cfg(test)]
             adoption_fixture: None,
+            #[cfg(test)]
+            firesky_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
             repair_worker: Mutex::new(None),

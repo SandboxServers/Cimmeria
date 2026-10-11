@@ -12,8 +12,8 @@ export const clientMaintenanceText={
 };
 const failures:Record<ClientMaintenanceError|'transport'|'schema',string>={
  confirmation_required:'Confirm the reset first. Nothing was deleted.',
- profile_unavailable:'Your user profile folder could not be found, so nothing was deleted.',
- unsafe_path:'The cache folder is reached through a link, so nothing was deleted. Use Reset all client state, or remove the link yourself.',
+ profile_unavailable:'The game client\'s folder could not be found on this computer, so nothing was deleted.',
+ unsafe_path:'The client\'s folder is a link to another place, so nothing was deleted. Remove the link yourself if you want it gone.',
  busy:'Another launcher operation is running. Wait for it to finish, then try again.',
  io:'Some files could not be deleted. Close the game and try again.',
  in_use:'The launcher\'s state is in use by another launcher window. Close it and try again.',

@@ -2,6 +2,7 @@
 //! player's Documents. The client keeps both under `My Games\Firesky`
 //! (`cimmeria_launcher_core::client_paths`).
 use super::*;
+#[cfg(windows)]
 use cimmeria_launcher_core::client_paths::firesky_root;
 use std::{
     fs, io,
@@ -62,10 +63,12 @@ pub struct TreeStatus {
 pub enum ClientMaintenanceError {
     /// `ResetAllClientState` was sent without `confirmed: true`. Nothing is deleted.
     ConfirmationRequired,
-    /// No `USERPROFILE` or `HOME` to resolve the client folder from.
+    /// No Documents folder to resolve the client folder from. Also the answer
+    /// on every host but Windows: the Wine client on macOS writes inside its
+    /// prefix, not under `$HOME/Documents`.
     ProfileUnavailable,
-    /// A link sits on the way to the cache, so the reset would delete outside
-    /// the Firesky tree. Nothing is deleted.
+    /// `My Games`, `Firesky` or (for the cache) `SGWGame` is a link, so the
+    /// reset would delete outside the Firesky tree. Nothing is deleted.
     UnsafePath,
     /// Admission or state-directory failure, including an unknown schema.
     #[serde(untagged)]
@@ -84,20 +87,48 @@ impl DesktopState {
         &mut self,
         request: ClientMaintenanceCommand,
     ) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
-        let Some(firesky) = firesky_root() else {
-            tracing::warn!(?request, "client maintenance: no USERPROFILE or HOME");
+        // Only Windows has a Documents folder the client writes to; see
+        // `ProfileUnavailable`.
+        #[cfg(windows)]
+        let firesky = firesky_root();
+        #[cfg(not(windows))]
+        let firesky: Option<PathBuf> = None;
+        let Some(firesky) = firesky else {
+            tracing::warn!(
+                ?request,
+                "client maintenance: no client Documents folder on this host"
+            );
             return Err(ClientMaintenanceError::ProfileUnavailable);
         };
-        let result = self.client_maintenance_in(request, &firesky);
+        self.client_maintenance_at(request, &firesky)
+    }
+
+    /// `client_maintenance` against an explicit `Firesky` tree, so the
+    /// shell's tests run on a temp profile and never touch the player's.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn client_maintenance_fixture(
+        &mut self,
+        request: ClientMaintenanceCommand,
+        firesky: &Path,
+    ) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
+        self.client_maintenance_at(request, firesky)
+    }
+
+    fn client_maintenance_at(
+        &mut self,
+        request: ClientMaintenanceCommand,
+        firesky: &Path,
+    ) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
+        let result = self.client_maintenance_in(request, firesky);
         if let Err(error) = &result {
             tracing::warn!(?request, ?error, firesky = %firesky.display(), "client maintenance refused");
         }
         result
     }
 
-    /// `client_maintenance` against an explicit `Firesky` tree, so tests run
-    /// on a temp profile and never touch the player's.
-    fn client_maintenance_in(
+    /// The request against an explicit `Firesky` tree, so tests run on a
+    /// temp profile and never touch the player's.
+    pub(super) fn client_maintenance_in(
         &mut self,
         request: ClientMaintenanceCommand,
         firesky: &Path,
@@ -110,7 +141,9 @@ impl DesktopState {
             ClientMaintenanceCommand::Inspect { .. } => Ok(status(firesky, None)),
             ClientMaintenanceCommand::ResetCache { .. } => {
                 self.ensure_no_active_operation()?;
-                ensure_no_linked_ancestor(firesky)?;
+                let mut guarded = folders_above(firesky);
+                guarded.push(firesky.join("SGWGame"));
+                ensure_not_linked(&guarded)?;
                 let removed = remove_tree(&cache).map_err(|error| removal_failed(&cache, error))?;
                 Ok(status(firesky, Some(removed)))
             }
@@ -121,8 +154,11 @@ impl DesktopState {
                     return Err(ClientMaintenanceError::ConfirmationRequired);
                 }
                 self.ensure_no_active_operation()?;
-                // A `Firesky` that is itself a link is removed as the link;
-                // `remove_tree` never follows it.
+                // Removing a linked `Firesky` would remove only the link and
+                // leave the client's state where the link points, so it is
+                // refused like the cache reset. Links inside the tree are
+                // removed as themselves.
+                ensure_not_linked(&folders_above(firesky))?;
                 let removed =
                     remove_tree(firesky).map_err(|error| removal_failed(firesky, error))?;
                 Ok(status(firesky, Some(removed)))
@@ -153,11 +189,24 @@ fn tree_status(path: &Path) -> TreeStatus {
     }
 }
 
-/// Refuse a cache reset when `Firesky` or `SGWGame` is a link: the cache
-/// would then be deleted through the link, outside the Firesky tree.
-fn ensure_no_linked_ancestor(firesky: &Path) -> Result<(), ClientMaintenanceError> {
-    for ancestor in [firesky.to_path_buf(), firesky.join("SGWGame")] {
-        if fs::symlink_metadata(&ancestor).is_ok_and(|meta| is_link(&meta)) {
+/// `Documents\My Games` and `Firesky`: the folders every reset reaches its
+/// tree through. `Documents` itself is not checked, since a redirected
+/// Documents is the player's own choice and the client follows it too.
+fn folders_above(firesky: &Path) -> Vec<PathBuf> {
+    firesky
+        .parent()
+        .map(Path::to_path_buf)
+        .into_iter()
+        .chain([firesky.to_path_buf()])
+        .collect()
+}
+
+/// Refuse a reset when one of `folders` is a link: the reset would then
+/// delete through the link, outside the Firesky tree, or remove only the link.
+fn ensure_not_linked(folders: &[PathBuf]) -> Result<(), ClientMaintenanceError> {
+    for folder in folders {
+        if fs::symlink_metadata(folder).is_ok_and(|meta| is_link(&meta)) {
+            tracing::warn!(folder = %folder.display(), "client maintenance: folder is a link; nothing deleted");
             return Err(ClientMaintenanceError::UnsafePath);
         }
     }
@@ -178,6 +227,7 @@ fn remove_tree(path: &Path) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Ok(meta) => {
             remove_entry(path, &meta)?;
+            tracing::info!(path = %path.display(), "client maintenance: deleted");
             Ok(true)
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -200,8 +250,10 @@ fn remove_entry(path: &Path, meta: &fs::Metadata) -> io::Result<()> {
         return fs::remove_dir(path);
     }
     match fs::remove_file(path) {
-        // Windows refuses to delete a read-only file. This is a regular file
-        // (links returned above), so the permission change touches only it.
+        // Windows refuses to delete a read-only file (Unix only asks for a
+        // writable parent). This is a regular file (links returned above),
+        // so the permission change touches only it.
+        #[cfg(windows)]
         Err(error)
             if error.kind() == io::ErrorKind::PermissionDenied && meta.permissions().readonly() =>
         {
@@ -215,16 +267,10 @@ fn remove_entry(path: &Path, meta: &fs::Metadata) -> io::Result<()> {
     }
 }
 
-/// A symlink, or a Windows junction. std does not always report a junction
-/// as a symlink, so the reparse-point attribute is checked too.
+/// A symlink, or a Windows junction. On Windows std reports a reparse point
+/// as a symlink only when its tag is a name surrogate (symlink, mount point
+/// or junction), so a OneDrive cloud placeholder, which is a reparse point
+/// too, stays a plain file or folder and is deleted normally.
 fn is_link(meta: &fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return true;
-        }
-    }
     meta.file_type().is_symlink()
 }
