@@ -198,6 +198,20 @@ in within a second.
 | One send to the client | 10 s (`SEND_TIMEOUT`) | The connection is treated as gone: no further frames are sent, and a session ends as a cancel. DEBUG row `reason=send_timeout` |
 | TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s for an idle connection. With data in flight, TCP retransmission and the 10 s send timeout apply instead |
 
+Ahead of these, the listener admits only peers whose IP address matches a
+registered minigame session: the source address of the player's game
+connection, recorded when the session starts. Any other socket is closed
+before a byte is read and before a connection slot is taken. Two INFO rows
+record these refusals. `reason=unexpected_peer` is written when no session
+is registered at all, throttled to at most once a minute with a `suppressed`
+count. `reason=unexpected_peer_with_sessions` is written when sessions are
+registered but none expects the address, and it is not throttled: a real
+player behind NAT or multiple WAN links may be the one refused. Each refusal
+also writes a TRACE row, since `cimmeria_minigame=debug` is exported. A
+session is not registered without the player's client address: the start
+is refused with a WARN row `reason=no_client_addr`, and no `onStartMinigame`
+is sent.
+
 The defaults are `ListenerLimits::default()` in
 [`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
 `server::run_with_limits` takes other values; the server configuration has
