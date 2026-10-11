@@ -65,7 +65,7 @@ Research against `main` @ `ee899c2c0`.
 | D-AI13 | PROPOSED (coordinator) | `LoginInternal.lua` is setup-owned: its content never blocks and never counts as modified. If it differs from both the release bytes and what setup will write, it is backed up like a modified file (so a custom server list survives) and reported as a setup change. | Setup rewrites it on every Play anyway (F-14). |
 | D-AI14 | **BlockedDecision** (owner) | **Out of scope here:** index-driven incremental Update and Repair. Today both rebuild from the full seed (F-15), so an adopted folder's first game Update still needs the seed (downloaded, or the player's archive through D-AI4). **Question:** follow-up campaign, or accept? | Same index, different state machines; folding it in doubles the campaign. |
 | D-AI15 | PROPOSED (coordinator) | **A local archive is copied, not read in place.** Choosing it verifies size and SHA-256 at once (feedback in seconds to a minute). When an operation needs the seed, the launcher opens the player's file without following links, checks it is the same file (volume and file id, size, modified time) it verified, and copies it into the exact path the download would have written (`.tmp-seed-<sha12>.download`, or the adoption artifact store), hashing the bytes as it copies; the copy is accepted only if that hash matches the signed release. From there the existing pipeline runs unchanged and may delete its own copy. | F-21: the pipeline deletes its archive and the RAR reader opens by path, so in-place reading cannot be bound to the hashed bytes. The copy costs the same 4.1 GB the download would have, and no network. |
-| D-AI16 | PROPOSED, deferred (coordinator) | Optional later packet (AI-16): look in the player's Downloads folder for a file with the seed's exact size and archive.org file name, and offer it; the hash is still required before use. | Convenience only; not needed for the decision's goal. |
+| D-AI16 | ADOPTED (user, 2026-10-11) | AI-16 ships in this campaign: look in the player's Downloads folder for a file with the seed's exact size and archive.org file name, and offer it; the hash is still required before use. | The user wants it: most players who have the archive have it in Downloads. |
 
 ## Packets
 
@@ -88,7 +88,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | AI-13 | 5 | Settings UI: one adoption entry, mode choice, review and consent | packet-coder | AI-07, AI-11, AI-12 | BlockedDependency |
 | AI-14 | 5 | Publish `file-index.json` for `content-current` | owner (key holder) | AI-04; D-AI8 | BlockedDecision |
 | AI-15 | 5 | Developer, operator and player docs | documentation-writer | AI-07, AI-11, AI-12, AI-13 | BlockedDependency |
-| AI-16 | later | Optional: offer a matching archive found in Downloads (D-AI16) | packet-coder | AI-07 | BlockedDecision (deferred) |
+| AI-16 | 3 | Offer a matching archive found in Downloads (D-AI16) | packet-coder | AI-07 | BlockedDependency |
 | AI-17 | 6 | Windows UAT of any-install adoption and local archives | owner | AI-13, AI-15; AI-14 for the no-seed rows | BlockedDependency |
 | AI-18 | 6 | Close-out | coordinator | AI-17 | BlockedDependency |
 

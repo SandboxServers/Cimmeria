@@ -566,9 +566,9 @@ New engine files AI-02 creates, so wave 2 packets do not collide in `mod.rs`:
 - **Checks:** `pwsh tools/lint-md.ps1` on the changed files; CRLF.
 - **Commit:** `docs(launcher): any-install adoption and local game archives (AI-15)`.
 
-### AI-16 (deferred): offer a matching archive found in Downloads
+### AI-16: offer a matching archive found in Downloads
 
-- **Agent:** packet-coder. **Depends on:** AI-07; D-AI16 confirmed.
+- **Agent:** packet-coder. **Depends on:** AI-07.
 - **Do:** on Settings mount and when Install would download the seed, the engine looks in the player's Downloads known folder (`SHGetKnownFolderPath(FOLDERID_Downloads)`; `~/Downloads` on macOS), top level only, for a regular file with the seed's exact size whose name is the archive.org file name. If one is found, the panel offers "Found <name> in Downloads. Use it?"; Yes runs the normal verification (size and SHA-256). Nothing is read before the player says yes.
 - **Tests:** engine unit with a temp known-folder override: an exact-size, exact-name file is offered; a wrong size is not. Frontend unit and UAT.
 
