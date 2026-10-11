@@ -24,6 +24,7 @@ use tokio::sync::Mutex;
 use auth::{DevSessionRequest, DevSessionResponse};
 use chunk::ChunkError;
 use events::TelemetryEvent;
+pub use flush::MAX_CHUNKS_PER_FLUSH;
 use flush::{flush_queue, FlushTarget};
 use queue::DiskQueue;
 
@@ -71,13 +72,59 @@ pub struct Telemetry {
     /// ms-since-epoch before which [`Telemetry::flush`] sends nothing: the
     /// `Retry-After` of the last 429 or 503.
     retry_not_before_ms: std::sync::atomic::AtomicI64,
+    /// One flush at a time: two would send the same in-flight chunk.
+    flush_turn: Mutex<()>,
 }
 
 /// How far before the session's start a log file's modification time may
 /// be and still count as this session's in the bundle.
 const SESSION_FILE_SLACK_MS: i64 = 10_000;
 
+/// Everything a [`Telemetry`] holds besides the minted token, for a
+/// caller that minted the session itself ([`Telemetry::from_minted`]).
+#[derive(Debug, Clone)]
+pub struct SessionContext {
+    /// The base the mint went to; refreshes go to `<base>/auth/dev-session/refresh`.
+    pub auth_base_url: String,
+    /// The game installation whose session files the bundle carries.
+    pub install_dir: PathBuf,
+    pub install_id: String,
+    pub machine_id: String,
+    pub launcher_version: String,
+    /// When the session was minted, ms since the epoch.
+    pub session_started_at_ms: i64,
+    pub endpoint_policy: endpoint::EndpointPolicy,
+    /// The directory holding `telemetry-queue.jsonl`.
+    pub queue_dir: PathBuf,
+}
+
 impl Telemetry {
+    /// A live handle for a session the caller minted (the desktop launcher
+    /// mints with its own bounded client and writes the DLL's marker
+    /// itself). Nothing is sent and nothing is written; the upload endpoint
+    /// is checked against `ctx.endpoint_policy` like a mint's.
+    pub fn from_minted(
+        resp: DevSessionResponse,
+        ctx: SessionContext,
+    ) -> Result<Self, TelemetryError> {
+        ctx.endpoint_policy.check(&resp.upload_endpoint)?;
+        Ok(Self {
+            session: tokio::sync::RwLock::new(resp),
+            auth_base_url: ctx.auth_base_url,
+            install_dir: ctx.install_dir,
+            install_id: ctx.install_id,
+            machine_id: ctx.machine_id,
+            launcher_version: ctx.launcher_version,
+            session_started_at_ms: ctx.session_started_at_ms,
+            endpoint_policy: ctx.endpoint_policy,
+            issued_at_ms: std::sync::atomic::AtomicI64::new(ctx.session_started_at_ms),
+            queue: DiskQueue::new(&ctx.queue_dir),
+            seq: Arc::new(Mutex::new(0)),
+            retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
+            flush_turn: Mutex::new(()),
+        })
+    }
+
     /// One-call session bootstrap: handshake with `auth_base_url`,
     /// write `current-session.json`, return a live `Telemetry`
     /// handle. Callers feed events through [`Telemetry::enqueue`] and
@@ -122,20 +169,19 @@ impl Telemetry {
             tags: req.tags.clone(),
         };
         session::write_current_session(install_dir, &current)?;
-        Ok(Self {
-            session: tokio::sync::RwLock::new(resp),
-            auth_base_url: auth_base_url.to_string(),
-            install_dir: install_dir.to_path_buf(),
-            install_id: req.install_id,
-            machine_id: req.machine_id,
-            launcher_version: launcher_version.to_string(),
-            session_started_at_ms: now_ms,
-            endpoint_policy,
-            issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
-            queue: DiskQueue::new(queue_dir),
-            seq: Arc::new(Mutex::new(0)),
-            retry_not_before_ms: std::sync::atomic::AtomicI64::new(0),
-        })
+        Self::from_minted(
+            resp,
+            SessionContext {
+                auth_base_url: auth_base_url.to_string(),
+                install_dir: install_dir.to_path_buf(),
+                install_id: req.install_id,
+                machine_id: req.machine_id,
+                launcher_version: launcher_version.to_string(),
+                session_started_at_ms: now_ms,
+                endpoint_policy,
+                queue_dir: queue_dir.to_path_buf(),
+            },
+        )
     }
 
     /// Stamp `ts_ms` + `seq` onto an event and persist it to the
@@ -157,12 +203,23 @@ impl Telemetry {
     ///   never take that chunk: its events are dropped and added to the
     ///   queue's dropped-lines count (the bundle metadata reports it), and
     ///   the next chunk is sent.
-    /// - Any other failure re-enqueues that chunk and every later one, so
-    ///   the next flush replays them, and propagates the error (a
+    /// - Any other failure leaves that chunk and every later one on disk,
+    ///   so the next flush sends them, and propagates the error (a
     ///   `TokenRejected` lets the caller refresh and retry).
     /// - A 429 or 503 also holds off further flushes for its
-    ///   `Retry-After`; the queue stays on disk meanwhile.
-    pub async fn flush(&self, http: &reqwest::Client) -> Result<u64, TelemetryError> {
+    ///   `Retry-After` (an hour at most); the queue stays on disk meanwhile.
+    /// - A chunk leaves the disk only once the server has answered for it,
+    ///   so dropping this future (the launcher closing) loses nothing.
+    /// - One call sends at most `max_chunks` chunks:
+    ///   [`MAX_CHUNKS_PER_FLUSH`] on the flush cadence, `usize::MAX` for the
+    ///   final flush at game exit. Enqueues are not held up while a chunk
+    ///   is on the wire; overlapping flushes of one handle take turns.
+    pub async fn flush(
+        &self,
+        http: &reqwest::Client,
+        max_chunks: usize,
+    ) -> Result<u64, TelemetryError> {
+        let _turn = self.flush_turn.lock().await;
         let (endpoint, token, max_bytes) = {
             let s = self.session.read().await;
             (
@@ -176,7 +233,14 @@ impl Telemetry {
             token: &token,
             max_bytes,
         };
-        flush_queue(http, &self.queue, &target, &self.retry_not_before_ms).await
+        flush_queue(
+            http,
+            &self.queue,
+            &target,
+            &self.retry_not_before_ms,
+            max_chunks,
+        )
+        .await
     }
 
     /// Build + POST the end-of-session bundle. Caller-set counters
@@ -230,21 +294,37 @@ impl Telemetry {
     /// refresh fired and the in-memory token was rotated; `Ok(false)`
     /// when the current token still has ample lifetime.
     pub async fn refresh_if_due(&self, http: &reqwest::Client) -> Result<bool, TelemetryError> {
-        let (expires_at_ms, current_token) = {
-            let s = self.session.read().await;
-            (s.expires_at_ms, s.token.clone())
-        };
+        let expires_at_ms = self.session.read().await.expires_at_ms;
         let now_ms = chrono::Utc::now().timestamp_millis();
         let issued_at_ms = self.issued_at_ms.load(std::sync::atomic::Ordering::Relaxed);
         if !auth::should_refresh(expires_at_ms, now_ms, issued_at_ms) {
             return Ok(false);
         }
-        let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
-        self.endpoint_policy.check(&new_resp.upload_endpoint)?;
-        self.issued_at_ms
-            .store(now_ms, std::sync::atomic::Ordering::Relaxed);
-        *self.session.write().await = new_resp;
+        self.refresh_now(http).await?;
         Ok(true)
+    }
+
+    /// Refresh the token whatever its age: what a 401 from an upload
+    /// calls for. The server refuses an expired token (401) and a chain
+    /// past its session cap; the caller then mints a new session and
+    /// hands it to [`Telemetry::replace_session`].
+    pub async fn refresh_now(&self, http: &reqwest::Client) -> Result<(), TelemetryError> {
+        let current_token = self.session.read().await.token.clone();
+        let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
+        self.replace_session(new_resp).await
+    }
+
+    /// Swap in a newly minted or refreshed session: the token, endpoint and
+    /// chunking defaults. The upload endpoint passes the session's policy
+    /// first; the queue, `seq` counter and back-off clock carry over.
+    pub async fn replace_session(&self, resp: DevSessionResponse) -> Result<(), TelemetryError> {
+        self.endpoint_policy.check(&resp.upload_endpoint)?;
+        self.issued_at_ms.store(
+            chrono::Utc::now().timestamp_millis(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        *self.session.write().await = resp;
+        Ok(())
     }
 }
 
@@ -288,127 +368,47 @@ fn map_chunk_err(e: ChunkError) -> TelemetryError {
     TelemetryError::Chunk(e)
 }
 
-/// Drain any telemetry events left on disk from a previous launcher
-/// run that crashed or was killed before its bundle could upload.
-/// `queue_dir` is the directory [`Telemetry::start_session`] was given.
+/// Count the telemetry events a previous launcher run left on disk (it
+/// crashed, was killed, or closed mid-flush); the next flush sends them.
+/// Nothing is moved or rewritten, so a crash here loses nothing either;
+/// only a line torn by a crash mid-append is ended, so the next append
+/// does not join it. `queue_dir` is the directory
+/// [`Telemetry::start_session`] was given. The recovered events keep their
+/// old `seq` and go out under the next session's token, so the server
+/// attributes them to that session and counts them against its limits.
 pub fn recover_pending_on_startup(queue_dir: &Path) -> u64 {
     let q = DiskQueue::new(queue_dir);
     recover_pending_at(&q)
 }
 
 fn recover_pending_at(q: &DiskQueue) -> u64 {
-    match q.drain::<TelemetryEvent>() {
-        Ok(events) if events.is_empty() => 0,
-        Ok(events) => {
-            let n = events.len() as u64;
+    if let Err(e) = q.repair_torn_tail() {
+        tracing::warn!(error = %e, "telemetry queue tail not repaired");
+    }
+    match q.pending_count::<TelemetryEvent>() {
+        Ok(0) => 0,
+        Ok(n) => {
             tracing::info!(
                 pending = n,
                 dropped_since_last_drain = q.dropped_count(),
                 "Recovered telemetry events from previous session — will replay on next flush"
             );
-            for ev in &events {
-                if let Err(e) = q.enqueue(ev) {
-                    tracing::warn!(error = %e, "failed to re-enqueue recovered event");
-                    break;
-                }
-            }
             n
         }
         Err(e) => {
-            tracing::warn!(error = %e, "telemetry recovery drain failed");
+            tracing::warn!(error = %e, "telemetry recovery count failed");
             0
         }
     }
 }
 
 #[cfg(test)]
+mod recovery_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::events::{ClientLogEvent, TelemetryEvent};
-
-    #[test]
-    fn recover_pending_returns_zero_on_empty_queue() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        assert_eq!(recover_pending_at(&q), 0);
-    }
-
-    #[test]
-    fn recover_pending_drains_and_reenqueues() {
-        let dir = tempfile::tempdir().unwrap();
-        let q = DiskQueue::new(dir.path());
-        for i in 0..3 {
-            q.enqueue(&TelemetryEvent::ClientLog(ClientLogEvent {
-                ts_ms: i,
-                seq: i as u64,
-                source_file: "x.log".into(),
-                level: "info".into(),
-                category: "raw".into(),
-                packet_no: None,
-                message: format!("e-{i}"),
-            }))
-            .unwrap();
-        }
-        let n = recover_pending_at(&q);
-        assert_eq!(n, 3);
-        let drained: Vec<TelemetryEvent> = q.drain().unwrap();
-        assert_eq!(drained.len(), 3);
-    }
-
-    // stamp_seq rewrites the seq field on every variant and fills in
-    // ts_ms when zero. Pinned because the orchestrator's monotonic
-    // ordering guarantee depends on it.
-    #[test]
-    fn stamp_seq_writes_seq_on_every_variant() {
-        let cases = vec![
-            TelemetryEvent::ClientLog(ClientLogEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                level: "i".into(),
-                category: "c".into(),
-                packet_no: None,
-                message: "m".into(),
-            }),
-            TelemetryEvent::DebugLog(events::DebugLogEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                level: "i".into(),
-                message: "m".into(),
-            }),
-            TelemetryEvent::KeyDump(events::KeyDumpEvent {
-                ts_ms: 0,
-                seq: 0,
-                source_file: "x".into(),
-                key_b64: "k".into(),
-            }),
-            TelemetryEvent::SessionMeta(events::SessionMetaEvent {
-                ts_ms: 0,
-                seq: 0,
-                kind: events::SessionMetaKind::Started,
-                fields: serde_json::Map::new(),
-            }),
-            TelemetryEvent::ClientNative(events::ClientNativeEvent {
-                ts_ms: 0,
-                seq: 0,
-                target: "client.frame_tick".into(),
-                level: "info".into(),
-                fields: serde_json::Map::new(),
-            }),
-        ];
-        for mut ev in cases {
-            stamp_seq(&mut ev, 42);
-            let seq_after = match &ev {
-                TelemetryEvent::ClientLog(e) => e.seq,
-                TelemetryEvent::DebugLog(e) => e.seq,
-                TelemetryEvent::KeyDump(e) => e.seq,
-                TelemetryEvent::SessionMeta(e) => e.seq,
-                TelemetryEvent::ClientNative(e) => e.seq,
-            };
-            assert_eq!(seq_after, 42);
-        }
-    }
+    use crate::telemetry::events::TelemetryEvent;
 
     // start_session writes current-session.json + returns a Telemetry
     // whose enqueue / flush round-trip through the disk queue and the
@@ -470,7 +470,7 @@ mod tests {
         }))
         .await
         .unwrap();
-        let flushed = tel.flush(&http).await.unwrap();
+        let flushed = tel.flush(&http, MAX_CHUNKS_PER_FLUSH).await.unwrap();
         assert_eq!(flushed, 1);
     }
 
@@ -547,5 +547,60 @@ mod tests {
         .expect("must refuse");
         assert!(matches!(err, TelemetryError::Endpoint(_)), "{err}");
         assert!(!session::current_session_path(dir.path()).exists());
+    }
+
+    fn minted(upload_endpoint: &str) -> DevSessionResponse {
+        DevSessionResponse {
+            session_id: "sid-1".into(),
+            token: "tok".into(),
+            expires_at_ms: 1_700_028_800_000,
+            upload_endpoint: upload_endpoint.into(),
+            chunk_max_bytes: 1_048_576,
+            flush_interval_ms: 2_000,
+        }
+    }
+
+    fn context(dir: &Path) -> SessionContext {
+        SessionContext {
+            auth_base_url: "http://localhost:8081/api".into(),
+            install_dir: dir.to_path_buf(),
+            install_id: "i".into(),
+            machine_id: "m".into(),
+            launcher_version: "0.1.0".into(),
+            session_started_at_ms: 1_700_000_000_000,
+            endpoint_policy: endpoint::EndpointPolicy::default(),
+            queue_dir: dir.to_path_buf(),
+        }
+    }
+
+    /// A session minted elsewhere is held to the same address rule, both
+    /// when adopted and when a later refresh or re-mint replaces it, and
+    /// adopting it writes no marker.
+    #[tokio::test]
+    async fn an_adopted_session_is_held_to_the_endpoint_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            Telemetry::from_minted(
+                minted("http://uploads.example.org/api"),
+                context(dir.path())
+            ),
+            Err(TelemetryError::Endpoint(_))
+        ));
+        let tel = Telemetry::from_minted(minted("http://localhost:8081/api"), context(dir.path()))
+            .unwrap();
+        assert!(!session::current_session_path(dir.path()).exists());
+        assert!(matches!(
+            tel.replace_session(minted("http://uploads.example.org/api"))
+                .await,
+            Err(TelemetryError::Endpoint(_))
+        ));
+        assert_eq!(
+            tel.session.read().await.upload_endpoint,
+            "http://localhost:8081/api"
+        );
+        let mut next = minted("https://uploads.example.org/api");
+        next.token = "tok-2".into();
+        tel.replace_session(next).await.unwrap();
+        assert_eq!(tel.session.read().await.token, "tok-2");
     }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the live-DB test tier: the lib tests of every crate that has live-DB tests, in ONE
 # nextest invocation under the `ci-live-db` profile, each live-DB test on its own database
-# clone. CI (test.yml's test-live-db and coverage-live-db jobs) and
+# clone. CI (test.yml's build-and-test and coverage-live-db jobs) and
 # tools/build-lane/live-db-test.sh call this. With --wireclient it runs the wireclient
 # end-to-end tests instead, under the `wireclient-e2e` profile.
 #

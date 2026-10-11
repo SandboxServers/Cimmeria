@@ -15,6 +15,12 @@ use super::{map_chunk_err, TelemetryError};
 /// The chunk size used when the mint did not say (`chunk_max_bytes` 0).
 const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
 
+/// Chunks one cadence flush sends at most; the rest waits for the next. A
+/// full 100 MiB backlog would otherwise hold up one tick for many minutes.
+/// A final flush (the game exited) passes `usize::MAX` instead, so the
+/// backlog is not stranded until the next session.
+pub const MAX_CHUNKS_PER_FLUSH: usize = 8;
+
 /// Where [`flush_queue`] posts, and how big a chunk may be.
 pub(super) struct FlushTarget<'a> {
     pub(super) endpoint: &'a str,
@@ -24,12 +30,13 @@ pub(super) struct FlushTarget<'a> {
 }
 
 /// [`Telemetry::flush`] with its queue, target and back-off clock passed
-/// in, for tests.
+/// in, for tests. Sends at most `max_chunks` chunks.
 pub(super) async fn flush_queue(
     http: &reqwest::Client,
     queue: &DiskQueue,
     target: &FlushTarget<'_>,
     retry_not_before_ms: &std::sync::atomic::AtomicI64,
+    max_chunks: usize,
 ) -> Result<u64, TelemetryError> {
     use std::sync::atomic::Ordering;
 
@@ -37,19 +44,21 @@ pub(super) async fn flush_queue(
     if now_ms < retry_not_before_ms.load(Ordering::Relaxed) {
         return Ok(0);
     }
-    let events: Vec<TelemetryEvent> = queue.drain()?;
-    if events.is_empty() {
-        return Ok(0);
-    }
     let max_bytes = match target.max_bytes {
         0 => DEFAULT_CHUNK_MAX_BYTES,
         n => n,
     };
-    let batches = chunk::split_batches(&events, max_bytes, chunk::MAX_CHUNK_ROWS)?;
     let mut sent = 0u64;
-    for batch in batches {
-        let n = batch.len() as u64;
-        match chunk::post_chunk(http, target.endpoint, target.token, &events[batch.clone()]).await {
+    for _ in 0..max_chunks {
+        // Each chunk stays on disk until the server has answered for it, so
+        // a flush cut off anywhere (the launcher closed, the future dropped)
+        // resends at most that chunk and loses nothing.
+        let Some(batch) = queue.take_batch::<TelemetryEvent>(max_bytes, chunk::MAX_CHUNK_ROWS)?
+        else {
+            break;
+        };
+        let n = batch.events.len() as u64;
+        match chunk::post_chunk(http, target.endpoint, target.token, &batch.events).await {
             Ok(()) => sent += n,
             Err(ChunkError::Rejected { status, .. }) => {
                 tracing::warn!(
@@ -63,21 +72,16 @@ pub(super) async fn flush_queue(
             }
             Err(e) => {
                 if let Some(secs) = e.retry_after_secs() {
+                    let secs = secs.min(chunk::MAX_RETRY_AFTER_SECS);
                     let wait_ms = i64::try_from(secs.saturating_mul(1000)).unwrap_or(i64::MAX / 2);
                     retry_not_before_ms.store(now_ms.saturating_add(wait_ms), Ordering::Relaxed);
                 }
-                // Best-effort re-enqueue; failures here surface to the
-                // tracing log but don't override the underlying chunk
-                // error.
-                for ev in &events[batch.start..] {
-                    if let Err(re) = queue.enqueue(ev) {
-                        tracing::warn!(error = %re, "telemetry re-enqueue after chunk failure");
-                        break;
-                    }
-                }
+                // The chunk is still on disk, uncommitted: the next flush
+                // sends it first.
                 return Err(map_chunk_err(e));
             }
         }
+        queue.commit_batch(&batch)?;
     }
     Ok(sent)
 }
@@ -132,13 +136,22 @@ mod tests {
         q: &DiskQueue,
         clock: &AtomicI64,
     ) -> Result<u64, TelemetryError> {
+        flush_up_to(server, q, clock, MAX_CHUNKS_PER_FLUSH).await
+    }
+
+    async fn flush_up_to(
+        server: &MockServer,
+        q: &DiskQueue,
+        clock: &AtomicI64,
+        max_chunks: usize,
+    ) -> Result<u64, TelemetryError> {
         let endpoint = format!("{}/api", server.uri());
         let target = FlushTarget {
             endpoint: &endpoint,
             token: "t",
             max_bytes: 0,
         };
-        flush_queue(&reqwest::Client::new(), q, &target, clock).await
+        flush_queue(&reqwest::Client::new(), q, &target, clock, max_chunks).await
     }
 
     /// A backlog is posted as several chunks of at most 1,000 rows.
@@ -177,6 +190,103 @@ mod tests {
         assert!(flush(&server, &q, &clock).await.is_err());
         assert_eq!(flush(&server, &q, &clock).await.unwrap(), 0);
         assert_eq!(q.drain::<TelemetryEvent>().unwrap().len(), 10);
+    }
+
+    /// **A flush cut off mid-POST loses nothing.** The launcher closing
+    /// drops the flush future while a chunk is on the wire; every event is
+    /// still on disk and the next flush sends it. (A flush that drained the
+    /// queue before posting fails the first `pending_count` here.)
+    #[tokio::test]
+    async fn a_flush_dropped_mid_post_keeps_every_event() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = queue_with(&dir, 1_500);
+        let slow = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/upload-chunk"))
+            .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)))
+            .mount(&slow)
+            .await;
+        let cut = tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            flush(&slow, &q, &AtomicI64::new(0)),
+        )
+        .await;
+        assert!(
+            cut.is_err(),
+            "the flush must still be waiting on the server"
+        );
+        assert_eq!(q.pending_count::<TelemetryEvent>().unwrap(), 1_500);
+
+        let server = server(200, None, 2).await;
+        let sent = flush(&server, &q, &AtomicI64::new(0)).await.unwrap();
+        assert_eq!(sent, 1_500);
+        assert_eq!(q.pending_count::<TelemetryEvent>().unwrap(), 0);
+    }
+
+    /// One flush sends at most [`MAX_CHUNKS_PER_FLUSH`] chunks; the next
+    /// takes the rest.
+    #[tokio::test]
+    async fn one_flush_is_capped_and_the_next_continues() {
+        let dir = tempfile::tempdir().unwrap();
+        let total = (MAX_CHUNKS_PER_FLUSH as u64 + 1) * chunk::MAX_CHUNK_ROWS as u64;
+        let q = queue_with(&dir, total);
+        let server = server(200, None, MAX_CHUNKS_PER_FLUSH as u64 + 1).await;
+        let clock = AtomicI64::new(0);
+        let first = flush(&server, &q, &clock).await.unwrap();
+        assert_eq!(first, total - chunk::MAX_CHUNK_ROWS as u64);
+        assert_eq!(
+            flush(&server, &q, &clock).await.unwrap(),
+            chunk::MAX_CHUNK_ROWS as u64
+        );
+    }
+
+    /// **The final flush at game exit sends the whole backlog**, past the
+    /// cadence cap, rather than stranding it until the next session.
+    #[tokio::test]
+    async fn a_final_flush_sends_more_than_the_cadence_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let chunks = MAX_CHUNKS_PER_FLUSH as u64 + 2;
+        let total = chunks * chunk::MAX_CHUNK_ROWS as u64;
+        let q = queue_with(&dir, total);
+        let server = server(200, None, chunks).await;
+        let sent = flush_up_to(&server, &q, &AtomicI64::new(0), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(sent, total);
+        assert_eq!(q.pending_count::<TelemetryEvent>().unwrap(), 0);
+    }
+
+    /// A launcher killed after the flush moved the queue in flight but
+    /// before any POST: the next flush sends the in-flight file.
+    #[tokio::test]
+    async fn an_inflight_file_left_before_the_first_post_is_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        queue_with(&dir, 3);
+        std::fs::rename(
+            dir.path().join("telemetry-queue.jsonl"),
+            dir.path().join("telemetry-queue.inflight.jsonl"),
+        )
+        .unwrap();
+        let q = DiskQueue::new(dir.path());
+        q.enqueue(&ev(3)).unwrap();
+        let server = server(200, None, 2).await;
+        let sent = flush(&server, &q, &AtomicI64::new(0)).await.unwrap();
+        assert_eq!(sent, 4);
+        assert_eq!(q.pending_count::<TelemetryEvent>().unwrap(), 0);
+    }
+
+    /// A huge `Retry-After` holds flushes off for an hour at most.
+    #[tokio::test]
+    async fn retry_after_is_clamped_to_an_hour() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = queue_with(&dir, 1);
+        let server = server(503, Some("99999999"), 1).await;
+        let clock = AtomicI64::new(0);
+        let before = chrono::Utc::now().timestamp_millis();
+        assert!(flush(&server, &q, &clock).await.is_err());
+        let held = clock.load(std::sync::atomic::Ordering::Relaxed) - before;
+        assert!(held <= 3_600_000 + 5_000, "held {held} ms");
+        assert!(held >= 3_600_000 - 5_000, "held {held} ms");
     }
 
     #[test]
