@@ -22,6 +22,7 @@ pub(super) async fn accept_or_advance(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -29,10 +30,10 @@ pub(super) async fn accept_or_advance(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
-        account_id = space_mgr.player_identity(entity_id).account_id,
-        account_name = space_mgr.player_identity(entity_id).account_name,
-        player_id = space_mgr.player_identity(entity_id).player_id,
-        player_name = space_mgr.player_identity(entity_id).player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
         "Content: accepting mission"
     );
     if let Some(def) = space_mgr.mission_defs.get(&mission_id) {
@@ -58,6 +59,7 @@ pub(super) async fn accept_or_advance(
         // after relog" corruption (#411). Skip the follow-up
         // `mission_accepted` event too: no acceptance happened.
         if !accepted {
+            let who = space_mgr.player_identity(entity_id);
             tracing::info!(
                 entity_id,
                 entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -65,10 +67,10 @@ pub(super) async fn accept_or_advance(
                 mission_name = cimmeria_names::book().mission(mission_id),
                 chain_id,
                 chain_name = cimmeria_names::book().chain(chain_id),
-                account_id = space_mgr.player_identity(entity_id).account_id,
-                account_name = space_mgr.player_identity(entity_id).account_name,
-                player_id = space_mgr.player_identity(entity_id).player_id,
-                player_name = space_mgr.player_identity(entity_id).player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id,
+                player_name = who.player_name,
                 "Content: accept_mission refused by offer guard — skipping persist + follow-up event"
             );
             return;
@@ -112,14 +114,15 @@ pub(super) async fn accept_or_advance(
     } else {
         // Rule 5 identity and the world, read before the warn row.
         let world = space_mgr.get_entity_world_name(entity_id);
+        let who = space_mgr.player_identity(entity_id);
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             world = world.as_deref(),
-            account_id = space_mgr.player_identity(entity_id).account_id,
-            account_name = space_mgr.player_identity(entity_id).account_name,
-            player_id = space_mgr.player_identity(entity_id).player_id,
-            player_name = space_mgr.player_identity(entity_id).player_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
             mission_id,
             mission_name = cimmeria_names::book().mission(mission_id),
             chain_id,
@@ -143,6 +146,7 @@ pub(super) async fn complete(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -150,10 +154,10 @@ pub(super) async fn complete(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
-        account_id = space_mgr.player_identity(entity_id).account_id,
-        account_name = space_mgr.player_identity(entity_id).account_name,
-        player_id = space_mgr.player_identity(entity_id).player_id,
-        player_name = space_mgr.player_identity(entity_id).player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
         "Content: completing mission"
     );
     // Snapshot the prior status BEFORE `complete_mission_direct` flips
@@ -203,15 +207,16 @@ pub(super) async fn complete(
             discord_labels::mission(mission_id),
         );
     } else {
+        let who = space_mgr.player_identity(entity_id);
         tracing::debug!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             mission_id,
             mission_name = cimmeria_names::book().mission(mission_id),
-            account_id = space_mgr.player_identity(entity_id).account_id,
-            account_name = space_mgr.player_identity(entity_id).account_name,
-            player_id = space_mgr.player_identity(entity_id).player_id,
-            player_name = space_mgr.player_identity(entity_id).player_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
             ?prior_status,
             "Content: complete called on non-active mission — skipping mission_completed event"
         );
@@ -266,6 +271,7 @@ pub(super) async fn advance_step(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -275,10 +281,10 @@ pub(super) async fn advance_step(
         step_name = cimmeria_names::book().mission_step(step_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
-        account_id = space_mgr.player_identity(entity_id).account_id,
-        account_name = space_mgr.player_identity(entity_id).account_name,
-        player_id = space_mgr.player_identity(entity_id).player_id,
-        player_name = space_mgr.player_identity(entity_id).player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
         "Content: advancing step"
     );
     let activated =
@@ -323,6 +329,7 @@ pub(super) async fn abandon(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -330,10 +337,10 @@ pub(super) async fn abandon(
         mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
-        account_id = space_mgr.player_identity(entity_id).account_id,
-        account_name = space_mgr.player_identity(entity_id).account_name,
-        player_id = space_mgr.player_identity(entity_id).player_id,
-        player_name = space_mgr.player_identity(entity_id).player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
         "Content: abandoning mission"
     );
     // H54: fire the follow-up event only on a real removal, mirroring how
@@ -366,6 +373,7 @@ pub(super) async fn complete_objective(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -375,10 +383,10 @@ pub(super) async fn complete_objective(
         objective_name = cimmeria_names::book().mission_objective(objective_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
-        account_id = space_mgr.player_identity(entity_id).account_id,
-        account_name = space_mgr.player_identity(entity_id).account_name,
-        player_id = space_mgr.player_identity(entity_id).player_id,
-        player_name = space_mgr.player_identity(entity_id).player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
         "Content: complete objective"
     );
     // Snapshot before the call so the auto-complete branch inside
@@ -427,6 +435,7 @@ pub(super) async fn complete_objective(
         .and_then(|e| e.missions.get_mission(mission_id))
         .map(|m| m.status);
     if prior_status == Some(MISSION_ACTIVE) && now_status == Some(MISSION_COMPLETED) {
+        let who = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -436,10 +445,10 @@ pub(super) async fn complete_objective(
             objective_name = cimmeria_names::book().mission_objective(objective_id),
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
-            account_id = space_mgr.player_identity(entity_id).account_id,
-            account_name = space_mgr.player_identity(entity_id).account_name,
-            player_id = space_mgr.player_identity(entity_id).player_id,
-            player_name = space_mgr.player_identity(entity_id).player_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
             "Content: final required objective completed the mission — firing mission_completed"
         );
         crate::cell::content::event_dispatch::fire_mission_completed(
@@ -583,7 +592,9 @@ mod offer_guard_tests {
         let capture = LogCapture::install();
         let mut mgr = make_mgr_with_def();
         mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.get_entity_mut(1).unwrap().player_id = Some(7101);
+        // The entity's own id differs from the parameter, so the row can
+        // only carry the executor's `player_id` (the persisted one).
+        mgr.get_entity_mut(1).unwrap().player_id = Some(9999);
         let engine = ChainEngine::new();
         let (tx, _rx) = mpsc::channel(32);
 
