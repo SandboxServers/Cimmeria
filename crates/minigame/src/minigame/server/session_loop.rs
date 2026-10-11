@@ -18,6 +18,7 @@ use super::result_dispatch::{
 };
 use super::{EndReason, ReadState, SessionEnd};
 use crate::minigame::game::{GameOutput, MinigameInstance};
+use crate::minigame::games;
 use crate::minigame::protocol::{self, SfsMessage};
 use crate::minigame::session::{MinigameSession, SessionRegistry};
 
@@ -242,6 +243,7 @@ pub(super) async fn run_session(
                                                     player_id = player.id,
                                                     player_name = player.name(),
                                                     game = %game_name,
+                                                    validation = games::validation(&game_name),
                                                     "Minigame victory",
                                                 );
                                                 end_reason = EndReason::Victory;
@@ -266,6 +268,7 @@ pub(super) async fn run_session(
                                                     player_id = player.id,
                                                     player_name = player.name(),
                                                     game = %game_name,
+                                                    validation = games::validation(&game_name),
                                                     "Minigame failure",
                                                 );
                                                 end_reason = EndReason::Defeat;
@@ -389,6 +392,7 @@ pub(super) async fn run_session(
                                     player_id = player.id,
                                     player_name = player.name(),
                                     game = %game_name,
+                                    validation = games::validation(&game_name),
                                     "Minigame victory (tick)",
                                 );
                                 end_reason = EndReason::Victory;
@@ -412,6 +416,7 @@ pub(super) async fn run_session(
                                     player_id = player.id,
                                     player_name = player.name(),
                                     game = %game_name,
+                                    validation = games::validation(&game_name),
                                     "Minigame timeout",
                                 );
                                 end_reason = EndReason::Defeat;
