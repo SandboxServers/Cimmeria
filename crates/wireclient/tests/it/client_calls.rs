@@ -24,3 +24,17 @@ fn client_call_indices_match_the_server_names() {
     assert_eq!(player_cell_method(CM_CANCEL_MOVIE), Some("cancelMovie"));
     assert_eq!(player_cell_method(CM_GM_GOTO_XYZ), Some("gmGotoXYZ"));
 }
+
+/// The wire client keeps its own WSTRING writer (`cimmeria-wire` is a
+/// dev-dependency only); this keeps the two encodings identical, including a
+/// surrogate pair.
+#[test]
+fn client_wstring_matches_the_server_encoding() {
+    for s in ["", "Ab", "Cine-SGWLogo.SGWLogo", "\u{1F31F}"] {
+        let mut ours = Vec::new();
+        cimmeria_wireclient::calls::write_wstring(&mut ours, s);
+        let mut theirs = Vec::new();
+        cimmeria_wire::mercury::write_wstring(&mut theirs, s);
+        assert_eq!(ours, theirs, "{s:?}");
+    }
+}

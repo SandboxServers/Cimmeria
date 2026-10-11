@@ -243,6 +243,31 @@ mod tests {
         assert_eq!(out, want);
     }
 
+    /// The capture holds one `moveItem` with slot == quantity == 1 and every
+    /// call with prefix 0, so hand bytes pin what it cannot: four distinct
+    /// arguments in `.def` order, and the caller's entity id in the prefix.
+    #[test]
+    fn move_item_keeps_argument_order_and_the_entity_id() {
+        let want = [
+            0xA6, 20, 0, // direct cell 38, word length 20
+            0x34, 0x12, 0, 0, // entity id 0x1234
+            7, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, // item, bag, slot, qty
+        ];
+        assert_eq!(GameSession::move_item(0x1234, 7, 2, 3, 4), want);
+    }
+
+    /// The capture only has a region exit; entering must be flag byte 1.
+    /// CM 85 is extended: `0xBD`, length, entity id, sub-slot 24 (85 - 61).
+    #[test]
+    fn region_trigger_entering_sets_the_flag_byte() {
+        let out = GameSession::trigger_client_hinted_generic_region(0x1234, 9, true, [0.0; 3]);
+        assert_eq!(out[0], 0xBD);
+        assert_eq!(&out[3..7], &0x1234u32.to_le_bytes());
+        assert_eq!(out[7], 24);
+        assert_eq!(&out[8..12], &9i32.to_le_bytes());
+        assert_eq!(out[12], 1);
+    }
+
     /// Hand bytes for `createCharacter`, checked against the layout
     /// `handle_create_character` parses: name "Ab", empty extra name, char
     /// def 3, one visual choice (group 1, choice 2), skin tint 0.
