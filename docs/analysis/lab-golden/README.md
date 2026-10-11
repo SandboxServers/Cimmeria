@@ -89,7 +89,7 @@ new Praxis character on 2026-10-10.
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | BlockedDependency |
+| GD-01 | Spec contract: `GoldenSpec` on the section and the row, validation | packet-coder | S | 1 | SV-03 merged (same `spec.rs` lines) | Integrated |
 | GD-02 | Fingerprint types, entity labels, key-argument tables | packet-coder | M | 1 | none | Integrated |
 | GD-03 | Normaliser: variance, transitions, windows, row and run fingerprints | packet-coder | M | 2 | GD-01, GD-02 | BlockedDependency |
 | GD-04 | Agreement and first-divergence diff, with the test-only acceptance | packet-coder | M | 3 | GD-03 | BlockedDependency |
@@ -187,3 +187,11 @@ then the reference, not the spec.
   The committed-golden guard also checks the file sits at
   `golden_path(section)` and the on-disk byte size, and its logic is tested
   against a temporary folder of bad goldens.
+- **GD-01.** `GoldenSpec` and both `golden` fields sit in `// lab-golden
+  (GD-01)` ... `// end lab-golden` blocks, outside SV-03's marked blocks. A
+  glob is bad when empty or holding any whitespace. Validation checks
+  overlap within one table only: a section `ignore` and a row
+  `allow_unordered` naming the same glob both pass, so **GD-03's `resolve`
+  must decide; `ignore` wins** (drop the glob from `allow_unordered` after
+  merging). The guide states that the built-in `ignore` defaults always
+  apply and that a row's `key_args` entry replaces the section's.
