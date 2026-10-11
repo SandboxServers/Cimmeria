@@ -117,7 +117,7 @@ fn expired_entry_reads_as_none() {
             2,
             "flush:pack".into(),
             None,
-            Some(FlushChaos::Pack { records: 40 }),
+            Some(FlushChaos::Pack { records: 30 }),
             DEFAULT_TTL_S,
             then,
         )
@@ -214,13 +214,15 @@ fn knob_bounds_are_refused() {
         ),
         ("pack 0", flush(FlushChaos::Pack { records: 0 }), false),
         ("pack 1", flush(FlushChaos::Pack { records: 1 }), true),
-        ("pack 255", flush(FlushChaos::Pack { records: 255 }), true),
-        ("pack 256", flush(FlushChaos::Pack { records: 256 }), false),
+        ("pack 34", flush(FlushChaos::Pack { records: 34 }), true),
+        ("pack 35", flush(FlushChaos::Pack { records: 35 }), false),
         ("shift 0", flush(FlushChaos::Shift { len: 0 }), true),
         ("shift 1", flush(FlushChaos::Shift { len: 1 }), false),
         ("shift 2", flush(FlushChaos::Shift { len: 2 }), true),
         ("shift 36", flush(FlushChaos::Shift { len: 36 }), true),
-        ("shift 37", flush(FlushChaos::Shift { len: 37 }), false),
+        ("shift 37", flush(FlushChaos::Shift { len: 37 }), true),
+        ("shift 38", flush(FlushChaos::Shift { len: 38 }), true),
+        ("shift 39", flush(FlushChaos::Shift { len: 39 }), false),
         ("no profile", (None, None), false),
     ];
     let chaos = LabChaos::new();
@@ -238,6 +240,18 @@ fn knob_bounds_are_refused() {
         }
     }
     assert!(wrong.is_empty(), "bounds not enforced: {wrong:#?}");
+}
+
+/// The pack cap is derived from the packet size, the record length and the
+/// longest filler; the refusal text names the numbers. Fails if any input
+/// moves without the text (or the derivation) following.
+#[test]
+fn pack_cap_is_one_packet_with_the_longest_filler() {
+    assert_eq!(SHIFT_LEN_MAX, 38);
+    assert_eq!(PACK_RECORDS_MAX, 34);
+    let fill = |records: u16| usize::from(SHIFT_LEN_MAX + records * PHASE1_RECORD_LEN);
+    assert!(fill(PACK_RECORDS_MAX) <= cimmeria_mercury::packet::FRAGMENT_BODY_SIZE);
+    assert!(fill(PACK_RECORDS_MAX + 1) > cimmeria_mercury::packet::FRAGMENT_BODY_SIZE);
 }
 
 /// `set` sweeps every expired entry, not just the one it replaces, so the

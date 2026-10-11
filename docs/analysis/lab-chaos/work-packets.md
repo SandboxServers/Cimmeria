@@ -117,9 +117,9 @@ pub enum FlushChaos {
     Delay { ms: u32 },              // <= 60_000
     Reorder { seed: u64 },
     /// The pre-#1341-mitigation shape: one single-packet phase-1 bundle of up to `records`.
-    Pack { records: u16 },          // 1..=255
-    /// Prepend one filler message of `len` bytes to the phase-1 bundle.
-    Shift { len: u16 },             // 0 or 2..=36 (no message is 1 byte)
+    Pack { records: u16 },          // 1..=34 (PACK_RECORDS_MAX: one 1300-byte packet with a 38-byte filler)
+    /// Prepend `len` bytes of filler to a single-packet phase-1 bundle (implies Pack's shape).
+    Shift { len: u16 },             // 0 or 2..=38 (SHIFT_LEN_MAX; no message is 1 byte)
     /// Shift by a seeded length, a new one per flush.
     ShiftSweep { seed: u64 },
 }
@@ -494,7 +494,8 @@ that reads `lab_chaos::current()?.flush_for(addr, now)` and:
   single-packet bundle, as the server did before #1341's mitigation, even if
   the mitigation is on.
 - `Shift { len }` / `ShiftSweep { seed }`: prepend the filler of `len` bytes
-  (`ShiftSweep`: a seeded draw from 0 and 2 to 36, never 1, logged). The
+  (`ShiftSweep`: a seeded draw from 0 and 2 to 38, never 1, logged; the
+  filler design widened 36 to 38, see `worknotes/CH-07-filler.md`). The
   CH-04 review's candidates: `updateFrequencyNotification` (0x02, exactly 2
   bytes) and `voiceData` (0x33, 3 to 36); the design step confirms or
   replaces them, and says whether a missing length of 1 leaves any residue
