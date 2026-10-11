@@ -12,7 +12,7 @@ use super::live_db_tests::{
 };
 use super::seed_parity_live_db_tests::{char_defs, create, default_choices};
 use super::*;
-use crate::test_support::{require_db_or_skip, TestTransport};
+use crate::test_support::{require_db_or_skip, LogCapture, TestTransport};
 
 /// Sentinels after `seed_parity_live_db_tests`' `0x7000_1E01` and
 /// `kit_rollback`'s `0x7000_1E02`.
@@ -234,6 +234,7 @@ async fn a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db() {
     let db_pool = Some(Arc::new(pool.clone()));
     let choices = default_choices(&pool, 3).await;
     let payload = build_create_character_payload("Nowhere Start", "", 3, &choices, 0);
+    let capture = LogCapture::install();
     let result = handle_create_character(
         &dyn_transport,
         addr,
@@ -264,6 +265,29 @@ async fn a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db() {
         .expect("count players");
     cleanup(&pool, UNKNOWN_WORLD_ACCOUNT).await;
     assert_eq!(players, 0, "no character in a world the cell cannot load");
+
+    // TG-DB-08: one refusal, one row. `resolve_start` used to log its own
+    // ERROR and the handler a second WARN `unknown_char_def` row.
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", "character_create_failed"))
+        .collect();
+    assert_eq!(rows.len(), 1, "exactly one refusal row: {rows:#?}");
+    let row = &rows[0];
+    assert_eq!(row.level, tracing::Level::ERROR, "{row:#?}");
+    assert!(
+        row.has_field("reason", "start_world_not_loaded"),
+        "{row:#?}"
+    );
+    assert!(
+        row.has_field("account_id", &UNKNOWN_WORLD_ACCOUNT.to_string()),
+        "{row:#?}"
+    );
+    assert!(row.has_field("char_def_id", "3"), "{row:#?}");
+    assert!(row.has_field("world", &unloaded), "{row:#?}");
+    assert!(row.fields.contains_key("profile_id"), "{row:#?}");
+    assert!(row.has_field("error_code", "10001"), "{row:#?}");
 }
 
 /// **Regression guard (CS-08 F4).** A new Free Jaffa (char_defs 8 and 18)

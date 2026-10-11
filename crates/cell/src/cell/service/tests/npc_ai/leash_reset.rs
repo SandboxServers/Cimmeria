@@ -260,6 +260,9 @@ async fn leashing_npc_evades_threat_and_logs_it() {
         crate::cell::service::npc_ai::force_ai_state(npc, AiState::Leashing);
         npc.threat_list.clear();
     }
+    if let Some(p) = mgr.get_entity_mut(PLAYER) {
+        p.stamp_log_names(Some("Daniel"), Some("acct"));
+    }
     let logs = LogCapture::install();
 
     let sent = combat::generate_threat(&mut mgr, PLAYER, NPC, 40.0, AggroCause::Damage);
@@ -278,6 +281,8 @@ async fn leashing_npc_evades_threat_and_logs_it() {
         .find(|c| c.target == "npc_ai.leash" && c.has_field("event", "damage_ignored"))
         .expect("npc_ai.leash event=damage_ignored");
     assert_eq!(row.level, tracing::Level::DEBUG);
+    assert!(row.has_field("attacker_player_id", "101"), "{row:?}");
+    assert!(row.has_field("attacker_player_name", "Daniel"), "{row:?}");
 }
 
 /// Post-reset suppression: inside the window an aggressive Idle NPC ignores
