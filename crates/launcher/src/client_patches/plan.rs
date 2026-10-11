@@ -31,29 +31,8 @@ pub fn decide(
     }
 }
 
-/// How the client-patches DLL fared on one launch: the `injection`
-/// field of the once-per-session telemetry event, so a missing Black
-/// Market window can be told apart from "never loaded" in SigNoz.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PatchInjection {
-    Injected,
-    OptedOut,
-    Unavailable,
-    /// The DLL was found but injection failed; the game was relaunched
-    /// without it.
-    InjectFailed,
-}
-
-impl PatchInjection {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Injected => "injected",
-            Self::OptedOut => "opted_out",
-            Self::Unavailable => "unavailable",
-            Self::InjectFailed => "inject_failed",
-        }
-    }
-}
+// The label the telemetry event carries; it lives with that event.
+pub use cimmeria_launcher_core::telemetry::patch_log::PatchInjection;
 
 /// The DLLs to inject, in order: client patches first, then telemetry.
 ///
@@ -140,14 +119,5 @@ mod tests {
             vec![PathBuf::from("p.dll")]
         );
         assert!(injection_order(None, None).is_empty());
-    }
-
-    #[test]
-    fn injection_labels_are_stable() {
-        // SigNoz queries filter on these strings.
-        assert_eq!(PatchInjection::Injected.as_str(), "injected");
-        assert_eq!(PatchInjection::OptedOut.as_str(), "opted_out");
-        assert_eq!(PatchInjection::Unavailable.as_str(), "unavailable");
-        assert_eq!(PatchInjection::InjectFailed.as_str(), "inject_failed");
     }
 }

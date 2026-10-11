@@ -18,9 +18,9 @@ test = false
 # extracted here so cimmeria-lab reuses them (issue #685). Re-exported at
 # the launcher crate root as `launch`.
 cimmeria-client-launch = { path = "../client-launch" }
-# Patch zips that rebuild client files from the player's own stock files
-# by delta (src/unpack/zip.rs).
-cimmeria-patchset = { path = "../patchset" }
+# Manifest, install, unpack, client setup, logs and the telemetry pipeline,
+# shared with the desktop launcher's engine (LX-01).
+cimmeria-launcher-core = { path = "../launcher-core" }
 
 # Native window + immediate-mode UI. Default-features off so we don't pull in
 # `persistence` (we manage our own JSON state file) or accesskit.
@@ -35,7 +35,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 
 tokio = { workspace = true }
 tokio-util = "0.7"
-futures-util = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -47,13 +46,6 @@ zip = { workspace = true }
 # of externally-supplied UUIDs.
 uuid = { version = "1", features = ["v4", "serde"] }
 
-# Gzip compression for telemetry chunk uploads.
-flate2 = "1"
-
-# RAR seeds: the archived 2009 client is a RAR holding the original
-# installer's cabinet set (see src/unpack/). The crate is MIT/Apache and
-# builds RARLAB's UnRAR C++ source, whose licence allows extraction.
-unrar = "0.5"
 
 walkdir = "2"
 gethostname = "1.1"
@@ -62,10 +54,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 # second launcher process opening the same lock fails `try_lock_exclusive`
 # instead of stomping shared state.
 fs4 = "1.1"
-# Ed25519 detached signature verification on the manifest. Defaults off
-# bring the dep down to just what we need (no rand for signing — the
-# launcher only verifies — and no PEM/PKCS#8 parsing).
-ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -98,12 +86,6 @@ windows-sys = { version = "0.61", features = [
     # (src/self_update/old_process.rs).
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
-    # FDICreate/FDICopy: expand the installer cabinet set (src/unpack/fdi.rs).
-    "Win32_Storage_Cabinets",
-    # DosDateTimeToFileTime + LocalFileTimeToFileTime: stamp extracted
-    # files with the archive's DOS date/time (src/unpack/dos_time.rs).
-    "Win32_Storage_FileSystem",
-    "Win32_System_WindowsProgramming",
 ] }
 
 [build-dependencies]
@@ -117,5 +99,5 @@ tempfile = "3"
 # Range-header resume, status-code branches, and call-count expectations
 # (e.g. "second pass over an idempotent install hits the server zero times").
 wiremock = "0.6"
-# CRC-32 for the hand-built RAR fixture in src/unpack/test_fixtures.rs.
-crc32fast = "1"
+# The environment lock client_paths tests share with the worker's.
+cimmeria-launcher-core = { path = "../launcher-core", features = ["test-fixtures"] }
