@@ -77,6 +77,7 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
                 event = "loot_skipped",
                 target_eid,
                 loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
                 reason = "entity_missing",
                 "loot target entity missing; rolled loot discarded"
             );
