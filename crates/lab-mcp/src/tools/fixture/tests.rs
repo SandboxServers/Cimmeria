@@ -362,8 +362,16 @@ async fn a_database_failure_is_an_internal_error() {
     // the wait whatever the platform does with a refused connection.
     let pool = sqlx::postgres::PgPoolOptions::new()
         .acquire_timeout(Duration::from_millis(500))
-        .connect_lazy("postgres://fx04@[::1]:9/none")
-        .expect("lazy pool");
+        // Options, not a URL string: the live-DB URL guard
+        // (`database_url_is_only_resolved_by_the_gate`) rejects any
+        // `postgres://` literal other than the dead 127.0.0.1:1.
+        .connect_lazy_with(
+            sqlx::postgres::PgConnectOptions::new()
+                .host("::1")
+                .port(9)
+                .username("fx04")
+                .database("none"),
+        );
     let ctx = FakeContext {
         pool: Some(pool),
         roster: Vec::new(),
