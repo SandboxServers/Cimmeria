@@ -662,16 +662,16 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
-## Shutdown unsaved-state report (TG-DB-01)
+### Shutdown unsaved-state report (TG-DB-01)
 
-On the cell's shutdown arm, before the message loop breaks, eport_unsaved_on_shutdown (crates/cell/src/cell/service/shutdown_report.rs) logs each in-world player whose state is not yet persisted. It is a WARN, because a player loses that state on a restart:
+When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.
 
-| vent | Level | eason | Extra fields |
-|---|---|---|---|
-| player_state_not_persisted | WARN | server_shutdown | ccount_id + ccount_name, player_id + player_name, ntity_id + ntity_name, world, x, y, z, dirty_ammo_slots (a count). One row per player with a player_id; NPCs are not reported |
-| shutdown_unsaved_summary | INFO | | players_in_world, players_with_dirty_ammo |
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player entity. Its logout position and any dirty bandolier ammo are not saved |
+| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_with_dirty_ammo` | Once per shutdown |
 
-Guard: service::shutdown_report::tests::shutdown_report_warns_once_per_player_not_npc (LogCapture) pins one WARN for a player and none for an NPC.
+NPCs log nothing. Once TG-DB-02 drains the saves on shutdown, the WARN fires only for players the drain missed.
 
 ## Related
 
