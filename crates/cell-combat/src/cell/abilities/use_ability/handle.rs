@@ -528,6 +528,20 @@ pub async fn handle_use_ability(
     let effect_seq = entity.abilities.next_effect_id();
     tracing::Span::current().record("cast_id", effect_seq);
 
+    // A cast by or at a player or a pet is INFO; an NPC-on-NPC cast is DEBUG
+    // (TG-CMB-09). Read before the `space_mgr` lookups below: `entity` is the
+    // last use of the `&mut` borrow.
+    let pet_or_player = |e: &cimmeria_entity::cell_entity::CellEntity| {
+        e.is_player
+            || e.extensions
+                .contains::<cimmeria_entity::cell_entity::PetState>()
+    };
+    let player_side = pet_or_player(entity)
+        || u32::try_from(target_id)
+            .ok()
+            .and_then(|t| space_mgr.get_entity(t))
+            .is_some_and(pet_or_player);
+
     // The launch row reuses the names the gate row resolved.
     let launched_wire_target_name = if wire_target_id == row.target_id {
         row.target_name
@@ -536,27 +550,52 @@ pub async fn handle_use_ability(
     } else {
         super::gate_rows::target_label(space_mgr, wire_target_id)
     };
-    tracing::info!(
-        target: "abilities",
-        event = "ability_launched",
-        stage = "launch",
-        account_id = who.account_id,
-        account_name = who.account_name,
-        player_id = who.player_id,
-        player_name = who.player_name,
-        entity_id,
-        entity_name = row.entity_name,
-        cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
-        ability_id,
-        target_id,
-        target_name = row.target_name,
-        wire_target_id,
-        wire_target_name = launched_wire_target_name,
-        cooldown_secs,
-        warmup_secs,
-        ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
-        "useAbility: launched"
-    );
+    // `tracing` takes a constant level, so the two levels are two calls.
+    if player_side {
+        tracing::info!(
+            target: "abilities",
+            event = "ability_launched",
+            stage = "launch",
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = row.entity_name,
+            cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
+            ability_id,
+            target_id,
+            target_name = row.target_name,
+            wire_target_id,
+            wire_target_name = launched_wire_target_name,
+            cooldown_secs,
+            warmup_secs,
+            ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
+            "useAbility: launched"
+        );
+    } else {
+        tracing::debug!(
+            target: "abilities",
+            event = "ability_launched",
+            stage = "launch",
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = row.entity_name,
+            cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
+            ability_id,
+            target_id,
+            target_name = row.target_name,
+            wire_target_id,
+            wire_target_name = launched_wire_target_name,
+            cooldown_secs,
+            warmup_secs,
+            ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
+            "useAbility: launched"
+        );
+    }
     // A beneficial cast's launch resolution, now it has a `cast_id`.
     super::beneficial::log_launch_resolution(
         space_mgr,

@@ -389,6 +389,18 @@ pub(super) async fn resolve_death(
     // Resolved before the `&mut` borrow: `mark_npc_dead` labels its
     // `npc_ai.transition` row with it.
     let world = crate::cell::service::npc_ai::world_label(space_mgr, target_eid);
+    // A kill is player-side when a player or a pet is attacker or target
+    // (TG-CMB-09 sets the INFO/DEBUG level of its rows from this).
+    let player_side = attacker_is_player
+        || space_mgr.get_entity(attacker_id).is_some_and(|e| {
+            e.extensions
+                .contains::<cimmeria_entity::cell_entity::PetState>()
+        })
+        || space_mgr.get_entity(target_eid).is_some_and(|e| {
+            e.is_player
+                || e.extensions
+                    .contains::<cimmeria_entity::cell_entity::PetState>()
+        });
     let (target_state, target_is_player) = {
         let target = match space_mgr.get_entity_mut(target_eid) {
             Some(t) => t,
@@ -442,24 +454,44 @@ pub(super) async fn resolve_death(
             // `BSF_IN_COMBAT` clear stays here as a raw bit op (see
             // python `SGWMob.py:292`) — `mark_npc_dead` deliberately
             // stays out of the combat-state-machine concerns.
-            crate::cell::combat::mark_npc_dead(target, &world);
+            crate::cell::combat::mark_npc_dead_with_kill(target, &world, player_side);
             target.state_field &= !crate::cell::combat::BSF_IN_COMBAT;
         }
         (target.state_field, target.is_player)
     };
 
-    tracing::info!(
-        target: "abilities",
-        event = "target_killed",
-        attacker = attacker_id,
-        attacker_name = space_mgr.entity_label(attacker_id),
-        target = target_eid,
-        target_name = space_mgr.entity_label(target_eid),
-        ability_id = ability_id.unwrap_or(-1),
-        ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
-        is_npc = !target_is_player,
-        "Target killed!"
-    );
+    // An NPC-on-NPC kill is background traffic: DEBUG, not INFO (TG-CMB-09).
+    // `tracing` takes a constant level, so the two levels are two calls.
+    let attacker_name = space_mgr.entity_label(attacker_id);
+    let target_name = space_mgr.entity_label(target_eid);
+    let ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id);
+    if player_side {
+        tracing::info!(
+            target: "abilities",
+            event = "target_killed",
+            attacker = attacker_id,
+            attacker_name,
+            target = target_eid,
+            target_name,
+            ability_id = ability_id.unwrap_or(-1),
+            ability_name,
+            is_npc = !target_is_player,
+            "Target killed!"
+        );
+    } else {
+        tracing::debug!(
+            target: "abilities",
+            event = "target_killed",
+            attacker = attacker_id,
+            attacker_name,
+            target = target_eid,
+            target_name,
+            ability_id = ability_id.unwrap_or(-1),
+            ability_name,
+            is_npc = !target_is_player,
+            "Target killed!"
+        );
+    }
     // AB-T5: what the player died with, before the clear-on-death strip
     // below takes it off. Players only: see `effects::ability_snapshot`.
     if target_is_player {
