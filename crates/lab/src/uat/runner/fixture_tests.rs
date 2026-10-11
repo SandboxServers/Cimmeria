@@ -62,6 +62,11 @@ pub(super) fn fixture_row_c() -> String {
     FIXTURE_ROW.replace("FS-B", "FS-C")
 }
 
+/// Substrings that tell the three snapshot statements apart (FX-10).
+pub(super) const SNAP_MISSIONS: &str = "m.mission_id AS id";
+pub(super) const SNAP_ITEMS: &str = "i.container_id AS container";
+pub(super) const SNAP_TUTORIALS: &str = "t.tutorial_id AS id";
+
 /// A pretend lab endpoint. `server_sessions` lists the character the fake
 /// client is in world as (the last `lab_play_character`, else the fake's
 /// own name: entity 41 for that one, 42 for a played one), and `stuck`
@@ -97,9 +102,16 @@ fn contains_ci(hay: &str, needle: &str) -> bool {
 }
 
 /// The `server_db_query` answer for a fixture the server staged in full:
-/// mission 622 on its step and active, nothing else carried or unseen.
+/// mission 622 on its step and active, nothing else carried or unseen. The
+/// chain snapshot (FX-10) sees the same state, so a chained `FIXTURE_ROW`
+/// has parity.
 fn default_db_answer(sql: &str) -> Value {
-    if sql.contains("m.mission_id = 622") {
+    if sql.contains(SNAP_MISSIONS) {
+        json!({ "row_count": 1, "truncated": false, "row_cap": 500,
+                "rows": [{ "id": 622, "status": 1, "step": 80623 }] })
+    } else if sql.contains(SNAP_ITEMS) || sql.contains(SNAP_TUTORIALS) {
+        json!({ "row_count": 0, "truncated": false, "row_cap": 500, "rows": [] })
+    } else if sql.contains("m.mission_id = 622") {
         json!({ "rows": [{ "n_rows": 1, "status": 1, "step": 80623 }] })
     } else if sql.contains("sgw_mission") {
         json!({ "rows": [{ "n_rows": 0, "status": null, "step": null }] })

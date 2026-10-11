@@ -80,7 +80,7 @@ fn stage_refusal(err: &str) -> &str {
 const STAGE_REFUSED: &str = "stage refused: ";
 
 /// Every record from `from` on was made by fixture plumbing.
-fn mark_fixture(ctx: &mut RowCtx, from: usize) {
+pub(super) fn mark_fixture(ctx: &mut RowCtx, from: usize) {
     if let Some(recs) = ctx.actions.get_mut(from..) {
         for r in recs {
             r.kind = FIXTURE_KIND.into();

@@ -24,6 +24,9 @@ use super::tier::{Role, Tier};
 /// Bundle schema version (bump when a field changes meaning).
 pub const BUNDLE_SCHEMA: u32 = 1;
 
+/// The file-name suffix of a row-boundary snapshot (FX-10).
+const SNAPSHOT_SUFFIX: &str = ".snapshot.json";
+
 /// One clause's outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -196,6 +199,10 @@ pub struct RowEvidence {
     /// re-grade after an attestation starts from the same facts).
     #[serde(default)]
     pub blocked: Vec<String>,
+    /// A chained fixture row's parity with its fixture (FX-10); absent on
+    /// rows without a fixture and on rows that ran from their fixture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fixture_parity: Option<super::snapshot::Parity>,
 }
 
 /// The run-level manifest.
@@ -299,6 +306,15 @@ impl RunDir {
             .join(format!("{}.json", path_safe(row)))
     }
 
+    /// `rows/<section>/<row>.snapshot.json`: a chained row's state at its
+    /// boundary (FX-10), beside the row JSON. [`Self::rows`] skips it.
+    pub fn snapshot_json(&self, section: &str, row: &str) -> PathBuf {
+        self.root
+            .join("rows")
+            .join(path_safe(section))
+            .join(format!("{}{SNAPSHOT_SUFFIX}", path_safe(row)))
+    }
+
     pub fn attach_dir(&self, section: &str, row: &str) -> PathBuf {
         self.root
             .join("rows")
@@ -332,7 +348,12 @@ impl RunDir {
             }
             for f in std::fs::read_dir(s.path()).into_iter().flatten().flatten() {
                 let p = f.path();
-                if p.extension().is_some_and(|x| x == "json") {
+                // A row id never holds a `.` (`path_safe`), so only a
+                // snapshot ends in `.snapshot.json`.
+                let snapshot = p
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().ends_with(SNAPSHOT_SUFFIX));
+                if p.extension().is_some_and(|x| x == "json") && !snapshot {
                     paths.push(p);
                 }
             }

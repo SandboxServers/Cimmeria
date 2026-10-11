@@ -32,6 +32,7 @@ pub mod lab_commands;
 pub mod ledger;
 pub mod runner;
 pub mod seed_tags;
+pub mod snapshot;
 pub mod spec;
 pub mod spec_fixture;
 pub mod spec_validate;

@@ -24,6 +24,7 @@ mod packet;
 mod players;
 mod revocation;
 mod session;
+mod snapshot;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -180,6 +181,8 @@ pub(crate) struct RowCtx {
     /// Errors from ending this row's fixture session. Each becomes a
     /// `session end: ...` flag: visible, but never the row's result.
     pub session_end: Vec<String>,
+    /// A chained fixture row's parity with its fixture (FX-10).
+    pub parity: Option<super::snapshot::Parity>,
 }
 
 /// The last row the run finished, for fixture mode `auto` (D-FX10).
@@ -387,6 +390,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             fp: None,
             fixture_mode: None,
             session_end: vec![],
+            parity: None,
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -417,6 +421,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         // next login may meet the character still online: show it.
         g.flags
             .extend(ctx.session_end.iter().map(|e| format!("session end: {e}")));
+        super::snapshot::apply_parity(&mut g, ctx.parity.as_ref());
         // Plan only: a row that could run is SKIPPED, not graded.
         let result = if planned {
             g.reasons = vec!["plan only: ready to run, nothing was driven".into()];
@@ -456,6 +461,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             vars: Value::Object(ctx.vars),
             attestations: vec![],
             blocked: ctx.blocked,
+            fixture_parity: ctx.parity,
         }
     }
 
@@ -500,6 +506,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     ctx.vars
                         .insert(crate::uat::fixture::FIXTURE_CHARACTER_VAR.into(), json!(n));
                 }
+                self.check_parity(row, ctx).await; // Before setup (FX-10).
             }
         }
         if row.players == 2 {
@@ -678,6 +685,8 @@ mod packet_tests;
 mod players_tests;
 #[cfg(test)]
 mod revocation_tests;
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod test_server;
 #[cfg(test)]
