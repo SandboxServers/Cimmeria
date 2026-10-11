@@ -530,7 +530,7 @@ The release workflow runs these steps through
 [`tools/launcher-release/build.sh`](../../tools/launcher-release/build.sh)
 (`i686`, `launcher`, `verify`, `overlay`); `PROFILE=dev` runs them with the dev profile.
 
-The same package builds `pack-client-overlay`, the release tool that
+The `cimmeria-launcher-core` crate builds `pack-client-overlay`, the release tool that
 packs the client-patches UI overlay into a manifest patch; see
 [launcher-distribution-setup.md](launcher-distribution-setup.md#publishing-the-client-patches-ui-overlay).
 
@@ -606,10 +606,6 @@ crates/launcher/
     ├── patch_dest.rs           # where a patch extracts (install dir or SGWGame/)
     ├── bundled.rs              # writes the embedded i686 artifacts to disk
     ├── start32_helper.rs       # keeps sgw-start32.exe beside the launcher
-    ├── overlay_meta.rs         # UI overlay id prefix + list text (shared with the tool)
-    ├── overlay_pack.rs         # UI overlay -> patch zip + entry (tests only here)
-    ├── bin/
-    │   └── pack-client-overlay.rs  # release tool around overlay_pack.rs
     ├── client_patches/
     │   ├── mod.rs
     │   ├── dll_source.rs       # override / embedded / beside-the-launcher DLL

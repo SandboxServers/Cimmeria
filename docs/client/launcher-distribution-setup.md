@@ -169,7 +169,7 @@ last patch and leaving the manifest unchanged when the id is already
 there:
 
 ```bash
-cargo run -p sgw-launcher --bin pack-client-overlay -- \
+cargo run -p cimmeria-launcher-core --bin pack-client-overlay -- \
   --overlay crates/client-patches/overlay \
   --out-dir dist \
   --blob-base-url https://github.com/SandboxServers/Cimmeria/releases/download/<launcher tag> \

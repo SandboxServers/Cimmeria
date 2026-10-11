@@ -9,7 +9,8 @@
 #   i686             build the 32-bit artifacts: cimmeria-client-patches.dll,
 #                    the player build of cimmeria-client-telemetry.dll (no
 #                    lab-bridge feature) and the sgw-start32.exe helper
-#   launcher         build the 64-bit launcher, embedding the i686 artifacts;
+#   launcher         build the 64-bit launcher, embedding the i686 artifacts,
+#                    and the pack-client-overlay tool the overlay stage uses;
 #                    a release exports CIMMERIA_LAUNCHER_TAG and
 #                    CIMMERIA_LAUNCHER_BUILD_EPOCH first (the self-update
 #                    identity); without them it is a development build
@@ -74,6 +75,8 @@ stage_launcher() {
   CIMMERIA_CLIENT_TELEMETRY_DLL="$(winpath "$TELEMETRY_DLL")" \
   CIMMERIA_START32_EXE="$(winpath "$HELPER")" \
     cargo build -p sgw-launcher "${PROFILE_FLAG[@]}"
+  # The packer lives in the launcher core crate, not the egui launcher.
+  cargo build -p cimmeria-launcher-core --bin pack-client-overlay "${PROFILE_FLAG[@]}"
   need "$LAUNCHER"; need "$PACKER"
 }
 
