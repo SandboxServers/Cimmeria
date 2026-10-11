@@ -105,8 +105,8 @@ the report so a run can be replayed exactly.
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
 | CH-13 | GM console: `.spawnrandom` reports spawned ids, `.despawn <id>` (D-CH9) | rust-gameserver-dev, `server-authority-enforcer` review | M | 4 | D-CH9 | Integrated |
-| CH-14 | Server: arm chaos by account for the next world entry (D-CH10) | rust-gameserver-dev, `network-security-auth` and `server-authority-enforcer` review | M | 4 | D-CH10 | Writing |
-| CH-15 | Runner arms chaos by account before login rows (D-CH10) | rust-gameserver-dev | S | 5 | CH-08, CH-14 | BlockedDependency |
+| CH-14 | Server: arm chaos by account for the next world entry (D-CH10) | rust-gameserver-dev, `network-security-auth` and `server-authority-enforcer` review | M | 4 | D-CH10 | Integrated |
+| CH-15 | Runner arms chaos by account before login rows (D-CH10) | rust-gameserver-dev | S | 5 | CH-08, CH-14 | Ready |
 | CH-12 | Close-out | documentation-writer | S | 7 | all | BlockedDependency |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
@@ -239,3 +239,22 @@ the code is then the reference, not the spec.
   chaos-only divergence exits 0), and `lab_golden_record` refuses a chaos run
   with `cannot_record`; recorded in the
   [lab-golden contract](../lab-golden/contract.md#stable-api-for-lab-chaos-and-lab-record).
+- **CH-14 (2026-10-11).** Chaos can be armed by account for that
+  account's next world entry (D-CH10): `server_chaos_set {account, ...}`.
+  The arm is attached in `playCharacter` before RESET_ENTITIES, so it
+  reaches the first-login flush.
+  - **Attach checks:** the arm attaches only while the session still owns
+    the address (an owner token under the `connected` lock). The take and
+    the insert are one step under one lock order.
+  - **Failure after attaching:** the arm goes back to the account, unless
+    the lab cleared chaos since, a newer arm exists, or the arm has expired.
+  - **Adjacent fix, every build:** a `playCharacter` whose session was
+    replaced or went away mid-entry no longer writes the old player's state
+    into the new session or registers its reliable send there. It also
+    removes the entity it created (cell `DestroyEntity`, which persists
+    nothing).
+  - **Scope:** an armed net profile does not shape authentication,
+    character select or `playCharacter`. Arming reaches offline accounts up
+    to the TTL, and only deployment keeps it off real players.
+  - **Owed by CH-15:** grade a chaos login only after a `lab.chaos` flush
+    row for that entity.
