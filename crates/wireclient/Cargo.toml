@@ -61,3 +61,17 @@ cimmeria-test-support = { workspace = true }
 # Pins the sparbot's duel indices and texts against the server's own
 # constants (`tests/it/sparbot_duel.rs`).
 cimmeria-wire = { workspace = true }
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "login-probe"
+path = "src/bin/login-probe.rs"
+test = false
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "sparbot"
+path = "src/bin/sparbot.rs"
+test = false

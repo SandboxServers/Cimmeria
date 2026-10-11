@@ -89,9 +89,9 @@ async fn lossy_transport_satisfies_bidirectional_transport_trait_for_recv_loop()
     assert_eq!(&buf[..len], payload);
 }
 
-/// Statistical loss assertion: gated behind `#[ignore]` because the
-/// 60ms-per-recv latency × 500 packets makes this a ~30s wall-time
-/// test that doesn't belong on every-commit CI. Run manually with
+/// Statistical loss assertion: gated behind `#[ignore]` because it is a
+/// slow: 500-packet statistical run that doesn't belong on every-commit
+/// CI. Run manually with
 /// `cargo test -p cimmeria-mercury --test it chaos_lossy_transport_integration -- --ignored`
 /// or via the CI nightly profile when adding one.
 ///
@@ -101,7 +101,7 @@ async fn lossy_transport_satisfies_bidirectional_transport_trait_for_recv_loop()
 /// realistic Transatlantic profile and is appropriate for a slower
 /// cadence.
 #[tokio::test]
-#[ignore = "slow: 30s due to 60ms × 500 latency; run with --ignored"]
+#[ignore = "slow: 500-packet statistical run; run with --ignored"]
 async fn transatlantic_profile_loss_eventually_drops_a_packet() {
     // Statistical: with seeded 0.5% loss across many sends, at
     // least one drop must fire. Validates the recv loop's
@@ -122,8 +122,8 @@ async fn transatlantic_profile_loss_eventually_drops_a_packet() {
     }
 
     // Drain everything that arrives within a generous window.
-    // Each recv has 60ms latency from the Transatlantic profile,
-    // so we need to allow plenty of wall time for ~500 packets.
+    // The 60 ms Transatlantic latency is a pipeline delay (#1371), so
+    // the window only has to cover one latency plus the drain.
     let mut received = 0usize;
     let mut buf = [0u8; 64];
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
