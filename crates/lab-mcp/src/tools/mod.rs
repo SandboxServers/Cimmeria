@@ -9,6 +9,11 @@ mod abilities;
 // The lab chaos tools (CH-05) exist only in a `lab-chaos` build.
 #[cfg(feature = "lab-chaos")]
 mod chaos;
+#[cfg(feature = "lab-chaos")]
+mod chaos_args;
+#[cfg(all(test, feature = "lab-chaos"))]
+#[path = "chaos_args_tests.rs"]
+mod chaos_args_tests;
 #[cfg(test)]
 #[path = "chaos_tests.rs"]
 mod chaos_tests;

@@ -18,7 +18,8 @@
 //! lab run that dies never leaves a session degraded; the default
 //! ([`DEFAULT_TTL_S`]) is the caller's to apply. Session teardown clears the
 //! address's entry, so a later session on that address (a relaunched client)
-//! starts clean. The net shim (CH-06) and the first-login flush (CH-07) read
+//! starts clean; so does a return to character select, which keeps the
+//! session (`clear_lab_chaos_on_character_select`). The net shim (CH-06) and the first-login flush (CH-07) read
 //! it per send through [`LabChaos::net_for`] and [`LabChaos::flush_for`].
 
 /// True only in a binary built with the `lab-chaos` feature.
@@ -242,6 +243,39 @@ impl LabChaos {
                 addr_hash = addr_hash.as_deref(),
                 cleared,
                 "lab chaos cleared (nothing set)"
+            );
+        }
+        cleared
+    }
+
+    /// Clears every entry set for `entity_id`, wherever its session is now,
+    /// and returns how many it removed. The clear tool's per-entity form: an
+    /// entity that went back to character select has no session to resolve,
+    /// but its tag is still on the entry status lists.
+    pub fn clear_entity(&self, entity_id: u32) -> usize {
+        let cleared = {
+            let mut sessions = self.sessions();
+            let before = sessions.len();
+            sessions.retain(|_, chaos| chaos.entity_id != entity_id);
+            before - sessions.len()
+        };
+        // Like `clear`'s per-session form: INFO when something went, DEBUG
+        // otherwise.
+        if cleared > 0 {
+            tracing::info!(
+                target: "lab.chaos",
+                event = "lab_chaos_cleared",
+                scope = "entity",
+                cleared,
+                "lab chaos cleared for an entity"
+            );
+        } else {
+            tracing::debug!(
+                target: "lab.chaos",
+                event = "lab_chaos_cleared",
+                scope = "entity",
+                cleared,
+                "lab chaos cleared for an entity (nothing set)"
             );
         }
         cleared

@@ -321,18 +321,27 @@ per row from the anchor to teardown, always stopped.
 
 Two of them take filters the UAT runner relies on for
 [poses and server waits](automated-uat.md#targets-poses-and-waits). Both
-are reads. The three `server_chaos_*` tools exist only in a server built
-with `--features lab-chaos` and refuse unless it runs with `DEVELOPER_MODE`
-on ([lab chaos](../analysis/lab-chaos/README.md)). Every refusal is a
-successful call that replies `{refused: "<reason>"}`.
+are reads.
 
 | Tool | Arguments | Reply |
 |---|---|---|
 | `server_entity_query` | `space_id`, `template_id`, `class_id` (2 player, 4 NPC), `tag` (a `spawnlist.tag`, exact), `radius` with `around_entity` or `around_point`; all AND-combined | `entities` (each with `tag`, `space_id`, `position`), `returned`, `total_matched`, `capped` (at 256). Always give `space_id` with `tag`: one tag matches once in every player's copy of an instanced map |
 | `server_log_tail` | `level`, `target` (the tracing target, exact), `contains` (a case-sensitive substring of the message), `since_ms` (strictly after), `limit` (default 100) | `entries` (`timestamp_ms`, `level`, `target`, `message`, `fields`), `count`, `total_buffered`, `newest_ms` |
-| `server_chaos_set` (lab-chaos builds only) | `entity_id`; `net` (`latency`, `jitter` in ms, at most 5000; `loss`, `dup` in percent with one decimal; `reorder` in packets, at most 1000) and/or `flush` (`mode` `delay` with `delay_ms` at most 60000, `reorder`, `pack` with `records` 1 to 255, or `shift` with `shift` 0, 2 to 36 or `"sweep"`); `seed` (default 0); `ttl_s` (default 300; 0 or over 1800 is refused, never clamped); `label` (the spec text logged as `level`, built from the profiles when omitted) | `{set: true, expires_in_s}`, or `{refused}` with the server's reason. Replaces the session's chaos |
-| `server_chaos_clear` (lab-chaos builds only) | `entity_id`, or none for every session | `{cleared: n}` |
-| `server_chaos_status` (lab-chaos builds only) | none | `{sessions: [{entity_id, net?, flush?, expires_in_s}]}`, by entity id (never an address), at most 10 |
+
+The three `server_chaos_*` tools are not reads: they arm and clear fault
+injection on a live session. They exist only in a server built with
+`--features lab-chaos` and refuse unless it runs with `DEVELOPER_MODE` on
+([lab chaos](../analysis/lab-chaos/README.md)). Every refusal, a malformed
+call included, is a successful call that replies `{refused: "<reason>"}`
+and writes an audit row. Unknown fields, a `net` with no knob set, a flush
+knob its mode does not use, and a `seed` nothing reads are refused, not
+ignored. A return to character select clears the session's chaos.
+
+| Tool | Arguments | Reply |
+|---|---|---|
+| `server_chaos_set` | `entity_id` (a player entity, not 0); `net` (`latency`, `jitter` in ms, at most 5000; `loss`, `dup` in percent with at most one decimal; `reorder` in packets, at most 1000) and/or `flush` (`mode` `delay` with `delay_ms` at most 60000, `reorder`, `pack` with `records` 1 to 255, or `shift` with `shift` 0, 2 to 36 or `"sweep"`); `seed` (default 0; for `net`, flush `reorder` and `"sweep"`); `ttl_s` (default 300; 0 or over 1800 is refused, never clamped); `label` (the spec text logged as `level`, at most 120 printable characters, built from the profiles when omitted) | `{set: true, expires_in_s}`, or `{refused}` with the server's reason. Replaces the session's chaos |
+| `server_chaos_clear` | `entity_id` (the chaos set for that entity, wherever its session is now), or none for every session | `{cleared: n}` |
+| `server_chaos_status` | none | `{sessions: [{entity_id, net?, flush?, expires_in_s}], more?}`, by entity id (never an address), at most 10; `more` counts the rest |
 
 `server_log_tail` reads a ring of the last 500 lines (or 2 MiB). Its
 `total_buffered` counts the lines that passed the filters, while

@@ -43,14 +43,11 @@ mod with_feature {
     use rmcp::model::CallToolResult;
     use serde_json::{json, Value};
 
-    use cimmeria_services::base::lab_chaos::FlushChaos;
     use cimmeria_services::base::lab_chaos::LabChaos;
     use cimmeria_services::base::OnlinePlayer;
 
-    use super::super::chaos::{
-        built_label, clear_on, flush_from, net_from, set_on, status_on, ClearArgs, FlushArgs,
-        NetArgs, SetArgs, ShiftArg, OFF,
-    };
+    use super::super::chaos::{clear_on, set_on, status_on, OFF};
+    use super::super::chaos_args::{ClearCall, FlushArgs, NetArgs, SetArgs, SetCall};
     use super::tools;
 
     const ADDR_A: &str = "127.0.0.1:50000";
@@ -72,6 +69,7 @@ mod with_feature {
         }
     }
 
+    /// A flush pack request: no seed, because pack reads none.
     fn pack_args(entity_id: u32) -> SetArgs {
         SetArgs {
             entity_id,
@@ -82,7 +80,7 @@ mod with_feature {
                 records: Some(24),
                 shift: None,
             }),
-            seed: Some(7),
+            seed: None,
             ttl_s: None,
             label: None,
         }
@@ -115,9 +113,11 @@ mod with_feature {
         // Nothing in this test binary installs the registry (only the
         // server's main may), so `current()` is None here.
         let tools = tools();
-        let set = tools.server_chaos_set(Parameters(pack_args(100))).await;
+        let set = tools
+            .server_chaos_set(Parameters(SetCall(json!(pack_args(100)))))
+            .await;
         let clear = tools
-            .server_chaos_clear(Parameters(ClearArgs { entity_id: None }))
+            .server_chaos_clear(Parameters(ClearCall(json!({}))))
             .await;
         let status = tools.server_chaos_status().await;
         for result in [set, clear, status] {
@@ -192,6 +192,24 @@ mod with_feature {
         );
     }
 
+    /// Set itself checks the seed: a pack (unseeded) with a seed arms nothing.
+    #[tokio::test]
+    async fn set_refuses_a_seed_the_profile_does_not_use() {
+        let registry = LabChaos::new();
+        let args = SetArgs {
+            seed: Some(7),
+            ..pack_args(100)
+        };
+        assert_eq!(
+            set_fixed(&registry, args, &[player(100, ADDR_A)]).await,
+            Err("bad chaos knob: seed is not used by this profile".to_string())
+        );
+        assert_eq!(
+            status_on(&registry, Instant::now()),
+            json!({ "sessions": [] })
+        );
+    }
+
     #[tokio::test]
     async fn set_refuses_an_entity_with_no_session() {
         let registry = LabChaos::new();
@@ -244,29 +262,83 @@ mod with_feature {
                 .await
                 .expect("set succeeds");
         }
+        assert_eq!(clear_on(&registry, Some(100)), Ok(json!({ "cleared": 1 })));
+        assert_eq!(clear_on(&registry, Some(100)), Ok(json!({ "cleared": 0 })));
         assert_eq!(
-            clear_on(&registry, &roster, Some(100)),
-            json!({ "cleared": 1 })
+            clear_on(&registry, Some(999)),
+            Ok(json!({ "cleared": 0 })),
+            "an entity with no chaos clears nothing"
+        );
+        assert_eq!(clear_on(&registry, None), Ok(json!({ "cleared": 1 })));
+    }
+
+    /// After a return to character select the entity has no session, but
+    /// status still lists its chaos: clear by its id must find it. Fails if
+    /// clear goes back to resolving the id through the live roster.
+    #[tokio::test]
+    async fn clear_finds_an_entity_that_left_its_session() {
+        let registry = LabChaos::new();
+        set_fixed(&registry, pack_args(100), &[player(100, ADDR_A)])
+            .await
+            .expect("set succeeds");
+        // Entity 100 went back to character select; its address now shows
+        // a session with no player (id 0), or another character.
+        assert_eq!(
+            status_on(&registry, Instant::now())["sessions"][0]["entity_id"],
+            100
+        );
+        assert_eq!(clear_on(&registry, Some(100)), Ok(json!({ "cleared": 1 })));
+        assert_eq!(
+            status_on(&registry, Instant::now()),
+            json!({ "sessions": [] })
+        );
+    }
+
+    /// The roster lists a session with no player entity as id 0, so 0 must
+    /// never resolve to an address or clear anything.
+    #[tokio::test]
+    async fn entity_zero_is_refused_by_set_and_clear() {
+        let registry = LabChaos::new();
+        let roster = [player(0, ADDR_A)];
+        assert_eq!(
+            set_fixed(&registry, pack_args(0), &roster).await,
+            Err("no session for entity 0".to_string())
         );
         assert_eq!(
-            clear_on(&registry, &roster, Some(100)),
-            json!({ "cleared": 0 })
+            status_on(&registry, Instant::now()),
+            json!({ "sessions": [] })
+        );
+
+        // Clear refuses 0 too, rather than reporting `cleared: 0`.
+        set_fixed(&registry, pack_args(100), &[player(100, ADDR_B)])
+            .await
+            .expect("set succeeds");
+        assert_eq!(
+            clear_on(&registry, Some(0)),
+            Err("no session for entity 0".to_string())
         );
         assert_eq!(
-            clear_on(&registry, &roster, Some(999)),
-            json!({ "cleared": 0 }),
-            "an entity with no session clears nothing"
+            status_on(&registry, Instant::now())["sessions"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
         );
-        assert_eq!(clear_on(&registry, &roster, None), json!({ "cleared": 1 }));
     }
 
     #[tokio::test]
-    async fn status_lists_at_most_ten_sessions() {
+    async fn status_lists_at_most_ten_sessions_and_counts_the_rest() {
         let registry = LabChaos::new();
         let roster: Vec<OnlinePlayer> = (0..12)
             .map(|i| player(100 + i, &format!("127.0.0.1:{}", 50000 + i)))
             .collect();
-        for p in &roster {
+        for p in &roster[..10] {
+            set_fixed(&registry, pack_args(p.id), &roster)
+                .await
+                .expect("set succeeds");
+        }
+        let status = status_on(&registry, Instant::now());
+        assert!(status.get("more").is_none(), "ten fit: {status}");
+        for p in &roster[10..] {
             set_fixed(&registry, pack_args(p.id), &roster)
                 .await
                 .expect("set succeeds");
@@ -275,6 +347,7 @@ mod with_feature {
         let rows = status["sessions"].as_array().expect("a list");
         assert_eq!(rows.len(), 10);
         assert_eq!(rows[0]["entity_id"], 100, "sorted by entity id");
+        assert_eq!(status["more"], 2);
     }
 
     #[tokio::test]
@@ -296,80 +369,22 @@ mod with_feature {
             .collect();
         assert_eq!(labels, ["flush:pack:records=24 seed=7", "flush:pack"]);
 
-        let long = SetArgs {
-            label: Some("x".repeat(121)),
-            ..pack_args(100)
-        };
-        assert!(set_fixed(&registry, long, &roster)
-            .await
-            .is_err_and(|e| e.starts_with("bad chaos knob: label")));
-    }
-
-    #[test]
-    fn net_percentages_become_per_thousand_and_negatives_are_refused() {
-        let net = net_from(
-            &NetArgs {
-                latency: Some(120),
-                loss: Some(1.2),
-                dup: Some(0.05),
-                ..NetArgs::default()
-            },
-            Some(7),
-        )
-        .expect("valid knobs");
-        assert_eq!(net.latency_ms, 120);
-        assert_eq!(net.loss_per_thousand, 12);
-        assert_eq!(net.dup_per_thousand, 1, "0.05 percent rounds to 1");
-        assert_eq!(net.seed, 7);
-        assert_eq!(built_label(Some(&net), None), "net seed=7");
-
-        let negative = NetArgs {
-            loss: Some(-1.0),
-            ..NetArgs::default()
-        };
-        assert_eq!(
-            net_from(&negative, None),
-            Err("bad chaos knob: net loss is negative".to_string())
-        );
-    }
-
-    #[test]
-    fn flush_modes_resolve_and_a_missing_knob_is_refused() {
-        let flush = |mode: &str, shift: Option<ShiftArg>| FlushArgs {
-            mode: mode.to_string(),
-            delay_ms: None,
-            records: None,
-            shift,
-        };
-        assert_eq!(
-            flush_from(
-                &flush("shift", Some(ShiftArg::Word("sweep".into()))),
-                Some(9)
+        for (bad, why) in [
+            ("x".repeat(121), "label is over 120 characters"),
+            (
+                "flush:pack\nlevel=forged".to_string(),
+                "label has a control character",
             ),
-            Ok(FlushChaos::ShiftSweep { seed: 9 })
-        );
-        assert_eq!(
-            flush_from(&flush("shift", Some(ShiftArg::Bytes(4))), None),
-            Ok(FlushChaos::Shift { len: 4 })
-        );
-        assert_eq!(
-            flush_from(&flush("reorder", None), None),
-            Ok(FlushChaos::Reorder { seed: 0 })
-        );
-        for (mode, shift) in [
-            ("shift", Some(ShiftArg::Word("wide".into()))),
-            ("shift", None),
-            ("delay", None),
-            ("pack", None),
-            ("burst", None),
+            ("tab\there".to_string(), "label has a control character"),
         ] {
-            assert!(
-                flush_from(&flush(mode, shift), None)
-                    .is_err_and(|e| e.starts_with("bad chaos knob: ")),
-                "{mode} must be refused"
+            let args = SetArgs {
+                label: Some(bad),
+                ..pack_args(100)
+            };
+            assert_eq!(
+                set_fixed(&registry, args, &roster).await,
+                Err(format!("bad chaos knob: {why}"))
             );
         }
-        let reorder = FlushChaos::Reorder { seed: 3 };
-        assert_eq!(built_label(None, Some(&reorder)), "flush:reorder seed=3");
     }
 }
