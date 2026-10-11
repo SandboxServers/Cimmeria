@@ -49,10 +49,14 @@
     lab_uat_calibrate for that pose on the batch's instance (up to its
     15-minute budget each), saves a proposed diff as heal-<row>-<pose>.diff
     in the batch folder and prints it. The summary (batch.json, summary.md,
-    -Json) then lists heal: [{row, pose, diff}]. It never writes the spec
-    file and never commits: review the diff, then git apply it (or run
-    lab calibrate <section> <row> -Pose <pose> -Apply). Ctrl+C during the
-    batch skips the heal.
+    -Json) then lists heal: [{row, pose, diff}] (under -Json at most 3, with
+    more_heal: <n> for the rest, and diff the file name in the batch folder).
+    After a failed call it waits up to 10 minutes for the instance's lease
+    to clear before the next pose, and stops healing, naming the poses left,
+    when it does not. It never writes the spec file and never commits:
+    review the diff, then git apply it (or run lab calibrate <section> <row>
+    -Pose <pose> -Apply). Ctrl+C during the batch skips the heal; Ctrl+C
+    during the heal still lists the diffs already written.
 
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
@@ -112,18 +116,6 @@ function Stop-Uat([int]$Code, [string]$Message) {
         [Console]::Error.WriteLine($Message)
     }
     return $Code
-}
-
-# Writes the batch's summary.md and batch.json; returns the Markdown.
-function Write-UatBatchSummary($Summary, [string]$Title, [string]$BatchDir, [datetime]$Started, [string[]]$RowIds, [int]$LaneCount) {
-    $md = Format-UatSummary $Summary $Title $BatchDir
-    Set-Content -LiteralPath (Join-Path $BatchDir 'summary.md') -Value $md -Encoding utf8
-    [ordered]@{
-        section = $Section; rows = $RowIds; leases = $LaneCount; runs_per_lease = $RunsPerLease
-        started = $Started.ToString('o'); minutes = [math]::Round(((Get-Date) - $Started).TotalMinutes, 1)
-        summary = $Summary
-    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $BatchDir 'batch.json') -Encoding utf8
-    return $md
 }
 
 function Invoke-LabUat {
@@ -292,34 +284,23 @@ function Invoke-LabUat {
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
         $title = "lab uat $Section"
-        $md = Write-UatBatchSummary $summary $title $batchDir $started $rowIds $plan.Lanes.Count
+        $batch = @{ Dir = $batchDir; Title = $title; Section = $Section; RowIds = $rowIds
+                    LaneCount = $plan.Lanes.Count; RunsPerLease = $RunsPerLease; Started = $started }
+        $md = Write-UatBatchSummary $summary $batch
     }
 
     # -Heal runs after the finally, not in it: a finally cannot be stopped,
     # and a heal is up to 15 minutes of lab time per pose, so Ctrl+C during
-    # the batch skips it. The summary is already on disk; it is rewritten
-    # with heal only when a proposal was written.
+    # the batch skips it. The summary is already on disk; Invoke-UatHealPass
+    # rewrites it with heal (in its own finally, so Ctrl+C mid-heal keeps the
+    # diffs already written) only when a proposal was written. After a failed
+    # call it waits for the instance's lease, as a lane does after a timeout.
     if ($Heal) {
-        $hints = @(Get-UatHealHints $allRuns)
-        if ($hints.Count) {
-            $healInstance = $plan.Lanes[0].Instance
-            & $say "heal: recalibrating $($hints.Count) pose(s) on ${healInstance}: $(($hints | ForEach-Object { "$($_.row) $($_.pose)" }) -join ', ')"
-            $healed = @(Invoke-UatHeal $hints $batchDir $Section $specs $healInstance {
-                param($ca)
-                Invoke-LabCalibrate $url $token $ca (Get-CalibrateTimeoutSec $null)
-            })
-            foreach ($h in $healed) {
-                & $say $h.Line
-                if ($h.Text -and $progress -eq 'host') { Write-Host $h.Text }
-            }
-            $proposed = @($healed | Where-Object { $_.Diff } | ForEach-Object { [ordered]@{ row = $_.Row; pose = $_.Pose; diff = $_.Diff } })
-            if ($proposed.Count) {
-                $summary.heal = $proposed
-                $md = Write-UatBatchSummary $summary $title $batchDir $started $rowIds $plan.Lanes.Count
-            }
-        } else {
-            & $say 'heal: no failed row carries a heal hint; nothing to recalibrate'
-        }
+        $healMd = Invoke-UatHealPass $allRuns $summary $batch $specs $plan.Lanes[0].Instance {
+            param($ca)
+            Invoke-LabCalibrate $url $token $ca (Get-CalibrateTimeoutSec $null)
+        } $say { param($i) Wait-UatLeaseFree $i 600 } ($progress -eq 'host')
+        if ($healMd) { $md = $healMd }
     }
 
     # Straight to stdout: a bare expression here would join the function's

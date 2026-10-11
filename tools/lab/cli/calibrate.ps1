@@ -24,11 +24,15 @@
     322.5 -> 330.0; diff <path>), then the diff's text unless -Quiet. -Json
     prints only one compact JSON object (under about 400 characters, on
     failure too: {"ok":false,"exit":N,"error":...}): ok, section, row, and
-    per pose pose, ok, score, confirmed, the changed fields and diff.
+    per pose pose, ok, score, confirmed, the changed fields and diff. A
+    failed -Apply adds run_dir, diff and the outcomes to its error object
+    (under about 700 characters; the outcomes give way to outcomes_cut: <n>
+    beyond that).
 
     -Apply runs git apply with the diff in this checkout, unless the spec
-    file has uncommitted changes (exit 2; the diff stays in the run folder).
-    It never stages or commits.
+    file has uncommitted changes or is not tracked (exit 2; the diff stays
+    in the run folder, and the error starts with its path). It never stages
+    or commits.
 
     -BudgetMinutes (1 to 30, default 15) bounds the whole sweep.
 
@@ -87,7 +91,7 @@ function Invoke-LabCalibrateCommand {
     if ($Apply) {
         $guess = "docs/guides/uat-specs/$Section.toml"
         if ((Test-Path -LiteralPath (Join-Path $repo $guess)) -and (Test-CalibrateSpecDirty $repo $guess)) {
-            return Stop-Calibrate 2 "$guess has uncommitted changes; -Apply would clobber them (commit or revert first, or drop -Apply)"
+            return Stop-Calibrate 2 "$guess has uncommitted changes or is not tracked; -Apply would clobber them (commit or revert first, or drop -Apply)"
         }
     }
     $prepareRows = @(ConvertTo-UatRowIds $Prepare)
@@ -144,8 +148,14 @@ function Invoke-LabCalibrateCommand {
     if ($Apply -and $diffPath) {
         $r = Invoke-CalibrateApply $repo $diffPath
         if (-not $r.Ok) {
-            if (-not $Json) { foreach ($o in $outcomes) { & $say (Format-CalibrateLine $o) } }
-            return Stop-Calibrate 2 "-Apply: $($r.Error)"
+            # The error starts with the diff path, and -Json keeps the run
+            # folder and the poses: a refused apply must not lose the proposal.
+            if ($Json) {
+                [Console]::Out.WriteLine((ConvertTo-CalibrateApplyErrorJson "$($r.Error) (-Apply)" ([string](Get-UatField $reply 'run_dir')) $diffPath $outcomes))
+                return 2
+            }
+            foreach ($o in $outcomes) { & $say (Format-CalibrateLine $o) }
+            return Stop-Calibrate 2 "$($r.Error) (-Apply; the diff stays in the run folder)"
         }
         $applied = $true
     }

@@ -74,6 +74,23 @@ Check ($j -ceq '{"ok":false,"section":"first-session","row":"FS-P3"}') "no outco
 $diffText = "--- a/docs/guides/uat-specs/first-session.toml`n+++ b/docs/guides/uat-specs/first-session.toml`n@@ -1,1 +1,1 @@`n-a`n+b`n"
 Check ((Get-CalibrateDiffTarget $diffText) -ceq 'docs/guides/uat-specs/first-session.toml') 'the diff names its spec file'
 Check ($null -eq (Get-CalibrateDiffTarget 'no header')) 'a diff with no +++ line names nothing'
+$twoFiles = $diffText + "--- a/docs/guides/uat-specs/other.toml`n+++ b/docs/guides/uat-specs/other.toml`n@@ -1,1 +1,1 @@`n-a`n+b`n"
+Check ($null -eq (Get-CalibrateDiffTarget $twoFiles) -and (Get-CalibrateDiffFileCount $twoFiles) -eq 2) 'a diff with two +++ lines names nothing'
+
+# --- -Json of a failed -Apply: the run folder, the diff and the outcomes kept ---
+$runDirLong = 'C:\Users\lab-operator\AppData\Local\cimmeria-lab\uat-runs\2026-10-11-1489a731-kqzxwbt'
+$applyMsg = "$($long.diff_path): git apply failed: error: patch failed: docs/guides/uat-specs/first-session.toml:12 (-Apply)"
+$aj = ConvertTo-CalibrateApplyErrorJson $applyMsg $runDirLong $long.diff_path @($long, $failLong)
+$ao = $aj | ConvertFrom-Json
+Check (-not $ao.ok -and $ao.exit -eq 2 -and $ao.error.StartsWith($long.diff_path) -and $ao.run_dir -ceq $runDirLong -and $ao.diff -ceq $long.diff_path) 'a failed -Apply keeps run_dir and diff; the error starts with the diff path'
+$aKept = @(Get-UatField $ao 'outcomes' | Where-Object { $null -ne $_ })
+$aCut = if ($ao.PSObject.Properties.Name -contains 'outcomes_cut') { [int]$ao.outcomes_cut } else { 0 }
+Check ($aKept.Count -eq 2 -and $aCut -eq 0 -and $aKept[0].changed.bearing -ceq '322.5 -> 330.0' -and -not ($aKept[0].PSObject.Properties.Name -contains 'diff')) "the outcomes are kept first to last, without a second copy of the diff path ($($aKept.Count) kept, $aCut cut)"
+Check ($aj.Length -le 700 -and $aj -notmatch 'null') "a failed -Apply with two poses and long paths stays within 700 characters ($($aj.Length))"
+$many = foreach ($p in 'a1', 'a2', 'a3', 'a4', 'a5', 'a6') { $x = $long.PSObject.Copy(); $x.pose = $p; $x }
+$cut = ConvertTo-CalibrateApplyErrorJson $applyMsg $runDirLong $long.diff_path $many
+$co = $cut | ConvertFrom-Json
+Check ($cut.Length -le 700 -and $co.outcomes_cut -ge 5 -and @(Get-UatField $co 'outcomes' | Where-Object { $null -ne $_ }).Count + $co.outcomes_cut -eq 6 -and $co.diff -ceq $long.diff_path) "too many outcomes give way to outcomes_cut ($($cut.Length))"
 Check ((Get-CalibrateTimeoutSec $null) -eq 1200 -and (Get-CalibrateTimeoutSec 30) -eq 2100) 'the call timeout is the budget plus 5 minutes'
 
 # --- -Apply in a scratch checkout: never clobbers, never commits ---
@@ -112,6 +129,40 @@ try {
     [IO.File]::WriteAllText($other, "--- a/elsewhere/x.toml`n+++ b/elsewhere/x.toml`n@@ -1,1 +1,1 @@`n-a`n+b`n")
     Check ((Invoke-CalibrateApply $repo $other).Error -like '*not this checkout*') "a diff outside the spec folder is not applied"
     Check (-not (Invoke-CalibrateApply $repo (Join-Path $repo 'missing.diff')).Ok) 'no diff, nothing applied'
+
+    # Every apply error starts with the diff's path.
+    G add -A; G commit -q -m applied
+    [IO.File]::WriteAllText($spec, "a`nB`nc`nlocal`n")
+    $r = Invoke-CalibrateApply $repo $diff
+    Check ($r.Error.StartsWith("${diff}: ")) "an apply error starts with the diff path ($($r.Error))"
+    G reset -q --hard
+
+    # An untracked spec: git diff HEAD calls it clean, so it is checked apart.
+    $untracked = Join-Path $repo 'docs\guides\uat-specs\y.toml'
+    [IO.File]::WriteAllText($untracked, "a`nb`nc`n")
+    $ydiff = Join-Path $scratch 'y.diff'
+    [IO.File]::WriteAllText($ydiff, "--- a/docs/guides/uat-specs/y.toml`n+++ b/docs/guides/uat-specs/y.toml`n@@ -1,3 +1,3 @@`n a`n-b`n+B`n c`n")
+    Check ((Test-CalibrateSpecDirty $repo 'docs/guides/uat-specs/y.toml') -and -not (Test-CalibrateSpecDirty $repo 'docs/guides/uat-specs/x.toml')) 'an untracked spec is dirty, a clean tracked one is not'
+    $r = Invoke-CalibrateApply $repo $ydiff
+    Check (-not $r.Ok -and $r.Error -like '*not tracked*' -and [IO.File]::ReadAllText($untracked) -ceq "a`nb`nc`n") 'an untracked spec is refused and left alone'
+    Remove-Item -LiteralPath $untracked
+
+    # A diff naming two files is refused before anything is touched.
+    $two = Join-Path $scratch 'two.diff'
+    [IO.File]::WriteAllText($two, "--- a/docs/guides/uat-specs/x.toml`n+++ b/docs/guides/uat-specs/x.toml`n@@ -1,3 +1,3 @@`n-a`n+A`n b`n c`n--- a/docs/guides/uat-specs/z.toml`n+++ b/docs/guides/uat-specs/z.toml`n@@ -1 +1 @@`n-q`n+r`n")
+    $before = [IO.File]::ReadAllText($spec)
+    $r = Invoke-CalibrateApply $repo $two
+    Check (-not $r.Ok -and $r.Error -like '*touches 2 files*' -and [IO.File]::ReadAllText($spec) -ceq $before) 'a two-file diff is refused'
+
+    # A diff whose context no longer matches: git apply fails, nothing changes,
+    # and the -Json error object still carries the diff and the poses.
+    $stale = Join-Path $scratch 'stale.diff'
+    [IO.File]::WriteAllText($stale, "--- a/docs/guides/uat-specs/x.toml`n+++ b/docs/guides/uat-specs/x.toml`n@@ -1,3 +1,3 @@`n a`n-zzz`n+B`n c`n")
+    $r = Invoke-CalibrateApply $repo $stale
+    Check (-not $r.Ok -and $r.Error.StartsWith("${stale}: git apply failed") -and [IO.File]::ReadAllText($spec) -ceq $before) "a failing git apply is reported and changes nothing ($($r.Error))"
+    $sj = ConvertTo-CalibrateApplyErrorJson "$($r.Error) (-Apply)" $scratch $stale @($frost, $same)
+    $so = $sj | ConvertFrom-Json
+    Check ($so.exit -eq 2 -and $so.error.StartsWith($stale) -and $so.diff -ceq $stale -and $so.run_dir -ceq $scratch -and @($so.outcomes).Count -eq 2) "a failing git apply under -Json keeps run_dir, diff and outcomes ($($sj.Length))"
 } finally { Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue }
 
 # --- through a real process: usage errors exit 2 before the daemon is
