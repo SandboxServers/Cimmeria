@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,460 |
-| Files with tests | 2,200 |
-| Gated in CI (every crate but CI's exclude list) | 10,271 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,477 |
+| Files with tests | 2,202 |
+| Gated in CI (every crate but CI's exclude list) | 10,277 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,717 |
-| Inventory threshold (5% of the tests) | 623 |
+| Inventory threshold (5% of the tests) | 624 |
 
 <!-- /gen:tests-totals -->
 
@@ -88,7 +88,7 @@ with no file in this directory yet.
 | `crates/cell-content` | `cimmeria-cell-content` | 902 | 143 | 507 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 750 | 146 | 0 | no | [launcher.md](launcher.md) |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 668 | 128 | 0 | no | none |
-| `crates/lab` | `cimmeria-lab` | 653 | 115 | 0 | no | none |
+| `crates/lab` | `cimmeria-lab` | 664 | 116 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 647 | 141 | 455 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 646 | 150 | 27 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 572 | 108 | 52 | yes | none |
@@ -130,9 +130,9 @@ with no file in this directory yet.
 | `crates/upk` | `cimmeria-upk` | 37 | 5 | 0 | yes | none |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 28 | 7 | 0 | yes | none |
 | `crates/wire-log` | `cimmeria-wire-log` | 28 | 6 | 0 | yes | none |
 | `crates/names` | `cimmeria-names` | 24 | 6 | 4 | yes | none |
-| `crates/lab-mcp` | `cimmeria-lab-mcp` | 22 | 6 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 13 | 2 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
