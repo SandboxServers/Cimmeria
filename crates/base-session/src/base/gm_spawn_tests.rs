@@ -364,7 +364,7 @@ async fn gm_spawn_without_a_pool_reports_only_a_batched_copy() {
 async fn gm_spawn_query_failure_in_a_batch_reports_to_the_cell() {
     let pool = sqlx::postgres::PgPoolOptions::new()
         .acquire_timeout(std::time::Duration::from_secs(2))
-        .connect_lazy("postgres://nobody:nothing@[::1]:9/none")
+        .connect_lazy("postgres://nobody:nothing@127.0.0.1:1/none")
         .expect("a lazy pool only parses the URL");
     let db_pool = Some(Arc::new(pool));
     let (transport, connected, entity_to_addr) = empty_io();
