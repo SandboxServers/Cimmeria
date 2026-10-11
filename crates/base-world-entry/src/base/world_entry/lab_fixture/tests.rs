@@ -1,5 +1,6 @@
 //! Live-DB guards for the staged lab fixture apply (lab-fixtures FX-02),
-//! and the fixtures they share with `play_character_live_db_tests`.
+//! and the fixtures they share with `play_character_live_db_tests` and
+//! `items_live_db_tests` (FX-03, its own `0x7046_0300` block).
 //!
 //! Sentinel block `0x7046_0200` (the store's in-memory ids sit at
 //! `0x7046_0201..=0x7046_0203`); each test takes a `0x10` slot, account at
@@ -18,7 +19,6 @@ pub(super) const NOT_ACTIVE: i32 = 0x7046_0220;
 pub(super) const BAD_STEP: i32 = 0x7046_0230;
 pub(super) const TUTORIALS: i32 = 0x7046_0240;
 pub(super) const MOVE: i32 = 0x7046_0250;
-pub(super) const ITEMS: i32 = 0x7046_0258;
 pub(super) const OTHER_ACCOUNT: i32 = 0x7046_0260;
 pub(super) const STRANGER_ACCOUNT: i32 = 0x7046_0268;
 pub(super) const PLAY_GM: i32 = 0x7046_0270;
@@ -218,8 +218,6 @@ pub(super) fn active(mission_id: i32, step_id: i32) -> StagedMission {
 }
 
 mod lab_fixture_live_db_tests {
-    use cimmeria_base_session::base::world_entry::lab_fixture::StagedItem;
-
     use super::*;
     use crate::base::world_entry::shown_tutorials::{record_tutorial_shown, TutorialInsert};
     use crate::test_support::require_db_or_skip;
@@ -413,31 +411,6 @@ mod lab_fixture_live_db_tests {
         assert!(error.contains("belongs to account"), "{error}");
         assert_eq!(mission_after, mission_before);
         assert_eq!(place_after, place_before);
-    }
-
-    /// FX-02 leaves item counts to FX-03: an item fixture is refused, not
-    /// silently skipped, and refused in the precheck, so the fixture's
-    /// mission is not written either. Move the refusal back into the items
-    /// part (after the missions write) and the row assertion fails.
-    #[tokio::test]
-    async fn live_db_fixture_items_are_refused_until_fx03() {
-        let pool = require_db_or_skip!();
-        let player_id = seed_player(&pool, ITEMS).await;
-        seed_mission(&pool, player_id, MISSION, 2, 1).await;
-        let steps = steps_of(&pool, MISSION).await;
-        let before = mission_row(&pool, player_id, MISSION).await;
-        let mut f = fixture(player_id, vec![active(MISSION, steps[1])]);
-        f.items = vec![StagedItem {
-            type_id: 55,
-            count: 1,
-            container_id: 1,
-        }];
-        let applied = apply(&pool, ITEMS, &f).await;
-        let after = mission_row(&pool, player_id, MISSION).await;
-        cleanup(&pool, ITEMS).await;
-        assert_eq!(applied, Err("item fixtures land in FX-03".to_string()));
-        assert!(before.is_some());
-        assert_eq!(after, before, "the mission row is untouched");
     }
 
     /// **Guard: the completed row shape.** Over an active mid-step row, a

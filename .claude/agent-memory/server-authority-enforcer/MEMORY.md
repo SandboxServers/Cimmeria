@@ -81,3 +81,4 @@
 - [project_vendor_stock_wire_review.md](project_vendor_stock_wire_review.md) — 2026-10-10 vendor 78-82 stock layouts + session template; CAT-E-01 closed; base refusals silent; CAT-E-02 open
 - [reference_ability_grant_provenance.md](reference_ability_grant_provenance.md) — CS-01a grant provenance: credit hydration filters, cleared gm promotion, trained-then-granted + archetype gaps
 - [project_lab_fixture_fx02_review.md](project_lab_fixture_fx02_review.md) — FX-02 lab fixture: no client stage path; take-before-owner-check lets any account burn fixtures
+- [project_lab_fixture_fx03_review.md](project_lab_fixture_fx03_review.md) — FX-03 fixture item write cleared: player-keyed, bags 1-15, rolled-back dry run, shared lock order
