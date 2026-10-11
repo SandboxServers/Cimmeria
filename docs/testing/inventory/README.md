@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 13,142 |
-| Files with tests | 2,287 |
-| Gated in CI (every crate but CI's exclude list) | 10,492 |
+| Tests (`#[test]` / `#[tokio::test]`) | 13,143 |
+| Files with tests | 2,288 |
+| Gated in CI (every crate but CI's exclude list) | 10,493 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,753 |
 | Inventory threshold (5% of the tests) | 657 |
 
@@ -105,7 +105,7 @@ with no file in this directory yet.
 | `crates/admin-api` | `cimmeria-admin-api` | 235 | 35 | 0 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 231 | 58 | 137 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 230 | 63 | 55 | yes | none |
-| `crates/base` | `cimmeria-base` | 228 | 47 | 17 | yes | none |
+| `crates/base` | `cimmeria-base` | 229 | 48 | 17 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 220 | 38 | 1 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 164 | 33 | 18 | yes | [wireclient.md](wireclient.md) |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
