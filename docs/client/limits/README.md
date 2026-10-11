@@ -59,9 +59,16 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Server resend timeout | 700 ms | [network.md](network.md) |
 | Server resend tries | 20 | [network.md](network.md) |
 | Server resends per tick | 5 | [network.md](network.md) |
-| Client resend timing for its own reliable sends | not measured | [network.md](network.md) |
-| Client socket receive buffer | not measured | [network.md](network.md) |
-| Packets the client processes per tick | not measured | [network.md](network.md) |
+| Client resend timeout for its own reliable sends | max(2.5 x smoothed RTT, 50 ms); first RTO 2.5 s | [network.md](network.md) |
+| Client resend retry cap | none | [network.md](network.md) |
+| Client resends per pass per channel | 6 | [network.md](network.md) |
+| Client idle keepalive | empty bundle after 1.5 s without a send | [network.md](network.md) |
+| Client socket receive buffer | OS default (client sets none); size not measured | [network.md](network.md) |
+| Datagrams the network thread reads per pass | 64 per socket | [network.md](network.md) |
+| Network thread idle wait | about 10 to 15.6 ms | [network.md](network.md) |
+| Packets the client processes per tick | whole queue per frame, no budget | [network.md](network.md) |
+| Largest message body the bundle loop can copy | no fixed cap | [network.md](network.md) |
+| Packets in a chain between processPacket and processOrderedPacket | no cap | [network.md](network.md) |
 | Client idle send rate | about 6 packets/s; `perfStats` every 15.0 s | [network.md](network.md) |
 | Client tolerance of server silence | 15 s | [network.md](network.md) |
 | Next-request offset residue (#1341) | multiples of 8, 128 to 848 B, sticky per process | [network.md](network.md) |
