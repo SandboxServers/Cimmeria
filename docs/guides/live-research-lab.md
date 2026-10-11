@@ -284,7 +284,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_screenshot_region` / `lab_pixel_probe` | Crop of the capture as an image; count pixels in an RGB box (a nameplate colour, a HUD element). |
 | `lab_screenshot` | The client window's game area (client rect, the UI's pixel space) → MCP image. Refuses a minimised window or an all-black frame. |
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
-| `lab_timeline` | Merged client+server window (above). |
+| `lab_timeline` | Merged client+server window (above). It drains the player's packet tap, so don't call it on an instance that `lab_record_start` is recording, or while `lab golden record` runs. |
 | `lab_golden_record` | Open (no lease), never drives the client. Records `<specs_dir>/golden/<section>.json` from at least five fresh fingerprint-mode run directories (`run_dirs`) that agree, every row PASS, on one spec file, server build and SGW.exe; `rebless` replaces an existing golden. Replies `{ok, path, rows, events, bytes, runs}` or `{ok: false, code, error}` with `code` one of `exists`, `disagree`, `not_passing`, `cannot_record` (a tap that dropped, was replaced or was unavailable is `cannot_record`). |
 | `lab_golden_diff` | Open (no lease), never drives the client. Compares one fingerprint-mode run directory with its section's golden under the golden's stored variance: `{ok: true, match: true}`, or `match: false` with `first` (the first divergence, one line) and, when more rows diverged, `diverged` and `rows` (up to four more lines). `code: no_golden` when the golden is missing or unreadable, `cannot_diff` when the run is. |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
@@ -305,6 +305,10 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_camera` | Mouse-look yaw/pitch, wheel zoom, face an entity or point, then an absolute pitch, yaw and zoom (`pitch_deg`, `yaw_offset_deg`, `zoom`). |
 | `client_hover_probe` | Hover an entity or a world point without clicking and score it: verdict under the cursor, jitter hits, distance to the avatar and the screen edge. Never turns the camera. See [World tools](#world-tools). |
 | `lab_uat_calibrate` | Takes its own lease (owner `lab_uat_calibrate`). Sweeps a spec row's poses by hover, never a click, and writes the best as a spec diff in a new run folder; the spec is never written. `{section, row, pose?, specs_dir?, budget_minutes?, radii_m?, bearing_step_deg?, lease_id?}` → `{run_dir, outcomes: [{ok, section, row, pose, score, confirmed, changed, diff_path, probes, reason}]}`; `diff_path` only on the first outcome that proposed (one diff holds every proposal). Refused per pose, before anything moves, when the section is not `account = "gm"`, the server lab MCP is not configured or the client is not in the world. `budget_minutes` above 0 (default 15, capped at 30), `radii_m` within 1 to 8, `bearing_step_deg` 1 to 360, at most 1999 grid candidates a pose. Behind [`lab calibrate`](#commands); see [Calibrate a row](automated-uat.md#calibrate-a-row). |
+| `lab_record_start` | Takes its own lease (owner `lab_record`) and holds it until the stop; takes no `lease_id`, and is refused while anyone holds the lab or a recording runs on the instance. Records a person playing this instance by hand: every 500 ms it reads the player's tap, server entity, camera readout, windows, dialog and (after server activity) a DB snapshot into `<uat root>/records/<recording_id>/record.jsonl`. Only reads: never input, camera or focus. Stops by itself after `max_minutes` (default and at most 30) or on `lease_lost`. `{section, character?, specs_dir?, max_minutes?}` → `{ok, recording_id, instance, section}`. Don't call `lab_timeline` on the instance while it records. Behind [`lab record`](#commands); see [Recording a draft](automated-uat.md#recording-a-draft). |
+| `lab_record_status` | Open. This instance's recording: `{ok, recording, recording_id, instance, section, age_s, ticks, anchors}`; `recording` is false once the recorder stopped by itself and waits for a stop to collect it. |
+| `lab_record_stop` | Open, gated by the `recording_id`: a wrong id is refused and the recording keeps running. Waits at most 60 s for the recorder to end, transforms the log, and writes `<specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml`, never over an existing file. `{recording_id, character_expr?, profile?, no_draft?}` → `{ok, draft, rows, steps, todo, dropped, raw, ended?}` (`draft` a file name, `raw` the recording id). A failure is `{ok: false, exit, error}`; it keeps the raw log and leaves the recording for a retry. |
+| `lab_record_transform` | Open: no client, no lease. Drafts a stopped recording already on disk again, with other options: `{dir, section?, character_expr?, profile?, specs_dir?}`. `dir` is the recording id or its folder, a direct child of `<uat root>/records/`; anything else (another path, `..`, UNC, `\\?\`, a link out of the folder) is refused, and so is a recording without its stop line. Writes `<name>-2.toml`, `-3`, ... when the draft exists, and answers like `lab_record_stop`. |
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
@@ -949,6 +953,19 @@ Quirks to keep in mind:
   which reaches SigNoz through the existing exporter. On the colo, that
   log line is the whole audit trail per the owner's decision — which is
   why rule 6 matters.
+- **`lab record`'s limits, honestly.** The stop gate, the `recording_id`
+  that `lab_record_stop` must name, guards against accidents only (a stale
+  id, the wrong instance). It is not authorization: `lab_record_status`
+  returns the id to anyone who can reach the daemon, which in this
+  single-operator lab is fine. And `lab_record_start` and the open
+  `lab_record_transform` can each write a `.toml` into the `drafts\`
+  folder of any existing local `specs_dir`: both refuse a UNC or `\\?\`
+  path or a folder that doesn't exist, but neither limits it to the
+  checkout. Follow-ups in the
+  [LR-07 worknote](../analysis/lab-record/worknotes/LR-07.md#left-over):
+  a random stop token, the same `specs_dir` check on `lab_golden_record`,
+  `lab_uat_run` and `lab_uat_calibrate`, and a refusal for `lab_timeline`
+  on a recording instance.
 
 ## Setup
 
@@ -1097,6 +1114,10 @@ first line of each.
 | `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
 | `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
 | `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
+| `lab record start <section> [-Instance p2] [-Character <name>] [-MaxMinutes 1-30] [-SpecsDir <dir>] [-Json]` | starts recording a person playing the instance by hand (`lab_record_start`); saves the recording id to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`; see below | 0; 1 the tool failed; 2 usage, or refused with nothing changed; 3 no daemon; 4 the instance is busy (the lab is leased, or a recording runs there) |
+| `lab record status [-Instance p2] [-Json]` | the instance's recording: id, section, age, ticks, anchors (`lab_record_status`) | 0; 1; 2; 3 |
+| `lab record stop [-Instance p2] [-CharacterExpr 'Px${run_id}'] [-Profile <name>] [-NoDraft] [-RecordingId <id>] [-Json]` | stops the saved recording and writes `<specs>\drafts\<section>-<yyyyMMdd-HHmm>.toml` (`lab_record_stop`); deletes the state file on success and keeps it on a failure, so stop can be retried | 0; 1 failed, the recording stays; 2 usage, no recording, or refused; 3 no daemon (the recording stays); 4 still finishing |
+| `lab record transform <recording id or folder> [-Section <id>] [-CharacterExpr ...] [-Profile ...] [-SpecsDir <dir>] [-Json]` | drafts a stopped recording already on disk again (`lab_record_transform`), as `<name>-2.toml`, `-3`, ... when the draft exists; needs the daemon, no lease, no client | 0; 1 failed (also: the log has no stop line yet); 2 usage or refused; 3 the daemon is not running |
 
 An unknown command exits 2. Examples:
 
@@ -1198,6 +1219,22 @@ lab golden show first-session
 ```
 
 The `first-session` SGU rows are not calibrated yet, so name the Praxis rows as above.
+
+**`lab record`.** A person plays one instance by hand while the daemon records it, and the stop turns the recording into a draft spec under `<specs>\drafts\`. The how-to, what a draft holds, the `# TODO` convention and how a draft becomes a spec are in [Recording a draft](automated-uat.md#recording-a-draft); the decisions are in the [lab-record ledger](../analysis/lab-record/README.md).
+
+- **The lease.** `start` takes a lease of its own on the instance (owner `lab_record`, purpose `recording a human: <section>`) and holds it until the stop, so no agent drives the client a person is playing. It is refused (exit 4) while anyone holds the lab or a recording already runs there. A forced takeover ends the recording (`lease_lost`), as does `-MaxMinutes`.
+- **Don't call `lab_timeline` on a recording instance** (D-LR2). It reads and drains the player's packet tap, which the recorder owns, so the rows it took never reach the recording. Nothing refuses the call yet.
+- **The state file.** `start` saves `{recording_id, instance, specs_dir}` to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`, so `stop` needs no id. A failed stop keeps it and the recording stays on the daemon, so run `stop` again (with other options if they were the problem). When the file is gone, `lab record status` shows the id and `stop -RecordingId <id>` stops it.
+- **Arguments** are checked before the daemon is asked (exit 2 whatever its state): the section is `^[a-z0-9][a-z0-9-]{0,47}$`, the instance `[A-Za-z0-9_-]`, `-CharacterExpr` `^[A-Za-z0-9 _${}]{1,64}$`, `-MaxMinutes` 1 to 30. `-Profile` and `-CharacterExpr` exclude each other. `transform` takes no `-Instance`: it reads a folder on disk.
+- **Output.** Without `-Json`, one line on stdout on success (the stop and transform print the draft's and raw log's paths), the error on stderr on failure. `-Json` prints one compact object under 400 characters with no nulls or empty values: `{ok, recording_id, instance, section}` for start; `{ok, recording, recording_id, instance, section, age_s, ticks, anchors}` for status; `{ok, draft, rows, steps, todo, dropped, raw}` for stop and transform, where `draft` is a file name and `raw` the recording id (no answer carries a path), plus `ended` when the recorder stopped early with an error. A failure is `{"ok":false,"exit":N,"error":"..."}`, printed as the daemon returned it. Lease ids never print.
+- **Exit codes** (D-LR16, amended in review): 0 ok; 1 the tool failed; 2 usage, or refused with nothing changed; 3 no daemon; 4 the instance is busy. The tools answer 4 themselves, so the CLI passes it straight through rather than reading it from the text.
+
+```powershell
+lab record start first-session -Instance p2
+lab record status -Instance p2
+lab record stop -Instance p2 -CharacterExpr 'Px${run_id}'
+lab record transform 20261012-143000-p2 -Section first-session -Json
+```
 
 **`lab env`.** With no verb it prints every line of `labd.env`. Values print
 masked: a key containing `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `AUTH` or
@@ -1429,7 +1466,7 @@ a test fails until every routed tool is classified. Guarded tools list
 
 | Open (no lease) | Leased |
 |---|---|
-| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report`, `lab_golden_record` (it writes only the golden file), `lab_golden_diff` | `lab_client_start` / `stop` / `restart` |
+| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report`, `lab_golden_record` (it writes only the golden file), `lab_golden_diff`, `lab_record_status`, `lab_record_stop` (gated by the recording id), `lab_record_transform` (it reads a folder on disk) | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
 | `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; the composites `lab_ensure_in_world`, `client_batch` (caller-chosen Lua and native calls) and `client_ui_sequence`; `lab_uat_attest`; `lab_uat_run` (see below) |
@@ -1451,6 +1488,15 @@ the row being driven is cut off at its next await and BLOCKED, every
 remaining row is BLOCKED without being driven (reason `lease revoked`),
 and the run lets go of every held key and button. `plan_only: true`
 drives nothing and needs no lease.
+
+**Tools that take their own lease.** Three tools are `OWN_LEASE` in the
+policy: `lab_uat_run` (above), `lab_uat_calibrate` (owner
+`lab_uat_calibrate`) and `lab_record_start`. The recorder always takes its
+own (owner `lab_record`, purpose `recording a human: <section>`) and takes
+no `lease_id`: a session that holds the lab must release it first. It
+holds the lease until `lab_record_stop`, so no agent drives a client a
+person is playing; a forced takeover stops the recording with
+`lease_lost`. See [`lab record`](#commands).
 
 **Stdio mode has the same rules.** A stdio supervisor enforces the lease
 too, so a tool behaves the same whichever transport reaches it. With one

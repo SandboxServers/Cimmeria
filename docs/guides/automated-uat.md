@@ -21,6 +21,8 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 
 To check that a run still behaves the way known-good runs did, without a model reading it, compare it with the section's golden: see [Golden runs](#golden-runs).
 
+To draft rows from a person playing instead of writing them by hand, see [Recording a draft](#recording-a-draft).
+
 ## Before you start
 
 First time on your own machine? [lab-contributor-setup.md](lab-contributor-setup.md) gets you from a fresh clone to a passing row against a local server, with the secrets, `labd.env` and the MCP registration for Claude Code or Codex.
@@ -630,6 +632,70 @@ frost: no proposal: <reason> (best score 5100, confirmed 1/3)
 | 3 | The pre-flight (daemon, a free instance, no `SGW.exe` outside the lab), a prepare row, or the `lab_uat_calibrate` call failed |
 
 The tool behind it is `lab_uat_calibrate` ([live research lab](live-research-lab.md#tools-at-a-glance)); `lab uat -Heal` calls it for a failed row's pose ([above](#run-without-an-agent-lab-uat)). The `first-session` SGU poses (FS-S3 to FS-S6) are computed from the seed's spawn rows, not calibrated, and carry no pitch, yaw or zoom until the campaign's acceptance run (lab-spec-vocab SV-15) calibrates them.
+
+## Recording a draft
+
+Writing a row by hand means measuring a pose, finding which `sgw_mission` and `sgw_player` columns move, and guessing a timeout. `lab record` gets all three from a person playing: it watches one lab instance while you play a stretch of a section by hand, then writes a draft spec with one row per thing you did. The design and its decisions are in the [lab-record ledger](../analysis/lab-record/README.md) (D-LR1 to D-LR17); the command's options and exit codes are in the operating guide ([`lab record`](live-research-lab.md#commands)), the tools behind it in its [tool table](live-research-lab.md#tools-at-a-glance).
+
+It is lab use like any other: ask the user first and wait until the lab is free. And while a person records, no agent drives that lab: the recorder holds the instance's lease for the whole recording, so an agent's call is refused, and a forced takeover ends the recording.
+
+**Record, or write by hand?**
+
+- **Record** when the row is something a person does naturally (talk to an NPC, accept a mission, use or equip an item, use an ability, walk into a region) and you don't yet know its pose, its server changes or its timing.
+- **Write by hand** when the row turns on what the recorder can't see: a key press (a bag opened with B, Esc, a hotkey), a `~` console command, a Lua read, a chat, SigNoz or human clause, or a second player. You can still record the rest and add those steps to the draft.
+- **Recalibrate instead** when only a pose moved ([Calibrate a row](#calibrate-a-row)).
+
+### Record a stretch
+
+```powershell
+lab record start first-session -Instance p2
+# ...the person plays FS-P3 on p2's window...
+lab record status -Instance p2
+lab record stop -Instance p2 -CharacterExpr 'Px${run_id}'
+```
+
+1. **Put the client where the stretch starts**, in the world, with nobody holding the instance's lease. `start` is refused with exit 4 while anyone holds the lab or another recording runs there.
+2. **Start.** `lab record start <section>` names the section you are playing (`first-session`). When the spec folder holds that section, the draft copies its `[section]`; otherwise it takes the instance's lab account and character. `-Character <name>` names the character being played when it isn't the lab account's. `-MaxMinutes` (1 to 30, default 30) ends the recording by itself; so does a takeover of its lease. `-SpecsDir` picks the spec folder the draft goes under (default: the checkout's `docs/guides/uat-specs`), fixed at start.
+3. **Play.** Every 500 ms the daemon reads the player's packet tap, the player's server entity, the camera readout, the visible windows and the open dialog, and a database snapshot after any server activity. It only reads: no input, no camera move, no focus change. Don't call `lab_timeline` on the instance meanwhile (the recorder owns its tap; D-LR2).
+4. **Check.** `lab record status` shows the recording's id, age, ticks and anchors (the `interact`, `useItem`, `moveItem` and `useAbility` calls seen so far). An anchor count that doesn't move when you act means the recorder isn't seeing it.
+5. **Stop.** `lab record stop` ends the recording, keeps its raw log under `<uat root>\records\<recording id>\record.jsonl`, and writes `<specs>\drafts\<section>-<yyyyMMdd-HHmm>.toml`, never over an existing file. `-CharacterExpr` replaces the recorded character's name in the draft's SQL (`Px${run_id}` when the rows run on a fresh character; the default is `${character}`). `-NoDraft` keeps the log only. On a failure the recording stays on the daemon: run `stop` again, with other options if they were the problem.
+6. **Draft it again** whenever you like, with other options, from the log on disk: `lab record transform <recording id> -CharacterExpr ...` writes `<name>-2.toml`, `-3`, and so on. It needs the daemon but no lease and no client. The raw log is local evidence; it is never committed (D-LR1).
+
+### What a draft contains
+
+The transform is pure code over the raw log and holds a fixed mapping table: two runs over one log give the same bytes, and nothing is inferred (D-LR5, D-LR8). The draft starts with a header saying it is UNCONFIRMED, the recording id, instance, date and tick count, then `[section]` with the id `rec-<section>-<yyyyMMdd-HHmm>`, then rows `REC-01`, `REC-02`, and so on.
+
+A row is cut at each **anchor**: an `interact`, `useItem`, `moveItem` or `useAbility` call, or a region entered that changed server state (D-LR4). Everything up to the next anchor belongs to it. Walking and teleports never make a row. Dot-command chat lines go into the setup of the row they precede. Each row holds:
+
+- **A pose per interacted target**, from geometry: `radius_m`, `bearing_deg` and `dy_m` from the player's and target's server positions, `pitch_deg`, `yaw_offset_deg` and `zoom` from the camera readout, `aim = "entity"` and `calibrated = "recorded <date>"` (D-LR6). A recorded pose is a starting point: [calibration](#calibrate-a-row) and the golden runs confirm it.
+- **`@stand` in the setup and `@camera { pose }` before the action**, then the action: `@world_click` (right button) for an interact, `@item_action` (`use`, `equip` or `unequip`, named from the snapshot diff), `@target` and `@use_ability` for an ability, `@stand` at the point for a region. A dialog that opened adds a `@wait_for` on `DialogWin`; a dialog closed with no button, or with a lone Accept, becomes `@finish_dialog`.
+- **Clauses from what the server changed:** `sgw_mission` status and step, `sgw_player` level, experience, naquadah and world, carried item counts by design id, and `onDialogDisplay` packet clauses. A known server event (the cinematic hold) becomes a `wait_server` step.
+- **Timeouts from the observed timing plus a margin**, rounded up to 250 ms (D-LR7): a polled clause gets `clamp(max(2t, t + 3000), 3000, 60000)` ms, a dialog wait `clamp(max(2t, t + 2000), 2000, 30000)`, a `wait_server` `clamp(max(2t, t + 5000), 5000, 120000)`, where `t` is how long the recording took to see it. No `wait_ms` is ever written.
+- **An optional `[row.fixture]`** (D-LR11). Stop or transform with `-Profile <name>`, a profile of the named section, and each row gets a [fixture](#row-fixtures) built from the snapshot at its start: the missions its diffs touch at their start state, the items whose count changed at their start count. Position is never in it (`@stand` places the player). Without `-Profile` the same block is written as comments. `-Profile` needs a named section that defines the profile, and excludes `-CharacterExpr` (the fixture's character is `${character}`). An item the fixture can't set whole is left out with a TODO.
+
+### The `# TODO` convention
+
+Anything the mapping table doesn't cover is a `# TODO <what was seen>` comment, in the row and at the point where it happened, so a gap is visible and the draft still parses: a dialog button other than a lone Accept (the wire carries the cooked button id, not its position), a client call outside the table, an unknown server event, a window that opened with no click and no call, a `moveItem` to a bag that isn't equipment or the main bag, an item that can't be named. Resolve each one before promoting: add the step by hand, or delete the line once you know it doesn't matter.
+
+A row that can't be written validly is written whole as TOML comments under `# TODO REC-0n not runnable: <reason>`, so it never runs by accident. That happens when:
+
+- its pose is out of range (radius outside 1 to 8 m, stand height outside ±3 m), its target has no spawn tag the spec accepts, or the camera readout was unusable;
+- an interact named no target, the target was never sampled, or there was no player position;
+- it has no step the table knows (only TODOs), or no server change to check.
+
+### Why a draft is UNCONFIRMED, and how it becomes a spec
+
+A draft is one person's one run. A pose that worked once, a timeout measured once and a clause that held once prove nothing about the next run, so the owner's rule for goldens applies (D-LR12): a draft is confirmed only when [`lab golden record`](#record-a-golden) agrees on it five times. The steps are in the [drafts folder's README](uat-specs/drafts/README.md#promoting-a-draft): resolve the TODOs, run `lab golden record <draft section> -Rows REC-01,... -SpecsDir docs/guides/uat-specs/drafts` until five runs agree (fix the draft, not the golden, when they don't), move the rows into the real spec under its row ids, record that spec's golden, and delete the draft. A plain `lab uat` never runs a draft: specs load non-recursively, so `drafts/` is skipped unless you pass `-SpecsDir`.
+
+### Known gaps
+
+Some things a person does leave no trace the recorder may read (D-LR9):
+
+- **Keys are never recorded, by design.** A key logger on a client that types a password is not acceptable. A bag opened with B, Esc or a hotkey other than an ability leaves nothing; a window it opens shows up as a TODO.
+- **Console commands carry no text.** The client's only event for a `~` console command has no fields, not even the command, so the draft can't hold it; add the step by hand. A `.`-command typed in chat is recorded in full (the tap carries it) and lands in the next row's setup.
+- **Window clicks come from the lab's own Lua ring** (no client patch), and become `@window_click` steps.
+
+The recorder also leaves a few things to you: a body aimed at a point is recorded as an entity aim, and a recorded yaw offset can differ from what `@camera` reproduces by the face controller's margin; calibrate when the click misses.
 
 ## Spec coverage
 

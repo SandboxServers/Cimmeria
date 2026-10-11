@@ -6,6 +6,9 @@ playing a section in the lab (the lab-record campaign,
 `<section>-<yyyyMMdd-HHmm>.toml`, with section id `rec-<section>-<yyyyMMdd-HHmm>`
 and rows `REC-01`, `REC-02`, and so on.
 
+How to record one, what a row holds and the gaps a recording can't fill are
+in the authoring guide's [Recording a draft](../../automated-uat.md#recording-a-draft).
+
 ## What a draft is
 
 - **A plain `lab uat` never runs it.** Specs load from
