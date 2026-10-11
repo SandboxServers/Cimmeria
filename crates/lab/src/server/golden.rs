@@ -105,8 +105,9 @@ fn agree_code(e: &AgreeError) -> &'static str {
 
 /// Fingerprint each run, check they are comparable and agree under the
 /// owner's five-run rule with every row PASS (README D-GD6 a), then write
-/// the golden. A chaos run is `cannot_record` before it is fingerprinted. Taps are checked inside `agree` (D-GD8): a dropped,
-/// replaced, unstopped or unavailable tap is `cannot_record`.
+/// the golden. A chaos run is `cannot_record` before it is fingerprinted.
+/// Taps are checked inside `agree` (D-GD8): a dropped, replaced, unstopped
+/// or unavailable tap is `cannot_record`.
 pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
     let Some(dir) = resolve_specs_dir(args.specs_dir.as_deref()) else {
         return refuse(

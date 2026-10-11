@@ -64,25 +64,32 @@ function Add-UatChaosHeader($Summary, [string]$Header) {
     if ($Header) { $Summary['chaos'] = $Header }
 }
 
-# Whether a batch ran under chaos: some run carries the runner's header.
-function Test-UatChaosRuns($Runs) {
-    return [bool]@(@($Runs) | Where-Object { $null -ne $_ -and (Get-UatField $_ 'Chaos') }).Count
+# The runs of a batch that ran under chaos: those carrying the runner's
+# header. The rest are compared under golden as usual.
+function Select-UatChaosRuns($Runs, [bool]$Chaos) {
+    return @(@($Runs) | Where-Object { $null -ne $_ -and [bool](Get-UatField $_ 'Chaos') -eq $Chaos })
 }
 
-# The golden comparison of a chaos batch (D-CH7), reported as
-# chaos_divergence in place of golden: the shape of Merge-UatGolden, with
-# each divergence line led by its own run's chaos header (seed included, so
-# the line names a run that replays). An error line, a diff that could not
-# be made, stays as it is. $null when every compared run matched or none
-# was compared: a chaos run that matches the golden has nothing to report.
+# A chaos run's ref in a divergence group, "<instance>#<index> seed=<seed>",
+# so summary.md and batch.json name the run that replays (its full header is
+# its batch.jsonl record). The seeds are unique per run, so one is shown when
+# every spec has the same; a header without a seed is shown whole.
+function Get-UatChaosRunRef($Run) {
+    $ref = "$(Get-UatField $Run 'Instance')#$(Get-UatField $Run 'Index')"
+    $header = [string](Get-UatField $Run 'Chaos')
+    $seeds = @([regex]::Matches($header, 'seed=\S+') | ForEach-Object { $_.Value.TrimEnd(';') } | Select-Object -Unique)
+    if ($seeds.Count) { return "$ref $($seeds -join ',')" }
+    if ($header) { return "$ref ($header)" }
+    return $ref
+}
+
+# The golden comparison of a batch's chaos runs (D-CH7), reported as
+# chaos_divergence in place of golden: Merge-UatGolden's shape and grouping,
+# on the same unprefixed lines, so five runs with one divergence are one
+# group of five. The batch's header is the top-level chaos key; each group's
+# runs carry their seeds. $null only when no chaos run was compared; a batch
+# whose compared runs all matched gives {match: n, diverged: 0}, as golden
+# does, so "compared and clean" differs from "never compared".
 function Merge-UatChaosDivergence($Runs) {
-    $tagged = foreach ($run in @(@($Runs) | Where-Object { Get-UatField $_ 'Golden' })) {
-        $line = [string](Get-UatField $run 'Golden')
-        $header = [string](Get-UatField $run 'Chaos')
-        if ($header -and $line -cne 'match' -and -not $line.StartsWith('error: ')) { $line = "$header $line" }
-        [ordered]@{ Instance = Get-UatField $run 'Instance'; Index = Get-UatField $run 'Index'; Golden = $line }
-    }
-    $merged = Merge-UatGolden @($tagged)
-    if (-not $merged -or ($merged.diverged + $merged.errors) -eq 0) { return $null }
-    return $merged
+    return Merge-UatGolden (Select-UatChaosRuns $Runs $true) { param($r) Get-UatChaosRunRef $r }
 }

@@ -48,13 +48,17 @@
     -PlanOnly prints seed=<per run> for a seed the spec did not name: each
     run's seed is its own run id's hash.
     -Chaos implies -Fingerprint and -DiffGolden (lab-chaos D-CH7), so it
-    needs the section's golden (exit 2 without one, before the daemon is
-    asked). A chaos run's comparison is reported as chaos_divergence, not
-    golden: each divergence line led by its run's chaos header, the key only
-    when a run diverged or could not be compared. A row that passed keeps its
-    pass, and a divergence alone does not exit 5 (a diff that could not be
-    made still does). A chaos run never becomes a golden (lab golden record
-    refuses it).
+    needs the section's golden: exit 2 without one in the local spec folder,
+    before the daemon is asked. -PlanOnly drives nothing and skips that
+    check. With no local spec folder the daemon resolves its own, and a
+    missing golden is each run's diff error (exit 5). A chaos run's
+    comparison is reported as chaos_divergence, not golden, in the same
+    shape: {match, diverged} whenever a run was compared, divergences
+    grouped as golden groups them; the batch's header is the chaos key, and
+    summary.md names each group's runs with their seeds. A row that passed
+    keeps its pass, and a divergence alone does not exit 5 (a diff that
+    could not be made still does). A chaos run never becomes a golden (lab
+    golden record refuses it).
 
     -DiffGolden compares every passing run with the section's committed
     golden (<specs>/golden/<section>.json, made by lab golden record): the
@@ -82,8 +86,9 @@
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
     5 every run passed but -DiffGolden did not match on one (a divergence, or
-    a run it could not compare; under -Chaos only the latter); 8 a heal proposal was written (SV-12),
-    which wins over every other code, 5 included.
+    a run it could not compare; under -Chaos only the latter); 8 a heal
+    proposal was written (SV-12), which wins over every other code, 5
+    included.
 
 .EXAMPLE
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5
@@ -155,10 +160,14 @@ function Invoke-LabUat {
     # implies -DiffGolden (and with it fingerprint capture on every row).
     $chaosOn = [bool](Format-UatChaosHeader $Chaos)
     if ($chaosOn) { $DiffGolden = $true }
-    # A diff needs a golden: without one, stop before anything is driven.
-    if ($DiffGolden) {
-        $who = if ($chaosOn) { '-Chaos (it diffs every run against the golden)' } else { '-DiffGolden' }
-        if (-not $specs) { return Stop-Uat 2 "$who needs -SpecsDir (no spec folder found next to this checkout)" }
+    # A diff needs a golden: without one, stop before anything is driven. A
+    # chaos plan drives nothing, so it is not checked. With no local spec
+    # folder a chaos run lets the daemon resolve its own (lab_golden_diff
+    # then reports a missing golden per run, which exits 5); -DiffGolden
+    # still needs -SpecsDir.
+    $checkGolden = $DiffGolden -and -not ($chaosOn -and $PlanOnly) -and ($specs -or -not $chaosOn)
+    if ($checkGolden) {
+        if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
         $goldenPath = Get-GoldenPath $specs $Section
         if (-not (Test-Path -LiteralPath $goldenPath)) {
             if ($chaosOn) {
@@ -203,7 +212,8 @@ function Invoke-LabUat {
     $chaosHeader = Set-UatChaos $baseArgs $Chaos
     if ($Fingerprint -or $DiffGolden) { $baseArgs.fingerprint = $true }
     # lab_golden_diff's arguments less run_dir, or $null without -DiffGolden.
-    $diffArgs = if ($DiffGolden) { @{ section = $Section; specs_dir = $specs } } else { $null }
+    $diffArgs = if ($DiffGolden) { @{ section = $Section } } else { $null }
+    if ($diffArgs -and $specs) { $diffArgs.specs_dir = $specs }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.

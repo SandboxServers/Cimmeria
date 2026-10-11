@@ -338,15 +338,13 @@ function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
         failed_known = $known; failed_new = $Runs.Count - $passed - $known
         rows = $rowStats; lanes = @($laneStats); failures = @($groups.Values)
     }
-    # lab-chaos D-CH7: under chaos the comparison is chaos_divergence, not
-    # golden, and the run's own verdict (ok, passed) is left as it is.
-    if (Test-UatChaosRuns $Runs) {
-        $cd = Merge-UatChaosDivergence $Runs
-        if ($cd) { $out.chaos_divergence = $cd }
-    } else {
-        $golden = Merge-UatGolden $Runs
-        if ($golden) { $out.golden = $golden }
-    }
+    # lab-chaos D-CH7: a chaos run's comparison is chaos_divergence, not
+    # golden, and the run's own verdict (ok, passed) is left as it is. A run
+    # without the runner's header stays under golden, even in a chaos batch.
+    $golden = Merge-UatGolden (Select-UatChaosRuns $Runs $false)
+    if ($golden) { $out.golden = $golden }
+    $cd = Merge-UatChaosDivergence $Runs
+    if ($cd) { $out.chaos_divergence = $cd }
     return $out
 }
 
@@ -401,8 +399,9 @@ function Test-UatGoldenFile([string]$Path) {
 # The golden comparison of the runs that carry a Golden field: match and
 # diverged counts, errors (a diff that could not be made), and every
 # non-match line grouped with its count and up to 5 run refs, most common
-# first. $null when no run has one (a batch without -DiffGolden).
-function Merge-UatGolden($Runs) {
+# first. $null when no run has one (a batch without -DiffGolden). $RunRef,
+# { param($Run) <ref> }, names a run in a group (default <instance>#<index>).
+function Merge-UatGolden($Runs, [scriptblock]$RunRef = { param($r) "$(Get-UatField $r 'Instance')#$(Get-UatField $r 'Index')" }) {
     $withGolden = @(@($Runs) | Where-Object { Get-UatField $_ 'Golden' })
     if (-not $withGolden.Count) { return $null }
     $groups = [ordered]@{}
@@ -413,7 +412,7 @@ function Merge-UatGolden($Runs) {
         if ($line.StartsWith('error: ')) { $errors++ } else { $diverged++ }
         if (-not $groups.Contains($line)) { $groups[$line] = [ordered]@{ line = $line; count = 0; runs = @() } }
         $groups[$line].count++
-        if (@($groups[$line].runs).Count -lt 5) { $groups[$line].runs += "$(Get-UatField $run 'Instance')#$(Get-UatField $run 'Index')" }
+        if (@($groups[$line].runs).Count -lt 5) { $groups[$line].runs += [string](& $RunRef $run) }
     }
     return [ordered]@{
         match = $match; diverged = $diverged; errors = $errors
@@ -491,10 +490,9 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     if ($fails.Count -gt $MaxFailures) { $out.more_failure_groups = $fails.Count - $MaxFailures }
     $g = Get-UatField $Summary 'golden'
     if ($g) { $out.golden = ConvertTo-UatGoldenCompact $g 120 }
-    # lab-chaos D-CH7: the same shape, its first line led by the chaos
-    # header, so it gets 40 more characters than a plain golden line.
+    # lab-chaos D-CH7: the same shape and cap; the header is the chaos key.
     $cd = Get-UatField $Summary 'chaos_divergence'
-    if ($cd) { $out.chaos_divergence = ConvertTo-UatGoldenCompact $cd 160 }
+    if ($cd) { $out.chaos_divergence = ConvertTo-UatGoldenCompact $cd 120 }
     # D-SV12: only when -Heal proposed something; {row, pose, diff} with diff
     # the file name in the batch folder (batch, below, is the folder), at most
     # $MaxHeal entries and more_heal: <n> for the rest (summary.md has all).

@@ -231,3 +231,8 @@ the code is then the reference, not the spec.
   - **Incident:** a revert proof's child `uat.ps1` reached the live lab daemon
     and started two first-session runs. Both were stopped. CLI tests now stub
     every daemon call.
+- **Coordinator note, CH-09 (2026-10-11).** lab-golden's stable `-Json` API
+  gains `chaos_divergence` (the `golden` shape, only under `-Chaos`, a
+  chaos-only divergence exits 0), and `lab_golden_record` refuses a chaos run
+  with `cannot_record`; recorded in the
+  [lab-golden contract](../lab-golden/contract.md#stable-api-for-lab-chaos-and-lab-record).
