@@ -26,7 +26,9 @@ and rows `REC-01`, `REC-02`, and so on.
 A draft is committed only when a person chooses to. Every committed draft
 must parse, validate and name only seeded spawn tags:
 `committed_drafts_parse_and_validate` in `crates/lab/src/uat/mod.rs` checks
-that on every build.
+that on every build. `lab uat -SpecsDir <drafts>` does not run the seed-tag
+check (`SeedTags::beside_specs` resolves outside the repo from this folder),
+so run that test or `lab golden record` to catch an unseeded tag.
 
 ## Promoting a draft
 

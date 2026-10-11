@@ -15,29 +15,29 @@ const RECORD: &str = include_str!("fixtures/fs_p3_record.jsonl");
 const DRAFT: &str = include_str!("fixtures/fs_p3_draft.toml");
 const FIRST_SESSION: &str = include_str!("../../../../../docs/guides/uat-specs/first-session.toml");
 
-fn fs_p3() -> RecordLog {
+pub(super) fn fs_p3() -> RecordLog {
     read_log(RECORD).unwrap()
 }
 
 /// `[section]` copied from first-session, as `lab record stop` passes it.
-fn opts() -> TransformOptions {
+pub(super) fn opts() -> TransformOptions {
     TransformOptions {
         base: Some(spec::parse(FIRST_SESSION).unwrap().section),
         ..Default::default()
     }
 }
 
-fn parsed(d: &Draft) -> SectionSpec {
+pub(super) fn parsed(d: &Draft) -> SectionSpec {
     spec::parse(&d.text).unwrap()
 }
 
-fn tick_mut(log: &mut RecordLog, seq: u32) -> &mut Tick {
+pub(super) fn tick_mut(log: &mut RecordLog, seq: u32) -> &mut Tick {
     log.ticks.iter_mut().find(|t| t.seq == seq).unwrap()
 }
 
 /// An inbound cell call on the 0xBD sub-slot: the entity prefix, a sub-slot
 /// byte, then `fields` as little-endian INT32s.
-fn cell_call(name: &str, method: i32, fields: &[i32]) -> Value {
+pub(super) fn cell_call(name: &str, method: i32, fields: &[i32]) -> Value {
     let mut hex = String::from("000000000e");
     for f in fields {
         for b in f.to_le_bytes() {
@@ -48,7 +48,7 @@ fn cell_call(name: &str, method: i32, fields: &[i32]) -> Value {
 }
 
 /// The steps of the draft's first row, after `@alias` resolution.
-fn steps(d: &Draft) -> Vec<ActionSpec> {
+pub(super) fn steps(d: &Draft) -> Vec<ActionSpec> {
     parsed(d).rows[0].steps.clone()
 }
 
@@ -79,12 +79,40 @@ fn fs_p3_transform_matches_the_committed_draft() {
     seed_tags::check(&parsed(&draft), &SeedTags::load(&seed).unwrap()).unwrap();
 }
 
+/// `item_name` gathers candidate names in a `HashSet`, whose order changes
+/// with every new set. Two stacks of one name and a third of another all
+/// fall here, so a rule that took "the first" name would vary between
+/// runs; every run must write the same TODO.
 #[test]
 fn the_transform_is_deterministic() {
-    let log = fs_p3();
-    let a = transform(&log, &opts()).unwrap();
-    let b = transform(&log, &opts()).unwrap();
-    assert_eq!(a, b);
+    let named = |type_id, name: &str, count| SnapItem {
+        name: Some(name.into()),
+        ..item(type_id, 1, count)
+    };
+    let log = item_log(
+        cell_call("useItem", 39, &[7001, 0]),
+        vec![
+            named(900, "Kit", 2),
+            named(901, "Kit", 2),
+            named(902, "Ration", 2),
+        ],
+        vec![
+            named(900, "Kit", 1),
+            named(901, "Kit", 1),
+            named(902, "Ration", 1),
+        ],
+    );
+    let first = transform(&log, &opts()).unwrap();
+    assert!(
+        first
+            .text
+            .contains("TODO useItem 7001: no single named carried stack fell"),
+        "{}",
+        first.text
+    );
+    for _ in 0..16 {
+        assert_eq!(transform(&log, &opts()).unwrap(), first);
+    }
 }
 
 #[test]
@@ -94,10 +122,12 @@ fn an_unknown_call_is_a_todo_line_and_the_draft_still_parses() {
         "dir": "in", "msg_name": "gmSetGodMode", "method_index": 150, "args_hex": "00000000"
     }));
     let draft = transform(&log, &opts()).unwrap();
+    // In tick order: after the dialog wait (anchor tick 32), before the
+    // close (tick 36).
     assert!(
-        draft
-            .text
-            .contains("\n  # TODO c2s gmSetGodMode (method 150)\n"),
+        draft.text.contains(
+            "timeout_ms = 2000 } },\n  # TODO c2s gmSetGodMode (method 150)\n  { tool = \"@finish_dialog\""
+        ),
         "{}",
         draft.text
     );
@@ -122,10 +152,31 @@ fn a_far_pose_comments_the_row_out() {
         "{}",
         draft.text
     );
-    assert!(draft.text.contains("\n# [[row]]\n"), "{}", draft.text);
     assert!(!draft.text.lines().any(|l| l.starts_with("[[row")));
     assert_eq!((draft.rows, draft.actions, draft.todos), (0, 0, 1));
     assert!(parsed(&draft).rows.is_empty());
+
+    // Every line after the header is the row commented out, and without the
+    // `# ` it is the whole row again.
+    let body: Vec<&str> = draft
+        .text
+        .lines()
+        .skip_while(|l| !l.starts_with("# TODO REC-01 not runnable"))
+        .skip(1)
+        .collect();
+    assert!(body.iter().all(|l| l.starts_with("# ")), "{body:?}");
+    let uncommented: String = body.iter().map(|l| format!("{}\n", &l[2..])).collect();
+    let v: toml::Value = toml::from_str(&uncommented).unwrap();
+    let rows = v["row"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["expect"].as_array().unwrap().len(), 3);
+    let labels: Vec<&str> = rows[0]["step"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|s| s.get("label").and_then(toml::Value::as_str))
+        .collect();
+    assert_eq!(labels, ["aim", "interact", "close"]);
 }
 
 #[test]
@@ -173,7 +224,7 @@ fn a_dot_chat_line_becomes_a_tier_g_setup_chat() {
 }
 
 /// A one-row log: a snapshot, the anchor call in tick 1, then `after`.
-fn item_log(call: Value, before: Vec<SnapItem>, after: Vec<SnapItem>) -> RecordLog {
+pub(super) fn item_log(call: Value, before: Vec<SnapItem>, after: Vec<SnapItem>) -> RecordLog {
     let mut log = fs_p3();
     log.ticks.truncate(3);
     let snap = |items| DbSnapshot {
@@ -191,7 +242,7 @@ fn item_log(call: Value, before: Vec<SnapItem>, after: Vec<SnapItem>) -> RecordL
     log
 }
 
-fn item(type_id: i32, container: i32, count: i32) -> SnapItem {
+pub(super) fn item(type_id: i32, container: i32, count: i32) -> SnapItem {
     SnapItem {
         type_id,
         container_id: container,
@@ -293,13 +344,13 @@ fn recording_faults_are_header_todo_lines() {
     tick_mut(&mut log, 6).tap_dropped = 4;
     tick_mut(&mut log, 7).windows = None;
     let draft = transform(&log, &opts()).unwrap();
-    for line in [
-        "\n# TODO tap dropped 7 messages\n",
-        "\n# TODO recording has no stop line\n",
-        "\n# TODO 1 UI read failures\n",
-    ] {
-        assert!(draft.text.contains(line), "{line:?} in {}", draft.text);
-    }
+    // After the section's last line, before the first row, in this order.
+    let want = "character = \"lab\"\n\
+                # TODO tap dropped 7 messages\n\
+                # TODO recording has no stop line\n\
+                # TODO 1 UI read failures\n\
+                \n[[row]]\n";
+    assert!(draft.text.contains(want), "{}", draft.text);
     assert_eq!(draft.todos, 3);
 }
 
@@ -329,6 +380,13 @@ fn the_section_falls_back_without_a_base() {
     assert_eq!(
         (s.system.as_str(), s.account.as_str(), s.character.as_str()),
         ("recorded", "non-gm", "lab")
+    );
+    assert_eq!(
+        (s.guide.as_str(), s.ledger.as_str()),
+        (
+            "docs/guides/automated-uat.md",
+            "docs/analysis/lab-record/README.md"
+        )
     );
     let mut o = opts();
     o.base.as_mut().unwrap().character = "fresh".into();

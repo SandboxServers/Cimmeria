@@ -160,21 +160,62 @@ mod tests {
         }
     }
 
+    /// The drafts guard: every `*.toml` in `dir` parses, validates and names
+    /// only tags in `seed`. Returns how many drafts it checked. The seed is
+    /// passed in because `load_sections` finds none beside the drafts folder.
+    fn check_drafts(dir: &Path, seed: &seed_tags::SeedTags) -> Result<usize, String> {
+        let drafts = load_sections(dir, None)?;
+        for s in &drafts {
+            seed_tags::check(&s.spec, seed).map_err(|e| format!("{}: {e}", s.path))?;
+        }
+        Ok(drafts.len())
+    }
+
+    fn repo_seed() -> seed_tags::SeedTags {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        seed_tags::SeedTags::load(&root.join("db/resources/Worlds/Seed")).unwrap()
+    }
+
     /// Every committed recorded draft parses, validates and names only
     /// seeded tags (D-LR10), so a draft cannot rot. Drafts are committed only
-    /// when a person chooses to, so an empty or missing folder passes; the
-    /// folder's README is not a `.toml` and is not loaded.
+    /// when a person chooses to, so the folder may hold just its README,
+    /// which is not a `.toml` and is not loaded.
     #[test]
     fn committed_drafts_parse_and_validate() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let dir = root.join("docs/guides/uat-specs/drafts");
-        if !dir.is_dir() {
-            return;
-        }
-        let seed = seed_tags::SeedTags::load(&root.join("db/resources/Worlds/Seed")).unwrap();
-        for s in load_sections(&dir, None).unwrap() {
-            seed_tags::check(&s.spec, &seed).unwrap_or_else(|e| panic!("{}: {e}", s.path));
-        }
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/uat-specs/drafts");
+        assert!(dir.is_dir(), "no drafts folder at {}", dir.display());
+        check_drafts(&dir, &repo_seed()).unwrap();
+    }
+
+    /// The guard fails on a draft naming an unseeded tag (naming the file)
+    /// and on one that does not parse; a README beside a good draft is
+    /// skipped. Fails if `check_drafts` drops the seed check or the load.
+    #[test]
+    fn the_drafts_guard_fails_on_a_bad_draft() {
+        let good = include_str!("record/fixtures/fs_p3_draft.toml");
+        let seed = repo_seed();
+        let tmp = tempfile::tempdir().unwrap();
+        // Three levels down, so the seed `load_sections` looks for beside
+        // the folder is not there and only `check_drafts` checks tags.
+        let dir = tmp.path().join("a/b/drafts");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("README.md"), "# Drafts\n").unwrap();
+        std::fs::write(dir.join("good.toml"), good).unwrap();
+        assert_eq!(check_drafts(&dir, &seed), Ok(1));
+
+        let unseeded = good.replace("ArmYourself_FrostBody", "Not_A_Seeded_Tag");
+        std::fs::write(dir.join("unseeded.toml"), unseeded).unwrap();
+        let err = check_drafts(&dir, &seed).unwrap_err();
+        assert!(err.contains("unseeded.toml"), "{err}");
+        assert!(
+            err.contains("tag Not_A_Seeded_Tag is not in the seed"),
+            "{err}"
+        );
+        std::fs::remove_file(dir.join("unseeded.toml")).unwrap();
+
+        std::fs::write(dir.join("broken.toml"), "schema = \n[[row]\n").unwrap();
+        let err = check_drafts(&dir, &seed).unwrap_err();
+        assert!(err.contains("broken.toml"), "{err}");
     }
 
     /// A spec whose pose names a seeded tag loads; one naming a tag the seed

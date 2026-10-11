@@ -17,6 +17,13 @@ use super::super::segment::{AnchorKind, RecordedRow};
 use super::ticks::{before, host_ms, in_row, tick, walk_windows};
 use super::{one_line, Line, RowDraft};
 
+/// Extra `wait_server` match fields per `KNOWN_SERVER_EVENTS` key: (key,
+/// field, value). The cinematic hold is released per witness, so without
+/// `witness_id` another player's release would satisfy the wait (as in
+/// `docs/guides/uat-specs/first-session.toml`'s movie-over steps).
+const SERVER_EVENT_FIELDS: &[(&str, &str, &str)] =
+    &[("cinematic-hold", "witness_id", "${player_entity_id}")];
+
 /// Map one recorded row. `character_sql` goes into the clauses' SQL.
 pub(super) fn draft_row(
     log: &RecordLog,
@@ -75,10 +82,17 @@ pub(super) fn draft_row(
         for key in &t.server_events {
             let line = match KNOWN_SERVER_EVENTS.iter().find(|e| e.0 == key) {
                 Some(&(key, target, event, message)) => {
+                    let mut fields = vec![("event", s(event))];
+                    fields.extend(
+                        SERVER_EVENT_FIELDS
+                            .iter()
+                            .filter(|(k, _, _)| *k == key)
+                            .map(|&(_, field, value)| (field, s(value))),
+                    );
                     let wait = table(vec![
                         ("log", s(message)),
                         ("target", s(target)),
-                        ("fields", table(vec![("event", s(event))])),
+                        ("fields", table(fields)),
                         (
                             "timeout_ms",
                             int(server_wait_timeout_ms(t.host_ms.saturating_sub(anchor_ms))),
@@ -128,7 +142,7 @@ fn anchor_steps(
             match name {
                 Some(n) => d.steps.push(item_action("use", &n, labels)),
                 None => d.steps.push(Line::Todo(format!(
-                    "useItem {item}: no carried stack fell, so the item has no name"
+                    "useItem {item}: no single named carried stack fell, so the item has no name"
                 ))),
             }
             if row.anchor.target.is_some_and(|t| t != player_entity) {
@@ -176,7 +190,9 @@ fn anchor_steps(
                             Some(labels.take("target")),
                         ));
                     }
-                    None => d.block(format!("the ability's target {t} has no spawn tag")),
+                    None => d.steps.push(Line::Todo(format!(
+                        "useAbility {ability} target {t} has no tag"
+                    ))),
                 }
             }
             d.steps.push(action(
@@ -292,7 +308,12 @@ fn call_line(log: &RecordLog, at: u32, call: &Call, labels: &mut Labels) -> Line
                 .and_then(|t| t.dialog.as_ref())
                 .map(|d| d.buttons.clone())
                 .unwrap_or_default();
-            if buttons.iter().any(|b| b == "Accept") {
+            // The wire button is the cooked ButtonID stored at the clicked
+            // position, not an index into the visible buttons the UI read
+            // lists (in widget order), so with two or more buttons the click
+            // cannot be named (dialog-controller-wire-flow.md § The two
+            // return paths). Only a lone Accept is surely the one clicked.
+            if buttons == ["Accept"] {
                 finish(vec![("accept", Inline::Bool(true))], labels.take("accept"))
             } else {
                 Line::Todo(one_line(&format!(

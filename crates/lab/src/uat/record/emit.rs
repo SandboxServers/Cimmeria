@@ -23,7 +23,7 @@ use row::draft_row;
 pub const TRANSFORM_VERSION: u32 = 1;
 
 /// What the transform needs besides the log.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TransformOptions {
     /// The named section's meta, when it exists: `system`, `guide`,
     /// `ledger`, `account` and `character` are copied from it.
@@ -47,6 +47,23 @@ pub struct TransformOptions {
     /// Rows anchored before this tick are dropped (the rolling window's
     /// first tick, LR-15).
     pub from_tick: Option<u32>,
+}
+
+/// `account = "gm"` and `character = "lab"`, so a transform with no named
+/// section still writes a `[section]` the validator accepts.
+impl Default for TransformOptions {
+    fn default() -> Self {
+        TransformOptions {
+            base: None,
+            account: "gm".into(),
+            character: "lab".into(),
+            character_expr: None,
+            profile: None,
+            max_actions: None,
+            max_bytes: None,
+            from_tick: None,
+        }
+    }
 }
 
 /// A draft spec, ready to write.
@@ -340,3 +357,7 @@ fn one_line(s: &str) -> String {
 #[cfg(test)]
 #[path = "emit_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "emit_mapping_tests.rs"]
+mod mapping_tests;
