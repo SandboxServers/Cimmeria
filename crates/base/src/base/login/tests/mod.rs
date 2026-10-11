@@ -697,6 +697,7 @@ async fn login_from_different_ip_logs_ticket_ip_mismatch() {
     );
 }
 
+mod duplicate_liveness;
 mod game_clock;
 mod handshake_retransmit;
 mod named_fields;
