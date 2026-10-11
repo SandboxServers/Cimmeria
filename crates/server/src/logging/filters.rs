@@ -362,7 +362,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 movement.movement_type=debug,\
                 movement.position_sample=debug,\
                 movement.validation=debug,\
-                player.journal=debug,\
+                player.journal=debug,player.respawn=debug,\
                 trade.atomic_swap=debug,\
                 org=debug,squad=debug,\
                 chat=debug,rate_limit=debug,online_index=debug,\
