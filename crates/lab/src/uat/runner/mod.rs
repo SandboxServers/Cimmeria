@@ -24,6 +24,7 @@ mod lab_commands;
 mod packet;
 mod players;
 mod revocation;
+mod server_wait;
 mod session;
 mod snapshot;
 mod targets;
@@ -185,6 +186,10 @@ pub(crate) struct RowCtx {
     pub parity: Option<super::snapshot::Parity>,
     /// The row's poses, for `pose = "<id>"` arguments ([`targets`]).
     pub poses: Vec<PoseSpec>,
+    /// lab-spec-vocab (SV-08): the server log watermark the next
+    /// `wait_server` waits from, read before the action in front of it,
+    /// or why that read failed (the wait then reads a late one itself).
+    pub log_mark: Option<Result<server_wait::LogMark, String>>,
 }
 
 /// The last row the run finished, for fixture mode `auto` (D-FX10).
@@ -394,6 +399,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             session_end: vec![],
             parity: None,
             poses: row.pose.clone(),
+            log_mark: None,
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -505,7 +511,11 @@ mod packet_tests;
 #[cfg(test)]
 mod players_tests;
 #[cfg(test)]
+mod polled_clause_tests;
+#[cfg(test)]
 mod revocation_tests;
+#[cfg(test)]
+mod server_wait_tests;
 #[cfg(test)]
 mod snapshot_mode_tests;
 #[cfg(test)]

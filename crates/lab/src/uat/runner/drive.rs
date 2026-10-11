@@ -119,7 +119,13 @@ impl<I: ToolInvoker> Runner<'_, I> {
         results: &mut [Option<ClauseResult>],
     ) -> bool {
         for (i, a) in row.setup.iter().enumerate() {
+            // SV-08: as in the steps below. After the last setup action the
+            // next action is the first step, so a first-step wait sees a
+            // line the setup caused.
+            let next = row.setup.get(i + 1).or(row.steps.first());
+            let mark = self.log_mark_for(next, ctx).await;
             let rec = self.exec(a, Role::Setup, ctx).await;
+            ctx.log_mark = mark;
             let failed = !rec.ok && !a.optional;
             let what = rec.requested.clone();
             let err = rec.error.clone().unwrap_or_default();
@@ -165,7 +171,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
                 self.event_marks_at(row, Some(label), ctx).await;
             }
+            // SV-08: a `wait_server` waits from before the action in front
+            // of it. Handed over after this action runs, so a wait followed
+            // by another wait still uses its own mark.
+            let mark = self.log_mark_for(row.steps.get(i + 1), ctx).await;
             let rec = self.exec(a, Role::Step, ctx).await;
+            ctx.log_mark = mark;
             let stop = !rec.ok && !a.optional;
             ctx.actions.push(rec);
             self.fp_after_action(a, "step", i, ctx).await;

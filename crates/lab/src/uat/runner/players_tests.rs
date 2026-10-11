@@ -303,7 +303,7 @@ async fn m1_2_summons_p2_before_targeting() {
 }
 
 // lab-spec-vocab (SV-03): `@stand` is routed when p1 can type chat, and a
-// `wait_server` step needs the server lab MCP (until SV-08 it then fails).
+// `wait_server` step needs the server lab MCP (SV-08 waits over it).
 
 const STAND_ROW: &str = r#"
 [[row]]
@@ -349,7 +349,7 @@ contains = "x"
 "#;
 
 #[tokio::test]
-async fn wait_server_blocks_without_the_server_mcp_and_fails_until_sv08() {
+async fn wait_server_blocks_without_the_server_mcp_and_fails_when_it_cannot_read_logs() {
     let fake = Fake::new(&[]).with("client_ui_state");
     let row = run(&fake, Err("one player".into()), WAIT_ROW).await;
     assert_eq!(row.result, RowResult::Blocked, "{:?}", row.reasons);
@@ -361,6 +361,8 @@ async fn wait_server_blocks_without_the_server_mcp_and_fails_until_sv08() {
         row.reasons
     );
 
+    // This fake server has no `server_log_tail`: the wait fails at once
+    // (a read error does not heal by polling for 30 s).
     let server = super::test_server::FakeServer::new(serde_json::json!({}));
     let tmp = tempfile::tempdir().unwrap().keep();
     let out = Runner::new(&fake, Some(&server), request(&tmp, WAIT_ROW))
@@ -377,7 +379,7 @@ async fn wait_server_blocks_without_the_server_mcp_and_fails_until_sv08() {
     assert!(
         row.reasons
             .iter()
-            .any(|r| r.contains("not implemented yet (SV-08)")),
+            .any(|r| r.contains("server_log_tail") && r.contains("unknown tool")),
         "{:?}",
         row.reasons
     );
