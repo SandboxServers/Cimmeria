@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 13,400 |
+| Tests (`#[test]` / `#[tokio::test]`) | 13,401 |
 | Files with tests | 2,334 |
-| Gated in CI (every crate but CI's exclude list) | 10,615 |
+| Gated in CI (every crate but CI's exclude list) | 10,616 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,759 |
 | Inventory threshold (5% of the tests) | 670 |
 
@@ -93,7 +93,7 @@ with no file in this directory yet.
 | `crates/base-methods` | `cimmeria-base-methods` | 659 | 143 | 461 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 597 | 114 | 52 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 520 | 85 | 1 | yes | none |
-| `crates/base-session` | `cimmeria-base-session` | 469 | 84 | 195 | yes | none |
+| `crates/base-session` | `cimmeria-base-session` | 470 | 84 | 195 | yes | none |
 | `crates/entity` | `cimmeria-entity` | 463 | 62 | 0 | yes | [entity.md](entity.md) |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/mercury` | `cimmeria-mercury` | 363 | 60 | 0 | yes | [mercury.md](mercury.md) |
