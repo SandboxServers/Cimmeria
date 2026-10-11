@@ -138,7 +138,7 @@ fn server_record(index: usize, role: Role, tool: &str, args: &Value) -> ActionRe
 impl<I: ToolInvoker> Runner<'_, I> {
     /// A server tool call recorded on the row (tap start in setup, read
     /// and stop in teardown), so the bundle shows every server touch.
-    async fn server_call(
+    pub(crate) async fn server_call(
         &self,
         server: &dyn ServerInvoker,
         role: Role,
