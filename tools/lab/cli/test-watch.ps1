@@ -191,6 +191,80 @@ try {
     } catch {
         Check $false "the pre-LW-02 records aggregate under strict mode: $_"
     }
+
+    # --- the command: watch.ps1 in a child pwsh, against the seams only ---
+    # Every case but the usage ones passes -StatusFile, and the temp lab home's
+    # labd.pid points at a closed port, so no case can reach a running daemon
+    # (the token is a user environment variable, so a temp home alone is not enough).
+    $watch = Join-Path $PSScriptRoot 'watch.ps1'
+    $savedEnv = @{ Home = $env:CIMMERIA_LAB_HOME; UatDir = $env:CIMMERIA_LAB_UAT_DIR }
+    try {
+        $env:CIMMERIA_LAB_HOME = Join-Path $tmp 'home'
+        $env:CIMMERIA_LAB_UAT_DIR = Join-Path $tmp 'no-batches'
+        New-Item -ItemType Directory -Path $env:CIMMERIA_LAB_HOME, $env:CIMMERIA_LAB_UAT_DIR | Out-Null
+        [IO.File]::WriteAllText((Join-Path $env:CIMMERIA_LAB_HOME 'labd.pid'), '{"pid":1,"bind":"127.0.0.1:9"}')
+        $statusPath = Join-Path $tmp 'status-two-lanes.json'
+        $logPath = Join-Path $tmp 'labd-tail.log'
+        $states = 'live', 'done', 'interrupted', 'unknown', 'none'
+
+        $out = @(pwsh -NoProfile -File $watch -Once -Json -Batch $newDir -StatusFile $statusPath -LogFile $logPath)
+        $code = $LASTEXITCODE
+        $cj = if ($out.Count -eq 1) { try { $out[0] | ConvertFrom-Json } catch { $null } } else { $null }
+        Check ($code -eq 0 -and $null -ne $cj) "-Once -Json exits 0 with one JSON line (exit $code, $($out.Count) lines)"
+        Check ($null -ne $cj -and $states -contains $cj.state -and $cj.PSObject.Properties.Name -contains 'lanes') "the JSON has a state of the five and lanes ($($out -join ' '))"
+        Check ($out.Count -eq 1 -and $out[0].Length -lt 500 -and -not $out[0].Contains('0123456789abcdef')) 'the command''s JSON is under 500 characters with no lease id'
+        Write-Host "watch -Once -Json: $($out -join ' ')"
+
+        $out = @(pwsh -NoProfile -File $watch -Once -Batch $newDir -StatusFile $statusPath -LogFile $logPath)
+        $code = $LASTEXITCODE
+        $all = $out -join "`n"
+        Check ($code -eq 0 -and @($out | Where-Object { $_ -like 'INSTANCE *' }).Count -eq 1) "-Once prints the text with its INSTANCE header (exit $code)"
+        Check (@($out | Where-Object { $_.Length -gt 120 }).Count -eq 0 -and -not $all.Contains([char]27) -and -not $all.Contains('0123456789abcdef')) '-Once text: 120 columns, no escape codes, no lease id'
+        Write-Host "watch -Once:`n$all"
+
+        $null = pwsh -NoProfile -File $watch -Once -IntervalSeconds 0 -StatusFile $statusPath 2>$null
+        Check ($LASTEXITCODE -eq 2) "-IntervalSeconds 0 exits 2 (got $LASTEXITCODE)"
+        $out = @(pwsh -NoProfile -File $watch -Json -IntervalSeconds 61 -StatusFile $statusPath)
+        $code = $LASTEXITCODE
+        Check ($code -eq 2 -and $out.Count -eq 1 -and $out[0].StartsWith('{"ok":false,"exit":2,')) "-IntervalSeconds 61 -Json exits 2 with lab uat's error shape ($($out -join ' '))"
+
+        $empty = Join-Path $tmp 'empty-batch'
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        $null = pwsh -NoProfile -File $watch -Once -Batch $empty -StatusFile $statusPath 2>$null
+        Check ($LASTEXITCODE -eq 2) "a -Batch folder with neither plan.json nor batch.jsonl exits 2 (got $LASTEXITCODE)"
+        $null = pwsh -NoProfile -File $watch -Once -StatusFile (Join-Path $tmp 'no-such-status.json') 2>$null
+        Check ($LASTEXITCODE -eq 2) "a missing -StatusFile exits 2 (got $LASTEXITCODE)"
+
+        # Daemon down (a status file without the daemon's shape) and no batch under the UAT root.
+        $downStatus = Join-Path $tmp 'status-down.json'
+        [IO.File]::WriteAllText($downStatus, 'null')
+        $out = @(pwsh -NoProfile -File $watch -Json -StatusFile $downStatus -LogFile $logPath)
+        Check ($LASTEXITCODE -eq 1 -and ($out -join '') -ceq '{"ok":true,"daemon":"down","state":"none"}') "daemon down and no batch exits 1 ($LASTEXITCODE, $($out -join ' '))"
+
+        # Redirected stdout without -Once: one snapshot, never the live loop. A
+        # 20 s timeout fails the check instead of hanging the job.
+        $redir = Join-Path $tmp 'redirected.txt'
+        $redirErr = Join-Path $tmp 'redirected-err.txt'
+        $argLine = "-NoProfile -File `"$watch`" -Batch `"$newDir`" -StatusFile `"$statusPath`" -LogFile `"$logPath`""
+        $p = Start-Process pwsh -ArgumentList $argLine -NoNewWindow -PassThru -RedirectStandardOutput $redir -RedirectStandardError $redirErr
+        if ($p.WaitForExit(20000)) {
+            $p.WaitForExit()
+            $text = [IO.File]::ReadAllText($redir)
+            Check ($p.ExitCode -eq 0 -and $text.Contains('INSTANCE') -and -not $text.Contains([char]27)) "redirected output prints one snapshot and exits (exit $($p.ExitCode))"
+        } else {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Check $false 'redirected output prints one snapshot and exits (still running after 20 s: it entered the live loop)'
+        }
+
+        # Read-only (D-LW3): the command never drives the daemon, and the docs never say --once (F11).
+        $src = Get-Content -Raw $watch
+        Check (-not ($src -match '/mcp|Get-LabMcpUrl|lab_uat_run|lease_acquire|lab_lease')) 'watch.ps1 calls no /mcp tool and takes no lease'
+        $guide = Join-Path $PSScriptRoot '..\..\..\docs\guides\live-research-lab.md'
+        Check ((Test-Path $guide) -and -not (Get-Content -Raw $guide).Contains('--once')) 'the lab guide has no --once'
+    } finally {
+        $env:CIMMERIA_LAB_HOME = $savedEnv.Home
+        $env:CIMMERIA_LAB_UAT_DIR = $savedEnv.UatDir
+    }
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $tmp -ErrorAction SilentlyContinue
 }
