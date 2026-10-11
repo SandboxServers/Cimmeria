@@ -77,6 +77,7 @@ pub mod calls;
 pub mod error;
 pub mod handshake;
 pub mod login_probe;
+pub mod mirror;
 pub mod semantic;
 pub mod session;
 pub mod session_trace;
