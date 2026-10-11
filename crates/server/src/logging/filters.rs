@@ -295,6 +295,11 @@ use crate::otel;
 /// `sqlx::query`, which is `info` (TG-DB-11, D-TG8): that WARN and the
 /// `sqlx::pool::acquire` WARN export, the per-statement DEBUG rows do not.
 ///
+/// `aoi.cinematic_hold` (TG-AOI-06) is the first-login cinematic AoI hold:
+/// INFO `hold_started`, `hold_released` and `hold_abandoned`, and DEBUG
+/// `hold_release_skipped` for a release that found no hold to end (the
+/// `cancelMovie`/timeout race). `debug` so the skipped releases reach SigNoz.
+///
 /// `cimmeria_content_engine::conditions=debug` (TG-MIS-13) exports the content
 /// engine's fail-closed condition rows, invisible under the leading `info`.
 /// The crate row stays at `info` (`every_in_process_crate_has_its_own_otel_row`):
@@ -357,6 +362,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.introduce=debug,\
                 aoi.appearance=debug,\
                 aoi.bundle_manifest=debug,\
+                aoi.cinematic_hold=debug,\
                 base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\

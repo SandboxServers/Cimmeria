@@ -1140,6 +1140,19 @@ Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `dup
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Cinematic AoI hold lifecycle (TG-AOI-06)
+
+`release` in `cinematic_aoi_hold/mod.rs` (`cimmeria-base-world-entry`) and `log_discarded_on_teardown` in `base/deferred_aoi.rs` (`cimmeria-base-session`). A `release` that finds no hold to end used to return silently. It now logs DEBUG `target: "aoi.cinematic_hold"`, `event = "hold_release_skipped"`, with `witness_id` + `witness_name` and `reason`; `witness_name` is absent when the session is gone. A teardown inside a hold with a non-empty buffer logs INFO `event = "hold_abandoned"` with `discarded` (buffered messages), `held_ms` and the account and player identity fields. An intro-only buffer, which the entity-method row skips, is covered by this row.
+
+| `reason` | Meaning |
+|---|---|
+| `session_gone` | The session is no longer in the connected map |
+| `no_hold` | The session has no cinematic hold to end |
+| `already_releasing` | Another task has claimed the hold and is flushing it |
+| `token_mismatch` | The releasing task belongs to an earlier hold |
+
+Guard: `release_without_a_session_logs_session_gone` in `cinematic_aoi_hold/tests.rs`, and `teardown_inside_a_hold_logs_the_abandoned_buffer` in `base/deferred_aoi.rs`.
+
 ## DoT kill with no credited player (TG-NPC-13)
 
 `effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.

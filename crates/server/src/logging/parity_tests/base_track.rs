@@ -276,6 +276,13 @@ fn base_world_entry_events_keep_their_file_and_index() {
         set(&[SERVER_LOG, OTLP_SERVER]),
         "aoi.cinematic_hold at INFO"
     );
+    // TG-AOI-06: `hold_release_skipped` is DEBUG, so the target is pinned at
+    // `debug` in OTEL_FILTER; without the pin it would inherit `info`.
+    assert_eq!(
+        sinks_for(&dispatch, &hits, "aoi.cinematic_hold", Level::DEBUG),
+        set(&[OTLP_SERVER]),
+        "aoi.cinematic_hold at DEBUG"
+    );
     assert_eq!(
         sinks_for(&dispatch, &hits, "aoi.create_emit", Level::DEBUG),
         set(&[OTLP_SERVER]),
