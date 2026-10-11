@@ -160,6 +160,23 @@ mod tests {
         }
     }
 
+    /// Every committed recorded draft parses, validates and names only
+    /// seeded tags (D-LR10), so a draft cannot rot. Drafts are committed only
+    /// when a person chooses to, so an empty or missing folder passes; the
+    /// folder's README is not a `.toml` and is not loaded.
+    #[test]
+    fn committed_drafts_parse_and_validate() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let dir = root.join("docs/guides/uat-specs/drafts");
+        if !dir.is_dir() {
+            return;
+        }
+        let seed = seed_tags::SeedTags::load(&root.join("db/resources/Worlds/Seed")).unwrap();
+        for s in load_sections(&dir, None).unwrap() {
+            seed_tags::check(&s.spec, &seed).unwrap_or_else(|e| panic!("{}: {e}", s.path));
+        }
+    }
+
     /// A spec whose pose names a seeded tag loads; one naming a tag the seed
     /// lacks fails the load. Fails if `load_sections` skips the seed check.
     #[test]
