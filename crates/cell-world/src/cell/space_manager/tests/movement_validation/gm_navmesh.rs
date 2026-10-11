@@ -154,11 +154,11 @@ fn gm_off_navmesh_bypass_warning_names_the_account() {
 
     let event = capture
         .find_event(
-            Level::WARN,
+            Level::INFO,
             "movement.navmesh_gm_bypass",
             "navmesh_gm_bypass",
         )
-        .expect("the GM bypass warn must still fire");
+        .expect("the GM bypass row must still fire");
     assert!(
         event.has_field("account_id", "6") && event.has_field("player_id", "12"),
         "the bypass is a privileged-action audit line and must name the \
@@ -169,5 +169,81 @@ fn gm_off_navmesh_bypass_warning_names_the_account() {
         "every `movement.validation` row whose space id resolves carries \
          `world` — a dashboard filtered by world must not silently drop \
          the GM allowance rows; got {event:#?}"
+    );
+}
+
+/// The GM bypass row is INFO, throttled per GM: a burst of off-mesh packets
+/// gives one row, and the next row after the window reports what was
+/// swallowed. Reverting the throttle writes one row per packet.
+#[test]
+fn gm_bypass_row_is_throttled_info() {
+    let Some((mut mgr, _space_id, bmin, bmax)) = navmesh_manager() else {
+        return; // fixture-less CI — skip
+    };
+    mgr.get_entity_mut(100).unwrap().access_level = 2;
+    let Some(off_mesh) = nearby_off_mesh_point(&mgr, bmin, bmax) else {
+        return;
+    };
+
+    let capture = LogCapture::install();
+    let t0 = Instant::now();
+    for offset_ms in [0, 500, 1_000] {
+        let outcome = mgr.apply_client_position_update_at(
+            t0 + Duration::from_millis(offset_ms),
+            100,
+            off_mesh,
+            [0, 0, 0],
+            [0.0; 3],
+        );
+        assert!(
+            matches!(outcome, ClientMoveOutcome::Accepted { .. }),
+            "precondition: the GM's off-mesh packet must be accepted, got {outcome:?}"
+        );
+    }
+    let rows = |capture: &crate::test_support::LogCaptureGuard| {
+        capture
+            .all()
+            .iter()
+            .filter(|c| c.level == Level::INFO && c.has_field("reason", "navmesh_gm_bypass"))
+            .count()
+    };
+    assert_eq!(
+        rows(&capture),
+        1,
+        "three packets in one second give one INFO row"
+    );
+    assert!(
+        capture
+            .find_message(Level::WARN, "movement.navmesh_gm_bypass")
+            .is_none(),
+        "the GM bypass row must not WARN"
+    );
+
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_secs(6),
+        100,
+        off_mesh,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { .. }),
+        "precondition: the fourth packet must be accepted, got {outcome:?}"
+    );
+    assert_eq!(
+        rows(&capture),
+        2,
+        "a packet past the window gives a second row"
+    );
+    let second = capture
+        .all()
+        .iter()
+        .rev()
+        .find(|c| c.level == Level::INFO && c.has_field("reason", "navmesh_gm_bypass"))
+        .cloned()
+        .expect("the second GM bypass row");
+    assert!(
+        second.has_field("suppressed", "2"),
+        "the row past the window reports the two swallowed packets; got {second:#?}"
     );
 }

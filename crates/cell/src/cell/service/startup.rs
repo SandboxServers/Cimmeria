@@ -1,8 +1,11 @@
 //! CellService startup: load XML world defs, hydrate DB caches, spawn the message loop.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use tokio::sync::Notify;
+
+use cimmeria_cell_world::cell::effects::registry::needs_no_script;
 
 use super::super::content;
 use super::super::cover;
@@ -341,11 +344,32 @@ impl CellService {
                     // #962 step 4: a script name the data carries and no
                     // registered script answers is a missing registration.
                     // Dispatch still falls back per call; this names them
-                    // once, in one row (the shipped seed has two such rows,
-                    // pinned by the scripts crate's live-DB guard).
+                    // once, in one row. A blank or native name needs no
+                    // script, so it is an INFO row, not a WARN (TG-CMB-04).
                     let missing = space_mgr
                         .effect_scripts()
                         .unregistered(space_mgr.effect_defs.values());
+                    let mut native: BTreeMap<&str, Vec<i32>> = BTreeMap::new();
+                    for def in space_mgr.effect_defs.values() {
+                        if let Some(name) =
+                            def.script_name.as_deref().filter(|n| needs_no_script(n))
+                        {
+                            native.entry(name).or_default().push(def.effect_id);
+                        }
+                    }
+                    for ids in native.values_mut() {
+                        ids.sort_unstable();
+                    }
+                    if !native.is_empty() {
+                        tracing::info!(
+                            target: "abilities",
+                            event = "effect_script_native",
+                            reason = "native_or_blank",
+                            count = native.len(),
+                            scripts = ?native,
+                            "effect rows name a native or blank script; no registered script is needed"
+                        );
+                    }
                     if !missing.is_empty() {
                         tracing::warn!(
                             target: "abilities",

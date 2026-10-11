@@ -184,24 +184,20 @@ mod live_db_tests {
     use crate::cell::spawner::load_effect_defs;
     use crate::test_support::require_db_or_skip;
 
-    /// The two seeded rows whose `script_name` no script has ever answered,
-    /// before or after the move (the static `match` had no arm for either):
-    ///
-    /// - effect 658 "Reloads weapon" (ability 596 Reload) names `Reload`. The
-    ///   reload runs through the reload pipeline, not an effect script.
-    /// - effect 2907 "test" (ability 2134) carries an empty name.
-    ///
-    /// Both fall back to the legacy NVP path, as they always did, and the
-    /// cell's startup `effect_script_unregistered` WARN names them. Fixing
-    /// either row in the seed fails this test on purpose: drop it from here.
-    const KNOWN_UNSCRIPTED: [(&str, i32); 2] = [("", 2907), ("Reload", 658)];
+    /// The seeded rows whose `script_name` no script answers and that need
+    /// none. Empty: the two that used to sit here are no longer missing
+    /// registrations. Effect 658 (`Reload`) runs through the reload pipeline,
+    /// and effect 2907 (blank name) is a native row; `unregistered` skips both
+    /// (`NATIVE_EFFECT_NAMES`, `needs_no_script`), and the cell logs them at
+    /// INFO as `effect_script_native`. Any entry here is a seed gap to fix.
+    const KNOWN_UNSCRIPTED: [(&str, i32); 0] = [];
 
     /// #962 test rule: every `script_name` the seeded effect rows carry has a
-    /// row in [`EFFECT_SCRIPTS`], apart from [`KNOWN_UNSCRIPTED`]. Dropping or
-    /// misspelling a row fails here (and the cell logs
-    /// `effect_script_unregistered` at startup), instead of the effect
-    /// silently falling back to the legacy NVP path at cast time. The seed
-    /// does name scripts, so an empty scan is a broken load, not a pass.
+    /// row in [`EFFECT_SCRIPTS`], apart from [`KNOWN_UNSCRIPTED`] and the
+    /// native or blank names. Dropping or misspelling a row fails here (and
+    /// the cell logs `effect_script_unregistered` at startup), instead of the
+    /// effect silently falling back to the legacy NVP path at cast time. The
+    /// seed does name scripts, so an empty scan is a broken load, not a pass.
     #[tokio::test]
     async fn every_seeded_script_name_is_registered() {
         let pool = require_db_or_skip!();

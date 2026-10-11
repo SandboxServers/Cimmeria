@@ -29,6 +29,21 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# The daemon's OTLP log export to SigNoz as `service.name = cimmeria-lab`
+# (TG-PIPE-17, D-TG2). The same OpenTelemetry stack and versions as
+# crates/server's exporter (`crates/server/src/otel.rs`); bump in lockstep.
+# Logs only: labd has no spans or metrics worth shipping.
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio", "logs"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs"] }
+opentelemetry-appender-tracing = "0.33"
+# Header stripping (otlp/headers.rs): the SDK merges OTEL_EXPORTER_OTLP_*HEADERS
+# into every request, so labd wraps the HTTP client and sets a gRPC
+# interceptor. All already in the tree through opentelemetry-otlp.
+opentelemetry-http = { version = "0.33", default-features = false, features = ["reqwest-blocking"] }
+tonic = { version = "0.14", default-features = false }
+async-trait = { workspace = true }
+
 # Shared suspended-launch + inject pipeline (issue #685) — the same code
 # path sgw-launcher uses.
 cimmeria-client-launch = { path = "../client-launch" }
@@ -45,7 +60,8 @@ base64 = "0.23"
 # the in-server `cimmeria-lab-mcp` endpoint (server_packet_tap_read),
 # reached over the network (WireGuard on the colo). It does not link
 # lab-mcp — it POSTs a JSON-RPC tools/call. Workspace reqwest.
-reqwest = { workspace = true }
+# `blocking`: the OTLP/HTTP exporter's client (otlp/headers.rs).
+reqwest = { workspace = true, features = ["blocking"] }
 
 # UAT runner (`src/uat/`): TOML row specs, regex clauses and captures,
 # UTC timestamps for the evidence bundle, SHA-256 build fingerprints.
@@ -80,3 +96,5 @@ windows-sys = { version = "0.61", features = [
 tempfile = "3"
 # Paused time for the UAT keep-alive tests (lease::tests).
 tokio = { workspace = true, features = ["test-util"] }
+# In-memory log exporter for the OTLP redaction tests (otlp::tests).
+opentelemetry_sdk = { version = "0.33", features = ["logs", "testing"] }

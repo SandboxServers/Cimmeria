@@ -207,6 +207,7 @@ fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
         account_id,
         account_name: format!("acct{account_id}"),
         access_level: 0,
+        test_account: false,
         ticket: "TICKET00000000000001".to_string(),
         // 32-byte key encoded as 64 hex chars, all the same byte.
         session_key: format!("{:02X}", key_byte).repeat(32),
@@ -318,6 +319,65 @@ async fn login_consumes_ticket_and_registers_connected_client_state() {
     assert!(!state.4, "char_list_sent starts false");
 
     cancel_session(&connected, addr);
+}
+
+/// TG-NET-16: Phase 3 turns the ticket's `test_account` flag into the
+/// session's `session_kind` ("lab" for a test account, "player" otherwise).
+/// Reverting the copy in `handle_login` leaves `session_kind` unset and
+/// trips this.
+#[tokio::test]
+async fn login_resolves_session_kind_from_test_account_flag() {
+    let transport = make_transport();
+    let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let cell_tx = None;
+
+    for (port, account_id, test_account, expected) in [
+        (55561u16, 0x1616_0001u32, true, "lab"),
+        (55562u16, 0x1616_0002u32, false, "player"),
+    ] {
+        let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+        let mut pending = make_pending_login(account_id, 0x16);
+        pending.test_account = test_account;
+        pending.ticket = format!("TICKETTGNET16{port:07}");
+        let ticket = pending.ticket.clone();
+        pending_logins
+            .lock()
+            .unwrap()
+            .insert(ticket.clone(), pending);
+
+        handle_login(
+            &transport,
+            addr,
+            0xCAFE_BABE,
+            &ticket,
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+            &None,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+            &cimmeria_base_session::base::plugin::BasePlugins::empty(),
+        )
+        .await
+        .expect("Phase 3 handoff");
+
+        let kind = connected
+            .lock()
+            .unwrap()
+            .get(&addr)
+            .map(|c| c.session_kind)
+            .expect("connected entry present");
+        assert_eq!(
+            kind,
+            Some(expected),
+            "test_account={test_account} must resolve to session_kind={expected}"
+        );
+        cancel_session(&connected, addr);
+    }
 }
 
 /// Regression guard for the Discord auth-channel wiring: a successful

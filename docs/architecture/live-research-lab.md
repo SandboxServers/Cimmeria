@@ -279,6 +279,14 @@ that nothing enforced.
   screenshots, the UI readers, `lab_timeline` and SigNoz.
 - Every lease change is one `lab.lease` event in `labd.log`, so who drove
   the lab and when is reconstructable after the fact.
+- **SigNoz export** (TG-PIPE-17, D-TG2). With `CIMMERIA_LAB_OTLP_ENDPOINT`
+  in `labd.env` (and `CIMMERIA_LAB_OTLP_PROTOCOL=http/protobuf` for an HTTP
+  collector), the daemon also ships its log to SigNoz as
+  `service.name = cimmeria-lab`, local paths reduced to the instance name,
+  the user and machine names to `<user>`/`<host>`, and the lease's
+  owner/purpose text left off; unset, nothing is exported. Restart the
+  daemon (`daemon.ps1 restart`) to pick it up. Details:
+  [observability.md § The lab daemon](observability.md#the-lab-daemon-cimmeria-lab).
 - The same lease book covers the in-process second-player supervisor:
   the lease is for the lab, not for one client.
 - **`GET /status`** (added 2026-10-10, D-LC2 of the

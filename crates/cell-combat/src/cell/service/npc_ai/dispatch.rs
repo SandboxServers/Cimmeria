@@ -405,6 +405,29 @@ pub async fn npc_ai_retry_sweep(
 /// How often an Idle NPC nobody can see writes its tick row (NA24, UAT-1 E).
 pub(in crate::cell::service) const IDLE_UNWITNESSED_TICK_SAMPLE: Duration = Duration::from_secs(60);
 
+/// How often an unwitnessed NPC writes each of its leg rows (patrol and wander
+/// arrivals and waypoints, ok path requests), per row kind (TG-NPC-09).
+pub(in crate::cell::service) const UNWITNESSED_LEG_SAMPLE: Duration = Duration::from_secs(60);
+
+/// Gate for one leg row of an NPC. `Some(None)`: a witnessed NPC writes every
+/// row, with no `suppressed`. `Some(Some(n))`: an unwitnessed NPC writes one row
+/// per [`UNWITNESSED_LEG_SAMPLE`] for this `kind`, and `n` rows were skipped since
+/// the last one. `None`: skip this row. Only the rows that describe where an NPC
+/// walks go through here; failures are never sampled.
+pub(in crate::cell::service) fn admit_leg_row(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    kind: &'static str,
+) -> Option<Option<u32>> {
+    if space_mgr.has_witness(npc_id) {
+        return Some(None);
+    }
+    space_mgr
+        .npc_detectors
+        .admit_sample(npc_id, kind, Instant::now(), UNWITNESSED_LEG_SAMPLE)
+        .map(Some)
+}
+
 /// Whether this tick's row is written, and how many of this NPC's rows were
 /// skipped since the last one. Every tick of a witnessed NPC, or of one whose
 /// state changed, is written (`suppressed = 0`); an Idle, Patrol or Wander NPC
