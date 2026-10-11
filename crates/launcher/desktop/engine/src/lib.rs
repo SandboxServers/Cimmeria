@@ -13,34 +13,24 @@ pub use commands::{NativeCommand, NativeSnapshot};
 // Share the existing Windows manifest schema and signature policy verbatim.
 // The desktop catalog adds bounded transport; it never calls the legacy fetcher.
 pub mod catalog;
-#[path = "../../../src/manifest.rs"]
-pub mod manifest;
+pub use cimmeria_launcher_core::manifest;
 
-// One implementation of the legacy installation algorithms on both shells.
-#[path = "../../../src/client_setup/mod.rs"]
-pub mod client_setup;
-#[path = "../../../src/install.rs"]
-pub mod install;
-#[path = "../../../src/install_layout.rs"]
-pub mod install_layout;
-#[path = "../../../src/install_report.rs"]
-pub mod install_report;
-#[path = "../../../src/patch_dest.rs"]
-pub mod patch_dest;
-#[path = "../../../src/state.rs"]
-pub mod state;
-#[path = "../../../src/unpack/mod.rs"]
-pub mod unpack;
+// One implementation of the legacy installation algorithms on both shells,
+// in `cimmeria-launcher-core` (LX-01).
+pub use cimmeria_launcher_core::client_setup;
+pub use cimmeria_launcher_core::install;
+pub use cimmeria_launcher_core::install_layout;
+pub use cimmeria_launcher_core::install_report;
+pub use cimmeria_launcher_core::patch_dest;
+pub use cimmeria_launcher_core::state;
+pub use cimmeria_launcher_core::unpack;
 
-#[path = "../../../src/install_progress.rs"]
-pub mod install_progress;
+pub use cimmeria_launcher_core::install_progress;
 
 // Game telemetry reuses the Windows launcher's session marker and its rule for
 // which server addresses may be sent to; the mint itself is bounded here.
-#[path = "../../../src/telemetry/endpoint.rs"]
-pub mod telemetry_endpoint;
-#[path = "../../../src/telemetry/session.rs"]
-pub mod telemetry_session;
+pub use cimmeria_launcher_core::telemetry_endpoint;
+pub use cimmeria_launcher_core::telemetry_session;
 
 pub mod archive_worker;
 

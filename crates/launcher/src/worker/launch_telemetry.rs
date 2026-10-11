@@ -68,6 +68,7 @@ pub(super) async fn start_player_session(
             install_dir,
             &cfg.launcher_version,
             EndpointPolicy::from_login_servers(cfg.login_server_urls.iter().map(String::as_str)),
+            &crate::config::exe_dir(),
         ),
     )
     .await;

@@ -187,8 +187,8 @@ and detached signature over HTTPS. Limits: 1 MiB manifest, 256-byte signature,
 five-second connection timeout, fifteen seconds per request including body
 consumption, and five redirects. Size limits cover declared and streamed bodies.
 
-A Rust path module shares `crates/launcher/src/manifest.rs` with the Windows
-launcher; the catalog uses its schema, signature verification and validation,
+The engine shares `manifest` with the Windows launcher through
+`cimmeria-launcher-core` (`crates/launcher-core/src/manifest.rs`); the catalog uses its schema, signature verification and validation,
 but replaces its unbounded fetcher. Signature verification precedes JSON
 parsing. Notes-only IPC exposes IDs, titles and descriptions in manifest order,
 with the ID as fallback for a missing or blank title. Errors contain safe codes

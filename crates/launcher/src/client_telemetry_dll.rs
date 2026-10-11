@@ -25,8 +25,9 @@ use thiserror::Error;
 
 use crate::bundled::{self, Found};
 
-/// The DLL's file name wherever the launcher puts it.
-pub const DLL_FILE_NAME: &str = "cimmeria-client-telemetry.dll";
+/// The DLL's file name wherever the launcher puts it; the "Changes to your
+/// client" list names the same constant.
+pub const DLL_FILE_NAME: &str = crate::client_changes::TELEMETRY_DLL_FILE_NAME;
 
 /// Subdirectory of the launcher's directory for the written-out copy.
 const BUNDLE_DIR: &str = "client-telemetry";

@@ -191,8 +191,10 @@ fn move_tree(root: &Path, dir: &Path, dest: &Path) -> Result<(), UnpackError> {
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) mod test_fixtures;
+// The desktop engine's tests build archives from these too, through the
+// `test-fixtures` feature.
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_fixtures;
 
 #[cfg(test)]
 mod tests {

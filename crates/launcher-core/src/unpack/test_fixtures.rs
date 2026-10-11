@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use super::UnpackSink;
 use crate::install::Progress;
 
-pub(crate) fn sink() -> (UnpackSink, tokio::sync::mpsc::UnboundedReceiver<Progress>) {
+pub fn sink() -> (UnpackSink, tokio::sync::mpsc::UnboundedReceiver<Progress>) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     (
         UnpackSink {
@@ -26,19 +26,19 @@ pub(crate) fn sink() -> (UnpackSink, tokio::sync::mpsc::UnboundedReceiver<Progre
 
 /// 2009-06-30 12:00:00 as a DOS date: the date the 2009 client's
 /// cabinets stamp on every file. Both archive fixtures carry it.
-pub(crate) const FIXTURE_DOS_DATE: u16 = ((2009 - 1980) << 9) | (6 << 5) | 30;
+pub const FIXTURE_DOS_DATE: u16 = ((2009 - 1980) << 9) | (6 << 5) | 30;
 /// 12:00:00 as a DOS time.
-pub(crate) const FIXTURE_DOS_TIME: u16 = 12 << 11;
+pub const FIXTURE_DOS_TIME: u16 = 12 << 11;
 
 /// The modified time an extracted fixture file must end up with.
-pub(crate) fn fixture_mtime() -> std::time::SystemTime {
+pub fn fixture_mtime() -> std::time::SystemTime {
     super::dos_time::to_system_time(FIXTURE_DOS_DATE, FIXTURE_DOS_TIME).expect("valid stamp")
 }
 
 /// Poorly compressible bytes (xorshift), so a small `MaxDiskSize` really
 /// makes a cabinet set span several cabinets.
 #[cfg(windows)]
-pub(crate) fn incompressible(seed: u8, len: usize) -> Vec<u8> {
+pub fn incompressible(seed: u8, len: usize) -> Vec<u8> {
     let mut x = u32::from(seed) | 1;
     (0..len)
         .map(|_| {
@@ -58,7 +58,7 @@ fn head_crc(header_after_crc: &[u8]) -> [u8; 2] {
 
 /// Write a stored (method 0x30) RAR 4 archive holding `entries`, each a
 /// `(name, contents)` pair. Names use `\` as the RAR 4 format does.
-pub(crate) fn write_stored_rar4(path: &Path, entries: &[(&str, &[u8])]) {
+pub fn write_stored_rar4(path: &Path, entries: &[(&str, &[u8])]) {
     let mut out = Vec::new();
     // Marker block.
     out.extend_from_slice(b"Rar!\x1a\x07\x00");
@@ -103,11 +103,7 @@ pub(crate) fn write_stored_rar4(path: &Path, entries: &[(&str, &[u8])]) {
 /// enough forces the set to span several cabinets with files continued
 /// across the boundary. Returns the cabinet file names in order.
 #[cfg(windows)]
-pub(crate) fn make_cab_set(
-    dir: &Path,
-    files: &[(&str, Vec<u8>)],
-    max_cab_bytes: u32,
-) -> Vec<String> {
+pub fn make_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], max_cab_bytes: u32) -> Vec<String> {
     let src = dir.join("src");
     let mut ddf = String::new();
     ddf.push_str(".OPTION EXPLICIT\r\n");

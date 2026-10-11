@@ -71,7 +71,7 @@ pub fn install_result_event(report: &InstallReport, ts_ms: i64) -> TelemetryEven
 
 /// Queue the event for the next telemetry session, if the player opted
 /// in. Returns whether it was queued. `state_dir` is the directory of
-/// the launcher's telemetry queue (`crate::config::exe_dir()`).
+/// the launcher's telemetry queue (the egui launcher's own directory).
 pub fn queue_install_result(report: &InstallReport, opted_in: bool, state_dir: &Path) -> bool {
     if !opted_in {
         return false;

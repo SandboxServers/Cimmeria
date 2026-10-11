@@ -8,7 +8,7 @@
 //! - [`login_servers`]: the client finds its login server through
 //!   `LoginInternal.lua` (`LoginMod.loadServerSystems`), not through
 //!   anything in `SGW.exe`. The launcher writes that file from
-//!   [`crate::config::LauncherConfig::login_servers`].
+//!   the login server list the calling shell keeps in its settings.
 //! - [`aslr`]: the client-patches DLL and the RE addresses assume
 //!   `SGW.exe` loads at its image base `0x00400000`, so ASLR is switched
 //!   off in its PE header, the same one-byte change "Fix ASLR" makes.
