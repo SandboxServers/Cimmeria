@@ -47,6 +47,14 @@ CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-}
 ACTIONS_RUNNER_HOOK_JOB_STARTED=/home/runner/hooks/job-started.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/home/runner/hooks/job-completed.sh
 EOF
+# The shared compile cache (cache.compose.yml), when this node is given one. sccache
+# prefers Redis over its local SCCACHE_DIR whenever the endpoint is set, so set it only
+# when it is non-empty.
+if [ -n "${CACHE_ENDPOINT:-}" ]; then
+    echo "SCCACHE_REDIS_ENDPOINT=$CACHE_ENDPOINT" >> .env
+    echo "SCCACHE_REDIS_PASSWORD=${CACHE_PASSWORD:-}" >> .env
+fi
+unset CACHE_PASSWORD
 # The routing proxy (compose.yml `egress`), for the runner and every job step.
 for v in HTTPS_PROXY https_proxy NO_PROXY no_proxy; do
     if [ -n "${!v:-}" ]; then echo "$v=${!v}" >> .env; fi

@@ -68,6 +68,8 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: localhost,127.0.0.1,::1
@@ -97,6 +99,8 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: localhost,127.0.0.1,::1
@@ -126,6 +130,8 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: localhost,127.0.0.1,::1
@@ -155,6 +161,8 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: localhost,127.0.0.1,::1
@@ -184,6 +192,8 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-}
+      CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: localhost,127.0.0.1,::1
