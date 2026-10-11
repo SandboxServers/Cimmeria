@@ -961,6 +961,25 @@ Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/c
 
 Guards: `dropped_receiver_logs_cell_channel_closed`, `stalled_send_logs_backpressure_row`, `second_stall_in_window_is_suppressed` in `cell_send.rs`.
 
+## Inbound bundle-walk drops (TG-MER-06)
+
+Every client message the inbound bundle walk drops (`encrypted/mod.rs`, `account_arms.rs`, `cell_arms.rs` under `crates/base/src/base/connect_loop/`) goes through `bundle_drop::log_drop`. The row is `event = "inbound_message_dropped"` with `addr`, identity, `msg_id` + `msg_name`, `method_index` + `method_name` when the walk decoded one, `entity_type`, `payload_len` and `suppressed`. Pattern D: one row per 5 s per session address and reason. The `reason` set is closed (`DropReason`):
+
+| Level | `reason` | When |
+|---|---|---|
+| WARN | `bundle_truncated` | A length prefix or fixed width runs past the bundle; carries `offset` and `body_len`. The rest of the bundle is lost |
+| WARN | `unhandled_msg_id` | A system message id with no arm |
+| WARN | `unhandled_account_method` | An Account base method with no handler at character select |
+| WARN | `malformed_args` | A cell method payload shorter than its 4-byte entityId prefix |
+| WARN | `subslot_missing_index` | A `0xBD` sub-slot cell method with no sub-index byte |
+| DEBUG | `no_player_entity` | A movement update (`0x03`) before the session has a player entity |
+| DEBUG | `before_world_entry` | A cell method before the session has a player entity |
+| DEBUG | `map_loaded_pending` | A cell method other than `mapLoaded` while world entry waits for it. Only that message is dropped; the walk goes on |
+
+`AUTHENTICATE received -- ignored` moved from DEBUG to TRACE: the client prepends one to every bundle.
+
+Guards: `bundle_walk_drops_have_reasons`, `bundle_truncated_row_carries_offset_and_body_len`, `map_loaded_pending_drops_only_its_message` in `encrypted/bundle_drop_tests.rs`; `drop_burst_writes_one_row_per_window`, `drop_throttle_keys_are_independent` in `bundle_drop.rs`.
+
 ## NPC attack-not-fired throttle (TG-NPC-05)
 
 An attack tick whose `handle_use_ability` call returns false (cooldown race, no ammo, out of range) used to WARN on every retry, about twice a second per NPC. `warn_attack_not_fired()` in `service/npc_ai/fight.rs` in `cimmeria-cell-combat` throttles it (Pattern D, `admit_warn`, keyed by NPC). The first row in a 15 s window writes at once. The retries inside it are counted, and the next row carries them in `suppressed`. The retry itself is scheduled whether or not the row is written.
