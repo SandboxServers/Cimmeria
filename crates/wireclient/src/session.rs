@@ -50,6 +50,10 @@ pub struct GameSession {
     /// `CREATE_BASE_PLAYER` reply during world entry, since the server
     /// allocates it (the client has no way to predict it).
     pub player_entity_id: Option<u32>,
+    /// Every non-tickSync bundle world entry consumed, in arrival order (WC-10).
+    /// A test reads these to check what the server sent at entry, such as the
+    /// starter kit, without racing the entry steps for the same bundles.
+    pub entry_bundles: Vec<Bytes>,
     /// Account id from Phase 1 -- threaded through for logging/asserts.
     pub account_id: u32,
 }
@@ -137,6 +141,7 @@ impl GameSession {
         Ok(Self {
             peer,
             player_entity_id: None,
+            entry_bundles: Vec::new(),
             account_id: session.account_id,
         })
     }
