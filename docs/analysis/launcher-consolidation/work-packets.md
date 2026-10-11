@@ -80,7 +80,7 @@ SaveClientOptions {
 
 ### New native commands (LX-02)
 
-Each is a `#[tauri::command]` in `shell/src/main.rs`, registered in `generate_handler!`, with its request/status types in its own `shell/src/host/<name>.rs` and its engine half in `engine/src/storage/<name>/mod.rs`. LX-02 creates all of them with bodies that return `Err(<Error>::Unavailable)`. Each request enum is `#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]` and carries `schema_version: 1`.
+Each is a `#[tauri::command]` in `shell/src/main.rs`, registered in `generate_handler!`. Its request, status and error types live with the engine half in `engine/src/storage/<name>/mod.rs` (the engine cannot import shell types, and engine tests need them); `shell/src/host/<name>.rs` holds only the `NativeHost::<name>_command` method. LX-02 creates all of them with bodies that return `Err(<Error>::Unavailable)`. Each request enum is `#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]` and carries `schema_version: 1`.
 
 | Tauri command | Host file | Engine module | Requests | Filled by |
 |---|---|---|---|---|
@@ -88,7 +88,7 @@ Each is a `#[tauri::command]` in `shell/src/main.rs`, registered in `generate_ha
 | `client_maintenance_command` | `host/client_maintenance.rs` | `storage/client_maintenance/` | `Inspect`, `ResetCache`, `ResetAllClientState { confirmed: bool }` | LX-06 |
 | `client_changes_command` | `host/client_changes.rs` | `storage/client_changes/` | `Inspect` | LX-07 |
 
-Every new operation that writes to disk calls `ensure_updater_idle()` before its first write and refuses while an install, Play, Repair or update is nonterminal (`docs/updater.md`, "New mutation paths must preserve this rule"). LX-02 provides that gate as `DesktopState::ensure_no_active_operation()`; `Upload` and both resets call it. `SaveClientOptions` is the one exception: it refuses during updater work and any nonterminal operation except Play, which reads the options only at launch.
+Every new operation that writes to disk calls `ensure_updater_idle()` before its first write and refuses while an install, Play, Repair or update is nonterminal (`docs/updater.md`, "New mutation paths must preserve this rule"). LX-02 provides that gate as `DesktopState::ensure_no_active_operation()`; `Upload` and both resets call it. `SaveClientOptions` is the one exception: it refuses during updater work and any nonterminal operation except Play, which reads the options only at launch. Known limit: an operation stuck in `ReconciliationRequired` also blocks `Upload`, which is when logs matter most; LX-05 reports Busy with a line saying to finish or reconcile the stuck operation first, and LX-26 step 8 notes it.
 
 Each `<Name>Error` serializes as one flat code string, like `StorageError` and `JobError`: `"unavailable"`, or the wrapped `StorageError` code (`"busy"`, `"unsupported_schema"`, ...) through an untagged `Storage(StorageError)` variant. New variants a packet adds serialize the same way, as distinct snake_case strings. `contract.ts` reads them with `scaffoldFailure`.
 
@@ -156,8 +156,8 @@ Each panel mounts as `mount<Name>(document, invoke, context)`. `context` is the 
 ### LX-03: server list editor
 
 - **Agent:** packet-coder. **Files:** `engine/src/storage/mod.rs` (`save_client_options`), the launch preparation that calls `client_setup::prepare` (find it with `Grep "default_servers" crates/launcher/desktop`), `frontend/src/server-list-view.ts`, its test, `frontend/server-list-uat.mjs`.
-- **Do:** Play writes `Preferences.login_servers` into `LoginInternal.lua`, or `default_servers()` when the list is empty. Adopted installs keep their reviewed list, as today. The view is a textarea, one `Name = http://host:port` per line, parsed with the core crate's existing parser; a parse error is shown under the box and nothing is saved; Save shows "Saved" on success.
-- **Tests:** engine unit: with two saved servers, the prepared `LoginInternal.lua` contains both and not the default (fails if Play ignores the preference). Frontend unit: bad line shows the error and sends no command. UAT script: enter, save, reload, list persists.
+- **Do:** Play writes `Preferences.login_servers` into `LoginInternal.lua`, or `default_servers()` when the list is empty. Adopted installs keep their reviewed list, as today. The view is a textarea, one `Name = http://host:port` per line, parsed with the core crate's existing parser; a parse error is shown under the box and nothing is saved; Save shows "Saved" on success. The engine validates too, in place of the `TODO(LX-03)` in `save_client_options_with`: a non-empty list must pass `login_servers::validate` (an empty list is allowed and means the defaults), and Play validates again before writing `LoginInternal.lua`, so a list that reaches the file through any other path is refused there.
+- **Tests:** engine unit: an invalid non-empty list is refused by `SaveClientOptions` and writes nothing; with two saved servers, the prepared `LoginInternal.lua` contains both and not the default (fails if Play ignores the preference). Frontend unit: bad line shows the error and sends no command. UAT script: enter, save, reload, list persists.
 - **Checks:** D1, D2, D3, F1, `npm run uat:server-list`.
 - **Commit:** `feat(launcher-desktop): edit the login server list in Settings (LX-03)`.
 
