@@ -213,8 +213,14 @@ pub fn push_deferred(
         return DeferOutcome::SessionGone;
     };
     if state.deferred_aoi_msgs.len() >= MAX_DEFERRED_AOI_MSGS {
+        let (kind, entity_id) = msg_kind_and_entity(&msg);
         tracing::warn!(
+            event = "deferred_dropped",
+            reason = "buffer_full",
             %addr,
+            kind,
+            entity_id,
+            witness_name = state.player_name.as_deref(),
             buffered = state.deferred_aoi_msgs.len(),
             "Deferred-AoI buffer at cap; dropping message (session stuck pre-onClientReady?)"
         );
@@ -223,6 +229,21 @@ pub fn push_deferred(
     state.deferred_aoi_msgs.push(msg);
     DeferOutcome::Buffered {
         depth: state.deferred_aoi_msgs.len(),
+    }
+}
+
+/// The log `kind` of a buffered message and the entity it is about. A
+/// [`DeferredAoiMsg::EntityMethodCall`] names no entity, so its id is `None`
+/// and the row omits `entity_id` rather than logging a placeholder.
+fn msg_kind_and_entity(msg: &DeferredAoiMsg) -> (&'static str, Option<u32>) {
+    match msg {
+        DeferredAoiMsg::EnteredAoI { entity_id, .. } => ("entered", Some(*entity_id)),
+        DeferredAoiMsg::LeftAoI { entity_id } => ("left", Some(*entity_id)),
+        DeferredAoiMsg::EntityMethodCall { .. } => ("method", None),
+        DeferredAoiMsg::WitnessEntityMethod { entity_id, .. } => {
+            ("witness_method", Some(*entity_id))
+        }
+        DeferredAoiMsg::EntityInvisible { entity_id } => ("invisible", Some(*entity_id)),
     }
 }
 
@@ -514,7 +535,10 @@ mod tests {
     /// check surfaces here.
     #[test]
     fn push_deferred_drops_at_cap() {
+        use crate::test_support::LogCapture;
+
         let (addr, connected) = make_state_and_connected();
+        let capture = LogCapture::install();
         for i in 0..MAX_DEFERRED_AOI_MSGS as u32 {
             push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: i });
         }
@@ -547,5 +571,18 @@ mod tests {
             MAX_DEFERRED_AOI_MSGS,
             "buffer size unchanged — over-cap push dropped, not inserted",
         );
+
+        // The drop names the entity and the kind, so a SigNoz query can tell
+        // which AoI message the cap ate.
+        let drop = capture
+            .find_event(
+                tracing::Level::WARN,
+                "Deferred-AoI buffer at cap",
+                "buffer_full",
+            )
+            .expect("cap drop logs a WARN with reason=buffer_full");
+        assert!(drop.has_field("event", "deferred_dropped"));
+        assert!(drop.has_field("entity_id", "999999"));
+        assert!(drop.has_field("kind", "left"));
     }
 }
