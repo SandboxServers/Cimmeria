@@ -27,30 +27,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Tooling quirks
 
 - [tooling-quirks-index](tooling-quirks-index.md) — sub-index: rustfmt/clippy/sqlx traps, worktree shell limits, client file case, patchset/ring rigs, Python UTF-8.
-- [launcher-native-owner-handle.md](launcher-native-owner-handle.md) — native launch reads installation identity through its locked handle; Windows revert proof must run natively.
-
-- [patchset-supersede-and-restore-to-stock](patchset-supersede-and-restore-to-stock.md) — apply skips target==result before source check; a delta back to an LZO stock map ships CME bytes.
-- [ring-rig-clone-to-new-map](ring-rig-clone-to-new-map.md) — patch 010: region 3 rig roots, donor pinned to 007's result, central chunk for streaming, floor heights.
-- [client-file-case-and-stock-listing](client-file-case-and-stock-listing.md) — game UI lookups are case-sensitive on Windows (eula.lua = no login); rename keeps target spelling; DATA.INF = stock names.
-- [offline-client-event-trace-and-udp-port-trap](offline-client-event-trace-and-udp-port-trap.md) — no Ghidra: client Lua + PE bytes + RTTI name the CME event a handler raises.
-- [mail-escrow-lock-order-and-proof-traps](mail-escrow-lock-order-and-proof-traps.md) — inventory lock order is advisory → item row → sgw_player.
-- [bash-heredoc-backslash-and-metric-tests](bash-heredoc-backslash-and-metric-tests.md) — a doubled backslash in a heredoc arrives as one: use Edit for backslash text; metric tests use a per-test world label.
-- [python-write-mangles-utf8-and-crlf](python-write-mangles-utf8-and-crlf.md) — `write_text` encodes cp1252: use bytes + restore CRLF.
-- [i686-test-exe-uac-installer-detection](i686-test-exe-uac-installer-detection.md) — a 32-bit test exe named `*patch*` fails with os error 740 under UAC.
-- [rustfmt-trailing-line-comment-quirk](rustfmt-trailing-line-comment-quirk.md) — rustfmt pulls a standalone comment into the previous line's trailing column.
-- [rustfmt-skips-sigil-tracing-macros](rustfmt-skips-sigil-tracing-macros.md) — a `%`/`?` field makes rustfmt skip the whole tracing call; reflow scripted inserts by hand.
-- [rustfmt-reorders-mod-declarations](rustfmt-reorders-mod-declarations.md) — `reorder_modules` sorts `mod` lines, so "append at the end" never survives `cargo fmt`.
-- [clippy-items-after-test-module](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be last.
-- [tooling-filter-and-path-traps](tooling-filter-and-path-traps.md) — `live-db-test.sh` takes positional substrings, not filtersets.
-- [sqlx-dynamic-sql-string](sqlx-dynamic-sql-string.md) — `sqlx::query` needs `&'static str`.
-- [sqlx-chain-id-is-i32-vacuous-guards](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is i32; a wrong decode type hides inside "no rows" guards.
-- [gitignore-swallows-new-dirs](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules hide a new `foo/mod.rs`.
-- [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
-- [powershell-git-commit-stdin-trap](powershell-git-commit-stdin-trap.md) — `git commit -F - @'..'@` takes the text as a pathspec; use `-F <file>` or `-m @'..'@`.
-- [powershell-strict-mode-empty-index](powershell-strict-mode-empty-index.md) — lab CLI strict mode: `@(..)[0]` on empty throws, use Select-Object -First 1; test git repos eat fixture files.
-- [powershell-like-backtick-and-injected-call-tests](powershell-like-backtick-and-injected-call-tests.md) — `-like` treats a backtick as escape; test lab CLI commands with the MCP call injected as a scriptblock.
-- [powershell-ctrl-c-test-pipeline-stopped](powershell-ctrl-c-test-pipeline-stopped.md) — Ctrl+C = PipelineStoppedException: no catch sees it, only finally; test it from a stub in a child pwsh.
-- [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 
 ## Wire format
 
@@ -78,6 +54,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-console-tee-deferred-reply](lab-console-tee-deferred-reply.md) — lab tee sees only sync lines; base round-trip results park the reply on a table (CH-13 spawn batches, batch id on GmSpawnNpc).
 - [lab-chaos-net-shim-generation-and-teardown](lab-chaos-net-shim-generation-and-teardown.md) — net shim keys on per-set generation; teardown discards held/delayed sends; bounded line; paused-clock tests.
 - [client-lua-cegui-global-subscribe](client-lua-cegui-global-subscribe.md) — client Lua `window:subscribeGlobal(ns, ev, 'Fn')`; no unsubscribe, so once per Lua state; args (this, eventWindow, ...).
 - [lab-cli-child-test-daemon-isolation](lab-cli-child-test-daemon-isolation.md) — command tests in a child pwsh reach the real daemon (User-scope token): use -StatusFile + closed-port labd.pid.
@@ -92,26 +69,17 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
 - [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
 - [lab-chaos-net-shim](lab-chaos-net-shim.md) — CH-06: shared `lossy_transport::filter`, ChaosTransport in base, recv drop-only, has_net guard, fake-wire tests.
+- [lab-chaos-arm-by-account-traps](lab-chaos-arm-by-account-traps.md) — CH-14: promote at playCharacter before RESET_ENTITIES; no grouped lab_chaos imports even in tests; feature-only live-DB tests never run.
 - [lab-mcp-feature-gated-tool-router](lab-mcp-feature-gated-tool-router.md) — feature-gated lab-mcp tools: second `#[tool_router(router, vis)]` block in the submodule, `+` merge in new().
 - [lab-record-tap-fixture-and-recorder-seams](lab-record-tap-fixture-and-recorder-seams.md) — tap fixtures need a cell msg_id + method_index for decode_call; Recorder test seams.
 - [lab-record-click-sampling-traps](lab-record-click-sampling-traps.md) — parsed specs resolve @aliases; toml writes newline strings as `"""`; clicks and calls land a tick apart.
+- [lab-console-tee-misses-async-spawn-ids](lab-console-tee-misses-async-spawn-ids.md) — server_console_exec never returns spawned npc ids (async, after the reply); no despawn-by-id command.
+- [lab-cli-json-capture-and-parallel-stubs](lab-cli-json-capture-and-parallel-stubs.md) — uat.ps1 -Json goes to [Console]::Out (SetOut to capture); stubs don't reach -Parallel lanes.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
 
-- [launcher-state-key-and-egui-wake.md](launcher-state-key-and-egui-wake.md) — sgw_game patches are recorded as `<id>@sgw_game` (core `state.rs`); the egui wake trap retired 2026-10-11.
-- [launcher-extracted-mtimes-and-ue3-ini-version.md](launcher-extracted-mtimes-and-ue3-ini-version.md) — extracted files must keep archive DOS times or UE3 flags Default*.ini outdated; zip 1980 placeholder; MakeCAB fixture.
-- [desktop-settings-panel-ipc-traps](desktop-settings-panel-ipc-traps.md) — a panel that invokes on mount breaks view.test.ts call pins and sync-throwing fakes; inspect on first snapshot.
-- [launcher-self-update-handoff-traps.md](launcher-self-update-handoff-traps.md) — retired egui launcher's handoff (2026-10-11); only "unlock before close on Windows" still applies.
-- [launcher-preferences-schema-change-fanout](launcher-preferences-schema-change-fanout.md) — desktop Preferences change: strict TS decode breaks ~10 fixtures; migrate in serde try_from; adoption Plan digest goes through `digest_form`.
-- [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
-- [desktop-repair-update-terminal-hooks](desktop-repair-update-terminal-hooks.md) — Repair/Update `finish_failure` runs after every commit (dropped handoff); run-end hooks must check the op was open.
-- [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`.
-- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — Tailer refresh() retain drops other roots' files (egui tail ships nothing once sessions/ exists); tick order is HashMap order; opt-out discard counter.
-- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — one refresh per tick; NTFS coarse creation times vs baseline; same-tick ties; shared queue across sessions; undo must not bump discards.
-- [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`; macOS job layout and bash 3.2 trap.
-- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — refresh() drops other roots' files; one refresh per tick; NTFS coarse times; shared queue; undo must not bump discards.
-- [bootstrap-launcher-install-and-test-server-port](bootstrap-launcher-install-and-test-server-port.md) — -WithLauncher downloads the released zip (LX-20); Docker owns port 8765, so test servers take a free port.
+- [launcher-index](launcher-index.md) — sub-index: desktop launcher IPC/schema/adoption traps, release feeds, telemetry tailer, extracted mtimes, bootstrap install.
 
 ## Injected client DLLs
 
@@ -131,6 +99,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Base sessions
 
+- [unentered-entity-destroy-and-db-await-seam](unentered-entity-destroy-and-db-await-seam.md) — never-entered entity: DestroyEntity, not DisconnectEntity (player_id-keyed squad/position); fake TCP listener for DB-await races.
 - [session-scoped-side-tables-and-teardown](session-scoped-side-tables-and-teardown.md) — clear per-address state in teardown after the owner check (covers relaunch takeover); logOff keeps the address.
 - [mail-expiry-and-notify-seams.md](mail-expiry-and-notify-seams.md) — every mail writer sets `expires_at`; `NOT quarantined` on every player path.
 - [connected-map-view-over-parallel-index.md](connected-map-view-over-parallel-index.md) — online lookups: a view over `connected` + `listed_online`, not a parallel map.
@@ -145,25 +114,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Observability
 
-- [named-telemetry-sweep-traps](named-telemetry-sweep-traps.md) — Rule 6 sweeps: chain/loot/event-set names exist in seed; keys holding the wrong ID; rescan without rebuild.
-- [rule6-sweep-scanner-and-naming-traps](rule6-sweep-scanner-and-naming-traps.md) — list unpaired sites by zeroing baseline rows; `$level!` rows escape the scan; never name a deferred effect's invoker live.
-- [discord-named-pairs-resolvers](discord-named-pairs-resolvers.md) — Discord Event objects are `Named` pairs (NT-10); base/cell/content resolvers; button text and minigame ids are unnameable.
-- [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
-- [rule6-name-pairing-traps](rule6-name-pairing-traps.md) — base names via known_names; NameBook borrow vs owned; rustfmt bails on >100-col macro lines.
-- [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.
-- [discord-noise-and-teardown-race](discord-noise-and-teardown-race.md) — SIGNOZ_ONLY_EVENTS; logOff witness-send race is DEBUG via departed_witnesses; colo warns that are real faults.
-- [rule6-name-pairing-sweep-techniques](rule6-name-pairing-sweep-techniques.md) — list unpaired sites by zeroing the baseline; lazy fields + `enabled!`; base NPC names only from EnteredAoI.
-- [base-side-log-naming-and-lock-traps](base-side-log-naming-and-lock-traps.md) — base Rule 6 resolvers (session_identity), base can't name NPCs bar AoI name_id; match-scrutinee guard + name lookup = nested lock.
-- [unpaired-id-sweep-workflow-traps](unpaired-id-sweep-workflow-traps.md) — NT sweep: per-site dump patch, lane quiet-mode log-dir race, B: <10 GB refusals, heredoc edits eat `\` continuations.
-- [firehose-framework-crate-placement](firehose-framework-crate-placement.md) — sampler in observability, mercury_packet emitter in mercury; const targets; suppressed = drops before.
-- [log-filter-parity-traps](log-filter-parity-traps.md) — `EnvFilter::new` drops a bad directive silently.
-- [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
-- [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env; opted-in player launch mints the session before the game.
-- [client-telemetry-governor-classify-table](client-telemetry-governor-classify-table.md) — every DLL event passes the governor; new targets default to Budgeted; must-keep rows need a server priority prefix too.
-- [telemetry-ingest-naming-traps](telemetry-ingest-naming-traps.md) — replay: 32-field event cap, no router state (global cell sender), docs/ not in the image, lane log-dir race.
-
-- [otel-log-redaction-wrap-provider](otel-log-redaction-wrap-provider.md) — redact OTLP log fields by wrapping the bridge's LoggerProvider (LogProcessor can't edit attrs); event names hold registry paths.
-- [rule6-name-pairing-patterns](rule6-name-pairing-patterns.md) — tracing field exprs are lazy (inline names are free); book() guard in closures fails E0515.
+- [observability-index](observability-index.md) — sub-index: Rule 6 sweeps and scanner, Discord named pairs, OTLP redaction, client telemetry governor, log filters, firehose.
 
 ## Testing patterns
 
@@ -177,6 +128,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [table-driven-live-db-refusal-cases](table-driven-live-db-refusal-cases.md) — one character per refusal case + collected failures, so each dropped check shows; rolled-back dry run as precheck.
 - [player-cast-fixtures-need-a-mechanic](player-cast-fixtures-need-a-mechanic.md) — since AB-12 a player cast with no mechanic is refused; effectless fixtures need `seed_mechanic_effect`.
 - [lab-runner-paused-time-poll-tests](lab-runner-paused-time-poll-tests.md) — lab runner poll/timeout tests use `start_paused = true`; deadlines must be `tokio::time::Instant`.
+- [channel-failure-test-seams](channel-failure-test-seams.md) — mpsc send fails only when closed: one-slot channel + hang-up reader; query failure via lazy pool on `[::1]:9`; tick-in-loop test.
 
 ## Campaign judgment
 

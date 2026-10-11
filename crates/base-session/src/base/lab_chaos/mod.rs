@@ -23,6 +23,11 @@
 //! and the first-login flush (CH-07) read it per send through
 //! [`LabChaos::net_for`] and [`LabChaos::flush_for`]. Knob bounds live in
 //! `bounds.rs`.
+//!
+//! Chaos can also be armed for an account's next world entry (D-CH10,
+//! `armed.rs`): held by account id, then moved onto the session that
+//! account's next `playCharacter` opens, tagged with its new player entity,
+//! before that login's first flush reads it. The clears are in `clear.rs`.
 
 /// True only in a binary built with the `lab-chaos` feature.
 pub const COMPILED: bool = cfg!(feature = "lab-chaos");
@@ -37,13 +42,19 @@ use std::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
         Mutex, MutexGuard, OnceLock, PoisonError,
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 #[cfg(feature = "lab-chaos")]
+mod armed;
+#[cfg(feature = "lab-chaos")]
+pub use armed::{ArmedChaos, Promotion};
+#[cfg(feature = "lab-chaos")]
 mod bounds;
 #[cfg(feature = "lab-chaos")]
-use bounds::{check_flush, check_net};
+mod clear;
+#[cfg(feature = "lab-chaos")]
+use bounds::check_request;
 #[cfg(feature = "lab-chaos")]
 pub use bounds::{PACK_RECORDS_MAX, PHASE1_RECORD_LEN, SHIFT_LEN_MAX};
 
@@ -142,6 +153,17 @@ pub const MAX_TTL_S: u32 = 1800;
 #[derive(Debug)]
 pub struct LabChaos {
     sessions: Mutex<HashMap<SocketAddr, SessionChaos>>,
+    /// Chaos armed for an account's next world entry (D-CH10, `armed.rs`),
+    /// keyed by account id. Not net entries: the shim never reads them, and
+    /// promotion moves one into `sessions` through [`SessionsGuard`]. When
+    /// both locks are held, `sessions` is taken first (promotion, re-arm and
+    /// a clear of everything), so a take-and-insert is one step to a clear.
+    armed: Mutex<HashMap<u32, ArmedChaos>>,
+    /// Counts the clears an operator asked for (everything, an entity, an
+    /// account). A promotion records it, and [`LabChaos::rearm`] puts no arm
+    /// back once it has moved: a failed world entry must not bring back
+    /// chaos the lab cleared on purpose. Session teardown does not count.
+    operator_clears: AtomicU64,
     /// How many entries carry net chaos (expired ones included until they
     /// are removed). Written only while the lock is held, by
     /// [`SessionsGuard`]'s drop, so it is in step with the map at every
@@ -169,6 +191,8 @@ impl LabChaos {
     pub fn new() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
+            armed: Mutex::new(HashMap::new()),
+            operator_clears: AtomicU64::new(0),
             net_entries: AtomicUsize::new(0),
             generations: AtomicU64::new(0),
             addr_hasher: RandomState::new(),
@@ -198,39 +222,22 @@ impl LabChaos {
         ttl_s: u32,
         now: Instant,
     ) -> Result<Instant, ChaosRefused> {
-        if ttl_s == 0 {
-            return Err(ChaosRefused::BadTtl(ttl_s));
-        }
-        if ttl_s > MAX_TTL_S {
-            return Err(ChaosRefused::TtlTooLong(ttl_s));
-        }
-        if net.is_none() && flush.is_none() {
-            return Err(ChaosRefused::BadKnob("set needs a net or a flush profile"));
-        }
-        if let Some(net) = &net {
-            check_net(net)?;
-        }
-        if let Some(flush) = &flush {
-            check_flush(flush)?;
-        }
-        let expires_at = now
-            .checked_add(Duration::from_secs(u64::from(ttl_s)))
-            .ok_or(ChaosRefused::BadTtl(ttl_s))?;
+        let expires_at = check_request(net.as_ref(), flush.as_ref(), ttl_s, now)?;
         let chaos = SessionChaos {
             entity_id,
             label,
             net,
             flush,
             expires_at,
-            generation: self.generations.fetch_add(1, Ordering::Relaxed) + 1,
+            generation: self.next_generation(),
         };
         tracing::warn!(
             target: "lab.chaos",
             event = "lab_chaos_set",
-            profile = profile_label(&chaos),
+            profile = profile_label(chaos.net.as_ref(), chaos.flush.as_ref()),
             level = %chaos.label,
             addr_hash = %self.addr_hash(addr),
-            seed = chaos_seed(&chaos),
+            seed = chaos_seed(chaos.net.as_ref(), chaos.flush.as_ref()),
             expires_in_s = ttl_s,
             "lab chaos set on a session"
         );
@@ -238,107 +245,6 @@ impl LabChaos {
         self.sweep_expired(&mut sessions, now);
         sessions.insert(addr, chaos);
         Ok(expires_at)
-    }
-
-    /// Clears one session, or every session with `None`. Returns how many
-    /// entries were removed, which the clear tool reports. Logs INFO when it
-    /// removed something or cleared everything; a per-session clear that
-    /// found nothing (every session teardown on a lab server) logs DEBUG.
-    pub fn clear(&self, addr: Option<SocketAddr>) -> usize {
-        let cleared = {
-            let mut sessions = self.sessions();
-            match addr {
-                Some(addr) => usize::from(sessions.remove(&addr).is_some()),
-                None => {
-                    let n = sessions.len();
-                    sessions.clear();
-                    n
-                }
-            }
-        };
-        let addr_hash = addr.map(|a| self.addr_hash(a));
-        let scope = if addr.is_some() { "session" } else { "all" };
-        if cleared > 0 || addr.is_none() {
-            tracing::info!(
-                target: "lab.chaos",
-                event = "lab_chaos_cleared",
-                scope,
-                addr_hash = addr_hash.as_deref(),
-                cleared,
-                "lab chaos cleared"
-            );
-        } else {
-            tracing::debug!(
-                target: "lab.chaos",
-                event = "lab_chaos_cleared",
-                scope,
-                addr_hash = addr_hash.as_deref(),
-                cleared,
-                "lab chaos cleared (nothing set)"
-            );
-        }
-        cleared
-    }
-
-    /// Clears every entry set for `entity_id`, wherever its session is now,
-    /// and returns how many it removed. The clear tool's per-entity form: an
-    /// entity that went back to character select has no session to resolve,
-    /// but its tag is still on the entry status lists.
-    pub fn clear_entity(&self, entity_id: u32) -> usize {
-        let cleared = {
-            let mut sessions = self.sessions();
-            let before = sessions.len();
-            sessions.retain(|_, chaos| chaos.entity_id != entity_id);
-            before - sessions.len()
-        };
-        // Like `clear`'s per-session form: INFO when something went, DEBUG
-        // otherwise.
-        if cleared > 0 {
-            tracing::info!(
-                target: "lab.chaos",
-                event = "lab_chaos_cleared",
-                scope = "entity",
-                cleared,
-                "lab chaos cleared for an entity"
-            );
-        } else {
-            tracing::debug!(
-                target: "lab.chaos",
-                event = "lab_chaos_cleared",
-                scope = "entity",
-                cleared,
-                "lab chaos cleared for an entity (nothing set)"
-            );
-        }
-        cleared
-    }
-
-    /// Removes the entry at `addr` when it was set for another entity than
-    /// `entity_id`, and says whether it did. A caller that knows which player
-    /// entity now owns `addr` uses it to drop chaos a previous owner left
-    /// behind (see the CH-04 worknote for CH-05 and CH-07).
-    pub fn clear_if_not(&self, addr: SocketAddr, entity_id: u32) -> bool {
-        let removed = {
-            let mut sessions = self.sessions();
-            let stale = sessions
-                .get(&addr)
-                .is_some_and(|chaos| chaos.entity_id != entity_id);
-            if stale {
-                sessions.remove(&addr);
-            }
-            stale
-        };
-        if removed {
-            tracing::info!(
-                target: "lab.chaos",
-                event = "lab_chaos_cleared",
-                scope = "stale_entity",
-                addr_hash = %self.addr_hash(addr),
-                cleared = 1,
-                "lab chaos cleared: set for another entity on this address"
-            );
-        }
-        removed
     }
 
     /// Expired entries are removed here and read as None.
@@ -404,6 +310,11 @@ impl LabChaos {
         }
     }
 
+    /// A new [`SessionChaos::generation`], for a set or a promotion.
+    fn next_generation(&self) -> u64 {
+        self.generations.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
     fn addr_hash(&self, addr: SocketAddr) -> String {
         format!("{:016x}", self.addr_hasher.hash_one(addr))
     }
@@ -459,8 +370,8 @@ fn is_expired(chaos: &SessionChaos, now: Instant) -> bool {
 }
 
 #[cfg(feature = "lab-chaos")]
-fn profile_label(chaos: &SessionChaos) -> &'static str {
-    match (chaos.net.is_some(), chaos.flush.is_some()) {
+fn profile_label(net: Option<&NetChaos>, flush: Option<&FlushChaos>) -> &'static str {
+    match (net.is_some(), flush.is_some()) {
         (true, true) => "net+flush",
         (true, false) => "net",
         (false, true) => "flush",
@@ -471,12 +382,12 @@ fn profile_label(chaos: &SessionChaos) -> &'static str {
 /// The seed that replays this chaos: the net seed, else the flush seed, else
 /// 0 for the flush modes that are not random (delay, pack, a fixed shift).
 #[cfg(feature = "lab-chaos")]
-fn chaos_seed(chaos: &SessionChaos) -> u64 {
-    if let Some(net) = &chaos.net {
+fn chaos_seed(net: Option<&NetChaos>, flush: Option<&FlushChaos>) -> u64 {
+    if let Some(net) = net {
         return net.seed;
     }
-    match chaos.flush {
-        Some(FlushChaos::Reorder { seed } | FlushChaos::ShiftSweep { seed }) => seed,
+    match flush {
+        Some(FlushChaos::Reorder { seed } | FlushChaos::ShiftSweep { seed }) => *seed,
         _ => 0,
     }
 }
@@ -505,3 +416,7 @@ pub fn current() -> Option<&'static LabChaos> {
 
 #[cfg(all(test, feature = "lab-chaos"))]
 mod tests;
+#[cfg(all(test, feature = "lab-chaos"))]
+mod tests_armed;
+#[cfg(all(test, feature = "lab-chaos"))]
+mod tests_promotion;

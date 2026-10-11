@@ -13,6 +13,7 @@
 
 pub mod cpu;
 pub mod levels;
+pub mod run;
 
 use std::collections::BTreeMap;
 use std::fmt;

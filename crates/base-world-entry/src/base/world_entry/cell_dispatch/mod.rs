@@ -78,7 +78,7 @@ pub(crate) use deferred_flush::{flush_deferred_aoi, flush_deferred_self_methods}
 #[cfg(all(test, feature = "lab-chaos"))]
 pub(crate) use flush_chaos::lend_registry;
 #[cfg(feature = "lab-chaos")]
-pub(crate) use flush_chaos::{flush_delay, log_flush_delayed};
+pub(crate) use flush_chaos::{flush_delay, log_flush_delayed, promote_armed, rearm_promotion};
 
 #[cfg(test)]
 mod tests;

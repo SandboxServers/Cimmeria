@@ -237,3 +237,17 @@ pub fn load(path: &Path) -> Result<GoldenFile, String>;                         
 
 The tools `lab_golden_diff` and `lab golden` / `lab uat -DiffGolden` (and
 their `-Json` shapes in GD-07 to GD-09) are the same API for scripts.
+
+Coordinator note, lab-chaos CH-09 (2026-10-11):
+
+- `lab uat -Json` has a second comparison key, `chaos_divergence`, with the
+  `golden` shape (`{match, diverged, errors?, first? | error?}`, lines
+  grouped and cut to 120 characters as `golden`'s are). It is present only
+  for runs that ran under `-Chaos` (the runner's header on the run), and
+  whenever one of them was compared, so a clean chaos batch reads
+  `{match: n, diverged: 0}`. Those runs never appear under `golden`. The
+  chaos header is the top-level `chaos` key, never part of a line.
+- Exit codes: a chaos-only divergence exits 0. A diff that could not be
+  made (`errors`) still exits 5, as under `-DiffGolden`.
+- `lab_golden_record` answers `cannot_record` ("chaos runs never become
+  golden") for any run whose `run.json` carries a non-null `chaos`.

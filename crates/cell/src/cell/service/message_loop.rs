@@ -270,6 +270,10 @@ pub(super) async fn run_cell_loop(
                     // Lab dummies (AB-L2, D-AU6) whose 10 minutes are up.
                     // Returns at once when none is standing.
                     crate::cell::console::abilities::lab_dummy_tick(tx, &mut space_mgr).await;
+                    // `.spawnrandom` batches (CH-13) whose copies did not
+                    // all answer in time report what they have. Returns at
+                    // once when none is open.
+                    crate::cell::console::spawn_batch::spawn_batch_tick(tx, &mut space_mgr).await;
                     // Training dummies (D-DA7) get no AI turn and so no
                     // leash: one whose fight went quiet lets its attackers
                     // out of combat here.

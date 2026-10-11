@@ -6,6 +6,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -25,6 +26,8 @@ pub(super) struct FakeServer {
     /// While this is false `server_sessions` lists nobody: the character
     /// is not in the world yet (see `in_world_when`).
     in_world: Option<Arc<AtomicBool>>,
+    /// Tools whose reply takes this long (see `slow`).
+    delays: HashMap<String, Duration>,
 }
 
 impl FakeServer {
@@ -36,7 +39,14 @@ impl FakeServer {
             stop_failures: Mutex::new(0),
             canned: Mutex::new(HashMap::new()),
             in_world: None,
+            delays: HashMap::new(),
         }
+    }
+
+    /// `tool` answers only after `delay` (a call a takeover can cut off).
+    pub(super) fn slow(mut self, tool: &str, delay: Duration) -> Self {
+        self.delays.insert(tool.to_string(), delay);
+        self
     }
 
     /// List the sessions only once `flag` is set (a test's client sets it
@@ -75,9 +85,17 @@ impl ServerInvoker for FakeServer {
             .lock()
             .unwrap()
             .push((name.to_string(), args.clone()));
-        if let Some(reply) = next_canned(&self.canned, name) {
-            let out = canned_outcome(reply);
-            return Box::pin(async move { out });
+        let delay = self.delays.get(name).copied();
+        let reply = |out: ToolOutcome| -> BoxedOutcome<'a> {
+            Box::pin(async move {
+                if let Some(d) = delay {
+                    tokio::time::sleep(d).await;
+                }
+                out
+            })
+        };
+        if let Some(canned) = next_canned(&self.canned, name) {
+            return reply(canned_outcome(canned));
         }
         let ok = |json: Value| ToolOutcome {
             ok: true,
@@ -128,10 +146,14 @@ impl ServerInvoker for FakeServer {
                           "spawn_id": 412, "template_id": 15 },
                     ]
                 })),
+                // lab-chaos (CH-05's replies; `chaos_tests` scripts refusals).
+                "server_chaos_set" => ok(json!({ "set": true, "expires_in_s": args["ttl_s"] })),
+                "server_chaos_clear" => ok(json!({ "cleared": 1 })),
+                "server_chaos_status" => ok(json!({ "sessions": [] })),
                 _ => ToolOutcome::err(format!("unknown tool {name}")),
             }
         };
-        Box::pin(async move { out })
+        reply(out)
     }
 }
 

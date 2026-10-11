@@ -86,6 +86,8 @@ the report so a run can be replayed exactly.
 | D-CH6 | PROPOSED (coordinator; `aoi-witness-broadcast` confirms the filler) | **`flush` modes:** `delay` (hold the flush `delay_ms` longer); `reorder` (seeded shuffle of the introductions inside each phase); `pack` (force the pre-mitigation single-packet phase-1 bundle of up to 24 records, F7); `shift` (prepend one filler message of a seeded length, F6). With the gate off, the flush is byte-identical to today. | `pack` and `shift` make #1341 deterministic; `delay` and `reorder` test the client's tolerance without a known bug. |
 | D-CH7 | PROPOSED (coordinator) | **Reporting against the golden.** A chaos run compares to the lab-golden fingerprint with lab-golden's variance model and prints the first divergence in one line, prefixed by the chaos header (`chaos=flush:pack seed=7`). A chaos run never records or re-blesses a golden. Chaos-only failures are labelled `chaos_divergence`, not row failures, in `-Json`. | Keeps the output budget (F11) and keeps goldens clean. |
 | D-CH8 | PROPOSED (coordinator) | **Levels live in one committed file,** `crates/lab/src/chaos/levels.toml` (embedded with `include_str!`), each level citing the `docs/client/limits/` row it came from. CH-10 updates the numbers; the names stay. | One source for the CLI, the runner and the docs. |
+| D-CH9 | **DECIDED**, owner, 2026-10-11 | **Burst cleanup: change the GM console.** `.spawnrandom` replies only after the spawned ids are known and lists them; `.despawn` takes an optional entity id. Chosen over a lab-only despawn tool and over dropping burst. Supersedes D-CH5's "no new server code". | CH-08 found `.spawnrandom` never reports ids and `.despawn` acts only on the selected target, so the runner could not despawn exactly what it spawned without moving the player's target. |
+| D-CH10 | **DECIDED**, owner, 2026-10-11 | **Arming chaos for the next login: by account.** `server_chaos_set` also takes an `account` in place of an entity id: one-shot chaos held for that account's next world entry, then attached to the new session and tagged with its new player entity (same TTL cap, same three gates). Chosen over arming at character select and over relogging under chaos. Extends D-CH3's scope. | Chaos could only be aimed at an in-world entity, after that login's flush, so `flush` chaos never reached the first-login flush that #1341's acceptance (CH-11) needs. |
 
 ## Packets
 
@@ -98,10 +100,13 @@ the report so a run can be replayed exactly.
 | CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder (finished by rust-gameserver-dev) | S | 3 | CH-04 | Integrated (feature branch) |
 | CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | Integrated (feature branch) |
 | CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | Integrated (feature branch) |
-| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | Ready |
-| CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
+| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | Integrated (burst deferred to CH-13) |
+| CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | Integrated |
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
+| CH-13 | GM console: `.spawnrandom` reports spawned ids, `.despawn <id>` (D-CH9) | rust-gameserver-dev, `server-authority-enforcer` review | M | 4 | D-CH9 | Integrated |
+| CH-14 | Server: arm chaos by account for the next world entry (D-CH10) | rust-gameserver-dev, `network-security-auth` and `server-authority-enforcer` review | M | 4 | D-CH10 | Integrated |
+| CH-15 | Runner arms chaos by account before login rows (D-CH10) | rust-gameserver-dev | S | 5 | CH-08, CH-14 | Ready |
 | CH-12 | Close-out | documentation-writer | S | 7 | all | BlockedDependency |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.
@@ -214,3 +219,42 @@ the code is then the reference, not the spec.
       timer is pending (the stale-token guard in `cinematic_aoi_hold`).
     - `client_ready/mod.rs` is over the 700-line cap: 736 lines before
       CH-07, 738 after. A split is owed outside this campaign.
+- **CH-08 (2026-10-11).** Runner wiring for `cpu`, `net` and `flush`.
+  `burst` is refused until CH-13 (D-CH9).
+  - **Owner decision:** a clear that fails twice stops the run. The later
+    rows are BLOCKED because chaos may still be live.
+  - **Login rows:** rows that start `client_stopped` or `char_select` are
+    BLOCKED under net and flush until CH-15 (arming by account, D-CH10).
+    An `any` row is checked at run time.
+  - **Plan time:** the plan refuses every server knob bound, and probes
+    `server_chaos_status`, so a build without lab-chaos fails the plan.
+  - **Cancel safety:** the set is cancel-safe. The guard is armed before the
+    call.
+  - **CPU and leases:** `cpu` with `-Leases` over 1 is refused.
+  - **Incident:** a revert proof's child `uat.ps1` reached the live lab daemon
+    and started two first-session runs. Both were stopped. CLI tests now stub
+    every daemon call.
+- **Coordinator note, CH-09 (2026-10-11).** lab-golden's stable `-Json` API
+  gains `chaos_divergence` (the `golden` shape, only under `-Chaos`, a
+  chaos-only divergence exits 0), and `lab_golden_record` refuses a chaos run
+  with `cannot_record`; recorded in the
+  [lab-golden contract](../lab-golden/contract.md#stable-api-for-lab-chaos-and-lab-record).
+- **CH-14 (2026-10-11).** Chaos can be armed by account for that
+  account's next world entry (D-CH10): `server_chaos_set {account, ...}`.
+  The arm is attached in `playCharacter` before RESET_ENTITIES, so it
+  reaches the first-login flush.
+  - **Attach checks:** the arm attaches only while the session still owns
+    the address (an owner token under the `connected` lock). The take and
+    the insert are one step under one lock order.
+  - **Failure after attaching:** the arm goes back to the account, unless
+    the lab cleared chaos since, a newer arm exists, or the arm has expired.
+  - **Adjacent fix, every build:** a `playCharacter` whose session was
+    replaced or went away mid-entry no longer writes the old player's state
+    into the new session or registers its reliable send there. It also
+    removes the entity it created (cell `DestroyEntity`, which persists
+    nothing).
+  - **Scope:** an armed net profile does not shape authentication,
+    character select or `playCharacter`. Arming reaches offline accounts up
+    to the TTL, and only deployment keeps it off real players.
+  - **Owed by CH-15:** grade a chaos login only after a `lab.chaos` flush
+    row for that entity.

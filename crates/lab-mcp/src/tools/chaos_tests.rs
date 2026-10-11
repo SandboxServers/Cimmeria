@@ -72,7 +72,8 @@ mod with_feature {
     /// A flush pack request: no seed, because pack reads none.
     fn pack_args(entity_id: u32) -> SetArgs {
         SetArgs {
-            entity_id,
+            entity_id: Some(entity_id),
+            account: None,
             net: None,
             flush: Some(FlushArgs {
                 mode: "pack".to_string(),
@@ -92,11 +93,21 @@ mod with_feature {
         args: SetArgs,
         roster: &[OnlinePlayer],
     ) -> Result<Value, String> {
-        set_on(registry, args, || {
-            let r = roster.to_vec();
-            async move { r }
-        })
+        set_on(
+            registry,
+            args,
+            || {
+                let r = roster.to_vec();
+                async move { r }
+            },
+            no_accounts,
+        )
         .await
+    }
+
+    /// An account resolver that knows no account.
+    async fn no_accounts(_name: String) -> Result<Option<u32>, String> {
+        Ok(None)
     }
 
     fn reply(result: CallToolResult) -> Value {
@@ -167,7 +178,7 @@ mod with_feature {
         );
         assert_eq!(
             status_on(&registry, Instant::now()),
-            json!({ "sessions": [] })
+            json!({ "sessions": [], "armed": [] })
         );
         assert_eq!(
             set_fixed(&registry, set(60), &roster).await,
@@ -206,7 +217,7 @@ mod with_feature {
         );
         assert_eq!(
             status_on(&registry, Instant::now()),
-            json!({ "sessions": [] })
+            json!({ "sessions": [], "armed": [] })
         );
     }
 
@@ -219,7 +230,7 @@ mod with_feature {
         );
         assert_eq!(
             status_on(&registry, Instant::now()),
-            json!({ "sessions": [] })
+            json!({ "sessions": [], "armed": [] })
         );
     }
 
@@ -234,20 +245,25 @@ mod with_feature {
         ] {
             let registry = LabChaos::new();
             let reads = AtomicUsize::new(0);
-            let result = set_on(&registry, pack_args(100), || {
-                let r = if reads.fetch_add(1, Ordering::SeqCst) == 0 {
-                    vec![player(100, ADDR_A)]
-                } else {
-                    after.clone()
-                };
-                async move { r }
-            })
+            let result = set_on(
+                &registry,
+                pack_args(100),
+                || {
+                    let r = if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                        vec![player(100, ADDR_A)]
+                    } else {
+                        after.clone()
+                    };
+                    async move { r }
+                },
+                no_accounts,
+            )
             .await;
             assert_eq!(result, Err("no session for entity 100".to_string()));
             assert_eq!(reads.load(Ordering::SeqCst), 2, "the roster is read again");
             assert_eq!(
                 status_on(&registry, Instant::now()),
-                json!({ "sessions": [] }),
+                json!({ "sessions": [], "armed": [] }),
                 "no chaos is left on an address the entity lost"
             );
         }
@@ -290,7 +306,7 @@ mod with_feature {
         assert_eq!(clear_on(&registry, Some(100)), Ok(json!({ "cleared": 1 })));
         assert_eq!(
             status_on(&registry, Instant::now()),
-            json!({ "sessions": [] })
+            json!({ "sessions": [], "armed": [] })
         );
     }
 
@@ -306,7 +322,7 @@ mod with_feature {
         );
         assert_eq!(
             status_on(&registry, Instant::now()),
-            json!({ "sessions": [] })
+            json!({ "sessions": [], "armed": [] })
         );
 
         // Clear refuses 0 too, rather than reporting `cleared: 0`.

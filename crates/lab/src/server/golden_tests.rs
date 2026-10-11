@@ -329,6 +329,66 @@ fn record_refuses_runs_of_another_spec_version() {
     assert!(!lab.golden().exists());
 }
 
+/// lab-chaos D-CH7: five runs that agree and pass are still refused when one
+/// ran under chaos (CH-08 writes `chaos` into its `run.json`).
+#[test]
+fn record_refuses_a_chaos_run() {
+    let lab = Lab::new();
+    let runs = lab.five(|lab, k| {
+        (k == 4).then(|| {
+            lab.run("run4", RowResult::Pass, p1_tap(), fs_p3_tap(), |m| {
+                m["chaos"] = json!("chaos=flush:pack seed=7");
+            })
+        })
+    });
+    let reply = lab.record(runs, false);
+    assert_eq!(code(&reply), "cannot_record", "{reply}");
+    assert!(
+        error(&reply).contains("chaos runs never become golden (chaos=flush:pack seed=7)"),
+        "{reply}"
+    );
+    assert!(error(&reply).contains("run4"), "{reply}");
+    assert!(!lab.golden().exists());
+}
+
+/// The refusal does not depend on where the chaos run sits: the first run
+/// is checked before anything is fingerprinted.
+#[test]
+fn record_refuses_a_chaos_run_in_first_place() {
+    let lab = Lab::new();
+    let runs = lab.five(|lab, k| {
+        (k == 1).then(|| {
+            lab.run("run1", RowResult::Pass, p1_tap(), fs_p3_tap(), |m| {
+                m["chaos"] = json!("chaos=cpu:safe seed=12345678901234567890");
+            })
+        })
+    });
+    let reply = lab.record(runs, false);
+    assert_eq!(code(&reply), "cannot_record", "{reply}");
+    assert!(error(&reply).contains("run1"), "{reply}");
+    assert!(
+        error(&reply).contains("chaos runs never become golden"),
+        "{reply}"
+    );
+    assert!(!lab.golden().exists());
+}
+
+/// A non-chaos runner may write `"chaos": null`; that is not a chaos run.
+#[test]
+fn record_accepts_a_null_chaos_key() {
+    let lab = Lab::new();
+    let runs = lab.five(|lab, k| {
+        (k == 3).then(|| {
+            lab.run("run3", RowResult::Pass, p1_tap(), fs_p3_tap(), |m| {
+                m["chaos"] = Value::Null;
+            })
+        })
+    });
+    let reply = lab.record(runs, false);
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert!(lab.golden().exists());
+}
+
 /// GD-04's acceptance through the tool: one changed server answer is one
 /// line, and the whole reply stays short.
 #[test]

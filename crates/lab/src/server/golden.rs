@@ -105,8 +105,9 @@ fn agree_code(e: &AgreeError) -> &'static str {
 
 /// Fingerprint each run, check they are comparable and agree under the
 /// owner's five-run rule with every row PASS (README D-GD6 a), then write
-/// the golden. Taps are checked inside `agree` (D-GD8): a dropped,
-/// replaced, unstopped or unavailable tap is `cannot_record`.
+/// the golden. A chaos run is `cannot_record` before it is fingerprinted.
+/// Taps are checked inside `agree` (D-GD8): a dropped, replaced, unstopped
+/// or unavailable tap is `cannot_record`.
 pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
     let Some(dir) = resolve_specs_dir(args.specs_dir.as_deref()) else {
         return refuse(
@@ -124,8 +125,10 @@ pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
     let mut fps = Vec::with_capacity(args.run_dirs.len());
     let mut metas = Vec::with_capacity(args.run_dirs.len());
     for d in &args.run_dirs {
-        let fingerprinted = RunDir::open(std::path::Path::new(d))
-            .and_then(|run| fingerprint_run(&run, &loaded.spec, rows.as_deref()));
+        let fingerprinted = RunDir::open(std::path::Path::new(d)).and_then(|run| {
+            refuse_chaos(&run)?;
+            fingerprint_run(&run, &loaded.spec, rows.as_deref())
+        });
         match fingerprinted {
             Ok((fp, meta)) => {
                 fps.push(fp);
@@ -226,6 +229,20 @@ pub(crate) fn record(args: GoldenRecordArgs, now_utc: &str) -> Value {
     }
 }
 
+/// A chaos run never becomes a golden (lab-chaos D-CH7): the stress it ran
+/// under is not the behaviour a golden pins. The runner writes `chaos` into
+/// `run.json` only on a chaos run (CH-08), so any value there refuses it.
+fn refuse_chaos(run: &RunDir) -> Result<(), String> {
+    let manifest: Value = run.read_json(&run.run_json())?;
+    match manifest.get("chaos").filter(|c| !c.is_null()) {
+        None => Ok(()),
+        Some(c) => Err(format!(
+            "chaos runs never become golden ({})",
+            c.as_str().map_or_else(|| c.to_string(), str::to_string)
+        )),
+    }
+}
+
 /// A rebless must not reuse the old golden's evidence (the owner's rule is
 /// five fresh agreeing runs) and must not silently drop a row it held.
 fn check_rebless(old: &GoldenFile, metas: &[RunMeta], rows: &[String]) -> Result<(), String> {
@@ -308,7 +325,7 @@ fn compact(v: &Value) -> CallToolResult {
 #[tool_router(router = golden_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Record a section's golden fingerprint from at least five fresh fingerprint-mode run directories that all agree, every row PASS, on one spec, server build and SGW.exe, writing <specs_dir>/golden/<section>.json; it reads bundles only and never drives the client. Reply {ok, path, rows, events, bytes, runs} or {ok: false, code: exists | disagree | not_passing | cannot_record, error}."
+        description = "Record a section's golden fingerprint from at least five fresh fingerprint-mode run directories (never chaos runs) that all agree, every row PASS, on one spec, server build and SGW.exe, writing <specs_dir>/golden/<section>.json; it reads bundles only and never drives the client. Reply {ok, path, rows, events, bytes, runs} or {ok: false, code: exists | disagree | not_passing | cannot_record, error}."
     )]
     async fn lab_golden_record(
         &self,

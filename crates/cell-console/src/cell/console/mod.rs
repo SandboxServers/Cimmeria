@@ -133,10 +133,13 @@ pub(crate) use gm::feedback::send_gm_feedback;
 // `registry` / `dispatch` / `parse` stays an internal refactor with no
 // public-surface change.
 pub use dispatch::handle_console_command;
+// `.spawnrandom`'s batches (CH-13), advanced by the cell's spawn-reply
+// handlers, its 1 Hz tick and the lab console tee in `cimmeria-cell`.
 pub(crate) use dispatch::refuse_non_gm_command;
 pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
 pub(crate) use player_commands::handle_player_command;
 pub(crate) use registry::{Spec, COMMANDS};
+pub use spawn::batch as spawn_batch;
 
 // `exec` is only driven directly by the dispatch-coverage test and by the
 // NPC movement tick's `.speed` tests in `cimmeria-cell`; gating the

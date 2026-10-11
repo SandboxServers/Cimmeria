@@ -2,8 +2,11 @@
 //! review). The registry is a fault injector, so who can reach it is part of
 //! its gate: only the server's startup installs it, and only the lab chaos
 //! module, session teardown, the lab-mcp chaos tools (CH-05), the net shim
-//! (CH-06) and the flush modes (CH-07) read it. Wiring it into admin-api, the
-//! console or anything else must be a reviewed change to this allowlist.
+//! (CH-06) and the flush modes (CH-07) read it. World entry writes to it too,
+//! through `flush_chaos::promote_armed` and `rearm_promotion` (CH-14), which
+//! sit in the flush modes' file and so add no caller here. Wiring it into
+//! admin-api, the console or anything else must be a reviewed change to this
+//! allowlist.
 //!
 //! A text scan of every `.rs` file under `crates/`, comments included. The
 //! needles are built with `concat!` so this file does not match itself.

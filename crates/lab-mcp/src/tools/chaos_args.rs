@@ -22,11 +22,23 @@ use cimmeria_services::base::lab_chaos::NetChaos;
 /// a CH-01 header is a few dozen characters.
 pub(super) const LABEL_MAX: usize = 120;
 
+/// The longest `account` a set or clear takes: `account.account_name` is
+/// `character varying(32)` (`db/sgw/Accounts/Tables/account.sql`), so a
+/// longer name matches no account and is refused before the lookup.
+pub(super) const ACCOUNT_NAME_MAX: usize = 32;
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SetArgs {
-    /// The player entity whose session gets the chaos.
-    pub(super) entity_id: u32,
+    /// The player entity whose session gets the chaos. Give `entity_id` or
+    /// `account`, not both.
+    #[serde(default)]
+    pub(super) entity_id: Option<u32>,
+    /// An account name, spelled as at login: arm the chaos for that
+    /// account's next world entry instead (one-shot), so it reaches that
+    /// login's first flush. Give `entity_id` or `account`, not both.
+    #[serde(default)]
+    pub(super) account: Option<String>,
     /// The net profile's knobs. Give `net`, `flush` or both.
     #[serde(default)]
     pub(super) net: Option<NetArgs>,
@@ -74,10 +86,10 @@ pub(super) struct FlushArgs {
     /// For `delay` only: the hold in ms (at most 60000).
     #[serde(default)]
     pub(super) delay_ms: Option<u32>,
-    /// For `pack` only: the records in the single bundle (1 to 255).
+    /// For `pack` only: the records in the single bundle (1 to 34).
     #[serde(default)]
     pub(super) records: Option<u16>,
-    /// For `shift` only: the filler's length in bytes (0 or 2 to 36), or
+    /// For `shift` only: the filler's length in bytes (0 or 2 to 38), or
     /// `"sweep"`.
     #[serde(default)]
     pub(super) shift: Option<ShiftArg>,
@@ -94,10 +106,14 @@ pub(super) enum ShiftArg {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ClearArgs {
-    /// Clear only the chaos set for this player entity. Omit to clear every
-    /// session.
+    /// Clear only the chaos set for this player entity. Omit both fields to
+    /// clear every session and every arm.
     #[serde(default)]
     pub(super) entity_id: Option<u32>,
+    /// Clear only the chaos armed for this account's next world entry (an
+    /// account name, as at login). Not with `entity_id`.
+    #[serde(default)]
+    pub(super) account: Option<String>,
 }
 
 /// Raw JSON whose schema is `T`'s: rmcp deserializes any call into it, and
@@ -151,9 +167,9 @@ pub(super) fn parse<T: DeserializeOwned>(raw: Value) -> Result<T, String> {
     })
 }
 
-/// The arguments as the audit row records them. A `label` that set would
-/// refuse (too long, or with a control character) is replaced by its length,
-/// so the raw text never reaches the log.
+/// The arguments as the audit row records them. A `label` or an `account`
+/// the tool would refuse (too long, or with a control character) is
+/// replaced by its length, so the raw text never reaches the log.
 pub(super) fn audit_args(raw: &Value) -> Value {
     let mut audit = raw.clone();
     if let Some(Value::String(label)) = audit.get("label") {
@@ -162,7 +178,63 @@ pub(super) fn audit_args(raw: &Value) -> Value {
             audit["label"] = Value::String(format!("<label: {n} chars, refused>"));
         }
     }
+    if let Some(Value::String(account)) = audit.get("account") {
+        if !account.is_empty() && check_account(account).is_err() {
+            let n = account.chars().count();
+            audit["account"] = Value::String(format!("<account: {n} chars, refused>"));
+        }
+    }
     audit
+}
+
+/// Whom a set or a clear names: a player entity in the world, or an account
+/// whose next world entry takes the chaos (D-CH10).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Target {
+    Entity(u32),
+    Account(String),
+}
+
+/// A set names exactly one of `entity_id` and `account`.
+pub(super) fn set_target(args: &SetArgs) -> Result<Target, String> {
+    match target(args.entity_id, args.account.as_deref())? {
+        Some(target) => Ok(target),
+        None => Err(knob_refusal("set needs entity_id or account")),
+    }
+}
+
+/// A clear names at most one of `entity_id` and `account`; `None` clears
+/// everything.
+pub(super) fn clear_target(args: &ClearArgs) -> Result<Option<Target>, String> {
+    target(args.entity_id, args.account.as_deref())
+}
+
+fn target(entity_id: Option<u32>, account: Option<&str>) -> Result<Option<Target>, String> {
+    match (entity_id, account) {
+        (Some(_), Some(_)) => Err(knob_refusal("give entity_id or account, not both")),
+        (Some(id), None) => Ok(Some(Target::Entity(id))),
+        (None, Some("")) => Err(knob_refusal("account is empty")),
+        (None, Some(name)) => {
+            check_account(name)?;
+            Ok(Some(Target::Account(name.to_string())))
+        }
+        (None, None) => Ok(None),
+    }
+}
+
+/// An account name no account can have is refused before the lookup: over
+/// the column's [`ACCOUNT_NAME_MAX`] characters, or with a control
+/// character. The refusal does not echo the name.
+fn check_account(name: &str) -> Result<(), String> {
+    if name.chars().count() > ACCOUNT_NAME_MAX {
+        return Err(knob_refusal(format!(
+            "account is over {ACCOUNT_NAME_MAX} characters"
+        )));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(knob_refusal("account has a control character"));
+    }
+    Ok(())
 }
 
 /// A label is logged as text on the set WARN: short, one line, printable.
