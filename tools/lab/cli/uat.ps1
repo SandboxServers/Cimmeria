@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Json].
+    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Heal] [-Json].
 
 .DESCRIPTION
     Calls lab_uat_run on the shared lab daemon. -Leases lanes run at once, one
@@ -43,6 +43,17 @@
     do not change. Without a golden, or with one that cannot be read, it
     stops before anything is driven (exit 2).
 
+    -Heal (needs -Leases 1) recalibrates the poses failed rows missed on:
+    after the batch, for each distinct (row, pose) whose row summary carries
+    a heal hint (a hover, on-screen or camera miss on a pose), it calls
+    lab_uat_calibrate for that pose on the batch's instance (up to its
+    15-minute budget each), saves a proposed diff as heal-<row>-<pose>.diff
+    in the batch folder and prints it. The summary (batch.json, summary.md,
+    -Json) then lists heal: [{row, pose, diff}]. It never writes the spec
+    file and never commits: review the diff, then git apply it (or run
+    lab calibrate <section> <row> -Pose <pose> -Apply). Ctrl+C during the
+    batch skips the heal.
+
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
     5 every run passed but -DiffGolden did not match on one (a divergence, or
@@ -57,6 +68,7 @@
     lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
     lab uat first-session -Leases 3 -RunsPerLease 10 -Json
+    lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
 #>
 [CmdletBinding()]
 param(
@@ -74,6 +86,7 @@ param(
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
     [switch]$DiffGolden,
+    [switch]$Heal,
     # Used by lab golden: runs capture what a golden fingerprint needs.
     [switch]$Fingerprint,
     # Used by lab golden: progress lines go to stderr, even under -Json.
@@ -88,6 +101,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
 . (Join-Path $PSScriptRoot 'golden-lib.ps1')
+. (Join-Path $PSScriptRoot 'calibrate-lib.ps1')
 
 # A usage or pre-flight failure: plain text on stderr, or under -Json one
 # object on stdout. Returns the exit code.
@@ -100,12 +114,24 @@ function Stop-Uat([int]$Code, [string]$Message) {
     return $Code
 }
 
+# Writes the batch's summary.md and batch.json; returns the Markdown.
+function Write-UatBatchSummary($Summary, [string]$Title, [string]$BatchDir, [datetime]$Started, [string[]]$RowIds, [int]$LaneCount) {
+    $md = Format-UatSummary $Summary $Title $BatchDir
+    Set-Content -LiteralPath (Join-Path $BatchDir 'summary.md') -Value $md -Encoding utf8
+    [ordered]@{
+        section = $Section; rows = $RowIds; leases = $LaneCount; runs_per_lease = $RunsPerLease
+        started = $Started.ToString('o'); minutes = [math]::Round(((Get-Date) - $Started).TotalMinutes, 1)
+        summary = $Summary
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $BatchDir 'batch.json') -Encoding utf8
+    return $md
+}
+
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
-    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
+    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
     if ($shape) { return Stop-Uat 2 $shape }
     $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     # A diff needs a golden: without one, stop before anything is driven.
@@ -266,13 +292,34 @@ function Invoke-LabUat {
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
         $title = "lab uat $Section"
-        $md = Format-UatSummary $summary $title $batchDir
-        Set-Content -LiteralPath (Join-Path $batchDir 'summary.md') -Value $md -Encoding utf8
-        [ordered]@{
-            section = $Section; rows = $rowIds; leases = $plan.Lanes.Count; runs_per_lease = $RunsPerLease
-            started = $started.ToString('o'); minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)
-            summary = $summary
-        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $batchDir 'batch.json') -Encoding utf8
+        $md = Write-UatBatchSummary $summary $title $batchDir $started $rowIds $plan.Lanes.Count
+    }
+
+    # -Heal runs after the finally, not in it: a finally cannot be stopped,
+    # and a heal is up to 15 minutes of lab time per pose, so Ctrl+C during
+    # the batch skips it. The summary is already on disk; it is rewritten
+    # with heal only when a proposal was written.
+    if ($Heal) {
+        $hints = @(Get-UatHealHints $allRuns)
+        if ($hints.Count) {
+            $healInstance = $plan.Lanes[0].Instance
+            & $say "heal: recalibrating $($hints.Count) pose(s) on ${healInstance}: $(($hints | ForEach-Object { "$($_.row) $($_.pose)" }) -join ', ')"
+            $healed = @(Invoke-UatHeal $hints $batchDir $Section $specs $healInstance {
+                param($ca)
+                Invoke-LabCalibrate $url $token $ca (Get-CalibrateTimeoutSec $null)
+            })
+            foreach ($h in $healed) {
+                & $say $h.Line
+                if ($h.Text -and $progress -eq 'host') { Write-Host $h.Text }
+            }
+            $proposed = @($healed | Where-Object { $_.Diff } | ForEach-Object { [ordered]@{ row = $_.Row; pose = $_.Pose; diff = $_.Diff } })
+            if ($proposed.Count) {
+                $summary.heal = $proposed
+                $md = Write-UatBatchSummary $summary $title $batchDir $started $rowIds $plan.Lanes.Count
+            }
+        } else {
+            & $say 'heal: no failed row carries a heal hint; nothing to recalibrate'
+        }
     }
 
     # Straight to stdout: a bare expression here would join the function's

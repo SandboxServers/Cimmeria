@@ -67,7 +67,7 @@ function Get-UatField($Object, [string]$Name) {
 # The argument checks that need no daemon: an error message, or $null.
 function Test-UatArguments([int]$Leases, [int]$RunsPerLease, [string]$Instance,
                            [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3,
-                           [string]$Fixtures = '') {
+                           [string]$Fixtures = '', [bool]$Heal = $false) {
     if ($Leases -lt 1 -or $Leases -gt $script:UatMaxLeases) { return "-Leases must be 1 to $script:UatMaxLeases" }
     if ($RunsPerLease -lt 1 -or $RunsPerLease -gt $script:UatMaxRunsPerLease) { return "-RunsPerLease must be 1 to $script:UatMaxRunsPerLease" }
     if ($Instance -and $Leases -ne 1) { return '-Instance runs one lane; drop -Leases or -Instance' }
@@ -76,7 +76,30 @@ function Test-UatArguments([int]$Leases, [int]$RunsPerLease, [string]$Instance,
     if ($MaxConsecutiveFailures -lt 0 -or $MaxConsecutiveFailures -gt 20) { return '-MaxConsecutiveFailures must be 0 to 20' }
     # lab-fixtures D-FX10: when a row's fixture is applied (lab_uat_run `fixtures`).
     if ($Fixtures -and @('auto', 'always', 'never') -cnotcontains $Fixtures) { return '-Fixtures must be auto, always or never' }
+    # D-SV8: a heal recalibrates on the batch's one instance, where the row failed.
+    if ($Heal -and $Leases -ne 1) { return '-Heal needs -Leases 1 (it recalibrates on the instance the batch ran on)' }
     return $null
+}
+
+# lab uat -Heal's work list: the distinct (row, pose) pairs of the runs'
+# row summaries that carry a heal hint (SV-11's `heal: {pose, step}`, set
+# only on a failed row whose first failed step missed on a pose), in the
+# order first seen. Rows without one are ignored.
+function Get-UatHealHints($Runs) {
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $out = @()
+    foreach ($run in @(@($Runs) | Where-Object { $null -ne $_ })) {
+        foreach ($r in @(Get-UatField $run 'Rows')) {
+            if ($null -eq $r -or [string](Get-UatField $r 'result') -eq 'PASS') { continue }
+            $pose = [string](Get-UatField (Get-UatField $r 'heal') 'pose')
+            $row = [string](Get-UatField $r 'row')
+            if (-not $pose -or -not $row) { continue }
+            $key = "$row`n$pose"
+            if (-not $seen.Add($key)) { continue }
+            $out += [ordered]@{ row = $row; pose = $pose }
+        }
+    }
+    return $out
 }
 
 # -Rows as clean ids: split on commas, trimmed, blanks and repeats dropped.
@@ -449,6 +472,11 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
         elseif ($err) { $go.error = Limit-UatText $err 120 }
         $out.golden = $go
     }
+    # D-SV12: only when -Heal proposed something; {row, pose, diff} as GD-09 reads it.
+    $heal = @(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ })
+    if ($heal.Count) {
+        $out.heal = @($heal | ForEach-Object { [ordered]@{ row = $_.row; pose = $_.pose; diff = $_.diff } })
+    }
     $out.batch = $BatchDir
     return $out | ConvertTo-Json -Depth 6 -Compress
 }
@@ -487,6 +515,12 @@ function Format-UatSummary($Summary, [string]$Title, [string]$BatchDir) {
         foreach ($l in @($g.groups)) {
             [void]$sb.AppendLine("- $($l.count)x $($l.line); runs: $(@($l.runs) -join ', ')")
         }
+    }
+    $heal = @(Get-UatField $Summary 'heal' | Where-Object { $null -ne $_ })
+    if ($heal.Count) {
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine('Heal proposals (spec diffs to review; nothing was applied):')
+        foreach ($h in $heal) { [void]$sb.AppendLine("- $($h.row) $($h.pose): $($h.diff)") }
     }
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("Batch: $BatchDir")
