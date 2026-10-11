@@ -1,0 +1,15 @@
+---
+name: reference-windows-runners-node3
+description: 2026-10-11 Windows runner pool on node3 (cimmeria-windows): sccache fails closed on dead Redis, per-runner cache keys, WSL bash, runner ACL traps, host VHD ACLs
+metadata:
+  type: reference
+---
+
+- Three runners `node3-win-1..3`, label `cimmeria-windows`, set up by `tools/ci-runners/windows/deploy.ps1` (README "Windows pool"). They take the Windows jobs of `launcher-desktop.yml`, `launcher-build.yml` and `launcher-runtime-probe.yml`; repo variable `CI_WINDOWS_RUNNER=hosted` sends them back to `windows-latest`. node3 is a Hyper-V host for other people's VMs: never touch Hyper-V, VMs or network settings there. Related: [[reference-self-hosted-runners]].
+- **sccache 0.18 fails closed on an unreachable Redis.** With `SCCACHE_REDIS_ENDPOINT` pointing at a host that drops packets, the server's startup storage check takes ~10 s, the client's 10 s wait expires first, and `cargo build` exits 101 ("Timed out waiting for server startup"). Measured on node3. So the Windows pool writes `SCCACHE_CONF` per job (job-started.ps1) only after a 2 s TCP probe succeeds.
+- **`SCCACHE_BASEDIRS` gives no cross-directory hits for Rust in 0.18.** Tested on node3 with forward-slash, backslash, trailing-separator and unset forms: a crate built under a second root always missed; a rebuild under the same root hit. Keys carry absolute paths (work tree, `CARGO_MANIFEST_DIR`, `target` dependency paths), so the three Windows runners only hit their own entries. The build lane's own `SCCACHE_BASEDIRS` setup may be equally inert for Rust; unverified.
+- **`C:\Windows\System32\bash.exe` (WSL) exists on node3.** A `shell: bash` step takes the first `bash` on PATH, so each runner's `.env` puts `C:\Program Files\Git\bin` first.
+- **actions/runner traps on Windows:** the listener's `ValidateExecutePermission` must be able to list every parent of its directory (an admin-only `F:\gha` made all three services die at start with "Access to the path 'F:\gha' is denied"); `config.cmd --runasservice` creates a local group `GITHUB_ActionsRunner_*` (the service account its only member) with FullControl on the runner and work directories.
+- **Host ACLs:** `BUILTIN\Users` has read and create rights on `F:\VHDs` and `F:\VMs` on node3, so any local non-admin account, the runner account included, can read a VM disk no running VM holds open. Left unchanged; the host's owner decides.
+- Below-normal priority comes from Image File Execution Options `PerfOptions\CpuPriorityClass=5` on the three runner executables; a child of a below-normal process starts below-normal (listeners verified BelowNormal).
+- **git fetch over HTTP/1.1 stalls on node3** (2026-10-11): after the upload-pack POST's `200 OK` headers no pack bytes arrive, direct or through any CONNECT proxy, with schannel or OpenSSL; git over HTTP/2 (direct) fetches in seconds, curl over HTTP/1.1 downloads fine, and the same git 2.52 over HTTP/1.1 works from the operator workstation. Root cause unknown. A CONNECT proxy forces git to HTTP/1.1, so `actions/checkout` hung through the egress proxy; the runners' step `NO_PROXY` includes `github.com`.

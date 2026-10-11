@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import ipaddress
 import logging
+import logging.handlers
 import socket
 
 log = logging.getLogger("egress-proxy")
@@ -136,10 +137,16 @@ async def main():
     ap.add_argument("--allow-dst", nargs="*", help="destination networks allowed (default: any)")
     ap.add_argument("--via", help="upstream proxy host:port for --via-dst destinations")
     ap.add_argument("--via-dst", nargs="*", default=[], help="destination networks sent --via")
-    ap.add_argument("--log-file", help="log here instead of stderr (needed under pythonw)")
+    ap.add_argument("--log-file", help="log here instead of stderr (needed under pythonw); "
+                    "rotated at 10 MB, three old files kept")
     args = ap.parse_args()
+    # Every CONNECT is a line, so a long-running file log must rotate.
+    handlers = None
+    if args.log_file:
+        handlers = [logging.handlers.RotatingFileHandler(
+            args.log_file, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8")]
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                        filename=args.log_file)
+                        handlers=handlers)
 
     host, _, port = args.listen.rpartition(":")
     proxy = Proxy(args)
