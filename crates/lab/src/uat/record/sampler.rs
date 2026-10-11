@@ -36,7 +36,7 @@ mod relog;
 #[path = "sampler_server.rs"]
 mod server;
 
-use reads::{camera_sample, find_session, named_target, ui_sample};
+use reads::{camera_sample, click_sample, find_session, named_target, ui_sample};
 pub use reads::{check_character, recording_id, snapshot_sql};
 pub use relog::TapStopGuard;
 use relog::{start_tap, TAP_REPLACED};
@@ -57,6 +57,11 @@ pub trait ClientProbe: Send + Sync {
     /// installed, and its ring read, only inside this pump, so the sampler
     /// calls it once at begin and on every tick (LR-10 review outcome).
     fn pump(&self) -> BoxedJson<'_>;
+    /// LR-11: the `ui.click` events the event store took in since the last
+    /// call, as `{ clicks: [{window, button, mouse}], gap }`, each once
+    /// (the store's named cursor `record`). No client call: the pump before
+    /// it moved them into the store.
+    fn clicks(&self) -> BoxedJson<'_>;
 }
 
 /// key, tracing target, `event` field, log message substring (lab-spec-vocab F8).
@@ -211,12 +216,19 @@ impl<'a> Sampler<'a> {
         for i in 0..KNOWN_SERVER_EVENTS.len() {
             s.mark_log(i, &mut t).await;
         }
+        // Clicks already in the store came before this recording (the
+        // `record` cursor outlives a recording, and the first one on an
+        // instance starts at the store's oldest event): skip them. The pump
+        // first, so the ones still in the Lua ring are skipped too. A failure
+        // here shows again in tick 0's own pump and read.
+        let _ = s.client.pump().await;
+        let _ = s.client.clicks().await;
         s.sample(&mut t, true).await;
         s.account(&t);
         Ok((s, start, t))
     }
 
-    /// One tick, in this order: drain the tap; camera; the player's
+    /// One tick, in this order: the pump and the click read; drain the tap; camera; the player's
     /// `server_entity_get`; the UI; `server_entity_get` for ids an inbound
     /// call names that are not yet seen (at most 8 a tick); the
     /// known-server-event probe; a snapshot when this or the previous tick
@@ -295,6 +307,19 @@ impl<'a> Sampler<'a> {
                 }
             }
             Err(e) => self.client_err(t, "pump", format!("pump: {e}")),
+        }
+        // Read even after a failed pump: another reader's pump may have
+        // stored clicks since the last tick.
+        match self.client.clicks().await {
+            Ok(v) => {
+                let (clicks, gap) = click_sample(&v);
+                t.clicks = clicks;
+                if gap {
+                    let e = "clicks: some were evicted from the event store unread";
+                    self.client_err(t, "clicks", e.to_string());
+                }
+            }
+            Err(e) => self.client_err(t, "clicks", format!("clicks: {e}")),
         }
 
         let mut relog_checked = false;

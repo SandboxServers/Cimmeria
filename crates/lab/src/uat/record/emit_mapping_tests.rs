@@ -212,10 +212,11 @@ fn a_use_ability_on_another_entity_targets_its_tag_or_writes_a_todo() {
     assert_eq!(parsed(&draft).rows.len(), 2);
 }
 
-/// A window that opens with no call is a TODO, unless a click on it was
-/// recorded in the tick before.
+/// A window that opens with no call is a TODO, even with a click in it in
+/// the tick before or after: a click inside a window cannot have opened it
+/// (LR-11). The click is still its own step.
 #[test]
-fn a_window_opened_with_no_call_is_a_todo_unless_clicked() {
+fn a_window_opened_with_no_call_is_a_todo_even_when_clicked() {
     let mut log = fs_p3();
     for seq in 34..=41 {
         let windows = tick_mut(&mut log, seq).windows.as_mut().unwrap();
@@ -225,17 +226,18 @@ fn a_window_opened_with_no_call_is_a_todo_unless_clicked() {
     let draft = transform(&log, &opts()).unwrap();
     assert!(draft.text.contains(todo), "{}", draft.text);
 
-    tick_mut(&mut log, 33).clicks.push(UiClick {
-        window: "InventoryWin".into(),
-        button: "Bag1".into(),
-    });
-    let draft = transform(&log, &opts()).unwrap();
-    assert!(
-        !draft.text.contains("window InventoryWin"),
-        "{}",
-        draft.text
-    );
-    assert!(draft.text.contains("# TODO ui click InventoryWin/Bag1\n"));
+    for seq in [33, 35] {
+        let mut log = log.clone();
+        tick_mut(&mut log, seq).clicks.push(UiClick {
+            window: "InventoryWin".into(),
+            button: "Bag1".into(),
+            mouse: Some("left".into()),
+        });
+        let draft = transform(&log, &opts()).unwrap();
+        assert!(draft.text.contains(todo), "tick {seq}: {}", draft.text);
+        let want = "{ tool = \"@window_click\", args = { target = \"Bag1\" }, label = \"click\" }";
+        assert!(draft.text.contains(want), "{}", draft.text);
+    }
 }
 
 #[test]

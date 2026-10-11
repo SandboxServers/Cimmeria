@@ -152,6 +152,9 @@ struct FakeClient {
     ui_fails: AtomicBool,
     pump_fails: AtomicBool,
     pump_lua_error: AtomicBool,
+    /// Pumped since the last `clicks()`, and its replies in order: one is
+    /// given only after a pump, else `{"clicks": []}`.
+    clicks: Mutex<(bool, VecDeque<Value>)>,
 }
 
 impl ClientProbe for FakeClient {
@@ -193,6 +196,7 @@ impl ClientProbe for FakeClient {
 
     fn pump(&self) -> BoxedJson<'_> {
         self.pump.fetch_add(1, Ordering::SeqCst);
+        self.clicks.lock().unwrap().0 = true;
         let out = if self.pump_fails.load(Ordering::SeqCst) {
             Err("bridge: dispatch timeout".to_string())
         } else if self.pump_lua_error.load(Ordering::SeqCst) {
@@ -201,6 +205,12 @@ impl ClientProbe for FakeClient {
             Ok(json!({ "lua_error": null }))
         };
         Box::pin(async move { out })
+    }
+
+    fn clicks(&self) -> BoxedJson<'_> {
+        let mut c = self.clicks.lock().unwrap();
+        let next = std::mem::take(&mut c.0).then(|| c.1.pop_front()).flatten();
+        Box::pin(async move { Ok(next.unwrap_or_else(|| json!({ "clicks": [] }))) })
     }
 }
 
@@ -279,14 +289,14 @@ async fn begin_resolves_the_player_and_starts_a_10000_tap() {
     );
     assert_eq!(calls[2].1, json!({ "entity_id": 7, "capacity": 10000 }));
 
-    // Tick 0 is a full sample with the first snapshot, pumped once.
+    // Tick 0 is a full sample with the first snapshot; begin pumps too.
     assert_eq!(t0.seq, 0);
     let snap = t0.snapshot.expect("tick 0 snapshots");
     assert_eq!(snap.missions[0].step, Some(2113));
     assert_eq!(snap.player.unwrap().world_location, "Castle_CellBlock");
     // The row with a null type_id is skipped, not a failed snapshot.
     assert_eq!(snap.items.len(), 1);
-    assert_eq!(client.pump.load(Ordering::SeqCst), 1);
+    assert_eq!(client.pump.load(Ordering::SeqCst), 2);
     // Every snapshot statement is keyed by the integer player_id.
     for (name, args) in &calls {
         if name == "server_db_query" && !args["sql"].as_str().unwrap().contains("player_name") {
@@ -360,13 +370,13 @@ async fn the_sampler_never_calls_a_client_tool() {
         "only server_* tools: {names:?}"
     );
     // Every client read went through the probe: one of each per tick,
-    // including tick 0 and the final one.
-    for (what, n) in [
-        ("camera", &client.camera),
-        ("ui", &client.ui),
-        ("pump", &client.pump),
+    // including tick 0 and the final one, plus begin's draining pump.
+    for (what, n, want) in [
+        ("camera", &client.camera, 6),
+        ("ui", &client.ui, 6),
+        ("pump", &client.pump, 7),
     ] {
-        assert_eq!(n.load(Ordering::SeqCst), 6, "{what}");
+        assert_eq!(n.load(Ordering::SeqCst), want, "{what}");
     }
     assert_eq!(server.count("server_packet_tap_stop"), 1);
 }

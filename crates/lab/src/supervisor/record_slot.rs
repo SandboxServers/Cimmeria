@@ -10,9 +10,15 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use serde_json::{json, Value};
+
+use super::events::KIND_CLICK;
 use super::world::memory::PlayerCamera;
 use super::Supervisor;
 use crate::uat::record::sampler::{BoxedJson, ClientProbe};
+
+/// The event-store cursor the recorder reads `ui.click` through (LR-11).
+const RECORD_CURSOR: &str = "record";
 
 /// A running recording: where it writes, its counters, and how to stop it.
 #[derive(Debug)]
@@ -278,6 +284,22 @@ impl ClientProbe for Supervisor {
 
     fn pump(&self) -> BoxedJson<'_> {
         Box::pin(async move { self.pump_events(true).await.map(|r| r.to_json()) })
+    }
+
+    fn clicks(&self) -> BoxedJson<'_> {
+        Box::pin(async move {
+            // A store read makes no bridge call, so the permit is checked
+            // here, as `camera_read` does.
+            crate::lease::permit::ensure("record clicks")?;
+            let (events, gap) = self
+                .events
+                .inner
+                .lock()
+                .await
+                .take_kind(RECORD_CURSOR, KIND_CLICK);
+            let clicks: Vec<Value> = events.into_iter().map(|e| e.fields).collect();
+            Ok(json!({ "clicks": clicks, "gap": gap }))
+        })
     }
 }
 

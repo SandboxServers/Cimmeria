@@ -4,7 +4,7 @@
 use serde_json::Value;
 
 use super::super::decode::{decode_call, Call};
-use super::super::log::{CameraSample, DialogSample, EntitySample};
+use super::super::log::{CameraSample, DialogSample, EntitySample, UiClick};
 
 /// D-LR2: the character name is the one value spliced into SQL as text, so
 /// it must match `^[A-Za-z][A-Za-z ]{0,63}$` before any call is made.
@@ -194,4 +194,29 @@ pub(super) fn ui_sample(v: &Value) -> (Option<Vec<String>>, Option<DialogSample>
                 .collect(),
         });
     (windows, dialog, errors)
+}
+
+/// The probe's `{clicks, gap}` as `UiClick`s, in store order, and whether
+/// the store evicted clicks before this read. A field that is not a string
+/// (a raw mouse button number) keeps its JSON text; a missing one is empty
+/// (`mouse`: `None`). The ring writes `mouse = ""` for a button it cannot
+/// name, which is no mouse button either.
+pub(super) fn click_sample(v: &Value) -> (Vec<UiClick>, bool) {
+    let text = |c: &Value, k: &str| match c.get(k) {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(other) => Some(other.to_string()),
+    };
+    let clicks = v
+        .get("clicks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|c| UiClick {
+            window: text(c, "window").unwrap_or_default(),
+            button: text(c, "button").unwrap_or_default(),
+            mouse: text(c, "mouse").filter(|m| !m.is_empty()),
+        })
+        .collect();
+    (clicks, v.get("gap").and_then(Value::as_bool) == Some(true))
 }

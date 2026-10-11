@@ -6,7 +6,7 @@
 use serde_json::Value;
 
 use super::decode::{decode_call, Call};
-use super::log::{DbSnapshot, RecordLog};
+use super::log::{DbSnapshot, RecordLog, UiClick};
 
 /// What kind of call opened a row.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +54,9 @@ pub struct RecordedRow {
     pub setup_chat: Vec<String>,
     /// Outbound messages in the row: (tick, msg_name, decoded).
     pub server: Vec<(u32, String, Value)>,
+    /// Window clicks recorded in the row's `click_ticks` (LR-11), with
+    /// their tick. Like a call, a click before the first anchor's has no row.
+    pub clicks: Vec<(u32, UiClick)>,
 }
 
 /// One tap row, in log order.
@@ -122,6 +125,7 @@ pub fn segment(log: &RecordLog) -> Vec<RecordedRow> {
                         calls: Vec::new(),
                         setup_chat: std::mem::take(&mut chat),
                         server: Vec::new(),
+                        clicks: Vec::new(),
                     });
                 }
                 // A region that did not anchor is movement, never a TODO (D-LR4).
@@ -135,7 +139,36 @@ pub fn segment(log: &RecordLog) -> Vec<RecordedRow> {
             },
         }
     }
+    // A tick two anchors share belongs to the later row, as its calls do.
+    for t in &log.ticks {
+        let row = rows
+            .iter_mut()
+            .rev()
+            .find(|r| click_ticks(r).contains(&t.seq));
+        if let Some(row) = row {
+            row.clicks
+                .extend(t.clicks.iter().map(|c| (t.seq, c.clone())));
+        }
+    }
     rows
+}
+
+/// The ticks whose clicks belong to `row`: its own, and for an item or
+/// ability anchor the tick before too. A hotbar or bag click is in the store
+/// by a tick's pump, while the call it sent can reach the tap after that
+/// tick's drain, so the click can land a tick ahead of its anchor. It is
+/// that anchor's, so the emitter drops it as replayed by the call (LR-11).
+pub(super) fn click_ticks(row: &RecordedRow) -> std::ops::RangeInclusive<u32> {
+    let early = matches!(
+        row.anchor.kind,
+        AnchorKind::UseItem | AnchorKind::MoveItem | AnchorKind::UseAbility
+    );
+    let from = if early {
+        row.first_tick.saturating_sub(1)
+    } else {
+        row.first_tick
+    };
+    from..=row.last_tick
 }
 
 /// Every decodable tap row with its tick.

@@ -439,6 +439,8 @@ async fn real_client_reads_check_the_permit() {
             ("camera", probe.camera().await),
             ("ui", probe.ui().await),
             ("pump", probe.pump().await),
+            // LR-11: a store read, no bridge call, checked all the same.
+            ("clicks", probe.clicks().await),
         ] {
             let e = r.unwrap_err();
             assert!(e.starts_with("lease revoked"), "{what}: {e}");

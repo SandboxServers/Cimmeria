@@ -407,3 +407,7 @@ mod tests;
 #[cfg(test)]
 #[path = "emit_mapping_tests.rs"]
 mod mapping_tests;
+
+#[cfg(test)]
+#[path = "emit_click_tests.rs"]
+mod click_tests;
