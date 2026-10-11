@@ -3,7 +3,9 @@
 //! Inputs (in `<install_dir>/Binaries/`):
 //! - any file whose name starts with `sgwdebuglog` (BigWorld Mercury
 //!   unicode log; may have no extension or be `sgwdebuglog.txt`)
-//! - everything recursively under `sessions/`
+//! - every `*.log` file recursively under `sessions/` (key dumps such as
+//!   `*-keys.txt` and `current-session.json`, which carry secrets, are left
+//!   out)
 //!
 //! Output: a single zip uploaded via one PUT to the SAS URL, named
 //! `logs/<hostname>-<utc>-<digest-prefix>.zip`.
@@ -63,7 +65,13 @@ fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
         // success would actively mislead anyone triaging.
         for entry in WalkDir::new(&sessions) {
             let entry = entry?;
-            if entry.file_type().is_file() {
+            // Only `*.log` files: session folders also hold key dumps and
+            // `current-session.json`, which carry secrets.
+            let is_log = entry
+                .file_name()
+                .to_str()
+                .is_some_and(|n| n.to_ascii_lowercase().ends_with(".log"));
+            if entry.file_type().is_file() && is_log {
                 files.push(entry.path().to_path_buf());
             }
         }
@@ -277,6 +285,23 @@ mod tests {
         std::fs::write(bin.join("SGWDebugLog.log"), b"log").unwrap();
         let files = collect_log_inputs(dir.path()).unwrap();
         assert_eq!(files, vec![bin.join("SGWDebugLog.log")]);
+    }
+
+    /// A session folder's key dump and session JSON (which holds a token)
+    /// are not collected, so they are never zipped or uploaded.
+    #[test]
+    fn collect_leaves_out_key_dumps_and_session_json() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_logs(dir.path());
+        let sess = dir.path().join("Binaries").join("sessions");
+        std::fs::write(sess.join("2026-05").join("x-keys.txt"), b"SECRETLINE").unwrap();
+        std::fs::write(sess.join("current-session.json"), b"{}").unwrap();
+        let files = collect_log_inputs(dir.path()).unwrap();
+        assert_eq!(files.len(), 3, "{files:?}");
+        assert!(files.contains(&sess.join("2026-05").join("session.log")));
+        assert!(files
+            .iter()
+            .all(|f| !f.ends_with("x-keys.txt") && !f.ends_with("current-session.json")));
     }
 
     #[test]
