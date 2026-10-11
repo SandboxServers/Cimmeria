@@ -75,4 +75,7 @@ COPY --chown=runner:runner entrypoint.sh /home/runner/entrypoint.sh
 COPY --chown=runner:runner hooks/ /home/runner/hooks/
 RUN chmod 0755 /home/runner/entrypoint.sh /home/runner/hooks/*.sh
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/home/runner/entrypoint.sh"]
+# -g: deliver stop signals to the whole process group. Without it only run.sh (bash)
+# gets SIGTERM, the listener is killed without closing its GitHub session, and the
+# next container retries on "A session for this runner already exists" for minutes.
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/home/runner/entrypoint.sh"]
