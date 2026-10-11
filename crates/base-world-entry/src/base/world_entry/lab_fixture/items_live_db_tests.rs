@@ -21,19 +21,25 @@ const ALL_OR_NOTHING: i32 = 0x7046_0340;
 const FULL_BACKPACK: i32 = 0x7046_0350;
 const REFUSALS: i32 = 0x7046_0360;
 const BANDOLIER: i32 = 0x7046_0370;
+const BANDOLIER_KEPT: i32 = 0x7046_0380;
 
 const MAIN: i32 = 1;
 const MISSION_CONTAINER: i32 = 2;
 const BANDOLIER_CONTAINER: i32 = 3;
 const CHEST: i32 = 7;
+const BUYBACK: i32 = 16;
 const BANK: i32 = 17;
 /// `bag_max_slots(INV_MAIN)`.
 const MAIN_SLOTS: i32 = 40;
 
-/// Two unstackable designs (weapons, armour) from the seed, lowest ids first.
+/// Two unstackable designs (weapons, armour) the backpack allows, by the
+/// grant path's rule, from the seed, lowest ids first.
 async fn unstackable(pool: &PgPool) -> (i32, i32) {
     let ids: Vec<i32> = sqlx::query_scalar(
-        "SELECT item_id FROM resources.items WHERE max_stack_size = 1 ORDER BY item_id LIMIT 2",
+        "SELECT item_id FROM resources.items WHERE max_stack_size = 1 \
+         AND (container_sets IS NULL OR cardinality(container_sets) = 0 \
+              OR 1 = ANY(container_sets)) \
+         ORDER BY item_id LIMIT 2",
     )
     .fetch_all(pool)
     .await
@@ -46,16 +52,38 @@ async fn unstackable(pool: &PgPool) -> (i32, i32) {
     (ids[0], ids[1])
 }
 
-/// A design that stacks to 2..=4, so a count of 5 needs at least two rows.
+/// A mission-bag design that stacks to 2..=4, so a count of 5 needs at
+/// least two rows.
 async fn small_stack(pool: &PgPool) -> (i32, i32) {
     let row: Option<(i32, i32)> = sqlx::query_as(
         "SELECT item_id, max_stack_size FROM resources.items \
-         WHERE max_stack_size BETWEEN 2 AND 4 ORDER BY item_id LIMIT 1",
+         WHERE max_stack_size BETWEEN 2 AND 4 AND 2 = ANY(container_sets) \
+         ORDER BY item_id LIMIT 1",
     )
     .fetch_optional(pool)
     .await
     .expect("read stackable design");
-    row.expect("fixture sanity: the seed has a design stacking to 2..=4")
+    row.expect("fixture sanity: the seed has a mission design stacking to 2..=4")
+}
+
+/// A stackable design the backpack allows, distinct from [`unstackable`]'s.
+async fn backpack_stackable(pool: &PgPool) -> i32 {
+    first_design(
+        pool,
+        "SELECT item_id FROM resources.items \
+         WHERE max_stack_size > 1 AND 1 = ANY(container_sets) ORDER BY item_id LIMIT 1",
+        "a stackable backpack design",
+    )
+    .await
+}
+
+/// The first design a query names.
+async fn first_design(pool: &PgPool, sql: &'static str, what: &str) -> i32 {
+    let id: Option<i32> = sqlx::query_scalar(sql)
+        .fetch_optional(pool)
+        .await
+        .expect("read design");
+    id.unwrap_or_else(|| panic!("fixture sanity: the seed has {what}"))
 }
 
 /// One inventory row, the way any grant leaves it; returns its instance id.
@@ -96,10 +124,11 @@ fn item(type_id: i32, count: u32, container_id: i32) -> StagedItem {
 }
 
 /// **Guard: a count replaces every carried instance and nothing else.**
-/// Two in the backpack, one in the bandolier, one in the bank; `count = 1`
-/// leaves exactly one carried instance, in the backpack, and the bank row
-/// as it was. Delete only one row or widen the container range and an
-/// assertion fails.
+/// Two in the backpack, one in the bandolier, one in buyback (16, the first
+/// container past the carried range) and one in the bank; `count = 1`
+/// leaves exactly one carried instance, in the backpack, and the buyback
+/// and bank rows as they were. Delete only one row or widen the container
+/// range, even by one to 16, and an assertion fails.
 #[tokio::test]
 async fn live_db_fixture_item_count_replaces_every_carried_instance() {
     let pool = require_db_or_skip!();
@@ -108,6 +137,7 @@ async fn live_db_fixture_item_count_replaces_every_carried_instance() {
     put(&pool, player_id, design, MAIN, 0).await;
     put(&pool, player_id, design, MAIN, 1).await;
     put(&pool, player_id, design, BANDOLIER_CONTAINER, 0).await;
+    let bought_back = put(&pool, player_id, design, BUYBACK, 0).await;
     let banked = put(&pool, player_id, design, BANK, 0).await;
 
     let mut f = fixture(player_id, Vec::new());
@@ -118,9 +148,16 @@ async fn live_db_fixture_item_count_replaces_every_carried_instance() {
 
     let applied = applied.expect("applied");
     assert_eq!((applied.items_removed, applied.items_granted), (3, 1));
-    let carried: Vec<_> = rows.iter().filter(|r| r.0 != BANK).collect();
+    let carried: Vec<_> = rows
+        .iter()
+        .filter(|r| r.0 != BANK && r.0 != BUYBACK)
+        .collect();
     assert_eq!(carried.len(), 1, "one carried instance: {rows:?}");
     assert_eq!((carried[0].0, carried[0].2), (MAIN, 1));
+    assert!(
+        rows.contains(&(BUYBACK, 0, 1, bought_back)),
+        "the buyback instance is untouched: {rows:?}"
+    );
     assert!(
         rows.contains(&(BANK, 0, 1, banked)),
         "the bank instance is untouched: {rows:?}"
@@ -185,7 +222,7 @@ async fn live_db_fixture_items_are_all_or_nothing() {
     let pool = require_db_or_skip!();
     let player_id = seed_player(&pool, ALL_OR_NOTHING).await;
     let (old, filler) = unstackable(&pool).await;
-    let (granted, _) = small_stack(&pool).await;
+    let granted = backpack_stackable(&pool).await;
     // Outside the backpack, so deleting them frees no backpack slot.
     let old_rows = vec![
         put(&pool, player_id, old, BANDOLIER_CONTAINER, 1).await,
@@ -233,7 +270,7 @@ async fn live_db_fixture_full_backpack_writes_nothing() {
     let steps = steps_of(&pool, MISSION).await;
     let mission_before = mission_row(&pool, player_id, MISSION).await;
     let (filler, _) = unstackable(&pool).await;
-    let (granted, _) = small_stack(&pool).await;
+    let granted = backpack_stackable(&pool).await;
     for slot in 0..MAIN_SLOTS {
         put(&pool, player_id, filler, MAIN, slot).await;
     }
@@ -256,17 +293,38 @@ async fn live_db_fixture_full_backpack_writes_nothing() {
 
 /// **Guard: every item check runs in the precheck.** Each bad list (an
 /// unknown design, a count over 10, a container that is not main or
-/// mission, a design listed twice) refuses the fixture with the reason, and
-/// neither the fixture's mission nor the carried instance changes. Each
-/// case has its own character (accounts `REFUSALS + 2 * i`), and every
-/// failing case is reported, so one dropped check shows on its own.
+/// mission, a design listed twice, a container the design's
+/// `container_sets` excludes, a design with no `container_sets` asked into
+/// the mission bag) refuses the fixture with the reason, and neither the
+/// fixture's mission nor the carried instance changes. Each case has its
+/// own character (accounts `REFUSALS + 2 * i`), and every failing case is
+/// reported, so one dropped check shows on its own.
 #[tokio::test]
 async fn live_db_fixture_item_refusals_write_nothing() {
     let pool = require_db_or_skip!();
     let steps = steps_of(&pool, MISSION).await;
     let (design, _) = unstackable(&pool).await;
+    // The grant path's container rule (`item_allows_container`): a listed
+    // set must name the container, and an empty one allows only the
+    // backpack.
+    let not_in_backpack = first_design(
+        &pool,
+        "SELECT item_id FROM resources.items \
+         WHERE cardinality(container_sets) > 0 AND NOT 1 = ANY(container_sets) \
+         ORDER BY item_id LIMIT 1",
+        "a design whose container_sets exclude the backpack",
+    )
+    .await;
+    let no_sets = first_design(
+        &pool,
+        "SELECT item_id FROM resources.items \
+         WHERE container_sets IS NULL OR cardinality(container_sets) = 0 \
+         ORDER BY item_id LIMIT 1",
+        "a design with no container_sets",
+    )
+    .await;
 
-    let cases: [(&str, Vec<StagedItem>, &str); 4] = [
+    let cases: [(&str, Vec<StagedItem>, &str); 6] = [
         (
             "unknown design",
             vec![item(design, 0, MAIN), item(i32::MAX, 1, MAIN)],
@@ -286,6 +344,16 @@ async fn live_db_fixture_item_refusals_write_nothing() {
             "duplicate",
             vec![item(design, 0, MAIN), item(design, 1, MAIN)],
             "listed twice",
+        ),
+        (
+            "container_sets exclude the container",
+            vec![item(design, 0, MAIN), item(not_in_backpack, 1, MAIN)],
+            "does not allow container 1",
+        ),
+        (
+            "no container_sets, mission bag",
+            vec![item(design, 0, MAIN), item(no_sets, 1, MISSION_CONTAINER)],
+            "does not allow container 2",
         ),
     ];
     let mut failures = Vec::new();
@@ -351,4 +419,39 @@ async fn live_db_fixture_removing_the_active_weapon_moves_the_bandolier_slot() {
 
     assert_eq!(applied.expect("applied").items_removed, 1);
     assert_eq!(slot, 2, "the active slot moves to the remaining weapon");
+}
+
+/// **Guard: a fixture that removes nothing from the bandolier leaves
+/// `bandolier_slot` alone.** The active slot is 0 and empty; the only
+/// weapon sits in bandolier slot 1, and the fixture lists an unrelated
+/// backpack design. Nothing left the bandolier, so the slot stays 0 and
+/// the weapon stays put. Reconcile unconditionally and the slot moves to 1.
+#[tokio::test]
+async fn live_db_fixture_items_leave_the_bandolier_slot_when_the_bandolier_is_untouched() {
+    let pool = require_db_or_skip!();
+    let player_id = seed_player(&pool, BANDOLIER_KEPT).await;
+    let (weapon, unrelated) = unstackable(&pool).await;
+    let readied = put(&pool, player_id, weapon, BANDOLIER_CONTAINER, 1).await;
+    sqlx::query("UPDATE sgw_player SET bandolier_slot = 0 WHERE player_id = $1")
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .expect("set the active slot");
+
+    let mut f = fixture(player_id, Vec::new());
+    f.items = vec![item(unrelated, 1, MAIN)];
+    let applied = apply(&pool, BANDOLIER_KEPT, &f).await;
+    let slot: i32 =
+        sqlx::query_scalar("SELECT bandolier_slot FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(&pool)
+            .await
+            .expect("read the active slot");
+    let weapon_rows = rows_of(&pool, player_id, weapon).await;
+    cleanup(&pool, BANDOLIER_KEPT).await;
+
+    let applied = applied.expect("applied");
+    assert_eq!((applied.items_removed, applied.items_granted), (0, 1));
+    assert_eq!(slot, 0, "the active slot is not the fixture's to move");
+    assert_eq!(weapon_rows, vec![(BANDOLIER_CONTAINER, 1, 1, readied)]);
 }

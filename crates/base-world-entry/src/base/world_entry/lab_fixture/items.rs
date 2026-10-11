@@ -18,10 +18,12 @@
 //! `sgw_player.bandolier_slot` (a slot of container 3, read at
 //! `onClientReady` next to the bandolier rows). Removing the active weapon
 //! would leave it on an empty slot while other weapons remain, a state no
-//! other removal path leaves, so the write reconciles it the way
-//! `sync_bandolier_after_inventory_change` does.
+//! other removal path leaves, so a write that removed a bandolier row
+//! reconciles it the way `sync_bandolier_after_inventory_change` does (and
+//! a write that did not leaves it alone).
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use cimmeria_entity::inventory::{INV_BANDOLIER, INV_MAIN, INV_MISSION};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -31,6 +33,7 @@ use cimmeria_base_session::base::world_entry::lab_fixture::{
     StagedItem, FIXTURE_CARRIED_CONTAINERS, FIXTURE_MAX_ITEM_COUNT,
 };
 
+use super::super::methods::inventory::grant::item_allows_container;
 use super::super::methods::vendor::serializers::reserve_free_inventory_slots;
 
 /// `resources.items.flags` bit for bind-on-acquire
@@ -62,6 +65,12 @@ impl ItemPlan {
 /// Check every fixture item and dry-run the write, writing nothing: the
 /// apply's precheck, so a bad item anywhere in the fixture writes nothing
 /// at all.
+///
+/// A fixture never equips: every listed design is re-granted into main or
+/// mission, so listing an equipped weapon unequips it (the carried-total
+/// verify still counts it). The requested container must be one the design
+/// allows, by the grant path's rule (`item_allows_container`), and bound
+/// designs stack as the grant path stacks them.
 pub(crate) async fn plan_items(
     pool: &PgPool,
     player_id: i32,
@@ -88,6 +97,9 @@ pub(crate) async fn plan_items(
             ));
         }
     }
+    // `item_allows_container` takes the handlers' shared pool; a `PgPool`
+    // clone is a handle to the same pool.
+    let shared_pool = Arc::new(pool.clone());
     let mut plans = Vec::with_capacity(items.len());
     for item in items {
         let design: Option<(String, i32)> =
@@ -99,6 +111,16 @@ pub(crate) async fn plan_items(
         let Some((name, max_stack)) = design else {
             return Err(format!("item {} is not in resources.items", item.type_id));
         };
+        // The grant path's placement rule, so a fixture cannot land a design
+        // where no grant could (a mission item in the backpack, say): empty
+        // `container_sets` allows only the backpack. The function answers
+        // false on a query error too, which refuses the fixture either way.
+        if !item_allows_container(&shared_pool, item.type_id, item.container_id).await {
+            return Err(format!(
+                "item {name} ({}) does not allow container {} (its container_sets)",
+                item.type_id, item.container_id
+            ));
+        }
         plans.push(ItemPlan {
             type_id: item.type_id,
             name,
@@ -115,7 +137,14 @@ pub(crate) async fn plan_items(
         .begin()
         .await
         .map_err(|e| format!("items dry run: begin failed: {e}"))?;
-    set_counts(&mut tx, player_id, &plans).await?;
+    if let Err(e) = set_counts(&mut tx, player_id, &plans).await {
+        // Roll back here rather than in the drop, which only queues the
+        // ROLLBACK for the connection's next use: the inventory locks are
+        // released before the refusal is reported. The refusal is the
+        // error worth returning, so a failed rollback is ignored.
+        tx.rollback().await.ok();
+        return Err(e);
+    }
     tx.rollback()
         .await
         .map_err(|e| format!("items dry run: rollback failed: {e}"))?;
@@ -174,19 +203,23 @@ async fn set_counts(
         .map_err(|e| format!("items: inventory locks failed: {e}"))?;
 
     let mut removed = 0;
+    let mut bandolier_touched = false;
     for plan in plans {
-        let done = sqlx::query(
+        // RETURNING the containers: only a removal from the bandolier can
+        // leave `bandolier_slot` dangling.
+        let containers: Vec<i32> = sqlx::query_scalar(
             "DELETE FROM sgw_inventory WHERE character_id = $1 AND type_id = $2 \
-             AND container_id BETWEEN $3 AND $4",
+             AND container_id BETWEEN $3 AND $4 RETURNING container_id",
         )
         .bind(player_id)
         .bind(plan.type_id)
         .bind(*FIXTURE_CARRIED_CONTAINERS.start())
         .bind(*FIXTURE_CARRIED_CONTAINERS.end())
-        .execute(&mut **tx)
+        .fetch_all(&mut **tx)
         .await
         .map_err(|e| format!("{}: delete failed: {e}", plan.label()))?;
-        removed += done.rows_affected();
+        removed += containers.len() as u64;
+        bandolier_touched |= containers.contains(&INV_BANDOLIER);
     }
 
     let mut granted = 0;
@@ -209,7 +242,12 @@ async fn set_counts(
         }
     }
 
-    reconcile_bandolier_slot(tx, player_id).await?;
+    // Only after a bandolier removal: a slot already pointing at an empty
+    // bandolier slot (a character who never readied the weapon in slot 1,
+    // say) is the player's state, not the fixture's to move.
+    if bandolier_touched {
+        reconcile_bandolier_slot(tx, player_id).await?;
+    }
     Ok((removed, granted))
 }
 
