@@ -39,7 +39,9 @@ impl DiscordSender for HttpDiscordSender {
             .json(body)
             .send()
             .await
-            .map_err(|e| SendError::Network(e.to_string()))?;
+            // `without_url`: the webhook URL carries its token, and this
+            // error text is logged (it reached SigNoz on 2026-10-04).
+            .map_err(|e| SendError::Network(e.without_url().to_string()))?;
         let status = resp.status();
         if status.is_success() {
             return Ok(());
@@ -253,5 +255,23 @@ mod tests {
             matches!(err, SendError::Network(_)),
             "expected Network variant, got {err:?}"
         );
+    }
+
+    /// **Regression guard (2026-10-04).** A network error's text must not
+    /// carry the webhook URL: its path is the webhook token, and the error
+    /// is logged at WARN, which reaches SigNoz.
+    #[tokio::test]
+    async fn http_sender_network_error_omits_the_webhook_url() {
+        let sender = HttpDiscordSender::default();
+        let body = serde_json::json!({});
+        let err = sender
+            .send("http://192.0.2.1:1/api/webhooks/123/SECRET-TOKEN", &body)
+            .await
+            .expect_err("unreachable host → Err");
+        let SendError::Network(text) = err else {
+            panic!("expected Network variant, got {err:?}");
+        };
+        assert!(!text.contains("SECRET-TOKEN"), "token leaked: {text}");
+        assert!(!text.contains("/api/webhooks"), "url leaked: {text}");
     }
 }
