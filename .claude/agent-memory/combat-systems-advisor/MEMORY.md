@@ -19,4 +19,5 @@
 - [per-effect-nvp-resolution.md](per-effect-nvp-resolution.md) — AB-03 per-effect NVP damage: area-collapse rule, full-def callers (ground/splash) vs scoped cone fan-out, one SRC_MORTAL per hit
 - [timed-effect-ledger.md](timed-effect-ledger.md) — AB-04 ledger: PerSource vs stim stacking, baseline bounds, one icon per effect, clears, API gaps for AB-08/09/10
 - [npc-vs-npc-zone-review.md](npc-vs-npc-zone-review.md) — reviewing seeded NPC-vs-NPC zones: what #1009 code guarantees vs placement traps (DA-04 #1224)
+- [combat-telemetry-footprint.md](combat-telemetry-footprint.md) — 2026-10-10 telemetry review: player.respawn DEBUG unexported, scan-guard blind spot, ability 710 inert, CH Float64 trap
 - [weapon-moniker-requirement.md](weapon-moniker-requirement.md) — CS-07 weapon-moniker gate: python TargetTarget-only divergence, 592 redirect gone, grants on every weapon change, right-click with no RANGED binding
