@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
+use crate::mercury::read_wstring;
 
 use super::super::character::{handle_delete_character, handle_request_character_visuals};
 use super::super::character_create::handle_create_character;
@@ -196,7 +197,20 @@ pub(super) async fn dispatch_base_method(
                 .await?;
         }
         0xC7 => {
-            tracing::debug!(%addr, "Client sent onClientVersion -- acknowledged");
+            // Payload: [VersionSeed: i32][ClientVersion: wstring][LanguageId: i32].
+            // A malformed string leaves the field off the line.
+            let who = session_identity::identity_for_addr(connected, addr);
+            let client_version = read_wstring(payload, 4).ok().map(|(s, _)| s);
+            tracing::info!(
+                %addr,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                event = "client_version",
+                client_version = client_version.as_deref(),
+                "Client sent onClientVersion"
+            );
         }
         _ => {
             bundle_drop::log_drop(

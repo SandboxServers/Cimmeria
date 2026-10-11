@@ -47,8 +47,18 @@ pub async fn handle_version_info_request(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     resource_cache: &Option<Arc<ResourceCache>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let who = super::session_identity::identity_for_addr(connected, addr);
     if payload.len() < 8 {
-        tracing::warn!(%addr, "versionInfoRequest: payload too short");
+        tracing::warn!(
+            %addr,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            payload_len = payload.len(),
+            reason = "malformed_args",
+            "versionInfoRequest: payload too short"
+        );
         return Ok(());
     }
 
@@ -56,7 +66,6 @@ pub async fn handle_version_info_request(
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
     let reply = VersionReply::decide(resource_cache.as_deref(), category_id, client_version);
-    let who = super::session_identity::identity_for_addr(connected, addr);
 
     tracing::info!(
         %addr,
@@ -68,7 +77,7 @@ pub async fn handle_version_info_request(
         category_id,
         category_name = category_name(category_id),
         client_version,
-        server_version = ?reply.server_version(),
+        server_version = reply.server_version(),
         invalidate_all = matches!(reply, VersionReply::FullResync { .. }),
         "Responding to versionInfoRequest"
     );
