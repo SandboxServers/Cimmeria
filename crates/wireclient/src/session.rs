@@ -306,7 +306,7 @@ fn local_bind_addr(base_addr: SocketAddr) -> SocketAddr {
 /// Build `[msg_id][u16 LE payload.len()][payload]` -- the WORD_LENGTH
 /// framing every account/cell/entity-method client message beyond the
 /// CONSTANT_LENGTH system range uses.
-fn word_len_msg(msg_id: u8, payload: &[u8]) -> Vec<u8> {
+pub(crate) fn word_len_msg(msg_id: u8, payload: &[u8]) -> Vec<u8> {
     let len = u16::try_from(payload.len()).expect("payload overflows the u16 word length");
     let mut v = Vec::with_capacity(3 + payload.len());
     v.push(msg_id);

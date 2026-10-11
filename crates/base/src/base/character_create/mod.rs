@@ -31,7 +31,7 @@ use starter_kit::{
     record_profile_grants, start_kit, StarterItem,
 };
 
-/// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
+/// Handle `createCharacter` (0xC3) -- parse args and INSERT into sgw_player.
 #[tracing::instrument(
     name = "character.create",
     level = "info",

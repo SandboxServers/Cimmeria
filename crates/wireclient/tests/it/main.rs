@@ -13,6 +13,7 @@
 //! still need `-- --test-threads=1` under `cargo test`; see `support`.
 
 mod auth_smoke;
+mod client_calls;
 mod duel_two_duelists_and_a_spectator;
 mod login_probe;
 mod sparbot_duel;

@@ -56,6 +56,10 @@
 //! - [`login_probe`] — the container smoke tests' login checks (wrong
 //!   password rejected, SOAP Phase 1 + 2, advertised BaseApp endpoint,
 //!   Mercury handshake). The `login-probe` binary runs it (issue #1291).
+//! - [`calls`] — client-call builders (cell and base methods) pinned to the
+//!   lab packet tap, so a call's bytes match what the real client sent.
+//! - [`tap_fixture`] — the Praxis start packet-tap capture the builders are
+//!   tested against.
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
@@ -66,12 +70,14 @@
 
 pub mod auth;
 pub mod bundle;
+pub mod calls;
 pub mod error;
 pub mod handshake;
 pub mod login_probe;
 pub mod session;
 pub mod session_trace;
 pub mod sparbot;
+pub mod tap_fixture;
 
 mod world_entry;
 
