@@ -97,6 +97,16 @@ pub(super) fn tree(dir: &Path) -> BTreeMap<String, Vec<u8>> {
 fn names(dir: &Path) -> Vec<String> {
     tree(dir).into_keys().collect()
 }
+/// The `.update-*` stage folders directly under `dir`, sorted.
+pub(super) fn stages(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(".update-"))
+        .collect();
+    names.sort();
+    names
+}
 fn apply(
     state: &mut DesktopState,
     f: &Fixture,
@@ -150,7 +160,11 @@ fn full_swap_installs_new_files_relaunches_once_and_next_start_cleans_up() {
     // Until the new launcher acknowledges, the originals wait as `.old`.
     assert_eq!(installed[&format!("{EXE}.old")], b"old exe");
     assert_eq!(installed["graphics/logo.png.old"], b"old logo");
-    assert!(f.install.join(".update-1.1.0").is_dir());
+    assert_eq!(
+        stages(&f.install).len(),
+        1,
+        "the stage waits for the next start"
+    );
     drop(state);
 
     // An old launcher reopening cannot acknowledge and must not clean up.
@@ -172,7 +186,7 @@ fn full_swap_installs_new_files_relaunches_once_and_next_start_cleans_up() {
     assert!(state.ensure_updater_idle().is_ok());
     let expected: Vec<String> = expected_new.iter().map(|(n, _)| n.to_string()).collect();
     assert_eq!(names(&f.install), expected, "only the new files remain");
-    assert!(!f.install.join(".update-1.1.0").exists());
+    assert!(stages(&f.install).is_empty());
 }
 
 #[test]
@@ -196,7 +210,7 @@ fn failure_on_the_third_rename_restores_every_original_byte_for_byte() {
         "installed files restored byte for byte"
     );
     assert!(!f.install.join("graphics/new-art").exists());
-    assert!(!f.install.join(".update-1.1.0").exists());
+    assert!(stages(&f.install).is_empty());
     let snapshot = state.launcher_update_snapshot(Some(&f.config)).unwrap();
     assert_eq!(snapshot.phase, Phase::Failed);
     assert_eq!(snapshot.failure, Some(Error::Replace));
@@ -227,13 +241,14 @@ fn a_start_with_leftover_old_files_cleans_only_the_planned_ones() {
     let mut state = DesktopState::open(&root.join("state")).unwrap();
     let ready = ready(&mut state, &f.config, f.offer.clone(), &f.bytes);
     apply(&mut state, &f, &ready, |_, _| Ok(())).unwrap();
-    let plan = state.update_record().unwrap().apply.unwrap().swap.unwrap();
+    let attempt = state.update_record().unwrap().apply.unwrap();
+    let plan = attempt.swap.unwrap();
     drop(state);
     let mut state = DesktopState::open(&root.join("state")).unwrap();
     state.reconcile_launcher_update(&f.target, "1.1.0").unwrap();
     drop(state);
     // The acknowledging start could not delete them (an antivirus scan, say).
-    let stage = f.install.join(".update-1.1.0");
+    let stage = f.install.join(attempt.staged_bundle.unwrap());
     fs::create_dir(&stage).unwrap();
     fs::write(
         stage.join(".cimmeria-owner"),
@@ -282,6 +297,13 @@ fn unsafe_zip_entries_are_refused_before_any_write() {
         "graphics/trailing.png.",
         ".update-1.1.0/evil.txt",
         "windows/worker.exe.old",
+        // 8.3 short names alias a long name already on disk.
+        "graphics/LOGO~1.PNG",
+        "WINDOW~2/worker.exe",
+        "windows/CONIN$",
+        "graphics/conout$.txt",
+        "windows/COM\u{b9}.dll",
+        "graphics/lpt\u{b3}.png",
     ]
     .into_iter()
     .map(|name| {
@@ -320,12 +342,31 @@ fn unsafe_zip_entries_are_refused_before_any_write() {
             "{name}"
         );
         assert_eq!(tree(&f.install), before, "{name}: install untouched");
-        assert!(
-            !f.install.join(".update-1.1.0").exists(),
-            "{name}: no stage"
-        );
+        assert!(stages(&f.install).is_empty(), "{name}: no stage");
         assert!(!root.join("evil.txt").exists() && !root.join("outside").exists());
         assert!(state.ensure_updater_idle().is_ok(), "{name}");
+    }
+}
+
+#[test]
+fn names_that_only_resemble_reserved_ones_are_installed() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let f = windows_fixture(&root);
+    let near = [
+        "graphics/COM10.png",
+        "graphics/a~b1.png",
+        "graphics/console.png",
+    ];
+    let mut entries: Vec<(&str, &[u8])> = vec![(EXE, b"new exe")];
+    entries.extend(near.iter().map(|name| (*name, &b"art"[..])));
+    let f = with_zip(&root, f.install, zip_swap::zip_fixture(&entries));
+    let mut state = DesktopState::open(&root.join("state")).unwrap();
+    let ready = ready(&mut state, &f.config, f.offer.clone(), &f.bytes);
+    apply(&mut state, &f, &ready, |_, _| Ok(())).unwrap();
+    let installed = tree(&f.install);
+    for name in near {
+        assert_eq!(installed[name], b"art", "{name}");
     }
 }
 
@@ -343,7 +384,7 @@ fn a_directory_where_a_file_goes_is_refused_with_nothing_moved() {
         Error::Target
     );
     assert_eq!(tree(&f.install), before);
-    assert!(!f.install.join(".update-1.1.0").exists());
+    assert!(stages(&f.install).is_empty());
     assert!(state.ensure_updater_idle().is_ok());
 }
 

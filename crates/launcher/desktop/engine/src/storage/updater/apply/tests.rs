@@ -341,6 +341,7 @@ fn unrecognized_backup_is_preserved_and_keeps_reconciliation_owner() {
 #[cfg(any(target_os = "macos", windows))]
 mod native_uat;
 mod windows_zip;
+mod windows_zip_recovery;
 
 #[test]
 fn final_rename_failure_restores_original_bundle_before_releasing_ownership() {
@@ -403,7 +404,9 @@ fn process_probe_sees_this_process_and_not_an_exited_child() {
         .unwrap();
     let pid = child.id();
     child.wait().unwrap();
-    // The handle `child` still owns keeps the id from being reused here.
+    // On Windows the handle `child` still owns keeps the id from being reused.
+    // On macOS `wait` reaped it, so reuse is possible but vanishingly unlikely
+    // in the instant before this probe.
     assert!(!process::process_alive(pid));
 }
 #[test]

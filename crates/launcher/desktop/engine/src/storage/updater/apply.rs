@@ -7,6 +7,7 @@ use std::{
 };
 use uuid::Uuid;
 pub(super) mod process;
+mod zip_names;
 pub(super) mod zip_swap;
 use process::{exchange, rename_new, spawn, sync_parent};
 
@@ -102,7 +103,7 @@ impl Attempt {
                 let stage = executable.parent().ok_or(Error::Target)?.join(
                     self.staged_bundle
                         .clone()
-                        .unwrap_or_else(|| zip_swap::stage_name(&owner.to_string())),
+                        .unwrap_or_else(|| format!(".update-{owner}")),
                 );
                 Ok((stage.clone(), stage))
             }
@@ -200,21 +201,28 @@ impl DesktopState {
             Target::Mac { bundle, .. } => bundle,
             Target::Windows { executable } => executable,
         };
+        let owner = Uuid::new_v4();
         let attempt = Attempt {
             target: target.0.clone(),
             original: bundle::fingerprint(original_path)?,
             replacement: None,
             // Known before any write, so recovery finds a partial Windows stage.
+            // The owner in the name keeps a retry clear of an earlier stage.
             staged_bundle: match &target.0 {
                 Target::Mac { .. } => None,
-                Target::Windows { .. } => {
-                    Some(zip_swap::stage_name(offer.version.trim_start_matches('v')))
-                }
+                Target::Windows { .. } => Some(zip_swap::stage_name(
+                    offer.version.trim_start_matches('v'),
+                    owner,
+                )),
             },
             handoff: false,
             swap: None,
         };
-        let owner = Uuid::new_v4();
+        if let Target::Windows { executable } = &target.0 {
+            // Phase is Ready, so no attempt is in flight: every marked stage
+            // here is an earlier attempt's leftover.
+            zip_swap::sweep_stale_stages(executable.parent().ok_or(Error::Target)?, Some(owner));
+        }
         let (stage, backup) = attempt.paths(owner, self.state_root())?;
         if stage.try_exists().map_err(|_| Error::Target)?
             || backup.try_exists().map_err(|_| Error::Target)?
@@ -342,6 +350,13 @@ impl DesktopState {
         compiled_version: &str,
     ) -> Result<(), Error> {
         let mut record = self.update_record()?;
+        if let Target::Windows { executable } = &target.0 {
+            // An in-flight attempt keeps its owner, and so its stage; any other
+            // marked stage is a leftover a failed delete could not remove.
+            if let Some(install) = executable.parent() {
+                zip_swap::sweep_stale_stages(install, record.owner);
+            }
+        }
         if record.phase == Phase::Installed {
             // Retry a Windows cleanup the acknowledging start could not finish
             // (an antivirus scan holding `<exe>.old`, for example).

@@ -145,10 +145,14 @@ version checks, Apply:
 1. Validates every zip entry before writing anything. It refuses `..`, absolute
    and drive-letter paths, backslash separators, trailing dots or spaces, device
    names, links, duplicate or case-aliased names, a file that is also a folder,
-   names ending in `.old`, more than one root `.exe`, and archives past the entry
-   and expanded-size bounds.
-2. Extracts into `<exe dir>\.update-<version>\`, created exclusively with an owner
-   marker. An existing stage of that name is never adopted.
+   names ending in `.old`, 8.3 short names (`~` then a digit), `CONIN$` and
+   `CONOUT$`, more than one root `.exe`, and archives past the entry and
+   expanded-size bounds.
+2. Extracts into `<exe dir>\.update-<version>-<attempt>\`, created exclusively
+   with an owner marker. An existing stage is never adopted. Because the name
+   is per attempt, a stage a failed attempt could not delete (antivirus holding
+   a new `.exe`) never blocks a retry; Apply and every start remove any marked
+   stage that is not the in-flight attempt's.
 3. Checks every destination: absent or a plain file, under plain folders (no links
    or junctions). A leftover `<name>.old` from an earlier update is deleted now, or
    Apply stops with nothing changed.
@@ -163,13 +167,26 @@ version checks, Apply:
    `CreateProcess`, then exits. Nothing is elevated, and a missing executable
    fails synchronously, so no shell error dialog can stall the handoff.
 
-If any rename or the relaunch fails, Apply renames each `.old` back over its
-name, removes the files the update added (and the folders that leaves empty)
-and removes the stage: the installed files are restored byte for byte and the
+If any rename or the relaunch fails, Apply moves each new file off its name to
+`<name>.new-<attempt>` (a loaded file can be renamed but not deleted), renames
+each `.old` back over its name, deletes the moved-aside new files where it can,
+removes the folders the update created once empty, and removes the stage: the installed files are restored byte for byte and the
 status is **Failed**. A rollback step that cannot complete keeps reconciliation
 ownership. A process that dies mid-swap is rolled back the same way, from the
 saved plan, the next time the old launcher opens. Files in the install folder
 that the zip does not name are left alone.
+
+Known limits, both recovered by hand:
+
+- Between renaming `<name>.exe` to `<name>.exe.old` and renaming the new one in,
+  no launcher executable exists at its name. A crash or power loss in that
+  window leaves nothing to double-click, so nothing reopens to roll back. Rename
+  `<name>.exe.old` back to `<name>.exe`; the next start rolls the rest back from
+  the saved plan.
+- A new release that crashes at start cannot roll itself back: the old
+  executable is already `<name>.exe.old` and only the new version acknowledges.
+  Delete or rename the broken `<name>.exe`, then rename `<name>.exe.old` back to
+  `<name>.exe`.
 
 The restarted launcher waits up to 30 seconds for the old process id to exit,
 then registers the single-instance guard as a normal start does, so a later

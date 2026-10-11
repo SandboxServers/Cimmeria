@@ -1,6 +1,6 @@
 //! Windows self-update by zip swap (D-LX3). The release zip holds one root
 //! `.exe` beside its `windows/` and `graphics/` folders. It is extracted into
-//! `<exe dir>\.update-<version>\`, every file it replaces is renamed to
+//! `<exe dir>\.update-<version>-<owner>\`, every file it replaces is renamed to
 //! `<name>.old` (Windows lets a running image be renamed, not overwritten),
 //! and the new files are renamed in. The executable moves last, so a launcher
 //! that starts from the installed path with the new compiled version proves
@@ -21,6 +21,7 @@ use uuid::Uuid;
 const TARGET: &str = "launcher.update";
 const OWNER_MARKER: &str = ".cimmeria-owner";
 const OLD_SUFFIX: &str = ".old";
+pub(super) const STAGE_PREFIX: &str = ".update-";
 
 /// One file the swap places. Paths are `/`-separated and relative: `source`
 /// to the stage, `path` to the install directory. They differ only for the
@@ -43,8 +44,65 @@ pub(in crate::storage::updater) struct Plan {
     files: Vec<SwapFile>,
 }
 
-pub(super) fn stage_name(version: &str) -> String {
-    format!(".update-{version}")
+/// Named per attempt: a stage an earlier attempt could not delete (an
+/// antivirus scan holding a new `.exe`) never blocks a retry of the version.
+pub(super) fn stage_name(version: &str, owner: Uuid) -> String {
+    format!("{STAGE_PREFIX}{version}-{owner}")
+}
+
+/// Best-effort removal of stages earlier attempts left behind. Only a folder
+/// whose owner marker names an attempt other than `keep` is removed; a folder
+/// without a readable marker was never ours and is left alone.
+pub(super) fn sweep_stale_stages(install: &Path, keep: Option<Uuid>) {
+    let Ok(entries) = fs::read_dir(install) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stage = entry.path();
+        let is_stage = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.to_ascii_lowercase().starts_with(STAGE_PREFIX));
+        let Some(owner) = is_stage.then(|| stage_owner(&stage)).flatten() else {
+            continue;
+        };
+        if Some(owner) == keep {
+            continue;
+        }
+        match remove_marked(&stage) {
+            Ok(()) => {
+                tracing::info!(target: TARGET, event = "zip_stale_stage_removed", stage = %stage.display(), %owner, "removed an earlier update attempt's stage")
+            }
+            Err(error) => {
+                tracing::warn!(target: TARGET, event = "zip_cleanup_failed", %error, stage = %stage.display(), "could not remove an earlier update attempt's stage; the next start retries")
+            }
+        }
+    }
+}
+fn stage_owner(stage: &Path) -> Option<Uuid> {
+    let meta = fs::symlink_metadata(stage).ok()?;
+    if !meta.is_dir() || reparse(&meta) {
+        return None;
+    }
+    let owner = Uuid::parse_str(fs::read_to_string(stage.join(OWNER_MARKER)).ok()?.trim()).ok()?;
+    // The same check removal of a current stage uses: plain folder, exact marker.
+    bundle::owned_stage(stage, owner).ok().map(|_| owner)
+}
+/// Delete a stage's contents before its owner marker, so a delete that fails
+/// part-way (a held file) leaves a stage a later sweep still recognizes.
+fn remove_marked(stage: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(stage)? {
+        let entry = entry?;
+        if entry.file_name() == OWNER_MARKER {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    fs::remove_dir_all(stage)
 }
 
 /// Two passes: the whole namespace is validated before the stage exists.
@@ -69,7 +127,7 @@ pub(super) fn extract(bytes: &[u8], stage: &Path, owner: Uuid) -> Result<Vec<Str
         if entry.is_symlink() {
             return Err(refuse("link_entry", &name));
         }
-        let parts = components(&name, entry.is_dir())?;
+        let parts = super::zip_names::components(&name, entry.is_dir())?;
         let key = parts.join("/").to_lowercase();
         if !seen.insert(key.clone()) {
             return Err(refuse("duplicate_entry", &name));
@@ -230,12 +288,13 @@ pub(super) fn roll_back(install: &Path, plan: &Plan) -> Result<(), Error> {
     let mut result = Ok(());
     for file in plan.files.iter().rev() {
         let dest = join(install, &file.path);
+        let discarded = discard_path(&dest, plan.owner);
         let step = if file.replaced {
             let old = old_path(&dest);
             if fs::symlink_metadata(&old).is_ok() {
                 // Preflight removed any leftover, so an existing `.old` is the
                 // original this swap moved aside, and `dest` is the new copy.
-                remove_if_present(&dest).and_then(|_| {
+                set_aside(&dest, &discarded).and_then(|_| {
                     fs::rename(&old, &dest).map_err(|error| {
                         tracing::error!(target: TARGET, event = "zip_rollback_failed", %error, path = %dest.display(), "could not put an original launcher file back");
                         Error::Reconciliation
@@ -245,8 +304,16 @@ pub(super) fn roll_back(install: &Path, plan: &Plan) -> Result<(), Error> {
                 Ok(())
             }
         } else {
-            remove_if_present(&dest).map(|_| prune_empty(install, &dest))
+            set_aside(&dest, &discarded)
         };
+        // A new file something has loaded (a DLL) can be renamed but not
+        // deleted; its discarded copy is removed when it is no longer in use.
+        if let Err(error) = remove_file_if_present(&discarded) {
+            tracing::warn!(target: TARGET, event = "zip_cleanup_failed", %error, path = %discarded.display(), "could not delete a rolled-back launcher file; it is harmless and can be deleted by hand");
+        }
+        if step.is_ok() && !file.replaced {
+            prune_empty(install, &dest);
+        }
         if step.is_err() {
             // Keep going: every file restored now is one less to fix by hand.
             result = Err(Error::Reconciliation);
@@ -270,8 +337,9 @@ pub(super) fn clean_up(install: &Path, stage: &Path, plan: &Plan) -> Result<(), 
 
 /// Remove a stage only when its marker names this owner. A foreign stage is
 /// an error and is preserved. Failing to delete our own stage is only logged:
-/// the installed files are already consistent, and the stage is never
-/// adopted by a later update (the next version stages under another name).
+/// the installed files are already consistent, the stage is never adopted
+/// (every attempt stages under its own name), and the marker is kept so the
+/// next start or update sweeps it.
 pub(super) fn remove_stage(stage: &Path, owner: Uuid) -> Result<(), Error> {
     if fs::symlink_metadata(stage).is_err() {
         return Ok(());
@@ -279,7 +347,7 @@ pub(super) fn remove_stage(stage: &Path, owner: Uuid) -> Result<(), Error> {
     bundle::owned_stage(stage, owner).inspect_err(|_| {
         tracing::warn!(target: TARGET, event = "zip_stage_foreign", stage = %stage.display(), "update stage is not owned by this attempt; preserved");
     })?;
-    if let Err(error) = fs::remove_dir_all(stage) {
+    if let Err(error) = remove_marked(stage) {
         tracing::warn!(target: TARGET, event = "zip_cleanup_failed", %error, stage = %stage.display(), "could not remove the update stage");
     }
     Ok(())
@@ -319,42 +387,6 @@ fn move_file(from: &Path, to: &Path) -> Result<(), Error> {
     })
 }
 
-fn components(name: &str, dir: bool) -> Result<Vec<String>, Error> {
-    let trimmed = if dir {
-        name.strip_suffix('/').unwrap_or(name)
-    } else {
-        name
-    };
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    let reserved = |part: &str| {
-        let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
-        matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-            || (stem.len() == 4
-                && (stem.starts_with("COM") || stem.starts_with("LPT"))
-                && stem.as_bytes()[3].is_ascii_digit())
-    };
-    // `..`, absolute paths, drive letters, backslash separators, Windows
-    // aliases (trailing dots and spaces) and device names never reach disk.
-    if trimmed.is_empty()
-        || parts.iter().any(|part| {
-            part.is_empty()
-                || *part == "."
-                || *part == ".."
-                || part.ends_with('.')
-                || part.ends_with(' ')
-                || part
-                    .chars()
-                    .any(|c| c.is_control() || r#"\:*?"<>|"#.contains(c))
-                || reserved(part)
-        })
-    {
-        return Err(refuse("unsafe_path", name));
-    }
-    if parts[0].to_lowercase().starts_with(".update-") {
-        return Err(refuse("reserved_name", name));
-    }
-    Ok(parts.into_iter().map(str::to_owned).collect())
-}
 fn join(root: &Path, relative: &str) -> PathBuf {
     relative
         .split('/')
@@ -396,9 +428,21 @@ fn remove_file_if_present(path: &Path) -> std::io::Result<()> {
         other => other,
     }
 }
-fn remove_if_present(path: &Path) -> Result<(), Error> {
-    remove_file_if_present(path).map_err(|error| {
-        tracing::error!(target: TARGET, event = "zip_rollback_failed", %error, path = %path.display(), "could not remove a new launcher file during rollback");
+/// `<name>.new-<owner>`: where rollback moves a new file before deleting it.
+fn discard_path(dest: &Path, owner: Uuid) -> PathBuf {
+    let mut name = dest.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".new-{owner}"));
+    dest.with_file_name(name)
+}
+/// Rename a new file off its real name. Rename works on a loaded image where
+/// delete does not, so the original name is always freed.
+fn set_aside(dest: &Path, discarded: &Path) -> Result<(), Error> {
+    if matches!(fs::symlink_metadata(dest), Err(ref e) if e.kind() == std::io::ErrorKind::NotFound)
+    {
+        return Ok(());
+    }
+    fs::rename(dest, discarded).map_err(|error| {
+        tracing::error!(target: TARGET, event = "zip_rollback_failed", %error, path = %dest.display(), "could not move a new launcher file aside during rollback");
         Error::Reconciliation
     })
 }
@@ -412,7 +456,7 @@ fn prune_empty(install: &Path, dest: &Path) {
         current = dir.parent();
     }
 }
-fn refuse(reason: &'static str, entry: &str) -> Error {
+pub(super) fn refuse(reason: &'static str, entry: &str) -> Error {
     tracing::warn!(target: TARGET, event = "zip_refused", reason, entry, "update package refused before any write");
     Error::Package
 }

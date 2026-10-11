@@ -46,9 +46,10 @@ pub fn process_alive(pid: u32) -> bool {
         let Ok(pid) = libc::pid_t::try_from(pid) else {
             return false;
         };
-        // SAFETY: signal 0 only checks that the process exists.
-        unsafe { libc::kill(pid, 0) == 0 }
-        || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+        // SAFETY: signal 0 only checks that the process exists. EPERM means
+        // it exists but belongs to another user.
+        (unsafe { libc::kill(pid, 0) } == 0)
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {

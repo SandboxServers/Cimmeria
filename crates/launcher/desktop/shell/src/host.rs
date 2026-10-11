@@ -145,7 +145,7 @@ impl NativeHost {
             if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
                 // Only the running binary's compiled version acknowledges a handoff.
                 // Failure leaves the updater owner visible and excludes game work.
-                let _ = state.reconcile_launcher_update(&target, updater::COMPILED_VERSION);
+                let _ = state.reconcile_launcher_update(&target, updater::compiled_version());
             }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()

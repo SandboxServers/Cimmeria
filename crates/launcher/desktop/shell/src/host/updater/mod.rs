@@ -31,13 +31,9 @@ pub enum UpdaterCommand {
         offer_id: Uuid,
     },
 }
-/// The compiled launcher version (D-LX8, `YYYY.M.D` from
-/// `CIMMERIA_LAUNCHER_VERSION`). Both the "is this newer" check and the
-/// startup acknowledgment compare against it, so they can never disagree.
-pub(crate) const COMPILED_VERSION: &str = match option_env!("CIMMERIA_LAUNCHER_VERSION") {
-    Some(version) => version,
-    None => env!("CARGO_PKG_VERSION"),
-};
+/// Both the "is this newer" check and the startup acknowledgment compare
+/// against the one compiled launcher version (D-LX8), so they never disagree.
+pub(crate) use cimmeria_launcher_engine::launcher_compatibility::compiled_version;
 /// The rolling `launcher-current` release's static Tauri feed (LX-15).
 const FEED_URL: &str =
     "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/latest.json";
@@ -65,7 +61,7 @@ fn updater_config_from(
     let public_key = public_key.map(str::trim).filter(|key| !key.is_empty())?;
     let platform = platform?;
     let hosts = FEED_HOSTS.iter().map(|host| host.to_string()).collect();
-    match updater::Config::new(FEED_URL, public_key, COMPILED_VERSION, platform, hosts) {
+    match updater::Config::new(FEED_URL, public_key, compiled_version(), platform, hosts) {
         Ok(config) => Some(config),
         Err(error) => {
             // A release built with a bad key must not look like "no updates".
