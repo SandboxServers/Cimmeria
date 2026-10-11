@@ -3,84 +3,13 @@
 //! anchor, is read and stopped before teardown on every path, its rows
 //! become a row attachment, and an unreachable endpoint is UNVERIFIED.
 
-use std::sync::Mutex;
-
 use serde_json::{json, Value};
 
+use super::test_server::FakeServer;
 use super::tests::{request, Fake};
 use super::Runner;
 use crate::uat::evidence::{RowEvidence, RowResult, RunDir, Verdict};
-use crate::uat::invoke::{BoxedOutcome, ServerInvoker, ToolOutcome};
-
-/// A pretend lab endpoint: two sessions, a canned tap read.
-struct FakeServer {
-    calls: Mutex<Vec<(String, Value)>>,
-    tap: Value,
-    /// Every call fails like the colo's 2026-09-29 HTTP 403.
-    unreachable: bool,
-    /// How many `server_packet_tap_stop` calls fail before one succeeds.
-    stop_failures: Mutex<u32>,
-}
-
-impl FakeServer {
-    fn new(tap: Value) -> Self {
-        Self {
-            calls: Mutex::new(vec![]),
-            tap,
-            unreachable: false,
-            stop_failures: Mutex::new(0),
-        }
-    }
-
-    fn names(&self) -> Vec<String> {
-        self.calls
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|c| c.0.clone())
-            .collect()
-    }
-}
-
-impl ServerInvoker for FakeServer {
-    fn url(&self) -> &str {
-        "http://127.0.0.1:1/mcp"
-    }
-
-    fn call<'a>(&'a self, name: &'a str, args: Value) -> BoxedOutcome<'a> {
-        self.calls.lock().unwrap().push((name.to_string(), args));
-        let ok = |json: Value| ToolOutcome {
-            ok: true,
-            json,
-            ..Default::default()
-        };
-        let out = if self.unreachable {
-            ToolOutcome::err("lab-mcp HTTP 403 Forbidden: Host header is not allowed")
-        } else {
-            match name {
-                "server_sessions" => ok(json!({ "count": 2, "sessions": [
-                    { "entity_id": 7, "name": "Labone", "status": "in_world" },
-                    { "entity_id": 9, "name": "Labtwo", "status": "in_world" },
-                ]})),
-                "server_packet_tap_start" => {
-                    ok(json!({ "entity_id": 7, "replaced_existing": false }))
-                }
-                "server_packet_tap_read" => ok(self.tap.clone()),
-                "server_packet_tap_stop" => {
-                    let mut left = self.stop_failures.lock().unwrap();
-                    if *left > 0 {
-                        *left -= 1;
-                        ToolOutcome::err("lab-mcp: operation timed out")
-                    } else {
-                        ok(json!({ "entity_id": 7, "stopped": true }))
-                    }
-                }
-                _ => ToolOutcome::err(format!("unknown tool {name}")),
-            }
-        };
-        Box::pin(async move { out })
-    }
-}
+use crate::uat::invoke::ServerInvoker;
 
 fn tap_with_cooldown(seconds: f64) -> Value {
     json!({

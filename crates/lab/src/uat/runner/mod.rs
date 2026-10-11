@@ -543,4 +543,6 @@ mod players_tests;
 #[cfg(test)]
 mod revocation_tests;
 #[cfg(test)]
+mod test_server;
+#[cfg(test)]
 mod tests;

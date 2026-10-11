@@ -130,6 +130,15 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
             }
             Ok(ActionKind::Wait) => {}
+            // lab-spec-vocab (SV-03)
+            Ok(ActionKind::ServerWait) => {
+                if self.server.is_none() {
+                    out.push(
+                        "wait_server needs the server lab MCP (CIMMERIA_LAB_MCP_URL/_TOKEN)".into(),
+                    );
+                }
+            }
+            // end lab-spec-vocab
             Err(e) => out.push(format!("spec: {e}")),
         }
     }

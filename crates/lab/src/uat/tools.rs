@@ -17,6 +17,9 @@ use super::tier::Tier;
 /// character, on the client the action runs on (two-player rows).
 pub const TARGET_PLAYER_TOOL: &str = "uat_target_player";
 
+/// What `@stand` resolves to: a runner action, not a router tool (SV-07).
+pub const STAND_TOOL: &str = "uat_stand";
+
 /// One capability.
 #[derive(Debug, Clone, Copy)]
 pub struct Capability {
@@ -106,6 +109,9 @@ pub const CAPABILITIES: &[Capability] = &[
     // Not assigned yet (L11, L18).
     drive("chat_send", "client_chat_send", Tier::N1),
     drive("cache_files", "client_cache_files", Tier::N1),
+    // Spec vocabulary (lab-spec-vocab): interaction poses and hover probes.
+    drive("stand", STAND_TOOL, Tier::G),
+    drive("hover_probe", "client_hover_probe", Tier::N1),
 ];
 
 /// The capability a tool name or `@alias` refers to.
@@ -197,5 +203,7 @@ mod tests {
         assert_eq!(resolve("@dummy").unwrap(), "uat_dummy");
         assert_eq!(lookup("@cooldowns_reset").unwrap().floor, Some(Tier::G));
         assert_eq!(resolve("@ability_state").unwrap(), "server_ability_state");
+        assert_eq!(resolve("@stand").unwrap(), "uat_stand");
+        assert_eq!(lookup("@stand").unwrap().floor, Some(Tier::G));
     }
 }
