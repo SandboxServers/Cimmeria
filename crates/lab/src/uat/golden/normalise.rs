@@ -101,9 +101,13 @@ fn first_seen(items: impl Iterator<Item = String>) -> Vec<String> {
 /// `allow_unordered` routing takes events out of order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Normalised {
+    /// The events compared in order: everything not ignored or routed to
+    /// `unordered`, in tap order, with `collapse` runs folded to one.
     pub events: Vec<Event>,
-    /// Rendered `allow_unordered` events, sorted.
+    /// Rendered `allow_unordered` events, sorted; duplicates are kept.
     pub unordered: Vec<String>,
+    /// The mission, step and objective status changes ([`transitions`]),
+    /// in tap order across both streams.
     pub transitions: Vec<String>,
 }
 
@@ -138,13 +142,17 @@ pub fn normalise_tap(
     vars.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
 
     // The server's timestamp, never a host clock: the cut must land on the
-    // same messages however late the host read the tap.
-    let settle_until = messages.first().and_then(ts_ms).map(|first| {
+    // same messages however late the host read the tap. The first record
+    // that has one, so a leading record without a ts_ms does not void it.
+    let settle_until = messages.iter().find_map(ts_ms).map(|first| {
         first.saturating_add(i64::try_from(v.late_bind_settle_ms).unwrap_or(i64::MAX))
     });
 
-    let mut kept = Vec::new();
-    for m in messages {
+    // Routed by name before any labelling: an `allow_unordered` message
+    // may arrive in either order, so it must not number ids in tap order.
+    let mut ordered: Vec<(usize, Event)> = Vec::new();
+    let mut later: Vec<(usize, &Value, String)> = Vec::new();
+    for (at, m) in messages.iter().enumerate() {
         if let (true, Some(until), Some(ts)) = (late, settle_until, ts_ms(m)) {
             if ts < until {
                 continue;
@@ -155,17 +163,43 @@ pub fn normalise_tap(
         if matches_any(&v.ignore, &name) {
             continue;
         }
-        if let Some(event) = build_event(m, name, labels, v, &vars) {
-            kept.push(event);
+        if matches_any(&v.allow_unordered, &name) {
+            later.push((at, m, name));
+        } else if let Some(event) = build_event(m, name, labels, v, &vars) {
+            ordered.push((at, event));
         }
     }
 
-    let transitions = transitions(&kept);
-    let (unordered, mut events): (Vec<Event>, Vec<Event>) = kept
+    // The ordered stream has numbered its ids; the unordered events take
+    // theirs in the order of a rendering where a not-yet-numbered id is
+    // `?`. Ties differ only in such ids, so either order of them renders
+    // the same set. TODO: two tied events sharing a fresh id (x,y and y,z)
+    // still number by arrival; no spec routes such a pair yet.
+    let mut masked = labels.frozen();
+    let mut keyed: Vec<(String, usize, &Value, String)> = later
         .into_iter()
-        .partition(|e| matches_any(&v.allow_unordered, &e.name));
+        .filter_map(|(at, m, name)| {
+            let key = build_event(m, name.clone(), &mut masked, v, &vars)?.render();
+            Some((key, at, m, name))
+        })
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    let loose: Vec<(usize, Event)> = keyed
+        .into_iter()
+        .filter_map(|(_, at, m, name)| Some((at, build_event(m, name, labels, v, &vars)?)))
+        .collect();
+
+    // Transitions are read in tap order across both streams, before
+    // routing has taken any out of order.
+    let mut all: Vec<&(usize, Event)> = ordered.iter().chain(&loose).collect();
+    all.sort_by_key(|(at, _)| *at);
+    let in_tap_order: Vec<Event> = all.into_iter().map(|(_, e)| e.clone()).collect();
+    let transitions = transitions(&in_tap_order);
+
+    let mut events: Vec<Event> = ordered.into_iter().map(|(_, e)| e).collect();
     events.dedup_by(|later, earlier| later == earlier && matches_any(&v.collapse, &later.name));
-    let mut unordered: Vec<String> = unordered.iter().map(Event::render).collect();
+    // A multiset: two identical unordered events are both kept.
+    let mut unordered: Vec<String> = loose.iter().map(|(_, e)| e.render()).collect();
     unordered.sort();
     Normalised {
         events,
@@ -336,8 +370,12 @@ fn replace_vars(s: &str, vars: &[(String, String)]) -> String {
 }
 
 /// `mission <MissionID> -> <Status>`, `step <StepID> -> <Status>` and
-/// `objective <ObjectiveID> -> <Status>`, in event order. An event missing
-/// either argument (a spec `key_args` that drops it) gives none.
+/// `objective <ObjectiveID> -> <Status>`, in event order.
+///
+/// Transitions need the ID field and `Status` among the event's key
+/// arguments. A spec `key_args` entry for `onMissionUpdate`, `onStepUpdate`
+/// or `onObjectiveUpdate` that leaves either out replaces the built-in
+/// list, and that message then gives no transition (logged at debug).
 pub fn transitions(events: &[Event]) -> Vec<String> {
     const KINDS: &[(&str, &str, &str)] = &[
         ("onMissionUpdate", "mission", "MissionID"),
@@ -354,11 +392,15 @@ pub fn transitions(events: &[Event]) -> Vec<String> {
         .iter()
         .filter_map(|e| {
             let (_, kind, id_key) = KINDS.iter().find(|(n, _, _)| *n == e.name)?;
-            Some(format!(
-                "{kind} {} -> {}",
-                arg(e, id_key)?,
-                arg(e, "Status")?
-            ))
+            let (Some(id), Some(status)) = (arg(e, id_key), arg(e, "Status")) else {
+                tracing::debug!(
+                    message_name = %e.name,
+                    id_field = id_key,
+                    "golden transition skipped: key_args lacks the ID or Status field"
+                );
+                return None;
+            };
+            Some(format!("{kind} {id} -> {status}"))
         })
         .collect()
 }
@@ -366,7 +408,8 @@ pub fn transitions(events: &[Event]) -> Vec<String> {
 /// The row's net window changes from its samples (F9): opened is what a
 /// later good sample shows that the first did not, closed is what any good
 /// sample showed that the last does not. `samples` is the windows.json body
-/// or its `samples` array.
+/// or its `samples` array. A sample is good when it has no `error` and has
+/// a `windows` array; one with neither failed, rather than seeing no window.
 pub fn windows(samples: Option<&Value>, v: &Variance) -> (Vec<String>, Vec<String>) {
     let list = samples
         .and_then(|s| s.get("samples").or(Some(s)))
@@ -375,14 +418,15 @@ pub fn windows(samples: Option<&Value>, v: &Variance) -> (Vec<String>, Vec<Strin
         .into_iter()
         .flatten()
         .filter(|s| s.get("error").is_none())
-        .map(|s| {
-            s.get("windows")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
+        .filter_map(|s| {
+            let shown = s.get("windows")?.as_array()?;
+            Some(
+                shown
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
+            )
         })
         .collect();
     let (Some(start), Some(last)) = (good.first(), good.last()) else {

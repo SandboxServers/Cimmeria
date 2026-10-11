@@ -13,6 +13,7 @@ use crate::uat::spec::{SectionSpec, Source};
 /// One row's evidence and the attachments the fingerprint reads.
 #[derive(Debug, Clone)]
 pub struct RowInput {
+    /// The row JSON: its result, clause verdicts and attachment list.
     pub evidence: RowEvidence,
     /// The `packet_tap` attachment's body.
     pub tap: Option<Value>,
@@ -29,8 +30,12 @@ pub struct RunMeta {
     pub run_id: String,
     /// The run directory's folder name.
     pub run_dir: String,
+    /// The section spec's hash from `run.json`'s `specs`; None when the
+    /// run did not record that section.
     pub spec_sha256: Option<String>,
+    /// The server's `service_version` as `run.json` recorded it.
     pub server_build: Option<String>,
+    /// The hash of the SGW.exe the run drove, from `run.json`.
     pub sgw_sha256: Option<String>,
 }
 

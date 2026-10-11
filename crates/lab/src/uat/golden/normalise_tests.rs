@@ -170,6 +170,87 @@ fn allow_unordered_and_collapse_and_settle() {
     assert_eq!(rendered(&tap, true, &v, &[]).events.len(), 5);
 }
 
+fn effects_unordered() -> Variance {
+    let mut v = resolve(None, None);
+    v.allow_unordered = vec!["onEffectResults".into()];
+    v.key_args = BTreeMap::from([("onEffectResults".into(), vec!["effect".into()])]);
+    v
+}
+
+/// Two untagged mobs met only in unordered events number the same in
+/// either arrival order, and a later ordered event naming one agrees.
+#[test]
+fn unordered_labels_do_not_depend_on_arrival() {
+    let v = effects_unordered();
+    let hit = |mob: u32, effect: u32| out("onEffectResults", mob, json!({ "effect": effect }), 0);
+    let mark = out("onMark", 500, json!({}), 0);
+
+    let a = rendered(&[hit(500, 2), hit(600, 1), mark.clone()], false, &v, &[]);
+    let b = rendered(&[hit(600, 1), hit(500, 2), mark], false, &v, &[]);
+    assert_eq!(a, b);
+    assert_eq!(texts(&a), ["s2c onMark@?1"]);
+    assert_eq!(
+        a.unordered,
+        [
+            "s2c onEffectResults@?1 effect=2",
+            "s2c onEffectResults@?2 effect=1"
+        ]
+    );
+
+    // Tied apart from the fresh ids: either order renders the same.
+    let a = rendered(&[hit(500, 1), hit(600, 1)], false, &v, &[]);
+    let b = rendered(&[hit(600, 1), hit(500, 1)], false, &v, &[]);
+    assert_eq!(a, b);
+    assert_eq!(
+        a.unordered,
+        [
+            "s2c onEffectResults@?1 effect=1",
+            "s2c onEffectResults@?2 effect=1"
+        ]
+    );
+}
+
+/// The ordered stream numbers first, even when the unordered event that
+/// shares the id came earlier in the tap.
+#[test]
+fn a_shared_id_takes_its_number_from_the_ordered_stream() {
+    let v = effects_unordered();
+    let tap = [
+        out("onEffectResults", 500, json!({ "effect": 7 }), 0),
+        out("onMark", 600, json!({}), 0),
+        out("onMark", 500, json!({}), 0),
+    ];
+    let n = rendered(&tap, false, &v, &[]);
+    assert_eq!(texts(&n), ["s2c onMark@?1", "s2c onMark@?2"]);
+    assert_eq!(n.unordered, ["s2c onEffectResults@?2 effect=7"]);
+}
+
+#[test]
+fn unordered_duplicates_are_kept() {
+    let v = effects_unordered();
+    let hit = out("onEffectResults", 8, json!({ "effect": 3 }), 0);
+    let n = rendered(&[hit.clone(), hit], false, &v, &[]);
+    assert_eq!(
+        n.unordered,
+        [
+            "s2c onEffectResults@self effect=3",
+            "s2c onEffectResults@self effect=3"
+        ]
+    );
+}
+
+/// A leading record without a ts_ms does not switch the cut off: it starts
+/// at the first record that has one.
+#[test]
+fn the_late_bind_cut_starts_at_the_first_timestamped_record() {
+    let v = resolve(None, None);
+    let at = |ts: i64| out("onMark", 8, json!({}), ts);
+    let mut untimed = at(0);
+    untimed["ts_ms"] = Value::Null;
+    let tap = [untimed, at(1000), at(1500), at(2000)];
+    assert_eq!(rendered(&tap, true, &v, &[]).events.len(), 2);
+}
+
 /// Ignore runs first: an ignored message is neither routed nor labelled,
 /// and transitions are read before routing takes events out of order.
 #[test]
@@ -258,6 +339,14 @@ fn windows_are_the_net_opened_and_closed_sets() {
     let failed = json!({ "samples": [{ "after": "start", "error": "x" }] });
     assert_eq!(windows(Some(&failed), &v), (vec![], vec![]));
     assert_eq!(windows(None, &v), (vec![], vec![]));
+
+    // A sample with neither `error` nor `windows` failed; read as an empty
+    // set it would close every window the row left open.
+    let blank = json!({ "samples": [
+        { "after": "start", "windows": ["A"] },
+        { "after": "end" },
+    ] });
+    assert_eq!(windows(Some(&blank), &v), (vec![], vec![]));
 }
 
 #[test]
