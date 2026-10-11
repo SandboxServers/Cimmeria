@@ -839,6 +839,19 @@ Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst o
 
 Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.
 
+## Stale combat state (TG-CMB-02)
+
+A player stuck "in combat" never regenerates and never holsters, and nothing checked for it. The vitals sample tick (`cell/service/ticks/vitals.rs`) now runs `log_combat_state_stale` (`cell-combat`, `combat/vitals.rs`) for every living player: WARN `target: "threat"`, `event = "combat_state_stale"`, identity, with `reason`:
+
+| `reason` | Meaning |
+|---|---|
+| `mob_gone` | A threat entry names an entity that no longer exists |
+| `mob_dead` | A threat entry names a dead entity |
+| `bit_without_threat` | `BSF_InCombat` is set but the threat table is empty |
+| `threat_without_bit` | The threat table has entries but `BSF_InCombat` is clear |
+
+Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the throttle is forgotten when the entity is destroyed. Guards: the seven `log_combat_state_stale` tests in `combat/vitals.rs` (one per reason, a consistent-state silence case, a burst and an independence test).
+
 ## Minigame result and start seam (TG-MG-01)
 
 `cell_dispatch/minigame.rs` in `cimmeria-base-world-entry`. A minigame result is forwarded to the cell for its victory chains; when that hand-off cannot happen the chains never run, so it is logged. The identity is the entity pair (`entity_id`, `entity_name`) and the result is named by `result_code` and `result`.

@@ -6,7 +6,7 @@ import { parseHTML } from 'linkedom';
 import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
-let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,
+let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
   preferences:{schema_version:2,revision:1,install_directory:'/fixture/app-data/Stargate Worlds',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},
   operation:{schema_version:1,revision:0,operation:null}}};
 const calls=[];const requests=[];
