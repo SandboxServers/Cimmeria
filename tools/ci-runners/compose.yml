@@ -68,6 +68,27 @@ services:
       - --proto-max-bulk-len
       - 512mb
     mem_limit: ${CACHE_MEM_LIMIT:-18g}
+  # The node's shared BuildKit daemon. pr-container.yml builds through it
+  # (setup-buildx `driver: remote`), so image layers and the Dockerfile's cargo
+  # cache mounts (registry, /build/target) persist across jobs and runners on this
+  # node. GitHub's `type=gha` cache stores layers only, never cache mounts, so
+  # there every crates/ change recompiled the release build from scratch.
+  # GC: keep 10 GB, always leave 100 GB of disk free, cap at BUILDKIT_MAX_MB.
+  buildkitd:
+    image: moby/buildkit:v0.33.1
+    restart: unless-stopped
+    privileged: true
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+    command:
+      - --addr
+      - tcp://0.0.0.0:1234
+      - --oci-worker-gc
+      - --oci-worker-gc-keepstorage
+      - 10000,100000,${BUILDKIT_MAX_MB:-50000}
+    volumes:
+      - buildkit:/var/lib/buildkit
+    cpu_shares: 256
   egress:
     build:
       context: .
@@ -100,8 +121,8 @@ services:
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
-      NO_PROXY: localhost,127.0.0.1,::1
-      no_proxy: localhost,127.0.0.1,::1
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
     volumes:
       - work1:/home/runner/_work
       - state1:/home/runner/state
@@ -131,8 +152,8 @@ services:
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
-      NO_PROXY: localhost,127.0.0.1,::1
-      no_proxy: localhost,127.0.0.1,::1
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
     volumes:
       - work2:/home/runner/_work
       - state2:/home/runner/state
@@ -162,8 +183,8 @@ services:
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
-      NO_PROXY: localhost,127.0.0.1,::1
-      no_proxy: localhost,127.0.0.1,::1
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
     volumes:
       - work3:/home/runner/_work
       - state3:/home/runner/state
@@ -193,8 +214,8 @@ services:
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
-      NO_PROXY: localhost,127.0.0.1,::1
-      no_proxy: localhost,127.0.0.1,::1
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
     volumes:
       - work4:/home/runner/_work
       - state4:/home/runner/state
@@ -224,8 +245,8 @@ services:
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
-      NO_PROXY: localhost,127.0.0.1,::1
-      no_proxy: localhost,127.0.0.1,::1
+      NO_PROXY: localhost,127.0.0.1,::1,buildkitd,cache,egress
+      no_proxy: localhost,127.0.0.1,::1,buildkitd,cache,egress
     volumes:
       - work5:/home/runner/_work
       - state5:/home/runner/state
@@ -235,6 +256,7 @@ services:
       - cargo-git5:/home/runner/.cargo/git
       - ./hooks:/home/runner/hooks:ro
 volumes:
+  buildkit:
   dind1:
   work1:
   state1:

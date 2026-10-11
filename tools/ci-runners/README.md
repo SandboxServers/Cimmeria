@@ -9,7 +9,7 @@ Linux jobs, stay on GitHub-hosted runners.
 | File | What it is |
 | --- | --- |
 | `Dockerfile` | The runner image: Ubuntu 24.04 (as `ubuntu-latest`), the Actions runner, the pinned Rust toolchain, sccache, clang + mold, psql 17, lua5.1, gh, docker CLI |
-| `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps, and the `egress` proxy |
+| `compose.yml` | Five runner/dind pairs with their volumes, CPU weight and memory caps; the node's `cache` (sccache Redis), `buildkitd` and `egress` proxy |
 | `entrypoint.sh` | Registers on first start, restores the registration afterwards, writes the job environment, waits for dind |
 | `hooks/job-started.sh`, `hooks/job-completed.sh` | Per-job disk report and cleanup |
 | `egress_proxy.py`, `egress.Dockerfile` | The HTTPS proxy for the colo egress detour, node and exit roles |
@@ -95,6 +95,7 @@ is baked in again.
   against the default 1024, so they use idle cores but yield to the game server and
   SigNoz. Memory caps are 16 GB per runner on node5 and 20 GB on node2.
 - **One compile cache per node.** Each node's five runners share a Redis-backed sccache (compose.yml `cache`), so a crate any job compiled is a hit for every runner on that node. It lives on the runners' compose network: the colo networks are isolated from each other (the gateway's zone firewall blocks node-to-node traffic), and Docker drops traffic between its own bridge networks, so neither a cross-node cache nor a host-published port works. LRU at 12 GB on node5 and 24 GB on node2, no persistence.
+- **One BuildKit daemon per node.** `pr-container.yml` builds through the node's `buildkitd` (setup-buildx `driver: remote`, `tcp://buildkitd:1234`), so image layers and the Dockerfile's cargo cache mounts (registry, `/build/target`) persist across jobs. GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps 10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2).
 - **sccache instead of rust-cache.** Self-hosted jobs skip `Swatinem/rust-cache`
   (`if: runner.environment == 'github-hosted'`); downloading a multi-GB cache from GitHub
   is slower than a local sccache hit. Every runner builds in the same path, so its cache
