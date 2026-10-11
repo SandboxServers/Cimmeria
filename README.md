@@ -361,6 +361,7 @@ Test account: **test** / **test** (SHA1 hashed).
 - [Getting Started](docs/guides/getting-started.md) — first-time setup tutorial (prerequisites → `setup.ps1` → connecting the client → running tests)
 - [Building the Server](docs/building.md) — how-to for cargo builds, the test suite, and CI checks
 - [Troubleshooting](docs/troubleshooting.md) — common first-day problems and fixes
+- [Live Research Lab setup](docs/guides/lab-contributor-setup.md) — let your Claude Code or Codex agent drive your own game client against a local server
 
 **Understand the codebase:**
 

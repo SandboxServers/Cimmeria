@@ -5,6 +5,12 @@
 only .agents/skills/, and Copilot reads both. Each mirrored SKILL.md gets a marker
 comment after its frontmatter; a mirrored skill whose source is gone is removed.
 Skills in .agents/skills/ without the marker are hand-written and left alone.
+Relative Markdown links that leave the skill's folder (../../agents/x.md) are
+rewritten so they still resolve from the mirror.
+
+It also writes the Codex agents in CODEX_AGENTS, .codex/agents/<name>.toml, from
+.claude/agents/<name>.md: the name, description and effort from the frontmatter,
+and the body as the developer instructions.
 
 Usage:
   python tools/agent-skills/sync.py           # write the mirror
@@ -12,6 +18,9 @@ Usage:
 """
 
 import argparse
+import json
+import posixpath
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +28,13 @@ REPO = Path(__file__).resolve().parents[2]
 SOURCE = Path(".claude/skills")
 MIRROR = Path(".agents/skills")
 MARKER = "<!-- Generated from .claude/skills/{name}/ by tools/agent-skills/sync.py. Edit the source, then rerun the script. -->"
+AGENT_SOURCE = Path(".claude/agents")
+CODEX_AGENTS_DIR = Path(".codex/agents")
+# Agents with a Codex twin. A Codex agent needs its MCP servers configured in
+# Codex (.codex/config.toml.example) as well.
+CODEX_AGENTS = ("lab-driver",)
+CODEX_MARKER = "# Generated from .claude/agents/{name}.md by tools/agent-skills/sync.py. Edit the source, then rerun the script."
+LINK = re.compile(r"(\]\()([^)\s]+)(\))")
 
 
 def with_marker(name, text):
@@ -31,6 +47,27 @@ def with_marker(name, text):
             if lines[index].strip() == "---":
                 return newline.join(lines[: index + 1] + [marker] + lines[index + 1 :])
     return newline.join([marker] + lines)
+
+
+def rewrite_links(text, source_rel, mirror_rel):
+    """Re-point relative links that leave the skill folder so they resolve from
+    the mirror. Paths are repo-relative POSIX strings of the two files."""
+    source_dir = posixpath.dirname(source_rel)
+    mirror_dir = posixpath.dirname(mirror_rel)
+    skill_root = "/".join(source_rel.split("/")[:3]) + "/"
+
+    def fix(match):
+        target = match.group(2)
+        if target.startswith(("#", "/", "mailto:")) or "://" in target:
+            return match.group(0)
+        path, hash_, anchor = target.partition("#")
+        resolved = posixpath.normpath(posixpath.join(source_dir, path))
+        if (resolved + "/").startswith(skill_root):
+            return match.group(0)
+        moved = posixpath.relpath(resolved, mirror_dir)
+        return f"{match.group(1)}{moved}{hash_}{anchor}{match.group(3)}"
+
+    return LINK.sub(fix, text)
 
 
 def is_generated(skill_dir):
@@ -52,9 +89,70 @@ def expected_files(repo):
         for path in sorted(p for p in skill_dir.rglob("*") if p.is_file()):
             rel = path.relative_to(source_root)
             data = path.read_bytes()
-            if rel.name == "SKILL.md" and len(rel.parts) == 2:
-                data = with_marker(skill_dir.name, data.decode("utf-8")).encode("utf-8")
+            if rel.suffix == ".md":
+                text = rewrite_links(
+                    data.decode("utf-8"),
+                    (SOURCE / rel).as_posix(),
+                    (MIRROR / rel).as_posix(),
+                )
+                if rel.name == "SKILL.md" and len(rel.parts) == 2:
+                    text = with_marker(skill_dir.name, text)
+                data = text.encode("utf-8")
             files[MIRROR / rel] = data
+    return files
+
+
+def frontmatter(text):
+    """(fields, body) of a Markdown file with simple `key: value` frontmatter."""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(newline)
+    if not lines or lines[0].strip() != "---":
+        raise SystemExit("agent file has no frontmatter")
+    for end in range(1, len(lines)):
+        if lines[end].strip() == "---":
+            break
+    else:
+        raise SystemExit("agent file frontmatter is not closed")
+    fields = {}
+    for line in lines[1:end]:
+        key, sep, value = line.partition(":")
+        if not sep or line.startswith((" ", "\t", "-")):
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            value = json.loads(value)
+        fields[key.strip()] = value
+    body = newline.join(lines[end + 1 :]).lstrip("\r\n")
+    return fields, body, newline
+
+
+def codex_agent(name, text):
+    """The Codex agent TOML for a .claude/agents/<name>.md text."""
+    fields, body, newline = frontmatter(text)
+    if "'''" in body:
+        raise SystemExit(f"{name}: the body holds ''' and cannot be a TOML literal string")
+    out = [
+        CODEX_MARKER.format(name=name),
+        f"name = {json.dumps(fields.get('name', name))}",
+        f"description = {json.dumps(fields.get('description', ''))}",
+    ]
+    if fields.get("effort"):
+        out.append(f"model_reasoning_effort = {json.dumps(fields['effort'])}")
+    # A literal string: the instructions carry backslashes and quotes as written.
+    out.append("developer_instructions = '''")
+    return newline.join(out) + newline + body.rstrip("\r\n") + newline + "'''" + newline
+
+
+def expected_codex_agents(repo):
+    """Map each Codex agent path to the bytes it should hold."""
+    files = {}
+    for name in CODEX_AGENTS:
+        source = repo / AGENT_SOURCE / f"{name}.md"
+        if source.is_file():
+            files[CODEX_AGENTS_DIR / f"{name}.toml"] = codex_agent(
+                # Bytes, not read_text: that would turn CRLF into LF.
+                name, source.read_bytes().decode("utf-8")
+            ).encode("utf-8")
     return files
 
 
@@ -83,12 +181,13 @@ def plan(repo):
             f"refusing to overwrite hand-written skill(s) in {MIRROR.as_posix()}: "
             f"{', '.join(clashes)}. Rename or remove one copy."
         )
+    deletes = sorted(generated_mirror_files(repo) - set(expected))
+    expected.update(expected_codex_agents(repo))
     writes = {
         rel: data
         for rel, data in expected.items()
         if not (repo / rel).is_file() or (repo / rel).read_bytes() != data
     }
-    deletes = sorted(generated_mirror_files(repo) - set(expected))
     return writes, deletes
 
 

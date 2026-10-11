@@ -37,6 +37,48 @@ try {
     Check ((Read-LabdEnvFile $envPath)['K'] -eq $jose) 'a BOM-prefixed file reads'
     Check ((Get-McpEnvLines '{"mcpServers":{}}') -eq $null) 'no cimmeria-lab entry -> $null'
 
+    # --- labd.env without a stdio entry (the daemon-only setup) ---
+    $daemonOnly = '{"mcpServers":{"cimmeria-lab":{"type":"http","url":"http://127.0.0.1:8779/mcp"}}}'
+    Check ($null -eq (Get-McpEnvMap $daemonOnly)) 'an http cimmeria-lab entry has no env to import'
+    $seed = Get-LabdEnvSeed $null @{ CIMMERIA_LAB_INSTALL_DIR = $jose } @{} @{ CIMMERIA_LAB_MCP_URL = 'http://127.0.0.1:8451/mcp' }
+    Check ($seed.lines -contains "CIMMERIA_LAB_INSTALL_DIR=$jose") 'no stdio entry: the -InstallDir parameter seeds the install dir'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_MCP_URL=http://127.0.0.1:8451/mcp') 'no stdio entry: the default server endpoint is written'
+    Check ($seed.sources['CIMMERIA_LAB_MCP_URL'] -eq 'default') 'the source of a default is reported'
+    Check ($seed.missing -contains 'CIMMERIA_LAB_TELEMETRY') 'unset keys are listed as missing, not written'
+    # Precedence: parameter > .mcp.json > environment > default.
+    $imported = Get-McpEnvMap $mcp
+    $seed = Get-LabdEnvSeed $imported @{} @{ CIMMERIA_LAB_INSTALL_DIR = 'C:\from-env'; CIMMERIA_LAB_TELEMETRY = 'optional' } @{}
+    Check ($seed.lines -contains "CIMMERIA_LAB_INSTALL_DIR=$jose") 'a stdio entry still wins over the environment'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_MCP_URL=http://h/mcp?a=b') 'the stdio entry''s other values are kept'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_TELEMETRY=optional') 'the environment fills what the stdio entry lacks'
+    $seed = Get-LabdEnvSeed $imported @{ CIMMERIA_LAB_INSTALL_DIR = 'D:\param' } @{} @{}
+    Check ($seed.lines -contains 'CIMMERIA_LAB_INSTALL_DIR=D:\param') 'a parameter wins over the stdio entry'
+    Check (@($seed.lines | Where-Object { $_ -like 'CIMMERIA_LAB_INSTALL_DIR=*' }).Count -eq 1) 'each key is written once'
+    # Template placeholders never reach labd.env.
+    $tmpl = [ordered]@{ CIMMERIA_LAB_INSTALL_DIR = '<SGW_INSTALL_DIR>'; CIMMERIA_LAB_MCP_TOKEN = '${CIMMERIA_LAB_MCP_TOKEN}'; CIMMERIA_LAB_BRIDGE = '127.0.0.1:8770' }
+    $seed = Get-LabdEnvSeed $tmpl @{} @{ CIMMERIA_LAB_INSTALL_DIR = 'C:\real' } @{}
+    Check ($seed.lines -contains 'CIMMERIA_LAB_INSTALL_DIR=C:\real') 'a <placeholder> falls through to the environment'
+    Check (-not ($seed.lines -match 'CIMMERIA_LAB_MCP_TOKEN')) 'a ${VAR} token is not written literally'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_BRIDGE=127.0.0.1:8770') 'other imported keys are kept'
+    Check (Test-LabdPlaceholder 'REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN') 'the old REPLACE_WITH_ token counts as a placeholder'
+    # A legacy stdio entry with literal secrets: never written, named in secrets.
+    $legacy = [ordered]@{ CIMMERIA_LAB_INSTALL_DIR = 'C:\g'; CIMMERIA_LAB_MCP_TOKEN = ('t' * 40); CIMMERIA_LAB_TOKEN = ('a' * 64); CIMMERIA_TELEMETRY_HMAC_SECRET = ('s' * 40) }
+    $seed = Get-LabdEnvSeed $legacy @{} @{} @{}
+    Check (-not ($seed.lines -match 'TOKEN|SECRET')) 'literal TOKEN/SECRET values from a stdio entry are not written'
+    Check (($seed.secrets -contains 'CIMMERIA_LAB_MCP_TOKEN') -and ($seed.secrets -contains 'CIMMERIA_LAB_TOKEN') -and ($seed.secrets -contains 'CIMMERIA_TELEMETRY_HMAC_SECRET')) 'each left-out secret is named'
+    Check (-not (($seed.secrets -join ' ').Contains('t' * 40))) 'secrets lists names, not values'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_INSTALL_DIR=C:\g') 'the rest of a legacy entry is still imported'
+    # install -Force keeps keys added with `lab env set`.
+    $existing = [ordered]@{ CIMMERIA_LAB_UAT_SPECS = 'C:\specs'; CIMMERIA_LAB_OPERATOR = 'op'; CIMMERIA_LAB_INSTALL_DIR = 'C:\old'; CIMMERIA_LAB_MCP_URL = 'http://h:1/mcp'; CIMMERIA_LAB_MCP_TOKEN = 'x' * 40 }
+    $seed = Get-LabdEnvSeed $null @{ CIMMERIA_LAB_INSTALL_DIR = 'C:\new' } @{} @{ CIMMERIA_LAB_MCP_URL = 'http://127.0.0.1:8451/mcp' } $existing
+    Check ($seed.lines -contains 'CIMMERIA_LAB_UAT_SPECS=C:\specs' -and $seed.lines -contains 'CIMMERIA_LAB_OPERATOR=op') '-Force keeps keys only labd.env held'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_INSTALL_DIR=C:\new' -and -not ($seed.lines -contains 'CIMMERIA_LAB_INSTALL_DIR=C:\old')) 'a parameter replaces the old labd.env value'
+    Check ($seed.lines -contains 'CIMMERIA_LAB_MCP_URL=http://h:1/mcp') 'a customised labd.env value beats the default'
+    Check ($seed.secrets -contains 'CIMMERIA_LAB_MCP_TOKEN' -and -not ($seed.lines -match 'MCP_TOKEN')) 'a token already in labd.env is dropped on rewrite'
+    $imp = [ordered]@{ CIMMERIA_LAB_OPERATOR = 'fromjson' }
+    $seed = Get-LabdEnvSeed $imp @{} @{} @{} $existing
+    Check (@($seed.lines | Where-Object { $_ -like 'CIMMERIA_LAB_OPERATOR=*' }).Count -eq 1 -and $seed.lines -contains 'CIMMERIA_LAB_OPERATOR=fromjson') 'a key both sources hold is written once, the stdio value first'
+
     # --- a stale labd.pid is not trusted by name alone ---
     $exe = Join-Path $tmp 'labd\cimmeria-lab.exe'
     $t0 = [datetime]::UtcNow.AddMinutes(-30)
