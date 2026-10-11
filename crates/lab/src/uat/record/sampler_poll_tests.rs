@@ -1,6 +1,8 @@
 //! Sampler tests, continued: the known-server-event poll, the caps and
 //! the snapshot SQL.
 
+use std::sync::Arc;
+
 use serde_json::{json, Value};
 
 use super::*;
@@ -53,9 +55,19 @@ async fn the_caps_stop_a_recording() {
         max_ticks: 3,
         ..Default::default()
     };
-    let (mut s, ..) = Sampler::begin(&server, &client, cfg, "s", "p2", "Labone", 1, "d")
-        .await
-        .unwrap();
+    let (mut s, ..) = Sampler::begin(
+        &server,
+        &client,
+        cfg,
+        Arc::default(),
+        "s",
+        "p2",
+        "Labone",
+        1,
+        "d",
+    )
+    .await
+    .unwrap();
     s.tick(2).await;
     assert_eq!(s.full(), None);
     s.tick(3).await;
@@ -65,9 +77,19 @@ async fn the_caps_stop_a_recording() {
         max_bytes: 1,
         ..Default::default()
     };
-    let (s, ..) = Sampler::begin(&server, &client, cfg, "s", "p2", "Labone", 1, "d")
-        .await
-        .unwrap();
+    let (s, ..) = Sampler::begin(
+        &server,
+        &client,
+        cfg,
+        Arc::default(),
+        "s",
+        "p2",
+        "Labone",
+        1,
+        "d",
+    )
+    .await
+    .unwrap();
     assert_eq!(s.full(), Some("size_cap"));
 }
 

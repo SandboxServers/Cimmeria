@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
@@ -20,6 +20,10 @@ struct FakeServer {
     canned: Mutex<HashMap<String, VecDeque<ToolOutcome>>>,
     /// Entities `server_entity_get` reports as gone (null).
     gone: Mutex<HashSet<u32>>,
+    /// Entities whose `server_entity_get` fails this many more times.
+    flaky: Mutex<HashMap<u32, u32>>,
+    /// `entity_name` overrides (a recycled player id).
+    renamed: Mutex<HashMap<u32, String>>,
 }
 
 fn ok(json: Value) -> ToolOutcome {
@@ -66,8 +70,8 @@ impl FakeServer {
         }
         match name {
             "server_sessions" => ok(json!({ "count": 2, "sessions": [
-                { "entity_id": 7, "name": "Labone" },
-                { "entity_id": 9, "name": "Labtwo" },
+                { "entity_id": 7, "name": "Labone", "player_id": 42 },
+                { "entity_id": 9, "name": "Labtwo", "player_id": 43 },
             ]})),
             "server_db_query" => {
                 let sql = args["sql"].as_str().unwrap_or_default();
@@ -85,18 +89,38 @@ impl FakeServer {
                 };
                 ok(json!({ "row_count": 1, "rows": rows }))
             }
-            "server_packet_tap_start" => ok(json!({ "entity_id": args["entity_id"] })),
+            "server_packet_tap_start" => ok(json!({
+                "entity_id": args["entity_id"], "replaced_existing": false,
+            })),
             "server_packet_tap_read" => ok(json!({ "messages": [], "dropped": 0 })),
             "server_packet_tap_stop" => ok(json!({ "stopped": true })),
             "server_entity_get" => {
                 let id = args["entity_id"].as_u64().unwrap() as u32;
+                if let Some(n) = self.flaky.lock().unwrap().get_mut(&id).filter(|n| **n > 0) {
+                    *n -= 1;
+                    return ToolOutcome::err("lab-mcp: operation timed out");
+                }
                 if self.gone.lock().unwrap().contains(&id) {
                     return ok(json!({ "entity": null }));
                 }
                 let tag = (id == FROST).then_some("ArmYourself_FrostBody");
+                // The player's entities (7, then 11 after a relog) carry
+                // the character's name; everyone else is Frost.
+                let default = if matches!(id, 7 | 11) {
+                    "Labone"
+                } else {
+                    "Frost"
+                };
+                let name = self
+                    .renamed
+                    .lock()
+                    .unwrap()
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| default.to_string());
                 ok(json!({ "entity": {
                     "entity_id": id, "space_id": 3, "position": [-328.3, 73.472, -210.27],
-                    "tag": tag, "template_id": 14, "entity_name": "Frost",
+                    "tag": tag, "template_id": 14, "entity_name": name,
                 }}))
             }
             "server_log_tail" => ok(json!({ "count": 0, "entries": [], "newest_ms": 1000 })),
@@ -123,6 +147,11 @@ struct FakeClient {
     ui: AtomicU32,
     pump: AtomicU32,
     camera_fails: AtomicBool,
+    /// The readout has only the unsigned `gain` (no SV-05 `yaw_gain`).
+    no_yaw_gain: AtomicBool,
+    ui_fails: AtomicBool,
+    pump_fails: AtomicBool,
+    pump_lua_error: AtomicBool,
 }
 
 impl ClientProbe for FakeClient {
@@ -130,6 +159,11 @@ impl ClientProbe for FakeClient {
         self.camera.fetch_add(1, Ordering::SeqCst);
         let out = if self.camera_fails.load(Ordering::SeqCst) {
             Err("camera chain did not resolve: player controller not found in the actor list, which is long".repeat(2))
+        } else if self.no_yaw_gain.load(Ordering::SeqCst) {
+            Ok(json!({
+                "zoom": 250.0, "pitch_offset_deg": -28.8, "gain": 20.0,
+                "pose": { "server": { "x": -325.0, "y": 73.6, "z": -212.8 }, "yaw_deg": 12.5 },
+            }))
         } else {
             Ok(json!({
                 "zoom": 250.0, "pitch_offset_deg": -28.8, "gain": 20.0, "yaw_gain": -20.0,
@@ -141,7 +175,11 @@ impl ClientProbe for FakeClient {
 
     fn ui(&self) -> BoxedJson<'_> {
         self.ui.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async {
+        let fails = self.ui_fails.load(Ordering::SeqCst);
+        Box::pin(async move {
+            if fails {
+                return Err("bridge: not connected".to_string());
+            }
             Ok(json!({
                 "windows": ["SelfStatusWin", "DialogWin"],
                 "dialog": { "title": "Frost", "buttons": [
@@ -155,7 +193,14 @@ impl ClientProbe for FakeClient {
 
     fn pump(&self) -> BoxedJson<'_> {
         self.pump.fetch_add(1, Ordering::SeqCst);
-        Box::pin(async { Ok(json!({ "lua_error": null })) })
+        let out = if self.pump_fails.load(Ordering::SeqCst) {
+            Err("bridge: dispatch timeout".to_string())
+        } else if self.pump_lua_error.load(Ordering::SeqCst) {
+            Ok(json!({ "lua_error": "attempt to index a nil value" }))
+        } else {
+            Ok(json!({ "lua_error": null }))
+        };
+        Box::pin(async move { out })
     }
 }
 
@@ -181,18 +226,26 @@ async fn begin<'a>(
     server: &'a FakeServer,
     client: &'a FakeClient,
 ) -> (Sampler<'a>, RecordStart, Tick) {
+    begin_as(server, client, "Labone").await.unwrap()
+}
+
+async fn begin_as<'a>(
+    server: &'a FakeServer,
+    client: &'a FakeClient,
+    character: &str,
+) -> Result<(Sampler<'a>, RecordStart, Tick), String> {
     Sampler::begin(
         server,
         client,
         SamplerConfig::default(),
+        Arc::default(),
         "first-session",
         "p2",
-        "Labone",
+        character,
         1_000,
         "2026-10-12",
     )
     .await
-    .unwrap()
 }
 
 #[tokio::test]
@@ -215,13 +268,13 @@ async fn begin_resolves_the_player_and_starts_a_10000_tap() {
     assert_eq!(
         names[..3],
         [
-            "server_sessions",
             "server_db_query",
+            "server_sessions",
             "server_packet_tap_start"
         ]
     );
     assert_eq!(
-        calls[1].1["sql"],
+        calls[0].1["sql"],
         "SELECT player_id FROM sgw_player WHERE player_name = 'Labone'"
     );
     assert_eq!(calls[2].1, json!({ "entity_id": 7, "capacity": 10000 }));
@@ -347,7 +400,7 @@ async fn a_failed_read_is_an_error_entry_not_a_stop() {
         .errors
         .iter()
         .any(|e| e.starts_with("server_packet_tap_read:")));
-    assert!(t.errors.iter().any(|e| e.starts_with("camera:")));
+    assert!(t.errors.iter().any(|e| e.starts_with("client: camera:")));
     assert!(t.errors.len() <= 4);
     assert!(t.errors.iter().all(|e| e.chars().count() <= 120));
     assert!(s.full().is_none());
@@ -360,8 +413,8 @@ async fn a_relog_restarts_the_tap() {
     let server = FakeServer::default().answer(
         "server_sessions",
         vec![
-            ok(json!({ "sessions": [{ "entity_id": 7, "name": "Labone" }] })),
-            ok(json!({ "sessions": [{ "entity_id": 11, "name": "Labone" }] })),
+            ok(json!({ "sessions": [{ "entity_id": 7, "name": "Labone", "player_id": 42 }] })),
+            ok(json!({ "sessions": [{ "entity_id": 11, "name": "Labone", "player_id": 42 }] })),
         ],
     );
     let client = FakeClient::default();
@@ -383,6 +436,14 @@ async fn a_relog_restarts_the_tap() {
         .map(|c| c.1)
         .collect();
     assert_eq!(starts.last().unwrap()["entity_id"], 11);
+    // The old entity's tap is stopped, best effort.
+    let stops: Vec<Value> = server
+        .calls()
+        .into_iter()
+        .filter(|c| c.0 == "server_packet_tap_stop")
+        .map(|c| c.1)
+        .collect();
+    assert_eq!(stops, [json!({ "entity_id": 7 })]);
 
     let t = s.tick(2_000).await;
     assert_eq!(t.player.unwrap().entity_id, 11);
@@ -405,19 +466,10 @@ async fn a_bad_character_name_is_refused_before_any_sql() {
         )],
     );
     let client = FakeClient::default();
-    let err = Sampler::begin(
-        &server,
-        &client,
-        SamplerConfig::default(),
-        "s",
-        "p2",
-        "Px'; DROP",
-        1,
-        "2026-10-12",
-    )
-    .await
-    .err()
-    .expect("refused");
+    let err = begin_as(&server, &client, "Px'; DROP")
+        .await
+        .err()
+        .expect("refused");
     assert!(err.contains("Px'; DROP"), "{err}");
     assert_eq!(server.count("server_db_query"), 0);
     assert!(server.names().is_empty(), "{:?}", server.names());
@@ -429,5 +481,9 @@ async fn a_bad_character_name_is_refused_before_any_sql() {
     }
 }
 
+#[path = "sampler_budget_tests.rs"]
+mod budget;
 #[path = "sampler_poll_tests.rs"]
 mod poll;
+#[path = "sampler_relog_tests.rs"]
+mod relog;

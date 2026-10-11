@@ -16,9 +16,11 @@
 //! alignment is needed. A failed read never stops a recording: it becomes
 //! one `errors` entry and its field is left out.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use serde_json::{json, Value};
 
@@ -29,11 +31,18 @@ use crate::uat::invoke::ServerInvoker;
 
 #[path = "sampler_reads.rs"]
 mod reads;
+#[path = "sampler_relog.rs"]
+mod relog;
 #[path = "sampler_server.rs"]
 mod server;
 
-use reads::{camera_sample, entity_sample, find_session, named_target, ui_sample};
+use reads::{camera_sample, find_session, named_target, ui_sample};
 pub use reads::{check_character, recording_id, snapshot_sql};
+// Unused until LR-07 builds the guard in the sampler task (the tests reach
+// it through the module).
+#[allow(unused_imports)]
+pub use relog::TapStopGuard;
+use relog::{start_tap, TAP_REPLACED};
 use server::{call_ok, db_snapshot, is_noise, lookup_player_id};
 
 /// A boxed client read (the probe is a trait object, so its futures
@@ -68,6 +77,9 @@ const SNAPSHOT_TAIL_TICKS: u32 = 10;
 const LOG_POLL_EVERY: u32 = 2;
 const MAX_ERRORS: usize = 4;
 const ERROR_CHARS: usize = 120;
+/// Every client failure of a tick shares one entry with this prefix, so a
+/// broken client cannot crowd the server's errors out of the tick.
+const CLIENT_ERR: &str = "client: ";
 
 /// Caps and the tap size for one recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,8 +116,20 @@ pub struct Sampler<'a> {
     player_id: i32,
     /// The tapped player entity; changes on a relog.
     entity: u32,
-    /// Entity ids already sampled (the player included).
+    /// The [`TapStopGuard`]'s copy of `entity`; 0 once `finish` stopped it.
+    tap: Arc<AtomicU32>,
+    /// Entity ids sampled or reported gone (the player included).
     seen: HashSet<u32>,
+    /// Named ids waiting for a lookup (over the per-tick cap, or retrying).
+    pending: VecDeque<u32>,
+    /// Failed lookups per pending id.
+    retries: HashMap<u32, u8>,
+    /// Ids whose lookups failed past the retry limit.
+    gave_up: HashSet<u32>,
+    /// The tracked-id cap was hit (reported once).
+    seen_full: bool,
+    /// Tick error kinds already traced (each is traced once).
+    error_kinds: HashSet<&'static str>,
     /// Snapshot ticks left after the last non-noise message.
     tail: u32,
     /// The next tick's `seq`, which is also the ticks written so far.
@@ -117,15 +141,18 @@ pub struct Sampler<'a> {
 }
 
 impl<'a> Sampler<'a> {
-    /// Resolve the player (server_sessions by character), its player_id
-    /// (server_db_query on sgw_player.player_name; the name must match
-    /// `^[A-Za-z][A-Za-z ]{0,63}$`), start the tap, take the first
-    /// snapshot. Returns the start line and tick 0.
+    /// Resolve the player's `player_id` (server_db_query on the exact
+    /// `sgw_player.player_name`; the name must match
+    /// `^[A-Za-z][A-Za-z ]{0,63}$`), then the session carrying that
+    /// `player_id`, start the tap, take the first snapshot. `tap` is a
+    /// [`TapStopGuard::cell`]; the tapped entity is written there before
+    /// anything else can fail. Returns the start line and tick 0.
     #[allow(clippy::too_many_arguments)]
     pub async fn begin(
         server: &'a dyn ServerInvoker,
         client: &'a dyn ClientProbe,
         cfg: SamplerConfig,
+        tap: Arc<AtomicU32>,
         section: &str,
         instance: &str,
         character: &str,
@@ -133,20 +160,17 @@ impl<'a> Sampler<'a> {
         date: &str,
     ) -> Result<(Self, RecordStart, Tick), String> {
         // Before any call: the name is spliced into the one SQL statement
-        // that is not keyed by an integer.
+        // that is not keyed by an integer, the instance into a directory name.
         check_character(character)?;
-        let sessions = call_ok(server, "server_sessions", json!({})).await?;
-        let entity = find_session(&sessions, character)?;
+        let recording_id = recording_id(now_ms, instance)?;
         let player_id = lookup_player_id(server, character).await?;
-        call_ok(
-            server,
-            "server_packet_tap_start",
-            json!({ "entity_id": entity, "capacity": cfg.tap_capacity }),
-        )
-        .await?;
+        let sessions = call_ok(server, "server_sessions", json!({})).await?;
+        let entity = find_session(&sessions, player_id)?;
+        let replaced = start_tap(server, entity, cfg.tap_capacity).await?;
+        tap.store(entity, Ordering::SeqCst);
         tracing::debug!(
             target: "lab.record",
-            character, player_id, entity, section, instance,
+            character, player_id, entity, section, instance, replaced,
             "recording: tap started"
         );
 
@@ -157,7 +181,13 @@ impl<'a> Sampler<'a> {
             character: character.to_string(),
             player_id,
             entity,
+            tap,
             seen: HashSet::from([entity]),
+            pending: VecDeque::new(),
+            retries: HashMap::new(),
+            gave_up: HashSet::new(),
+            seen_full: false,
+            error_kinds: HashSet::new(),
             tail: 0,
             seq: 0,
             bytes: 0,
@@ -165,7 +195,7 @@ impl<'a> Sampler<'a> {
         };
         let start = RecordStart {
             schema: RECORD_SCHEMA,
-            recording_id: recording_id(now_ms, instance),
+            recording_id,
             section: section.to_string(),
             instance: instance.to_string(),
             character: character.to_string(),
@@ -178,6 +208,9 @@ impl<'a> Sampler<'a> {
         s.bytes += write_line(&RecordLine::Start(start.clone())).len() as u64;
 
         let mut t = s.new_tick(now_ms);
+        if replaced {
+            s.err(&mut t, "tap_replaced", TAP_REPLACED);
+        }
         for i in 0..KNOWN_SERVER_EVENTS.len() {
             s.mark_log(i, &mut t).await;
         }
@@ -187,10 +220,10 @@ impl<'a> Sampler<'a> {
     }
 
     /// One tick, in this order: drain the tap; camera; the player's
-    /// `server_entity_get`; the UI; `server_entity_get` for each id an
-    /// inbound call names that is not yet seen; the known-server-event
-    /// probe; a snapshot when this or the previous tick carried a
-    /// non-noise message, or within 10 ticks after one.
+    /// `server_entity_get`; the UI; `server_entity_get` for ids an inbound
+    /// call names that are not yet seen (at most 8 a tick); the
+    /// known-server-event probe; a snapshot when this or the previous tick
+    /// carried a non-noise message, or within 10 ticks after one.
     pub async fn tick(&mut self, now_ms: i64) -> Tick {
         let mut t = self.new_tick(now_ms);
         self.sample(&mut t, false).await;
@@ -209,8 +242,11 @@ impl<'a> Sampler<'a> {
         )
         .await
         {
-            push_err(&mut t, e);
+            self.err(&mut t, "tap_stop", e);
         }
+        // The stop was tried: the guard must not stop this entity again
+        // later, when another recording may own a tap on it.
+        self.tap.store(0, Ordering::SeqCst);
         self.account(&t);
         let stop = RecordStop {
             host_ms: now_ms,
@@ -257,10 +293,10 @@ impl<'a> Sampler<'a> {
         match self.client.pump().await {
             Ok(r) => {
                 if let Some(e) = r.get("lua_error").and_then(Value::as_str) {
-                    push_err(t, format!("pump: {e}"));
+                    self.client_err(t, "pump", format!("pump: {e}"));
                 }
             }
-            Err(e) => push_err(t, format!("pump: {e}")),
+            Err(e) => self.client_err(t, "pump", format!("pump: {e}")),
         }
 
         let mut relog_checked = false;
@@ -284,25 +320,40 @@ impl<'a> Sampler<'a> {
                 named = t.tap.iter().filter_map(named_target).collect();
             }
             Err(e) => {
-                // A session that ended takes its tap with it.
-                push_err(t, e);
-                self.check_relog(t).await;
+                // A disconnect never stops a tap: it outlives its session.
+                // "no active packet tap" means something stopped or
+                // replaced it, so it is restarted if the player is still
+                // on this entity; any failure may also be a relog.
+                let missing = e.contains("no active packet tap");
+                self.err(t, "tap_read", e);
+                self.check_relog(t, missing).await;
                 relog_checked = true;
             }
         }
 
         match self.client.camera().await.and_then(|v| camera_sample(&v)) {
             Ok(c) => t.camera = Some(c),
-            Err(e) => push_err(t, format!("camera: {e}")),
+            Err(e) => self.client_err(t, "camera", format!("camera: {e}")),
         }
 
-        match self.entity_get(self.entity).await {
-            Ok(p) => t.player = Some(p),
-            Err(e) => {
-                push_err(t, format!("player: {e}"));
-                if !relog_checked {
-                    self.check_relog(t).await;
-                }
+        let lost = match self.entity_get(self.entity).await {
+            // A recycled id: the entity is someone else now.
+            Ok(Some(p)) if !self.is_ours(&p) => Some(format!(
+                "player: entity {} is now {:?}",
+                self.entity,
+                p.name.unwrap_or_default()
+            )),
+            Ok(Some(p)) => {
+                t.player = Some(p);
+                None
+            }
+            Ok(None) => Some(format!("player: no entity {}", self.entity)),
+            Err(e) => Some(format!("player: {e}")),
+        };
+        if let Some(e) = lost {
+            self.err(t, "player", e);
+            if !relog_checked {
+                self.check_relog(t, false).await;
             }
         }
 
@@ -312,23 +363,13 @@ impl<'a> Sampler<'a> {
                 t.windows = windows;
                 t.dialog = dialog;
                 for e in errors {
-                    push_err(t, format!("ui: {e}"));
+                    self.client_err(t, "ui", format!("ui: {e}"));
                 }
             }
-            Err(e) => push_err(t, format!("ui: {e}")),
+            Err(e) => self.client_err(t, "ui", format!("ui: {e}")),
         }
 
-        for id in named {
-            // Seen whether or not the read works: one error per entity,
-            // not one per tick.
-            if !self.seen.insert(id) {
-                continue;
-            }
-            match self.entity_get(id).await {
-                Ok(e) => t.entities.push(e),
-                Err(e) => push_err(t, format!("entity {id}: {e}")),
-            }
-        }
+        self.follow_named(t, named).await;
 
         if edge || (t.seq > 0 && t.seq.is_multiple_of(LOG_POLL_EVERY)) {
             self.poll_logs(t).await;
@@ -348,113 +389,52 @@ impl<'a> Sampler<'a> {
         if snapshot {
             match db_snapshot(self.server, self.player_id).await {
                 Ok(s) => t.snapshot = Some(s),
-                Err(e) => push_err(t, format!("snapshot: {e}")),
+                Err(e) => self.err(t, "snapshot", format!("snapshot: {e}")),
             }
         }
     }
 
-    async fn entity_get(&self, id: u32) -> Result<EntitySample, String> {
+    /// The player sample is this character's, or names nobody (a reply
+    /// without a name cannot show a recycled id).
+    fn is_ours(&self, p: &EntitySample) -> bool {
+        p.name
+            .as_deref()
+            .is_none_or(|n| n.eq_ignore_ascii_case(&self.character))
+    }
+
+    /// `server_entity_get` for `id`: `Ok(None)` only when the server says
+    /// the entity is gone (`entity: null`), which is final; a failed call
+    /// or an unreadable reply is an `Err` worth retrying.
+    async fn entity_get(&self, id: u32) -> Result<Option<EntitySample>, String> {
         let v = call_ok(self.server, "server_entity_get", json!({ "entity_id": id })).await?;
-        entity_sample(&v).ok_or_else(|| format!("no entity {id}"))
+        if v.get("entity").is_some_and(Value::is_null) {
+            return Ok(None);
+        }
+        reads::entity_sample(&v)
+            .map(Some)
+            .ok_or_else(|| format!("unreadable entity {id}"))
     }
 
-    /// The player's entity went away: find the character again and, when
-    /// it came back as another entity, move the tap there.
-    async fn check_relog(&mut self, t: &mut Tick) {
-        let found = match call_ok(self.server, "server_sessions", json!({})).await {
-            Ok(s) => find_session(&s, &self.character),
-            Err(e) => Err(e),
-        };
-        let id = match found {
-            Ok(id) if id != self.entity => id,
-            // Same entity, or not in the world (yet): nothing to move.
-            // TODO: a reconnect onto the same entity id also stops inbound
-            // capture until the tap restarts (F4); nothing here sees that.
-            Ok(_) | Err(_) => return,
-        };
-        match call_ok(
-            self.server,
-            "server_packet_tap_start",
-            json!({ "entity_id": id, "capacity": self.cfg.tap_capacity }),
-        )
-        .await
-        {
-            Ok(_) => {
-                self.entity = id;
-                self.seen.insert(id);
-                tracing::info!(target: "lab.record", character = %self.character, entity = id, "recording: relog, tap restarted");
-                push_err(t, format!("relog: tap restarted on {id}"));
-            }
-            Err(e) => push_err(t, format!("relog: tap restart on {id} failed: {e}")),
+    /// One error entry of `kind`; the first of each kind is also traced.
+    fn err(&mut self, t: &mut Tick, kind: &'static str, msg: impl AsRef<str>) {
+        let msg = msg.as_ref();
+        if self.error_kinds.insert(kind) {
+            tracing::debug!(
+                target: "lab.record",
+                character = %self.character, player_id = self.player_id, kind, error = msg,
+                "recording: first {kind} error"
+            );
         }
+        push_err(t, msg);
     }
 
-    /// Read where the server log is now, so a poll only sees what follows.
-    async fn mark_log(&mut self, i: usize, t: &mut Tick) {
-        let (_, target, _, _) = KNOWN_SERVER_EVENTS[i];
-        match call_ok(
-            self.server,
-            "server_log_tail",
-            json!({ "target": target, "limit": 1 }),
-        )
-        .await
-        {
-            // An empty ring has no newest_ms: every line from now on is new.
-            Ok(r) => {
-                self.log_marks[i] = Some(r.get("newest_ms").and_then(Value::as_u64).unwrap_or(0))
-            }
-            Err(e) => push_err(t, e),
+    /// A pump, camera or ui failure: the tick's first one becomes its one
+    /// `client: ` entry, the rest are dropped.
+    fn client_err(&mut self, t: &mut Tick, kind: &'static str, msg: String) {
+        if t.errors.iter().any(|e| e.starts_with(CLIENT_ERR)) {
+            return;
         }
-    }
-
-    /// SV-02's `server_log_tail { target, since_ms }`: record each
-    /// `KNOWN_SERVER_EVENTS` key whose `event` field and message match.
-    async fn poll_logs(&mut self, t: &mut Tick) {
-        for (i, (key, target, event, message)) in KNOWN_SERVER_EVENTS.iter().enumerate() {
-            let Some(since) = self.log_marks[i] else {
-                // The mark could not be read at begin; read it now and
-                // match from the next poll.
-                self.mark_log(i, t).await;
-                continue;
-            };
-            let args =
-                json!({ "target": target, "contains": message, "since_ms": since, "limit": 50 });
-            let r = match call_ok(self.server, "server_log_tail", args).await {
-                Ok(r) => r,
-                Err(e) => {
-                    push_err(t, e);
-                    continue;
-                }
-            };
-            let mut hit = false;
-            for line in r
-                .get("entries")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                let ts = line
-                    .get("timestamp_ms")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0);
-                if ts <= since {
-                    continue;
-                }
-                // Only lines this probe matched move the mark: a line
-                // stamped with the ring's newest ms can still arrive.
-                if line["fields"]["event"].as_str() == Some(*event)
-                    && line["message"]
-                        .as_str()
-                        .is_some_and(|m| m.contains(message))
-                {
-                    hit = true;
-                    self.log_marks[i] = Some(self.log_marks[i].unwrap_or(0).max(ts));
-                }
-            }
-            if hit && !t.server_events.iter().any(|k| k == key) {
-                t.server_events.push(key.to_string());
-            }
-        }
+        self.err(t, kind, format!("{CLIENT_ERR}{msg}"));
     }
 }
 

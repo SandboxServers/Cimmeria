@@ -33,40 +33,46 @@ pub fn snapshot_sql(player_id: i32) -> [String; 3] {
     ]
 }
 
-/// `"20261012-143000-p2"`: local start time, then the instance.
-pub fn recording_id(now_ms: i64, instance: &str) -> String {
+/// `"20261012-143000-p2"`: local start time, then the instance. The id
+/// names the recording's directory, so the instance must match
+/// `[A-Za-z0-9_-]+`.
+pub fn recording_id(now_ms: i64, instance: &str) -> Result<String, String> {
     use chrono::TimeZone as _;
+    let ok = !instance.is_empty()
+        && instance
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
+    if !ok {
+        return Err(format!("instance {instance:?} is not [A-Za-z0-9_-]+"));
+    }
     let at = chrono::Local
         .timestamp_millis_opt(now_ms)
         .single()
         .map(|t| t.format("%Y%m%d-%H%M%S").to_string())
         .unwrap_or_else(|| now_ms.to_string());
-    format!("{at}-{instance}")
+    Ok(format!("{at}-{instance}"))
 }
 
-/// The one session whose character is `want`: its name, or a whole word of
-/// it (a fresh character may be listed by its full name), as the UAT
-/// runner's packet tap finds it.
-pub(super) fn find_session(sessions: &Value, want: &str) -> Result<u32, String> {
+/// The entity of the one session carrying `player_id`. Keyed by the id,
+/// never the name: a name match can pick another player's session.
+pub(super) fn find_session(sessions: &Value, player_id: i32) -> Result<u32, String> {
     let list = sessions
         .get("sessions")
         .and_then(Value::as_array)
         .ok_or("server_sessions returned no sessions list")?;
     let hits: Vec<u32> = list
         .iter()
-        .filter(|s| {
-            s.get("name").and_then(Value::as_str).is_some_and(|n| {
-                n.eq_ignore_ascii_case(want)
-                    || n.split_whitespace().any(|w| w.eq_ignore_ascii_case(want))
-            })
-        })
+        .filter(|s| s.get("player_id").and_then(Value::as_i64) == Some(i64::from(player_id)))
         .filter_map(|s| s.get("entity_id").and_then(Value::as_u64))
         .filter_map(|id| u32::try_from(id).ok())
         .collect();
     match hits.as_slice() {
         [one] => Ok(*one),
-        [] => Err(format!("no in-world session for character {want:?}")),
-        many => Err(format!("{} sessions match character {want:?}", many.len())),
+        [] => Err(format!("no in-world session for player_id {player_id}")),
+        many => Err(format!(
+            "{} sessions carry player_id {player_id}",
+            many.len()
+        )),
     }
 }
 
@@ -121,8 +127,9 @@ pub(super) fn entity_sample(v: &Value) -> Option<EntitySample> {
 }
 
 /// The camera readout as a sample: `pitch_deg = pitch_offset_deg`, `zoom`,
-/// `yaw_gain` (SV-05's signed gain, else the raw `gain`), and the camera
-/// actor's `yaw_deg` and server position.
+/// `yaw_gain` (SV-05's signed gain; the raw `gain` is unsigned and would
+/// record the wrong turn direction, so a missing one is an error), and the
+/// camera actor's `yaw_deg` and server position.
 pub(super) fn camera_sample(v: &Value) -> Result<CameraSample, String> {
     let num = |k: &str| {
         v.get(k)
@@ -140,7 +147,7 @@ pub(super) fn camera_sample(v: &Value) -> Result<CameraSample, String> {
     Ok(CameraSample {
         pitch_deg: num("pitch_offset_deg")?,
         zoom: num("zoom")?,
-        yaw_gain: num("yaw_gain").or_else(|_| num("gain"))?,
+        yaw_gain: num("yaw_gain")?,
         yaw_deg: pose
             .get("yaw_deg")
             .and_then(Value::as_f64)
