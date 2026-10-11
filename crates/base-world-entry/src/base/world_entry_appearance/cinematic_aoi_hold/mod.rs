@@ -136,6 +136,25 @@ pub(crate) async fn release_on_cancel(
     .await;
 }
 
+/// Log a release that found no hold to end, at DEBUG. `witness_name` is `None`
+/// when the session itself is gone, so there is no name to resolve.
+fn log_skipped(
+    witness_id: u32,
+    addr: SocketAddr,
+    witness_name: Option<&str>,
+    reason: &'static str,
+) {
+    tracing::debug!(
+        target: "aoi.cinematic_hold",
+        event = "hold_release_skipped",
+        %addr,
+        witness_id,
+        witness_name,
+        reason,
+        "Cinematic AoI hold: release found no hold to end"
+    );
+}
+
 /// Flush the held traffic, then lift the hold.
 ///
 /// `expected` is the timeout task's own token: a task that outlived its hold
@@ -168,13 +187,30 @@ async fn release(
         let Ok(mut clients) = connected.lock() else {
             return;
         };
-        let Some(hold) = clients
-            .get_mut(&addr)
-            .and_then(|state| state.cinematic_aoi_hold.as_mut())
-        else {
+        let Some(state) = clients.get_mut(&addr) else {
+            log_skipped(witness_id, addr, None, "session_gone");
             return;
         };
-        if hold.releasing || expected.is_some_and(|token| token != hold.token) {
+        let Some(hold) = state.cinematic_aoi_hold.as_mut() else {
+            log_skipped(witness_id, addr, state.player_name.as_deref(), "no_hold");
+            return;
+        };
+        if hold.releasing {
+            log_skipped(
+                witness_id,
+                addr,
+                state.player_name.as_deref(),
+                "already_releasing",
+            );
+            return;
+        }
+        if expected.is_some_and(|token| token != hold.token) {
+            log_skipped(
+                witness_id,
+                addr,
+                state.player_name.as_deref(),
+                "token_mismatch",
+            );
             return;
         }
         hold.releasing = true;
@@ -189,12 +225,20 @@ async fn release(
                 return;
             };
             let Some(state) = clients.get_mut(&addr) else {
+                log_skipped(witness_id, addr, None, "session_gone");
                 return;
             };
             let Some(active) = state.cinematic_aoi_hold else {
+                log_skipped(witness_id, addr, state.player_name.as_deref(), "no_hold");
                 return;
             };
             if active.token != claimed {
+                log_skipped(
+                    witness_id,
+                    addr,
+                    state.player_name.as_deref(),
+                    "token_mismatch",
+                );
                 return;
             }
             if state.deferred_aoi_msgs.is_empty() {
