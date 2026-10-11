@@ -211,7 +211,7 @@ try {
     Set-Dacl "$Root\egress" @("${LocalService}:(OI)(CI)RX")
     Set-Dacl "$Root\egress\log" @("${LocalService}:(OI)(CI)M")
     $pa = "-I `"$Root\egress\egress_proxy.py`" --listen $EgressListen --allow-src 127.0.0.1/32 --log-file `"$Root\egress\log\egress.log`""
-    if ($cfg.egress_exit) { $pa += " --via $($cfg.egress_exit) --via-dst 57.0.0.0/8" }
+    if ($cfg.egress_exit) { $pa += " --via $($cfg.egress_exit) --via-dst 57.0.0.0/8 52.239.0.0/16" }
     $action = New-ScheduledTaskAction -Execute "$PythonDir\pythonw.exe" -Argument $pa
     $existing = Get-ScheduledTask -TaskName $EgressTask -ErrorAction SilentlyContinue
     if (-not $existing -or $existing.Actions[0].Arguments -ne $pa -or $existing.Actions[0].Execute -ne $action.Execute) {

@@ -6,13 +6,16 @@ Node role, next to the runners: sends CONNECTs whose destination resolves into
 directly. The colo cannot reach some Azure Storage ranges (README, "Colo egress"),
 so only those uploads take the detour.
 
-    egress_proxy.py --listen 0.0.0.0:3128 --via EXIT_HOST:3128 --via-dst 57.0.0.0/8
+    egress_proxy.py --listen 0.0.0.0:3128 --via EXIT_HOST:3128 --via-dst 57.0.0.0/8 52.239.0.0/16
+
+A host whose addresses straddle both (an Azure Storage stamp rotates A records
+across ranges) goes --via whenever any of them is in --via-dst.
 
 Exit role, on a machine whose internet path works: only accepts clients from
 --allow-src and only connects to destinations in --allow-dst, so it is not an
 open proxy.
 
-    egress_proxy.py --listen VPN_ADDR:3128 --allow-src RUNNER_SUBNET --allow-dst 57.0.0.0/8
+    egress_proxy.py --listen VPN_ADDR:3128 --allow-src RUNNER_SUBNET --allow-dst 57.0.0.0/8 52.239.0.0/16
 
 Plain-HTTP proxying is not supported; the runners set only https_proxy.
 """
@@ -78,6 +81,7 @@ class Proxy:
     async def handle(self, reader, writer):
         peer = writer.get_extra_info("peername")[0]
         target = "?"
+        dest = "?"  # the address or upstream being connected, for the failure line
         up_w = None
         try:
             if self.allow_src and not inside(peer, self.allow_src):
@@ -102,6 +106,7 @@ class Proxy:
             if self.via and any(inside(ip, self.via_dst) for ip in ips):
                 route = f"via {self.via}"
                 vhost, _, vport = self.via.rpartition(":")
+                dest = route
                 up_r, up_w = await asyncio.wait_for(asyncio.open_connection(vhost, int(vport)), TIMEOUT)
                 up_w.write(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode())
                 await up_w.drain()
@@ -113,6 +118,7 @@ class Proxy:
             else:
                 route = "direct"
                 # Connect to the address we checked, not a fresh lookup.
+                dest = ips[0]
                 up_r, up_w = await asyncio.wait_for(asyncio.open_connection(ips[0], port), TIMEOUT)
 
             log.info("%s -> %s (%s) %s", peer, target, ips[0], route)
@@ -120,7 +126,8 @@ class Proxy:
             await writer.drain()
             await asyncio.gather(pipe(reader, up_w), pipe(up_r, writer))
         except (OSError, asyncio.TimeoutError, ValueError, UnicodeError) as e:
-            log.warning("%s -> %s failed: %s", peer, target, e)
+            # A connect timeout's message is empty, so name its type and the address.
+            log.warning("%s -> %s (%s) failed: %s %s", peer, target, dest, type(e).__name__, e)
             # An upstream opened before the failure would otherwise leak.
             if up_w is not None:
                 up_w.close()
