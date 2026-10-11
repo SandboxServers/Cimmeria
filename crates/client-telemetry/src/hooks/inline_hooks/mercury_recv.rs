@@ -37,6 +37,7 @@ use crate::hooks::entity_trace::{
     map::{LiveMem, Mem},
 };
 use crate::hooks::mercury_recv::{
+    after_fault,
     bundle::{self, BundleTrace, Element},
     channel, delta, fragment,
     iterator::{IterRaw, ITER_BYTES},
@@ -388,6 +389,8 @@ unsafe extern "thiscall-unwind" fn ordered_detour(this: *mut c_void, msg: *mut c
     let original: OrderedFn = std::mem::transmute(t);
     let nub_ptr = this as u32;
     let _ = BUNDLE_LAST.try_with(|c| c.set(None));
+    // A fault in an earlier bundle no longer explains what this one logs.
+    after_fault::clear();
     let before = guarded(|| begin_bundle(nub_ptr, msg as u32)).flatten();
     let result = {
         let _guard = BundleGuard;

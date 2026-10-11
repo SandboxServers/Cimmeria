@@ -17,7 +17,10 @@
 //! - [`fragment`]: the channel's open fragment group before and after
 //!   `processPacket`, and what that says happened to the fragment.
 //! - [`bundle`]: the packet chain of one bundle and the message loop over it.
+//! - [`after_fault`]: the per-thread mark that tags BigWorld messages
+//!   following an `unpack` fault.
 
+pub(crate) mod after_fault;
 pub(crate) mod bundle;
 pub(crate) mod fragment;
 pub(crate) mod iterator;
