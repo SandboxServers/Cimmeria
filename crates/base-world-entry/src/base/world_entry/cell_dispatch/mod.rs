@@ -31,6 +31,8 @@
 //! - [`aoi`]       — AoI packet emitters (entered/left/moved/method/invisible)
 //! - [`minigame`]  — minigame session start + result handling
 //! - [`bandolier`] — active-slot + bandolier-ammo persistence
+//! - [`shutdown_flush`] — the parallel, deadline-bounded save of every
+//!   in-world player at server stop (TG-DB-02)
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -64,6 +66,7 @@ mod org_dispatch;
 mod player_ghost;
 mod position;
 mod progression_dispatch;
+mod shutdown_flush;
 mod system_options;
 mod vendor_dispatch;
 
@@ -267,6 +270,12 @@ pub async fn route_cell_message(
         | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
+
+        // Server shutdown (TG-DB-02): the last save of every in-world
+        // player. Awaited inline, so everything queued before it is done.
+        CellToBaseMsg::ShutdownFlush(req) => {
+            shutdown_flush::handle_shutdown_flush(req, ctx.db_pool).await
+        }
 
         CellToBaseMsg::Org(org) => org_dispatch::route(org, &ctx).await,
 

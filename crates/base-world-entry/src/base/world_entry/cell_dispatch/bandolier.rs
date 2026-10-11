@@ -193,6 +193,10 @@ pub(super) async fn refresh_appearance(
 /// from the cell. Validates bounds (slot in 0..5, ammo / type non-negative,
 /// expected_instance_id positive) at the service boundary so out-of-range
 /// values can't become durable corruption.
+///
+/// Returns `true` when the UPDATE ran without error (a zero-row TOCTOU skip
+/// included: there was nothing left to save). The shutdown flush (TG-DB-02)
+/// counts a player saved on that.
 #[tracing::instrument(
     name = "bandolier.ammo_update",
     level = "debug",
@@ -206,7 +210,7 @@ pub(super) async fn bandolier_ammo_update(
     current_ammo: i32,
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
-) {
+) -> bool {
     // `player_id` from the cell is the DB character_id (matches the
     // `ActiveSlotUpdate` convention right above).
     //
@@ -229,19 +233,23 @@ pub(super) async fn bandolier_ammo_update(
             cur_ammo_type,
             "BandolierAmmoUpdate: dropping out-of-range payload"
         );
-        return;
+        return false;
     }
-    if let Some(pool) = db_pool {
-        if let Err(e) = update_bandolier_ammo(
-            pool.as_ref(),
-            player_id,
-            slot_id,
-            expected_instance_id,
-            current_ammo,
-            cur_ammo_type,
-        )
-        .await
-        {
+    let Some(pool) = db_pool else {
+        return false;
+    };
+    match update_bandolier_ammo(
+        pool.as_ref(),
+        player_id,
+        slot_id,
+        expected_instance_id,
+        current_ammo,
+        cur_ammo_type,
+    )
+    .await
+    {
+        Ok(()) => true,
+        Err(e) => {
             tracing::warn!(
                 player_id,
                 player_name = cimmeria_entity::known_names::player_name(player_id),
@@ -252,6 +260,7 @@ pub(super) async fn bandolier_ammo_update(
                 error = %e,
                 "BandolierAmmoUpdate: DB write failed"
             );
+            false
         }
     }
 }

@@ -34,13 +34,16 @@ use sqlx::PgPool;
 /// corrected, but ops must see it because the next login will land the
 /// player somewhere stale. A non-finite coordinate is refused outright —
 /// storing NaN would make the next world entry undefined.
+///
+/// Returns `true` only when the row was written; the shutdown flush
+/// (TG-DB-02) counts a player saved on that.
 pub(super) async fn persist_position(
     player_id: i32,
     player_name: Option<&str>,
     world_name: &str,
     position: [f32; 3],
     db_pool: &Option<Arc<PgPool>>,
-) {
+) -> bool {
     let Some(pool) = db_pool else {
         // No pool means the server is running without persistence (test
         // / repl / smoke mode). A DEBUG row only: it is expected there.
@@ -51,7 +54,7 @@ pub(super) async fn persist_position(
             reason = "no_db_pool",
             "PersistPosition: no database pool, position not stored"
         );
-        return;
+        return false;
     };
 
     // The session may already be gone when this runs; the name cache keeps
@@ -70,7 +73,7 @@ pub(super) async fn persist_position(
             "PersistPosition: refusing to store a non-finite coordinate — the \
              row keeps its previous position"
         );
-        return;
+        return false;
     }
 
     match sqlx::query_scalar::<_, i32>(
@@ -101,6 +104,7 @@ pub(super) async fn persist_position(
                 z = position[2],
                 "PersistPosition: persisted"
             );
+            true
         }
         Ok(None) => {
             tracing::warn!(
@@ -115,6 +119,7 @@ pub(super) async fn persist_position(
                 z = position[2],
                 "PersistPosition: no rows updated (player row missing?)"
             );
+            false
         }
         Err(e) => {
             tracing::warn!(
@@ -128,6 +133,7 @@ pub(super) async fn persist_position(
                 error = %e,
                 "PersistPosition: DB write failed (next login will use the previous position)"
             );
+            false
         }
     }
 }

@@ -10,6 +10,7 @@ use super::item_use::ConsumeItemForUse;
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
 use super::plugin_msg::PluginMsg;
+use super::shutdown_flush::ShutdownFlushRequest;
 use crate::cell::vault::VaultAccess;
 
 /// Messages sent from CellApp to BaseApp.
@@ -415,6 +416,13 @@ pub enum CellToBaseMsg {
         world_name: String,
         position: [f32; 3],
     },
+
+    /// Server shutdown (TG-DB-02): persist every in-world player's position
+    /// and dirty bandolier ammo in parallel, by the request's deadline, and
+    /// answer with the players saved. Sent once, from the cell loop's
+    /// shutdown arm; the base handles it inline, so every message queued
+    /// before it has already been handled when the answer comes back.
+    ShutdownFlush(ShutdownFlushRequest),
 
     /// Persist the player's active bandolier slot.
     ///
