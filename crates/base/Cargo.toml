@@ -47,6 +47,9 @@ cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
+# The lab chaos net shim's `Transport` impls (`base/lab_chaos_transport.rs`);
+# only the `lab-chaos` feature links it.
+async-trait = { workspace = true, optional = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
@@ -66,6 +69,7 @@ chaos-testing = ["cimmeria-mercury/test-support"]
 # reuses. Command line only, never from a dependency entry.
 lab-chaos = [
     "chaos-testing",
+    "dep:async-trait",
     "cimmeria-base-session/lab-chaos",
     "cimmeria-base-world-entry/lab-chaos",
 ]
@@ -94,3 +98,5 @@ cimmeria-observability = { workspace = true, features = ["testing"] }
 # The drop-one-sequence `Transport` wrapper in the login handshake
 # retransmit tests (#842); the trait uses `#[async_trait]`.
 async-trait = { workspace = true }
+# `test-util` pauses the clock for the lab chaos net shim's delay-line tests.
+tokio = { workspace = true, features = ["test-util"] }
