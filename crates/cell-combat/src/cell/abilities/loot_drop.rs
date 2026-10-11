@@ -34,7 +34,17 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
 
     let loot_table_id = match loot_table_id {
         Some(id) => id,
-        None => return, // No loot table — NPC drops nothing
+        None => {
+            // No loot table: the NPC drops nothing, which is the normal case.
+            tracing::debug!(
+                target: "abilities",
+                event = "loot_skipped",
+                target_eid,
+                reason = "no_loot_table",
+                "NPC has no loot table; nothing to roll"
+            );
+            return;
+        }
     };
     tracing::Span::current().record("loot_table_id", loot_table_id);
 
@@ -42,12 +52,13 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
     let entries = match space_mgr.loot_tables.get(&loot_table_id) {
         Some(entries) => entries.clone(),
         None => {
-            tracing::debug!(
+            tracing::warn!(
                 target: "abilities",
                 event = "loot_table_empty",
                 target_eid,
                 loot_table_id,
                 loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+                reason = "table_has_no_rows",
                 "No loot table entries found"
             );
             return;
@@ -55,10 +66,23 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
     };
 
     let rolled = roll_loot_entries(&entries, target_eid, loot_table_id);
+    let dropped = rolled.len();
 
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,
-        None => return,
+        None => {
+            // The corpse is gone, so the rolled loot has nowhere to go.
+            tracing::warn!(
+                target: "abilities",
+                event = "loot_skipped",
+                target_eid,
+                loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+                reason = "entity_missing",
+                "loot target entity missing; rolled loot discarded"
+            );
+            return;
+        }
     };
     for (design_id, quantity) in rolled {
         let index = target.next_loot_index;
@@ -84,6 +108,16 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
             "NPC has loot — set INT_NormalLoot interaction"
         );
     }
+    tracing::debug!(
+        target: "abilities",
+        event = "loot_rolled",
+        target_eid,
+        loot_table_id,
+        loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
+        entries = entries.len(),
+        dropped,
+        "loot roll finished"
+    );
 }
 
 /// Roll every row of a loot table once, independently, the way
@@ -165,7 +199,9 @@ mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
     use crate::cell::spawner::LootTableEntry;
+    use crate::test_support::LogCapture;
     use cimmeria_entity::cell_entity::NpcInteractionType;
+    use tracing::Level;
 
     /// Build a minimal `SpaceManager` with one entity at id=1 in a space
     /// large enough that AoI math doesn't intrude. The returned id is 1
@@ -348,5 +384,60 @@ mod tests {
         assert_eq!(e.loot[1].index, 101);
         assert_eq!(e.loot[2].index, 102);
         assert_eq!(e.next_loot_index, 103);
+    }
+
+    /// A table whose only row never passes its roll still ends with a
+    /// `loot_rolled` row carrying `dropped = 0`. Reverting the end-of-roll
+    /// row removes it and fails here.
+    #[test]
+    fn probability_zero_logs_loot_rolled_with_no_drops() {
+        let capture = LogCapture::install();
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(42);
+        }
+        mgr.loot_tables.insert(
+            42,
+            vec![LootTableEntry {
+                design_id: Some(7),
+                min_quantity: 1,
+                max_quantity: 1,
+                probability: 0.0,
+            }],
+        );
+
+        generate_loot_on_death(1, &mut mgr);
+
+        let event = capture
+            .find_message(Level::DEBUG, "loot roll finished")
+            .expect("loot_rolled must be logged at DEBUG");
+        assert!(event.has_field("event", "loot_rolled"), "{event:#?}");
+        assert!(event.has_field("entries", "1"), "{event:#?}");
+        assert!(event.has_field("dropped", "0"), "{event:#?}");
+    }
+
+    /// An unknown loot table id logs the WARN with `reason = table_has_no_rows`.
+    /// Renaming the reason or removing the WARN fails this test.
+    #[test]
+    fn unknown_loot_table_warns_table_has_no_rows() {
+        let capture = LogCapture::install();
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(999);
+        }
+
+        generate_loot_on_death(1, &mut mgr);
+
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "No loot table entries found",
+                    "table_has_no_rows"
+                )
+                .is_some(),
+            "unknown table must WARN with reason=table_has_no_rows: {:#?}",
+            capture.all()
+        );
     }
 }
