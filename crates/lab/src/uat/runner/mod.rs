@@ -16,6 +16,7 @@ mod cast_id;
 mod checks;
 mod clauses;
 mod client_events;
+mod fingerprint;
 mod lab_commands;
 mod packet;
 mod players;
@@ -81,6 +82,9 @@ pub struct RunRequest {
     // Read by the FX-06 session step; no caller reads it yet.
     #[allow(dead_code)]
     pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs ([`fingerprint`]); never
+    /// changes a row's grade.
+    pub fingerprint: bool,
 }
 
 /// When a row's fixture is applied: `auto` (the row has one), `always`,
@@ -167,6 +171,8 @@ pub(crate) struct RowCtx {
     /// Event-store seqs client_event clauses read from, per client and
     /// label (`Who::mark`; `""` is the row start), or why there is none.
     pub event_marks: HashMap<String, Result<u64, String>>,
+    /// Fingerprint-mode capture, when the run asked for it.
+    pub fp: Option<fingerprint::FpCapture>,
 }
 
 /// The runner. Holds the invokers, the run directory and its manifest.
@@ -351,6 +357,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             started_ms: now_ms(),
             tap: None,
             event_marks: HashMap::new(),
+            fp: None,
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -370,6 +377,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             };
             if let Some(r) = lost {
                 ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+                // The cut-off row's tap and capture are still in `ctx`.
+                self.tap_abandon(&mut ctx).await;
             }
         }
 
@@ -442,15 +451,22 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         if row.state == "in_world" && row.anchor.unwrap_or(true) {
             self.anchor(ctx).await;
         }
-        let tapped = row.expect.iter().any(|c| c.source == Source::Packet);
-        if tapped {
+        // A row fixture (FX-06) is established before this point: the tap
+        // starts after it, then the steps.
+        let packet = row.expect.iter().any(|c| c.source == Source::Packet);
+        let fp = self.fp_wanted(row);
+        let tapped = packet || fp;
+        ctx.fp = fp.then(|| fingerprint::FpCapture::new(self.server.is_none(), !packet));
+        if packet {
             self.tap_start(ctx).await;
         }
+        self.fp_start(ctx).await;
         self.event_marks_at(row, None, ctx).await;
         let setup_ok = self.drive_steps(row, ctx, results).await;
         // Read and stop the tap before teardown, and on the failed-setup
         // path too: a tap left running would keep buffering this session.
         if tapped {
+            self.fp_before_tap_read(ctx).await;
             self.tap_finish(ctx).await;
             self.packet_clauses(row, ctx, results);
         }
@@ -460,6 +476,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 ctx.actions.push(rec);
             }
         }
+        self.fp_write(ctx);
     }
 
     /// Setup, steps, clauses and evidence. False when setup failed (the
@@ -470,12 +487,13 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         ctx: &mut RowCtx,
         results: &mut [Option<ClauseResult>],
     ) -> bool {
-        for a in &row.setup {
+        for (i, a) in row.setup.iter().enumerate() {
             let rec = self.exec(a, Role::Setup, ctx).await;
             let failed = !rec.ok && !a.optional;
             let what = rec.requested.clone();
             let err = rec.error.clone().unwrap_or_default();
             ctx.actions.push(rec);
+            self.fp_after_action(a, "setup", i, ctx).await;
             if failed {
                 ctx.blocked.push(format!("setup {what} failed: {err}"));
                 return false;
@@ -504,7 +522,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             .iter()
             .filter_map(|(w, s)| s.map(|s| (*w, s)))
             .collect();
-        for a in &row.steps {
+        for (i, a) in row.steps.iter().enumerate() {
             // `since = <label>` means "lines that arrived after this action
             // started": mark before it runs, so a fast reply is not missed.
             if let Some(label) = &a.label {
@@ -519,6 +537,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             let rec = self.exec(a, Role::Step, ctx).await;
             let stop = !rec.ok && !a.optional;
             ctx.actions.push(rec);
+            self.fp_after_action(a, "step", i, ctx).await;
             if let Some(label) = &a.label {
                 self.clauses_at(row, Some(label), ctx, results).await;
                 self.evidence_at(row, Some(label), ctx).await;
@@ -574,6 +593,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
 #[cfg(test)]
 mod ability_tests;
+#[cfg(test)]
+mod fingerprint_tests;
 #[cfg(test)]
 mod packet_tests;
 #[cfg(test)]
