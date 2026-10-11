@@ -350,11 +350,16 @@ pub(super) async fn name_chunk(
     let plan = with_session_clock(sid, install_id, millis(recv), |clock| {
         NamingPlan::build(events, admitted, recv, clock)
     });
-    resolve(plan, link).await
+    resolve(sid, plan, link).await
 }
 
 /// Ask the cell about `plan`'s questions, if the link is free right now.
-pub(super) async fn resolve(plan: NamingPlan, link: Option<&EntityLabelLink>) -> EntityLabels {
+/// `sid` is the session the chunk came from, for the unnamed-row log.
+pub(super) async fn resolve(
+    sid: &str,
+    plan: NamingPlan,
+    link: Option<&EntityLabelLink>,
+) -> EntityLabels {
     let (Some(link), false) = (link, plan.queries.is_empty()) else {
         return plan.answered(Vec::new());
     };
@@ -362,7 +367,7 @@ pub(super) async fn resolve(plan: NamingPlan, link: Option<&EntityLabelLink>) ->
     // One request in flight process-wide, whatever the upload concurrency:
     // a chunk that finds it taken replays unnamed rather than queueing.
     let Ok(_permit) = link.in_flight.try_acquire() else {
-        return unnamed(plan, "label_link_busy", asked);
+        return unnamed(sid, plan, "label_link_busy", asked);
     };
     let (reply_tx, reply_rx) = oneshot::channel();
     let request = EntityLabelsRequest {
@@ -370,21 +375,22 @@ pub(super) async fn resolve(plan: NamingPlan, link: Option<&EntityLabelLink>) ->
         reply_tx,
     };
     if link.tx.try_send(request).is_err() {
-        return unnamed(plan, "label_channel_full", asked);
+        return unnamed(sid, plan, "label_channel_full", asked);
     }
     match tokio::time::timeout(CELL_REPLY_TIMEOUT, reply_rx).await {
         Ok(Ok(labels)) => plan.answered(labels),
         // The cell checks `is_closed` before answering, so a request left
         // behind by a timeout costs it nothing.
-        Ok(Err(_)) => unnamed(plan, "cell_dropped_reply", asked),
-        Err(_) => unnamed(plan, "cell_reply_timeout", asked),
+        Ok(Err(_)) => unnamed(sid, plan, "cell_dropped_reply", asked),
+        Err(_) => unnamed(sid, plan, "cell_reply_timeout", asked),
     }
 }
 
-fn unnamed(plan: NamingPlan, reason: &'static str, asked: usize) -> EntityLabels {
+fn unnamed(sid: &str, plan: NamingPlan, reason: &'static str, asked: usize) -> EntityLabels {
     tracing::debug!(
         target: "launcher.ingest",
         event = "entity_labels_unavailable",
+        session_id = %sid, // nt:id-only telemetry session UUID from the token; it names nothing
         reason,
         asked,
         "client rows replayed without entity names"
