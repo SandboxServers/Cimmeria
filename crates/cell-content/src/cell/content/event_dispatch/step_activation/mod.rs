@@ -60,6 +60,7 @@ use super::super::executor;
 use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 mod cover_replay;
+mod step_anchor;
 
 /// The `reason` field every replay carries, in the log and in the player
 /// journal. Named so an ops query and the worknote can quote the same string.
@@ -112,6 +113,10 @@ pub fn fire_step_activation_regions<'a>(
             );
             return;
         }
+
+        // TG-MIS-03: what the new step needs, logged before the replay can
+        // advance past it.
+        step_anchor::log_step_anchors(entity_id, mission_id, step_id, engine, space_mgr);
 
         replay_regions(
             entity_id, player_id, mission_id, step_id, engine, tx, space_mgr,
@@ -306,5 +311,7 @@ async fn replay_one(
 
 #[cfg(test)]
 mod cover_replay_tests;
+#[cfg(test)]
+mod step_anchor_tests;
 #[cfg(test)]
 mod tests;
