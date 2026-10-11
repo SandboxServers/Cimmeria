@@ -207,7 +207,7 @@ The config file is watched via [`notify`](https://docs.rs/notify). On
 change → debounce 150 ms → re-parse → validate → atomically swap into the
 `ArcSwap<Config>` that the sender + layer read. Parse failures keep the
 previous config in place and log a `warn!` (so a typo while editing
-doesn't take the server offline).
+doesn't take the server offline). Only `Create`, `Modify` and `Remove` events queue a reload; `Access` and `Other` events (a read of the file, including the reload's own read) are dropped, so reads no longer log a "no semantic change" row each pass.
 
 Manual reload: `ConfigWatcher::reload()` — exposed on the runtime handle;
 plumbed into an admin-api endpoint if you want to force a re-read without

@@ -356,7 +356,7 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 
 ## Tests & CI
 
-For a one-line fix per CI check (`fmt`, `clippy`, `build-and-test`, `test-live-db`, the figure checks), see [agents/pre-pr-checks.md § When a check fails](agents/pre-pr-checks.md#when-a-check-fails). The entries below cover the cases that need more than a line.
+For a one-line fix per CI check (`fmt`, `clippy`, `build-and-test`, the figure checks), see [agents/pre-pr-checks.md § When a check fails](agents/pre-pr-checks.md#when-a-check-fails). The entries below cover the cases that need more than a line.
 
 ### Local tests pass but CI fails on `clippy`
 

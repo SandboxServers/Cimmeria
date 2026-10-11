@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Load db/database.sql into the live-DB template database in the background, so the load
-# overlaps the compile in CI's test-live-db and coverage-live-db jobs.
+# overlaps the compile in CI's build-and-test and coverage-live-db jobs.
 #
 # Usage (from the repo root, with DATABASE_URL naming the template database):
 #   tools/live-db-schema-load.sh start           # returns at once
