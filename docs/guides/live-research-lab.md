@@ -496,7 +496,7 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 
 **Booting several at once.** With other clients running, a new client's bridge took about 25 s to come up on 2026-10-10. The watchdog leaves a client that has never answered its bridge alone for 90 s after launch ([the watchdog](#the-watchdog-hangs-world-loads-and-the-recovery-cap)).
 
-**Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) on every instance: it answers `GetForegroundWindow` per process, so none is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so don't type while a scenario runs.
+**Focus.** The stock player client does not throttle a background window: the below-normal priority and 5 ms sleep in `FEngineLoop::Tick` run only when `GIsEditor` is set, which the player never does (static; [multi-client-lab.md](../reverse-engineering/findings/multi-client-lab.md)). Turn on `client_input_focus` (virtual focus) on every instance all the same: it answers `GetForegroundWindow` per process so each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so don't type while a scenario runs.
 
 **Windows.** Every client opens at the same place and size, stacked. Arranging them is up to you; no lab tool moves a window. Screenshots use `PrintWindow` per window, so an overlapped window still captures.
 
