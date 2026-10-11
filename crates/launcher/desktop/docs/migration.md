@@ -225,7 +225,7 @@ adopt this folder** after a legacy import; there is no location to choose.
    remove `game`. Those leftovers are an owner marker that no journal
    operation or begun plan names, and an empty `game`. The launcher removes
    them, logs a warning and continues.
-2. **Verification.** The signed seed and patches are fetched and reconstructed
+2. **Verification.** The signed seed (a zip or a RAR, as the archive.org client is) and patches are fetched and reconstructed
    into a private reference, the same preparation the verified copy uses. Every
    release file in the folder is compared by size and SHA-256. The review names
    each one that is modified, missing or at another path (`blocked_files`), and

@@ -6,6 +6,13 @@ use serde_json::json;
 const SCREENSHOT: &str = "Working/Binaries/screenshot.bmp";
 const NOTES: &str = "notes.txt";
 
+/// The container format of the seed the fixture's release is built from.
+#[derive(Clone, Copy)]
+pub(super) enum SeedKind {
+    Zip,
+    Rar,
+}
+
 pub(super) struct Fixture {
     root: tempfile::TempDir,
     pub(super) state: Arc<Mutex<DesktopState>>,
@@ -18,13 +25,24 @@ impl Fixture {
     /// player's own beside the release and one inside a release folder.
     /// `ledger_seed` is what the old launcher's ledger claims was installed.
     pub(super) fn new(ledger_seed: Option<&str>) -> Self {
+        Self::with_seed(ledger_seed, SeedKind::Zip)
+    }
+    /// As [`Self::new`], with the seed in the given container format. Both
+    /// kinds carry the same entries.
+    pub(super) fn with_seed(ledger_seed: Option<&str>, kind: SeedKind) -> Self {
         let root = tempfile::tempdir().unwrap();
         let launcher = root.path().join("legacy");
         let game = root.path().join("old-game");
         std::fs::create_dir(&launcher).unwrap();
         std::fs::create_dir(&game).unwrap();
-        let seed = root.path().join("seed.zip");
-        let bytes = fixtures::archive(true);
+        let seed = match kind {
+            SeedKind::Zip => root.path().join("seed.zip"),
+            SeedKind::Rar => root.path().join("seed.rar"),
+        };
+        let bytes = match kind {
+            SeedKind::Zip => fixtures::archive(true),
+            SeedKind::Rar => rar_seed(&fixtures::archive(true), &seed),
+        };
         std::fs::write(&seed, &bytes).unwrap();
         let release = fixtures::verified(&bytes);
         let (progress, _) = crate::install_progress::ProgressSink::latest();
@@ -191,9 +209,30 @@ pub(super) fn assert_player_files_untouched(f: &Fixture) {
     );
 }
 
-#[test]
-fn adopts_the_folder_in_place_by_rename_and_leaves_unlisted_files_where_they_were() {
-    let f = Fixture::new(None);
+/// The zip seed's entries as a stored RAR4 with the same names and bytes,
+/// written to `path`. Returns the archive's bytes.
+fn rar_seed(zip_bytes: &[u8], path: &Path) -> Vec<u8> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).unwrap();
+    let mut entries = Vec::new();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).unwrap();
+        // RAR names use `\` on Windows, as the stock client's archive does.
+        let name = entry.name().replace('/', "\\");
+        let mut data = Vec::new();
+        entry.read_to_end(&mut data).unwrap();
+        entries.push((name, data));
+    }
+    let refs: Vec<(&str, &[u8])> = entries
+        .iter()
+        .map(|(n, d)| (n.as_str(), d.as_slice()))
+        .collect();
+    crate::unpack::test_fixtures::write_stored_rar4(path, &refs);
+    std::fs::read(path).unwrap()
+}
+
+fn adopts_in_place_from(kind: SeedKind) {
+    let f = Fixture::with_seed(None, kind);
     let exe = inventory::native(f.folder(), "Working/Binaries/SGW.exe");
     let exe_identity = inventory::identity(&exe).unwrap();
     let preview = f.preview().unwrap();
@@ -234,6 +273,18 @@ fn adopts_the_folder_in_place_by_rename_and_leaves_unlisted_files_where_they_wer
     );
     drop(state);
     assert_eq!(f.operation().1, OperationState::Succeeded);
+}
+
+#[test]
+fn adopts_the_folder_in_place_by_rename_and_leaves_unlisted_files_where_they_were() {
+    adopts_in_place_from(SeedKind::Zip);
+}
+
+// The production seed is a RAR. Native reference derivation used to demand a
+// zip, so this refused the real seed on Windows with UnsupportedArchive.
+#[test]
+fn adopts_the_folder_in_place_from_a_rar_seed() {
+    adopts_in_place_from(SeedKind::Rar);
 }
 
 #[test]

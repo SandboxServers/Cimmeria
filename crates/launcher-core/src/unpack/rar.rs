@@ -14,12 +14,29 @@ fn rar_err(e: unrar::error::UnrarError) -> UnpackError {
     UnpackError::Rar(e.to_string())
 }
 
+/// The same bounds `strict_zip` applies to a zip seed: at most this many
+/// entries, and at most this many bytes once expanded.
+const MAX_ENTRIES: usize = 200_000;
+const MAX_BYTES: u64 = 200 * 1024 * 1024 * 1024;
+
+/// Refuse an archive whose listing is over the entry or byte bound.
+fn check_bounds(entries: usize, bytes: u64) -> Result<(), UnpackError> {
+    if entries > MAX_ENTRIES || bytes > MAX_BYTES {
+        return Err(UnpackError::Rar(
+            "archive is over the entry or size limit".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Extract every file of `archive` into `dest`. Entry names are checked
 /// with [`safe_relative`] before anything is written, and each file is
 /// extracted to that checked path rather than to the name UnRAR reports.
 pub(super) fn extract(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
     let mut inventory = EntryInventory::default();
     let mut total = 0;
+    let mut listed = 0usize;
+    let mut bytes = 0u64;
     for entry in Archive::new(archive).open_for_listing().map_err(rar_err)? {
         sink.check_cancel()?;
         let entry = entry.map_err(rar_err)?;
@@ -34,6 +51,9 @@ pub(super) fn extract(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<
         }
         inventory.insert(name, entry.is_directory())?;
         total += usize::from(entry.is_file());
+        listed += 1;
+        bytes = bytes.saturating_add(entry.unpacked_size);
+        check_bounds(listed, bytes)?;
     }
     std::fs::create_dir_all(dest)?;
 
@@ -169,5 +189,14 @@ mod tests {
         std::fs::write(&archive, b"Rar!\x1a\x07\x00garbage-after-the-marker").unwrap();
         let (sink, _rx) = sink();
         assert!(extract(&archive, &dir.path().join("out"), &sink).is_err());
+    }
+
+    // The zip path's bounds, applied to the RAR listing: over either limit
+    // is refused, and the limits themselves are accepted.
+    #[test]
+    fn bounds_refuse_too_many_entries_or_bytes() {
+        assert!(check_bounds(MAX_ENTRIES, MAX_BYTES).is_ok());
+        assert!(check_bounds(MAX_ENTRIES + 1, 0).is_err());
+        assert!(check_bounds(1, MAX_BYTES + 1).is_err());
     }
 }

@@ -33,7 +33,7 @@ Left in the desktop ledger as macOS only: "Actual Mac graphics/login/world", and
 
 ## LX-26 results
 
-The owner runs steps 1-12 on a Windows machine with no launcher state, and step 13 on a Mac, each from the `launcher-current` download. Record `Pass` or `Fail`, the date, the release tag, and for a fail the first error and a log path. The step text is the canonical list in [work-packets.md](work-packets.md#lx-26-windows-uat-of-the-released-zip).
+The owner runs steps 1-12 on a Windows machine with no launcher state, and step 13 on a Mac, each from the `launcher-current` download. Record `Pass` or `Fail`, the date, the release tag, and for a fail the first error and a log path. The step text is the canonical list in [work-packets.md](work-packets.md#lx-26-windows-uat-of-the-released-zip). The adoption rows (step 4, G-10 and G-13) needed the AI-03 fix: until it merged, native in-place adoption refused the RAR seed on Windows, so an earlier build cannot pass that step.
 
 | Step | What to check | Packets | Gates | Result | Date and tag | Notes |
 |---|---|---|---|---|---|---|
