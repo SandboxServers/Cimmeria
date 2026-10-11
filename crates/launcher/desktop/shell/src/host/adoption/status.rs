@@ -82,8 +82,9 @@ impl NativeHost {
                 .map(|session| session.review.clone()),
             progress,
             // Once every file is copied, publication can no longer be stopped.
+            // Admitted in-place moves are never stopped part-way.
             cancellable: adoption.preview.is_some()
-                || (adoption.confirm.is_some()
+                || (adoption.confirm.as_ref().is_some_and(|job| !job.in_place)
                     && progress.is_none_or(|copied| copied.current < copied.total)),
             reconciliation: facts.reconciliation,
             preparations: facts.preparations,

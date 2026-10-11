@@ -333,6 +333,28 @@ async fn choose_adoption_destination(
     tauri::async_runtime::spawn_blocking(move || checking.adoption_choice_allowed())
         .await
         .map_err(|_| AdoptionError::Io)??;
+    // In place (D-LX12) the imported game folder is the one adopted, so there
+    // is no folder to pick.
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, window);
+        let release = cimmeria_launcher_engine::catalog::fetch_release()
+            .await
+            .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+        tauri::async_runtime::spawn_blocking(move || host.begin_adoption_in_place(release))
+            .await
+            .map_err(|_| AdoptionError::Io)?
+    }
+    #[cfg(target_os = "macos")]
+    choose_copy_destination(app, window, host).await
+}
+
+#[cfg(target_os = "macos")]
+async fn choose_copy_destination(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    host: Arc<NativeHost>,
+) -> Result<AdoptionStatus, AdoptionError> {
     let Some(location) = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()

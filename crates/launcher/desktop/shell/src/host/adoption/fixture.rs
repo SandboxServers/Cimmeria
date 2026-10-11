@@ -44,6 +44,7 @@ impl Fixture {
     pub fn serve_from(&mut self, manifest_url: String) {
         self.host.adoption_fixture = Some(TestDispatch {
             manifest_url,
+            #[cfg(target_os = "macos")]
             helper: None,
             copy_fault: Mutex::new(None),
         });
@@ -133,9 +134,16 @@ pub(super) fn legacy_source(root: &Path, seed: &[u8], config: serde_json::Value)
         br#"{"schema_version":1,"install_id":"72a8a13b-2a4e-4ea0-b5ba-5ba3cf0a619d","machine_id":"fixture","first_seen_ms":1,"created_by_launcher_version":"0.8"}"#,
     )
     .unwrap();
+    // The old launcher's ledger for the signed seed. A copy never trusts it;
+    // in place it only gates an install the old launcher left out of date.
     fs::write(
         game.join("launcher-installed.json"),
-        br#"{"seed_adopted":false,"applied_patches":[]}"#,
+        serde_json::to_vec(&serde_json::json!({
+            "seed_sha256": fixtures::verified(seed).manifest().seed.sha256,
+            "seed_adopted": false,
+            "applied_patches": []
+        }))
+        .unwrap(),
     )
     .unwrap();
     LegacySource {
@@ -155,6 +163,7 @@ pub(super) fn imported_host(root: &Path, source: &LegacySource) -> NativeHost {
 }
 /// The bundled prerequisite helper a packaged build carries. Without it the host
 /// offers no prerequisite setup for any installation. Inert: it is never run.
+#[cfg(target_os = "macos")]
 pub(super) fn bundle_prerequisite_helper(host: &mut NativeHost, directory: &Path) {
     const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     let helper = directory

@@ -15,7 +15,7 @@
     "uat:game-update": "esbuild src/game-update-workflow.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/game-update-workflow.mjs && node game-update-native-uat.mjs",
     "uat:game-update-apply": "esbuild src/game-update-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/game-update-view.mjs && node game-update-apply-native-uat.mjs",
     "uat:game-telemetry": "esbuild src/game-telemetry-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/game-telemetry-view.mjs && node game-telemetry-native-uat.mjs",
-    "uat:adoption": "esbuild src/adoption-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/adoption-view.mjs && node adoption-native-uat.mjs",
+    "uat:adoption": "esbuild src/adoption-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/adoption-view.mjs && node adoption-uat.mjs",
     "uat:server-list": "esbuild src/server-list-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/server-list-view.mjs && node server-list-uat.mjs",
     "uat:client-patches": "esbuild src/client-patches-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-patches-view.mjs && node client-patches-uat.mjs",
     "uat:log-upload": "esbuild src/log-upload-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/log-upload-view.mjs && node log-upload-uat.mjs",
