@@ -335,6 +335,7 @@ async fn verify_and_unpack(
     .map_err(|e| InstallError::Io(std::io::Error::other(format!("unpack task failed: {e}"))))?
 }
 
+/// Downloads `url` to `dest`, resuming a partial file there with a `Range` request.
 pub async fn download_to_file(
     http: &reqwest::Client,
     url: &str,
@@ -448,6 +449,7 @@ fn verify_sha256(path: &Path, expected: &str, what: &str) -> Result<(), InstallE
     Ok(())
 }
 
+/// Lower-case hex SHA-256 of the file at `path`.
 pub fn hash_file(path: &Path) -> std::io::Result<String> {
     let mut f = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();

@@ -29,8 +29,8 @@ platforms = [
 # The crates CI leaves out of the gated workspace (the GUI apps, the Windows-only
 # client-telemetry and client-patches cdylibs, and the lab supervisor). Their dependencies' features must not
 # leak into the unified set, or every crate would pull in GUI-only features that the Linux
-# CI runners can't build. cimmeria-launcher-core is built by CI, but its only workspace
-# consumer is sgw-launcher and its other is the standalone desktop launcher workspace, so
+# CI runners can't build. cimmeria-launcher-core is built by CI, but its only consumers are
+# sgw-launcher and the standalone desktop launcher workspace (outside this one), so
 # its launcher-only features (reqwest multipart, unrar) stay out of the server's set too.
 [traversal-excludes]
 workspace-members = [
