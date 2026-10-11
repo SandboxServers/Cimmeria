@@ -51,8 +51,20 @@ pub fn is_dead_state(state_field: u32) -> bool {
 /// `world` labels the `npc_ai.transition` row; resolve it with
 /// `npc_ai::world_label` before taking the `&mut` borrow.
 pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity, world: &str) {
+    mark_npc_dead_with_kill(entity, world, false);
+}
+
+/// [`mark_npc_dead`] for a kill whose killer is known. `player_side` is
+/// whether a player or a player's pet took part in the kill (the attacker
+/// is the caller's to say); the respawn row is INFO when it is, or when the
+/// dead entity is itself a pet, and DEBUG for an NPC-only kill (TG-CMB-09).
+pub fn mark_npc_dead_with_kill(
+    entity: &mut cimmeria_entity::cell_entity::CellEntity,
+    world: &str,
+    player_side: bool,
+) {
     use crate::cell::service::npc_ai::{set_ai_state_on, AiTransitionReason};
-    use cimmeria_entity::cell_entity::AiState;
+    use cimmeria_entity::cell_entity::{AiState, PetState};
 
     entity.set_state_flag(BSF_DEAD);
     entity.set_state_flag(BSF_MOVEMENT_LOCK);
@@ -60,17 +72,30 @@ pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity, worl
     if let Some(secs) = entity.respawn_secs {
         entity.respawn_at =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));
-        tracing::info!(
-            entity_id = entity.entity_id.0,
-            entity_name =
-                cimmeria_cell_world::cell::space_manager::EntityNames::of(entity).entity_name,
-            template_id = entity.template_id,
-            template_name = cimmeria_cell_world::cell::effects::content_names::template_name(
-                entity.template_id
-            ),
-            respawn_secs = secs,
-            "NPC death: respawn scheduled",
-        );
+        let entity_name =
+            cimmeria_cell_world::cell::space_manager::EntityNames::of(entity).entity_name;
+        let template_name =
+            cimmeria_cell_world::cell::effects::content_names::template_name(entity.template_id);
+        // `tracing` takes a constant level, so the two levels are two calls.
+        if player_side || entity.extensions.contains::<PetState>() {
+            tracing::info!(
+                entity_id = entity.entity_id.0,
+                entity_name,
+                template_id = entity.template_id,
+                template_name,
+                respawn_secs = secs,
+                "NPC death: respawn scheduled",
+            );
+        } else {
+            tracing::debug!(
+                entity_id = entity.entity_id.0,
+                entity_name,
+                template_id = entity.template_id,
+                template_name,
+                respawn_secs = secs,
+                "NPC death: respawn scheduled",
+            );
+        }
     }
     entity.last_movement_type = None;
     // The Dead transition above already stopped the corpse; this covers a

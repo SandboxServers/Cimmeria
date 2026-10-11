@@ -135,6 +135,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [rule6-name-pairing-sweep-techniques](rule6-name-pairing-sweep-techniques.md) — list unpaired sites by zeroing the baseline; lazy fields + `enabled!`; base NPC names only from EnteredAoI.
 - [base-side-log-naming-and-lock-traps](base-side-log-naming-and-lock-traps.md) — base Rule 6 resolvers (session_identity), base can't name NPCs bar AoI name_id; match-scrutinee guard + name lookup = nested lock.
 - [unpaired-id-sweep-workflow-traps](unpaired-id-sweep-workflow-traps.md) — NT sweep: per-site dump patch, lane quiet-mode log-dir race, B: <10 GB refusals, heredoc edits eat `\` continuations.
+- [firehose-framework-crate-placement](firehose-framework-crate-placement.md) — sampler in observability, mercury_packet emitter in mercury; const targets; suppressed = drops before.
 - [log-filter-parity-traps](log-filter-parity-traps.md) — `EnvFilter::new` drops a bad directive silently.
 - [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
 - [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env; opted-in player launch mints the session before the game.

@@ -140,6 +140,10 @@ pub fn report_scan(
     if found_candidate {
         return;
     }
+    // Nobody is watching: the row would describe a scan no player saw.
+    if witness_count == 0 {
+        return;
+    }
     let Some(suppressed) = space_mgr.npc_detectors.admit_sample(
         npc_id,
         "aggro_scan_no_candidates",
@@ -291,5 +295,62 @@ pub fn report_npc_rejects(
             suppressed,
             "npc_ai.aggro_scan: hostile NPC rejected as an aggro candidate"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use cimmeria_names::{NameBook, Table};
+
+    use super::{report_scan, SpaceManager};
+    use crate::test_support::LogCapture;
+
+    const NPC: u32 = 910;
+
+    fn agnos_with_npc() -> SpaceManager {
+        let mut book = NameBook::empty();
+        book.insert(Table::Templates, 81, "NT03_Scan_Template");
+        book.insert(Table::Texts, 82, "Watchful Guard");
+        cimmeria_names::global().store(book);
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.spawn_npc(NPC, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let npc = mgr.get_entity_mut(NPC).unwrap();
+        npc.template_id = Some(81);
+        npc.name_id = Some(82);
+        mgr
+    }
+
+    /// Revert proof: drop the `witness_count == 0` return and the first
+    /// assertion fails, because the unwitnessed scan writes a `no_candidates`
+    /// row.
+    #[test]
+    fn no_candidates_needs_a_witness() {
+        let mut mgr = agnos_with_npc();
+        let logs = LogCapture::install();
+        report_scan(&mut mgr, NPC, 0, &[], false, Instant::now());
+        let unwitnessed = logs.all();
+        assert!(
+            !unwitnessed
+                .iter()
+                .any(|c| c.target == "npc_ai.aggro_scan" && c.has_field("event", "no_candidates")),
+            "{unwitnessed:?}"
+        );
+
+        report_scan(&mut mgr, NPC, 1, &[], false, Instant::now());
+        let witnessed = logs.all();
+        let row = witnessed
+            .iter()
+            .find(|c| c.target == "npc_ai.aggro_scan" && c.has_field("event", "no_candidates"))
+            .expect("the no_candidates row once someone watches");
+        assert!(row.has_field("witness_count", "1"), "{row:?}");
     }
 }

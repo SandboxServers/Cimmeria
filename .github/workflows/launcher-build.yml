@@ -44,7 +44,8 @@ permissions:
 jobs:
   fmt:
     name: cargo fmt --check (launcher)
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux-quick (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',fmt,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -171,7 +172,8 @@ jobs:
   # double-counting against the main workspace coverage job in test.yml.
   coverage:
     name: cargo llvm-cov (launcher)
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage,')) && 'ubuntu-latest' || 'cimmeria-linux' }}
     needs: clippy
     continue-on-error: true
     steps:
@@ -194,6 +196,8 @@ jobs:
             libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev \
             libxrandr-dev libxi-dev libgl1-mesa-dev
       - uses: Swatinem/rust-cache@v2
+        # Self-hosted runners use the shared sccache instead (tools/ci-runners/README.md).
+        if: runner.environment == 'github-hosted'
         with:
           shared-key: launcher-coverage
           save-if: ${{ github.ref == 'refs/heads/main' }}

@@ -34,7 +34,8 @@ permissions: {}
 jobs:
   lint:
     name: validate docs/spec/ Rust symbol references
-    runs-on: ubuntu-latest
+    # Self-hosted cimmeria-linux (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',lint,')) && 'ubuntu-latest' || 'cimmeria-linux' }}
     permissions:
       contents: read
     timeout-minutes: 10
@@ -51,9 +52,11 @@ jobs:
       # build fails with `invalid linker name in argument '-fuse-ld=mold'`
       # unless we install both. test.yml does the same thing.
       - name: install clang + mold
-        run: sudo apt-get update && sudo apt-get install -y clang mold
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold || exit 1; break; }; done
 
       - name: cache cargo registry + spec-lint target
+        # Self-hosted runners use the shared sccache instead (tools/ci-runners/README.md).
+        if: runner.environment == 'github-hosted'
         uses: actions/cache@v6
         with:
           path: |
