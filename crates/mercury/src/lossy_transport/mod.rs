@@ -513,7 +513,8 @@ impl Transport for LossyTransport {
 
         let forced_drop = forced_drop_targeted || forced_drop_global;
 
-        let in_grace = {
+        // Forced drops count toward the grace too: a send is a send.
+        let in_grace = self.send_config.lossless_first_sends > 0 && {
             let mut sends = self.sends_per_dest.lock().expect("sends_per_dest poisoned");
             let n = sends.entry(addr).or_insert(0);
             let in_grace = *n < self.send_config.lossless_first_sends;
@@ -525,24 +526,28 @@ impl Transport for LossyTransport {
             (true, false, self.send_config.latency)
         } else {
             let mut rng = self.send_rng.lock().expect("send_rng poisoned");
-            // Draw the roll even in the grace window, so the RNG sequence
-            // after it is the same with or without the grace.
-            let drop_this = Self::should_drop(&self.send_config, &mut rng) && !in_grace;
-            let duplicate = if !drop_this {
+            // The grace only overrides the outcome: every roll is drawn
+            // exactly as without it, so the RNG sequence after the grace
+            // window is unchanged (a spared send draws no duplicate roll).
+            let rolled_drop = Self::should_drop(&self.send_config, &mut rng);
+            let duplicate = if !rolled_drop {
                 Self::should_duplicate(&self.send_config, &mut rng)
             } else {
                 false
             };
             let latency = Self::effective_latency(&self.send_config, &mut rng);
-            (drop_this, duplicate, latency)
+            (rolled_drop && !in_grace, duplicate, latency)
         };
 
         // Never sleep here: the caller may be a loop that serves every
         // client (the base's cell-message dispatcher is one task), and a
         // sleep per send turns 80 ms of latency into a cap of about 12
         // sends a second for the whole server (#1371). The delay line
-        // delivers the datagram when it is due instead.
-        let due = (!latency.is_zero()).then(|| Instant::now() + latency);
+        // delivers the datagram when it is due instead. Any configured
+        // delay goes through the line, even a zero draw, so a packet never
+        // overtakes one still queued for the same destination.
+        let delayed = !self.send_config.latency.is_zero() || !self.send_config.jitter.is_zero();
+        let due = delayed.then(|| Instant::now() + latency);
 
         if drop_this {
             tracing::debug!(

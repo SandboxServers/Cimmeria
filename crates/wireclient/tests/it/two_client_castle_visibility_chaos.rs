@@ -60,6 +60,12 @@ const CONVERGENCE_TIMEOUT: Duration = Duration::from_secs(25);
 /// from the server arriving damaged), not a symmetric assumption that
 /// would also make outbound acks unreliable and confound the result.
 ///
+/// It also guards the idle keep-alive's ACKs (#1371), but only while
+/// Castle pushes A more than the server's 32-packet TX window of reliable
+/// introductions; with fewer NPCs in A's AoI it would stop guarding them.
+/// The seed does not make a run replayable: A and B share one send RNG,
+/// and which client's send draws next depends on scheduling.
+///
 /// **Deliberately excludes `LossyConfig::with_reorder_buffer`.** The
 /// Mercury phase-3 handshake (`baseAppLogin` reply + time-sync) is exactly
 /// two raw, unencrypted-then-encrypted datagrams that `GameSession`

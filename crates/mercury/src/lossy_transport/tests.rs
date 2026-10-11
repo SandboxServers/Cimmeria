@@ -433,8 +433,7 @@ async fn jitter_widens_delivery_latency_within_bounds() {
     let sender_inner = make_inner(0);
     let base = Duration::from_millis(5);
     let jitter = Duration::from_millis(20);
-    let cfg = LossyConfig::new(base, 0, 0, 7).with_jitter(jitter);
-    let lossy = LossyTransport::new_symmetric(sender_inner, cfg);
+    let lossy = LossyTransport::new_symmetric(sender_inner, cfg_for_replay(base, jitter));
 
     // Measure arrival, not how long `send_to` blocked: a send returns at
     // once and the delay line delivers the datagram later (#1371).
@@ -467,10 +466,70 @@ async fn jitter_widens_delivery_latency_within_bounds() {
             "observed latency {lat:?} must not exceed base+jitter by more than scheduling slack"
         );
     }
-    let distinct: std::collections::HashSet<_> = latencies.iter().map(|d| d.as_millis()).collect();
+    // With no drop or duplicate configured, the send RNG draws only the
+    // eight latencies, so replaying seed 7 gives each packet's floor. A
+    // lower bound load cannot break, and it fails if jitter is ignored.
+    let mut rng = ChaCha20Rng::seed_from_u64(7);
+    let expected: Vec<Duration> = (0..8)
+        .map(|_| LossyTransport::effective_latency(&cfg_for_replay(base, jitter), &mut rng))
+        .collect();
     assert!(
-        distinct.len() > 1,
-        "jitter must vary the observed latency across sends, got {latencies:?}"
+        expected.iter().any(|d| *d > base),
+        "seed 7 must draw some jitter, or this test checks nothing: {expected:?}"
+    );
+    for (lat, exp) in latencies.iter().zip(&expected) {
+        assert!(
+            *lat >= *exp,
+            "packet arrived after {lat:?}, before its drawn latency {exp:?}"
+        );
+    }
+}
+
+fn cfg_for_replay(base: Duration, jitter: Duration) -> LossyConfig {
+    LossyConfig::new(base, 0, 0, 7).with_jitter(jitter)
+}
+
+/// The grace overrides the drop outcome but draws every roll as before,
+/// so the drop pattern after the grace window matches a run without it.
+/// Fails if the grace short-circuits the roll (`!in_grace && should_drop`)
+/// or changes which rolls are drawn.
+#[tokio::test]
+async fn lossless_first_sends_keeps_the_drop_pattern_after_the_grace() {
+    async fn pattern(grace: u32) -> Vec<bool> {
+        let receiver = make_inner(0);
+        let addr = receiver.local_addr().unwrap();
+        let lossy = LossyTransport::new_symmetric(
+            make_inner(0),
+            LossyConfig::new(Duration::ZERO, 500, 200, 11).with_lossless_first_sends(grace),
+        );
+        for i in 0..40u8 {
+            lossy.send_to(&[i], addr).await.unwrap();
+        }
+        let mut seen = vec![false; 40];
+        let mut buf = [0u8; 8];
+        while let Ok(Ok((n, _))) =
+            tokio::time::timeout(Duration::from_millis(200), receiver.recv_from(&mut buf)).await
+        {
+            if n == 1 {
+                seen[buf[0] as usize] = true;
+            }
+        }
+        seen
+    }
+    let with_grace = pattern(2).await;
+    let without = pattern(0).await;
+    assert!(
+        with_grace[0] && with_grace[1],
+        "the grace lets sends 0 and 1 through"
+    );
+    assert_eq!(
+        with_grace[2..],
+        without[2..],
+        "sends after the grace must drop exactly as without it"
+    );
+    assert!(
+        without[2..].iter().any(|s| !s),
+        "seed 11 must drop something after the grace, or this test checks nothing"
     );
 }
 
@@ -488,8 +547,10 @@ async fn latency_is_a_pipeline_delay_not_a_send_cap() {
     for i in 0..10u8 {
         lossy.send_to(&[i], recv_addr).await.unwrap();
     }
+    // The old inline sleep makes ten sends take at least 2 s, so a 1 s
+    // bound still catches it while leaving room for a loaded runner.
     assert!(
-        sent.elapsed() < Duration::from_millis(100),
+        sent.elapsed() < Duration::from_secs(1),
         "a send must not wait out the latency (#1371); ten sends took {:?}",
         sent.elapsed()
     );
@@ -509,9 +570,10 @@ async fn latency_is_a_pipeline_delay_not_a_send_cap() {
         first_arrival.duration_since(sent) >= Duration::from_millis(200),
         "the first datagram must not arrive before the latency"
     );
+    // A line that slept the latency per item would take at least 2 s.
     assert!(
-        sent.elapsed() < Duration::from_secs(1),
-        "all ten datagrams must be in within 1 s of the first send, took {:?}",
+        sent.elapsed() < Duration::from_millis(1500),
+        "all ten datagrams must be in within 1.5 s of the first send, took {:?}",
         sent.elapsed()
     );
 }
@@ -542,7 +604,7 @@ async fn recv_latency_is_a_pipeline_delay_not_a_read_cap() {
     }
     let took = started.elapsed();
     assert!(
-        took >= Duration::from_millis(200) && took < Duration::from_secs(1),
+        took >= Duration::from_millis(200) && took < Duration::from_millis(1500),
         "ten backlogged reads must take one latency, not one each; took {took:?}"
     );
 }
