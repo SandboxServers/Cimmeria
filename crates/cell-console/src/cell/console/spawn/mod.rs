@@ -28,8 +28,11 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 mod authoring;
+pub mod batch;
+mod despawn_by_id;
 mod sets;
 pub(super) use authoring::save_spawn;
+pub(super) use despawn_by_id::resolve_npc_id;
 
 pub(super) async fn dispatch(
     name: &str,
@@ -45,7 +48,7 @@ pub(super) async fn dispatch(
         "despawn" => {
             despawn_entity(
                 caller_id,
-                target_id.expect("Target::Mob guarantees a resolved target"),
+                target_id.expect("Target::MobOrId guarantees a resolved target"),
                 tx,
                 space_mgr,
             )
@@ -175,6 +178,7 @@ async fn spawn_entity(
             world_name,
             position,
             heading,
+            batch: None,
         })
         .await
     {
@@ -197,7 +201,8 @@ async fn spawn_entity(
     // round-trip owns the truthful outcome line.
 }
 
-/// `.despawn` — destroy the selected NPC/spawnable and tell its observers.
+/// `.despawn [entityId]` — destroy the selected NPC/spawnable, or the NPC the
+/// argument names ([`despawn_by_id`], CH-13), and tell its observers.
 ///
 /// Legacy `Resource.despawnEntity` is `Atrea.destroyCellEntity(target.entityId)`
 /// with a `'Despawning entity <%s>'` line printed first. Runtime-only: the
@@ -205,7 +210,7 @@ async fn spawn_entity(
 /// untouched — deleting that is `.delspawn`.
 ///
 /// The player refusal is enforced twice on purpose: the registry spec is
-/// `Target::Mob`, and [`SpaceManager::despawn_npc`] independently refuses a
+/// `Target::MobOrId`, and [`SpaceManager::despawn_npc`] independently refuses a
 /// player. Legacy's own registration was `SGWSpawnableEntity`, which
 /// `SGWPlayer` derives from — so the legacy command could destroy a logged-in
 /// player's cell entity. That is a legacy bug, corrected per D02.
@@ -308,6 +313,12 @@ async fn respawn_all(
 /// of a template scattered around the caller, reusing the `GmSpawnNpc`
 /// cell↔base round-trip. Scatter is deterministic (a ring around the caller) to
 /// avoid an RNG dependency.
+///
+/// The copies form one [`batch`] (CH-13): the immediate line acknowledges the
+/// request, and a single `spawnrandom: spawned n/count ... ids ...` summary
+/// follows once every copy spawned, failed or timed out. A batched copy sends
+/// no per-copy `spawned npc <id>` line, so fifty copies are one line, not
+/// fifty.
 async fn spawn_random(
     caller_id: u32,
     args: &[&str],
@@ -334,6 +345,12 @@ async fn spawn_random(
         return;
     };
 
+    let batch_id = batch::batches(space_mgr).open(
+        caller_id,
+        template_id,
+        count.unsigned_abs(),
+        tokio::time::Instant::now(),
+    );
     let mut delivered = 0i32;
     for i in 0..count {
         // Deterministic scatter: place copies evenly on a ring within the
@@ -355,6 +372,7 @@ async fn spawn_random(
                 // `spawnRandomEntity`'s `space.createEntity(template, pos,
                 // player.rotation)`.
                 heading,
+                batch: Some(batch_id),
             })
             .await
         {
@@ -375,6 +393,16 @@ async fn spawn_random(
                 break;
             }
         }
+    }
+    if delivered == 0 {
+        // Nothing reached the base, so nothing will ever report back.
+        batch::batches(space_mgr).discard(batch_id);
+    } else if delivered < count {
+        batch::batches(space_mgr).undelivered(
+            batch_id,
+            (count - delivered).unsigned_abs(),
+            "cell→base channel error",
+        );
     }
     if delivered == count {
         send_gm_feedback(

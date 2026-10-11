@@ -5,7 +5,7 @@
 use super::*;
 
 /// Build a minimal GM-spawn `SpawnRecord` (spawn_id -1, position from "command").
-fn gm_record(template_id: i32, pos: [f32; 3]) -> spawner::SpawnRecord {
+pub(super) fn gm_record(template_id: i32, pos: [f32; 3]) -> spawner::SpawnRecord {
     spawner::SpawnRecord {
         spawn_id: -1,
         world_name: "Castle".to_string(),
@@ -80,6 +80,7 @@ async fn gm_spawn_npc_ready_spawns_record_into_space() {
             record: Box::new(record),
             space_id,
             requester_entity_id: 1,
+            batch: None,
         },
         &tx,
         &mut mgr,
@@ -116,7 +117,10 @@ async fn gm_spawn_npc_ready_spawns_record_into_space() {
 
 /// Pull the decoded text of the first `onPlayerCommunication` (method 28)
 /// feedback line addressed to `entity_id`, draining the channel.
-fn spawned_feedback_text(rx: &mut mpsc::Receiver<CellToBaseMsg>, entity_id: u32) -> Option<String> {
+pub(super) fn spawned_feedback_text(
+    rx: &mut mpsc::Receiver<CellToBaseMsg>,
+    entity_id: u32,
+) -> Option<String> {
     std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
         CellToBaseMsg::EntityMethodCall {
             entity_id: e,

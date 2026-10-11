@@ -100,7 +100,8 @@ lasts until you log out.
 | `.spawn <templateId>` | Creates a new NPC or object on your spot, facing your way. |
 | `.savespawn` | Queues the selected NPC's position, facing and tag for saving. |
 | `.delspawn` | Removes the selected NPC now and queues deleting it. |
-| `.despawn` | Removes the selected NPC until the next restart. Saves nothing. |
+| `.despawn [entityId]` | Removes the selected NPC, or the NPC with that entity id in your space, until the next restart. Saves nothing. |
+| `.spawnrandom <templateId> <xRange> <zRange> [count]` | Creates `count` copies (1-50) on a ring around you, then lists their entity ids in one line. Saves nothing. |
 | `.autosavespawn 1` / `0` | Turns automatic saving after moves and turns on or off. |
 | `.seedpending` | Shows how many changes are waiting. |
 | `.seedconfirm` | Saves everything waiting and gives you the batch id. |

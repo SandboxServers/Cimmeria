@@ -170,6 +170,7 @@ pub(super) async fn handle_spawn_by_cmd(
             // heading. The dot-console `.spawn` sends the caller's own facing
             // instead (legacy `Resource.spawnEntity` passes `player.rotation`).
             heading: 0.0,
+            batch: None,
         })
         .await
     {

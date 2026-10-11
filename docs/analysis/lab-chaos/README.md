@@ -86,6 +86,7 @@ the report so a run can be replayed exactly.
 | D-CH6 | PROPOSED (coordinator; `aoi-witness-broadcast` confirms the filler) | **`flush` modes:** `delay` (hold the flush `delay_ms` longer); `reorder` (seeded shuffle of the introductions inside each phase); `pack` (force the pre-mitigation single-packet phase-1 bundle of up to 24 records, F7); `shift` (prepend one filler message of a seeded length, F6). With the gate off, the flush is byte-identical to today. | `pack` and `shift` make #1341 deterministic; `delay` and `reorder` test the client's tolerance without a known bug. |
 | D-CH7 | PROPOSED (coordinator) | **Reporting against the golden.** A chaos run compares to the lab-golden fingerprint with lab-golden's variance model and prints the first divergence in one line, prefixed by the chaos header (`chaos=flush:pack seed=7`). A chaos run never records or re-blesses a golden. Chaos-only failures are labelled `chaos_divergence`, not row failures, in `-Json`. | Keeps the output budget (F11) and keeps goldens clean. |
 | D-CH8 | PROPOSED (coordinator) | **Levels live in one committed file,** `crates/lab/src/chaos/levels.toml` (embedded with `include_str!`), each level citing the `docs/client/limits/` row it came from. CH-10 updates the numbers; the names stay. | One source for the CLI, the runner and the docs. |
+| D-CH9 | **DECIDED**, owner, 2026-10-11 | **Burst cleanup: change the GM console.** `.spawnrandom` replies only after the spawned ids are known and lists them; `.despawn` takes an optional entity id. Chosen over a lab-only despawn tool and over dropping burst. Supersedes D-CH5's "no new server code". | CH-08 found `.spawnrandom` never reports ids and `.despawn` acts only on the selected target, so the runner could not despawn exactly what it spawned without moving the player's target. |
 
 ## Packets
 
@@ -102,6 +103,7 @@ the report so a run can be replayed exactly.
 | CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
+| CH-13 | GM console: `.spawnrandom` reports spawned ids, `.despawn <id>` (D-CH9) | rust-gameserver-dev, `server-authority-enforcer` review | M | 4 | D-CH9 | Writing |
 | CH-12 | Close-out | documentation-writer | S | 7 | all | BlockedDependency |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.

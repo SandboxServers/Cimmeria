@@ -33,7 +33,9 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
             world_name,
             position,
             heading,
+            batch,
         } => {
+            assert_eq!(batch, None, "a native single spawn is not a batch");
             assert_eq!(entity_id, 1);
             assert_eq!(template_id, 4321);
             assert_eq!(world_name, "Castle");

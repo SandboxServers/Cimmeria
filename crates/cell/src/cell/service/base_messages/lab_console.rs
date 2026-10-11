@@ -12,12 +12,18 @@
 //! round-trips, teleports, witness fan-out) to the real base channel so the
 //! command's side effects still happen. No console handler is touched; the
 //! in-world path is unchanged.
+//!
+//! One command finishes after it returns: `.spawnrandom` (CH-13), whose
+//! spawned ids come back with the base's replies. Its reply is parked on the
+//! spawn batch and sent, summary line appended, when the batch closes
+//! (`console::spawn_batch`).
 
 use tokio::sync::{mpsc, oneshot};
 
 use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::console;
+use crate::cell::console::spawn_batch;
 use crate::cell::messages::{CellToBaseMsg, LabConsoleResult};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
@@ -85,7 +91,9 @@ pub(super) async fn handle_lab_console_exec(
         "LabConsoleExec authorized"
     );
 
-    // Capture tee: run against a private channel, then drain it.
+    // Capture tee: run against a private channel, then drain it. The batch
+    // mark lets the tee find a `.spawnrandom` batch the command opens.
+    let batch_mark = spawn_batch::batches(space_mgr).next_id();
     let (cap_tx, mut cap_rx) = mpsc::channel::<CellToBaseMsg>(CAPTURE_CAPACITY);
     console::handle_console_command(entity_id, &line, &cap_tx, space_mgr, engine).await;
     drop(cap_tx);
@@ -125,7 +133,15 @@ pub(super) async fn handle_lab_console_exec(
         }
     }
 
-    let _ = reply_tx.send(Ok(lines));
+    // A command that opened a `.spawnrandom` batch (CH-13) is not finished
+    // yet: its spawned ids arrive with the base's replies. Park the reply on
+    // the batch, which appends its summary line and answers when it closes
+    // (every copy answered, or the batch timed out). Nothing blocks — the
+    // cell loop moves on to its next message.
+    let waiter = spawn_batch::LabWaiter { lines, reply_tx };
+    if let Err(waiter) = spawn_batch::batches(space_mgr).attach_lab(entity_id, batch_mark, waiter) {
+        let _ = waiter.reply_tx.send(Ok(waiter.lines));
+    }
 }
 
 /// Decode the `Text` WSTRING out of an `onPlayerCommunication(Speaker,

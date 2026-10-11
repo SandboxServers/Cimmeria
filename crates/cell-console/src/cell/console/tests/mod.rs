@@ -25,6 +25,8 @@ mod bv02_bank;
 mod bv04_bankdump;
 mod bv05_bankexpand;
 mod bv09_orgvaultexpand;
+mod ch13_despawn_id;
+mod ch13_spawn_batch;
 #[cfg(test)]
 mod cr05_allcraft;
 #[cfg(test)]

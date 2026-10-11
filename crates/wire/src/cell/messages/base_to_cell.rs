@@ -507,10 +507,26 @@ pub enum BaseToCellMsg {
     /// <id>" feedback line to the GM only after `spawn_npc_from_record_in_space`
     /// actually succeeds (the cell is the layer that knows the new NPC id and
     /// whether the spawn took).
+    ///
+    /// `batch` echoes [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`]'s
+    /// batch id (`.spawnrandom`, CH-13); `None` for a single spawn.
     GmSpawnNpcReady {
         record: Box<crate::cell::spawn_record::SpawnRecord>,
         space_id: u32,
         requester_entity_id: u32,
+        batch: Option<u32>,
+    },
+
+    /// The base could not resolve one copy of a batched
+    /// [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`] (`.spawnrandom`,
+    /// CH-13): unknown template, a failed query, or no database. Sent only
+    /// when the request carried a batch id; a single spawn's failure still goes
+    /// straight to the GM as a feedback line. `reason` is GM-facing text.
+    GmSpawnNpcFailed {
+        requester_entity_id: u32,
+        batch: u32,
+        template_id: i32,
+        reason: String,
     },
 
     /// A loot grant the base refused before anything committed. The cell

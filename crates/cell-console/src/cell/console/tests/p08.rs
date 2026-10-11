@@ -57,8 +57,10 @@ fn only_spawn_request(msgs: &[CellToBaseMsg]) -> Option<(u32, i32, u32, String, 
             world_name,
             position,
             heading,
+            batch,
         } = msg
         {
+            assert_eq!(*batch, None, "a single .spawn is not a batch");
             assert!(
                 found.is_none(),
                 "one .spawn must emit exactly one GmSpawnNpc, got a second: {msg:?}"
