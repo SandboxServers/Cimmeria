@@ -8,10 +8,16 @@
 > calibration contract) and [work-packets-3.md](work-packets-3.md) (SV-13
 > to SV-16).
 >
-> **Campaign status (2026-10-11): waves 1 and 2 integrated; wave 3 in
-> Writing.** SV-01 to SV-09 are on `main`. SV-10, SV-11 and SV-13 are in
-> Writing. `lab-watch` LW-02, which SV-12 also needs, merged as #1395.
-> Every decision is DECIDED (owner, 2026-10-10).
+> **Campaign status (2026-10-11): closed out, live acceptance paused.**
+> SV-01 to SV-14 are on `main` and released to the colo (2026-10-11, about
+> 09:55Z, release-container run 38128114603, `/release` on #1466; the
+> colo's `DEVELOPER_MODE` stays `false`, user decision). SV-15, the live
+> acceptance UAT, is **UATPending (paused)**: the workstation was under
+> full build load and starved the lab client, so the user paused it. Its
+> attempts and the resume procedure are in [worknotes/SV-15.md](worknotes/SV-15.md);
+> the next session starts from the [close-out handoff](handoffs/2026-10-11-sv16-closeout.md).
+> Every decision is DECIDED (owner, 2026-10-10; D-SV13 by the user,
+> 2026-10-11).
 
 ## Purpose
 
@@ -84,6 +90,7 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | D-SV10 | DECIDED (owner, 2026-10-10) | **Seed validation.** Every tag a spec names (`pose[].tag`, and `tag` / `face_tag` in any action's `args`) must exist in the seed. A committed test checks every spec under `docs/guides/uat-specs/` against every `INSERT INTO spawnlist` in `db/resources/Worlds/Seed/`. `load_sections` also checks, at run time, when it finds that seed folder next to the specs (a checkout); without it, it records nothing and the live resolution's "no entity with tag" is the backstop. | Handoff ("spec validation must reject unknown tags against the seed"); F3, F16. The daemon can run from an installed copy with no seed beside it, so the committed test is the gate and the run-time check is a convenience. |
 | D-SV11 | DECIDED (owner, 2026-10-10) | **`@stand` replaces "teleport, then sleep 2500".** It types `/gmgotoxyz` for the pose's stand point (tier G) and polls `client_entity_find { include_player }` every 250 ms until the player's server position is within 0.5 m horizontally of the point, for up to 5 s. | F1, F8. Arrival is observable, so there is no reason to sleep. `lab-fixtures` can reuse the same function for its `position`. |
 | D-SV12 | DECIDED (owner, 2026-10-10) | **Output budget.** `lab calibrate -Json` prints one object under about 400 characters: `ok`, `section`, `row`, and per pose `pose`, `ok`, `score`, `confirmed`, the changed fields only, and `diff` (the diff file's path); never the candidate list (it goes to `calibrate.jsonl` in the run folder). No nulls, no empty arrays. `lab uat -Json` keeps its contract and adds `heal` (an array of `{row, pose, diff}`) only when `-Heal` proposed something. | Handoff output-budget rule; `ConvertTo-UatCompactJson` (`uat-lib.ps1:276`) is the model. |
+| D-SV13 | DECIDED (user, 2026-10-11): "comment follows code" | **What `optional` means on a step action.** A failed `optional` action in `step` still fails the row; `optional` only lets the steps after it run. In `setup` and `teardown`, a failed `optional` action is recorded and neither blocks nor fails the row. The `Grade::flags` doc comment (`crates/lab/src/uat/grade.rs`) and the `optional` row of [automated-uat.md](../../guides/automated-uat.md) were corrected to match the grader. | The doc comment and the guide said an optional failure never fails the row; the grader has always failed it. Changing the code would let a row PASS with a broken step in it, so the docs follow the code. SV-11's heal hint already skips optional failures. |
 
 ## Packets
 
@@ -98,13 +105,16 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | SV-07 | Runner target resolution and `@stand` | rust-gameserver-dev | M | 2 | SV-03 (SV-01 live) | Integrated (#1423) |
 | SV-08 | Server-event waits and polling clauses | rust-gameserver-dev | M | 2 | SV-02, SV-03 | Integrated (#1449) |
 | SV-09 | Calibration core: candidates, score, spec edit and diff | packet-coder | M | 2 | SV-03 | Integrated (#1417) |
-| SV-10 | `lab_uat_calibrate`: the sweep on a live client | rust-gameserver-dev | L | 3 | SV-05, SV-06, SV-07, SV-09, D-SV7 | Writing |
-| SV-11 | Heal hint on a row summary | packet-coder | S | 3 | SV-07 | Writing |
-| SV-12 | `lab calibrate` and `lab uat -Heal` | rust-gameserver-dev | M | 4 | SV-10, SV-11, LW-02, D-SV8 | BlockedDependency |
-| SV-13 | Migrate `first-session.toml` to the new vocabulary | rust-gameserver-dev | S | 3 | SV-03, SV-04, SV-07, SV-08 | Writing |
-| SV-14 | Docs: authoring guide, lab guide, lab-driver brief, tool rows | documentation-writer | M | 4 | SV-12, SV-13 | BlockedDependency |
-| SV-15 | Acceptance: recalibrate the Praxis rows, calibrate the SGU rows, 5 clean runs | coordinator (live UAT) | M | 5 | SV-12, SV-13, D-SV9 | BlockedDependency |
-| SV-16 | Close-out | documentation-writer | S | 6 | all | BlockedDependency |
+| SV-10 | `lab_uat_calibrate`: the sweep on a live client | rust-gameserver-dev | L | 3 | SV-05, SV-06, SV-07, SV-09, D-SV7 | Integrated (#1456) |
+| SV-11 | Heal hint on a row summary | packet-coder | S | 3 | SV-07 | Integrated (#1452) |
+| SV-12 | `lab calibrate` and `lab uat -Heal` | rust-gameserver-dev | M | 4 | SV-10, SV-11, LW-02, D-SV8 | Integrated (#1460) |
+| SV-13 | Migrate `first-session.toml` to the new vocabulary | rust-gameserver-dev | S | 3 | SV-03, SV-04, SV-07, SV-08 | Integrated (#1453) |
+| SV-14 | Docs: authoring guide, lab guide, lab-driver brief, tool rows | documentation-writer | M | 4 | SV-12, SV-13 | Integrated (#1466) |
+| SV-15 | Acceptance: recalibrate the Praxis rows, calibrate the SGU rows, 5 clean runs | coordinator (live UAT) | M | 5 | SV-12, SV-13, D-SV9 | UATPending (paused 2026-10-11; [worknote](worknotes/SV-15.md)) |
+| SV-16 | Close-out | documentation-writer | S | 6 | all | In review (this close-out) |
+
+The wave-2 ledger update was #1450. Everything through SV-14 shipped to the
+colo on 2026-10-11 (release-container run 38128114603).
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k. In waves 1 and 2 the
 Haiku `packet-coder` finished only S packets (SV-01, SV-04); every M packet
@@ -214,6 +224,68 @@ fixed before merge. The deviations that change the contract:
   `no_settle` (a zero sleep stalls the paused test clock).
 - **SV-09.** `check_rewrite` holds the re-parse checks; the pose search is
   scoped to the row's `pose = [...]` array; diff paths use `/`.
+- **SV-10** ([worknote](worknotes/SV-10.md)). A null `avatar_px` (the
+  avatar does not project) scores as the 400 px cap, "far"; a missing field
+  is still no probe. Inputs are bounded: `budget_minutes` above 0 (capped at
+  30), `radii_m` 1 to 8 m, `bearing_step_deg` 1 to 360, at most 1999 grid
+  candidates a pose. Confirmations are bounded too: the lease and the budget
+  plus a 2-minute grace are checked before every re-stand, at most 3 winners.
+  The result is `{run_dir, outcomes}`, with `diff_path` only on the first
+  outcome that proposed. A confirmed winner that is the pose as written
+  proposes a diff that only restamps `calibrated` (coordinator decision), so
+  a re-measurement leaves provenance. An explicit candidate pitch is written
+  as requested, not as read back.
+- **SV-11.** `ActionRecord` gains `optional` (serde default, omitted when
+  false), and an optional failure never decides the heal hint.
+  `abs_pitch` / `abs_yaw` failures heal only on a convergence miss ("stopped
+  at"), not on a readout or gain failure.
+- **SV-12** ([worknote](worknotes/SV-12.md)). `-Apply` refuses a spec that
+  is dirty, staged or untracked, both before the sweep and before `git
+  apply`, so SV-15 commits between its calibrations (coordinator decision).
+  A failed `-Apply` under `-Json` carries both paths and the outcomes, so
+  its budget is about 700 characters, not D-SV12's 400; `lab uat -Json`
+  caps `heal` at 3 entries (`more_heal` counts the rest), under 700 in all.
+  Exit 8 (a heal proposal) wins over 5 (a golden divergence). The heal pass
+  runs after the batch's `finally`, so Ctrl+C on a batch skips it, and a
+  Ctrl+C mid-heal keeps the diffs already written.
+- **SV-13** ([worknote](worknotes/SV-13.md)). Nothing waits on the target
+  entity reaching the client, and no tool can wait on an entity id yet, so
+  a 1.5 s target-introduction sleep follows each `@stand` (FS-P3, FS-P4,
+  FS-S3 to FS-S6). Until an entity-presence wait exists, those six sleeps
+  count as allowed against SV-15's "no `wait_ms` left on an interaction
+  row". The four SGU clicks pass `rotate_camera = true` until their poses
+  are calibrated. Two UI-guard sleeps stay, each marked "kept until SV-15
+  proves it removable": FS-P5's 3000 ms between `equip` and `@key b`, and
+  FS-S6's 3000 ms after the click. The plan test is a new file,
+  `runner/first_session_plan_tests.rs`.
+- **SV-14.** The guides were written from the merged code, which corrected
+  four claims made in the worknotes and in this ledger. One of them: a full
+  sweep stands at 37 points per pose (the 36 grid points of D-SV7 plus the
+  current pose), not 36.
+- **D-SV13** (after SV-14). The `optional` semantics the docs described
+  were not the grader's; the docs now follow the code (see
+  [Decisions](#decisions)).
+- **SV-15.** Paused after three attempts on 2026-10-11, none a product
+  failure. FS-01's heartbeat clause now polls for 60 s instead of reading
+  once (the bridge comes up after `lab_client_start` returns). Details and
+  the resume procedure: [worknotes/SV-15.md](worknotes/SV-15.md).
 
-Leftovers carried forward: `runner/tests.rs` is about 890 lines (over the
-cap since before this campaign) and needs a split; see SV-03's worknote.
+Leftovers carried forward (also in the [close-out handoff](handoffs/2026-10-11-sv16-closeout.md)):
+
+- `crates/lab/src/uat/runner/tests.rs` is 907 lines (over the cap
+  since before this campaign) and needs a split; see SV-03's worknote.
+- `tools/lab/cli/uat-lib.ps1` is 616 lines (over the soft cap); its seams
+  are the summary formats and the heal pass.
+- `docs/guides/automated-uat.md` (752 lines) and
+  `docs/guides/live-research-lab.md` (1430) could split.
+- An entity-presence wait (`@wait_for` by pose or tag, or `@stand` waiting
+  on the pose's target) would replace SV-13's six target-introduction
+  sleeps.
+- The tool list in `.claude/agents/lab-driver.md` lacks
+  `client_hover_probe`.
+- `lab_login`'s fixed 15 s bridge dispatch timeout, and the display
+  keep-awake engaging about 2 minutes after launch: lab infrastructure, not
+  this campaign's code (issue to be filed).
+- D-SV7 (a) "one pose at a time" on the colo is not enforced by
+  `lab_uat_calibrate` (a call with no `pose` sweeps every pose of the row);
+  the CLI and `-Heal` pass one pose each (SV-10's worknote).

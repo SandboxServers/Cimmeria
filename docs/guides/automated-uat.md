@@ -202,7 +202,7 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `tier` | Declared native level (see above) |
 | `label` | A name for `at`, `since` and timing clauses |
 | `fallback` | Actions tried in order when the primary tool is not routed; their tier is what counts |
-| `optional` | An error is recorded but does not fail the row |
+| `optional` | In `setup` or `teardown`, an error is recorded but does not block or fail the row. In `step`, the row goes on to the next step, but the failed step still fails the row |
 | `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
 
 The composites ([live-research-lab.md](live-research-lab.md#fewer-calls-composites-and-compact-results)) are routed tools like any other: `tool = "client_ui_sequence"` runs a scripted UI step as one action and reports the least native level it used, and a `tool` clause on `client_batch` reads one step's value with `pointer = "/steps/<id>"`. The runner calls tools in-process, so it always sees full results, never the compacted ones an MCP client gets. Reaching a row's state still uses the single flows (step 2 above), so each one's timing and failure stay in the evidence.
