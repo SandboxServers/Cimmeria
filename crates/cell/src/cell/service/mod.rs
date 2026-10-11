@@ -30,6 +30,7 @@ mod message_loop;
 // of the services crate split and names that crate's own `npc_ai`, so only
 // the service loop and its tests use this path now.
 mod npc_ai;
+mod shutdown_flush;
 mod shutdown_report;
 mod start_profile_audit;
 mod startup;
@@ -159,7 +160,9 @@ impl CellService {
     ///
     /// Signals the cell loop to break out, awaits its join handle, then drops
     /// the channels. Without the await, the task could outlive `stop()` and
-    /// keep poking at shared state during teardown.
+    /// keep poking at shared state during teardown. The loop's shutdown arm
+    /// runs the shutdown flush first (TG-DB-02), so this can take up to
+    /// `SHUTDOWN_FLUSH_DEADLINE` plus a second.
     pub async fn stop(&mut self) {
         tracing::info!("Stopping cell service");
         if let Some(signal) = self.shutdown_signal.take() {

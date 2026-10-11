@@ -36,6 +36,9 @@
 //!   content `show_tutorial` round trip (Class Start v6, CS-03).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
+//! - `shutdown_flush` — `ShutdownFlushRequest`, the cell's last save of every
+//!   in-world player at server stop, carried by `CellToBaseMsg::ShutdownFlush`
+//!   (TG-DB-02).
 //! - `entity_labels` — `EntityLabelsRequest`, sent on its own ingest-to-cell
 //!   channel (never the gameplay one): the telemetry ingest naming entity
 //!   IDs from late client rows (NT-40).
@@ -61,6 +64,7 @@ mod mail_gm_cell_to_base;
 mod org_base_to_cell;
 mod org_cell_to_base;
 mod plugin_msg;
+mod shutdown_flush;
 mod tutorial_content;
 
 pub use crate::crafting::{
@@ -96,6 +100,9 @@ pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;
 pub use org_cell_to_base::OrgCellToBase;
 pub use plugin_msg::PluginMsg;
+pub use shutdown_flush::{
+    ShutdownAmmoSlot, ShutdownFlushRequest, ShutdownPlayerSave, SHUTDOWN_FLUSH_DEADLINE,
+};
 pub use tutorial_content::{RecordTutorialShown, TutorialRecordOutcome, TutorialRecorded};
 
 #[cfg(test)]

@@ -228,7 +228,9 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                         cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
                     })
             });
-            position::persist_position(player_id, player_name, &world_name, pos, ctx.db_pool).await
+            let _saved =
+                position::persist_position(player_id, player_name, &world_name, pos, ctx.db_pool)
+                    .await;
         }
         CellToBaseMsg::RefreshAppearance {
             entity_id,
@@ -568,7 +570,7 @@ pub(super) async fn bandolier_ammo_update(
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
 ) {
-    bandolier::bandolier_ammo_update(
+    let _saved = bandolier::bandolier_ammo_update(
         player_id,
         slot_id,
         expected_instance_id,

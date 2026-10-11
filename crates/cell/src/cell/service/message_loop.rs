@@ -42,7 +42,16 @@ pub(super) async fn run_cell_loop(
         tokio::select! {
             _ = shutdown.notified() => {
                 tracing::info!("Cell service received shutdown signal — exiting loop");
-                super::shutdown_report::report_unsaved_on_shutdown(&space_mgr);
+                // TG-DB-02 (D-TG15): save every in-world player through the
+                // base, in parallel, for up to SHUTDOWN_FLUSH_DEADLINE; then
+                // warn for each player the flush missed.
+                let saved = super::shutdown_flush::flush_players_on_shutdown(
+                    tx,
+                    &mut space_mgr,
+                    super::super::messages::SHUTDOWN_FLUSH_DEADLINE,
+                )
+                .await;
+                super::shutdown_report::report_unsaved_on_shutdown(&space_mgr, &saved);
                 break;
             }
             msg = rx.recv() => {
