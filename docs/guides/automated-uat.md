@@ -18,6 +18,8 @@ The [unified UAT guide](unified-uat.md) is written for a person at the keyboard.
 
 The runner never decides a row passed on weaker evidence than a tester would have. A row is **PASS** only when every step ran at the row's required native level, every required clause was checked and held, and no tool it needs is missing.
 
+To check that a run still behaves the way known-good runs did, without a model reading it, compare it with the section's golden: see [Golden runs](#golden-runs).
+
 ## Before you start
 
 1. **Hold the lab lease.** Only one agent drives a client at a time, and the supervisor enforces it. Either pass `lab_uat_run` the `lease_id` from your own `lab_lease_acquire {owner, purpose}`, or pass none and the run takes a lease of its own (owner `lab_uat_run`) for its duration; both are refused while another session holds the lab, naming who. `plan_only` needs no lease. The `%LOCALAPPDATA%\cimmeria-lab\live.lock` folder lock is obsolete: do not create it. Run the [shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http) so every session sees the same lease; a stdio supervisor's watchdog relaunches a client another session killed, so ask its owner for `lab_client_stop` instead ([live research lab, before you drive the client](live-research-lab.md#before-you-drive-the-client-the-lab-lease)). Install the lab binaries from the commit you test ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
@@ -450,7 +452,7 @@ Every call is on the row's `actions[]` as a setup action with `kind = "fixture"`
 
 ### Golden variance
 
-A section can say what may differ between runs that still agree. The `lab golden` commands compare run fingerprints with these tables; they arrive later in the [golden campaign](../analysis/lab-golden/README.md), so until then they only validate. `[section.golden]` applies to every row, and `[row.golden]` extends it: a row's lists add to the section's. Globs use `*` only and match message names unless a key says otherwise.
+A section can say what may differ between runs that still agree. The `lab golden` commands and `lab uat -DiffGolden` compare run fingerprints under these tables ([Golden runs](#golden-runs)). A golden stores the variance it was recorded with, so editing these tables changes nothing until you re-bless it. `[section.golden]` applies to every row, and `[row.golden]` extends it: a row's lists add to the section's. Globs use `*` only and match message names unless a key says otherwise.
 
 - `ignore`: messages dropped before comparing. The built-in defaults `avatarUpdate*`, `perfStats` and `requestEntityUpdate` always apply; a spec's `ignore` only adds to them.
 - `allow_unordered`: messages moved out of the ordered stream into a sorted set per row, for streams the server does not order.
@@ -520,6 +522,86 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mech
 8. `debug-area` DA-U1 (the first world-1300 load, which DA-06 also needs), then the plaza rows DA-U3 to DA-U18 and the rest in zone order.
 
 The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists the tools the blocked rows wait for. When one lands, a spec that names it runs with no runner change. The colo also seeds `lab2` to `lab5` (#1093), and the runner drives a second lab instance for `players = 2` rows ([Two-player rows](#two-player-rows)). `Castle_CellBlock` is instanced per login, so both players move to Castle (world 8) first.
+
+## Golden runs
+
+A row's grade tells you whether its clauses held. A golden tells you whether the run did the same things, in the same order, as five runs everyone agreed were good. You use it after a server change: if every row still passes but the server now sends one more message, answers with a different dialog, or skips a step transition, the diff names the first place it went wrong in one line. The design and decisions are in the [lab-golden ledger](../analysis/lab-golden/README.md) (D-GD1 to D-GD10); the commands and their exit codes are in the operating guide ([`lab golden`](live-research-lab.md#commands), [`lab uat -DiffGolden`](live-research-lab.md#commands)); the tools are [`lab_golden_record` and `lab_golden_diff`](live-research-lab.md#tools-at-a-glance).
+
+No section has a golden yet. The first one, `first-session` FS-01 to FS-P5, is recorded after that spec's migration and recalibration (lab-spec-vocab SV-13 and SV-15) merge, so it is not stale on arrival (GD-10 in the [unified UAT guide](unified-uat.md#first-session-smoke)).
+
+### What a fingerprint holds
+
+A fingerprint is computed offline, by pure code, from a run's evidence bundle (D-GD1). The run only captures: `lab_uat_run` with `fingerprint: true` taps every in-world row and saves entity snapshots and window samples ([The evidence bundle](#the-evidence-bundle)). So an old bundle can be fingerprinted again when the rules change, and none of it needs the lab.
+
+Per row it holds, in this order of comparison:
+
+| Part | What it is |
+|---|---|
+| Tap coverage and faults | `full`, `late:<action>`, `none` or `unavailable`; and `dropped <n>`, `replaced`, `not stopped` or `read failed` |
+| Result | The row's grade (`PASS`, `FAIL`, ...) |
+| Clauses | `<clause id>=<verdict>` for every required clause that is not a timing, SigNoz or human clause |
+| Transitions | `mission 1360 -> 0`, `step 2113 -> 1`, `objective 3238 -> 1`, from the tap's decoded mission, step and objective updates |
+| Events | The ordered client-to-server calls and server-to-client messages, one line each |
+| Windows | The row's net opened and closed window sets (what a later sample shows that the first did not, and what any sample showed that the last does not) |
+| Unordered | Messages the variance moves out of the ordered stream, sorted |
+
+An event line is the direction, the tap's own message name (D-GD2: the `cimmeria-wire-log` names, not the wireclient decoders), the target of a server message, and its key arguments:
+
+```text
+c2s interact target=tag:ArmYourself_FrostBody
+s2c onDialogDisplay@self dialog_id=3995 entity_id=tag:ArmYourself_FrostBody mission_id=0
+```
+
+Three rules strip what differs on every run:
+
+- **Entity ids become labels.** The lab character is `self`, the second player `p2`, any other player `player`. An NPC is `tag:<seed tag>`, else `spawn:<spawn id>`, else `tpl:<template id>`, from the entity snapshots taken when the tap binds and before it is read. An id in neither snapshot is `?<n>`, numbered by first appearance in the row; `0` is `none`.
+- **Key arguments are an allowlist** (`crates/lab/src/uat/golden/key_args.rs`). A listed message keeps only its listed fields, such as `onDialogDisplay`'s `dialog_id`, `entity_id` and `mission_id`; five client calls (`interact`, `dialogButtonChoice`, `moveItem`, `gmGotoXYZ`, `triggerClientHintedGenericRegion`) are decoded from their raw bytes. Any other message is compared by name and target only, so a new decoder or field in wire-log cannot break a golden. Item instance ids are never listed. A spec adds fields with `key_args` ([Golden variance](#golden-variance)).
+- **Run variables are written by name.** The run id and the character names (`Px<run id>`) appear in decoded text as `${run_id}`, `${character}` and `${p2_character}`, substituted before the text is cut to 80 characters.
+
+`avatarUpdate*`, `perfStats` and `requestEntityUpdate` are always dropped: their count depends on time spent, not on what the server answered.
+
+### Record a golden
+
+```powershell
+lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -ServerVersion <sha>
+```
+
+1. **Install the lab from the commit you test** ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)) and make sure the lab is free: five runs of the Praxis rows hold one instance for about 25 minutes.
+2. **Leave the lab character's packet tap alone.** Don't call `lab_timeline` on it while recording: a read drains the tap, and a run whose tap dropped, was replaced or was unavailable is refused.
+3. **Run the command.** `lab golden record` launches the runs itself (default 5, up to 20), one after another on one instance unless `-Leases` splits them, in fingerprint mode. A golden is written only when every row passed in every run, every run has the same spec file hash (which must also be the spec file's hash today), server build and `SGW.exe` hash, and every fingerprint is exactly equal under the variance (D-GD6). A single run, or runs you made earlier, never become golden.
+4. **On exit 6 (the runs disagree)**, read the line. If it is timing noise, such as an ambient NPC message or a periodic update, add that message to the row's `[row.golden]` `ignore` or `allow_unordered` with a comment quoting the line, and record again with five fresh runs. Never ignore a dialog, mission, step, objective, item or chat message: those are what the golden is for.
+5. **Commit** the spec's variance change and `docs/guides/uat-specs/golden/<section>.json`. The file is pretty-printed JSON, at most 128 KiB and 1 500 ordered events per row, and names its evidence runs by run id and folder (the bundles stay local). `cargo test -p cimmeria-lab` checks every committed golden parses, fits and names a section and rows that exist.
+
+`lab golden show <section>` prints a committed golden's rows, event count, server build, `SGW.exe` hash, recorded time and evidence run ids.
+
+### Diff a run against it
+
+```powershell
+lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
+```
+
+Every passing run is fingerprinted and compared with the committed golden under the variance the golden stored, not the spec's current tables (D-GD5). Each passing run gets `golden: match`, one divergence line, or `error: <why>` when the diff could not be made; a failed run is not compared. A divergence never changes a row's grade: when every run passed but one diverged or could not be compared, the command exits 5 (a failed row keeps 1). Nothing gates `ship.py` or CI on it (D-GD7).
+
+### Read a divergence line
+
+The diff stops at the first part of the first row that differs, in the order of the table above, and says it in at most 300 characters:
+
+| Line | What changed |
+|---|---|
+| ``row FS-P3: expected `s2c onDialogDisplay@self dialog_id=3995 ...` after `c2s interact target=tag:ArmYourself_FrostBody`, got `...` `` | The event stream: the golden's event, the one before it as context, and what this run had there. `first` replaces `after ...` at the start of the row; `the end of the row` means one side ran out |
+| ``row FS-P3: expected transition `step 2113 -> 1` ...``, ``expected clause ...``, ``expected unordered ...`` | The same shape for transitions, clauses and the unordered set |
+| ``row FS-P4: expected windows opened `...`, got nothing`` | The net window sets |
+| ``row FS-P2: expected result `PASS`, got `FAIL` `` | The grade (only when diffing through the API; `-DiffGolden` skips failed runs) |
+| ``row FS-P2: expected tap `full`, got `late:...` `` | The tap bound at a different point |
+| ``row FS-P2: tap fault `dropped 12`; the diff is unreliable`` | This run's tap lost messages: rerun it, don't read the rest |
+| `row FS-P5: in the golden, not in this run` | The run did not include a row the golden holds |
+| `row FS-P1: fingerprinted under a different variance than the golden's; ...` | The run was fingerprinted with other variance tables. `-DiffGolden` always uses the golden's, so you see this only from the API |
+
+Control characters in a value become spaces, and the `after` context shrinks first so `expected` and `got` stay whole.
+
+### Re-bless a golden
+
+Re-bless when the behaviour changed on purpose (a new message, a new dialog), or when you edit a row's variance: a golden keeps the variance it was recorded with, so a spec edit alone changes nothing. Add `-Rebless` to `lab golden record`. A re-bless needs fresh runs (no run id the old golden names as evidence) and keeps every row the old golden held; leaving one out is refused.
 
 ## Troubleshooting
 
