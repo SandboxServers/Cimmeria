@@ -126,6 +126,7 @@ pub(super) async fn route_via_cover(
                 "stay_in_cover"
             };
             if picked {
+                let names = space_mgr.entity_names(npc_id);
                 tracing::info!(
                     target: "npc_ai",
                     event = "decision",
@@ -134,6 +135,10 @@ pub(super) async fn route_via_cover(
                     npc_name = space_mgr.entity_label(npc_id),
                     target_id,
                     target_name = space_mgr.entity_label(target_id),
+                    template_id = names.template_id,
+                    template_name = names.template_name,
+                    space_id = space_mgr.get_entity(npc_id).map(|e| e.space_id.0),
+                    world = %super::world_label(space_mgr, npc_id),
                     chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
                     node_id = slot.node_id, // nt:id-only cover nodes carry no names
                     in_range,
@@ -141,6 +146,7 @@ pub(super) async fn route_via_cover(
                     "NPC AI: picked cover slot"
                 );
             } else {
+                let names = space_mgr.entity_names(npc_id);
                 tracing::debug!(
                     target: "npc_ai",
                     event = "decision",
@@ -149,6 +155,10 @@ pub(super) async fn route_via_cover(
                     npc_name = space_mgr.entity_label(npc_id),
                     target_id,
                     target_name = space_mgr.entity_label(target_id),
+                    template_id = names.template_id,
+                    template_name = names.template_name,
+                    space_id = space_mgr.get_entity(npc_id).map(|e| e.space_id.0),
+                    world = %super::world_label(space_mgr, npc_id),
                     chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
                     node_id = slot.node_id, // nt:id-only cover nodes carry no names
                     arrived,
@@ -253,6 +263,7 @@ pub fn blind_in_slot(
     };
     if now.duration_since(since) < COVER_BLIND_GRACE {
         super::note_outcome("cover_no_shot");
+        let names = space_mgr.entity_names(npc_id);
         tracing::debug!(
             target: "npc_ai",
             event = "decision",
@@ -261,6 +272,10 @@ pub fn blind_in_slot(
             npc_name = space_mgr.entity_label(npc_id),
             target_id,
             target_name = space_mgr.entity_label(target_id),
+            template_id = names.template_id,
+            template_name = names.template_name,
+            space_id = space_mgr.get_entity(npc_id).map(|e| e.space_id.0),
+            world = %super::world_label(space_mgr, npc_id),
             chunk_id = slot.chunk_id, // nt:id-only cover chunks carry no names
             node_id = slot.node_id, // nt:id-only cover nodes carry no names
             blind_ms = now.duration_since(since).as_millis() as u64,
