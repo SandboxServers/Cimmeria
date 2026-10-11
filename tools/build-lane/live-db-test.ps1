@@ -4,6 +4,7 @@
 #
 # Usage (from a worktree root):
 #   pwsh tools/build-lane/live-db-test.ps1 <nextest filter or test-name substring> [extra nextest args]
+#   pwsh tools/build-lane/live-db-test.ps1 --wireclient <filter>   # the wireclient end-to-end tests only
 # Example:
 #   pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::mission_701
 #
