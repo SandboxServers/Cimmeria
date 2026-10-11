@@ -389,6 +389,15 @@ Its rows:
 | `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
 | `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
 
+## Unconsumed SIDs and tickets (TG-NET-05)
+
+The auth reaper (`auth/service.rs::reap_expired`) drops every Phase 1 SID past `SESSION_TTL` and every Phase 2 ticket past `TICKET_TTL` that no login consumed. Each drop is one row at `info!`; the DEBUG count summary stays.
+
+| `reason` | Level | Meaning | Fields |
+|---|---|---|---|
+| `ticket_unconsumed` | `info!` | A Phase 2 ticket outlived `TICKET_TTL` before BaseApp consumed it. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `ticket_prefix` |
+| `sid_unconsumed` | `info!` | A Phase 1 SID outlived `SESSION_TTL` before the Phase 2 selection consumed it. The prefix is `sid_prefix`, not `ticket_prefix`. | `account_id`, `account_name`, `issued_ip`, `age_ms`, `sid_prefix` |
+
 ## Cross-space cast refusal (#906)
 
 `useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
