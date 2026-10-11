@@ -249,10 +249,16 @@ pub(super) async fn read_and_handle_login(
                 return None;
             }
 
+            // The ticket itself is never logged; its age is the useful part.
             tracing::info!(
+                %peer,
+                event = "minigame.claimed",
                 entity_id,
                 entity_name = session.player_name.as_deref(),
+                player_id = session.player_id,
+                player_name = session.player_name.as_deref(),
                 game = %zone,
+                ticket_age_ms = session.created_at.elapsed().as_millis(),
                 "Minigame login successful",
             );
             Some((session, game.unwrap()))

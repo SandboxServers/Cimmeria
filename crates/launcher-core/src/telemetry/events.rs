@@ -245,6 +245,28 @@ mod tests {
         assert_eq!(exited, "game_exited");
     }
 
+    /// `kind=game_exited` carries the game's pid and exit code through the wire
+    /// format and back unchanged.
+    #[test]
+    fn session_meta_game_exited_round_trips_pid_and_exit_code() {
+        let mut fields = serde_json::Map::new();
+        fields.insert("pid".into(), serde_json::Value::from(4242_u32));
+        fields.insert("exit_code".into(), serde_json::Value::from(7_i32));
+        let ev = TelemetryEvent::SessionMeta(SessionMetaEvent {
+            ts_ms: 9,
+            seq: 9,
+            kind: SessionMetaKind::GameExited,
+            fields,
+        });
+        let text = serde_json::to_string(&ev).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(json["kind"], "game_exited");
+        assert_eq!(json["fields"]["pid"], 4242);
+        assert_eq!(json["fields"]["exit_code"], 7);
+        let back: TelemetryEvent = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, ev);
+    }
+
     #[test]
     fn event_roundtrip_preserves_variant() {
         let cases = vec![

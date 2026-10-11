@@ -1,4 +1,5 @@
-//! Cimmeria server binary.
+//! `cimmeria-server`: the game server, running the Auth, Base and Cell services and the
+//! admin REST API in one process.
 //!
 //! Starts all three game services (Auth HTTP on 13001, Base UDP on 32832,
 //! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for a

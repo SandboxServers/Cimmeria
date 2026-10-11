@@ -400,6 +400,8 @@ mod tests {
             "aoi.entity_enter=debug",
             "aoi.entity_leave=debug",
             "aoi.create_emit=debug",
+            // TG-AOI-06: DEBUG `hold_release_skipped`.
+            "aoi.cinematic_hold=debug",
             // NA00 / audit gap T1: DEBUG seams that never reached SigNoz.
             "wire.out.avatar_update=debug",
             // NA02: every FORCED_POSITION sent. Needs its own directive:

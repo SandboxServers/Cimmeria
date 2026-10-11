@@ -297,7 +297,7 @@ bearer_token_env_var = "CIMMERIA_LAB_MCP_TOKEN"
 tool_timeout_sec = 300
 ```
 
-Codex reads both tokens from its own environment, so start it from a terminal opened after steps 2 and 7. Codex doesn't expand `${VAR}` in a `url`, so the `lab-server` URL is written out. The long tool timeout plays the same part as Claude Code's `timeout`. An older Codex may also need `experimental_use_rmcp_client = true` for HTTP servers. The repo tracks a Codex `lab-driver` agent in `.codex/agents/lab-driver.toml`, generated from `.claude/agents/lab-driver.md` by `python tools/agent-skills/sync.py`.
+Codex reads both tokens from its own environment, so start it from a terminal opened after steps 2 and 7. Codex doesn't expand `${VAR}` in a `url`, so the `lab-server` URL is written out. The long tool timeout plays the same part as Claude Code's `timeout`. An older Codex may also need `experimental_use_rmcp_client = true` for HTTP servers. The repo tracks a Codex twin of every Claude Code agent in `.codex/agents/`, generated from `.claude/agents/` by `python tools/agent-skills/sync.py`; the one that drives the lab is `lab-driver.toml`.
 
 ### 9. Check everything with `lab doctor`
 

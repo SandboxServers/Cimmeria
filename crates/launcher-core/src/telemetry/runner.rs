@@ -74,14 +74,7 @@ pub async fn run_session(
     let mut tailer = Tailer::new();
     let binaries_dir = crate::install_layout::binaries_dir(&install_dir);
 
-    let _ = telemetry
-        .enqueue(TelemetryEvent::SessionMeta(SessionMetaEvent {
-            ts_ms: 0,
-            seq: 0,
-            kind: SessionMetaKind::Started,
-            fields: serde_json::Map::new(),
-        }))
-        .await;
+    enqueue_session_meta(&telemetry, SessionMetaKind::Started, serde_json::Map::new()).await;
 
     let mut event_count: u64 = 0;
     let waiter = tokio::spawn(exit);
@@ -97,6 +90,14 @@ pub async fn run_session(
                     exit_code = ?exit.exit_code,
                     "game process exited — running final telemetry flush"
                 );
+                // Queued before the final flush so the exit reaches the
+                // server with the last chunk.
+                let mut fields = serde_json::Map::new();
+                fields.insert("pid".into(), serde_json::Value::from(exit.pid));
+                if let Some(code) = exit.exit_code {
+                    fields.insert("exit_code".into(), serde_json::Value::from(code));
+                }
+                enqueue_session_meta(&telemetry, SessionMetaKind::GameExited, fields).await;
                 break;
             }
             _ = ticker.tick() => {
@@ -142,6 +143,24 @@ pub async fn run_session(
         Err(e) => return Err(e.into()),
     };
     Ok(outcome)
+}
+
+/// Enqueue a launcher-side `session_meta` row. A failed enqueue is logged
+/// at WARN: the row is lost, but the session carries on.
+async fn enqueue_session_meta(
+    telemetry: &Telemetry,
+    kind: SessionMetaKind,
+    fields: serde_json::Map<String, serde_json::Value>,
+) {
+    let ev = TelemetryEvent::SessionMeta(SessionMetaEvent {
+        ts_ms: 0,
+        seq: 0,
+        kind,
+        fields,
+    });
+    if let Err(e) = telemetry.enqueue(ev).await {
+        tracing::warn!(error = %e, "session_meta event not queued");
+    }
 }
 
 /// Enqueue a client-patches event (boot summary or counts), if this tick
@@ -299,6 +318,70 @@ mod tests {
             line: "2026-09-28 21:07:21,612 DEBUG common - about to call _runThread".into(),
         });
         assert!(matches!(ev, TelemetryEvent::DebugLog(_)), "{ev:?}");
+    }
+
+    /// A game exit is queued as `session_meta kind=game_exited` carrying its pid
+    /// and exit code. Removing the enqueue leaves only the `started` row.
+    #[tokio::test]
+    async fn game_exit_is_queued_as_session_meta_game_exited() {
+        use crate::telemetry::auth::DevSessionResponse;
+        use crate::telemetry::endpoint::EndpointPolicy;
+        use crate::telemetry::process_watch::ExitReport;
+        use crate::telemetry::queue::DiskQueue;
+        use crate::telemetry::SessionContext;
+
+        let dir = tempfile::tempdir().unwrap();
+        let telemetry = Telemetry::from_minted(
+            DevSessionResponse {
+                session_id: "sid-1".into(),
+                token: "tok".into(),
+                expires_at_ms: 4_102_444_800_000,
+                upload_endpoint: "http://localhost:9/api".into(),
+                chunk_max_bytes: 1_048_576,
+                flush_interval_ms: 2_000,
+            },
+            SessionContext {
+                auth_base_url: "http://localhost:9/api".into(),
+                install_dir: dir.path().to_path_buf(),
+                install_id: "i".into(),
+                machine_id: "m".into(),
+                launcher_version: "0.1.0".into(),
+                session_started_at_ms: 1_700_000_000_000,
+                endpoint_policy: EndpointPolicy::default(),
+                queue_dir: dir.path().to_path_buf(),
+            },
+        )
+        .unwrap();
+        let exit: ExitWaiter = Box::pin(async {
+            Ok(ExitReport {
+                pid: 4242,
+                exit_code: Some(7),
+            })
+        });
+        // Nothing listens on localhost:9, so the final flush fails and the
+        // queued rows stay on disk for the assertions below.
+        let _ = run_session(
+            Arc::new(telemetry),
+            Arc::new(reqwest::Client::new()),
+            exit,
+            dir.path().to_path_buf(),
+            dir.path().to_path_buf(),
+            None,
+        )
+        .await;
+
+        let rows = DiskQueue::new(dir.path())
+            .drain::<TelemetryEvent>()
+            .unwrap();
+        let ended = rows
+            .iter()
+            .find_map(|ev| match ev {
+                TelemetryEvent::SessionMeta(m) if m.kind == SessionMetaKind::GameExited => Some(m),
+                _ => None,
+            })
+            .expect("a game_exited session_meta row");
+        assert_eq!(ended.fields["pid"], 4242);
+        assert_eq!(ended.fields["exit_code"], 7);
     }
 
     fn append(path: &Path, text: &str) {

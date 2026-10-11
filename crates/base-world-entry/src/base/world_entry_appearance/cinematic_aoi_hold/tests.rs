@@ -226,6 +226,29 @@ async fn stale_timeout_does_not_release_a_later_hold() {
     assert!(typed_transport.is_empty());
 }
 
+/// A release that finds no session (the client dropped while its timeout was
+/// pending) must say why it did nothing, at DEBUG. Removing the
+/// `hold_release_skipped` line from `release` fails the `expect`.
+#[tokio::test(start_paused = true)]
+async fn release_without_a_session_logs_session_gone() {
+    let capture = LogCapture::install();
+    let addr: SocketAddr = "127.0.0.1:55816".parse().unwrap();
+    let connected: Connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_to_addr: EntityToAddr = Arc::new(Mutex::new(HashMap::new()));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+
+    release_on_cancel(PLAYER, addr, &transport, &connected, &entity_to_addr).await;
+
+    let skipped = capture
+        .find_message(
+            Level::DEBUG,
+            "Cinematic AoI hold: release found no hold to end",
+        )
+        .expect("a release with no session must log that it did nothing");
+    assert!(skipped.has_field("reason", "session_gone"), "{skipped:#?}");
+    assert!(skipped.has_field("witness_id", "2"), "{skipped:#?}");
+}
+
 /// `cancelMovie` and the timeout can both fire at the 16-second boundary.
 /// The owner drains the buffer, then awaits its sends with the buffer
 /// momentarily empty — exactly the state a second releaser used to read as

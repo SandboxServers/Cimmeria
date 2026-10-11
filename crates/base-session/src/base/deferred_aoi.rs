@@ -306,8 +306,27 @@ pub fn method_summary(msgs: &[DeferredAoiMsg]) -> (usize, String) {
 
 /// Log the entity methods a session's buffer still held when the session
 /// ended: they never reach a client. One `base.entity_method`
-/// `deferred_discarded` row per session, none for an empty buffer.
+/// `deferred_discarded` row per session, none for an empty buffer. A session
+/// torn down inside a cinematic AoI hold with a non-empty buffer also gets an
+/// INFO `hold_abandoned` row: the held introductions never reached the client.
 pub fn log_discarded_on_teardown(addr: SocketAddr, c: &ConnectedClientState, reason: &str) {
+    if let Some(hold) = c
+        .cinematic_aoi_hold
+        .filter(|_| !c.deferred_aoi_msgs.is_empty())
+    {
+        tracing::info!(
+            target: "aoi.cinematic_hold",
+            event = "hold_abandoned",
+            %addr,
+            account_id = c.account_id,
+            account_name = c.account_name.as_deref(),
+            player_id = c.active_player_id,
+            player_name = c.player_name.as_deref(),
+            discarded = c.deferred_aoi_msgs.len(),
+            held_ms = hold.started.elapsed().as_millis() as u64,
+            "cinematic AoI hold abandoned: the session ended before the movie released it"
+        );
+    }
     let (methods, summary) = method_summary(&c.deferred_aoi_msgs);
     if methods == 0 {
         return;
@@ -644,5 +663,36 @@ mod tests {
         assert!(drop.has_field("kind", "entered"));
         assert!(drop.has_field("entity_id", "888888"));
         assert!(drop.has_field("entity_name", "TG Cap Jaffa"));
+    }
+
+    /// A session torn down inside a cinematic hold with an introduction
+    /// buffered logs INFO `hold_abandoned` with the buffer size and the hold's
+    /// age. Removing that INFO from `log_discarded_on_teardown` fails the
+    /// `expect`; the buffer holds no entity method, so no other row can stand in.
+    #[tokio::test(start_paused = true)]
+    async fn teardown_inside_a_hold_logs_the_abandoned_buffer() {
+        use crate::base::cinematic_aoi_hold::begin;
+        use crate::test_support::LogCapture;
+
+        let capture = LogCapture::install();
+        let (addr, connected) = make_state_and_connected();
+        {
+            let mut clients = connected.lock().unwrap();
+            let state = clients.get_mut(&addr).unwrap();
+            begin(state);
+            state
+                .deferred_aoi_msgs
+                .push(DeferredAoiMsg::LeftAoI { entity_id: 7 });
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        let clients = connected.lock().unwrap();
+        log_discarded_on_teardown(addr, &clients[&addr], "test_teardown");
+
+        let abandoned = capture
+            .find_message(tracing::Level::INFO, "cinematic AoI hold abandoned")
+            .expect("a teardown inside a hold with a buffered intro must say so");
+        assert!(abandoned.has_field("discarded", "1"), "{abandoned:#?}");
+        assert!(abandoned.has_field("held_ms", "2000"), "{abandoned:#?}");
     }
 }

@@ -1,3 +1,6 @@
+//! `cimmeria-prerequisite-worker`: a one-shot Windows x86 worker that installs the
+//! client's PhysX prerequisite from its verified vendor package into the game prefix
+//! and prints the result as JSON. The desktop launcher runs it.
 #[cfg(not(all(windows, target_arch = "x86")))]
 fn main() {
     eprintln!("prerequisite-worker requires a native Windows x86 build");

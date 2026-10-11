@@ -39,8 +39,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | <!-- gen:docs-md-count -->858<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,417<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,334<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,628<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,760<!-- /gen:tests-live-db --> |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->13,418<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,335<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->10,629<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,761<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -355,7 +355,7 @@ See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineer
 
 ### `tools/` -- Development Tools
 
-Design documents for development and administration tools.
+Design documents for development and administration tools. The tools themselves are catalogued outside `docs/`: [tools/README.md](../tools/README.md#tools-catalog) lists every script under `tools/` and every crate binary, grouped by task (decode packets, client assets and UPK, maps and navmesh, seeds, lab and UAT, build and CI, RE, telemetry, docs), with how to run each; [crates/README.md](../crates/README.md) is the crate table. Search them before writing a new tool.
 
 | Document | Description | Status |
 |----------|-------------|--------|
