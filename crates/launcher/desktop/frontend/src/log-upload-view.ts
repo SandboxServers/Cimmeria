@@ -28,6 +28,7 @@ export const logUploadErrorText:Record<LogUploadError|'transport'|'schema',strin
  invalid_directory:'The game folder is not valid, so nothing was uploaded.',
  stale_revision:'The launcher settings changed. Try again.',
  persistence_uncertain:'Restart the launcher before uploading logs.',
+ invalid_server_list:'The saved login servers are not valid. Check them under Login servers.',
  transport:'The launcher did not answer. Try again.',
  schema:'The launcher sent an answer this page does not understand.',
 };
