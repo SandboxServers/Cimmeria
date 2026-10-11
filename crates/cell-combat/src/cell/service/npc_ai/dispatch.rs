@@ -502,6 +502,7 @@ fn log_ai_tick(
     if !tracing::enabled!(target: "npc_ai.tick", tracing::Level::DEBUG) {
         return;
     }
+    let world = super::world_label(space_mgr, npc_id);
     let names = EntityNames::of(e);
     tracing::debug!(
         target: "npc_ai.tick",
@@ -510,6 +511,8 @@ fn log_ai_tick(
         template_id = names.template_id,
         template_name = names.template_name,
         tag = e.tag.as_deref(),
+        world = %world,
+        space_id = e.space_id.0,
         state_before = ?state_before,
         ai_state = ?e.ai_state(),
         decision_outcome = outcome,
