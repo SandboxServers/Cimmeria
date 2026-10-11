@@ -1,3 +1,5 @@
+//! D-SV2 spec edits: rewrite one pose line in place, and show it as a diff.
+
 use serde::Deserialize;
 
 use crate::uat::spec::{self, PoseSpec, SectionSpec};
@@ -20,9 +22,16 @@ pub fn rewrite_pose(text: &str, row_id: &str, new: &PoseSpec) -> Result<String, 
             out.push_str(line);
         }
     }
-    // Nothing but the pose may move, and the pose must load as `new` would.
+    check_rewrite(text, &out, row_id, new)?;
+    Ok(out)
+}
+
+/// Nothing but the pose may move, and the pose must load as `new` would.
+/// The line search is textual, so this re-parse is what catches a line it
+/// mis-scoped (a `[[row]]` inside a multi-line string, say).
+fn check_rewrite(text: &str, out: &str, row_id: &str, new: &PoseSpec) -> Result<(), String> {
     let before = spec::parse(text).map_err(|e| format!("spec does not parse: {e}"))?;
-    let after = spec::parse(&out).map_err(|e| format!("rewrite does not parse: {e}"))?;
+    let after = spec::parse(out).map_err(|e| format!("rewrite does not parse: {e}"))?;
     if rest_of(&before, row_id, &new.id) != rest_of(&after, row_id, &new.id) {
         return Err(format!(
             "rewrite of {:?} changed more than its pose line",
@@ -42,7 +51,7 @@ pub fn rewrite_pose(text: &str, row_id: &str, new: &PoseSpec) -> Result<String, 
     if *got != round_trip(new)? {
         return Err(format!("pose {:?} would not reload as written", new.id));
     }
-    Ok(out)
+    Ok(())
 }
 
 /// A unified diff (`--- a/<path>`, `+++ b/<path>`, `@@ -l,n +l,n @@`, two
@@ -67,6 +76,8 @@ pub fn line_diff(path: &str, old: &str, new: &str) -> String {
     let ctx_start = head.saturating_sub(CONTEXT);
     let post = CONTEXT.min(tail);
     let (a_stop, b_stop) = (a_end + post, b_end + post);
+    // git apply wants `/`; a Windows path would name a file called `a\b`.
+    let path = path.replace('\\', "/");
     let mut out = format!("--- a/{path}\n+++ b/{path}\n");
     out += &format!(
         "@@ -{} +{} @@\n",
@@ -89,10 +100,11 @@ pub fn line_diff(path: &str, old: &str, new: &str) -> String {
 }
 
 /// The one line of row `row_id` that holds pose `pose_id`. A row block runs
-/// from its `[[row]]` header to the next one.
+/// from its `[[row]]` header to the next one, and only the lines of its
+/// `pose = [ ... ]` array are searched (an expect clause may share the id).
 fn pose_line(lines: &[&str], row_id: &str, pose_id: &str) -> Result<usize, String> {
     let headers: Vec<usize> = (0..lines.len())
-        .filter(|&i| lines[i].trim() == "[[row]]")
+        .filter(|&i| is_row_header(lines[i]))
         .collect();
     let mut blocks = Vec::new();
     for (k, &start) in headers.iter().enumerate() {
@@ -106,6 +118,9 @@ fn pose_line(lines: &[&str], row_id: &str, pose_id: &str) -> Result<usize, Strin
         [one] => *one,
         _ => return Err(format!("{} rows are named {row_id:?}", blocks.len())),
     };
+    let (start, end) = pose_array(&lines[start..end])
+        .map(|(s, e)| (start + s, start + e))
+        .ok_or_else(|| format!("row {row_id:?} has no pose array"))?;
     let prefix = format!("{{ id = \"{pose_id}\"");
     let hits: Vec<usize> = (start..end)
         .filter(|&i| lines[i].trim_start().starts_with(&prefix))
@@ -118,6 +133,56 @@ fn pose_line(lines: &[&str], row_id: &str, pose_id: &str) -> Result<usize, Strin
             hits.len()
         )),
     }
+}
+
+/// A `[[row]]` table header, spaces inside the brackets and a trailing
+/// comment allowed.
+fn is_row_header(line: &str) -> bool {
+    let code = line.split('#').next().unwrap_or("");
+    code.split_whitespace().collect::<String>() == "[[row]]"
+}
+
+/// The line range `[first, past)` of a row block's `pose = [ ... ]` array:
+/// from its `pose = [` line to the line holding the `]` that closes it.
+/// Brackets inside strings and comments don't count.
+fn pose_array(block: &[&str]) -> Option<(usize, usize)> {
+    let first = block.iter().position(|l| {
+        l.trim_start()
+            .strip_prefix("pose")
+            .and_then(|r| r.trim_start().strip_prefix('='))
+            .is_some_and(|r| r.trim_start().starts_with('['))
+    })?;
+    let mut depth = 0usize;
+    for (i, line) in block.iter().enumerate().skip(first) {
+        let mut quote: Option<char> = None;
+        let mut escaped = false;
+        for c in line.chars() {
+            if let Some(q) = quote {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' && q == '"' {
+                    escaped = true;
+                } else if c == q {
+                    quote = None;
+                }
+                continue;
+            }
+            match c {
+                '"' | '\'' => quote = Some(c),
+                '#' => break,
+                '[' => depth += 1,
+                ']' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Some((first, i + 1));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // Unclosed: the spec would not have parsed, but stay inside the block.
+    Some((first, block.len()))
 }
 
 /// The value of the first `id = "..."` line in a row block.
@@ -294,6 +359,65 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_mis_scoped_line_that_changes_another_row() {
+        // A `[[row]]` line inside R1's multi-line title looks like a header to
+        // the line search, so "R2" lands on R1's frost line. Only the re-parse
+        // can tell; R1's pose must not move.
+        let r1 = row("R1", FROST).replace(
+            "title = \"t\"",
+            "title = \"\"\"\n[[row]]\nid = \"R2\"\n\"\"\"",
+        );
+        let text = format!("{HEAD}{r1}");
+        let mut new = pose_of(&text, "R1", "frost");
+        new.bearing_deg = 330.0;
+        let err = rewrite_pose(&text, "R2", &new).unwrap_err();
+        assert!(err.contains("changed more than its pose line"), "{err}");
+    }
+
+    #[test]
+    fn refuses_a_rewrite_that_would_not_reload_as_written() {
+        let text = format!("{HEAD}{}", row("R1", FROST));
+        let mut new = pose_of(&text, "R1", "frost");
+        new.bearing_deg = 330.0;
+        let good = rewrite_pose(&text, "R1", &new).unwrap();
+        check_rewrite(&text, &good, "R1", &new).unwrap();
+        // The file holds a different pose than the one proposed.
+        let mut other = new.clone();
+        other.bearing_deg = 300.0;
+        let wrong = rewrite_pose(&text, "R1", &other).unwrap();
+        let err = check_rewrite(&text, &wrong, "R1", &new).unwrap_err();
+        assert!(err.contains("would not reload as written"), "{err}");
+    }
+
+    #[test]
+    fn finds_a_row_whose_header_has_a_comment() {
+        let guard = FROST.replace("id = \"frost\"", "id = \"guard\"");
+        let r2 = row("R2", FROST).replace("[[row]]\n", "[[ row ]] # note\n");
+        let text = format!("{HEAD}{}{r2}", row("R1", &guard));
+        let mut new = pose_of(&text, "R2", "frost");
+        new.bearing_deg = 330.0;
+        let out = rewrite_pose(&text, "R2", &new).unwrap();
+        assert_eq!(pose_of(&out, "R2", "frost").bearing_deg, 330.0);
+        assert_eq!(pose_of(&out, "R1", "guard").bearing_deg, 322.5);
+    }
+
+    #[test]
+    fn an_expect_clause_with_the_pose_id_is_not_a_pose_line() {
+        let r1 = format!(
+            "\n[[row]]\nid = \"R1\"\ntitle = \"t\"\nexpected = \"e\"\npose = [\n{FROST}]\n\
+             step = [{{ chat = \".help\", label = \"help\" }}]\n\
+             expect = [\n  {{ id = \"frost\", text = \"t\", source = \"chat\", \
+             since = \"help\", contains = \"help\" }},\n]\n"
+        );
+        let text = format!("{HEAD}{r1}");
+        let mut new = pose_of(&text, "R1", "frost");
+        new.bearing_deg = 330.0;
+        let out = rewrite_pose(&text, "R1", &new).unwrap();
+        assert_eq!(pose_of(&out, "R1", "frost").bearing_deg, 330.0);
+        assert!(out.contains("  { id = \"frost\", text = \"t\""), "{out}");
+    }
+
+    #[test]
     fn the_diff_applies() {
         let old = "a\nb\nc\nd\ne\nf\n";
         let new = "a\nb\nX\nd\ne\nf\n";
@@ -302,5 +426,42 @@ mod tests {
             "--- a/x.toml\n+++ b/x.toml\n@@ -1,5 +1,5 @@\n a\n b\n-c\n+X\n d\n e\n"
         );
         assert_eq!(line_diff("x.toml", old, old), "");
+    }
+
+    #[test]
+    fn the_diff_at_the_first_and_last_line() {
+        let old = "a\nb\nc\nd\n";
+        assert_eq!(
+            line_diff("x.toml", old, "X\nb\nc\nd\n"),
+            "--- a/x.toml\n+++ b/x.toml\n@@ -1,3 +1,3 @@\n-a\n+X\n b\n c\n"
+        );
+        assert_eq!(
+            line_diff("x.toml", old, "a\nb\nc\nX\n"),
+            "--- a/x.toml\n+++ b/x.toml\n@@ -2,3 +2,3 @@\n b\n c\n-d\n+X\n"
+        );
+    }
+
+    #[test]
+    fn the_diff_marks_a_missing_final_newline() {
+        assert_eq!(
+            line_diff("x.toml", "a\nb", "a\nc"),
+            "--- a/x.toml\n+++ b/x.toml\n@@ -1,2 +1,2 @@\n a\n-b\n\
+             \\ No newline at end of file\n+c\n\\ No newline at end of file\n"
+        );
+        // Adding the newline is a change too.
+        assert_eq!(
+            line_diff("x.toml", "a\nb", "a\nb\n"),
+            "--- a/x.toml\n+++ b/x.toml\n@@ -1,2 +1,2 @@\n a\n-b\n\
+             \\ No newline at end of file\n+b\n"
+        );
+    }
+
+    #[test]
+    fn the_diff_keeps_crlf_lines_and_uses_forward_slashes() {
+        assert_eq!(
+            line_diff(r"data\lab\x.toml", "a\r\nb\r\nc\r\n", "a\r\nX\r\nc\r\n"),
+            "--- a/data/lab/x.toml\n+++ b/data/lab/x.toml\n@@ -1,3 +1,3 @@\n \
+             a\r\n-b\r\n+X\r\n c\r\n"
+        );
     }
 }

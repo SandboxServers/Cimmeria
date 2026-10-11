@@ -1,11 +1,17 @@
+//! D-SV6 scoring: a candidate is judged by hover probes, never a click.
+
 use serde_json::Value;
 
 /// One hover probe of a candidate pose, from `client_hover_probe`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Probe {
+    /// The aim pixel gave the wanted verdict (`verdict == "ok"`).
     pub ok: bool,
+    /// How many of the eight jitter points around the aim pixel agreed.
     pub jitter_hits: u32,
+    /// Pixels from the aim pixel to the avatar's projected body.
     pub avatar_px: f64,
+    /// Pixels from the aim pixel to the nearest screen edge.
     pub edge_px: f64,
 }
 
@@ -30,6 +36,8 @@ pub fn score(p: &Probe) -> Option<u32> {
 
 /// A confirmation re-probe passes when ok and jitter_hits >= CONFIRM_MIN_HITS.
 pub const CONFIRM_MIN_HITS: u32 = 6;
+/// D-SV6: the winner is re-probed this many times, each from a fresh
+/// teleport, before it is proposed.
 pub const CONFIRM_RUNS: u32 = 3;
 
 /// Index of the best score; ties go to the lower index.

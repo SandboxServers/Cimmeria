@@ -1,3 +1,5 @@
+//! The candidate poses a calibration sweep tries, in D-SV6 tie-break order.
+
 use crate::uat::spec::PoseSpec;
 
 /// The sweep's axes. Candidates are enumerated in this field order.
@@ -5,8 +7,11 @@ use crate::uat::spec::PoseSpec;
 pub struct Grid {
     /// Tried in this order (D-SV6 tie-break follows it).
     pub radii_m: Vec<f64>,
-    /// Positive and divides 360; 30 gives 12 bearings.
+    /// Positive and divides 360; 30 gives 12 bearings. A step that is not
+    /// finite, not positive or above 360 gives no grid bearings, so only the
+    /// current pose is tried.
     pub bearing_step_deg: f64,
+    /// Yaw after facing, degrees, tried in this order.
     pub yaw_offsets_deg: Vec<f64>,
     /// None = keep the pitch the face lands on (and record it).
     pub pitches_deg: Vec<Option<f64>>,
@@ -26,9 +31,13 @@ impl Default for Grid {
 /// One pose to try: where to stand, and how to aim from there.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Candidate {
+    /// Horizontal stand-off from the target, metres (`PoseSpec::radius_m`).
     pub radius_m: f64,
+    /// From the target, server x/z plane, 0 = +x (`PoseSpec::bearing_deg`).
     pub bearing_deg: f64,
+    /// Yaw after facing, degrees (`PoseSpec::yaw_offset_deg`).
     pub yaw_offset_deg: f64,
+    /// Absolute pitch after facing; None keeps the pitch the face lands on.
     pub pitch_deg: Option<f64>,
 }
 
@@ -65,9 +74,18 @@ pub fn candidates(current: Option<&PoseSpec>, grid: &Grid) -> Vec<Candidate> {
 
 /// One bearing per step of a full turn, starting at `from` rounded to the
 /// step (0 when there is none) and wrapping. Integer indices keep it exact.
+/// A step that is not finite, not positive or above 360 gives none: the
+/// `360 / step` count would be 0 or saturate, and `% n` would panic.
 fn bearings(from: Option<f64>, step: f64) -> Vec<f64> {
-    let n = (360.0 / step).round() as usize;
-    let first = from.map_or(0, |b| (b / step).round() as usize % n);
+    if !(step.is_finite() && step > 0.0 && step <= 360.0) {
+        return Vec::new();
+    }
+    let n = ((360.0 / step).round() as usize).max(1);
+    // rem_euclid so a negative bearing wraps (-30 starts at 330) instead of
+    // saturating to index 0.
+    let first = from.map_or(0, |b| {
+        ((b / step).round() as i64).rem_euclid(n as i64) as usize
+    });
     (0..n).map(|i| ((first + i) % n) as f64 * step).collect()
 }
 
@@ -107,6 +125,18 @@ mod tests {
                 pitch_deg: None,
             }
         );
+        // Nesting is radius > bearing > yaw > pitch, so D-SV6 ties go to the
+        // earlier radius first, then bearing, then yaw, then pitch.
+        let at = |radius_m, bearing_deg, yaw_offset_deg, pitch_deg| Candidate {
+            radius_m,
+            bearing_deg,
+            yaw_offset_deg,
+            pitch_deg,
+        };
+        assert_eq!(all[1], at(3.75, 0.0, 25.0, Some(-35.0)), "second pitch");
+        assert_eq!(all[3], at(3.75, 0.0, -25.0, None), "second yaw");
+        assert_eq!(all[9], at(3.75, 30.0, 25.0, None), "next bearing");
+        assert_eq!(all[9 * 12], at(3.0, 0.0, 25.0, None), "second radius");
         assert_eq!(all, candidates(None, &grid));
         // With a current pose, it leads and the same grid follows, its
         // bearings rotated to start at the pose's (see the next test).
@@ -146,5 +176,22 @@ mod tests {
             sweep,
             [330.0, 0.0, 30.0, 60.0, 90.0, 120.0, 150.0, 180.0, 210.0, 240.0, 270.0, 300.0]
         );
+    }
+
+    #[test]
+    fn a_bad_bearing_step_gives_no_grid_bearings_instead_of_panicking() {
+        for step in [0.0, -30.0, 361.0, 720.0, f64::NAN, f64::INFINITY] {
+            let grid = Grid {
+                bearing_step_deg: step,
+                ..Grid::default()
+            };
+            assert!(candidates(None, &grid).is_empty(), "step {step}");
+            // The current pose is still tried on its own.
+            assert_eq!(candidates(Some(&pose_at(10.0)), &grid).len(), 1);
+        }
+        // A whole turn is one bearing; a negative bearing wraps.
+        assert_eq!(bearings(Some(90.0), 360.0), [0.0]);
+        assert_eq!(bearings(Some(-30.0), 90.0), [0.0, 90.0, 180.0, 270.0]);
+        assert_eq!(bearings(Some(-100.0), 90.0), [270.0, 0.0, 90.0, 180.0]);
     }
 }
