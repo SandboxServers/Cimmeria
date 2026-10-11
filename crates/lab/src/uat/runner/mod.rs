@@ -25,6 +25,7 @@ mod session;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+use rmcp::schemars;
 use serde_json::{json, Map, Value};
 
 use super::evidence::{
@@ -74,6 +75,33 @@ pub struct RunRequest {
     /// Skip the UI settle sleeps between chat keys (tests only: the live
     /// client needs them to open the chat box and show the reply).
     pub no_settle: bool,
+    /// The lab instance label this run drives (`default`, `p2`, ...).
+    pub instance: Option<String>,
+    /// When a row's fixture is applied (D-FX10). Default `Auto`.
+    // Read by the FX-06 session step; no caller reads it yet.
+    #[allow(dead_code)]
+    pub fixtures: FixtureMode,
+}
+
+/// When a row's fixture is applied: `auto` (the row has one), `always`,
+/// or `never` (D-FX10).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FixtureMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 /// A finished row, as the tool reports it.
@@ -519,11 +547,16 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         }
     }
 
-    fn base_vars(&self, spec: &SectionSpec, row: &RowSpec) -> Map<String, Value> {
+    /// The `${var}` values a row's specs see. Pub(crate) so the fixture
+    /// tests can read the instance var without a whole run.
+    pub(crate) fn base_vars(&self, spec: &SectionSpec, row: &RowSpec) -> Map<String, Value> {
         let mut v = self.req.vars.clone();
         v.insert("run_id".into(), json!(self.manifest.run_id));
         v.insert("row_id".into(), json!(row.id));
         v.insert("section".into(), json!(spec.section.id));
+        if let Some(i) = &self.req.instance {
+            v.insert("instance".into(), json!(i));
+        }
         if let Some(c) = self.character_name(spec) {
             v.insert("character".into(), json!(c));
         }

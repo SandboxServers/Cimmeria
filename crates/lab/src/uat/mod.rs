@@ -19,6 +19,7 @@
 pub mod attest;
 pub mod clause;
 pub mod evidence;
+pub mod fixture;
 pub mod golden;
 pub mod grade;
 pub mod invoke;
