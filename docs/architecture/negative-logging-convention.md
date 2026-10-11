@@ -929,6 +929,17 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Base-to-cell send seam (TG-MER-05)
+
+Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/connect_loop/cell_send.rs`): the cell-method arms and the `EntityMove` relay.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_send_failed"`, `reason = "cell_channel_closed"`, `error`, `addr`, identity, `msg_kind`, `method_index` + `method_name` | The cell receiver was dropped: the player's call is lost |
+| WARN | `event = "cell_channel_backpressure"`, `waited_ms`, `queue_free`, `msg_kind`, `suppressed` | A send waited 50 ms or more on a full cell queue. Pattern D: one row per 5 s for the whole channel; `base_cell_channel_stalls_total` counts every stall |
+
+Guards: `dropped_receiver_logs_cell_channel_closed`, `stalled_send_logs_backpressure_row`, `second_stall_in_window_is_suppressed` in `cell_send.rs`.
+
 ## NPC attack-not-fired throttle (TG-NPC-05)
 
 An attack tick whose `handle_use_ability` call returns false (cooldown race, no ammo, out of range) used to WARN on every retry, about twice a second per NPC. `warn_attack_not_fired()` in `service/npc_ai/fight.rs` in `cimmeria-cell-combat` throttles it (Pattern D, `admit_warn`, keyed by NPC). The first row in a 15 s window writes at once. The retries inside it are counted, and the next row carries them in `suppressed`. The retry itself is scheduled whether or not the row is written.

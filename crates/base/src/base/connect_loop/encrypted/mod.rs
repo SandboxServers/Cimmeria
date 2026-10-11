@@ -29,6 +29,7 @@ use super::super::resources::ResourceCache;
 use super::super::session_identity;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
+use super::cell_send::send_to_cell;
 use super::{account_arms, cell_arms};
 use message_framing::{parse_request_entity_update, read_client_message_payload};
 
@@ -331,11 +332,12 @@ async fn dispatch_client_bundle(
                 if payload.len() >= 40 {
                     if let Some(ref tx) = cell_tx {
                         // Look up the player entity_id from connection state
-                        let entity_id = connected
-                            .lock()
-                            .unwrap()
-                            .get(&addr)
-                            .and_then(|c| c.player_entity_id);
+                        // The session's identity rides the same lock, for the
+                        // send seam's log rows.
+                        let (entity_id, who) = connected.lock().unwrap().get(&addr).map_or(
+                            (None, cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN),
+                            |c| (c.player_entity_id, session_identity::session_identity(c)),
+                        );
                         if let Some(entity_id) = entity_id {
                             // payload[0..4] = spaceId the client claims it is
                             // in. The cell never writes against it (the server
@@ -392,15 +394,21 @@ async fn dispatch_client_bundle(
                                 ?pos,
                                 "AVATAR_UPDATE_EXPLICIT -> CellService"
                             );
-                            let _ = tx
-                                .send(BaseToCellMsg::EntityMove {
+                            send_to_cell(
+                                tx,
+                                BaseToCellMsg::EntityMove {
                                     entity_id,
                                     claimed_space_id,
                                     position: pos,
                                     direction: dir,
                                     velocity: vel,
-                                })
-                                .await;
+                                },
+                                "entity_move",
+                                addr,
+                                who,
+                                None,
+                            )
+                            .await;
                         }
                     }
                 }
