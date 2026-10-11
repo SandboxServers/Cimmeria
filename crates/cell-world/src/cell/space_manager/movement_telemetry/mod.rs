@@ -16,6 +16,8 @@
 //!   the validator chose for it.
 //! - [`position_sample`] — the positive-space counterpart: accepted
 //!   player positions, sampled.
+//! - [`teleport`] — one `movement.teleport` row per server-authoritative
+//!   move, from the `note_authorized_teleport` choke point.
 //!
 //! # Why the throttle exists
 //!
@@ -53,6 +55,7 @@ use cimmeria_entity::navigation::NavMeshFingerprint;
 
 mod position_sample;
 mod reject;
+mod teleport;
 
 pub use reject::{HardReject, RecoveryReport, RejectReport, SuppressionReport};
 
